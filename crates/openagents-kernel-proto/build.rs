@@ -6,6 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/openagents/economy/v1/snapshot.proto",
         "../../proto/openagents/compute/v1/compute.proto",
         "../../proto/openagents/compute/v1/compute_products.proto",
+        "../../proto/openagents/compute/v1/compute_environments.proto",
         "../../proto/openagents/compute/v1/compute_capacity.proto",
         "../../proto/openagents/compute/v1/compute_instruments.proto",
         "../../proto/openagents/compute/v1/compute_delivery.proto",

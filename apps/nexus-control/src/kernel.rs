@@ -17,6 +17,7 @@ use openagents_kernel_core::authority::{
     IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
     PublishComputeIndexRequest, PublishComputeIndexResponse, PublishRiskSignalRequest,
     PublishRiskSignalResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
     RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
     RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
     RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
@@ -25,12 +26,12 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
     CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
-    ComputeDeliveryVarianceReason, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
-    ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
-    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-    StructuredCapacityLegRole, canonical_compute_product_id, validate_delivery_proof,
-    validate_launch_compute_product,
+    ComputeDeliveryVarianceReason, ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+    ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
+    ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
+    DeliveryRejectionReason, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    StructuredCapacityInstrumentStatus, StructuredCapacityLegRole, canonical_compute_product_id,
+    validate_compute_environment_package, validate_delivery_proof, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -329,6 +330,7 @@ pub struct KernelState {
     settlements: HashMap<String, SettlementLink>,
     claim_hooks: HashMap<String, ClaimHook>,
     compute_products: HashMap<String, ComputeProductRecord>,
+    compute_environment_packages: HashMap<String, ComputeEnvironmentPackageRecord>,
     capacity_lots: HashMap<String, CapacityLotRecord>,
     capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
     structured_capacity_instruments: HashMap<String, StructuredCapacityInstrumentRecord>,
@@ -377,6 +379,12 @@ struct SubmissionRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeProductRecord {
     product: ComputeProduct,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComputeEnvironmentPackageRecord {
+    package: ComputeEnvironmentPackage,
     receipt_id: String,
 }
 
@@ -445,6 +453,8 @@ struct PersistedComputeAuthorityState {
     schema_version: u32,
     receipt_store: PersistedReceiptStore,
     compute_products: BTreeMap<String, ComputeProductRecord>,
+    #[serde(default)]
+    compute_environment_packages: BTreeMap<String, ComputeEnvironmentPackageRecord>,
     capacity_lots: BTreeMap<String, CapacityLotRecord>,
     capacity_instruments: BTreeMap<String, CapacityInstrumentRecord>,
     #[serde(default)]
@@ -1173,6 +1183,10 @@ fn encode_metadata_struct<T: Serialize>(
     Ok(())
 }
 
+fn compute_environment_package_key(environment_ref: &str, version: &str) -> String {
+    format!("{environment_ref}@{version}")
+}
+
 fn forward_remedy_profile(product_id: &str) -> &'static str {
     match canonical_compute_product_id(product_id).unwrap_or(product_id) {
         "psionic.local.embeddings.gpt_oss.single_node" => "forward_physical.embeddings.v1",
@@ -1217,6 +1231,52 @@ impl KernelState {
         self.compute_products
             .get(product_id)
             .map(|record| record.product.clone())
+    }
+
+    pub fn list_compute_environment_packages(
+        &self,
+        family: Option<&str>,
+        status: Option<ComputeEnvironmentPackageStatus>,
+    ) -> Vec<ComputeEnvironmentPackage> {
+        let mut items = self
+            .compute_environment_packages
+            .values()
+            .map(|record| record.package.clone())
+            .filter(|package| {
+                family.is_none_or(|expected| package.family == expected)
+                    && status.is_none_or(|expected| package.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.environment_ref
+                .cmp(&rhs.environment_ref)
+                .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                .then_with(|| lhs.version.cmp(&rhs.version))
+        });
+        items
+    }
+
+    pub fn get_compute_environment_package(
+        &self,
+        environment_ref: &str,
+        version: Option<&str>,
+    ) -> Option<ComputeEnvironmentPackage> {
+        if let Some(version) = version {
+            return self
+                .compute_environment_packages
+                .get(compute_environment_package_key(environment_ref, version).as_str())
+                .map(|record| record.package.clone());
+        }
+        self.compute_environment_packages
+            .values()
+            .filter(|record| record.package.environment_ref == environment_ref)
+            .map(|record| record.package.clone())
+            .max_by(|lhs, rhs| {
+                lhs.updated_at_ms
+                    .cmp(&rhs.updated_at_ms)
+                    .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                    .then_with(|| lhs.version.cmp(&rhs.version))
+            })
     }
 
     pub fn list_capacity_lots(
@@ -1453,6 +1513,8 @@ impl KernelState {
         }
         self.receipt_store = InMemoryReceiptStore::from_persisted(persisted.receipt_store);
         self.compute_products = persisted.compute_products.into_iter().collect();
+        self.compute_environment_packages =
+            persisted.compute_environment_packages.into_iter().collect();
         self.capacity_lots = persisted.capacity_lots.into_iter().collect();
         self.capacity_instruments = persisted.capacity_instruments.into_iter().collect();
         self.structured_capacity_instruments = persisted
@@ -1475,6 +1537,11 @@ impl KernelState {
             schema_version: COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION,
             receipt_store: self.receipt_store.persisted(),
             compute_products: self.compute_products.clone().into_iter().collect(),
+            compute_environment_packages: self
+                .compute_environment_packages
+                .clone()
+                .into_iter()
+                .collect(),
             capacity_lots: self.capacity_lots.clone().into_iter().collect(),
             capacity_instruments: self.capacity_instruments.clone().into_iter().collect(),
             structured_capacity_instruments: self
@@ -2017,6 +2084,95 @@ impl KernelState {
         );
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
         let snapshot_event = self.refresh_snapshot_for(req.product.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn register_compute_environment_package(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RegisterComputeEnvironmentPackageRequest,
+    ) -> Result<MutationResult<RegisterComputeEnvironmentPackageResponse>, String> {
+        let environment_ref = normalize_required(
+            req.package.environment_ref.as_str(),
+            "compute_environment_ref_missing",
+        )?;
+        let version = normalize_required(
+            req.package.version.as_str(),
+            "compute_environment_version_missing",
+        )?;
+        req.package.environment_ref.clone_from(&environment_ref);
+        req.package.version.clone_from(&version);
+        req.package.created_at_ms =
+            normalize_created_at_ms(req.package.created_at_ms, context.now_unix_ms);
+        req.package.updated_at_ms = if req.package.updated_at_ms <= 0 {
+            req.package.created_at_ms
+        } else {
+            req.package.updated_at_ms.max(req.package.created_at_ms)
+        };
+        validate_compute_environment_package(&req.package)?;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let package_payload = serde_json::to_value(&req.package).map_err(|error| {
+            format!("kernel_compute_environment_package_encode_failed: {error}")
+        })?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.environment.register".to_string(),
+                created_at_ms: req.package.updated_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: package_payload,
+                outputs_payload: json!({
+                    "environment_ref": environment_ref.clone(),
+                    "version": version.clone(),
+                    "family": req.package.family.clone(),
+                    "status": req.package.status,
+                    "dataset_count": req.package.dataset_bindings.len(),
+                    "rubric_count": req.package.rubric_bindings.len(),
+                    "artifact_expectation_count": req.package.expected_artifacts.len(),
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.environment.register",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RegisterComputeEnvironmentPackageResponse {
+            package: req.package.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_environment_packages.insert(
+            compute_environment_package_key(environment_ref.as_str(), version.as_str()),
+            ComputeEnvironmentPackageRecord {
+                package: req.package.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.package.updated_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -9589,19 +9745,22 @@ mod tests {
         CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
         CreateRiskClaimRequest, CreateStructuredCapacityInstrumentRequest,
         PlaceCoverageOfferRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
-        RegisterReservePartitionRequest, ResolveRiskClaimRequest,
+        RegisterComputeEnvironmentPackageRequest, RegisterReservePartitionRequest,
+        ResolveRiskClaimRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
         CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
-        DeliveryProofStatus, DeliveryRejectionReason, DeliveryTopologyEvidence,
-        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
-        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
-        StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
+        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
+        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeExecutionKind,
+        ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
+        ComputeSettlementMode, ComputeTopologyKind, DeliveryProof, DeliveryProofStatus,
+        DeliveryRejectionReason, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
+        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::liquidity::{ReservePartition, ReservePartitionStatus};
     use openagents_kernel_core::receipts::{
@@ -9681,6 +9840,69 @@ mod tests {
                     concurrency_limit: Some(1),
                 }),
                 metadata: json!({"source": "test"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn environment_package_request(
+        environment_ref: &str,
+        version: &str,
+        created_at_ms: i64,
+    ) -> RegisterComputeEnvironmentPackageRequest {
+        RegisterComputeEnvironmentPackageRequest {
+            idempotency_key: format!("idemp.compute.environment.{environment_ref}.{version}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            package: ComputeEnvironmentPackage {
+                environment_ref: environment_ref.to_string(),
+                version: version.to_string(),
+                family: "evaluation".to_string(),
+                display_name: "OpenAgents Math Basic".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 1_000,
+                status: ComputeEnvironmentPackageStatus::Active,
+                description: Some("Reference math environment".to_string()),
+                package_digest: Some(format!("sha256:{environment_ref}:{version}")),
+                dataset_bindings: vec![ComputeEnvironmentDatasetBinding {
+                    dataset_ref: "dataset://math/basic".to_string(),
+                    split_ref: Some("validation".to_string()),
+                    mount_path: Some("/datasets/math/basic".to_string()),
+                    integrity_ref: Some("sha256:dataset.math.basic".to_string()),
+                    access_policy_ref: Some("policy://dataset/math/basic".to_string()),
+                    required: true,
+                    metadata: json!({"format": "jsonl"}),
+                }],
+                harness: Some(ComputeEnvironmentHarness {
+                    harness_ref: "harness://openagents/math/basic".to_string(),
+                    runtime_family: "rust-native".to_string(),
+                    entrypoint: Some("oa-eval-harness".to_string()),
+                    args: vec!["--suite".to_string(), "math-basic".to_string()],
+                    sandbox_profile_ref: Some("sandbox://strict".to_string()),
+                    evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                    time_budget_ms: Some(300_000),
+                    metadata: json!({"max_concurrency": 4}),
+                }),
+                rubric_bindings: vec![ComputeEnvironmentRubricBinding {
+                    rubric_ref: "rubric://math/basic".to_string(),
+                    score_type: Some("accuracy".to_string()),
+                    pass_threshold_bps: Some(9_000),
+                    metadata: json!({"top_k": 1}),
+                }],
+                expected_artifacts: vec![ComputeEnvironmentArtifactExpectation {
+                    artifact_kind: "scorecard".to_string(),
+                    artifact_ref: Some("artifact://math/basic/scorecard".to_string()),
+                    required: true,
+                    verification_policy_ref: Some("policy://artifact/scorecard".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+                policy_refs: vec![
+                    "policy://eval/math/basic".to_string(),
+                    "policy://artifact/scorecard".to_string(),
+                ],
+                metadata: json!({"tier": "reference"}),
             },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
@@ -10340,6 +10562,16 @@ mod tests {
                 .create_compute_product(&context, compute_product_request(created_at_ms as i64))
                 .expect("create compute product");
             kernel
+                .register_compute_environment_package(
+                    &fixture_context(created_at_ms + 500),
+                    environment_package_request(
+                        "env.openagents.math.basic",
+                        "2026.03.13",
+                        created_at_ms as i64 + 500,
+                    ),
+                )
+                .expect("register environment package");
+            kernel
                 .create_capacity_lot(
                     &fixture_context(created_at_ms + 1_000),
                     capacity_lot_request(created_at_ms as i64 + 1_000),
@@ -10375,6 +10607,10 @@ mod tests {
 
         let mut reloaded = KernelState::new_with_persistence(Some(path.clone()));
         assert_eq!(reloaded.list_compute_products(None).len(), 1);
+        assert_eq!(
+            reloaded.list_compute_environment_packages(None, None).len(),
+            1
+        );
         assert_eq!(reloaded.list_capacity_lots(None, None).len(), 1);
         assert_eq!(
             reloaded.list_capacity_instruments(None, None, None).len(),
@@ -10406,6 +10642,54 @@ mod tests {
         assert!(replay.snapshot_event.is_none());
 
         let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn compute_environment_registry_lists_versions_and_resolves_latest() {
+        let created_at_ms = 1_762_000_320_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &fixture_context(created_at_ms),
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment v1");
+        kernel
+            .register_compute_environment_package(
+                &fixture_context(created_at_ms + 2_000),
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.04.01",
+                    created_at_ms as i64 + 2_000,
+                ),
+            )
+            .expect("register environment v2");
+
+        let packages = kernel.list_compute_environment_packages(Some("evaluation"), None);
+        assert_eq!(packages.len(), 2);
+        assert_eq!(packages[0].version, "2026.03.13");
+        assert_eq!(packages[1].version, "2026.04.01");
+
+        let latest = kernel
+            .get_compute_environment_package("env.openagents.math.basic", None)
+            .expect("latest environment");
+        assert_eq!(latest.version, "2026.04.01");
+
+        let explicit = kernel
+            .get_compute_environment_package("env.openagents.math.basic", Some("2026.03.13"))
+            .expect("explicit environment");
+        assert_eq!(explicit.status, ComputeEnvironmentPackageStatus::Active);
+        assert_eq!(
+            explicit
+                .harness
+                .as_ref()
+                .and_then(|harness| harness.time_budget_ms),
+            Some(300_000)
+        );
     }
 
     #[test]

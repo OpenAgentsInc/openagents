@@ -955,6 +955,7 @@ This is the recommended issue order for fully implementing the stack above.
 ## Wave 6: Environments, Evals, Synthetic Data, And Training
 
 32. **Environments: define a Rust-native environment package and registry**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3516`.
    - Rebuild the useful `verifiers` and environment-registry patterns with OpenAgents-owned package descriptors and registry APIs.
    - An environment package should bind dataset refs, harness requirements, rubric refs, artifact expectations, and policy metadata.
 

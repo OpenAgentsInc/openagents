@@ -1,8 +1,9 @@
 use crate::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
-    CapacityLotStatus, CapacityNonDeliveryReason, ComputeIndex, ComputeIndexCorrectionReason,
-    ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
-    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
+    CapacityLotStatus, CapacityNonDeliveryReason, ComputeEnvironmentPackage,
+    ComputeEnvironmentPackageStatus, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
+    ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -32,6 +33,10 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: CreateComputeProductRequest,
     ) -> Result<CreateComputeProductResponse>;
+    async fn register_compute_environment_package(
+        &self,
+        req: RegisterComputeEnvironmentPackageRequest,
+    ) -> Result<RegisterComputeEnvironmentPackageResponse>;
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
@@ -73,6 +78,16 @@ pub trait KernelAuthority: Send + Sync {
         status: Option<ComputeProductStatus>,
     ) -> Result<Vec<ComputeProduct>>;
     async fn get_compute_product(&self, product_id: &str) -> Result<ComputeProduct>;
+    async fn list_compute_environment_packages(
+        &self,
+        family: Option<&str>,
+        status: Option<ComputeEnvironmentPackageStatus>,
+    ) -> Result<Vec<ComputeEnvironmentPackage>>;
+    async fn get_compute_environment_package(
+        &self,
+        environment_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeEnvironmentPackage>;
     async fn list_capacity_lots(
         &self,
         product_id: Option<&str>,
@@ -266,6 +281,24 @@ pub struct CreateComputeProductRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateComputeProductResponse {
     pub product: ComputeProduct,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeEnvironmentPackageRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub package: ComputeEnvironmentPackage,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeEnvironmentPackageResponse {
+    pub package: ComputeEnvironmentPackage,
     pub receipt: Receipt,
 }
 
@@ -932,6 +965,17 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::create_compute_product_response_from_proto(&response)
     }
 
+    async fn register_compute_environment_package(
+        &self,
+        req: RegisterComputeEnvironmentPackageRequest,
+    ) -> Result<RegisterComputeEnvironmentPackageResponse> {
+        let wire = compute_contracts::register_compute_environment_package_request_to_proto(&req)?;
+        let response: proto_compute::RegisterComputeEnvironmentPackageResponse = self
+            .post_json("/v1/kernel/compute/environments", &wire)
+            .await?;
+        compute_contracts::register_compute_environment_package_response_from_proto(&response)
+    }
+
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
@@ -1062,6 +1106,37 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::GetComputeProductResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::get_compute_product_response_from_proto(&response)
+    }
+
+    async fn list_compute_environment_packages(
+        &self,
+        family: Option<&str>,
+        status: Option<ComputeEnvironmentPackageStatus>,
+    ) -> Result<Vec<ComputeEnvironmentPackage>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/environments",
+            &[
+                ("family", family.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeEnvironmentPackagesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_environment_packages_response_from_proto(&response)
+    }
+
+    async fn get_compute_environment_package(
+        &self,
+        environment_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeEnvironmentPackage> {
+        let path = join_query_pairs(
+            format!("/v1/kernel/compute/environments/{environment_ref}").as_str(),
+            &[("version", version.map(ToOwned::to_owned))],
+        );
+        let response: proto_compute::GetComputeEnvironmentPackageResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_environment_package_response_from_proto(&response)
     }
 
     async fn list_capacity_lots(
