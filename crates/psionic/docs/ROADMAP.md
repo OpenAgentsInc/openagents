@@ -900,7 +900,15 @@ descriptors with history-visibility and result-visibility boundaries; and a
 serve-side adapter test proving multi-step model -> tool -> continuation flow
 runs through Psionic gateway logic instead of app-local orchestration. The next
 dependency-ordered issue in that chain is now `PSI-254` /
-[#3559](https://github.com/OpenAgentsInc/openagents/issues/3559).
+[#3559](https://github.com/OpenAgentsInc/openagents/issues/3559), and it is now
+landed too by consolidating local-backend closure around the already-landed
+CPU, Metal, CUDA, and Apple GPT-OSS work: the generic CPU server plus the
+GPT-OSS server now expose aligned machine-checkable truth for residency,
+hybrid-offload posture, fallback policy, and performance class, the hardware
+validation matrix now separates positive execution rows from proxy/debug
+surfaces, and the older Apple Metal GPT-OSS chain is explicitly absorbed as
+closed history. The next dependency-ordered issue in that chain is now
+`PSI-255` / [#3560](https://github.com/OpenAgentsInc/openagents/issues/3560).
 
 ## Current Reality
 
