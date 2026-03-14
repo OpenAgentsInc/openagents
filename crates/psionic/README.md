@@ -69,7 +69,8 @@ runtime quantization-dispatch and low-level worker batching/parking hooks now
 consumed by the datastream and serve layers, plus Psionic-owned sandbox runtime
 detection and bounded execution extracted from provider-substrate behind
 compatibility re-exports with explicit container/python/node/posix runner
-coverage. AMD execution support is still future work.
+coverage and a reusable background-job/file-transfer lifecycle. AMD execution
+support is still future work.
 
 ## Docs
 

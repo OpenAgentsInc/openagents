@@ -906,6 +906,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is the foundation for a Prime-sandboxes-quality Rust API.
 
 23. **Psionic Sandbox: add remote background jobs, file transfer, and artifact retrieval**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3507`.
    - Match the useful lifecycle semantics from `prime-sandboxes`: create, wait, run, poll, upload, download, and clean up.
    - Every one of those operations should have machine-legible receipts and failure reasons.
 

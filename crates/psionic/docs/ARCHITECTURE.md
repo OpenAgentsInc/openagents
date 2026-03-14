@@ -15,7 +15,8 @@ Psionic is structured as a layered engine subtree.
    quantization dispatch, and worker batching/parking decisions.
 5. `psionic-sandbox`
    Bounded sandbox runtime detection, profile realization, execution adapters,
-   and execution evidence for sandbox compute lanes.
+   execution evidence, and reusable background-job/file-transfer lifecycle
+   contracts for sandbox compute lanes.
 6. `psionic-net`
    Peer identity, direct/NAT/relay session lifecycle, relay-backed rendezvous,
    durable trust/candidate state, logical-stream reservation, bounded HTTP

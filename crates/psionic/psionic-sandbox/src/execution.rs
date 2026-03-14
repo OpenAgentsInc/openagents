@@ -413,9 +413,10 @@ fn resolve_expected_outputs(
     let mut resolved = Vec::new();
     for relative_path in expected_outputs {
         let path = workspace_root.join(relative_path);
-        let canonical_parent = path
-            .parent()
-            .unwrap_or(workspace_root)
+        let parent = path.parent().unwrap_or(workspace_root);
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create sandbox artifact parent: {error}"))?;
+        let canonical_parent = parent
             .canonicalize()
             .map_err(|error| format!("failed to canonicalize sandbox artifact parent: {error}"))?;
         if !canonical_parent.starts_with(workspace_root) {
