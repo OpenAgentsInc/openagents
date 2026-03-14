@@ -1693,6 +1693,10 @@ fn run_cuda_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options)?;
         let mut generated_tokens = Vec::new();
+        let prefill_handoff_state =
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len());
+        let mut first_token_emitted_at = None;
+        let mut last_token_emitted_at = None;
         let mut pending_token = if exact_prompt_cache_hit
             && can_use_cached_prompt_argmax(&request.options)
         {
@@ -1769,6 +1773,11 @@ fn run_cuda_generation_request(
                 cache.append(pending_token, step.key.clone(), step.value.clone())?;
             }
             token_history.push(pending_token.as_u32());
+            let emitted_at = Instant::now();
+            if first_token_emitted_at.is_none() {
+                first_token_emitted_at = Some(emitted_at);
+            }
+            last_token_emitted_at = Some(emitted_at);
 
             let stop_check_start = Instant::now();
             let stop_hit = super::truncate_generated_text(
@@ -1863,6 +1872,15 @@ fn run_cuda_generation_request(
             .as_nanos()
             .try_into()
             .unwrap_or(u64::MAX);
+        let time_to_first_token_ns = first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = super::average_inter_token_latency_ns(
+            first_token_emitted_at,
+            last_token_emitted_at,
+            usage.output_tokens,
+        );
+        let prefill_decode_handoff = super::local_prefill_decode_handoff(&prefill_handoff_state);
         let metrics = super::GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match load_state {
@@ -1874,6 +1892,8 @@ fn run_cuda_generation_request(
             context_window: Some(context_window),
             eval_count: Some(usage.output_tokens),
             eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
@@ -1910,6 +1930,7 @@ fn run_cuda_generation_request(
                 plan_cache_hits,
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+                prefill_decode_handoff.clone(),
             ),
             cache_observations: super::generation_cache_observations(
                 loaded_model.descriptor(),
@@ -2130,6 +2151,8 @@ fn run_cuda_hybrid_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options)?;
         let mut generated_tokens = Vec::new();
+        let mut first_token_emitted_at = None;
+        let mut last_token_emitted_at = None;
         let sampling_start = Instant::now();
         let mut pending_token = match sampler.select_next_token_from_history(
             loaded_model.tokenizer(),
@@ -2151,6 +2174,8 @@ fn run_cuda_hybrid_generation_request(
                 .inner
                 .supports_hybrid_cuda_device_argmax_fast_path();
         let mut generated_cache_tokens = cache.len();
+        let prefill_handoff_state =
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), generated_cache_tokens);
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
@@ -2195,6 +2220,11 @@ fn run_cuda_hybrid_generation_request(
                 generated_cache_tokens = cache.len();
             }
             token_history.push(pending_token.as_u32());
+            let emitted_at = Instant::now();
+            if first_token_emitted_at.is_none() {
+                first_token_emitted_at = Some(emitted_at);
+            }
+            last_token_emitted_at = Some(emitted_at);
 
             let stop_check_start = Instant::now();
             let stop_hit = super::truncate_generated_text(
@@ -2283,6 +2313,15 @@ fn run_cuda_hybrid_generation_request(
             .as_nanos()
             .try_into()
             .unwrap_or(u64::MAX);
+        let time_to_first_token_ns = first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = super::average_inter_token_latency_ns(
+            first_token_emitted_at,
+            last_token_emitted_at,
+            usage.output_tokens,
+        );
+        let prefill_decode_handoff = super::local_prefill_decode_handoff(&prefill_handoff_state);
         let metrics = super::GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match load_state {
@@ -2294,6 +2333,8 @@ fn run_cuda_hybrid_generation_request(
             context_window: Some(context_window),
             eval_count: Some(usage.output_tokens),
             eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
@@ -2330,6 +2371,7 @@ fn run_cuda_hybrid_generation_request(
                 plan_cache_hits,
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+                prefill_decode_handoff.clone(),
             ),
             cache_observations: super::generation_cache_observations(
                 loaded_model.descriptor(),
@@ -2709,6 +2751,9 @@ fn run_metal_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options)?;
         let mut generated_tokens = Vec::new();
+        let prefill_handoff_state = metal_layer_cache_state(layer_caches.as_slice());
+        let mut first_token_emitted_at = None;
+        let mut last_token_emitted_at = None;
         let mut pending_token =
             if exact_prompt_cache_hit && can_use_cached_prompt_argmax(&request.options) {
                 Some(
@@ -2807,6 +2852,11 @@ fn run_metal_generation_request(
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
             token_history.push(next_token.as_u32());
+            let emitted_at = Instant::now();
+            if first_token_emitted_at.is_none() {
+                first_token_emitted_at = Some(emitted_at);
+            }
+            last_token_emitted_at = Some(emitted_at);
 
             if super::truncate_generated_text(
                 loaded_model.tokenizer(),
@@ -2932,6 +2982,15 @@ fn run_metal_generation_request(
             .as_nanos()
             .try_into()
             .unwrap_or(u64::MAX);
+        let time_to_first_token_ns = first_token_emitted_at
+            .map(|first_token_at| first_token_at.duration_since(generation_start))
+            .and_then(|duration| duration.as_nanos().try_into().ok());
+        let inter_token_latency_ns = super::average_inter_token_latency_ns(
+            first_token_emitted_at,
+            last_token_emitted_at,
+            usage.output_tokens,
+        );
+        let prefill_decode_handoff = super::local_prefill_decode_handoff(&prefill_handoff_state);
         let metrics = super::GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match load_state {
@@ -2943,6 +3002,8 @@ fn run_metal_generation_request(
             context_window: Some(context_window),
             eval_count: Some(usage.output_tokens),
             eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            time_to_first_token_ns,
+            inter_token_latency_ns,
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
@@ -2993,6 +3054,7 @@ fn run_metal_generation_request(
                 plan_cache_hits,
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+                prefill_decode_handoff.clone(),
             ),
             cache_observations,
             scheduler: None,

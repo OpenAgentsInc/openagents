@@ -820,8 +820,13 @@ accounting, scheduler KV peak metrics, and per-response KV ownership receipts.
 is now landed too through automatic shared prefix caching with explicit
 tenant/session and sampler boundaries, request-level auto/bypass/invalidate
 controls, refusal and invalidation receipts, and generic-server prefix-cache
-headers. The next dependency-ordered issue in that chain is `PSI-240` /
-[#3545](https://github.com/OpenAgentsInc/openagents/issues/3545).
+headers. `PSI-240` / [#3545](https://github.com/OpenAgentsInc/openagents/issues/3545)
+is now landed too through Psionic-owned prefill/decode capability contracts,
+co-located and KV-transfer handoff seams, separate TTFT and ITL metrics on
+runtime and server receipts, truthful cluster-lane PD capability reporting, and
+explicit refusal for unsupported remote PD modes. The next dependency-ordered
+issue in that chain is `PSI-241` /
+[#3546](https://github.com/OpenAgentsInc/openagents/issues/3546).
 
 ## Current Reality
 

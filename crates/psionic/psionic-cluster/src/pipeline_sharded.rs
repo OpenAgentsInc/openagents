@@ -5,10 +5,11 @@ use psionic_runtime::{
     ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility,
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPipelineStage, ClusterPipelineStageRole, ClusterPolicyDigest,
-    ClusterPolicyDigestKind, ClusterSelectedNode as RuntimeClusterSelectedNode,
-    ClusterShardHandoff, ClusterShardHandoffKind,
-    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan,
-    ShardedModelManifest, ShardedModelManifestError,
+    ClusterPolicyDigestKind, ClusterPrefillDecodeCapability,
+    ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
+    ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
+    ExecutionTopologyPlan, PrefillDecodeCapability, ShardedModelManifest,
+    ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -98,6 +99,18 @@ fn default_pipeline_sharded_capability_profile() -> ClusterExecutionCapabilityPr
             ClusterExecutionLane::RemoteWholeRequest,
             ClusterExecutionLane::PipelineSharded,
         ])
+        .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+            ClusterExecutionLane::RemoteWholeRequest,
+            PrefillDecodeCapability::colocated_split().with_detail(
+                "remote whole-request fallback keeps prefill and decode split on one selected runtime",
+            ),
+        ))
+        .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+            ClusterExecutionLane::PipelineSharded,
+            PrefillDecodeCapability::kv_transfer_split().with_detail(
+                "pipeline-sharded execution crosses explicit stage handoff links, so prefill/decode separation is only truthful through a cluster KV-transfer seam",
+            ),
+        ))
         .with_clustered_cache_capability(
             ClusterCacheCapability::new(
                 ClusterExecutionLane::PipelineSharded,
@@ -481,7 +494,8 @@ pub fn schedule_pipeline_sharded_execution(
                         )));
                     }
                     let failure_code = match scheduler_failure.code {
-                        WholeRequestSchedulingFailureCode::CommunicationClassIneligible => {
+                        WholeRequestSchedulingFailureCode::CommunicationClassIneligible
+                        | WholeRequestSchedulingFailureCode::PrefillDecodeModeIneligible => {
                             PipelineShardedSchedulingFailureCode::CommunicationClassIneligible
                         }
                         WholeRequestSchedulingFailureCode::NoEligibleRemoteNode => {

@@ -95,6 +95,11 @@ Implemented now:
   tenant/session and sampler boundaries, request-level auto/bypass/invalidate
   controls, refusal/invalidation receipts, and generic-server headers for
   prefix hit/miss/bypass truth.
+- Psionic-owned prefill/decode capability contracts on top of that scheduler
+  and KV substrate, with colocated and KV-transfer handoff seams, separate TTFT
+  and ITL metrics, scheduler receipts, and generic-server headers that surface
+  the realized prefill/decode mode instead of treating PD behavior as hidden
+  runtime detail.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded

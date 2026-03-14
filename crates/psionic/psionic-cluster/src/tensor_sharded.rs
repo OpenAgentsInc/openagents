@@ -5,9 +5,10 @@ use psionic_runtime::{
     ClusterCommitAuthorityEvidence, ClusterCommunicationEligibility,
     ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
-    ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
-    ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
-    ExecutionTopologyPlan, ShardedModelManifest, ShardedModelManifestError,
+    ClusterPrefillDecodeCapability, ClusterSelectedNode as RuntimeClusterSelectedNode,
+    ClusterShardHandoff, ClusterShardHandoffKind,
+    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan,
+    PrefillDecodeCapability, ShardedModelManifest, ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -141,6 +142,12 @@ fn default_tensor_sharded_capability_profile() -> ClusterExecutionCapabilityProf
             ClusterExecutionLane::RemoteWholeRequest,
             ClusterExecutionLane::TensorSharded,
         ])
+        .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+            ClusterExecutionLane::RemoteWholeRequest,
+            PrefillDecodeCapability::colocated_split().with_detail(
+                "remote whole-request fallback keeps prefill and decode split on one selected runtime",
+            ),
+        ))
         .with_clustered_cache_capability(
             ClusterCacheCapability::new(
                 ClusterExecutionLane::TensorSharded,
@@ -505,7 +512,8 @@ pub fn schedule_tensor_sharded_execution(
                         )));
                     }
                     let failure_code = match scheduler_failure.code {
-                        WholeRequestSchedulingFailureCode::CommunicationClassIneligible => {
+                        WholeRequestSchedulingFailureCode::CommunicationClassIneligible
+                        | WholeRequestSchedulingFailureCode::PrefillDecodeModeIneligible => {
                             TensorShardedSchedulingFailureCode::CommunicationClassIneligible
                         }
                         WholeRequestSchedulingFailureCode::NoEligibleRemoteNode => {

@@ -990,6 +990,9 @@ pub struct ClusterExecutionCapabilityProfile {
     /// Declared clustered cache-compatibility truth for supported lanes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clustered_cache_capabilities: Vec<ClusterCacheCapability>,
+    /// Declared prefill/decode split truth for supported clustered lanes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prefill_decode_capabilities: Vec<ClusterPrefillDecodeCapability>,
     /// Declared communication classes supported by the backend today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supported_communication_classes: Vec<ClusterCommunicationClass>,
@@ -1006,6 +1009,7 @@ impl ClusterExecutionCapabilityProfile {
             runtime_backend: runtime_backend.into(),
             supported_lanes: Vec::new(),
             clustered_cache_capabilities: Vec::new(),
+            prefill_decode_capabilities: Vec::new(),
             supported_communication_classes: Vec::new(),
             detail: None,
         }
@@ -1061,6 +1065,33 @@ impl ClusterExecutionCapabilityProfile {
         self
     }
 
+    /// Replaces declared prefill/decode split truth and normalizes by lane.
+    #[must_use]
+    pub fn with_prefill_decode_capabilities(
+        mut self,
+        mut prefill_decode_capabilities: Vec<ClusterPrefillDecodeCapability>,
+    ) -> Self {
+        prefill_decode_capabilities.sort_by_key(|capability| capability.lane);
+        prefill_decode_capabilities.dedup_by_key(|capability| capability.lane);
+        self.prefill_decode_capabilities = prefill_decode_capabilities;
+        self
+    }
+
+    /// Appends one prefill/decode split declaration.
+    #[must_use]
+    pub fn with_prefill_decode_capability(
+        mut self,
+        prefill_decode_capability: ClusterPrefillDecodeCapability,
+    ) -> Self {
+        self.prefill_decode_capabilities
+            .push(prefill_decode_capability);
+        self.prefill_decode_capabilities
+            .sort_by_key(|capability| capability.lane);
+        self.prefill_decode_capabilities
+            .dedup_by_key(|capability| capability.lane);
+        self
+    }
+
     /// Attaches plain-language declaration or refusal detail.
     #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
@@ -1083,6 +1114,29 @@ impl ClusterExecutionCapabilityProfile {
         self.clustered_cache_capabilities
             .iter()
             .find(|capability| capability.lane == lane)
+    }
+
+    /// Returns declared prefill/decode split truth for one supported lane, when present.
+    #[must_use]
+    pub fn prefill_decode_capability(
+        &self,
+        lane: ClusterExecutionLane,
+    ) -> Option<&ClusterPrefillDecodeCapability> {
+        self.prefill_decode_capabilities
+            .iter()
+            .find(|capability| capability.lane == lane)
+    }
+
+    /// Returns whether one clustered lane explicitly supports the requested split mode.
+    #[must_use]
+    pub fn supports_prefill_decode_mode(
+        &self,
+        lane: ClusterExecutionLane,
+        mode: PrefillDecodeExecutionMode,
+    ) -> bool {
+        self.prefill_decode_capability(lane)
+            .map(|capability| capability.supports_mode(mode))
+            .unwrap_or(false)
     }
 
     /// Returns whether the profile explicitly supports one communication class.
@@ -1171,6 +1225,30 @@ impl ClusterExecutionCapabilityProfile {
                 hasher.update(detail.as_bytes());
             }
         }
+        for prefill_decode_capability in &self.prefill_decode_capabilities {
+            hasher.update(b"|prefill_decode|");
+            hasher.update(prefill_decode_capability.lane.as_str().as_bytes());
+            for mode in &prefill_decode_capability.capability.supported_modes {
+                hasher.update(b"|mode|");
+                hasher.update(mode.as_str().as_bytes());
+            }
+            for transport in &prefill_decode_capability.capability.supported_transports {
+                hasher.update(b"|transport|");
+                hasher.update(transport.as_str().as_bytes());
+            }
+            hasher.update(b"|metrics|");
+            hasher.update(
+                if prefill_decode_capability.capability.exposes_split_metrics {
+                    b"split_metrics".as_slice()
+                } else {
+                    b"no_split_metrics".as_slice()
+                },
+            );
+            if let Some(detail) = &prefill_decode_capability.capability.detail {
+                hasher.update(b"|detail|");
+                hasher.update(detail.as_bytes());
+            }
+        }
         for communication_class in &self.supported_communication_classes {
             hasher.update(b"|communication_class|");
             hasher.update(match communication_class {
@@ -1202,6 +1280,214 @@ impl ClusterExecutionCapabilityProfile {
         supported_communication_classes.sort_unstable();
         supported_communication_classes.dedup();
         self.supported_communication_classes = supported_communication_classes;
+    }
+}
+
+/// Truthful execution mode for prompt-prefill and decode work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefillDecodeExecutionMode {
+    /// Prompt processing and decode remain one inseparable runtime lane.
+    Monolithic,
+    /// Prefill and decode are split but remain co-located inside one runtime owner.
+    DisaggregatedColocated,
+    /// Prefill and decode are split across an explicit KV-transfer boundary.
+    DisaggregatedKvTransfer,
+}
+
+impl PrefillDecodeExecutionMode {
+    /// Returns a stable machine-checkable name for this execution mode.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Monolithic => "monolithic",
+            Self::DisaggregatedColocated => "disaggregated_colocated",
+            Self::DisaggregatedKvTransfer => "disaggregated_kv_transfer",
+        }
+    }
+}
+
+/// Truthful transport or ownership seam between prefill and decode phases.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefillDecodeTransport {
+    /// Prefill hands a cache view directly to decode inside one process/runtime boundary.
+    InProcessKvState,
+    /// Prefill hands a cache image through a host-memory seam.
+    SharedHostMemory,
+    /// Prefill hands a cache image through a local IPC seam.
+    LocalIpc,
+    /// Prefill hands a cache image through one explicit cluster transport boundary.
+    ClusterTransport,
+}
+
+impl PrefillDecodeTransport {
+    /// Returns a stable machine-checkable name for this transport.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InProcessKvState => "in_process_kv_state",
+            Self::SharedHostMemory => "shared_host_memory",
+            Self::LocalIpc => "local_ipc",
+            Self::ClusterTransport => "cluster_transport",
+        }
+    }
+}
+
+/// Capability truth for prompt-prefill and decode split behavior.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefillDecodeCapability {
+    /// Supported prefill/decode execution modes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_modes: Vec<PrefillDecodeExecutionMode>,
+    /// Supported handoff transports or ownership seams.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_transports: Vec<PrefillDecodeTransport>,
+    /// Whether the runtime can surface TTFT and ITL separately.
+    pub exposes_split_metrics: bool,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl PrefillDecodeCapability {
+    /// Monolithic-only capability with no explicit split metrics.
+    #[must_use]
+    pub fn monolithic_only() -> Self {
+        Self {
+            supported_modes: vec![PrefillDecodeExecutionMode::Monolithic],
+            supported_transports: Vec::new(),
+            exposes_split_metrics: false,
+            detail: None,
+        }
+    }
+
+    /// Co-located split capability with separate TTFT and ITL metrics.
+    #[must_use]
+    pub fn colocated_split() -> Self {
+        Self {
+            supported_modes: vec![PrefillDecodeExecutionMode::DisaggregatedColocated],
+            supported_transports: vec![PrefillDecodeTransport::InProcessKvState],
+            exposes_split_metrics: true,
+            detail: None,
+        }
+    }
+
+    /// KV-transfer split capability with separate TTFT and ITL metrics.
+    #[must_use]
+    pub fn kv_transfer_split() -> Self {
+        Self {
+            supported_modes: vec![PrefillDecodeExecutionMode::DisaggregatedKvTransfer],
+            supported_transports: vec![PrefillDecodeTransport::ClusterTransport],
+            exposes_split_metrics: true,
+            detail: None,
+        }
+    }
+
+    /// Returns whether one execution mode is supported.
+    #[must_use]
+    pub fn supports_mode(&self, mode: PrefillDecodeExecutionMode) -> bool {
+        self.supported_modes.contains(&mode)
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Cluster-lane-specific prompt-prefill/decode split truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterPrefillDecodeCapability {
+    /// Clustered lane this split truth applies to.
+    pub lane: ClusterExecutionLane,
+    /// Capability facts for this lane.
+    pub capability: PrefillDecodeCapability,
+}
+
+impl ClusterPrefillDecodeCapability {
+    /// Creates split-capability truth for one clustered lane.
+    #[must_use]
+    pub fn new(lane: ClusterExecutionLane, capability: PrefillDecodeCapability) -> Self {
+        Self { lane, capability }
+    }
+
+    /// Returns whether one execution mode is supported on this lane.
+    #[must_use]
+    pub fn supports_mode(&self, mode: PrefillDecodeExecutionMode) -> bool {
+        self.capability.supports_mode(mode)
+    }
+}
+
+/// Explicit handoff facts between prefill and decode phases.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefillDecodeHandoff {
+    /// Truthful execution mode for the realized phase split.
+    pub mode: PrefillDecodeExecutionMode,
+    /// Truthful transport or ownership seam used for the handoff.
+    pub transport: PrefillDecodeTransport,
+    /// Source node that produced the prefill state, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_node_id: Option<String>,
+    /// Target node that consumed the decode state, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_node_id: Option<String>,
+    /// KV pages visible at the prefill/decode boundary.
+    pub kv_pages: usize,
+    /// KV bytes visible at the prefill/decode boundary.
+    pub kv_bytes: u64,
+    /// Handoff latency in nanoseconds, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handoff_latency_ns: Option<u64>,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl PrefillDecodeHandoff {
+    /// Creates a co-located prefill/decode handoff over one in-process KV seam.
+    #[must_use]
+    pub fn colocated(kv_pages: usize, kv_bytes: u64) -> Self {
+        Self {
+            mode: PrefillDecodeExecutionMode::DisaggregatedColocated,
+            transport: PrefillDecodeTransport::InProcessKvState,
+            source_node_id: None,
+            target_node_id: None,
+            kv_pages,
+            kv_bytes,
+            handoff_latency_ns: None,
+            detail: None,
+        }
+    }
+
+    /// Creates a KV-transfer handoff between two explicit nodes.
+    #[must_use]
+    pub fn kv_transfer(
+        source_node_id: impl Into<String>,
+        target_node_id: impl Into<String>,
+        kv_pages: usize,
+        kv_bytes: u64,
+        handoff_latency_ns: Option<u64>,
+    ) -> Self {
+        Self {
+            mode: PrefillDecodeExecutionMode::DisaggregatedKvTransfer,
+            transport: PrefillDecodeTransport::ClusterTransport,
+            source_node_id: Some(source_node_id.into()),
+            target_node_id: Some(target_node_id.into()),
+            kv_pages,
+            kv_bytes,
+            handoff_latency_ns,
+            detail: None,
+        }
+    }
+
+    /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
     }
 }
 
@@ -1652,6 +1938,9 @@ pub struct ClusterExecutionContext {
     /// Explicit stage timing and transport facts for pipeline-parallel execution.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pipeline_stages: Vec<ClusterPipelineStage>,
+    /// Explicit prefill/decode split seam for the realized clustered path, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefill_decode_handoff: Option<PrefillDecodeHandoff>,
     /// Realized clustered cache-compatibility and invalidation truth for the request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clustered_cache_usage: Option<ClusterCacheUsage>,
@@ -1702,6 +1991,7 @@ impl ClusterExecutionContext {
             replica_nodes: Vec::new(),
             shard_handoffs: Vec::new(),
             pipeline_stages: Vec::new(),
+            prefill_decode_handoff: None,
             clustered_cache_usage: None,
             command_provenance: Vec::new(),
             fallback_history: Vec::new(),
@@ -1805,6 +2095,16 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_pipeline_stages(mut self, pipeline_stages: Vec<ClusterPipelineStage>) -> Self {
         self.pipeline_stages = pipeline_stages;
+        self
+    }
+
+    /// Attaches explicit prefill/decode split handoff truth.
+    #[must_use]
+    pub fn with_prefill_decode_handoff(
+        mut self,
+        prefill_decode_handoff: PrefillDecodeHandoff,
+    ) -> Self {
+        self.prefill_decode_handoff = Some(prefill_decode_handoff);
         self
     }
 
@@ -3479,6 +3779,9 @@ pub struct ExecutionDeliveryProof {
     /// KV-cache growth surfaced for the request path, when applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_growth: Option<KvCacheGrowth>,
+    /// Explicit prefill/decode handoff seam for the realized path, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefill_decode_handoff: Option<PrefillDecodeHandoff>,
 }
 
 /// Provider-facing settlement-linkage inputs derived from a realized execution path.
@@ -5578,6 +5881,9 @@ pub struct ExecutionCapabilityProfile {
     pub queue_policy: QueuePolicy,
     /// High-level throughput class for the served path.
     pub throughput_class: ThroughputClass,
+    /// Explicit prompt-prefill/decode split truth for the served path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefill_decode_capability: Option<PrefillDecodeCapability>,
 }
 
 impl ExecutionCapabilityProfile {
@@ -5588,6 +5894,7 @@ impl ExecutionCapabilityProfile {
             batch_posture: BatchExecutionPosture::SingleRequestOnly,
             queue_policy: QueuePolicy::direct_caller_serial(),
             throughput_class: ThroughputClass::LatencyOptimized,
+            prefill_decode_capability: None,
         }
     }
 
@@ -5598,6 +5905,7 @@ impl ExecutionCapabilityProfile {
             batch_posture: BatchExecutionPosture::CallerStaticBatch,
             queue_policy: QueuePolicy::direct_caller_serial(),
             throughput_class: ThroughputClass::Balanced,
+            prefill_decode_capability: None,
         }
     }
 
@@ -5611,7 +5919,18 @@ impl ExecutionCapabilityProfile {
                 policy.max_queued_requests,
             ),
             throughput_class: ThroughputClass::ThroughputOptimized,
+            prefill_decode_capability: None,
         }
+    }
+
+    /// Attaches explicit prefill/decode split truth for the served path.
+    #[must_use]
+    pub fn with_prefill_decode_capability(
+        mut self,
+        prefill_decode_capability: PrefillDecodeCapability,
+    ) -> Self {
+        self.prefill_decode_capability = Some(prefill_decode_capability);
+        self
     }
 }
 
@@ -5713,6 +6032,14 @@ pub struct GenerationSchedulerMetrics {
     pub total_prefill_tokens: usize,
     /// Total decode tokens executed across all requests.
     pub total_decode_tokens: usize,
+    /// Aggregate TTFT observed across requests that emitted at least one token.
+    pub total_time_to_first_token_ns: u64,
+    /// Number of requests contributing TTFT observations.
+    pub measured_time_to_first_token_requests: usize,
+    /// Aggregate average ITL observed across requests that emitted multiple tokens.
+    pub total_inter_token_latency_ns: u64,
+    /// Number of requests contributing ITL observations.
+    pub measured_inter_token_latency_requests: usize,
     /// Total KV pages allocated while requests were live on the scheduler.
     pub total_kv_pages_allocated: usize,
     /// Total KV pages reclaimed while requests were live on the scheduler.
@@ -5746,6 +6073,10 @@ impl GenerationSchedulerMetrics {
             max_batch_size: 0,
             total_prefill_tokens: 0,
             total_decode_tokens: 0,
+            total_time_to_first_token_ns: 0,
+            measured_time_to_first_token_requests: 0,
+            total_inter_token_latency_ns: 0,
+            measured_inter_token_latency_requests: 0,
             total_kv_pages_allocated: 0,
             total_kv_pages_reclaimed: 0,
             total_kv_bytes_allocated: 0,
@@ -5796,6 +6127,18 @@ pub struct GenerationSchedulerRequestReceipt {
     pub prefill_tokens: usize,
     /// Decode tokens executed for the request.
     pub decode_tokens: usize,
+    /// Truthful prefill/decode execution mode for the request path, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefill_decode_mode: Option<PrefillDecodeExecutionMode>,
+    /// Explicit prefill/decode handoff seam for the request path, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefill_decode_handoff: Option<PrefillDecodeHandoff>,
+    /// Time to first emitted token in nanoseconds, when the request emitted one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ns: Option<u64>,
+    /// Average inter-token latency in nanoseconds, when the request emitted multiple tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inter_token_latency_ns: Option<u64>,
     /// Explicit fallback reason when the request did not stay on the shared scheduler.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fallback_reason: Option<GenerationSchedulerFallbackReason>,
@@ -10696,6 +11039,7 @@ mod tests {
             plan_cache_hits: 1,
             plan_cache_misses: 0,
             kv_growth: None,
+            prefill_decode_handoff: None,
         })
         .with_settlement_linkage(settlement_linkage);
         let signing_key = SigningKey::from_bytes(&[17; 32]);
@@ -11405,6 +11749,7 @@ mod tests {
                     per_model_serialization: true,
                 },
                 throughput_class: ThroughputClass::LatencyOptimized,
+                prefill_decode_capability: None,
             }
         );
         assert_eq!(
@@ -11418,6 +11763,7 @@ mod tests {
                     per_model_serialization: true,
                 },
                 throughput_class: ThroughputClass::Balanced,
+                prefill_decode_capability: None,
             }
         );
         let scheduler_policy = GenerationSchedulerPolicy::continuous_batch_default();
@@ -11432,6 +11778,7 @@ mod tests {
                     per_model_serialization: true,
                 },
                 throughput_class: ThroughputClass::ThroughputOptimized,
+                prefill_decode_capability: None,
             }
         );
     }
@@ -11648,6 +11995,7 @@ mod tests {
                 plan_cache_hits: 1,
                 plan_cache_misses: 0,
                 kv_growth: None,
+                prefill_decode_handoff: None,
             }),
         };
 

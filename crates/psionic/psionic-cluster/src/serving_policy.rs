@@ -908,7 +908,7 @@ mod tests {
 
     use psionic_runtime::{
         ClusterArtifactResidencyDisposition, ClusterExecutionCapabilityProfile,
-        ClusterExecutionLane,
+        ClusterExecutionLane, ClusterPrefillDecodeCapability, PrefillDecodeCapability,
     };
 
     use crate::{
@@ -969,6 +969,12 @@ mod tests {
     fn cuda_remote_dispatch_capability_profile() -> ClusterExecutionCapabilityProfile {
         ClusterExecutionCapabilityProfile::new("cuda")
             .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+            .with_prefill_decode_capability(ClusterPrefillDecodeCapability::new(
+                ClusterExecutionLane::RemoteWholeRequest,
+                PrefillDecodeCapability::colocated_split().with_detail(
+                    "remote whole-request serving keeps prefill and decode split inside the selected runtime owner",
+                ),
+            ))
             .with_detail(
                 "backend `cuda` declares whole-request remote dispatch on ready cluster nodes",
             )
