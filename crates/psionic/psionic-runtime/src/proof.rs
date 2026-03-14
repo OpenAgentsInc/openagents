@@ -635,6 +635,7 @@ mod tests {
             plan_cache_misses: 1,
             kv_growth: None,
             prefill_decode_handoff: None,
+            kv_residency: None,
         };
         let compile_path = CompilePathEvidence {
             temperature: CompilePathTemperature::WarmReuse,
@@ -751,6 +752,7 @@ mod tests {
                 plan_cache_misses: 1,
                 kv_growth: None,
                 prefill_decode_handoff: None,
+                kv_residency: None,
             }),
         };
         let diagnostic =

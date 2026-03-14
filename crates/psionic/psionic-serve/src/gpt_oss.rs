@@ -1867,6 +1867,15 @@ fn run_cuda_generation_request(
             &previous_kv_state,
             psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len()),
         );
+        let device_kv_state =
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len());
+        let kv_residency = super::host_device_kv_residency(
+            cache.policy(),
+            cache.state(),
+            device_kv_state,
+            previous_kv_state.tokens > 0 || prefix_tokens_reused > 0,
+            Some(kv_cache.growth.clone()),
+        );
         let total_duration_ns = generation_start
             .elapsed()
             .as_nanos()
@@ -1895,6 +1904,7 @@ fn run_cuda_generation_request(
             time_to_first_token_ns,
             inter_token_latency_ns,
             kv_cache: Some(kv_cache),
+            kv_residency: kv_residency.clone(),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
@@ -1931,6 +1941,7 @@ fn run_cuda_generation_request(
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
                 prefill_decode_handoff.clone(),
+                kv_residency,
             ),
             cache_observations: super::generation_cache_observations(
                 loaded_model.descriptor(),
@@ -2308,6 +2319,15 @@ fn run_cuda_hybrid_generation_request(
             &previous_kv_state,
             psionic_runtime::KvCacheState::paged(cache.page_layout(), generated_cache_tokens),
         );
+        let device_kv_state =
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), generated_cache_tokens);
+        let kv_residency = super::host_device_kv_residency(
+            cache.policy(),
+            cache.state(),
+            device_kv_state,
+            previous_kv_state.tokens > 0 || prefix_tokens_reused > 0,
+            Some(kv_cache.growth.clone()),
+        );
         let total_duration_ns = generation_start
             .elapsed()
             .as_nanos()
@@ -2336,6 +2356,7 @@ fn run_cuda_hybrid_generation_request(
             time_to_first_token_ns,
             inter_token_latency_ns,
             kv_cache: Some(kv_cache),
+            kv_residency: kv_residency.clone(),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
@@ -2372,6 +2393,7 @@ fn run_cuda_hybrid_generation_request(
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
                 prefill_decode_handoff.clone(),
+                kv_residency,
             ),
             cache_observations: super::generation_cache_observations(
                 loaded_model.descriptor(),
@@ -2973,9 +2995,19 @@ fn run_metal_generation_request(
             output_tokens: generated.len(),
             cache_tokens: current_cache_tokens,
         };
+        let host_kv_state = final_cache
+            .as_ref()
+            .map_or_else(|| cache.state(), super::InMemoryKvCache::state);
         let kv_cache = psionic_runtime::KvCacheAccounting::from_states(
             &previous_kv_state,
-            psionic_runtime::KvCacheState::paged(cache.page_layout(), current_cache_tokens),
+            host_kv_state.clone(),
+        );
+        let kv_residency = super::host_device_kv_residency(
+            cache.policy(),
+            host_kv_state,
+            metal_layer_cache_state(layer_caches.as_slice()),
+            previous_kv_state.tokens > 0 || prefix_tokens_reused > 0,
+            Some(kv_cache.growth.clone()),
         );
         let total_duration_ns = generation_start
             .elapsed()
@@ -3005,6 +3037,7 @@ fn run_metal_generation_request(
             time_to_first_token_ns,
             inter_token_latency_ns,
             kv_cache: Some(kv_cache),
+            kv_residency: kv_residency.clone(),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
@@ -3055,6 +3088,7 @@ fn run_metal_generation_request(
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
                 prefill_decode_handoff.clone(),
+                kv_residency,
             ),
             cache_observations,
             scheduler: None,

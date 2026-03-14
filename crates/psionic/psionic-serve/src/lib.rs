@@ -67,18 +67,19 @@ use psionic_runtime::{
     GenerationSchedulerRequestReceipt, GenerationSchedulingClass, HealthStatus, KvCacheAccounting,
     KvCacheDeviceScope, KvCacheOwnerBinding, KvCacheOwnerClass, KvCacheOwnershipAccounting,
     KvCachePageLayout, KvCachePageSpan, KvCachePolicy, KvCacheSchedulerBinding, KvCacheSpillPolicy,
-    KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
-    LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
-    MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
-    PrefillDecodeCapability, PrefillDecodeExecutionMode, PrefillDecodeHandoff, PrefixCacheControl,
-    PrefixCacheIdentity, PrefixCacheMode, PrefixCacheRefusalReason, PrefixCacheReusePolicy,
-    PrefixCacheState, QuantizationDispatchDecision, QuantizationDispatchRequest,
-    QuantizationDispatchWorkload, RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind,
-    RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedArtifactIdentity,
-    ShardedModelManifest, ShardedModelManifestError, StructuredOutputError,
-    StructuredOutputExecutionReport, StructuredOutputMatchStatus, StructuredOutputMatcher,
-    StructuredOutputRequest, TokenSampler, default_cache_invalidation_policy, plan_model_admission,
-    select_argmax_token,
+    KvCacheState, KvResidencyAccounting, KvResidencyMovement, KvResidencyMovementKind,
+    KvResidencyRefusal, KvResidencyRefusalReason, KvResidencyTier, KvResidencyTierState,
+    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+    LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefillDecodeCapability,
+    PrefillDecodeExecutionMode, PrefillDecodeHandoff, PrefixCacheControl, PrefixCacheIdentity,
+    PrefixCacheMode, PrefixCacheRefusalReason, PrefixCacheReusePolicy, PrefixCacheState,
+    QuantizationDispatchDecision, QuantizationDispatchRequest, QuantizationDispatchWorkload,
+    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest,
+    ShardedModelManifestError, StructuredOutputError, StructuredOutputExecutionReport,
+    StructuredOutputMatchStatus, StructuredOutputMatcher, StructuredOutputRequest, TokenSampler,
+    default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -557,6 +558,7 @@ fn build_delivery_proof(
     plan_cache_misses: usize,
     kv_growth: Option<psionic_runtime::KvCacheGrowth>,
     prefill_decode_handoff: Option<PrefillDecodeHandoff>,
+    kv_residency: Option<KvResidencyAccounting>,
 ) -> Option<ExecutionDeliveryProof> {
     if kernel_count == 0
         && bytes_moved == 0
@@ -564,6 +566,7 @@ fn build_delivery_proof(
         && plan_cache_misses == 0
         && kv_growth.is_none()
         && prefill_decode_handoff.is_none()
+        && kv_residency.is_none()
     {
         return None;
     }
@@ -575,6 +578,7 @@ fn build_delivery_proof(
         plan_cache_misses,
         kv_growth,
         prefill_decode_handoff,
+        kv_residency,
     })
 }
 
@@ -604,6 +608,87 @@ fn average_inter_token_latency_ns(
 fn local_prefill_decode_handoff(prefill_kv_state: &KvCacheState) -> Option<PrefillDecodeHandoff> {
     (prefill_kv_state.tokens > 0 || prefill_kv_state.pages > 0 || prefill_kv_state.bytes > 0)
         .then(|| PrefillDecodeHandoff::colocated(prefill_kv_state.pages, prefill_kv_state.bytes))
+}
+
+fn host_only_kv_residency(
+    policy: &KvCachePolicy,
+    host_state: KvCacheState,
+) -> Option<KvResidencyAccounting> {
+    (host_state.tokens > 0 || host_state.pages > 0 || host_state.bytes > 0).then(|| {
+        KvResidencyAccounting::from_policy(policy).with_tier(
+            KvResidencyTierState::resident(KvResidencyTier::Host, host_state)
+                .with_detail("paged KV remained resident only in the host-owned cache"),
+        )
+    })
+}
+
+fn host_device_kv_residency(
+    policy: &KvCachePolicy,
+    host_state: KvCacheState,
+    device_state: KvCacheState,
+    prefetched_from_host: bool,
+    write_back_growth: Option<psionic_runtime::KvCacheGrowth>,
+) -> Option<KvResidencyAccounting> {
+    let has_any_state = host_state.tokens > 0
+        || host_state.pages > 0
+        || host_state.bytes > 0
+        || device_state.tokens > 0
+        || device_state.pages > 0
+        || device_state.bytes > 0;
+    has_any_state.then(|| {
+        let prefetched_pages = device_state.pages;
+        let prefetched_bytes = device_state.bytes;
+        let mut accounting = KvResidencyAccounting::from_policy(policy)
+            .with_tier(
+                KvResidencyTierState::resident(KvResidencyTier::Host, host_state).with_detail(
+                    "host-owned KV mirror remained available for session or prefix continuity",
+                ),
+            )
+            .with_tier(
+                KvResidencyTierState::resident(KvResidencyTier::Device, device_state)
+                    .with_detail("device-resident KV state backed active GPU decode"),
+            );
+        if prefetched_from_host && prefetched_bytes > 0 {
+            accounting = accounting.with_movement(
+                KvResidencyMovement::new(
+                    KvResidencyMovementKind::Prefetch,
+                    KvResidencyTier::Host,
+                    KvResidencyTier::Device,
+                    prefetched_pages,
+                    prefetched_bytes,
+                )
+                .with_detail("host-resident KV state was prefetched into the active device tier"),
+            );
+        }
+        if let Some(write_back_growth) = write_back_growth {
+            if write_back_growth.tokens > 0
+                || write_back_growth.pages > 0
+                || write_back_growth.bytes > 0
+            {
+                accounting = accounting.with_movement(
+                    KvResidencyMovement::new(
+                        KvResidencyMovementKind::WriteBack,
+                        KvResidencyTier::Device,
+                        KvResidencyTier::Host,
+                        write_back_growth.pages,
+                        write_back_growth.bytes,
+                    )
+                    .with_detail(
+                        "device-produced KV growth was written back into the host-owned cache",
+                    ),
+                );
+            }
+        }
+        if matches!(policy.spill_policy, KvCacheSpillPolicy::SpillToHost)
+            && !matches!(policy.device_scope, KvCacheDeviceScope::CrossDeviceExplicit)
+        {
+            accounting = accounting.with_refusal(KvResidencyRefusal::new(
+                KvResidencyRefusalReason::SpillUnsupported,
+                "spill-to-host requires explicit cross-device KV movement support",
+            ));
+        }
+        accounting
+    })
 }
 
 fn accumulate_generation_step_counters(
@@ -1230,6 +1315,9 @@ pub struct GenerationMetrics {
     /// Explicit paged-KV accounting for the request, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache: Option<KvCacheAccounting>,
+    /// Explicit hierarchical KV residency accounting for the request, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_residency: Option<KvResidencyAccounting>,
     /// Number of prompt-prefix tokens reused from the shared prefix cache.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_tokens_reused: Option<usize>,
@@ -1807,6 +1895,7 @@ impl GenerationMetrics {
             time_to_first_token_ns: None,
             inter_token_latency_ns: None,
             kv_cache: None,
+            kv_residency: None,
             prefix_tokens_reused: None,
             gpt_oss_perf: None,
         }
@@ -1824,6 +1913,7 @@ impl GenerationMetrics {
             && self.time_to_first_token_ns.is_none()
             && self.inter_token_latency_ns.is_none()
             && self.kv_cache.is_none()
+            && self.kv_residency.is_none()
             && self.prefix_tokens_reused.is_none()
             && self.gpt_oss_perf.is_none()
     }
@@ -5723,6 +5813,7 @@ where
             .prefill_handoff_state
             .as_ref()
             .and_then(local_prefill_decode_handoff);
+        let kv_residency = host_only_kv_residency(self.cache.policy(), self.cache.state());
         let metrics = GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match self.load_state {
@@ -5742,6 +5833,7 @@ where
                 &self.previous_kv_state,
                 self.cache.state(),
             )),
+            kv_residency: kv_residency.clone(),
             prefix_tokens_reused: Some(self.prefix_tokens_reused),
             gpt_oss_perf: self.gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
@@ -5777,6 +5869,7 @@ where
                 self.plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
                 prefill_decode_handoff.clone(),
+                kv_residency,
             ),
             cache_observations: generation_cache_observations(
                 self.loaded_model.descriptor(),
@@ -6623,6 +6716,7 @@ where
             usage.output_tokens,
         );
         let prefill_decode_handoff = local_prefill_decode_handoff(&self.prefill_handoff_state);
+        let kv_residency = host_only_kv_residency(self.cache.policy(), self.cache.state());
         let metrics = GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match self.load_state {
@@ -6640,6 +6734,7 @@ where
                 &self.previous_kv_state,
                 self.cache.state(),
             )),
+            kv_residency: kv_residency.clone(),
             prefix_tokens_reused: Some(self.prefix_tokens_reused),
             gpt_oss_perf: None,
         };
@@ -6670,6 +6765,7 @@ where
                 self.plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
                 prefill_decode_handoff,
+                kv_residency,
             ),
             cache_observations: generation_cache_observations(
                 self.loaded_model.descriptor(),
@@ -7259,6 +7355,7 @@ where
             usage.output_tokens,
         );
         let prefill_decode_handoff = local_prefill_decode_handoff(&prefill_handoff_state);
+        let kv_residency = host_only_kv_residency(cache.policy(), cache.state());
         let metrics = GenerationMetrics {
             total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match load_state {
@@ -7273,6 +7370,7 @@ where
             time_to_first_token_ns,
             inter_token_latency_ns,
             kv_cache: Some(kv_cache),
+            kv_residency: kv_residency.clone(),
             prefix_tokens_reused: Some(prefix_tokens_reused),
             gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
@@ -7306,6 +7404,7 @@ where
                 plan_cache_misses,
                 metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
                 prefill_decode_handoff,
+                kv_residency,
             ),
             cache_observations: generation_cache_observations(
                 loaded_model.descriptor(),
@@ -8093,6 +8192,7 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
                 plan_cache_misses,
                 None,
                 None,
+                None,
             ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
@@ -8243,6 +8343,7 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
                 bytes_moved,
                 plan_cache_hits,
                 plan_cache_misses,
+                None,
                 None,
                 None,
             ),
@@ -8424,6 +8525,7 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
                 plan_cache_misses,
                 None,
                 None,
+                None,
             ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
@@ -8601,6 +8703,7 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
                 bytes_moved,
                 plan_cache_hits,
                 plan_cache_misses,
+                None,
                 None,
                 None,
             ),
@@ -8788,7 +8891,8 @@ mod tests {
     use psionic_runtime::{
         AdmissionRefusalReason, BackendSelection, CacheInvalidationTrigger, CacheKind,
         ExecutionPartition, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCacheOwnerClass,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        KvResidencyMovementKind, KvResidencyRefusalReason, KvResidencyTier, LoadedModelState,
         LocalRuntimeErrorCode, LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy,
         PrefixCacheControl, PrefixCacheMode, PrefixCacheRefusalReason, PrefixCacheState,
         QuantizationKernelStrategy, ResidencyPressureAction, RuntimeTransitionEvent,
@@ -9520,6 +9624,45 @@ mod tests {
                 .any(|page| page.token_count == 1)
         );
         Ok(())
+    }
+
+    #[test]
+    fn host_device_kv_residency_reports_prefetch_writeback_and_refusal() {
+        let policy = KvCachePolicy {
+            device_scope: KvCacheDeviceScope::SameDeviceOnly,
+            spill_policy: KvCacheSpillPolicy::SpillToHost,
+            page_layout: KvCachePageLayout::new(16, 4, 32),
+        };
+
+        let accounting = super::host_device_kv_residency(
+            &policy,
+            KvCacheState::paged(&policy.page_layout, 8),
+            KvCacheState::paged(&policy.page_layout, 8),
+            true,
+            Some(psionic_runtime::KvCacheGrowth {
+                tokens: 4,
+                pages: 1,
+                bytes: 128,
+            }),
+        )
+        .expect("host/device residency");
+
+        assert!(accounting.has_tier(KvResidencyTier::Host));
+        assert!(accounting.has_tier(KvResidencyTier::Device));
+        assert_eq!(accounting.movements.len(), 2);
+        assert_eq!(
+            accounting.movements[0].kind,
+            KvResidencyMovementKind::Prefetch
+        );
+        assert_eq!(
+            accounting.movements[1].kind,
+            KvResidencyMovementKind::WriteBack
+        );
+        assert_eq!(accounting.refusals.len(), 1);
+        assert_eq!(
+            accounting.refusals[0].reason,
+            KvResidencyRefusalReason::SpillUnsupported
+        );
     }
 
     #[test]
@@ -10581,6 +10724,21 @@ mod tests {
                 .map(|value| value.growth.pages),
             Some(1)
         );
+        assert!(
+            first
+                .metrics
+                .kv_residency
+                .as_ref()
+                .is_some_and(|value| value.has_tier(KvResidencyTier::Host))
+        );
+        assert!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .and_then(|value| value.kv_residency.as_ref())
+                .is_some_and(|value| value.has_tier(KvResidencyTier::Host))
+        );
         assert!(first.metrics.total_duration_ns.is_some());
         assert!(first.metrics.load_duration_ns.is_some());
         assert!(
@@ -10653,6 +10811,13 @@ mod tests {
                 .as_ref()
                 .map(|value| value.current.tokens),
             Some(second.usage.cache_tokens)
+        );
+        assert!(
+            second
+                .metrics
+                .kv_residency
+                .as_ref()
+                .is_some_and(|value| value.has_tier(KvResidencyTier::Host))
         );
         assert!(second.metrics.total_duration_ns.is_some());
         assert_eq!(second.metrics.load_duration_ns, Some(0));

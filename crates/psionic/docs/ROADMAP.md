@@ -824,9 +824,14 @@ headers. `PSI-240` / [#3545](https://github.com/OpenAgentsInc/openagents/issues/
 is now landed too through Psionic-owned prefill/decode capability contracts,
 co-located and KV-transfer handoff seams, separate TTFT and ITL metrics on
 runtime and server receipts, truthful cluster-lane PD capability reporting, and
-explicit refusal for unsupported remote PD modes. The next dependency-ordered
-issue in that chain is `PSI-241` /
-[#3546](https://github.com/OpenAgentsInc/openagents/issues/3546).
+explicit refusal for unsupported remote PD modes. `PSI-241` /
+[#3546](https://github.com/OpenAgentsInc/openagents/issues/3546) is now landed
+too through hierarchical KV residency accounting across host, device, and
+explicit datastream-backed distributed tiers, with spill/prefetch/write-back
+movement truth, external-locator validation, and cluster cache-capability
+reporting that only claims supported residency tiers. The next
+dependency-ordered issue in that chain is `PSI-242` /
+[#3547](https://github.com/OpenAgentsInc/openagents/issues/3547).
 
 ## Current Reality
 
@@ -860,6 +865,10 @@ baseline on `main` is:
   block/paged KV manager with explicit request/session/shared-prefix ownership,
   deterministic page reclaim and oldest-page eviction, backend-visible KV page
   peaks, and response provenance that surfaces KV ownership directly
+- that serving and runtime evidence now also carries hierarchical KV residency
+  truth across host, device, and explicit datastream-backed distributed tiers,
+  including spill/prefetch/write-back movements and refusal surfaces for
+  unsupported spill modes or malformed distributed-tier contracts
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through

@@ -7,7 +7,7 @@ use psionic_runtime::{
     ClusterExecutionLane, ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterPrefillDecodeCapability, ClusterSelectedNode as RuntimeClusterSelectedNode,
     ClusterShardHandoff, ClusterShardHandoffKind,
-    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan,
+    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan, KvResidencyTier,
     PrefillDecodeCapability, ShardedModelManifest, ShardedModelManifestError,
 };
 use serde::{Deserialize, Serialize};
@@ -154,6 +154,7 @@ fn default_tensor_sharded_capability_profile() -> ClusterExecutionCapabilityProf
                 ClusterCacheScope::StageLocal,
                 ClusterCacheScope::StageLocal,
             )
+            .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
             .invalidates_on_topology_change()
             .with_detail(
                 "tensor-sharded prefix and KV reuse are only truthful while the same collective topology and tensor ranges remain pinned",

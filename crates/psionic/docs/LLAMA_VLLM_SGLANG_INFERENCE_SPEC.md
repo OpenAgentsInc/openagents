@@ -268,8 +268,8 @@ already real.
 | Model and artifact ingress | GGUF and Ollama-style artifact ingestion, GGUF decoder metadata for Llama/Qwen/Mistral/GPT-OSS, GGUF embeddings families, OCI ingestion, served-artifact identity, governance, invalidation | mostly `llama.cpp`-class lessons | loader coverage is broader than fully executed decoder coverage |
 | Real decoder execution | real GPT-OSS GGUF execution model, Harmony prompt/render/parse, CUDA GPT-OSS serving, CPU GGUF GPT-OSS service in code, partial Metal GPT-OSS service | mostly `llama.cpp` plus Psionic-owned CUDA work | still too GPT-OSS-centric; generic real-GGUF decoder execution is not yet productized |
 | Local server surface | narrow GPT-OSS OpenAI-compatible server with `/health`, `/v1/models`, `/v1/chat/completions`; generic serve library has generation and embeddings runtime concepts | mostly `llama.cpp`-style local serving shape | not yet one generic Psionic-native server for many families and APIs |
-| Scheduler and queue semantics | execution-profile truth, queue-policy truth, throughput-class truth, first continuous-batching CPU scheduler, mixed prefill/decode scheduling receipts, real request-owned block/paged KV management, automatic prefix caching with tenancy and sampler boundaries, explicit prefill/decode capability contracts, colocated and KV-transfer handoff seams, separate TTFT/ITL metrics, caller-static-batch embeddings, seeded sampler, warm/load/unload lifecycle | adjacent to `vLLM` concepts, but now materially realized in Psionic-owned runtime and serve code | still no hierarchical KV runtime or unified local/cluster router policy |
-| KV and cache substrate | real block/paged KV management, prefix-cache accounting, request-level auto/bypass/invalidate controls, cache invalidation policies, cluster prefix/KV compatibility truth | partial `vLLM`-style and cluster groundwork | no `SGLang`-class hierarchical KV runtime yet |
+| Scheduler and queue semantics | execution-profile truth, queue-policy truth, throughput-class truth, first continuous-batching CPU scheduler, mixed prefill/decode scheduling receipts, real request-owned block/paged KV management, automatic prefix caching with tenancy and sampler boundaries, explicit prefill/decode capability contracts, colocated and KV-transfer handoff seams, separate TTFT/ITL metrics, caller-static-batch embeddings, seeded sampler, warm/load/unload lifecycle | adjacent to `vLLM` concepts, but now materially realized in Psionic-owned runtime and serve code | local and clustered scheduler semantics are still not one unified product path |
+| KV and cache substrate | real block/paged KV management, prefix-cache accounting, hierarchical KV residency across host/device/explicit datastream-backed distributed tiers, request-level auto/bypass/invalidate controls, cache invalidation policies, cluster prefix/KV compatibility truth | partial `vLLM`-style plus the first adapted `SGLang` HiCache lesson | distributed tier exposure is still explicit-contract-first rather than a broadly deployed live serving path |
 | Distributed serving topology | selected-device truth, topology plans, replica serving, pipeline sharding, layer sharding, tensor sharding, sharded-model manifests | mostly `vLLM`-class and Prime-adjacent serving-topology lessons | local scheduler and clustered scheduler are still not one fully unified product path |
 | Structured outputs and tools | no full structured-output backend, no general tool-calling contract, no reasoning-parser registry, no `/v1/responses` runtime | essentially not yet adapted from `vLLM`/`SGLang` in a shipped way | this is one of the biggest missing layers |
 | Routing and gateway | cluster placement and readiness exist; no dedicated multi-model router/gateway, no cache-aware request router, no gateway-owned conversation/response state | mostly not yet adapted from `SGLang` | the full agent-serving control plane does not exist yet |
@@ -314,9 +314,8 @@ The following is already partially adapted:
 
 The following `vLLM` lessons are not fully adapted yet:
 
-- automatic prefix caching under a shared scheduler
 - generic high-throughput multi-family serving under one server
-- disaggregated prefill/decode as a real productized runtime
+- one unified local-plus-clustered scheduler and router policy
 
 ## What Is Already Adapted From `SGLang`
 
@@ -325,13 +324,14 @@ The distinctive `SGLang` lessons are mostly not yet landed in Psionic.
 What exists today is mostly only adjacent groundwork:
 
 - cluster routing and topology substrate
+- hierarchical KV residency accounting across host, device, and explicit
+  datastream-backed distributed tiers
 - response and parse-carrying output surfaces for GPT-OSS/Harmony
 - capability and observability contracts that could support a richer gateway
 
 What is still missing from the `SGLang` side is the important part:
 
 - RadixAttention-style cache-aware request semantics
-- HiCache-class hierarchical KV runtime
 - structured outputs as first-class serving behavior
 - reasoning-parser and tool-parser registries
 - `/v1/responses` and conversation-state serving
@@ -644,7 +644,7 @@ ownership receipts instead of only exposing a logical KV policy schema.
 | `PSI-238` | Psionic Runtime: add a real block/paged KV manager with request-owned accounting | `psionic-runtime`, backend crates | `vLLM` | Move from policy schema into a real KV subsystem that owns page allocation, growth, reclaim, and request-level KV accounting under a shared scheduler. | `PSI-237` |
 | `PSI-239` | Psionic Runtime: add automatic prefix caching with explicit tenancy and invalidation boundaries | `psionic-runtime`, `psionic-serve`, `psionic-models` | `vLLM` | Borrow the best `vLLM` APC lesson while preserving Psionic's served-artifact identity and cache invalidation truth. | `PSI-238` |
 | `PSI-240` | Psionic Runtime: add disaggregated prefill/decode execution and KV-transfer seams | `psionic-runtime`, `psionic-cluster`, `psionic-serve` | `vLLM` plus `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3545`. Rebuilt Psionic-owned PD capability contracts, colocated and KV-transfer handoff seams, separate TTFT/ITL metrics, and explicit clustered PD refusal/reporting. | `PSI-237`, `PSI-238` |
-| `PSI-241` | Psionic Runtime: add hierarchical KV residency across device, host, and distributed storage | `psionic-runtime`, `psionic-cluster`, `psionic-datastream` | `SGLang` | Turn today's cache schemas into a true `SGLang` HiCache-class hierarchical runtime with explicit spill, prefetch, and write-back policies. | `PSI-238`, `PSI-240` |
+| `PSI-241` | Psionic Runtime: add hierarchical KV residency across device, host, and distributed storage | `psionic-runtime`, `psionic-cluster`, `psionic-datastream` | `SGLang` | Status: implemented on 2026-03-14 via GitHub issue `#3546`. Added host/device/distributed KV residency accounting, spill/prefetch/write-back/refusal surfaces, explicit datastream-backed distributed-tier contracts, and cluster cache-capability tier truth. | `PSI-238`, `PSI-240` |
 | `PSI-242` | Psionic Cluster: unify local and clustered scheduler semantics for batching, cache, and warm-route truth | `psionic-cluster`, `psionic-runtime`, `psionic-serve` | `vLLM` plus `SGLang` | Ensure clustered serving does not drift into a separate scheduling product with different cache and queue semantics than the local engine. | `PSI-237` through `PSI-241`, current cluster foundation |
 
 ### Phase 3: Structured Serving Runtime

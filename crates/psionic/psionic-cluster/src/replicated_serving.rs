@@ -593,7 +593,8 @@ mod tests {
     use psionic_runtime::{
         CacheAction, CacheInvalidationTrigger, ClusterAdmissionFactKind, ClusterCacheCapability,
         ClusterCacheScope, ClusterExecutionCapabilityProfile, ClusterExecutionLane,
-        ClusterPolicyDigestKind, ClusterPrefillDecodeCapability, PrefillDecodeCapability,
+        ClusterPolicyDigestKind, ClusterPrefillDecodeCapability, KvResidencyTier,
+        PrefillDecodeCapability,
     };
 
     use crate::{
@@ -704,6 +705,7 @@ mod tests {
                     ClusterCacheScope::ReplicaLocal,
                     ClusterCacheScope::ReplicaLocal,
                 )
+                .with_residency_tiers(vec![KvResidencyTier::Host, KvResidencyTier::Device])
                 .invalidates_on_route_change()
                 .with_detail(
                     "replica-routed prefix and KV reuse are only truthful on one warm replica identity",
