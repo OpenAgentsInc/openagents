@@ -89,5 +89,6 @@ Receipt types:
 
 - `#3520`: benchmark adapters should consume these environment/eval/synthetic
   objects rather than inventing a second benchmark result store
+  - landed in `docs/kernel/compute-benchmark-adapters.md`
 - later training issues should consume `output_artifact_ref` plus sample-level
   provenance as dataset inputs rather than re-scraping raw generation logs

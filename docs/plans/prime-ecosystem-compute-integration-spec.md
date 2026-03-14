@@ -975,6 +975,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This should terminate in environment and eval objects, not float beside them.
 
 36. **Benchmark Adapters: add broad benchmark harness integrations**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3520`.
    - Pull in the useful `evalchemy` idea through adapters for benchmark suites where OpenAgents needs standardized outputs.
    - Keep benchmark orchestration separate from core environment semantics so the registry does not become a benchmark junk drawer.
 

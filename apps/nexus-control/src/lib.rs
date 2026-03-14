@@ -4982,6 +4982,10 @@ mod tests {
         GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
+    use openagents_kernel_core::compute_benchmarks::{
+        ComputeBenchmarkAdapterKind, ComputeBenchmarkCaseImport, ComputeBenchmarkImportRequest,
+        MmluMultipleChoiceCaseMetadata, adapt_compute_benchmark_import,
+    };
     use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
         AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
@@ -5618,6 +5622,96 @@ mod tests {
             verified_at_ms,
             metadata: json!({"stage": "verification"}),
             evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn mmlu_benchmark_import_request(
+        eval_run_id: &str,
+        idempotency_prefix: &str,
+        created_at_ms: i64,
+        finalized_at_ms: i64,
+    ) -> ComputeBenchmarkImportRequest {
+        ComputeBenchmarkImportRequest {
+            idempotency_prefix: idempotency_prefix.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            adapter_kind: ComputeBenchmarkAdapterKind::MmluMultipleChoiceV1,
+            benchmark_family: "mmlu".to_string(),
+            benchmark_suite_ref: Some("benchmark://mmlu/pro".to_string()),
+            eval_run_id: eval_run_id.to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: None,
+                dataset_ref: None,
+                rubric_ref: None,
+                evaluator_policy_ref: None,
+            },
+            product_id: Some("ollama.text_generation".to_string()),
+            capacity_lot_id: Some("lot.compute.client".to_string()),
+            instrument_id: Some("instrument.compute.client".to_string()),
+            delivery_proof_id: Some("delivery.compute.client".to_string()),
+            model_ref: Some("model://llama3.3".to_string()),
+            source_ref: Some("artifact://benchmarks/mmlu/input".to_string()),
+            created_at_ms,
+            finalized_at_ms,
+            cases: vec![
+                ComputeBenchmarkCaseImport {
+                    sample_id: "sample.alpha".to_string(),
+                    ordinal: Some(1),
+                    input_ref: Some("artifact://benchmarks/mmlu/input/alpha".to_string()),
+                    output_ref: Some("artifact://benchmarks/mmlu/output/alpha".to_string()),
+                    expected_output_ref: Some(
+                        "artifact://benchmarks/mmlu/expected/alpha".to_string(),
+                    ),
+                    artifacts: Vec::new(),
+                    metadata: serde_json::to_value(MmluMultipleChoiceCaseMetadata {
+                        subject: "biology".to_string(),
+                        choices: vec![
+                            "A".to_string(),
+                            "B".to_string(),
+                            "C".to_string(),
+                            "D".to_string(),
+                        ],
+                        correct_choice_index: 1,
+                        predicted_choice_index: 1,
+                        prompt_id: Some("bio-1".to_string()),
+                    })
+                    .expect("mmlu metadata"),
+                    recorded_at_ms: created_at_ms + 100,
+                },
+                ComputeBenchmarkCaseImport {
+                    sample_id: "sample.beta".to_string(),
+                    ordinal: Some(2),
+                    input_ref: Some("artifact://benchmarks/mmlu/input/beta".to_string()),
+                    output_ref: Some("artifact://benchmarks/mmlu/output/beta".to_string()),
+                    expected_output_ref: Some(
+                        "artifact://benchmarks/mmlu/expected/beta".to_string(),
+                    ),
+                    artifacts: Vec::new(),
+                    metadata: serde_json::to_value(MmluMultipleChoiceCaseMetadata {
+                        subject: "history".to_string(),
+                        choices: vec![
+                            "A".to_string(),
+                            "B".to_string(),
+                            "C".to_string(),
+                            "D".to_string(),
+                        ],
+                        correct_choice_index: 2,
+                        predicted_choice_index: 0,
+                        prompt_id: Some("hist-1".to_string()),
+                    })
+                    .expect("mmlu metadata"),
+                    recorded_at_ms: created_at_ms + 200,
+                },
+            ],
+            run_artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "benchmark_manifest".to_string(),
+                artifact_ref: "artifact://benchmarks/mmlu/manifest".to_string(),
+                digest: Some("sha256:mmlu-manifest".to_string()),
+                metadata: json!({"suite": "mmlu-pro"}),
+            }],
+            metadata: json!({"split": "test"}),
             hints: ReceiptHints::default(),
         }
     }
@@ -9938,6 +10032,129 @@ mod tests {
             structured_closed.legs[0].status,
             CapacityInstrumentStatus::Cancelled
         );
+
+        server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_benchmark_adapter_mmlu_import_roundtrips_into_evals() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let local_addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve test app");
+        });
+
+        let client = HttpKernelAuthorityClient::new(
+            format!("http://{local_addr}"),
+            Some(session.access_token.clone()),
+        )?;
+        let created_at_ms = super::now_unix_ms() as i64;
+
+        client
+            .register_compute_environment_package(compute_environment_package_request(
+                "env.openagents.math.basic",
+                "2026.03.13",
+                "idemp.compute.benchmark.environment",
+                created_at_ms,
+            ))
+            .await?;
+
+        let mut product_request = compute_product_request(
+            "ollama.text_generation",
+            "idemp.compute.benchmark.product",
+            created_at_ms + 100,
+        );
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: None,
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        client.create_compute_product(product_request).await?;
+        client
+            .create_capacity_lot(capacity_lot_request(
+                "lot.compute.client",
+                "ollama.text_generation",
+                "idemp.compute.benchmark.lot",
+                created_at_ms + 200,
+            ))
+            .await?;
+        client
+            .create_capacity_instrument(capacity_instrument_request(
+                "instrument.compute.client",
+                "ollama.text_generation",
+                "lot.compute.client",
+                "idemp.compute.benchmark.instrument",
+                created_at_ms + 300,
+            ))
+            .await?;
+        client
+            .record_delivery_proof(delivery_proof_request(
+                "delivery.compute.client",
+                "ollama.text_generation",
+                "lot.compute.client",
+                "instrument.compute.client",
+                "idemp.compute.benchmark.delivery",
+                created_at_ms + 400,
+            ))
+            .await?;
+
+        let adapted = adapt_compute_benchmark_import(mmlu_benchmark_import_request(
+            "eval.benchmark.mmlu.client",
+            "idemp.compute.benchmark.mmlu",
+            created_at_ms + 500,
+            created_at_ms + 800,
+        ))
+        .map_err(anyhow::Error::msg)?;
+        client
+            .create_compute_evaluation_run(adapted.create_eval_run)
+            .await?;
+        client
+            .append_compute_evaluation_samples(adapted.append_samples)
+            .await?;
+        let finalized = client
+            .finalize_compute_evaluation_run(adapted.finalize_eval_run)
+            .await?;
+        assert_eq!(
+            finalized
+                .eval_run
+                .metadata
+                .get("benchmark_adapter_kind")
+                .and_then(serde_json::Value::as_str),
+            Some("mmlu_multiple_choice_v1")
+        );
+        assert_eq!(
+            finalized
+                .eval_run
+                .summary
+                .as_ref()
+                .map(|summary| summary.pass_rate_bps),
+            Some(Some(5_000))
+        );
+        let samples = client
+            .list_compute_evaluation_samples("eval.benchmark.mmlu.client")
+            .await?;
+        assert_eq!(samples.len(), 2);
+        assert_eq!(
+            samples[0]
+                .metadata
+                .get("benchmark_case")
+                .and_then(|value| value.get("subject"))
+                .and_then(serde_json::Value::as_str),
+            Some("biology")
+        );
+        assert_eq!(samples[0].status, ComputeEvaluationSampleStatus::Passed);
+        assert_eq!(samples[1].status, ComputeEvaluationSampleStatus::Failed);
 
         server.abort();
         Ok(())
