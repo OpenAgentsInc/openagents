@@ -943,6 +943,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is the main bridge between Psionic proof bundles and economic truth.
 
 30. **Nexus: add validator scheduling, adjudication, and challenge-result projections**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3514`.
    - Create the authority-side machinery that receives proof refs, queues challenges, accepts outcomes, and projects challenge health into read models.
    - This should surface enough state for operator, buyer, and provider UIs.
 
