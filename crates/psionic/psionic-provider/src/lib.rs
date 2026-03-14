@@ -10,19 +10,21 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use psionic_runtime::{
-    AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, AmdDeviceMetadata,
+    AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, ActivationFingerprintInput,
+    ActivationFingerprintProofAdapter, ActivationFingerprintVectorSample, AmdDeviceMetadata,
     AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
     BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
     CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterComputeMarketTrustAssessment,
     ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus, ClusterExecutionCapabilityProfile,
     ClusterExecutionContext, ClusterSettlementProvenanceInput, CompilePathEvidence,
     DeliveredExecutionContext, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
-    ExecutionDeliveryProof, ExecutionProofBundle, ExecutionProofBundleKind,
-    ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity, ExecutionTopologyPlan, HealthStatus,
-    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
-    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
-    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, SandboxExecutionCapabilityProfile,
+    ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundle,
+    ExecutionProofBundleKind, ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity,
+    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
+    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
+    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    QuantizedActivationFingerprintAdapter, SandboxExecutionCapabilityProfile,
     SandboxExecutionEvidence, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
     ServedArtifactIdentity, SettlementLinkageInput, SignedClusterEvidenceBundle,
     ValidationMatrixReference, validation_reference_for_served_product,
@@ -256,6 +258,28 @@ fn execution_proof_runtime_identity(
         .with_selected_devices(selected_devices.to_vec())
 }
 
+fn embedding_activation_fingerprint_artifact(
+    request_digest: &str,
+    runtime_backend: &str,
+    product_id: &str,
+    model_id: &str,
+    response: &EmbeddingResponse,
+) -> Option<psionic_runtime::ActivationFingerprintProofArtifact> {
+    let input = response.embeddings.iter().fold(
+        ActivationFingerprintInput::new(request_digest, product_id, model_id, runtime_backend),
+        |input, embedding| {
+            input.with_sample(ActivationFingerprintVectorSample::new(
+                format!("embedding:{}", embedding.index),
+                embedding.values.clone(),
+            ))
+        },
+    );
+    if input.samples.is_empty() {
+        return None;
+    }
+    Some(QuantizedActivationFingerprintAdapter::default().generate(&input))
+}
+
 struct ClusterEvidenceBundleExportContext<'a> {
     product_id: &'a str,
     request_id: &'a str,
@@ -324,6 +348,7 @@ fn embedding_execution_proof_bundle(
     compile_path: &Option<CompilePathEvidence>,
     delivery_proof: &Option<ExecutionDeliveryProof>,
     settlement_linkage: &Option<SettlementLinkageInput>,
+    activation_fingerprint: &Option<psionic_runtime::ActivationFingerprintProofArtifact>,
     failure_reason: &Option<String>,
     diagnostic: &Option<LocalRuntimeDiagnostic>,
 ) -> ExecutionProofBundle {
@@ -346,6 +371,7 @@ fn embedding_execution_proof_bundle(
     )
     .with_model_id(model_id)
     .with_validation(validation)
+    .with_activation_fingerprint_posture(ExecutionProofAugmentationPosture::Supported)
     .with_served_artifact(served_artifact);
     if let Some(execution_topology) = execution_topology.as_ref() {
         bundle = bundle.with_execution_topology(execution_topology);
@@ -361,6 +387,9 @@ fn embedding_execution_proof_bundle(
     }
     if let Some(settlement_linkage) = settlement_linkage.clone() {
         bundle = bundle.with_settlement_linkage(settlement_linkage);
+    }
+    if let Some(activation_fingerprint) = activation_fingerprint.clone() {
+        bundle = bundle.with_activation_fingerprint(activation_fingerprint);
     }
     if let Some(failure_reason) = failure_reason.clone() {
         bundle = bundle.with_failure_reason(failure_reason);
@@ -412,6 +441,7 @@ fn generation_execution_proof_bundle(
     )
     .with_model_id(model_id)
     .with_validation(validation)
+    .with_activation_fingerprint_posture(ExecutionProofAugmentationPosture::Unavailable)
     .with_served_artifact(served_artifact);
     if let Some(execution_topology) = execution_topology.as_ref() {
         bundle = bundle.with_execution_topology(execution_topology);
@@ -470,6 +500,7 @@ fn sandbox_execution_proof_bundle(
             selected_devices,
         ),
     )
+    .with_activation_fingerprint_posture(ExecutionProofAugmentationPosture::Unavailable)
     .with_sandbox_evidence(evidence);
     if let Some(cluster_execution) = cluster_execution.as_ref() {
         bundle = bundle.with_cluster_execution(cluster_execution);
@@ -1424,6 +1455,13 @@ impl ExecutionReceipt {
             .provenance
             .as_ref()
             .and_then(|value| value.compile_path.clone());
+        let activation_fingerprint = embedding_activation_fingerprint_artifact(
+            request_digest.as_str(),
+            backend_selection.effective_backend.as_str(),
+            request.product_id.as_str(),
+            response.metadata.model_id.as_str(),
+            response,
+        );
         let proof_bundle = embedding_execution_proof_bundle(
             ReceiptStatus::Succeeded,
             request.request_id.as_str(),
@@ -1440,6 +1478,7 @@ impl ExecutionReceipt {
             &compile_path,
             &delivery_proof,
             &settlement_linkage,
+            &activation_fingerprint,
             &None,
             &None,
         );
@@ -1538,6 +1577,7 @@ impl ExecutionReceipt {
             request.model.model.model_id.as_str(),
             &served_artifact,
             &execution_topology,
+            &None,
             &None,
             &None,
             &None,
@@ -2683,16 +2723,16 @@ mod tests {
         ClusterFallbackReason, ClusterFallbackStep, ClusterPipelineStage, ClusterPipelineStageRole,
         ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
         DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionDeliveryProof, ExecutionProofBundleKind, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
-        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
-        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        ExecutionDeliveryProof, ExecutionProofAugmentationPosture, ExecutionProofBundleKind,
+        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
+        LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
+        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
+        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
+        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
@@ -4914,6 +4954,26 @@ mod tests {
                 .map(|value| value.claim_id.as_str()),
             Some("cpu.embeddings.reference")
         );
+        assert_eq!(
+            decoded.proof_bundle.activation_fingerprint_posture,
+            ExecutionProofAugmentationPosture::Supported
+        );
+        assert_eq!(
+            decoded
+                .proof_bundle
+                .activation_fingerprint
+                .as_ref()
+                .map(|value| value.scheme_id.as_str()),
+            Some("psionic.activation_fingerprint.quantized.v1")
+        );
+        assert_eq!(
+            decoded.proof_bundle.activation_fingerprint_ref.as_deref(),
+            decoded
+                .proof_bundle
+                .activation_fingerprint
+                .as_ref()
+                .map(|value| value.artifact_digest.as_str())
+        );
         assert_eq!(decoded.requested_output_dimensions, None);
         assert_eq!(decoded.failure_reason, None);
         assert_eq!(decoded.model_family, "smoke");
@@ -4922,6 +4982,57 @@ mod tests {
             decoded.weight_bundle,
             WeightBundleEvidence::from_metadata(&request.model.weights)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn embedding_execution_receipt_emits_activation_fingerprint_artifact()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = EmbeddingRequest::new(
+            "embed-proof-1",
+            sample_embedding_descriptor(),
+            vec![String::from("hello"), String::from("world")],
+        );
+        let response = EmbeddingResponse::new(
+            &request,
+            vec![
+                EmbeddingVector {
+                    index: 0,
+                    values: vec![0.1, 0.2, 0.3, 0.4],
+                },
+                EmbeddingVector {
+                    index: 1,
+                    values: vec![0.5, 0.6, 0.7, 0.8],
+                },
+            ],
+        );
+        let receipt = ExecutionReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            10,
+            20,
+        );
+
+        assert_eq!(
+            receipt.proof_bundle.activation_fingerprint_posture,
+            ExecutionProofAugmentationPosture::Supported
+        );
+        let artifact = receipt
+            .proof_bundle
+            .activation_fingerprint
+            .as_ref()
+            .expect("embedding receipts should carry an activation fingerprint");
+        assert_eq!(
+            artifact.scheme_id,
+            "psionic.activation_fingerprint.quantized.v1"
+        );
+        assert_eq!(artifact.sample_count, 2);
+        assert_eq!(
+            receipt.proof_bundle.activation_fingerprint_ref.as_deref(),
+            Some(artifact.artifact_digest.as_str())
+        );
+        assert!(artifact.is_self_consistent());
         Ok(())
     }
 

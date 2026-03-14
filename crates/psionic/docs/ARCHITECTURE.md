@@ -14,7 +14,8 @@ Psionic is structured as a layered engine subtree.
    Runtime traits for devices, buffers, allocators, execution, low-level
    quantization dispatch, worker batching/parking decisions, and canonical
    execution-proof bundles that later validator and kernel layers can
-   reference.
+   reference, including embeddings-first activation-fingerprint proof adapters
+   and explicit optional-proof posture.
 5. `psionic-sandbox`
    Bounded sandbox runtime detection, profile realization, execution adapters,
    execution evidence, and reusable background-job/file-transfer lifecycle
@@ -61,6 +62,17 @@ Psionic is structured as a layered engine subtree.
 - `psionic-serve` depends on models/runtime/core.
 - `psionic-provider` depends on serve/runtime/core and remains the only
   OpenAgents-specific crate in the subtree.
+
+## Proof Layers
+
+- Base execution proof stays canonical in `psionic-runtime::ExecutionProofBundle`.
+- Optional proof augmentations stay explicit through
+  `ExecutionProofAugmentationPosture` instead of hidden metadata.
+- The first augmentation is an embeddings-first activation-fingerprint adapter
+  using quantized deterministic sampling with a benchmark helper for cost
+  measurement.
+- `psionic-provider` is responsible for attaching product-appropriate proof
+  artifacts to receipts; it does not invent new proof schemas outside runtime.
 
 ## Boundaries
 

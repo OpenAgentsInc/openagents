@@ -928,6 +928,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is the core interface between execution and economic settlement.
 
 27. **Psionic Proof: add activation-fingerprint proof adapters**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3511`.
    - Rebuild the useful `toploc` idea as an OpenAgents-owned proof module for products where activation-based proofs are economically worth it.
    - Keep the proof posture explicit so products can declare whether they require, support, or ignore this layer.
 
