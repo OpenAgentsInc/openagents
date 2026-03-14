@@ -28,6 +28,7 @@ mod distributed_optimizer;
 mod model_io;
 mod orchestrator;
 mod reference_program;
+mod reliability;
 mod replay_truth;
 mod rl_artifacts;
 mod rollout_validation;
@@ -46,6 +47,7 @@ pub use distributed_optimizer::*;
 pub use model_io::*;
 pub use orchestrator::*;
 pub use reference_program::*;
+pub use reliability::*;
 pub use replay_truth::*;
 pub use rl_artifacts::*;
 pub use rollout_validation::*;
@@ -57,7 +59,7 @@ pub use stage_program::*;
 pub use worker_protocol::*;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, scheduling/accounting, artifact lifecycle, checkpoint, recovery, and elastic membership substrate";
+pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, scheduling/accounting, reliability, artifact lifecycle, checkpoint, recovery, and elastic membership substrate";
 
 /// Error returned by training-session state transitions.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
