@@ -327,6 +327,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
+            provider_heartbeat_cadence: crate::app_state::ProviderHeartbeatCadenceState::default(),
             local_inference: crate::app_state::LocalInferencePaneState::default(),
             rive_preview: crate::app_state::RivePreviewPaneState::default(),
             rive_preview_runtime: crate::app_state::RivePreviewRuntimeState::default(),

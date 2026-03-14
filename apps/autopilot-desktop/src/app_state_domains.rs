@@ -138,6 +138,7 @@ pub struct FrameRedrawPressureSnapshot {
     pub background_changed: bool,
     pub hotbar_flashing: bool,
     pub provider_animating: bool,
+    pub provider_online_heartbeat: bool,
     pub chat_pending: bool,
     pub debug_probe_active: bool,
     pub text_input_focused: bool,
@@ -158,6 +159,9 @@ impl FrameRedrawPressureSnapshot {
         }
         if self.provider_animating {
             labels.push("provider");
+        }
+        if self.provider_online_heartbeat {
+            labels.push("provider_heartbeat");
         }
         if self.chat_pending {
             labels.push("chat");
@@ -195,6 +199,7 @@ pub struct FrameRedrawReasonCounters {
     pub background_changed: u64,
     pub hotbar_flashing: u64,
     pub provider_animating: u64,
+    pub provider_online_heartbeat: u64,
     pub chat_pending: u64,
     pub debug_probe_active: u64,
     pub text_input_focused: u64,
@@ -300,6 +305,12 @@ impl FrameDebuggerPaneState {
                 self.redraw_reason_counters.provider_animating = self
                     .redraw_reason_counters
                     .provider_animating
+                    .saturating_add(1);
+            }
+            if snapshot.provider_online_heartbeat {
+                self.redraw_reason_counters.provider_online_heartbeat = self
+                    .redraw_reason_counters
+                    .provider_online_heartbeat
                     .saturating_add(1);
             }
             if snapshot.chat_pending {
@@ -449,6 +460,17 @@ mod frame_debugger_tests {
         };
 
         assert_eq!(snapshot.reason_summary(), "background + presentation");
+    }
+
+    #[test]
+    fn redraw_pressure_reason_summary_distinguishes_provider_heartbeat() {
+        let snapshot = FrameRedrawPressureSnapshot {
+            should_redraw: true,
+            provider_online_heartbeat: true,
+            ..FrameRedrawPressureSnapshot::default()
+        };
+
+        assert_eq!(snapshot.reason_summary(), "provider_heartbeat");
     }
 }
 

@@ -508,10 +508,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 }
             }
             let flashing_now = state.hotbar.is_flashing();
-            let provider_animating = matches!(
-                state.provider_runtime.mode,
-                ProviderMode::Connecting | ProviderMode::Online
-            );
+            let provider_animating = provider_transition_animating(state.provider_runtime.mode);
             let rive_needs_redraw = open_rive_surface_needs_redraw(state);
             if flashing_now
                 || state.hotbar_flash_was_active
@@ -576,6 +573,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         return;
     };
 
+    let now = std::time::Instant::now();
     let changed = pump_background_state(state);
     let provider_control_hud = build_rive_cadence_snapshot(
         state
@@ -612,6 +610,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
     );
     let redraw_pressure = build_frame_redraw_pressure_snapshot(
         state,
+        now,
         changed,
         poll_interval,
         provider_control_hud,
@@ -688,6 +687,7 @@ fn build_rive_cadence_snapshot(
 
 fn build_frame_redraw_pressure_snapshot(
     state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
     background_changed: bool,
     poll_interval: std::time::Duration,
     provider_control_hud: RiveCadenceSnapshot,
@@ -696,16 +696,15 @@ fn build_frame_redraw_pressure_snapshot(
     debug_probe_active: bool,
 ) -> FrameRedrawPressureSnapshot {
     let hotbar_flashing = state.hotbar.is_flashing();
-    let provider_animating = matches!(
-        state.provider_runtime.mode,
-        ProviderMode::Connecting | ProviderMode::Online
-    );
+    let provider_animating = provider_transition_animating(state.provider_runtime.mode);
+    let provider_online_heartbeat = provider_online_heartbeat_due(state, now);
     let chat_pending = state.autopilot_chat.has_pending_messages();
     let text_input_focused = any_text_input_focused(state);
     let should_redraw = should_request_desktop_redraw(
         background_changed,
         hotbar_flashing,
         provider_animating,
+        provider_online_heartbeat,
         chat_pending,
         debug_probe_active,
         text_input_focused,
@@ -716,6 +715,7 @@ fn build_frame_redraw_pressure_snapshot(
         background_changed,
         hotbar_flashing,
         provider_animating,
+        provider_online_heartbeat,
         chat_pending,
         debug_probe_active,
         text_input_focused,
@@ -730,6 +730,7 @@ fn should_request_desktop_redraw(
     changed: bool,
     hotbar_flashing: bool,
     provider_animating: bool,
+    provider_online_heartbeat: bool,
     chat_pending: bool,
     debug_probe_active: bool,
     text_input_focused: bool,
@@ -738,10 +739,52 @@ fn should_request_desktop_redraw(
     changed
         || hotbar_flashing
         || provider_animating
+        || provider_online_heartbeat
         || chat_pending
         || debug_probe_active
         || text_input_focused
         || rive_needs_redraw
+}
+
+fn provider_transition_animating(mode: ProviderMode) -> bool {
+    matches!(mode, ProviderMode::Connecting)
+}
+
+fn provider_online_heartbeat_due(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let steady_online = matches!(
+        state.provider_runtime.mode,
+        ProviderMode::Online | ProviderMode::Degraded
+    );
+    let heartbeat_visible = state.panes.iter().any(|pane| {
+        matches!(
+            pane.kind,
+            PaneKind::GoOnline | PaneKind::ProviderControl | PaneKind::ProviderStatus
+        )
+    });
+    if !steady_online || !heartbeat_visible {
+        state.provider_heartbeat_cadence.last_tick_second = None;
+        return false;
+    }
+
+    let heartbeat_tick = provider_online_heartbeat_tick_seconds(&state.provider_runtime, now);
+    let due = state.provider_heartbeat_cadence.last_tick_second != Some(heartbeat_tick);
+    state.provider_heartbeat_cadence.last_tick_second = Some(heartbeat_tick);
+    due
+}
+
+fn provider_online_heartbeat_tick_seconds(
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    now: std::time::Instant,
+) -> u64 {
+    let steady_age = now
+        .checked_duration_since(provider_runtime.mode_changed_at)
+        .map_or(0, |duration| duration.as_secs());
+    let uptime = provider_runtime.uptime_seconds(now);
+    let heartbeat_age = provider_runtime.heartbeat_age_seconds(now).unwrap_or(0);
+    steady_age.max(uptime).max(heartbeat_age)
 }
 
 fn background_poll_interval(
@@ -4015,13 +4058,13 @@ mod tests {
     #[test]
     fn desktop_redraw_policy_includes_rive_activity() {
         assert!(should_request_desktop_redraw(
-            false, false, false, false, false, false, true
+            false, false, false, false, false, false, false, true
         ));
         assert!(should_request_desktop_redraw(
-            false, false, false, false, true, false, false
+            false, false, false, false, true, false, false, false
         ));
         assert!(!should_request_desktop_redraw(
-            false, false, false, false, false, false, false
+            false, false, false, false, false, false, false, false
         ));
     }
 

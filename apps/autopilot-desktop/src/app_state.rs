@@ -9763,6 +9763,11 @@ pub struct ProviderControlHudRuntimeState {
     pub last_error: Option<String>,
 }
 
+#[derive(Default)]
+pub struct ProviderHeartbeatCadenceState {
+    pub last_tick_second: Option<u64>,
+}
+
 pub struct RenderState {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -9838,6 +9843,7 @@ pub struct RenderState {
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
+    pub provider_heartbeat_cadence: ProviderHeartbeatCadenceState,
     pub local_inference: LocalInferencePaneState,
     pub rive_preview: RivePreviewPaneState,
     pub rive_preview_runtime: RivePreviewRuntimeState,
