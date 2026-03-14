@@ -177,6 +177,23 @@ economically meaningful.
 The canonical compute-market lifecycle should be read as the end-to-end state
 machine for a compute promise.
 
+Lifecycle at a glance:
+
+1. Provider declares product and inventory.
+2. Buyer discovers supply and procures against defined constraints.
+3. An allocation or instrument is created.
+4. Execution starts in the runtime substrate.
+5. Delivery proof is recorded.
+6. Validator or challenge window applies if required.
+7. Settlement finalizes or a dispute/remedy path opens.
+8. Final state is projected into canonical read models, snapshots, and stats.
+
+The compact rule is:
+
+> products describe what may be sold, lots expose current supply, instruments
+> represent the economic claim, delivery proofs defend execution, and authority
+> decides closure.
+
 1. Product definition: a `ComputeProduct` defines what kind of machine
    execution is admissible, how it settles, whether it is index-eligible, and
    what capability envelope, environment binding, or proof posture applies.
@@ -203,6 +220,9 @@ machine for a compute promise.
 9. Index and downstream reference: accepted delivery observations may feed
    compute indices, later corrections, risk triggers, or structured instrument
    settlement.
+10. Projection: the final market state appears in authority read models,
+    operator views, public stats, and economy snapshots rather than staying
+    trapped in runtime-local state.
 
 The code already contains much of this lifecycle as explicit statuses.
 
@@ -277,6 +297,26 @@ That distinction matters because these are not synonyms:
 - "delivery was accepted"
 - "the market position is economically closed"
 
+Canonical closure terms:
+
+- delivered: the runtime reached a machine-delivery outcome and the lot or
+  instrument advanced into a delivery path
+- proved: a `DeliveryProof` exists and was recorded
+- accepted: the delivery proof was accepted as conforming market evidence
+- disputed: proof, validator, challenge, or remedy handling is still open, so
+  the market claim is not economically final yet
+- finalized: the market claim reached a terminal economic state
+- cash-settled: closure happened through a cash/index path rather than a pure
+  physical-delivery path
+- corrected or reversed: authority later superseded a previously published
+  market interpretation, usually through correction, rejection, or default logic
+- defaulted: the market claim terminated adversely because deliverability or
+  settlement requirements were not met
+
+These are conceptual market-closure distinctions across objects. They are not
+all represented by one enum today, which is precisely why this doc needs to say
+them explicitly.
+
 Current settlement modes already in code:
 
 - `physical`: the market centers on physical delivery of compute
@@ -307,6 +347,22 @@ Operational meaning of those labels:
   that use that truth instead of bypassing it.
 - `implemented, early` becomes truly mature only when adversarial handling,
   correction paths, operator inspection, and clear acceptance criteria exist.
+
+Completion thresholds for the most important current partial lanes:
+
+- sandbox becomes fully implemented when sandbox products can be advertised,
+  procured, delivered, proven, settled, and inspected through the same market
+  objects as other compute families
+- clustered compute becomes fully implemented when topology, placement,
+  proof posture, and settlement truth are market-visible rather than only
+  runtime-visible
+- validator regime becomes mature when proof-sensitive products routinely flow
+  through validator and challenge handling with explicit economic outcomes
+- buyer procurement becomes fully implemented when buyers can discover,
+  compare, procure, and track compute claims through explicit product and
+  instrument flows
+- advanced instruments become mature when their rights, closure modes, and
+  operator views are legible without reading source code
 
 ## Comprehensive Status Matrix
 
@@ -369,9 +425,24 @@ It is important to separate current repo truth from older planning language:
 The compute market is not defined only by supply objects. It is also defined by
 what buyers can procure against and how price can be formed.
 
+Canonical procurement targets:
+
+- a buyer procures first against a `ComputeProduct` and its constraints
+- a buyer may then target a specific `CapacityLot` if they want a concrete
+  provider inventory unit
+- successful procurement or allocation creates a `CapacityInstrument`, which is
+  the actual economic claim the market later settles against
+
+That means:
+
+- `ComputeProduct` is the admissibility and comparability layer
+- `CapacityLot` is the offer and inventory layer
+- `CapacityInstrument` is the claim and settlement layer
+
 At minimum, buyers should be able to procure against:
 
 - a product family
+- a concrete `ComputeProduct`
 - a specific lot
 - a delivery window
 - a quantity
@@ -401,6 +472,10 @@ make those semantics ordinary.
 
 Exchange-like books or richer auction mechanics may belong later, but they are
 not prerequisites for the market definition itself.
+
+Procurement therefore is not "buying a job." It is buying a machine-execution
+claim under explicit product, inventory, proof, environment, and deliverability
+constraints.
 
 ## Deliverability Contract Dimensions
 
@@ -451,9 +526,12 @@ The current code already exposes the core axes for this:
 
 That gives the market a practical trust taxonomy:
 
-- trusted local retail compute: simple local lanes with light proof posture
-- delivery-proof compute: execution is accepted primarily through delivery
+- proof-light retail or local execution: simple local lanes with light proof
+  posture and straightforward delivery expectations
+- proof-bearing delivery: execution is accepted primarily through delivery
   records and bounded conformance checks
+- validator-sensitive delivery: market acceptance depends on validator posture
+  and challenge policy, not just provider-reported completion
 - topology-sensitive clustered compute: the market requires topology truth in
   addition to delivery
 - proof-augmented compute: topology plus compact proof material such as
@@ -462,6 +540,8 @@ That gives the market a practical trust taxonomy:
   challenge and challenge-window outcomes
 - environment-bound compute: admissibility depends on matching environment,
   dataset, rubric, or evaluator policy bindings
+- cluster-backed execution with topology truth: placement and topology evidence
+  are part of the machine promise itself
 
 Admissibility is therefore not just "is a provider online?" It also includes:
 
@@ -475,20 +555,20 @@ Admissibility is therefore not just "is a provider online?" It also includes:
 
 The doc should name the main failure classes plainly.
 
-The compute market failure family includes:
+Canonical failure classes:
 
-- no delivery
+- provider no-show or provider offline
+- late delivery or expired delivery window
 - partial delivery
-- non-conforming delivery
-- stale, missing, or invalid proof material
+- invalid, stale, or insufficient proof
 - environment mismatch
 - runtime identity mismatch
-- sandbox execution failure
-- provider cancellation
+- sandbox or runtime failure
 - buyer cancellation
-- timeout or expiry
+- provider cancellation
 - challenge rejection or challenge timeout
 - settlement failure
+- correction or reversal after later evidence
 
 The current code already carries much of this as explicit reason families.
 
@@ -518,6 +598,15 @@ Current reason-code surfaces include:
 This is important because a compute market is not defined only by happy-path
 delivery. It is defined equally by how it handles failure without lying.
 
+Canonical remedy paths:
+
+- cancellation before binding or before credible delivery
+- rejection of non-conforming proof
+- default when delivery or settlement obligations were not met
+- adjudication-required handling when automated closure is insufficient
+- correction or supersession when later evidence invalidates an earlier market
+  conclusion
+
 ## Instrument Semantics
 
 The two central economic object families after products and lots are
@@ -532,6 +621,25 @@ The two central economic object families after products and lots are
 
 The important point is that an instrument is not just metadata about a job. It
 is the thing that says what economic right existed.
+
+Plain-language instrument rights:
+
+- spot: claim on near-term physical execution
+- forward physical: claim on future physical capacity over a defined window
+- future cash: exposure to compute price/reference movement without requiring
+  pure physical closure
+- reservation: a bounded right to reserve or claim future execution capacity
+
+Terminal instrument behavior already exists conceptually through the lifecycle:
+
+- close because it filled
+- settle because the claim was economically completed
+- default because delivery or settlement failed
+- cancel because policy or counterparties closed it before completion
+- expire because the window passed without successful closure
+
+Transferability is not yet a strongly surfaced canonical property in the
+current repo. Lifecycle and settlement semantics are the sharper truth today.
 
 `StructuredCapacityInstrument` is the grouped exposure layer. In code it already
 supports:
@@ -589,6 +697,12 @@ Examples:
 The market therefore has to own comparability as a first-class problem, not as
 an afterthought in UX.
 
+The short rule is:
+
+> two compute offers are only comparable when their product descriptors, proof
+> posture, environment compatibility, deliverability terms, and settlement
+> semantics have been normalized enough to compare honestly.
+
 ## Artifact Lineage As Market Truth
 
 For the compute market, artifact lineage is part of the economic claim.
@@ -598,7 +712,8 @@ artifacts, versions, and policy surfaces were involved.
 
 That lineage can include:
 
-- model family or model policy
+- model family and version
+- model policy
 - adapter version
 - environment package version
 - dataset and rubric bindings
@@ -634,8 +749,35 @@ The current canonical answer is:
 - index publication and correction remain authority-owned even when informed by
   external data or validator evidence
 
+Governed surfaces include:
+
+- admissible compute families
+- admissible proof postures
+- validator policy sets and validator pools
+- environment-package admissibility
+- index publication and index correction authority
+- settlement remedies and remedy eligibility
+
 Not every governance surface is fully productized yet, but this is the owner
 split the doc should make explicit.
+
+## Operator Truth Boundary
+
+If operator truth is real, operators must be able to inspect the market without
+reading code or reconstructing state from logs.
+
+At minimum, operator surfaces should expose:
+
+- inventory state
+- product family, backend family, and compatibility envelope
+- active lots and instruments
+- delivery-proof posture and current proof status
+- validator and challenge status
+- cluster or sandbox health as linked market facts rather than isolated runtime
+  facts
+- settlement, dispute, correction, and default state
+
+That is what "operator truth" means in compute-market terms.
 
 ## All-Rust And Psionic-Native Implications
 
