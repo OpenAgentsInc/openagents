@@ -82,6 +82,10 @@ Implemented now:
   `/v1/responses` surface, with per-model endpoint support reported explicitly.
 - explicit CPU-lane residency, fallback, and unsupported-control truth on that
   generic server surface instead of vague accelerator claims.
+- explicit local-backend truth on the GPT-OSS server surface too, including
+  native Metal, native CUDA, and explicit `llama.cpp` proxy posture with
+  machine-checkable hybrid-offload labels instead of silent proxy or hybrid
+  claims.
 - Psionic-owned structured-output contracts on the generic server for choice,
   regex, grammar, `json_object`, `json_schema`, and tagged-structure cases via
   one shared request shape, explicit per-model capability reporting, response

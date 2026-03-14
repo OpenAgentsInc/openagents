@@ -19,18 +19,48 @@ falls outside the rows below, the surface must serialize
 - Apple Silicon positive claims are bounded to Metal devices that report
   `MTLGPUFamily::Apple1` through `Apple9` or the equivalent `Common3` /
   `Metal3` / `Metal4` capability class in `psionic-backend-metal`.
-- The current positive Metal text-generation claim is bounded to the shipped
-  dense artifact-backed decoder lane. Metal GPT-OSS remains outside the current
-  matrix and must serialize `coverage = not_yet_validated` until it has its own
-  validated row.
+- The current positive Metal text-generation claims are split explicitly:
+  one row for the shipped dense artifact-backed decoder lane and one row for
+  the validated Metal GPT-OSS lane.
 - Legacy-only Metal devices and non-macOS hosts are refusal-only coverage, not
   positive Apple Silicon support claims.
 - NVIDIA positive claims are currently limited to the shipped CUDA embeddings
   path on Linux with a usable NVIDIA driver/runtime.
+- CUDA GPT-OSS and Metal proxy-to-`llama.cpp` execution may still exist as
+  local-debug or benchmark-oracle surfaces, but they are not positive execution
+  rows in this matrix and must not be advertised as shipped support.
 - AMD KFD is currently a discovery/readiness claim only. AMD served-product
   execution remains future work under `PSI-150` through `PSI-154`.
 - AMD userspace remains an explicitly gated refusal/degraded lane unless and
   until a later issue expands the shipped execution matrix.
+
+## Local Backend Truth Surfaces
+
+These machine-checkable labels are the current local-serving truth that the
+HTTP surfaces now expose. They help keep backend posture honest even when a
+lane is not a positive execution row in the matrix yet.
+
+- generic CPU server:
+  `residency_mode = cpu_only`, `hybrid_offload = unsupported`,
+  `fallback_policy = refuse`, `performance_class = portable_cpu_degraded`
+- native Metal GPT-OSS server:
+  `residency_mode = metal_accelerated`, `hybrid_offload = unsupported`,
+  `fallback_policy = refuse`, `performance_class = apple_silicon_native`
+- Metal proxy GPT-OSS server:
+  `residency_mode = llama_cpp_proxy`,
+  `hybrid_offload = llama_cpp_gpu_layers`,
+  `hybrid_offload_layers = <configured ngl>`,
+  `fallback_policy = proxy_only`,
+  `performance_class = proxy_control_plane`
+- native CUDA GPT-OSS server:
+  `residency_mode = cuda_accelerated`,
+  `hybrid_offload = host_backed_selected4`,
+  `fallback_policy = refuse`,
+  `performance_class = nvidia_native`
+
+Those labels are descriptive truth, not a replacement for the matrix rows
+above. If a backend/product pair does not have a positive row, it still must
+serialize `coverage = not_yet_validated` on capability/receipt surfaces.
 
 ## Minimum Matrix
 

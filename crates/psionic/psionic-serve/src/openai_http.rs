@@ -73,11 +73,40 @@ const CPU_SERVER_RESIDENCY_MODE: &str = "cpu_only";
 const CPU_SERVER_HYBRID_OFFLOAD_MODE: &str = "unsupported";
 const CPU_SERVER_FALLBACK_POLICY: &str = "refuse";
 const CPU_SERVER_PERFORMANCE_CLASS: &str = "portable_cpu_degraded";
-const CPU_SERVER_LOAD_STATUS: &str = "loaded";
-const CPU_SERVER_WARM_CONTROL: &str = "not_implemented";
-const CPU_SERVER_UNLOAD_CONTROL: &str = "not_implemented";
-const CPU_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
+const LOCAL_SERVER_LOAD_STATUS: &str = "loaded";
+const LOCAL_SERVER_WARM_CONTROL: &str = "not_implemented";
+const LOCAL_SERVER_UNLOAD_CONTROL: &str = "not_implemented";
+const LOCAL_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
 const OPENAI_COMPAT_WORKER_ID: &str = "local_cpu_0";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LocalServingTruth {
+    residency_mode: &'static str,
+    hybrid_offload: &'static str,
+    hybrid_offload_layers: Option<i32>,
+    fallback_policy: &'static str,
+    performance_class: &'static str,
+    load_status: &'static str,
+    warm_control: &'static str,
+    unload_control: &'static str,
+    memory_pressure_reporting: &'static str,
+}
+
+impl LocalServingTruth {
+    const fn cpu_reference() -> Self {
+        Self {
+            residency_mode: CPU_SERVER_RESIDENCY_MODE,
+            hybrid_offload: CPU_SERVER_HYBRID_OFFLOAD_MODE,
+            hybrid_offload_layers: None,
+            fallback_policy: CPU_SERVER_FALLBACK_POLICY,
+            performance_class: CPU_SERVER_PERFORMANCE_CLASS,
+            load_status: LOCAL_SERVER_LOAD_STATUS,
+            warm_control: LOCAL_SERVER_WARM_CONTROL,
+            unload_control: LOCAL_SERVER_UNLOAD_CONTROL,
+            memory_pressure_reporting: LOCAL_SERVER_MEMORY_PRESSURE_REPORTING,
+        }
+    }
+}
 
 fn structured_output_parser_labels() -> Vec<&'static str> {
     local_structured_output_parsers()
@@ -393,6 +422,48 @@ fn resolve_execution_summary(
     }
 }
 
+fn gpt_oss_local_serving_truth(
+    config: &GptOssOpenAiCompatConfig,
+    summary: GptOssOpenAiCompatExecutionSummary,
+) -> LocalServingTruth {
+    match (summary.backend_label, summary.execution_engine_label) {
+        ("metal", "psionic") => LocalServingTruth {
+            residency_mode: "metal_accelerated",
+            hybrid_offload: "unsupported",
+            hybrid_offload_layers: None,
+            fallback_policy: "refuse",
+            performance_class: "apple_silicon_native",
+            load_status: LOCAL_SERVER_LOAD_STATUS,
+            warm_control: LOCAL_SERVER_WARM_CONTROL,
+            unload_control: LOCAL_SERVER_UNLOAD_CONTROL,
+            memory_pressure_reporting: LOCAL_SERVER_MEMORY_PRESSURE_REPORTING,
+        },
+        ("metal", "llama.cpp") => LocalServingTruth {
+            residency_mode: "llama_cpp_proxy",
+            hybrid_offload: "llama_cpp_gpu_layers",
+            hybrid_offload_layers: Some(config.gpu_layers.unwrap_or(4)),
+            fallback_policy: "proxy_only",
+            performance_class: "proxy_control_plane",
+            load_status: LOCAL_SERVER_LOAD_STATUS,
+            warm_control: LOCAL_SERVER_WARM_CONTROL,
+            unload_control: LOCAL_SERVER_UNLOAD_CONTROL,
+            memory_pressure_reporting: LOCAL_SERVER_MEMORY_PRESSURE_REPORTING,
+        },
+        ("cuda", _) => LocalServingTruth {
+            residency_mode: "cuda_accelerated",
+            hybrid_offload: "host_backed_selected4",
+            hybrid_offload_layers: None,
+            fallback_policy: "refuse",
+            performance_class: "nvidia_native",
+            load_status: LOCAL_SERVER_LOAD_STATUS,
+            warm_control: LOCAL_SERVER_WARM_CONTROL,
+            unload_control: LOCAL_SERVER_UNLOAD_CONTROL,
+            memory_pressure_reporting: LOCAL_SERVER_MEMORY_PRESSURE_REPORTING,
+        },
+        _ => LocalServingTruth::cpu_reference(),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GptOssOpenAiCompatConfig {
     pub model_path: PathBuf,
@@ -446,6 +517,7 @@ struct GptOssOpenAiCompatState {
     backend_label: &'static str,
     execution_mode_label: &'static str,
     execution_engine_label: &'static str,
+    local_serving_truth: LocalServingTruth,
     descriptor: DecoderModelDescriptor,
     tokenizer: GptOssTokenizer,
     prompt_options: PromptRenderOptions,
@@ -551,6 +623,7 @@ impl GptOssOpenAiCompatServer {
         let backend = config.backend.resolve();
         let execution_summary =
             resolve_execution_summary(backend, config.metal_mode, metal_proxy_llama_cpp_enabled())?;
+        let local_serving_truth = gpt_oss_local_serving_truth(config, execution_summary);
         let proxy = if execution_summary.uses_proxy() {
             Some(Arc::new(LlamaCppProxyState::spawn(config)?))
         } else {
@@ -567,6 +640,7 @@ impl GptOssOpenAiCompatServer {
                 backend_label: execution_summary.backend_label,
                 execution_mode_label: execution_summary.execution_mode_label,
                 execution_engine_label: execution_summary.execution_engine_label,
+                local_serving_truth,
                 descriptor,
                 tokenizer,
                 prompt_options,
@@ -1549,6 +1623,16 @@ struct HealthResponse {
     execution_mode: &'static str,
     execution_engine: &'static str,
     model: String,
+    residency_mode: &'static str,
+    hybrid_offload: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hybrid_offload_layers: Option<i32>,
+    fallback_policy: &'static str,
+    performance_class: &'static str,
+    load_status: &'static str,
+    warm_control: &'static str,
+    unload_control: &'static str,
+    memory_pressure_reporting: &'static str,
 }
 
 async fn health(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<HealthResponse> {
@@ -1558,6 +1642,15 @@ async fn health(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<Healt
         execution_mode: state.execution_mode_label,
         execution_engine: state.execution_engine_label,
         model: state.default_model_name.clone(),
+        residency_mode: state.local_serving_truth.residency_mode,
+        hybrid_offload: state.local_serving_truth.hybrid_offload,
+        hybrid_offload_layers: state.local_serving_truth.hybrid_offload_layers,
+        fallback_policy: state.local_serving_truth.fallback_policy,
+        performance_class: state.local_serving_truth.performance_class,
+        load_status: state.local_serving_truth.load_status,
+        warm_control: state.local_serving_truth.warm_control,
+        unload_control: state.local_serving_truth.unload_control,
+        memory_pressure_reporting: state.local_serving_truth.memory_pressure_reporting,
     })
 }
 
@@ -1579,6 +1672,8 @@ struct ModelCard {
     psionic_residency_mode: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_hybrid_offload: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_hybrid_offload_layers: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_fallback_policy: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1609,11 +1704,12 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             owned_by: "psionic",
             psionic_supported_endpoints: vec![RoutingEndpoint::ChatCompletions.path()],
             psionic_model_family: state.descriptor.model.family.clone(),
-            psionic_served_backend: None,
-            psionic_residency_mode: None,
-            psionic_hybrid_offload: None,
-            psionic_fallback_policy: None,
-            psionic_performance_class: None,
+            psionic_served_backend: Some(state.backend_label),
+            psionic_residency_mode: Some(state.local_serving_truth.residency_mode),
+            psionic_hybrid_offload: Some(state.local_serving_truth.hybrid_offload),
+            psionic_hybrid_offload_layers: state.local_serving_truth.hybrid_offload_layers,
+            psionic_fallback_policy: Some(state.local_serving_truth.fallback_policy),
+            psionic_performance_class: Some(state.local_serving_truth.performance_class),
             psionic_structured_outputs: None,
             psionic_structured_output_capabilities: None,
             psionic_tool_calling: None,
@@ -1636,6 +1732,8 @@ struct GenericHealthResponse {
     model_count: usize,
     residency_mode: &'static str,
     hybrid_offload: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hybrid_offload_layers: Option<i32>,
     fallback_policy: &'static str,
     performance_class: &'static str,
     load_status: &'static str,
@@ -1673,12 +1771,13 @@ async fn generic_health(
         model_count: state.models_by_key.len(),
         residency_mode: CPU_SERVER_RESIDENCY_MODE,
         hybrid_offload: CPU_SERVER_HYBRID_OFFLOAD_MODE,
+        hybrid_offload_layers: None,
         fallback_policy: CPU_SERVER_FALLBACK_POLICY,
         performance_class: CPU_SERVER_PERFORMANCE_CLASS,
-        load_status: CPU_SERVER_LOAD_STATUS,
-        warm_control: CPU_SERVER_WARM_CONTROL,
-        unload_control: CPU_SERVER_UNLOAD_CONTROL,
-        memory_pressure_reporting: CPU_SERVER_MEMORY_PRESSURE_REPORTING,
+        load_status: LOCAL_SERVER_LOAD_STATUS,
+        warm_control: LOCAL_SERVER_WARM_CONTROL,
+        unload_control: LOCAL_SERVER_UNLOAD_CONTROL,
+        memory_pressure_reporting: LOCAL_SERVER_MEMORY_PRESSURE_REPORTING,
         default_model_supported_endpoints: model_endpoint_paths(default_model),
         supported_endpoints: union_supported_endpoint_paths(state.as_ref()),
         structured_output_fallbacks: default_model.structured_output_labels(),
@@ -1706,6 +1805,7 @@ async fn generic_list_models(State(state): State<Arc<OpenAiCompatState>>) -> Jso
                 psionic_served_backend: Some("cpu"),
                 psionic_residency_mode: Some(CPU_SERVER_RESIDENCY_MODE),
                 psionic_hybrid_offload: Some(CPU_SERVER_HYBRID_OFFLOAD_MODE),
+                psionic_hybrid_offload_layers: None,
                 psionic_fallback_policy: Some(CPU_SERVER_FALLBACK_POLICY),
                 psionic_performance_class: Some(CPU_SERVER_PERFORMANCE_CLASS),
                 psionic_structured_outputs: model.structured_output_labels(),
@@ -3442,6 +3542,33 @@ fn insert_execution_headers(headers: &mut HeaderMap, state: &GptOssOpenAiCompatS
         HeaderName::from_static("x-psionic-execution-engine"),
         HeaderValue::from_static(state.execution_engine_label),
     );
+    insert_local_serving_truth_headers(headers, state.local_serving_truth);
+}
+
+fn insert_local_serving_truth_headers(headers: &mut HeaderMap, truth: LocalServingTruth) {
+    headers.insert(
+        HeaderName::from_static("x-psionic-residency-mode"),
+        HeaderValue::from_static(truth.residency_mode),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-hybrid-offload"),
+        HeaderValue::from_static(truth.hybrid_offload),
+    );
+    if let Some(layers) = truth.hybrid_offload_layers {
+        headers.insert(
+            HeaderName::from_static("x-psionic-hybrid-offload-layers"),
+            HeaderValue::from_str(layers.to_string().as_str())
+                .unwrap_or_else(|_| HeaderValue::from_static("invalid")),
+        );
+    }
+    headers.insert(
+        HeaderName::from_static("x-psionic-fallback-policy"),
+        HeaderValue::from_static(truth.fallback_policy),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-performance-class"),
+        HeaderValue::from_static(truth.performance_class),
+    );
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -3808,22 +3935,7 @@ fn insert_generic_execution_headers(
         HeaderName::from_static("x-psionic-execution-engine"),
         HeaderValue::from_static(state.execution_engine_label),
     );
-    headers.insert(
-        HeaderName::from_static("x-psionic-residency-mode"),
-        HeaderValue::from_static(CPU_SERVER_RESIDENCY_MODE),
-    );
-    headers.insert(
-        HeaderName::from_static("x-psionic-hybrid-offload"),
-        HeaderValue::from_static(CPU_SERVER_HYBRID_OFFLOAD_MODE),
-    );
-    headers.insert(
-        HeaderName::from_static("x-psionic-fallback-policy"),
-        HeaderValue::from_static(CPU_SERVER_FALLBACK_POLICY),
-    );
-    headers.insert(
-        HeaderName::from_static("x-psionic-performance-class"),
-        HeaderValue::from_static(CPU_SERVER_PERFORMANCE_CLASS),
-    );
+    insert_local_serving_truth_headers(headers, LocalServingTruth::cpu_reference());
     headers.insert(
         HeaderName::from_static("x-psionic-route-worker"),
         HeaderValue::from_str(route_selection.worker_id.as_str())
@@ -4697,20 +4809,24 @@ mod tests {
         CPU_SERVER_FALLBACK_POLICY, CPU_SERVER_HYBRID_OFFLOAD_MODE, CPU_SERVER_RESIDENCY_MODE,
         ChatCompletionJsonSchemaRequest, ChatCompletionMessage, ChatCompletionRequest,
         ChatCompletionResponseFormatRequest, EmbeddingsInput, EmbeddingsRequest,
-        GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, HARMONY_CALL_STOP,
-        HARMONY_RETURN_STOP, NamedToolChoiceFunction, NamedToolChoiceRequest, OpenAiCompatConfig,
-        OpenAiCompatServer, PromptTokenCache, PsionicGrammarRequest, PsionicReasoningMode,
-        PsionicReasoningRequest, PsionicResponseStateRequest, ResolvedReasoningRequest,
-        ResolvedToolCall, ResponseContinuationMode, ResponsesInput, ResponsesRequest,
-        RoutingEndpoint, RoutingRequest, ToolChoiceRequest, ToolDefinitionEnvelope,
-        ToolDefinitionRequest, assistant_prompt_message_for_tool_loop,
-        chat_messages_to_prompt_messages, chat_messages_to_prompt_messages_for_family,
-        completion_choice, ensure_harmony_stop_sequences, generation_options_from_chat_request,
+        GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, GptOssOpenAiCompatConfig,
+        HARMONY_CALL_STOP, HARMONY_RETURN_STOP, LOCAL_SERVER_LOAD_STATUS,
+        LOCAL_SERVER_MEMORY_PRESSURE_REPORTING, LOCAL_SERVER_UNLOAD_CONTROL,
+        LOCAL_SERVER_WARM_CONTROL, LocalServingTruth, NamedToolChoiceFunction,
+        NamedToolChoiceRequest, OpenAiCompatConfig, OpenAiCompatServer, PromptTokenCache,
+        PsionicGrammarRequest, PsionicReasoningMode, PsionicReasoningRequest,
+        PsionicResponseStateRequest, ResolvedReasoningRequest, ResolvedToolCall,
+        ResponseContinuationMode, ResponsesInput, ResponsesRequest, RoutingEndpoint,
+        RoutingRequest, ToolChoiceRequest, ToolDefinitionEnvelope, ToolDefinitionRequest,
+        assistant_prompt_message_for_tool_loop, chat_messages_to_prompt_messages,
+        chat_messages_to_prompt_messages_for_family, completion_choice,
+        ensure_harmony_stop_sequences, generation_options_from_chat_request,
         generation_options_from_chat_request_for_family, generic_embeddings, generic_health,
-        generic_list_models, handle_generic_chat_completions, handle_generic_responses,
-        prompt_request_cache_key, render_prompt_for_model, resolve_execution_summary,
-        resolve_generic_model, responses_output_items, surfaced_reasoning_response,
-        tool_loop_tool_call_from_resolved, tool_result_prompt_message,
+        generic_list_models, gpt_oss_local_serving_truth, handle_generic_chat_completions,
+        handle_generic_responses, insert_local_serving_truth_headers, prompt_request_cache_key,
+        render_prompt_for_model, resolve_execution_summary, resolve_generic_model,
+        responses_output_items, surfaced_reasoning_response, tool_loop_tool_call_from_resolved,
+        tool_result_prompt_message,
     };
     use crate::{
         GenerationMetrics, GenerationOutput, GenerationRequest, GenerationResponse,
@@ -4928,6 +5044,83 @@ mod tests {
         .expect_err("non-metal backend should reject explicit metal mode");
 
         assert!(error.to_string().contains("resolved backend is cuda"));
+    }
+
+    #[test]
+    fn gpt_oss_local_backend_truth_is_explicit_across_native_and_proxy_modes() {
+        let mut config = GptOssOpenAiCompatConfig::new("/tmp/tiny-gpt-oss.gguf");
+        config.gpu_layers = Some(12);
+
+        let metal_native = gpt_oss_local_serving_truth(
+            &config,
+            resolve_execution_summary(
+                GptOssOpenAiCompatBackend::Metal,
+                GptOssMetalExecutionMode::Native,
+                false,
+            )
+            .expect("metal native summary"),
+        );
+        assert_eq!(metal_native.residency_mode, "metal_accelerated");
+        assert_eq!(metal_native.hybrid_offload, "unsupported");
+        assert_eq!(metal_native.performance_class, "apple_silicon_native");
+
+        let metal_proxy = gpt_oss_local_serving_truth(
+            &config,
+            resolve_execution_summary(
+                GptOssOpenAiCompatBackend::Metal,
+                GptOssMetalExecutionMode::ProxyLlamaCpp,
+                false,
+            )
+            .expect("metal proxy summary"),
+        );
+        assert_eq!(metal_proxy.residency_mode, "llama_cpp_proxy");
+        assert_eq!(metal_proxy.hybrid_offload, "llama_cpp_gpu_layers");
+        assert_eq!(metal_proxy.hybrid_offload_layers, Some(12));
+        assert_eq!(metal_proxy.fallback_policy, "proxy_only");
+
+        let cuda_native = gpt_oss_local_serving_truth(
+            &config,
+            resolve_execution_summary(
+                GptOssOpenAiCompatBackend::Cuda,
+                GptOssMetalExecutionMode::Auto,
+                false,
+            )
+            .expect("cuda summary"),
+        );
+        assert_eq!(cuda_native.residency_mode, "cuda_accelerated");
+        assert_eq!(cuda_native.hybrid_offload, "host_backed_selected4");
+        assert_eq!(cuda_native.performance_class, "nvidia_native");
+    }
+
+    #[test]
+    fn local_serving_truth_headers_include_optional_hybrid_layers() {
+        let mut headers = HeaderMap::new();
+        insert_local_serving_truth_headers(
+            &mut headers,
+            LocalServingTruth {
+                residency_mode: "llama_cpp_proxy",
+                hybrid_offload: "llama_cpp_gpu_layers",
+                hybrid_offload_layers: Some(7),
+                fallback_policy: "proxy_only",
+                performance_class: "proxy_control_plane",
+                load_status: LOCAL_SERVER_LOAD_STATUS,
+                warm_control: LOCAL_SERVER_WARM_CONTROL,
+                unload_control: LOCAL_SERVER_UNLOAD_CONTROL,
+                memory_pressure_reporting: LOCAL_SERVER_MEMORY_PRESSURE_REPORTING,
+            },
+        );
+        assert_eq!(
+            headers
+                .get("x-psionic-hybrid-offload-layers")
+                .and_then(|value| value.to_str().ok()),
+            Some("7")
+        );
+        assert_eq!(
+            headers
+                .get("x-psionic-residency-mode")
+                .and_then(|value| value.to_str().ok()),
+            Some("llama_cpp_proxy")
+        );
     }
 
     #[test]
