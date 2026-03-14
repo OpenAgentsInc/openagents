@@ -28,6 +28,7 @@ use std::{
 pub use conformance::*;
 pub use gpt_oss::*;
 pub use openai_http::*;
+pub use psionic_adapters::*;
 use psionic_backend_cpu::CpuBackend;
 use psionic_backend_cuda::{
     CudaBackend, EMBEDDINGS_SUPPORTED_OPS as CUDA_EMBEDDINGS_SUPPORTED_OPS,
@@ -83,6 +84,9 @@ pub const EMBEDDINGS_PRODUCT_ID: &str = "psionic.embeddings";
 
 /// Phase-1 text-generation product identifier.
 pub const TEXT_GENERATION_PRODUCT_ID: &str = "psionic.text_generation";
+
+/// Adapter-backed text-generation product identifier.
+pub const ADAPTER_TEXT_GENERATION_PRODUCT_ID: &str = "psionic.adapter_text_generation";
 
 /// Default logical page width for reference-path paged KV state.
 pub const DEFAULT_KV_PAGE_TOKENS: usize = 16;
@@ -229,6 +233,21 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
 #[must_use]
 pub fn default_text_generation_execution_profile() -> ExecutionCapabilityProfile {
     ExecutionCapabilityProfile::single_request_latency_optimized()
+}
+
+fn generation_product_supported(request: &GenerationRequest) -> bool {
+    request.product_id == TEXT_GENERATION_PRODUCT_ID
+        || (request.product_id == ADAPTER_TEXT_GENERATION_PRODUCT_ID
+            && request.adapter_serving.is_some())
+}
+
+fn effective_generation_served_artifact_digest(
+    served_artifact: &ServedArtifactIdentity,
+    adapter_serving: Option<&AdapterServingBinding>,
+) -> String {
+    adapter_serving
+        .map(|binding| binding.served_adapter_digest.clone())
+        .unwrap_or_else(|| served_artifact.served_artifact_digest.clone())
 }
 
 /// Returns the default execution profile for current local embeddings.
@@ -954,6 +973,9 @@ pub struct GenerationRequest {
     pub prompt: GenerationInput,
     /// Generation options.
     pub options: GenerationOptions,
+    /// Explicit adapter-serving binding when the request targets a hosted adapter product.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapter_serving: Option<AdapterServingBinding>,
     /// Whether to reset the session cache before generation.
     pub reset_session: bool,
 }
@@ -975,6 +997,7 @@ impl GenerationRequest {
             session_id,
             prompt: GenerationInput::Text(prompt.into()),
             options,
+            adapter_serving: None,
             reset_session: false,
         }
     }
@@ -995,6 +1018,7 @@ impl GenerationRequest {
             session_id,
             prompt: GenerationInput::Tokens(prompt),
             options,
+            adapter_serving: None,
             reset_session: false,
         }
     }
@@ -1003,6 +1027,14 @@ impl GenerationRequest {
     #[must_use]
     pub fn with_reset_session(mut self, reset_session: bool) -> Self {
         self.reset_session = reset_session;
+        self
+    }
+
+    /// Binds the request to an explicit adapter-serving product.
+    #[must_use]
+    pub fn with_adapter_serving(mut self, adapter_serving: AdapterServingBinding) -> Self {
+        self.product_id = String::from(ADAPTER_TEXT_GENERATION_PRODUCT_ID);
+        self.adapter_serving = Some(adapter_serving);
         self
     }
 }
@@ -1406,6 +1438,9 @@ pub enum GenerationLoadState {
 pub struct GenerationProvenance {
     /// Stable served-artifact identity for the active model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Explicit adapter-serving binding when the request targeted a hosted adapter product.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapter_serving: Option<AdapterServingBinding>,
     /// Stable execution-plan digest for the active model graph.
     pub execution_plan_digest: String,
     /// Explicit clustered execution or scheduling context for the realized request path.
@@ -1455,6 +1490,13 @@ impl GenerationProvenance {
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
         self.cluster_execution = Some(cluster_execution);
+        self
+    }
+
+    /// Attaches explicit adapter-serving posture.
+    #[must_use]
+    pub fn with_adapter_serving(mut self, adapter_serving: AdapterServingBinding) -> Self {
+        self.adapter_serving = Some(adapter_serving);
         self
     }
 }
@@ -3101,6 +3143,20 @@ where
     }
 }
 
+fn prefix_compatibility_for_request<M>(
+    model: &M,
+    adapter_serving: Option<&AdapterServingBinding>,
+) -> SharedPrefixCompatibility
+where
+    M: CompiledWordGenerationModel,
+{
+    let mut compatibility = prefix_compatibility(model);
+    if let Some(adapter_serving) = adapter_serving {
+        compatibility.served_artifact_digest = adapter_serving.served_adapter_digest.clone();
+    }
+    compatibility
+}
+
 fn prefix_identity(
     compatibility: &SharedPrefixCompatibility,
     prompt_tokens: &[TokenId],
@@ -4610,7 +4666,7 @@ where
         shared_prefixes: &'a mut SharedPrefixStore,
         request: &GenerationRequest,
     ) -> Result<Self, ReferenceTextGenerationError> {
-        if request.product_id != TEXT_GENERATION_PRODUCT_ID {
+        if !generation_product_supported(request) {
             return Err(ReferenceTextGenerationError::UnsupportedProduct(
                 request.product_id.clone(),
             ));
@@ -4644,6 +4700,10 @@ where
             loaded_model.backend_compatibility(),
             &[],
         );
+        let effective_served_artifact_digest = effective_generation_served_artifact_digest(
+            &served_artifact,
+            request.adapter_serving.as_ref(),
+        );
 
         let prepared = (|| -> Result<_, ReferenceTextGenerationError> {
             let prompt_eval_start = Instant::now();
@@ -4655,7 +4715,8 @@ where
 
             let expected_kv_width = loaded_model.cache_width();
             let mut session_tokens = Vec::new();
-            let compatibility = prefix_compatibility(&loaded_model);
+            let compatibility =
+                prefix_compatibility_for_request(&loaded_model, request.adapter_serving.as_ref());
             let prefix_policy = default_prefix_cache_policy();
             let mut prefix_state = PrefixCacheState::None;
             let mut prefix_tokens_reused = 0usize;
@@ -4670,7 +4731,7 @@ where
                     state,
                     session_id,
                     loaded_model.descriptor(),
-                    served_artifact.served_artifact_digest.as_str(),
+                    effective_served_artifact_digest.as_str(),
                 )?;
                 session_tokens = state.tokens().to_vec();
                 if state.cache().is_empty() {
@@ -4897,6 +4958,7 @@ where
         };
         let provenance = GenerationProvenance {
             served_artifact: self.served_artifact.clone(),
+            adapter_serving: self.request.adapter_serving.clone(),
             execution_plan_digest: self.execution_plan_digest.clone(),
             cluster_execution: None,
             load_state: self.load_state,
@@ -5232,7 +5294,7 @@ fn run_generation_request<B, M>(
 where
     M: CompiledWordGenerationModel<Backend = B>,
 {
-    if request.product_id != TEXT_GENERATION_PRODUCT_ID {
+    if !generation_product_supported(request) {
         return Err(ReferenceTextGenerationError::UnsupportedProduct(
             request.product_id.clone(),
         ));
@@ -5265,6 +5327,10 @@ where
         loaded_model.backend_compatibility(),
         &[],
     );
+    let effective_served_artifact_digest = effective_generation_served_artifact_digest(
+        &served_artifact,
+        request.adapter_serving.as_ref(),
+    );
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
         let prompt_eval_start = Instant::now();
@@ -5276,7 +5342,8 @@ where
 
         let expected_kv_width = loaded_model.cache_width();
         let mut session_tokens = Vec::new();
-        let compatibility = prefix_compatibility(&loaded_model);
+        let compatibility =
+            prefix_compatibility_for_request(&loaded_model, request.adapter_serving.as_ref());
         let prefix_policy = default_prefix_cache_policy();
         let mut prefix_state = PrefixCacheState::None;
         let mut prefix_tokens_reused = 0usize;
@@ -5291,7 +5358,7 @@ where
                 state,
                 session_id,
                 loaded_model.descriptor(),
-                served_artifact.served_artifact_digest.as_str(),
+                effective_served_artifact_digest.as_str(),
             )?;
             session_tokens = state.tokens().to_vec();
             if state.cache().is_empty() {
@@ -5481,6 +5548,7 @@ where
             .unwrap_or_else(|| loaded_model.plan_digest().to_string());
         let provenance = GenerationProvenance {
             served_artifact,
+            adapter_serving: request.adapter_serving.clone(),
             execution_plan_digest: delivery_plan_digest.clone(),
             cluster_execution: None,
             load_state,
@@ -6985,6 +7053,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
+        ADAPTER_TEXT_GENERATION_PRODUCT_ID, AdapterArtifactFormat, AdapterArtifactIdentity,
+        AdapterArtifactKind, AdapterResidencyMode, AdapterServingBinding, AdapterTargetFamily,
         ContextOverflowPolicy, ContextWindowError, CpuGenerationStream,
         CpuReferenceTextGenerationService, CpuWordGenerationModel, DEFAULT_MODEL_KEEPALIVE_MILLIS,
         EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
@@ -6999,8 +7069,9 @@ mod tests {
         TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
         WeightTensorMetadata, WordDecoderExecutionModel, current_time_millis,
         default_generation_streaming_policy, finalize_embedding_values,
-        load_sharded_model_manifest_json, prefix_compatibility,
-        recommended_generation_quantization_dispatch, served_artifact_identity_for_decoder_model,
+        generation_product_supported, load_sharded_model_manifest_json, prefix_compatibility,
+        prefix_compatibility_for_request, recommended_generation_quantization_dispatch,
+        served_artifact_identity_for_decoder_model,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use psionic_models::{
@@ -7158,6 +7229,73 @@ mod tests {
         assert!(encoded.contains("\"product_id\": \"psionic.text_generation\""));
         assert!(encoded.contains("\"tokenizer_family\": \"fixture_wordpiece\""));
         assert!(encoded.contains("\"decode_strategy\": \"greedy\""));
+        Ok(())
+    }
+
+    #[test]
+    fn adapter_generation_product_requires_binding() {
+        let mut request = GenerationRequest::new_text(
+            "gen-adapter-guard",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-adapter-guard")),
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+
+        request.product_id = String::from(ADAPTER_TEXT_GENERATION_PRODUCT_ID);
+        assert!(
+            !generation_product_supported(&request),
+            "adapter product ids should not be accepted without a binding"
+        );
+
+        let request = request.with_adapter_serving(sample_adapter_serving_binding());
+        assert!(
+            generation_product_supported(&request),
+            "adapter product ids should become valid once a binding is attached"
+        );
+    }
+
+    #[test]
+    fn generation_request_with_adapter_serving_switches_product_and_preserves_binding()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let binding = sample_adapter_serving_binding();
+        let request = GenerationRequest::new_text(
+            "gen-adapter-request",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-adapter-request")),
+            "hello",
+            GenerationOptions::greedy(2),
+        )
+        .with_adapter_serving(binding.clone());
+
+        assert_eq!(request.product_id, ADAPTER_TEXT_GENERATION_PRODUCT_ID);
+        assert_eq!(request.adapter_serving, Some(binding.clone()));
+
+        let encoded = serde_json::to_value(&request)?;
+        assert_eq!(
+            encoded["adapter_serving"]["served_adapter_digest"],
+            serde_json::json!(binding.served_adapter_digest)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn adapter_generation_prefix_compatibility_uses_binding_digest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = CpuWordGenerationModel::new(ReferenceWordDecoder::new())?;
+        let binding = sample_adapter_serving_binding();
+
+        let baseline = prefix_compatibility(&model);
+        let adapter = prefix_compatibility_for_request(&model, Some(&binding));
+
+        assert_eq!(
+            adapter.served_artifact_digest, binding.served_adapter_digest,
+            "shared-prefix identity should key adapter-backed requests by the adapter binding digest"
+        );
+        assert_ne!(
+            baseline.served_artifact_digest,
+            adapter.served_artifact_digest
+        );
         Ok(())
     }
 
@@ -8918,6 +9056,35 @@ mod tests {
                 )],
                 artifacts: Vec::new(),
             },
+        )
+    }
+
+    fn sample_adapter_serving_binding() -> AdapterServingBinding {
+        let model = sample_decoder_descriptor();
+        let base_served_artifact = served_artifact_identity_for_decoder_model(
+            &model,
+            &BackendSelection::direct("cpu", None, vec![]),
+        );
+        let base_served_artifact_digest = base_served_artifact.served_artifact_digest;
+        AdapterServingBinding::new(
+            "fixture-word-decoder-qna",
+            model.model.model_id.clone(),
+            model.model.revision.clone(),
+            base_served_artifact_digest.clone(),
+            AdapterResidencyMode::HotSwapOverlay,
+            vec![AdapterArtifactIdentity::new(
+                "adapter-qna",
+                "r1",
+                AdapterArtifactKind::Lora,
+                AdapterArtifactFormat::Safetensors,
+                model.model.model_id,
+                model.model.revision,
+                base_served_artifact_digest,
+                "adapter-digest-qna",
+                psionic_core::QuantizationMode::GgmlQ8_0,
+                AdapterTargetFamily::DecoderAttention,
+                1_024_000,
+            )],
         )
     }
 

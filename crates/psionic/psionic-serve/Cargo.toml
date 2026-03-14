@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 axum = "0.8"
 hex = { workspace = true }
+psionic-adapters = { path = "../psionic-adapters" }
 psionic-backend-cuda = { path = "../psionic-backend-cuda" }
 psionic-backend-cpu = { path = "../psionic-backend-cpu" }
 psionic-backend-metal = { path = "../psionic-backend-metal" }

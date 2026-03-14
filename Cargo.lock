@@ -6385,6 +6385,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 
 [[package]]
+name = "psionic-adapters"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "psionic-core",
+ "psionic-datastream",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-apple-fm"
 version = "0.1.1"
 dependencies = [
@@ -6615,6 +6627,7 @@ version = "0.1.1"
 dependencies = [
  "axum 0.8.8",
  "hex",
+ "psionic-adapters",
  "psionic-backend-cpu",
  "psionic-backend-cuda",
  "psionic-backend-metal",

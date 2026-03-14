@@ -990,6 +990,7 @@ This is the recommended issue order for fully implementing the stack above.
    - This is where `psionic-collectives`, `psionic-datastream`, and `psionic-checkpoint` converge.
 
 39. **Psionic Adapters: add LoRA and adapter artifact packaging and hosted serving**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3523`.
    - Rebuild the useful `cloud-lora` pattern for OpenAgents-owned adapter products.
    - This should land only after the artifact, delivery-proof, and serving substrate is already credible.
 
