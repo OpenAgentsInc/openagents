@@ -1,4 +1,5 @@
 use crate::authority::{
+    AcceptComputeOutcomeRequest, AcceptComputeOutcomeResponse,
     AppendComputeEvaluationSamplesRequest, AppendComputeEvaluationSamplesResponse,
     AppendComputeSyntheticDataSamplesRequest, AppendComputeSyntheticDataSamplesResponse,
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
@@ -9,33 +10,43 @@ use crate::authority::{
     CreateComputeEvaluationRunRequest, CreateComputeEvaluationRunResponse,
     CreateComputeProductRequest, CreateComputeProductResponse,
     CreateComputeSyntheticDataJobRequest, CreateComputeSyntheticDataJobResponse,
+    CreateComputeTrainingRunRequest, CreateComputeTrainingRunResponse,
     CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     FinalizeComputeEvaluationRunRequest, FinalizeComputeEvaluationRunResponse,
     FinalizeComputeSyntheticDataGenerationRequest, FinalizeComputeSyntheticDataGenerationResponse,
+    FinalizeComputeTrainingRunRequest, FinalizeComputeTrainingRunResponse,
     PublishComputeIndexRequest, PublishComputeIndexResponse,
     RecordComputeSyntheticDataVerificationRequest, RecordComputeSyntheticDataVerificationResponse,
     RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    RegisterComputeBenchmarkPackageRequest, RegisterComputeBenchmarkPackageResponse,
+    RegisterComputeCheckpointFamilyPolicyRequest, RegisterComputeCheckpointFamilyPolicyResponse,
     RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
+    RegisterComputeTrainingPolicyRequest, RegisterComputeTrainingPolicyResponse,
+    RegisterComputeValidatorPolicyRequest, RegisterComputeValidatorPolicyResponse,
 };
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
-    CapacityNonDeliveryReason, CapacityReserveState, ComputeArtifactResidency,
-    ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
-    ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
-    ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
-    ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
-    ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
-    ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeEvaluationSampleStatus,
-    ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-    ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-    ComputeProofPosture, ComputeProvisioningKind, ComputeSettlementFailureReason,
+    CapacityNonDeliveryReason, CapacityReserveState, ComputeAcceptedOutcome,
+    ComputeAcceptedOutcomeKind, ComputeArtifactResidency, ComputeBackendFamily,
+    ComputeBenchmarkPackage, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
+    ComputeCheckpointFamilyPolicy, ComputeDeliveryVarianceReason,
+    ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
+    ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
+    ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact,
+    ComputeEvaluationMetric, ComputeEvaluationRun, ComputeEvaluationRunStatus,
+    ComputeEvaluationSample, ComputeEvaluationSampleStatus, ComputeEvaluationSummary,
+    ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason,
+    ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
+    ComputeProvisioningKind, ComputeRegistryStatus, ComputeSettlementFailureReason,
     ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
     ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
-    ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-    DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-    GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-    StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+    ComputeTrainingPolicy, ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
+    ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
+    DeliveryRejectionReason, DeliverySandboxEvidence, DeliveryTopologyEvidence,
+    DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
+    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus, StructuredCapacityLeg,
+    StructuredCapacityLegRole,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -522,6 +533,29 @@ fn compute_environment_package_status_from_proto(value: i32) -> ComputeEnvironme
     }
 }
 
+fn compute_registry_status_to_proto(value: ComputeRegistryStatus) -> i32 {
+    match value {
+        ComputeRegistryStatus::Draft => proto_compute::ComputeRegistryStatus::Draft as i32,
+        ComputeRegistryStatus::Active => proto_compute::ComputeRegistryStatus::Active as i32,
+        ComputeRegistryStatus::Deprecated => {
+            proto_compute::ComputeRegistryStatus::Deprecated as i32
+        }
+        ComputeRegistryStatus::Retired => proto_compute::ComputeRegistryStatus::Retired as i32,
+    }
+}
+
+fn compute_registry_status_from_proto(value: i32) -> ComputeRegistryStatus {
+    match proto_compute::ComputeRegistryStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeRegistryStatus::Active)
+    {
+        proto_compute::ComputeRegistryStatus::Draft => ComputeRegistryStatus::Draft,
+        proto_compute::ComputeRegistryStatus::Deprecated => ComputeRegistryStatus::Deprecated,
+        proto_compute::ComputeRegistryStatus::Retired => ComputeRegistryStatus::Retired,
+        proto_compute::ComputeRegistryStatus::Unspecified
+        | proto_compute::ComputeRegistryStatus::Active => ComputeRegistryStatus::Active,
+    }
+}
+
 fn compute_evaluation_run_status_to_proto(value: ComputeEvaluationRunStatus) -> i32 {
     match value {
         ComputeEvaluationRunStatus::Queued => {
@@ -556,6 +590,43 @@ fn compute_evaluation_run_status_from_proto(value: i32) -> ComputeEvaluationRunS
         }
         proto_compute::ComputeEvaluationRunStatus::Unspecified
         | proto_compute::ComputeEvaluationRunStatus::Queued => ComputeEvaluationRunStatus::Queued,
+    }
+}
+
+fn compute_training_run_status_to_proto(value: ComputeTrainingRunStatus) -> i32 {
+    match value {
+        ComputeTrainingRunStatus::Queued => proto_compute::ComputeTrainingRunStatus::Queued as i32,
+        ComputeTrainingRunStatus::Preparing => {
+            proto_compute::ComputeTrainingRunStatus::Preparing as i32
+        }
+        ComputeTrainingRunStatus::Running => {
+            proto_compute::ComputeTrainingRunStatus::Running as i32
+        }
+        ComputeTrainingRunStatus::Finalizing => {
+            proto_compute::ComputeTrainingRunStatus::Finalizing as i32
+        }
+        ComputeTrainingRunStatus::Accepted => {
+            proto_compute::ComputeTrainingRunStatus::Accepted as i32
+        }
+        ComputeTrainingRunStatus::Failed => proto_compute::ComputeTrainingRunStatus::Failed as i32,
+        ComputeTrainingRunStatus::Cancelled => {
+            proto_compute::ComputeTrainingRunStatus::Cancelled as i32
+        }
+    }
+}
+
+fn compute_training_run_status_from_proto(value: i32) -> ComputeTrainingRunStatus {
+    match proto_compute::ComputeTrainingRunStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeTrainingRunStatus::Queued)
+    {
+        proto_compute::ComputeTrainingRunStatus::Preparing => ComputeTrainingRunStatus::Preparing,
+        proto_compute::ComputeTrainingRunStatus::Running => ComputeTrainingRunStatus::Running,
+        proto_compute::ComputeTrainingRunStatus::Finalizing => ComputeTrainingRunStatus::Finalizing,
+        proto_compute::ComputeTrainingRunStatus::Accepted => ComputeTrainingRunStatus::Accepted,
+        proto_compute::ComputeTrainingRunStatus::Failed => ComputeTrainingRunStatus::Failed,
+        proto_compute::ComputeTrainingRunStatus::Cancelled => ComputeTrainingRunStatus::Cancelled,
+        proto_compute::ComputeTrainingRunStatus::Unspecified
+        | proto_compute::ComputeTrainingRunStatus::Queued => ComputeTrainingRunStatus::Queued,
     }
 }
 
@@ -598,6 +669,31 @@ fn compute_evaluation_sample_status_from_proto(value: i32) -> ComputeEvaluationS
         proto_compute::ComputeEvaluationSampleStatus::Unspecified
         | proto_compute::ComputeEvaluationSampleStatus::Recorded => {
             ComputeEvaluationSampleStatus::Recorded
+        }
+    }
+}
+
+fn compute_accepted_outcome_kind_to_proto(value: ComputeAcceptedOutcomeKind) -> i32 {
+    match value {
+        ComputeAcceptedOutcomeKind::EvaluationRun => {
+            proto_compute::ComputeAcceptedOutcomeKind::EvaluationRun as i32
+        }
+        ComputeAcceptedOutcomeKind::TrainingRun => {
+            proto_compute::ComputeAcceptedOutcomeKind::TrainingRun as i32
+        }
+    }
+}
+
+fn compute_accepted_outcome_kind_from_proto(value: i32) -> ComputeAcceptedOutcomeKind {
+    match proto_compute::ComputeAcceptedOutcomeKind::try_from(value)
+        .unwrap_or(proto_compute::ComputeAcceptedOutcomeKind::EvaluationRun)
+    {
+        proto_compute::ComputeAcceptedOutcomeKind::TrainingRun => {
+            ComputeAcceptedOutcomeKind::TrainingRun
+        }
+        proto_compute::ComputeAcceptedOutcomeKind::Unspecified
+        | proto_compute::ComputeAcceptedOutcomeKind::EvaluationRun => {
+            ComputeAcceptedOutcomeKind::EvaluationRun
         }
     }
 }
@@ -1554,6 +1650,26 @@ fn compute_environment_binding_from_proto(
     }
 }
 
+fn compute_checkpoint_binding_to_proto(
+    binding: &ComputeCheckpointBinding,
+) -> proto_compute::ComputeCheckpointBinding {
+    proto_compute::ComputeCheckpointBinding {
+        checkpoint_family: binding.checkpoint_family.clone(),
+        latest_checkpoint_ref: binding.latest_checkpoint_ref.clone(),
+        recovery_posture: binding.recovery_posture.clone(),
+    }
+}
+
+fn compute_checkpoint_binding_from_proto(
+    binding: &proto_compute::ComputeCheckpointBinding,
+) -> ComputeCheckpointBinding {
+    ComputeCheckpointBinding {
+        checkpoint_family: binding.checkpoint_family.clone(),
+        latest_checkpoint_ref: optional_string_as_none(binding.latest_checkpoint_ref.clone()),
+        recovery_posture: optional_string_as_none(binding.recovery_posture.clone()),
+    }
+}
+
 pub fn compute_capability_envelope_to_proto(
     envelope: &ComputeCapabilityEnvelope,
 ) -> Result<proto_compute::ComputeCapabilityEnvelope> {
@@ -1605,13 +1721,10 @@ pub fn compute_capability_envelope_to_proto(
             .environment_binding
             .as_ref()
             .map(compute_environment_binding_to_proto),
-        checkpoint_binding: envelope.checkpoint_binding.as_ref().map(|binding| {
-            proto_compute::ComputeCheckpointBinding {
-                checkpoint_family: binding.checkpoint_family.clone(),
-                latest_checkpoint_ref: binding.latest_checkpoint_ref.clone(),
-                recovery_posture: binding.recovery_posture.clone(),
-            }
-        }),
+        checkpoint_binding: envelope
+            .checkpoint_binding
+            .as_ref()
+            .map(compute_checkpoint_binding_to_proto),
         model_policy: envelope.model_policy.clone(),
         model_family: envelope.model_family.clone(),
         host_capability: envelope.host_capability.as_ref().map(|capability| {
@@ -1691,13 +1804,10 @@ pub fn compute_capability_envelope_from_proto(
             .environment_binding
             .as_ref()
             .map(compute_environment_binding_from_proto),
-        checkpoint_binding: envelope.checkpoint_binding.as_ref().map(|binding| {
-            ComputeCheckpointBinding {
-                checkpoint_family: binding.checkpoint_family.clone(),
-                latest_checkpoint_ref: binding.latest_checkpoint_ref.clone(),
-                recovery_posture: binding.recovery_posture.clone(),
-            }
-        }),
+        checkpoint_binding: envelope
+            .checkpoint_binding
+            .as_ref()
+            .map(compute_checkpoint_binding_from_proto),
         model_policy: envelope.model_policy.clone(),
         model_family: envelope.model_family.clone(),
         host_capability: envelope.host_capability.as_ref().map(|capability| {
@@ -1890,6 +2000,211 @@ pub fn compute_environment_package_from_proto(
             .filter(|value| !value.is_empty())
             .collect(),
         metadata: json_string_to_value(package.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_checkpoint_family_policy_to_proto(
+    policy: &ComputeCheckpointFamilyPolicy,
+) -> Result<proto_compute::ComputeCheckpointFamilyPolicy> {
+    Ok(proto_compute::ComputeCheckpointFamilyPolicy {
+        checkpoint_family: policy.checkpoint_family.clone(),
+        version: policy.version.clone(),
+        owner_id: policy.owner_id.clone(),
+        created_at_ms: policy.created_at_ms,
+        updated_at_ms: policy.updated_at_ms,
+        status: compute_registry_status_to_proto(policy.status),
+        description: policy.description.clone(),
+        source_family: policy.source_family.clone(),
+        default_recovery_posture: policy.default_recovery_posture.clone(),
+        allowed_environment_refs: policy.allowed_environment_refs.clone(),
+        validator_policy_ref: policy.validator_policy_ref.clone(),
+        retention_policy_ref: policy.retention_policy_ref.clone(),
+        metadata_json: json_value_to_string(&policy.metadata)?,
+    })
+}
+
+pub fn compute_checkpoint_family_policy_from_proto(
+    policy: &proto_compute::ComputeCheckpointFamilyPolicy,
+) -> Result<ComputeCheckpointFamilyPolicy> {
+    Ok(ComputeCheckpointFamilyPolicy {
+        checkpoint_family: policy.checkpoint_family.clone(),
+        version: policy.version.clone(),
+        owner_id: policy.owner_id.clone(),
+        created_at_ms: policy.created_at_ms,
+        updated_at_ms: policy.updated_at_ms,
+        status: compute_registry_status_from_proto(policy.status),
+        description: optional_string_as_none(policy.description.clone()),
+        source_family: optional_string_as_none(policy.source_family.clone()),
+        default_recovery_posture: optional_string_as_none(policy.default_recovery_posture.clone()),
+        allowed_environment_refs: policy
+            .allowed_environment_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        validator_policy_ref: optional_string_as_none(policy.validator_policy_ref.clone()),
+        retention_policy_ref: optional_string_as_none(policy.retention_policy_ref.clone()),
+        metadata: json_string_to_value(policy.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_validator_policy_to_proto(
+    policy: &ComputeValidatorPolicy,
+) -> Result<proto_compute::ComputeValidatorPolicy> {
+    Ok(proto_compute::ComputeValidatorPolicy {
+        policy_ref: policy.policy_ref.clone(),
+        version: policy.version.clone(),
+        owner_id: policy.owner_id.clone(),
+        created_at_ms: policy.created_at_ms,
+        updated_at_ms: policy.updated_at_ms,
+        status: compute_registry_status_to_proto(policy.status),
+        validator_pool_ref: policy.validator_pool_ref.clone(),
+        minimum_validator_count: policy.minimum_validator_count,
+        challenge_window_ms: policy.challenge_window_ms,
+        required_proof_posture: policy
+            .required_proof_posture
+            .map(compute_proof_posture_to_proto)
+            .unwrap_or(proto_compute::ComputeProofPosture::Unspecified as i32),
+        benchmark_package_refs: policy.benchmark_package_refs.clone(),
+        metadata_json: json_value_to_string(&policy.metadata)?,
+    })
+}
+
+pub fn compute_validator_policy_from_proto(
+    policy: &proto_compute::ComputeValidatorPolicy,
+) -> Result<ComputeValidatorPolicy> {
+    Ok(ComputeValidatorPolicy {
+        policy_ref: policy.policy_ref.clone(),
+        version: policy.version.clone(),
+        owner_id: policy.owner_id.clone(),
+        created_at_ms: policy.created_at_ms,
+        updated_at_ms: policy.updated_at_ms,
+        status: compute_registry_status_from_proto(policy.status),
+        validator_pool_ref: policy.validator_pool_ref.clone(),
+        minimum_validator_count: policy.minimum_validator_count,
+        challenge_window_ms: policy.challenge_window_ms,
+        required_proof_posture: (policy.required_proof_posture
+            != proto_compute::ComputeProofPosture::Unspecified as i32)
+            .then(|| compute_proof_posture_from_proto(policy.required_proof_posture))
+            .transpose()?,
+        benchmark_package_refs: policy
+            .benchmark_package_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        metadata: json_string_to_value(policy.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_benchmark_package_to_proto(
+    package: &ComputeBenchmarkPackage,
+) -> Result<proto_compute::ComputeBenchmarkPackage> {
+    Ok(proto_compute::ComputeBenchmarkPackage {
+        benchmark_package_ref: package.benchmark_package_ref.clone(),
+        version: package.version.clone(),
+        family: package.family.clone(),
+        display_name: package.display_name.clone(),
+        owner_id: package.owner_id.clone(),
+        created_at_ms: package.created_at_ms,
+        updated_at_ms: package.updated_at_ms,
+        status: compute_registry_status_to_proto(package.status),
+        environment_ref: package.environment_ref.clone(),
+        environment_version: package.environment_version.clone(),
+        benchmark_suite_ref: package.benchmark_suite_ref.clone(),
+        adapter_kind: package.adapter_kind.clone(),
+        evaluator_policy_ref: package.evaluator_policy_ref.clone(),
+        pass_threshold_bps: package.pass_threshold_bps,
+        required_metric_ids: package.required_metric_ids.clone(),
+        artifact_refs: package.artifact_refs.clone(),
+        metadata_json: json_value_to_string(&package.metadata)?,
+    })
+}
+
+pub fn compute_benchmark_package_from_proto(
+    package: &proto_compute::ComputeBenchmarkPackage,
+) -> Result<ComputeBenchmarkPackage> {
+    Ok(ComputeBenchmarkPackage {
+        benchmark_package_ref: package.benchmark_package_ref.clone(),
+        version: package.version.clone(),
+        family: package.family.clone(),
+        display_name: package.display_name.clone(),
+        owner_id: package.owner_id.clone(),
+        created_at_ms: package.created_at_ms,
+        updated_at_ms: package.updated_at_ms,
+        status: compute_registry_status_from_proto(package.status),
+        environment_ref: package.environment_ref.clone(),
+        environment_version: optional_string_as_none(package.environment_version.clone()),
+        benchmark_suite_ref: optional_string_as_none(package.benchmark_suite_ref.clone()),
+        adapter_kind: optional_string_as_none(package.adapter_kind.clone()),
+        evaluator_policy_ref: optional_string_as_none(package.evaluator_policy_ref.clone()),
+        pass_threshold_bps: package.pass_threshold_bps,
+        required_metric_ids: package
+            .required_metric_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        artifact_refs: package
+            .artifact_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        metadata: json_string_to_value(package.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_training_policy_to_proto(
+    policy: &ComputeTrainingPolicy,
+) -> Result<proto_compute::ComputeTrainingPolicy> {
+    Ok(proto_compute::ComputeTrainingPolicy {
+        training_policy_ref: policy.training_policy_ref.clone(),
+        version: policy.version.clone(),
+        owner_id: policy.owner_id.clone(),
+        created_at_ms: policy.created_at_ms,
+        updated_at_ms: policy.updated_at_ms,
+        status: compute_registry_status_to_proto(policy.status),
+        environment_refs: policy.environment_refs.clone(),
+        checkpoint_family: policy.checkpoint_family.clone(),
+        validator_policy_ref: policy.validator_policy_ref.clone(),
+        benchmark_package_refs: policy.benchmark_package_refs.clone(),
+        stage_policy_refs: policy.stage_policy_refs.clone(),
+        metadata_json: json_value_to_string(&policy.metadata)?,
+    })
+}
+
+pub fn compute_training_policy_from_proto(
+    policy: &proto_compute::ComputeTrainingPolicy,
+) -> Result<ComputeTrainingPolicy> {
+    Ok(ComputeTrainingPolicy {
+        training_policy_ref: policy.training_policy_ref.clone(),
+        version: policy.version.clone(),
+        owner_id: policy.owner_id.clone(),
+        created_at_ms: policy.created_at_ms,
+        updated_at_ms: policy.updated_at_ms,
+        status: compute_registry_status_from_proto(policy.status),
+        environment_refs: policy
+            .environment_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        checkpoint_family: policy.checkpoint_family.clone(),
+        validator_policy_ref: policy.validator_policy_ref.clone(),
+        benchmark_package_refs: policy
+            .benchmark_package_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        stage_policy_refs: policy
+            .stage_policy_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        metadata: json_string_to_value(policy.metadata_json.as_str())?,
     })
 }
 
@@ -2106,6 +2421,208 @@ pub fn compute_evaluation_sample_from_proto(
         error_reason: optional_string_as_none(sample.error_reason.clone()),
         recorded_at_ms: sample.recorded_at_ms,
         metadata: json_string_to_value(sample.metadata_json.as_str())?,
+    })
+}
+
+fn compute_training_summary_to_proto(
+    summary: &ComputeTrainingSummary,
+) -> Result<proto_compute::ComputeTrainingSummary> {
+    Ok(proto_compute::ComputeTrainingSummary {
+        completed_step_count: summary.completed_step_count,
+        processed_token_count: summary.processed_token_count,
+        average_loss: summary.average_loss,
+        best_eval_score_bps: summary.best_eval_score_bps,
+        accepted_checkpoint_ref: summary.accepted_checkpoint_ref.clone(),
+        aggregate_metrics: summary
+            .aggregate_metrics
+            .iter()
+            .map(compute_evaluation_metric_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        artifacts: summary
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn compute_training_summary_from_proto(
+    summary: &proto_compute::ComputeTrainingSummary,
+) -> Result<ComputeTrainingSummary> {
+    Ok(ComputeTrainingSummary {
+        completed_step_count: summary.completed_step_count,
+        processed_token_count: summary.processed_token_count,
+        average_loss: summary.average_loss,
+        best_eval_score_bps: summary.best_eval_score_bps,
+        accepted_checkpoint_ref: optional_string_as_none(summary.accepted_checkpoint_ref.clone()),
+        aggregate_metrics: summary
+            .aggregate_metrics
+            .iter()
+            .map(compute_evaluation_metric_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        artifacts: summary
+            .artifacts
+            .iter()
+            .map(compute_evaluation_artifact_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn compute_training_run_to_proto(
+    run: &ComputeTrainingRun,
+) -> Result<proto_compute::ComputeTrainingRun> {
+    Ok(proto_compute::ComputeTrainingRun {
+        training_run_id: run.training_run_id.clone(),
+        training_policy_ref: run.training_policy_ref.clone(),
+        environment_binding: Some(compute_environment_binding_to_proto(
+            &run.environment_binding,
+        )),
+        checkpoint_binding: Some(compute_checkpoint_binding_to_proto(&run.checkpoint_binding)),
+        validator_policy_ref: run.validator_policy_ref.clone(),
+        benchmark_package_refs: run.benchmark_package_refs.clone(),
+        product_id: run.product_id.clone(),
+        capacity_lot_id: run.capacity_lot_id.clone(),
+        instrument_id: run.instrument_id.clone(),
+        delivery_proof_id: run.delivery_proof_id.clone(),
+        model_ref: run.model_ref.clone(),
+        source_ref: run.source_ref.clone(),
+        rollout_verification_eval_run_ids: run.rollout_verification_eval_run_ids.clone(),
+        created_at_ms: run.created_at_ms,
+        started_at_ms: run.started_at_ms,
+        finalized_at_ms: run.finalized_at_ms,
+        expected_step_count: run.expected_step_count,
+        completed_step_count: run.completed_step_count,
+        status: compute_training_run_status_to_proto(run.status),
+        final_checkpoint_ref: run.final_checkpoint_ref.clone(),
+        promotion_checkpoint_ref: run.promotion_checkpoint_ref.clone(),
+        summary: run
+            .summary
+            .as_ref()
+            .map(compute_training_summary_to_proto)
+            .transpose()?,
+        metadata_json: json_value_to_string(&run.metadata)?,
+    })
+}
+
+pub fn compute_training_run_from_proto(
+    run: &proto_compute::ComputeTrainingRun,
+) -> Result<ComputeTrainingRun> {
+    Ok(ComputeTrainingRun {
+        training_run_id: run.training_run_id.clone(),
+        training_policy_ref: run.training_policy_ref.clone(),
+        environment_binding: compute_environment_binding_from_proto(
+            run.environment_binding
+                .as_ref()
+                .ok_or_else(|| missing("environment_binding"))?,
+        ),
+        checkpoint_binding: compute_checkpoint_binding_from_proto(
+            run.checkpoint_binding
+                .as_ref()
+                .ok_or_else(|| missing("checkpoint_binding"))?,
+        ),
+        validator_policy_ref: run.validator_policy_ref.clone(),
+        benchmark_package_refs: run
+            .benchmark_package_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        product_id: optional_string_as_none(run.product_id.clone()),
+        capacity_lot_id: optional_string_as_none(run.capacity_lot_id.clone()),
+        instrument_id: optional_string_as_none(run.instrument_id.clone()),
+        delivery_proof_id: optional_string_as_none(run.delivery_proof_id.clone()),
+        model_ref: optional_string_as_none(run.model_ref.clone()),
+        source_ref: optional_string_as_none(run.source_ref.clone()),
+        rollout_verification_eval_run_ids: run
+            .rollout_verification_eval_run_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        created_at_ms: run.created_at_ms,
+        started_at_ms: run.started_at_ms,
+        finalized_at_ms: run.finalized_at_ms,
+        expected_step_count: run.expected_step_count,
+        completed_step_count: run.completed_step_count,
+        status: compute_training_run_status_from_proto(run.status),
+        final_checkpoint_ref: optional_string_as_none(run.final_checkpoint_ref.clone()),
+        promotion_checkpoint_ref: optional_string_as_none(run.promotion_checkpoint_ref.clone()),
+        summary: run
+            .summary
+            .as_ref()
+            .map(compute_training_summary_from_proto)
+            .transpose()?,
+        metadata: json_string_to_value(run.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_accepted_outcome_to_proto(
+    outcome: &ComputeAcceptedOutcome,
+) -> Result<proto_compute::ComputeAcceptedOutcome> {
+    Ok(proto_compute::ComputeAcceptedOutcome {
+        outcome_id: outcome.outcome_id.clone(),
+        outcome_kind: compute_accepted_outcome_kind_to_proto(outcome.outcome_kind),
+        source_run_id: outcome.source_run_id.clone(),
+        environment_binding: Some(compute_environment_binding_to_proto(
+            &outcome.environment_binding,
+        )),
+        checkpoint_binding: outcome
+            .checkpoint_binding
+            .as_ref()
+            .map(compute_checkpoint_binding_to_proto),
+        validator_policy_ref: outcome.validator_policy_ref.clone(),
+        benchmark_package_refs: outcome.benchmark_package_refs.clone(),
+        accepted_at_ms: outcome.accepted_at_ms,
+        evaluation_summary: outcome
+            .evaluation_summary
+            .as_ref()
+            .map(compute_evaluation_summary_to_proto)
+            .transpose()?,
+        training_summary: outcome
+            .training_summary
+            .as_ref()
+            .map(compute_training_summary_to_proto)
+            .transpose()?,
+        metadata_json: json_value_to_string(&outcome.metadata)?,
+    })
+}
+
+pub fn compute_accepted_outcome_from_proto(
+    outcome: &proto_compute::ComputeAcceptedOutcome,
+) -> Result<ComputeAcceptedOutcome> {
+    Ok(ComputeAcceptedOutcome {
+        outcome_id: outcome.outcome_id.clone(),
+        outcome_kind: compute_accepted_outcome_kind_from_proto(outcome.outcome_kind),
+        source_run_id: outcome.source_run_id.clone(),
+        environment_binding: compute_environment_binding_from_proto(
+            outcome
+                .environment_binding
+                .as_ref()
+                .ok_or_else(|| missing("environment_binding"))?,
+        ),
+        checkpoint_binding: outcome
+            .checkpoint_binding
+            .as_ref()
+            .map(compute_checkpoint_binding_from_proto),
+        validator_policy_ref: optional_string_as_none(outcome.validator_policy_ref.clone()),
+        benchmark_package_refs: outcome
+            .benchmark_package_refs
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect(),
+        accepted_at_ms: outcome.accepted_at_ms,
+        evaluation_summary: outcome
+            .evaluation_summary
+            .as_ref()
+            .map(compute_evaluation_summary_from_proto)
+            .transpose()?,
+        training_summary: outcome
+            .training_summary
+            .as_ref()
+            .map(compute_training_summary_from_proto)
+            .transpose()?,
+        metadata: json_string_to_value(outcome.metadata_json.as_str())?,
     })
 }
 
@@ -2724,6 +3241,286 @@ pub fn register_compute_environment_package_response_from_proto(
     })
 }
 
+pub fn register_compute_checkpoint_family_policy_request_to_proto(
+    request: &RegisterComputeCheckpointFamilyPolicyRequest,
+) -> Result<proto_compute::RegisterComputeCheckpointFamilyPolicyRequest> {
+    Ok(
+        proto_compute::RegisterComputeCheckpointFamilyPolicyRequest {
+            idempotency_key: request.idempotency_key.clone(),
+            trace: Some(trace_to_proto(&request.trace)),
+            policy: Some(policy_to_proto(&request.policy)),
+            policy_record: Some(compute_checkpoint_family_policy_to_proto(
+                &request.policy_record,
+            )?),
+            evidence: request
+                .evidence
+                .iter()
+                .map(evidence_to_proto)
+                .collect::<Result<Vec<_>>>()?,
+            hints: Some(hints_to_proto(&request.hints)),
+        },
+    )
+}
+
+pub fn register_compute_checkpoint_family_policy_request_from_proto(
+    request: &proto_compute::RegisterComputeCheckpointFamilyPolicyRequest,
+) -> Result<RegisterComputeCheckpointFamilyPolicyRequest> {
+    Ok(RegisterComputeCheckpointFamilyPolicyRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        policy_record: compute_checkpoint_family_policy_from_proto(
+            request
+                .policy_record
+                .as_ref()
+                .ok_or_else(|| missing("policy_record"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn register_compute_checkpoint_family_policy_response_to_proto(
+    response: &RegisterComputeCheckpointFamilyPolicyResponse,
+) -> Result<proto_compute::RegisterComputeCheckpointFamilyPolicyResponse> {
+    Ok(
+        proto_compute::RegisterComputeCheckpointFamilyPolicyResponse {
+            policy_record: Some(compute_checkpoint_family_policy_to_proto(
+                &response.policy_record,
+            )?),
+            receipt: Some(receipt_to_proto(&response.receipt)?),
+        },
+    )
+}
+
+pub fn register_compute_checkpoint_family_policy_response_from_proto(
+    response: &proto_compute::RegisterComputeCheckpointFamilyPolicyResponse,
+) -> Result<RegisterComputeCheckpointFamilyPolicyResponse> {
+    Ok(RegisterComputeCheckpointFamilyPolicyResponse {
+        policy_record: compute_checkpoint_family_policy_from_proto(
+            response
+                .policy_record
+                .as_ref()
+                .ok_or_else(|| missing("policy_record"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn register_compute_validator_policy_request_to_proto(
+    request: &RegisterComputeValidatorPolicyRequest,
+) -> Result<proto_compute::RegisterComputeValidatorPolicyRequest> {
+    Ok(proto_compute::RegisterComputeValidatorPolicyRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        policy_record: Some(compute_validator_policy_to_proto(&request.policy_record)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn register_compute_validator_policy_request_from_proto(
+    request: &proto_compute::RegisterComputeValidatorPolicyRequest,
+) -> Result<RegisterComputeValidatorPolicyRequest> {
+    Ok(RegisterComputeValidatorPolicyRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        policy_record: compute_validator_policy_from_proto(
+            request
+                .policy_record
+                .as_ref()
+                .ok_or_else(|| missing("policy_record"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn register_compute_validator_policy_response_to_proto(
+    response: &RegisterComputeValidatorPolicyResponse,
+) -> Result<proto_compute::RegisterComputeValidatorPolicyResponse> {
+    Ok(proto_compute::RegisterComputeValidatorPolicyResponse {
+        policy_record: Some(compute_validator_policy_to_proto(&response.policy_record)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn register_compute_validator_policy_response_from_proto(
+    response: &proto_compute::RegisterComputeValidatorPolicyResponse,
+) -> Result<RegisterComputeValidatorPolicyResponse> {
+    Ok(RegisterComputeValidatorPolicyResponse {
+        policy_record: compute_validator_policy_from_proto(
+            response
+                .policy_record
+                .as_ref()
+                .ok_or_else(|| missing("policy_record"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn register_compute_benchmark_package_request_to_proto(
+    request: &RegisterComputeBenchmarkPackageRequest,
+) -> Result<proto_compute::RegisterComputeBenchmarkPackageRequest> {
+    Ok(proto_compute::RegisterComputeBenchmarkPackageRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        benchmark_package: Some(compute_benchmark_package_to_proto(
+            &request.benchmark_package,
+        )?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn register_compute_benchmark_package_request_from_proto(
+    request: &proto_compute::RegisterComputeBenchmarkPackageRequest,
+) -> Result<RegisterComputeBenchmarkPackageRequest> {
+    Ok(RegisterComputeBenchmarkPackageRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        benchmark_package: compute_benchmark_package_from_proto(
+            request
+                .benchmark_package
+                .as_ref()
+                .ok_or_else(|| missing("benchmark_package"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn register_compute_benchmark_package_response_to_proto(
+    response: &RegisterComputeBenchmarkPackageResponse,
+) -> Result<proto_compute::RegisterComputeBenchmarkPackageResponse> {
+    Ok(proto_compute::RegisterComputeBenchmarkPackageResponse {
+        benchmark_package: Some(compute_benchmark_package_to_proto(
+            &response.benchmark_package,
+        )?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn register_compute_benchmark_package_response_from_proto(
+    response: &proto_compute::RegisterComputeBenchmarkPackageResponse,
+) -> Result<RegisterComputeBenchmarkPackageResponse> {
+    Ok(RegisterComputeBenchmarkPackageResponse {
+        benchmark_package: compute_benchmark_package_from_proto(
+            response
+                .benchmark_package
+                .as_ref()
+                .ok_or_else(|| missing("benchmark_package"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn register_compute_training_policy_request_to_proto(
+    request: &RegisterComputeTrainingPolicyRequest,
+) -> Result<proto_compute::RegisterComputeTrainingPolicyRequest> {
+    Ok(proto_compute::RegisterComputeTrainingPolicyRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        training_policy: Some(compute_training_policy_to_proto(&request.training_policy)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn register_compute_training_policy_request_from_proto(
+    request: &proto_compute::RegisterComputeTrainingPolicyRequest,
+) -> Result<RegisterComputeTrainingPolicyRequest> {
+    Ok(RegisterComputeTrainingPolicyRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        training_policy: compute_training_policy_from_proto(
+            request
+                .training_policy
+                .as_ref()
+                .ok_or_else(|| missing("training_policy"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn register_compute_training_policy_response_to_proto(
+    response: &RegisterComputeTrainingPolicyResponse,
+) -> Result<proto_compute::RegisterComputeTrainingPolicyResponse> {
+    Ok(proto_compute::RegisterComputeTrainingPolicyResponse {
+        training_policy: Some(compute_training_policy_to_proto(&response.training_policy)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn register_compute_training_policy_response_from_proto(
+    response: &proto_compute::RegisterComputeTrainingPolicyResponse,
+) -> Result<RegisterComputeTrainingPolicyResponse> {
+    Ok(RegisterComputeTrainingPolicyResponse {
+        training_policy: compute_training_policy_from_proto(
+            response
+                .training_policy
+                .as_ref()
+                .ok_or_else(|| missing("training_policy"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
 pub fn create_compute_evaluation_run_request_to_proto(
     request: &CreateComputeEvaluationRunRequest,
 ) -> Result<proto_compute::CreateComputeEvaluationRunRequest> {
@@ -2941,6 +3738,219 @@ pub fn finalize_compute_evaluation_run_response_from_proto(
                 .eval_run
                 .as_ref()
                 .ok_or_else(|| missing("eval_run"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn create_compute_training_run_request_to_proto(
+    request: &CreateComputeTrainingRunRequest,
+) -> Result<proto_compute::CreateComputeTrainingRunRequest> {
+    Ok(proto_compute::CreateComputeTrainingRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        training_run: Some(compute_training_run_to_proto(&request.training_run)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn create_compute_training_run_request_from_proto(
+    request: &proto_compute::CreateComputeTrainingRunRequest,
+) -> Result<CreateComputeTrainingRunRequest> {
+    Ok(CreateComputeTrainingRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        training_run: compute_training_run_from_proto(
+            request
+                .training_run
+                .as_ref()
+                .ok_or_else(|| missing("training_run"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn create_compute_training_run_response_to_proto(
+    response: &CreateComputeTrainingRunResponse,
+) -> Result<proto_compute::CreateComputeTrainingRunResponse> {
+    Ok(proto_compute::CreateComputeTrainingRunResponse {
+        training_run: Some(compute_training_run_to_proto(&response.training_run)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn create_compute_training_run_response_from_proto(
+    response: &proto_compute::CreateComputeTrainingRunResponse,
+) -> Result<CreateComputeTrainingRunResponse> {
+    Ok(CreateComputeTrainingRunResponse {
+        training_run: compute_training_run_from_proto(
+            response
+                .training_run
+                .as_ref()
+                .ok_or_else(|| missing("training_run"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn finalize_compute_training_run_request_to_proto(
+    request: &FinalizeComputeTrainingRunRequest,
+) -> Result<proto_compute::FinalizeComputeTrainingRunRequest> {
+    Ok(proto_compute::FinalizeComputeTrainingRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        training_run_id: request.training_run_id.clone(),
+        status: compute_training_run_status_to_proto(request.status),
+        finalized_at_ms: request.finalized_at_ms,
+        final_checkpoint_ref: request.final_checkpoint_ref.clone(),
+        promotion_checkpoint_ref: request.promotion_checkpoint_ref.clone(),
+        summary: request
+            .summary
+            .as_ref()
+            .map(compute_training_summary_to_proto)
+            .transpose()?,
+        metadata_json: json_value_to_string(&request.metadata)?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn finalize_compute_training_run_request_from_proto(
+    request: &proto_compute::FinalizeComputeTrainingRunRequest,
+) -> Result<FinalizeComputeTrainingRunRequest> {
+    Ok(FinalizeComputeTrainingRunRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        training_run_id: request.training_run_id.clone(),
+        status: compute_training_run_status_from_proto(request.status),
+        finalized_at_ms: request.finalized_at_ms,
+        final_checkpoint_ref: optional_string_as_none(request.final_checkpoint_ref.clone()),
+        promotion_checkpoint_ref: optional_string_as_none(request.promotion_checkpoint_ref.clone()),
+        summary: request
+            .summary
+            .as_ref()
+            .map(compute_training_summary_from_proto)
+            .transpose()?,
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn finalize_compute_training_run_response_to_proto(
+    response: &FinalizeComputeTrainingRunResponse,
+) -> Result<proto_compute::FinalizeComputeTrainingRunResponse> {
+    Ok(proto_compute::FinalizeComputeTrainingRunResponse {
+        training_run: Some(compute_training_run_to_proto(&response.training_run)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn finalize_compute_training_run_response_from_proto(
+    response: &proto_compute::FinalizeComputeTrainingRunResponse,
+) -> Result<FinalizeComputeTrainingRunResponse> {
+    Ok(FinalizeComputeTrainingRunResponse {
+        training_run: compute_training_run_from_proto(
+            response
+                .training_run
+                .as_ref()
+                .ok_or_else(|| missing("training_run"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn accept_compute_outcome_request_to_proto(
+    request: &AcceptComputeOutcomeRequest,
+) -> Result<proto_compute::AcceptComputeOutcomeRequest> {
+    Ok(proto_compute::AcceptComputeOutcomeRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        outcome: Some(compute_accepted_outcome_to_proto(&request.outcome)?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn accept_compute_outcome_request_from_proto(
+    request: &proto_compute::AcceptComputeOutcomeRequest,
+) -> Result<AcceptComputeOutcomeRequest> {
+    Ok(AcceptComputeOutcomeRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        outcome: compute_accepted_outcome_from_proto(
+            request.outcome.as_ref().ok_or_else(|| missing("outcome"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn accept_compute_outcome_response_to_proto(
+    response: &AcceptComputeOutcomeResponse,
+) -> Result<proto_compute::AcceptComputeOutcomeResponse> {
+    Ok(proto_compute::AcceptComputeOutcomeResponse {
+        outcome: Some(compute_accepted_outcome_to_proto(&response.outcome)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn accept_compute_outcome_response_from_proto(
+    response: &proto_compute::AcceptComputeOutcomeResponse,
+) -> Result<AcceptComputeOutcomeResponse> {
+    Ok(AcceptComputeOutcomeResponse {
+        outcome: compute_accepted_outcome_from_proto(
+            response
+                .outcome
+                .as_ref()
+                .ok_or_else(|| missing("outcome"))?,
         )?,
         receipt: receipt_from_proto(
             response
@@ -4021,6 +5031,166 @@ pub fn get_compute_environment_package_response_from_proto(
     )
 }
 
+pub fn list_compute_checkpoint_family_policies_response_to_proto(
+    policies: &[ComputeCheckpointFamilyPolicy],
+) -> Result<proto_compute::ListComputeCheckpointFamilyPoliciesResponse> {
+    Ok(proto_compute::ListComputeCheckpointFamilyPoliciesResponse {
+        policies: policies
+            .iter()
+            .map(compute_checkpoint_family_policy_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_checkpoint_family_policies_response_from_proto(
+    response: &proto_compute::ListComputeCheckpointFamilyPoliciesResponse,
+) -> Result<Vec<ComputeCheckpointFamilyPolicy>> {
+    response
+        .policies
+        .iter()
+        .map(compute_checkpoint_family_policy_from_proto)
+        .collect()
+}
+
+pub fn get_compute_checkpoint_family_policy_response_to_proto(
+    policy: &ComputeCheckpointFamilyPolicy,
+) -> Result<proto_compute::GetComputeCheckpointFamilyPolicyResponse> {
+    Ok(proto_compute::GetComputeCheckpointFamilyPolicyResponse {
+        policy_record: Some(compute_checkpoint_family_policy_to_proto(policy)?),
+    })
+}
+
+pub fn get_compute_checkpoint_family_policy_response_from_proto(
+    response: &proto_compute::GetComputeCheckpointFamilyPolicyResponse,
+) -> Result<ComputeCheckpointFamilyPolicy> {
+    compute_checkpoint_family_policy_from_proto(
+        response
+            .policy_record
+            .as_ref()
+            .ok_or_else(|| missing("policy_record"))?,
+    )
+}
+
+pub fn list_compute_validator_policies_response_to_proto(
+    policies: &[ComputeValidatorPolicy],
+) -> Result<proto_compute::ListComputeValidatorPoliciesResponse> {
+    Ok(proto_compute::ListComputeValidatorPoliciesResponse {
+        policies: policies
+            .iter()
+            .map(compute_validator_policy_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_validator_policies_response_from_proto(
+    response: &proto_compute::ListComputeValidatorPoliciesResponse,
+) -> Result<Vec<ComputeValidatorPolicy>> {
+    response
+        .policies
+        .iter()
+        .map(compute_validator_policy_from_proto)
+        .collect()
+}
+
+pub fn get_compute_validator_policy_response_to_proto(
+    policy: &ComputeValidatorPolicy,
+) -> Result<proto_compute::GetComputeValidatorPolicyResponse> {
+    Ok(proto_compute::GetComputeValidatorPolicyResponse {
+        policy_record: Some(compute_validator_policy_to_proto(policy)?),
+    })
+}
+
+pub fn get_compute_validator_policy_response_from_proto(
+    response: &proto_compute::GetComputeValidatorPolicyResponse,
+) -> Result<ComputeValidatorPolicy> {
+    compute_validator_policy_from_proto(
+        response
+            .policy_record
+            .as_ref()
+            .ok_or_else(|| missing("policy_record"))?,
+    )
+}
+
+pub fn list_compute_benchmark_packages_response_to_proto(
+    packages: &[ComputeBenchmarkPackage],
+) -> Result<proto_compute::ListComputeBenchmarkPackagesResponse> {
+    Ok(proto_compute::ListComputeBenchmarkPackagesResponse {
+        benchmark_packages: packages
+            .iter()
+            .map(compute_benchmark_package_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_benchmark_packages_response_from_proto(
+    response: &proto_compute::ListComputeBenchmarkPackagesResponse,
+) -> Result<Vec<ComputeBenchmarkPackage>> {
+    response
+        .benchmark_packages
+        .iter()
+        .map(compute_benchmark_package_from_proto)
+        .collect()
+}
+
+pub fn get_compute_benchmark_package_response_to_proto(
+    package: &ComputeBenchmarkPackage,
+) -> Result<proto_compute::GetComputeBenchmarkPackageResponse> {
+    Ok(proto_compute::GetComputeBenchmarkPackageResponse {
+        benchmark_package: Some(compute_benchmark_package_to_proto(package)?),
+    })
+}
+
+pub fn get_compute_benchmark_package_response_from_proto(
+    response: &proto_compute::GetComputeBenchmarkPackageResponse,
+) -> Result<ComputeBenchmarkPackage> {
+    compute_benchmark_package_from_proto(
+        response
+            .benchmark_package
+            .as_ref()
+            .ok_or_else(|| missing("benchmark_package"))?,
+    )
+}
+
+pub fn list_compute_training_policies_response_to_proto(
+    policies: &[ComputeTrainingPolicy],
+) -> Result<proto_compute::ListComputeTrainingPoliciesResponse> {
+    Ok(proto_compute::ListComputeTrainingPoliciesResponse {
+        training_policies: policies
+            .iter()
+            .map(compute_training_policy_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_training_policies_response_from_proto(
+    response: &proto_compute::ListComputeTrainingPoliciesResponse,
+) -> Result<Vec<ComputeTrainingPolicy>> {
+    response
+        .training_policies
+        .iter()
+        .map(compute_training_policy_from_proto)
+        .collect()
+}
+
+pub fn get_compute_training_policy_response_to_proto(
+    policy: &ComputeTrainingPolicy,
+) -> Result<proto_compute::GetComputeTrainingPolicyResponse> {
+    Ok(proto_compute::GetComputeTrainingPolicyResponse {
+        training_policy: Some(compute_training_policy_to_proto(policy)?),
+    })
+}
+
+pub fn get_compute_training_policy_response_from_proto(
+    response: &proto_compute::GetComputeTrainingPolicyResponse,
+) -> Result<ComputeTrainingPolicy> {
+    compute_training_policy_from_proto(
+        response
+            .training_policy
+            .as_ref()
+            .ok_or_else(|| missing("training_policy"))?,
+    )
+}
+
 pub fn list_compute_evaluation_runs_response_to_proto(
     runs: &[ComputeEvaluationRun],
 ) -> Result<proto_compute::ListComputeEvaluationRunsResponse> {
@@ -4080,6 +5250,86 @@ pub fn list_compute_evaluation_samples_response_from_proto(
         .iter()
         .map(compute_evaluation_sample_from_proto)
         .collect()
+}
+
+pub fn list_compute_training_runs_response_to_proto(
+    runs: &[ComputeTrainingRun],
+) -> Result<proto_compute::ListComputeTrainingRunsResponse> {
+    Ok(proto_compute::ListComputeTrainingRunsResponse {
+        training_runs: runs
+            .iter()
+            .map(compute_training_run_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_training_runs_response_from_proto(
+    response: &proto_compute::ListComputeTrainingRunsResponse,
+) -> Result<Vec<ComputeTrainingRun>> {
+    response
+        .training_runs
+        .iter()
+        .map(compute_training_run_from_proto)
+        .collect()
+}
+
+pub fn get_compute_training_run_response_to_proto(
+    run: &ComputeTrainingRun,
+) -> Result<proto_compute::GetComputeTrainingRunResponse> {
+    Ok(proto_compute::GetComputeTrainingRunResponse {
+        training_run: Some(compute_training_run_to_proto(run)?),
+    })
+}
+
+pub fn get_compute_training_run_response_from_proto(
+    response: &proto_compute::GetComputeTrainingRunResponse,
+) -> Result<ComputeTrainingRun> {
+    compute_training_run_from_proto(
+        response
+            .training_run
+            .as_ref()
+            .ok_or_else(|| missing("training_run"))?,
+    )
+}
+
+pub fn list_compute_accepted_outcomes_response_to_proto(
+    outcomes: &[ComputeAcceptedOutcome],
+) -> Result<proto_compute::ListComputeAcceptedOutcomesResponse> {
+    Ok(proto_compute::ListComputeAcceptedOutcomesResponse {
+        outcomes: outcomes
+            .iter()
+            .map(compute_accepted_outcome_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_accepted_outcomes_response_from_proto(
+    response: &proto_compute::ListComputeAcceptedOutcomesResponse,
+) -> Result<Vec<ComputeAcceptedOutcome>> {
+    response
+        .outcomes
+        .iter()
+        .map(compute_accepted_outcome_from_proto)
+        .collect()
+}
+
+pub fn get_compute_accepted_outcome_response_to_proto(
+    outcome: &ComputeAcceptedOutcome,
+) -> Result<proto_compute::GetComputeAcceptedOutcomeResponse> {
+    Ok(proto_compute::GetComputeAcceptedOutcomeResponse {
+        outcome: Some(compute_accepted_outcome_to_proto(outcome)?),
+    })
+}
+
+pub fn get_compute_accepted_outcome_response_from_proto(
+    response: &proto_compute::GetComputeAcceptedOutcomeResponse,
+) -> Result<ComputeAcceptedOutcome> {
+    compute_accepted_outcome_from_proto(
+        response
+            .outcome
+            .as_ref()
+            .ok_or_else(|| missing("outcome"))?,
+    )
 }
 
 pub fn list_compute_synthetic_data_jobs_response_to_proto(

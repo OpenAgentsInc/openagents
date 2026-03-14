@@ -1611,6 +1611,23 @@ or authority truth. It should also prefer typed Rust client and payload-builder
 surfaces for those train, eval, and validator-facing authority contracts rather
 than ad hoc JSON glue.
 
+Status: implemented on 2026-03-14 via GitHub issue `#3583`.
+
+The canonical authority docs are now:
+
+- `docs/kernel/compute-evaluation-runs.md`
+- `docs/kernel/compute-training-authority.md`
+
+The generated or typed authority path now exists in `openagents-kernel-core`
+and `apps/nexus-control` for:
+
+- checkpoint-family policy registry
+- validator-policy registry
+- benchmark-package registry
+- training-policy registry
+- training-run create/finalize/list/get
+- accepted eval or training outcomes
+
 ### 21. `Desktop and autopilotctl: expose training operator surfaces and diagnostics`
 
 A real train system must be operable. This issue should surface topology

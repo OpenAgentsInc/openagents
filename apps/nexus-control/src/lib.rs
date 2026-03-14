@@ -43,8 +43,9 @@ use openagents_kernel_core::authority::{
     SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
-    CapacityInstrumentStatus, CapacityLotStatus, ComputeEnvironmentPackageStatus,
-    ComputeEvaluationRunStatus, ComputeProductStatus, ComputeSyntheticDataJobStatus,
+    CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcomeKind,
+    ComputeEnvironmentPackageStatus, ComputeEvaluationRunStatus, ComputeProductStatus,
+    ComputeRegistryStatus, ComputeSyntheticDataJobStatus, ComputeTrainingRunStatus,
     ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
     ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
     ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
@@ -721,6 +722,42 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             get(get_kernel_compute_environment_package),
         )
         .route(
+            "/v1/kernel/compute/checkpoints/policies",
+            get(list_kernel_compute_checkpoint_family_policies)
+                .post(register_kernel_compute_checkpoint_family_policy),
+        )
+        .route(
+            "/v1/kernel/compute/checkpoints/policies/{checkpoint_family}",
+            get(get_kernel_compute_checkpoint_family_policy),
+        )
+        .route(
+            "/v1/kernel/compute/validators/policies",
+            get(list_kernel_compute_validator_policies)
+                .post(register_kernel_compute_validator_policy),
+        )
+        .route(
+            "/v1/kernel/compute/validators/policies/{policy_ref}",
+            get(get_kernel_compute_validator_policy),
+        )
+        .route(
+            "/v1/kernel/compute/benchmarks/packages",
+            get(list_kernel_compute_benchmark_packages)
+                .post(register_kernel_compute_benchmark_package),
+        )
+        .route(
+            "/v1/kernel/compute/benchmarks/packages/{benchmark_package_ref}",
+            get(get_kernel_compute_benchmark_package),
+        )
+        .route(
+            "/v1/kernel/compute/training/policies",
+            get(list_kernel_compute_training_policies)
+                .post(register_kernel_compute_training_policy),
+        )
+        .route(
+            "/v1/kernel/compute/training/policies/{training_policy_ref}",
+            get(get_kernel_compute_training_policy),
+        )
+        .route(
             "/v1/kernel/compute/evals",
             get(list_kernel_compute_evaluation_runs).post(create_kernel_compute_evaluation_run),
         )
@@ -736,6 +773,26 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/compute/evals/{eval_run_id}/finalize",
             post(finalize_kernel_compute_evaluation_run),
+        )
+        .route(
+            "/v1/kernel/compute/training/runs",
+            get(list_kernel_compute_training_runs).post(create_kernel_compute_training_run),
+        )
+        .route(
+            "/v1/kernel/compute/training/runs/{training_run_id}",
+            get(get_kernel_compute_training_run),
+        )
+        .route(
+            "/v1/kernel/compute/training/runs/{training_run_id}/finalize",
+            post(finalize_kernel_compute_training_run),
+        )
+        .route(
+            "/v1/kernel/compute/outcomes",
+            get(list_kernel_compute_accepted_outcomes).post(accept_kernel_compute_outcome),
+        )
+        .route(
+            "/v1/kernel/compute/outcomes/{outcome_id}",
+            get(get_kernel_compute_accepted_outcome),
         )
         .route(
             "/v1/kernel/compute/synthetic",
@@ -1853,10 +1910,52 @@ struct ComputeEnvironmentPackageVersionQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct ComputeRegistryVersionQuery {
+    version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeCheckpointFamilyPoliciesQuery {
+    status: Option<ComputeRegistryStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeValidatorPoliciesQuery {
+    validator_pool_ref: Option<String>,
+    status: Option<ComputeRegistryStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeBenchmarkPackagesQuery {
+    family: Option<String>,
+    environment_ref: Option<String>,
+    status: Option<ComputeRegistryStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeTrainingPoliciesQuery {
+    environment_ref: Option<String>,
+    status: Option<ComputeRegistryStatus>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ComputeEvaluationRunsQuery {
     environment_ref: Option<String>,
     product_id: Option<String>,
     status: Option<ComputeEvaluationRunStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeTrainingRunsQuery {
+    training_policy_ref: Option<String>,
+    environment_ref: Option<String>,
+    status: Option<ComputeTrainingRunStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeAcceptedOutcomesQuery {
+    outcome_kind: Option<ComputeAcceptedOutcomeKind>,
+    environment_ref: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2124,6 +2223,220 @@ async fn get_kernel_compute_environment_package(
     };
     let response = compute_contracts::get_compute_environment_package_response_to_proto(&package)
         .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_checkpoint_family_policies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeCheckpointFamilyPoliciesQuery>,
+) -> Result<Json<proto_compute::ListComputeCheckpointFamilyPoliciesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_checkpoint_family_policies_response_to_proto(
+        store
+            .kernel
+            .list_compute_checkpoint_family_policies(query.status)
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_checkpoint_family_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(checkpoint_family): Path<String>,
+    Query(query): Query<ComputeRegistryVersionQuery>,
+) -> Result<Json<proto_compute::GetComputeCheckpointFamilyPolicyResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let checkpoint_family = normalize_required_field(
+        checkpoint_family.as_str(),
+        "compute_checkpoint_family_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(policy_record) = store
+        .kernel
+        .get_compute_checkpoint_family_policy(checkpoint_family.as_str(), query.version.as_deref())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_checkpoint_family_policy_not_found".to_string(),
+        });
+    };
+    let response =
+        compute_contracts::get_compute_checkpoint_family_policy_response_to_proto(&policy_record)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_validator_policies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeValidatorPoliciesQuery>,
+) -> Result<Json<proto_compute::ListComputeValidatorPoliciesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_validator_policies_response_to_proto(
+        store
+            .kernel
+            .list_compute_validator_policies(query.validator_pool_ref.as_deref(), query.status)
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_validator_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(policy_ref): Path<String>,
+    Query(query): Query<ComputeRegistryVersionQuery>,
+) -> Result<Json<proto_compute::GetComputeValidatorPolicyResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let policy_ref =
+        normalize_required_field(policy_ref.as_str(), "compute_validator_policy_ref_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(policy_record) = store
+        .kernel
+        .get_compute_validator_policy(policy_ref.as_str(), query.version.as_deref())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_validator_policy_not_found".to_string(),
+        });
+    };
+    let response =
+        compute_contracts::get_compute_validator_policy_response_to_proto(&policy_record)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_benchmark_packages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeBenchmarkPackagesQuery>,
+) -> Result<Json<proto_compute::ListComputeBenchmarkPackagesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_benchmark_packages_response_to_proto(
+        store
+            .kernel
+            .list_compute_benchmark_packages(
+                query.family.as_deref(),
+                query.environment_ref.as_deref(),
+                query.status,
+            )
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_benchmark_package(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(benchmark_package_ref): Path<String>,
+    Query(query): Query<ComputeRegistryVersionQuery>,
+) -> Result<Json<proto_compute::GetComputeBenchmarkPackageResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let benchmark_package_ref = normalize_required_field(
+        benchmark_package_ref.as_str(),
+        "compute_benchmark_package_ref_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(benchmark_package) = store
+        .kernel
+        .get_compute_benchmark_package(benchmark_package_ref.as_str(), query.version.as_deref())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_benchmark_package_not_found".to_string(),
+        });
+    };
+    let response =
+        compute_contracts::get_compute_benchmark_package_response_to_proto(&benchmark_package)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_training_policies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeTrainingPoliciesQuery>,
+) -> Result<Json<proto_compute::ListComputeTrainingPoliciesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_training_policies_response_to_proto(
+        store
+            .kernel
+            .list_compute_training_policies(query.environment_ref.as_deref(), query.status)
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_training_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(training_policy_ref): Path<String>,
+    Query(query): Query<ComputeRegistryVersionQuery>,
+) -> Result<Json<proto_compute::GetComputeTrainingPolicyResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let training_policy_ref = normalize_required_field(
+        training_policy_ref.as_str(),
+        "compute_training_policy_ref_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(training_policy) = store
+        .kernel
+        .get_compute_training_policy(training_policy_ref.as_str(), query.version.as_deref())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_training_policy_not_found".to_string(),
+        });
+    };
+    let response =
+        compute_contracts::get_compute_training_policy_response_to_proto(&training_policy)
+            .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -2776,6 +3089,148 @@ async fn register_kernel_compute_environment_package(
     Ok(Json(response))
 }
 
+async fn register_kernel_compute_checkpoint_family_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::RegisterComputeCheckpointFamilyPolicyRequest>,
+) -> Result<Json<proto_compute::RegisterComputeCheckpointFamilyPolicyResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request =
+        compute_contracts::register_compute_checkpoint_family_policy_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .register_compute_checkpoint_family_policy(
+                &kernel_mutation_context(&session, now),
+                request,
+            )
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.checkpoint_policy.registered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::register_compute_checkpoint_family_policy_response_to_proto(
+        &result.response,
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn register_kernel_compute_validator_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::RegisterComputeValidatorPolicyRequest>,
+) -> Result<Json<proto_compute::RegisterComputeValidatorPolicyResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::register_compute_validator_policy_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .register_compute_validator_policy(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.validator_policy.registered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::register_compute_validator_policy_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn register_kernel_compute_benchmark_package(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::RegisterComputeBenchmarkPackageRequest>,
+) -> Result<Json<proto_compute::RegisterComputeBenchmarkPackageResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request =
+        compute_contracts::register_compute_benchmark_package_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .register_compute_benchmark_package(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.benchmark_package.registered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::register_compute_benchmark_package_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn register_kernel_compute_training_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::RegisterComputeTrainingPolicyRequest>,
+) -> Result<Json<proto_compute::RegisterComputeTrainingPolicyResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::register_compute_training_policy_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .register_compute_training_policy(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.training_policy.registered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::register_compute_training_policy_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
 async fn create_kernel_compute_evaluation_run(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2897,6 +3352,220 @@ async fn finalize_kernel_compute_evaluation_run(
     let response =
         compute_contracts::finalize_compute_evaluation_run_response_to_proto(&result.response)
             .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_training_runs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeTrainingRunsQuery>,
+) -> Result<Json<proto_compute::ListComputeTrainingRunsResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_training_runs_response_to_proto(
+        store
+            .kernel
+            .list_compute_training_runs(
+                query.training_policy_ref.as_deref(),
+                query.environment_ref.as_deref(),
+                query.status,
+            )
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_training_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(training_run_id): Path<String>,
+) -> Result<Json<proto_compute::GetComputeTrainingRunResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let training_run_id =
+        normalize_required_field(training_run_id.as_str(), "compute_training_run_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(training_run) = store
+        .kernel
+        .get_compute_training_run(training_run_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_training_run_not_found".to_string(),
+        });
+    };
+    let response = compute_contracts::get_compute_training_run_response_to_proto(&training_run)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn create_kernel_compute_training_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::CreateComputeTrainingRunRequest>,
+) -> Result<Json<proto_compute::CreateComputeTrainingRunResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::create_compute_training_run_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_compute_training_run(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.training_run.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::create_compute_training_run_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn finalize_kernel_compute_training_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(training_run_id): Path<String>,
+    Json(mut request): Json<proto_compute::FinalizeComputeTrainingRunRequest>,
+) -> Result<Json<proto_compute::FinalizeComputeTrainingRunResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let training_run_id =
+        normalize_required_field(training_run_id.as_str(), "compute_training_run_id_missing")?;
+    if !request.training_run_id.trim().is_empty() && request.training_run_id != training_run_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_compute_training_run_id_mismatch".to_string(),
+        });
+    }
+    request.training_run_id = training_run_id;
+    let request = compute_contracts::finalize_compute_training_run_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .finalize_compute_training_run(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.training_run.finalized",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::finalize_compute_training_run_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_accepted_outcomes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeAcceptedOutcomesQuery>,
+) -> Result<Json<proto_compute::ListComputeAcceptedOutcomesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_accepted_outcomes_response_to_proto(
+        store
+            .kernel
+            .list_compute_accepted_outcomes(query.outcome_kind, query.environment_ref.as_deref())
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_accepted_outcome(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(outcome_id): Path<String>,
+) -> Result<Json<proto_compute::GetComputeAcceptedOutcomeResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let outcome_id =
+        normalize_required_field(outcome_id.as_str(), "compute_accepted_outcome_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(outcome) = store
+        .kernel
+        .get_compute_accepted_outcome(outcome_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_accepted_outcome_not_found".to_string(),
+        });
+    };
+    let response = compute_contracts::get_compute_accepted_outcome_response_to_proto(&outcome)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn accept_kernel_compute_outcome(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::AcceptComputeOutcomeRequest>,
+) -> Result<Json<proto_compute::AcceptComputeOutcomeResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::accept_compute_outcome_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .accept_compute_outcome(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.outcome.accepted",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::accept_compute_outcome_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -5091,45 +5760,54 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use openagents_kernel_core::authority::{
-        AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-        AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
-        AppendComputeSyntheticDataSamplesRequest, BindCoverageRequest, BindCoverageResponse,
-        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
-        CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
-        CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-        CreateCapacityLotRequest, CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
-        CreateComputeSyntheticDataJobRequest, CreateContractRequest, CreateContractResponse,
-        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        AcceptAccessGrantRequest, AcceptAccessGrantResponse, AcceptComputeOutcomeRequest,
+        AdjustReservePartitionRequest, AdjustReservePartitionResponse,
+        AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
+        BindCoverageRequest, BindCoverageResponse, CashSettleCapacityInstrumentRequest,
+        CloseCapacityInstrumentRequest, CloseStructuredCapacityInstrumentRequest,
+        CorrectComputeIndexRequest, CreateAccessGrantRequest, CreateAccessGrantResponse,
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
+        CreateComputeSyntheticDataJobRequest, CreateComputeTrainingRunRequest,
+        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
         CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
         CreateStructuredCapacityInstrumentRequest, CreateWorkUnitRequest, CreateWorkUnitResponse,
         ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
         FinalizeComputeEvaluationRunRequest, FinalizeComputeSyntheticDataGenerationRequest,
-        FinalizeVerdictRequest, FinalizeVerdictResponse, HttpKernelAuthorityClient,
-        IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
-        IssueLiquidityEnvelopeResponse, KernelAuthority, PlaceCoverageOfferRequest,
-        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
-        PublishRiskSignalResponse, RecordComputeSyntheticDataVerificationRequest,
-        RecordDeliveryProofRequest, RegisterComputeEnvironmentPackageRequest,
-        RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
-        RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
-        RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
-        SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+        FinalizeComputeTrainingRunRequest, FinalizeVerdictRequest, FinalizeVerdictResponse,
+        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, KernelAuthority,
+        PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishComputeIndexRequest,
+        PublishRiskSignalRequest, PublishRiskSignalResponse,
+        RecordComputeSyntheticDataVerificationRequest, RecordDeliveryProofRequest,
+        RegisterComputeBenchmarkPackageRequest, RegisterComputeCheckpointFamilyPolicyRequest,
+        RegisterComputeEnvironmentPackageRequest, RegisterComputeTrainingPolicyRequest,
+        RegisterComputeValidatorPolicyRequest, RegisterDataAssetRequest, RegisterDataAssetResponse,
+        RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
+        ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+        SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
         CapacityInstrumentClosureReason, CapacityInstrumentKind, CapacityInstrumentStatus,
         CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState,
-        ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeEnvironmentArtifactExpectation,
+        ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeBackendFamily,
+        ComputeBenchmarkPackage, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
+        ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
         ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
         ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
         ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
         ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
         ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
         ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode,
-        ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
-        ComputeSyntheticDataSampleStatus, DeliveryProof, DeliveryProofStatus,
-        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        ComputeProductStatus, ComputeProofPosture, ComputeRegistryStatus,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeSyntheticDataJob,
+        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+        ComputeSyntheticDataSampleStatus, ComputeTrainingPolicy, ComputeTrainingRun,
+        ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorPolicy, DeliveryProof,
+        DeliveryProofStatus, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::compute_benchmarks::{
@@ -5533,6 +6211,124 @@ mod tests {
         }
     }
 
+    fn compute_checkpoint_family_policy_request(
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RegisterComputeCheckpointFamilyPolicyRequest {
+        RegisterComputeCheckpointFamilyPolicyRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            policy_record: ComputeCheckpointFamilyPolicy {
+                checkpoint_family: "decoder".to_string(),
+                version: "2026.03.14".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                description: Some("Decoder checkpoint policy".to_string()),
+                source_family: Some("sft".to_string()),
+                default_recovery_posture: Some("warm-resume".to_string()),
+                allowed_environment_refs: vec!["env.openagents.math.basic".to_string()],
+                validator_policy_ref: Some("policy://validator/training".to_string()),
+                retention_policy_ref: Some("policy://retention/checkpoints".to_string()),
+                metadata: json!({"tier": "reference"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_validator_policy_request(
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RegisterComputeValidatorPolicyRequest {
+        RegisterComputeValidatorPolicyRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            policy_record: ComputeValidatorPolicy {
+                policy_ref: "policy://validator/training".to_string(),
+                version: "2026.03.14".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                validator_pool_ref: "validator-pool.training".to_string(),
+                minimum_validator_count: Some(2),
+                challenge_window_ms: Some(60_000),
+                required_proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                metadata: json!({"repeat_runs": 2}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_benchmark_package_request(
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RegisterComputeBenchmarkPackageRequest {
+        RegisterComputeBenchmarkPackageRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            benchmark_package: ComputeBenchmarkPackage {
+                benchmark_package_ref: "benchmark://mmlu/reference".to_string(),
+                version: "2026.03.14".to_string(),
+                family: "mmlu".to_string(),
+                display_name: "Reference MMLU".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: None,
+                benchmark_suite_ref: Some("benchmark://mmlu/pro".to_string()),
+                adapter_kind: Some("mmlu_multiple_choice_v1".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                pass_threshold_bps: Some(9_000),
+                required_metric_ids: vec!["accuracy".to_string()],
+                artifact_refs: vec!["artifact://benchmarks/mmlu/manifest".to_string()],
+                metadata: json!({"repeat_runs": 2}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_training_policy_request(
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RegisterComputeTrainingPolicyRequest {
+        RegisterComputeTrainingPolicyRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            training_policy: ComputeTrainingPolicy {
+                training_policy_ref: "policy://training/math/basic".to_string(),
+                version: "2026.03.14".to_string(),
+                owner_id: "openagents".to_string(),
+                created_at_ms,
+                updated_at_ms: created_at_ms + 100,
+                status: ComputeRegistryStatus::Active,
+                environment_refs: vec!["env.openagents.math.basic".to_string()],
+                checkpoint_family: "decoder".to_string(),
+                validator_policy_ref: "policy://validator/training".to_string(),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                stage_policy_refs: vec![
+                    "policy://training/math/basic/general_sft".to_string(),
+                    "policy://training/math/basic/agentic_sft".to_string(),
+                    "policy://training/math/basic/rl".to_string(),
+                ],
+                metadata: json!({"curriculum_policy_ref": "policy://curriculum/math/basic"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
     fn compute_evaluation_run_request(
         eval_run_id: &str,
         delivery_proof_id: &str,
@@ -5650,6 +6446,163 @@ mod tests {
                 metadata: json!({"schema": "v1"}),
             }],
             metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn accept_compute_evaluation_outcome_request(
+        eval_run_id: &str,
+        idempotency_key: &str,
+        accepted_at_ms: i64,
+    ) -> AcceptComputeOutcomeRequest {
+        AcceptComputeOutcomeRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            outcome: ComputeAcceptedOutcome {
+                outcome_id: "accepted.evaluation.client".to_string(),
+                outcome_kind: ComputeAcceptedOutcomeKind::EvaluationRun,
+                source_run_id: eval_run_id.to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: Some("2026.03.13".to_string()),
+                    dataset_ref: Some("dataset://math/basic".to_string()),
+                    rubric_ref: Some("rubric://math/basic".to_string()),
+                    evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                },
+                checkpoint_binding: None,
+                validator_policy_ref: Some("policy://validator/training".to_string()),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                accepted_at_ms,
+                evaluation_summary: None,
+                training_summary: None,
+                metadata: json!({"accepted_by": "client", "review_lane": "evaluation"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_training_run_request(
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateComputeTrainingRunRequest {
+        CreateComputeTrainingRunRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            training_run: ComputeTrainingRun {
+                training_run_id: "train.math.basic.client".to_string(),
+                training_policy_ref: "policy://training/math/basic".to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: None,
+                    dataset_ref: None,
+                    rubric_ref: None,
+                    evaluator_policy_ref: None,
+                },
+                checkpoint_binding: ComputeCheckpointBinding {
+                    checkpoint_family: "decoder".to_string(),
+                    latest_checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+                    recovery_posture: Some("warm-resume".to_string()),
+                },
+                validator_policy_ref: "policy://validator/training".to_string(),
+                benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+                product_id: Some("psionic.training.gradient.elastic".to_string()),
+                capacity_lot_id: Some("lot.compute.client".to_string()),
+                instrument_id: Some("instrument.compute.client".to_string()),
+                delivery_proof_id: Some("delivery.compute.client".to_string()),
+                model_ref: Some("model://gpt-oss-20b".to_string()),
+                source_ref: Some("artifact://training/math-basic/input".to_string()),
+                rollout_verification_eval_run_ids: vec!["eval.compute.client".to_string()],
+                created_at_ms,
+                started_at_ms: None,
+                finalized_at_ms: None,
+                expected_step_count: Some(64),
+                completed_step_count: None,
+                status: ComputeTrainingRunStatus::Queued,
+                final_checkpoint_ref: None,
+                promotion_checkpoint_ref: None,
+                summary: None,
+                metadata: json!({"stability_verdict": "continue"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn finalize_compute_training_run_request(
+        idempotency_key: &str,
+        finalized_at_ms: i64,
+    ) -> FinalizeComputeTrainingRunRequest {
+        FinalizeComputeTrainingRunRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            training_run_id: "train.math.basic.client".to_string(),
+            status: ComputeTrainingRunStatus::Accepted,
+            finalized_at_ms,
+            final_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.client/final".to_string(),
+            ),
+            promotion_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+            ),
+            summary: Some(ComputeTrainingSummary {
+                completed_step_count: Some(64),
+                processed_token_count: Some(128_000),
+                average_loss: Some(0.42),
+                best_eval_score_bps: Some(9_350),
+                accepted_checkpoint_ref: Some(
+                    "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+                ),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.935,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"benchmark_package_ref": "benchmark://mmlu/reference"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "training_manifest".to_string(),
+                    artifact_ref: "artifact://training/math-basic/manifest".to_string(),
+                    digest: Some("sha256:train-manifest".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn accept_compute_training_outcome_request(
+        idempotency_key: &str,
+        accepted_at_ms: i64,
+    ) -> AcceptComputeOutcomeRequest {
+        AcceptComputeOutcomeRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            outcome: ComputeAcceptedOutcome {
+                outcome_id: "accepted.training.client".to_string(),
+                outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                source_run_id: "train.math.basic.client".to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: Some("2026.03.13".to_string()),
+                    dataset_ref: Some("dataset://math/basic".to_string()),
+                    rubric_ref: Some("rubric://math/basic".to_string()),
+                    evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+                },
+                checkpoint_binding: None,
+                validator_policy_ref: None,
+                benchmark_package_refs: Vec::new(),
+                accepted_at_ms,
+                evaluation_summary: None,
+                training_summary: None,
+                metadata: json!({"accepted_by": "client"}),
+            },
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -9631,6 +10584,70 @@ mod tests {
             "env.openagents.math.basic"
         );
 
+        let checkpoint_policy = client
+            .register_compute_checkpoint_family_policy(compute_checkpoint_family_policy_request(
+                "idemp.compute.client.checkpoint_policy",
+                created_at_ms + 510,
+            ))
+            .await?;
+        assert_eq!(checkpoint_policy.policy_record.checkpoint_family, "decoder");
+        assert_eq!(
+            checkpoint_policy.receipt.receipt_type,
+            "kernel.compute.checkpoint_policy.register.v1"
+        );
+
+        let validator_policy = client
+            .register_compute_validator_policy(compute_validator_policy_request(
+                "idemp.compute.client.validator_policy",
+                created_at_ms + 520,
+            ))
+            .await?;
+        assert_eq!(
+            validator_policy.policy_record.policy_ref,
+            "policy://validator/training"
+        );
+        assert_eq!(
+            validator_policy.receipt.receipt_type,
+            "kernel.compute.validator_policy.register.v1"
+        );
+
+        let benchmark_package = client
+            .register_compute_benchmark_package(compute_benchmark_package_request(
+                "idemp.compute.client.benchmark_package",
+                created_at_ms + 530,
+            ))
+            .await?;
+        assert_eq!(
+            benchmark_package.benchmark_package.benchmark_package_ref,
+            "benchmark://mmlu/reference"
+        );
+        assert_eq!(
+            benchmark_package
+                .benchmark_package
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+        assert_eq!(
+            benchmark_package.receipt.receipt_type,
+            "kernel.compute.benchmark_package.register.v1"
+        );
+
+        let training_policy = client
+            .register_compute_training_policy(compute_training_policy_request(
+                "idemp.compute.client.training_policy",
+                created_at_ms + 540,
+            ))
+            .await?;
+        assert_eq!(
+            training_policy.training_policy.training_policy_ref,
+            "policy://training/math/basic"
+        );
+        assert_eq!(
+            training_policy.receipt.receipt_type,
+            "kernel.compute.training_policy.register.v1"
+        );
+
         let mut product_request = compute_product_request(
             "ollama.text_generation",
             "idemp.compute.client.product",
@@ -9699,16 +10716,32 @@ mod tests {
             Some("2026.03.13")
         );
 
-        let delivery = client
-            .record_delivery_proof(delivery_proof_request(
-                "delivery.compute.client",
-                "ollama.text_generation",
-                "lot.compute.client",
-                "instrument.compute.client",
-                "idemp.compute.client.delivery",
-                created_at_ms + 3_000,
-            ))
-            .await?;
+        let mut delivery_request = delivery_proof_request(
+            "delivery.compute.client",
+            "ollama.text_generation",
+            "lot.compute.client",
+            "instrument.compute.client",
+            "idemp.compute.client.delivery",
+            created_at_ms + 3_000,
+        );
+        delivery_request
+            .delivery_proof
+            .observed_capability_envelope
+            .as_mut()
+            .expect("observed capability envelope")
+            .proof_posture = Some(ComputeProofPosture::ChallengeEligible);
+        delivery_request.delivery_proof.verification_evidence =
+            Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:delivery.compute.client".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                environment_version: None,
+                eval_run_ref: None,
+            });
+        let delivery = client.record_delivery_proof(delivery_request).await?;
         assert_eq!(
             delivery.delivery_proof.delivery_proof_id,
             "delivery.compute.client"
@@ -9780,12 +10813,40 @@ mod tests {
                 .map(|summary| summary.pass_rate_bps),
             Some(Some(5_000))
         );
+        assert_eq!(
+            finalized.receipt.receipt_type,
+            "kernel.compute.eval_run.finalize.v1"
+        );
         let fetched_eval_run = client.get_compute_evaluation_run("eval.run.client").await?;
         assert_eq!(fetched_eval_run.eval_run_id, "eval.run.client");
         let eval_samples = client
             .list_compute_evaluation_samples("eval.run.client")
             .await?;
         assert_eq!(eval_samples.len(), 2);
+
+        let accepted_eval_outcome = client
+            .accept_compute_outcome(accept_compute_evaluation_outcome_request(
+                "eval.run.client",
+                "idemp.compute.client.eval_run.accept",
+                created_at_ms + 3_425,
+            ))
+            .await?;
+        assert_eq!(
+            accepted_eval_outcome.outcome.outcome_kind,
+            ComputeAcceptedOutcomeKind::EvaluationRun
+        );
+        assert_eq!(
+            accepted_eval_outcome.receipt.receipt_type,
+            "kernel.compute.outcome.accept.v1"
+        );
+        assert_eq!(
+            accepted_eval_outcome
+                .outcome
+                .evaluation_summary
+                .as_ref()
+                .and_then(|summary| summary.pass_rate_bps),
+            Some(5_000)
+        );
 
         let delivery_with_eval = client.get_delivery_proof("delivery.compute.client").await?;
         assert_eq!(
@@ -9890,6 +10951,183 @@ mod tests {
             Some("sample.alpha")
         );
 
+        let mut training_run_request = compute_training_run_request(
+            "idemp.compute.client.training_run",
+            created_at_ms + 3_650,
+        );
+        training_run_request
+            .training_run
+            .rollout_verification_eval_run_ids = vec!["eval.run.client".to_string()];
+        let training_run = client
+            .create_compute_training_run(training_run_request)
+            .await?;
+        assert_eq!(
+            training_run.training_run.training_run_id,
+            "train.math.basic.client"
+        );
+        assert_eq!(
+            training_run
+                .training_run
+                .environment_binding
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+        assert_eq!(
+            training_run.receipt.receipt_type,
+            "kernel.compute.training_run.create.v1"
+        );
+
+        let finalized_training_run = client
+            .finalize_compute_training_run(finalize_compute_training_run_request(
+                "idemp.compute.client.training_run.finalize",
+                created_at_ms + 3_700,
+            ))
+            .await?;
+        assert_eq!(
+            finalized_training_run.training_run.status,
+            ComputeTrainingRunStatus::Accepted
+        );
+        assert_eq!(
+            finalized_training_run
+                .training_run
+                .final_checkpoint_ref
+                .as_deref(),
+            Some("checkpoint://decoder/train.math.basic.client/final")
+        );
+        assert_eq!(
+            finalized_training_run.receipt.receipt_type,
+            "kernel.compute.training_run.finalize.v1"
+        );
+
+        let accepted_training_outcome = client
+            .accept_compute_outcome(accept_compute_training_outcome_request(
+                "idemp.compute.client.training_run.accept",
+                created_at_ms + 3_750,
+            ))
+            .await?;
+        assert_eq!(
+            accepted_training_outcome.outcome.outcome_kind,
+            ComputeAcceptedOutcomeKind::TrainingRun
+        );
+        assert_eq!(
+            accepted_training_outcome
+                .outcome
+                .validator_policy_ref
+                .as_deref(),
+            Some("policy://validator/training")
+        );
+        assert_eq!(
+            accepted_training_outcome
+                .outcome
+                .training_summary
+                .as_ref()
+                .and_then(|summary| summary.best_eval_score_bps),
+            Some(9_350)
+        );
+
+        let listed_checkpoint_policies = client
+            .list_compute_checkpoint_family_policies(Some(ComputeRegistryStatus::Active))
+            .await?;
+        assert_eq!(listed_checkpoint_policies.len(), 1);
+        let fetched_checkpoint_policy = client
+            .get_compute_checkpoint_family_policy("decoder", Some("2026.03.14"))
+            .await?;
+        assert_eq!(
+            fetched_checkpoint_policy
+                .default_recovery_posture
+                .as_deref(),
+            Some("warm-resume")
+        );
+
+        let listed_validator_policies = client
+            .list_compute_validator_policies(
+                Some("validator-pool.training"),
+                Some(ComputeRegistryStatus::Active),
+            )
+            .await?;
+        assert_eq!(listed_validator_policies.len(), 1);
+        let fetched_validator_policy = client
+            .get_compute_validator_policy("policy://validator/training", Some("2026.03.14"))
+            .await?;
+        assert_eq!(
+            fetched_validator_policy.required_proof_posture,
+            Some(ComputeProofPosture::ChallengeEligible)
+        );
+
+        let listed_benchmark_packages = client
+            .list_compute_benchmark_packages(
+                Some("mmlu"),
+                Some("env.openagents.math.basic"),
+                Some(ComputeRegistryStatus::Active),
+            )
+            .await?;
+        assert_eq!(listed_benchmark_packages.len(), 1);
+        let fetched_benchmark_package = client
+            .get_compute_benchmark_package("benchmark://mmlu/reference", Some("2026.03.14"))
+            .await?;
+        assert_eq!(
+            fetched_benchmark_package.adapter_kind.as_deref(),
+            Some("mmlu_multiple_choice_v1")
+        );
+
+        let listed_training_policies = client
+            .list_compute_training_policies(
+                Some("env.openagents.math.basic"),
+                Some(ComputeRegistryStatus::Active),
+            )
+            .await?;
+        assert_eq!(listed_training_policies.len(), 1);
+        let fetched_training_policy = client
+            .get_compute_training_policy("policy://training/math/basic", Some("2026.03.14"))
+            .await?;
+        assert_eq!(fetched_training_policy.checkpoint_family, "decoder");
+
+        let listed_training_runs = client
+            .list_compute_training_runs(
+                Some("policy://training/math/basic"),
+                Some("env.openagents.math.basic"),
+                Some(ComputeTrainingRunStatus::Accepted),
+            )
+            .await?;
+        assert_eq!(listed_training_runs.len(), 1);
+        let fetched_training_run = client
+            .get_compute_training_run("train.math.basic.client")
+            .await?;
+        assert_eq!(
+            fetched_training_run
+                .summary
+                .as_ref()
+                .and_then(|summary| summary.completed_step_count),
+            Some(64)
+        );
+
+        let listed_eval_outcomes = client
+            .list_compute_accepted_outcomes(
+                Some(ComputeAcceptedOutcomeKind::EvaluationRun),
+                Some("env.openagents.math.basic"),
+            )
+            .await?;
+        assert_eq!(listed_eval_outcomes.len(), 1);
+        let listed_training_outcomes = client
+            .list_compute_accepted_outcomes(
+                Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                Some("env.openagents.math.basic"),
+            )
+            .await?;
+        assert_eq!(listed_training_outcomes.len(), 1);
+        let fetched_eval_outcome = client
+            .get_compute_accepted_outcome("accepted.evaluation.client")
+            .await?;
+        assert_eq!(fetched_eval_outcome.source_run_id, "eval.run.client");
+        let fetched_training_outcome = client
+            .get_compute_accepted_outcome("accepted.training.client")
+            .await?;
+        assert_eq!(
+            fetched_training_outcome.source_run_id,
+            "train.math.basic.client"
+        );
+
         let index = client
             .publish_compute_index(compute_index_request(
                 "index.compute.client",
@@ -9942,15 +11180,33 @@ mod tests {
             "instrument.compute.client.beta"
         );
 
+        let mut second_delivery_request = delivery_proof_request(
+            "delivery.compute.client.beta",
+            "ollama.text_generation",
+            "lot.compute.client.beta",
+            "instrument.compute.client.beta",
+            "idemp.compute.client.delivery.beta",
+            created_at_ms + 3_500,
+        );
+        second_delivery_request
+            .delivery_proof
+            .observed_capability_envelope
+            .as_mut()
+            .expect("observed capability envelope")
+            .proof_posture = Some(ComputeProofPosture::ChallengeEligible);
+        second_delivery_request.delivery_proof.verification_evidence =
+            Some(DeliveryVerificationEvidence {
+                proof_bundle_ref: Some("proof_bundle:delivery.compute.client.beta".to_string()),
+                activation_fingerprint_ref: None,
+                validator_pool_ref: Some("validators.alpha".to_string()),
+                validator_run_ref: None,
+                challenge_result_refs: Vec::new(),
+                environment_ref: None,
+                environment_version: None,
+                eval_run_ref: None,
+            });
         let second_delivery = client
-            .record_delivery_proof(delivery_proof_request(
-                "delivery.compute.client.beta",
-                "ollama.text_generation",
-                "lot.compute.client.beta",
-                "instrument.compute.client.beta",
-                "idemp.compute.client.delivery.beta",
-                created_at_ms + 3_500,
-            ))
+            .record_delivery_proof(second_delivery_request)
             .await?;
         assert_eq!(
             second_delivery.delivery_proof.delivery_proof_id,

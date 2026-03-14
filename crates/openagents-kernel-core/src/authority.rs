@@ -1,12 +1,14 @@
 use crate::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
-    CapacityLotStatus, CapacityNonDeliveryReason, ComputeEnvironmentPackage,
-    ComputeEnvironmentPackageStatus, ComputeEvaluationRun, ComputeEvaluationRunStatus,
-    ComputeEvaluationSample, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
-    ComputeProductStatus, ComputeSettlementFailureReason, ComputeSyntheticDataJob,
-    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample, ComputeValidatorChallengeSnapshot,
-    ComputeValidatorChallengeStatus, DeliveryProof, DeliveryProofStatus,
-    StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
+    CapacityLotStatus, CapacityNonDeliveryReason, ComputeAcceptedOutcome, ComputeBenchmarkPackage,
+    ComputeCheckpointFamilyPolicy, ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+    ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeIndex,
+    ComputeIndexCorrectionReason, ComputeProduct, ComputeProductStatus, ComputeRegistryStatus,
+    ComputeSettlementFailureReason, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
+    ComputeSyntheticDataSample, ComputeTrainingPolicy, ComputeTrainingRun,
+    ComputeTrainingRunStatus, ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
+    ComputeValidatorPolicy, DeliveryProof, DeliveryProofStatus, StructuredCapacityInstrument,
+    StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -40,6 +42,22 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: RegisterComputeEnvironmentPackageRequest,
     ) -> Result<RegisterComputeEnvironmentPackageResponse>;
+    async fn register_compute_checkpoint_family_policy(
+        &self,
+        req: RegisterComputeCheckpointFamilyPolicyRequest,
+    ) -> Result<RegisterComputeCheckpointFamilyPolicyResponse>;
+    async fn register_compute_validator_policy(
+        &self,
+        req: RegisterComputeValidatorPolicyRequest,
+    ) -> Result<RegisterComputeValidatorPolicyResponse>;
+    async fn register_compute_benchmark_package(
+        &self,
+        req: RegisterComputeBenchmarkPackageRequest,
+    ) -> Result<RegisterComputeBenchmarkPackageResponse>;
+    async fn register_compute_training_policy(
+        &self,
+        req: RegisterComputeTrainingPolicyRequest,
+    ) -> Result<RegisterComputeTrainingPolicyResponse>;
     async fn create_compute_evaluation_run(
         &self,
         req: CreateComputeEvaluationRunRequest,
@@ -52,6 +70,18 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: FinalizeComputeEvaluationRunRequest,
     ) -> Result<FinalizeComputeEvaluationRunResponse>;
+    async fn create_compute_training_run(
+        &self,
+        req: CreateComputeTrainingRunRequest,
+    ) -> Result<CreateComputeTrainingRunResponse>;
+    async fn finalize_compute_training_run(
+        &self,
+        req: FinalizeComputeTrainingRunRequest,
+    ) -> Result<FinalizeComputeTrainingRunResponse>;
+    async fn accept_compute_outcome(
+        &self,
+        req: AcceptComputeOutcomeRequest,
+    ) -> Result<AcceptComputeOutcomeResponse>;
     async fn create_compute_synthetic_data_job(
         &self,
         req: CreateComputeSyntheticDataJobRequest,
@@ -119,6 +149,46 @@ pub trait KernelAuthority: Send + Sync {
         environment_ref: &str,
         version: Option<&str>,
     ) -> Result<ComputeEnvironmentPackage>;
+    async fn list_compute_checkpoint_family_policies(
+        &self,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeCheckpointFamilyPolicy>>;
+    async fn get_compute_checkpoint_family_policy(
+        &self,
+        checkpoint_family: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeCheckpointFamilyPolicy>;
+    async fn list_compute_validator_policies(
+        &self,
+        validator_pool_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeValidatorPolicy>>;
+    async fn get_compute_validator_policy(
+        &self,
+        policy_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeValidatorPolicy>;
+    async fn list_compute_benchmark_packages(
+        &self,
+        family: Option<&str>,
+        environment_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeBenchmarkPackage>>;
+    async fn get_compute_benchmark_package(
+        &self,
+        benchmark_package_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeBenchmarkPackage>;
+    async fn list_compute_training_policies(
+        &self,
+        environment_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeTrainingPolicy>>;
+    async fn get_compute_training_policy(
+        &self,
+        training_policy_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeTrainingPolicy>;
     async fn list_compute_evaluation_runs(
         &self,
         environment_ref: Option<&str>,
@@ -130,6 +200,22 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         eval_run_id: &str,
     ) -> Result<Vec<ComputeEvaluationSample>>;
+    async fn list_compute_training_runs(
+        &self,
+        training_policy_ref: Option<&str>,
+        environment_ref: Option<&str>,
+        status: Option<ComputeTrainingRunStatus>,
+    ) -> Result<Vec<ComputeTrainingRun>>;
+    async fn get_compute_training_run(&self, training_run_id: &str) -> Result<ComputeTrainingRun>;
+    async fn list_compute_accepted_outcomes(
+        &self,
+        outcome_kind: Option<crate::compute::ComputeAcceptedOutcomeKind>,
+        environment_ref: Option<&str>,
+    ) -> Result<Vec<ComputeAcceptedOutcome>>;
+    async fn get_compute_accepted_outcome(
+        &self,
+        outcome_id: &str,
+    ) -> Result<ComputeAcceptedOutcome>;
     async fn list_compute_synthetic_data_jobs(
         &self,
         environment_ref: Option<&str>,
@@ -367,6 +453,78 @@ pub struct RegisterComputeEnvironmentPackageResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeCheckpointFamilyPolicyRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub policy_record: ComputeCheckpointFamilyPolicy,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeCheckpointFamilyPolicyResponse {
+    pub policy_record: ComputeCheckpointFamilyPolicy,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeValidatorPolicyRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub policy_record: ComputeValidatorPolicy,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeValidatorPolicyResponse {
+    pub policy_record: ComputeValidatorPolicy,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeBenchmarkPackageRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub benchmark_package: ComputeBenchmarkPackage,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeBenchmarkPackageResponse {
+    pub benchmark_package: ComputeBenchmarkPackage,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeTrainingPolicyRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub training_policy: ComputeTrainingPolicy,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RegisterComputeTrainingPolicyResponse {
+    pub training_policy: ComputeTrainingPolicy,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CreateComputeEvaluationRunRequest {
     pub idempotency_key: String,
     pub trace: TraceContext,
@@ -427,6 +585,70 @@ pub struct FinalizeComputeEvaluationRunRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FinalizeComputeEvaluationRunResponse {
     pub eval_run: ComputeEvaluationRun,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateComputeTrainingRunRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub training_run: ComputeTrainingRun,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateComputeTrainingRunResponse {
+    pub training_run: ComputeTrainingRun,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FinalizeComputeTrainingRunRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub training_run_id: String,
+    pub status: ComputeTrainingRunStatus,
+    pub finalized_at_ms: i64,
+    #[serde(default)]
+    pub final_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub promotion_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub summary: Option<crate::compute::ComputeTrainingSummary>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FinalizeComputeTrainingRunResponse {
+    pub training_run: ComputeTrainingRun,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AcceptComputeOutcomeRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub outcome: ComputeAcceptedOutcome,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AcceptComputeOutcomeResponse {
+    pub outcome: ComputeAcceptedOutcome,
     pub receipt: Receipt,
 }
 
@@ -1143,6 +1365,22 @@ fn join_query_pairs(path: &str, pairs: &[(&str, Option<String>)]) -> String {
     }
 }
 
+fn join_path_segments(path: &str, segments: &[&str]) -> String {
+    let mut url = Url::parse("https://openagents.invalid").expect("static base url");
+    {
+        let mut path_segments = url.path_segments_mut().expect("path segments");
+        for segment in path.trim_start_matches('/').split('/') {
+            if !segment.is_empty() {
+                path_segments.push(segment);
+            }
+        }
+        for segment in segments {
+            path_segments.push(segment);
+        }
+    }
+    url.path().to_string()
+}
+
 impl KernelAuthority for HttpKernelAuthorityClient {
     async fn create_work_unit(&self, req: CreateWorkUnitRequest) -> Result<CreateWorkUnitResponse> {
         self.post_json("/v1/kernel/work_units", &req).await
@@ -1192,6 +1430,51 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::register_compute_environment_package_response_from_proto(&response)
     }
 
+    async fn register_compute_checkpoint_family_policy(
+        &self,
+        req: RegisterComputeCheckpointFamilyPolicyRequest,
+    ) -> Result<RegisterComputeCheckpointFamilyPolicyResponse> {
+        let wire =
+            compute_contracts::register_compute_checkpoint_family_policy_request_to_proto(&req)?;
+        let response: proto_compute::RegisterComputeCheckpointFamilyPolicyResponse = self
+            .post_json("/v1/kernel/compute/checkpoints/policies", &wire)
+            .await?;
+        compute_contracts::register_compute_checkpoint_family_policy_response_from_proto(&response)
+    }
+
+    async fn register_compute_validator_policy(
+        &self,
+        req: RegisterComputeValidatorPolicyRequest,
+    ) -> Result<RegisterComputeValidatorPolicyResponse> {
+        let wire = compute_contracts::register_compute_validator_policy_request_to_proto(&req)?;
+        let response: proto_compute::RegisterComputeValidatorPolicyResponse = self
+            .post_json("/v1/kernel/compute/validators/policies", &wire)
+            .await?;
+        compute_contracts::register_compute_validator_policy_response_from_proto(&response)
+    }
+
+    async fn register_compute_benchmark_package(
+        &self,
+        req: RegisterComputeBenchmarkPackageRequest,
+    ) -> Result<RegisterComputeBenchmarkPackageResponse> {
+        let wire = compute_contracts::register_compute_benchmark_package_request_to_proto(&req)?;
+        let response: proto_compute::RegisterComputeBenchmarkPackageResponse = self
+            .post_json("/v1/kernel/compute/benchmarks/packages", &wire)
+            .await?;
+        compute_contracts::register_compute_benchmark_package_response_from_proto(&response)
+    }
+
+    async fn register_compute_training_policy(
+        &self,
+        req: RegisterComputeTrainingPolicyRequest,
+    ) -> Result<RegisterComputeTrainingPolicyResponse> {
+        let wire = compute_contracts::register_compute_training_policy_request_to_proto(&req)?;
+        let response: proto_compute::RegisterComputeTrainingPolicyResponse = self
+            .post_json("/v1/kernel/compute/training/policies", &wire)
+            .await?;
+        compute_contracts::register_compute_training_policy_response_from_proto(&response)
+    }
+
     async fn create_compute_evaluation_run(
         &self,
         req: CreateComputeEvaluationRunRequest,
@@ -1228,6 +1511,41 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::FinalizeComputeEvaluationRunResponse =
             self.post_json(path.as_str(), &wire).await?;
         compute_contracts::finalize_compute_evaluation_run_response_from_proto(&response)
+    }
+
+    async fn create_compute_training_run(
+        &self,
+        req: CreateComputeTrainingRunRequest,
+    ) -> Result<CreateComputeTrainingRunResponse> {
+        let wire = compute_contracts::create_compute_training_run_request_to_proto(&req)?;
+        let response: proto_compute::CreateComputeTrainingRunResponse = self
+            .post_json("/v1/kernel/compute/training/runs", &wire)
+            .await?;
+        compute_contracts::create_compute_training_run_response_from_proto(&response)
+    }
+
+    async fn finalize_compute_training_run(
+        &self,
+        req: FinalizeComputeTrainingRunRequest,
+    ) -> Result<FinalizeComputeTrainingRunResponse> {
+        let path = format!(
+            "/v1/kernel/compute/training/runs/{}/finalize",
+            req.training_run_id.trim()
+        );
+        let wire = compute_contracts::finalize_compute_training_run_request_to_proto(&req)?;
+        let response: proto_compute::FinalizeComputeTrainingRunResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::finalize_compute_training_run_response_from_proto(&response)
+    }
+
+    async fn accept_compute_outcome(
+        &self,
+        req: AcceptComputeOutcomeRequest,
+    ) -> Result<AcceptComputeOutcomeResponse> {
+        let wire = compute_contracts::accept_compute_outcome_request_to_proto(&req)?;
+        let response: proto_compute::AcceptComputeOutcomeResponse =
+            self.post_json("/v1/kernel/compute/outcomes", &wire).await?;
+        compute_contracts::accept_compute_outcome_response_from_proto(&response)
     }
 
     async fn create_compute_synthetic_data_job(
@@ -1448,6 +1766,143 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::get_compute_environment_package_response_from_proto(&response)
     }
 
+    async fn list_compute_checkpoint_family_policies(
+        &self,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeCheckpointFamilyPolicy>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/checkpoints/policies",
+            &[("status", status.map(|value| value.label().to_string()))],
+        );
+        let response: proto_compute::ListComputeCheckpointFamilyPoliciesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_checkpoint_family_policies_response_from_proto(&response)
+    }
+
+    async fn get_compute_checkpoint_family_policy(
+        &self,
+        checkpoint_family: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeCheckpointFamilyPolicy> {
+        let path = join_query_pairs(
+            join_path_segments(
+                "/v1/kernel/compute/checkpoints/policies",
+                &[checkpoint_family],
+            )
+            .as_str(),
+            &[("version", version.map(ToOwned::to_owned))],
+        );
+        let response: proto_compute::GetComputeCheckpointFamilyPolicyResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_checkpoint_family_policy_response_from_proto(&response)
+    }
+
+    async fn list_compute_validator_policies(
+        &self,
+        validator_pool_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeValidatorPolicy>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/validators/policies",
+            &[
+                (
+                    "validator_pool_ref",
+                    validator_pool_ref.map(ToOwned::to_owned),
+                ),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeValidatorPoliciesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_validator_policies_response_from_proto(&response)
+    }
+
+    async fn get_compute_validator_policy(
+        &self,
+        policy_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeValidatorPolicy> {
+        let path = join_query_pairs(
+            join_path_segments("/v1/kernel/compute/validators/policies", &[policy_ref]).as_str(),
+            &[("version", version.map(ToOwned::to_owned))],
+        );
+        let response: proto_compute::GetComputeValidatorPolicyResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_validator_policy_response_from_proto(&response)
+    }
+
+    async fn list_compute_benchmark_packages(
+        &self,
+        family: Option<&str>,
+        environment_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeBenchmarkPackage>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/benchmarks/packages",
+            &[
+                ("family", family.map(ToOwned::to_owned)),
+                ("environment_ref", environment_ref.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeBenchmarkPackagesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_benchmark_packages_response_from_proto(&response)
+    }
+
+    async fn get_compute_benchmark_package(
+        &self,
+        benchmark_package_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeBenchmarkPackage> {
+        let path = join_query_pairs(
+            join_path_segments(
+                "/v1/kernel/compute/benchmarks/packages",
+                &[benchmark_package_ref],
+            )
+            .as_str(),
+            &[("version", version.map(ToOwned::to_owned))],
+        );
+        let response: proto_compute::GetComputeBenchmarkPackageResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_benchmark_package_response_from_proto(&response)
+    }
+
+    async fn list_compute_training_policies(
+        &self,
+        environment_ref: Option<&str>,
+        status: Option<ComputeRegistryStatus>,
+    ) -> Result<Vec<ComputeTrainingPolicy>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/training/policies",
+            &[
+                ("environment_ref", environment_ref.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeTrainingPoliciesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_training_policies_response_from_proto(&response)
+    }
+
+    async fn get_compute_training_policy(
+        &self,
+        training_policy_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeTrainingPolicy> {
+        let path = join_query_pairs(
+            join_path_segments(
+                "/v1/kernel/compute/training/policies",
+                &[training_policy_ref],
+            )
+            .as_str(),
+            &[("version", version.map(ToOwned::to_owned))],
+        );
+        let response: proto_compute::GetComputeTrainingPolicyResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_training_policy_response_from_proto(&response)
+    }
+
     async fn list_compute_evaluation_runs(
         &self,
         environment_ref: Option<&str>,
@@ -1482,6 +1937,65 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::ListComputeEvaluationSamplesResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::list_compute_evaluation_samples_response_from_proto(&response)
+    }
+
+    async fn list_compute_training_runs(
+        &self,
+        training_policy_ref: Option<&str>,
+        environment_ref: Option<&str>,
+        status: Option<ComputeTrainingRunStatus>,
+    ) -> Result<Vec<ComputeTrainingRun>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/training/runs",
+            &[
+                (
+                    "training_policy_ref",
+                    training_policy_ref.map(ToOwned::to_owned),
+                ),
+                ("environment_ref", environment_ref.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeTrainingRunsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_training_runs_response_from_proto(&response)
+    }
+
+    async fn get_compute_training_run(&self, training_run_id: &str) -> Result<ComputeTrainingRun> {
+        let path = format!("/v1/kernel/compute/training/runs/{training_run_id}");
+        let response: proto_compute::GetComputeTrainingRunResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_training_run_response_from_proto(&response)
+    }
+
+    async fn list_compute_accepted_outcomes(
+        &self,
+        outcome_kind: Option<crate::compute::ComputeAcceptedOutcomeKind>,
+        environment_ref: Option<&str>,
+    ) -> Result<Vec<ComputeAcceptedOutcome>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/outcomes",
+            &[
+                (
+                    "outcome_kind",
+                    outcome_kind.map(|value| value.label().to_string()),
+                ),
+                ("environment_ref", environment_ref.map(ToOwned::to_owned)),
+            ],
+        );
+        let response: proto_compute::ListComputeAcceptedOutcomesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_accepted_outcomes_response_from_proto(&response)
+    }
+
+    async fn get_compute_accepted_outcome(
+        &self,
+        outcome_id: &str,
+    ) -> Result<ComputeAcceptedOutcome> {
+        let path = format!("/v1/kernel/compute/outcomes/{outcome_id}");
+        let response: proto_compute::GetComputeAcceptedOutcomeResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_accepted_outcome_response_from_proto(&response)
     }
 
     async fn list_compute_synthetic_data_jobs(

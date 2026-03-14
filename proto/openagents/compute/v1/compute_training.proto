@@ -1,0 +1,360 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+import "openagents/compute/v1/compute_products.proto";
+import "openagents/compute/v1/compute_evals.proto";
+
+enum ComputeRegistryStatus {
+  COMPUTE_REGISTRY_STATUS_UNSPECIFIED = 0;
+  COMPUTE_REGISTRY_STATUS_DRAFT = 1;
+  COMPUTE_REGISTRY_STATUS_ACTIVE = 2;
+  COMPUTE_REGISTRY_STATUS_DEPRECATED = 3;
+  COMPUTE_REGISTRY_STATUS_RETIRED = 4;
+}
+
+enum ComputeTrainingRunStatus {
+  COMPUTE_TRAINING_RUN_STATUS_UNSPECIFIED = 0;
+  COMPUTE_TRAINING_RUN_STATUS_QUEUED = 1;
+  COMPUTE_TRAINING_RUN_STATUS_PREPARING = 2;
+  COMPUTE_TRAINING_RUN_STATUS_RUNNING = 3;
+  COMPUTE_TRAINING_RUN_STATUS_FINALIZING = 4;
+  COMPUTE_TRAINING_RUN_STATUS_ACCEPTED = 5;
+  COMPUTE_TRAINING_RUN_STATUS_FAILED = 6;
+  COMPUTE_TRAINING_RUN_STATUS_CANCELLED = 7;
+}
+
+enum ComputeAcceptedOutcomeKind {
+  COMPUTE_ACCEPTED_OUTCOME_KIND_UNSPECIFIED = 0;
+  COMPUTE_ACCEPTED_OUTCOME_KIND_EVALUATION_RUN = 1;
+  COMPUTE_ACCEPTED_OUTCOME_KIND_TRAINING_RUN = 2;
+}
+
+message ComputeCheckpointFamilyPolicy {
+  string checkpoint_family = 1;
+  string version = 2;
+  string owner_id = 3;
+  int64 created_at_ms = 4;
+  int64 updated_at_ms = 5;
+  ComputeRegistryStatus status = 6;
+  optional string description = 7;
+  optional string source_family = 8;
+  optional string default_recovery_posture = 9;
+  repeated string allowed_environment_refs = 10;
+  optional string validator_policy_ref = 11;
+  optional string retention_policy_ref = 12;
+  string metadata_json = 13;
+}
+
+message ComputeValidatorPolicy {
+  string policy_ref = 1;
+  string version = 2;
+  string owner_id = 3;
+  int64 created_at_ms = 4;
+  int64 updated_at_ms = 5;
+  ComputeRegistryStatus status = 6;
+  string validator_pool_ref = 7;
+  optional uint32 minimum_validator_count = 8;
+  optional uint64 challenge_window_ms = 9;
+  ComputeProofPosture required_proof_posture = 10;
+  repeated string benchmark_package_refs = 11;
+  string metadata_json = 12;
+}
+
+message ComputeBenchmarkPackage {
+  string benchmark_package_ref = 1;
+  string version = 2;
+  string family = 3;
+  string display_name = 4;
+  string owner_id = 5;
+  int64 created_at_ms = 6;
+  int64 updated_at_ms = 7;
+  ComputeRegistryStatus status = 8;
+  string environment_ref = 9;
+  optional string environment_version = 10;
+  optional string benchmark_suite_ref = 11;
+  optional string adapter_kind = 12;
+  optional string evaluator_policy_ref = 13;
+  optional uint32 pass_threshold_bps = 14;
+  repeated string required_metric_ids = 15;
+  repeated string artifact_refs = 16;
+  string metadata_json = 17;
+}
+
+message ComputeTrainingPolicy {
+  string training_policy_ref = 1;
+  string version = 2;
+  string owner_id = 3;
+  int64 created_at_ms = 4;
+  int64 updated_at_ms = 5;
+  ComputeRegistryStatus status = 6;
+  repeated string environment_refs = 7;
+  string checkpoint_family = 8;
+  string validator_policy_ref = 9;
+  repeated string benchmark_package_refs = 10;
+  repeated string stage_policy_refs = 11;
+  string metadata_json = 12;
+}
+
+message ComputeTrainingSummary {
+  optional uint64 completed_step_count = 1;
+  optional uint64 processed_token_count = 2;
+  optional double average_loss = 3;
+  optional uint32 best_eval_score_bps = 4;
+  optional string accepted_checkpoint_ref = 5;
+  repeated ComputeEvaluationMetric aggregate_metrics = 6;
+  repeated ComputeEvaluationArtifact artifacts = 7;
+}
+
+message ComputeTrainingRun {
+  string training_run_id = 1;
+  string training_policy_ref = 2;
+  ComputeEnvironmentBinding environment_binding = 3;
+  ComputeCheckpointBinding checkpoint_binding = 4;
+  string validator_policy_ref = 5;
+  repeated string benchmark_package_refs = 6;
+  optional string product_id = 7;
+  optional string capacity_lot_id = 8;
+  optional string instrument_id = 9;
+  optional string delivery_proof_id = 10;
+  optional string model_ref = 11;
+  optional string source_ref = 12;
+  repeated string rollout_verification_eval_run_ids = 13;
+  int64 created_at_ms = 14;
+  optional int64 started_at_ms = 15;
+  optional int64 finalized_at_ms = 16;
+  optional uint64 expected_step_count = 17;
+  optional uint64 completed_step_count = 18;
+  ComputeTrainingRunStatus status = 19;
+  optional string final_checkpoint_ref = 20;
+  optional string promotion_checkpoint_ref = 21;
+  optional ComputeTrainingSummary summary = 22;
+  string metadata_json = 23;
+}
+
+message ComputeAcceptedOutcome {
+  string outcome_id = 1;
+  ComputeAcceptedOutcomeKind outcome_kind = 2;
+  string source_run_id = 3;
+  ComputeEnvironmentBinding environment_binding = 4;
+  optional ComputeCheckpointBinding checkpoint_binding = 5;
+  optional string validator_policy_ref = 6;
+  repeated string benchmark_package_refs = 7;
+  int64 accepted_at_ms = 8;
+  optional ComputeEvaluationSummary evaluation_summary = 9;
+  optional ComputeTrainingSummary training_summary = 10;
+  string metadata_json = 11;
+}
+
+message RegisterComputeCheckpointFamilyPolicyRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeCheckpointFamilyPolicy policy_record = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RegisterComputeCheckpointFamilyPolicyResponse {
+  ComputeCheckpointFamilyPolicy policy_record = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message RegisterComputeValidatorPolicyRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeValidatorPolicy policy_record = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RegisterComputeValidatorPolicyResponse {
+  ComputeValidatorPolicy policy_record = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message RegisterComputeBenchmarkPackageRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeBenchmarkPackage benchmark_package = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RegisterComputeBenchmarkPackageResponse {
+  ComputeBenchmarkPackage benchmark_package = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message RegisterComputeTrainingPolicyRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeTrainingPolicy training_policy = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RegisterComputeTrainingPolicyResponse {
+  ComputeTrainingPolicy training_policy = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message CreateComputeTrainingRunRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeTrainingRun training_run = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateComputeTrainingRunResponse {
+  ComputeTrainingRun training_run = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message FinalizeComputeTrainingRunRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string training_run_id = 4;
+  ComputeTrainingRunStatus status = 5;
+  int64 finalized_at_ms = 6;
+  optional string final_checkpoint_ref = 7;
+  optional string promotion_checkpoint_ref = 8;
+  optional ComputeTrainingSummary summary = 9;
+  string metadata_json = 10;
+  repeated openagents.common.v1.EvidenceRef evidence = 11;
+  openagents.economy.v1.ReceiptHints hints = 12;
+}
+
+message FinalizeComputeTrainingRunResponse {
+  ComputeTrainingRun training_run = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message AcceptComputeOutcomeRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeAcceptedOutcome outcome = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message AcceptComputeOutcomeResponse {
+  ComputeAcceptedOutcome outcome = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListComputeCheckpointFamilyPoliciesRequest {
+  ComputeRegistryStatus status = 1;
+}
+
+message ListComputeCheckpointFamilyPoliciesResponse {
+  repeated ComputeCheckpointFamilyPolicy policies = 1;
+}
+
+message GetComputeCheckpointFamilyPolicyRequest {
+  string checkpoint_family = 1;
+  optional string version = 2;
+}
+
+message GetComputeCheckpointFamilyPolicyResponse {
+  ComputeCheckpointFamilyPolicy policy_record = 1;
+}
+
+message ListComputeValidatorPoliciesRequest {
+  optional string validator_pool_ref = 1;
+  ComputeRegistryStatus status = 2;
+}
+
+message ListComputeValidatorPoliciesResponse {
+  repeated ComputeValidatorPolicy policies = 1;
+}
+
+message GetComputeValidatorPolicyRequest {
+  string policy_ref = 1;
+  optional string version = 2;
+}
+
+message GetComputeValidatorPolicyResponse {
+  ComputeValidatorPolicy policy_record = 1;
+}
+
+message ListComputeBenchmarkPackagesRequest {
+  optional string family = 1;
+  optional string environment_ref = 2;
+  ComputeRegistryStatus status = 3;
+}
+
+message ListComputeBenchmarkPackagesResponse {
+  repeated ComputeBenchmarkPackage benchmark_packages = 1;
+}
+
+message GetComputeBenchmarkPackageRequest {
+  string benchmark_package_ref = 1;
+  optional string version = 2;
+}
+
+message GetComputeBenchmarkPackageResponse {
+  ComputeBenchmarkPackage benchmark_package = 1;
+}
+
+message ListComputeTrainingPoliciesRequest {
+  optional string environment_ref = 1;
+  ComputeRegistryStatus status = 2;
+}
+
+message ListComputeTrainingPoliciesResponse {
+  repeated ComputeTrainingPolicy training_policies = 1;
+}
+
+message GetComputeTrainingPolicyRequest {
+  string training_policy_ref = 1;
+  optional string version = 2;
+}
+
+message GetComputeTrainingPolicyResponse {
+  ComputeTrainingPolicy training_policy = 1;
+}
+
+message ListComputeTrainingRunsRequest {
+  optional string training_policy_ref = 1;
+  optional string environment_ref = 2;
+  ComputeTrainingRunStatus status = 3;
+}
+
+message ListComputeTrainingRunsResponse {
+  repeated ComputeTrainingRun training_runs = 1;
+}
+
+message GetComputeTrainingRunRequest {
+  string training_run_id = 1;
+}
+
+message GetComputeTrainingRunResponse {
+  ComputeTrainingRun training_run = 1;
+}
+
+message ListComputeAcceptedOutcomesRequest {
+  ComputeAcceptedOutcomeKind outcome_kind = 1;
+  optional string environment_ref = 2;
+}
+
+message ListComputeAcceptedOutcomesResponse {
+  repeated ComputeAcceptedOutcome outcomes = 1;
+}
+
+message GetComputeAcceptedOutcomeRequest {
+  string outcome_id = 1;
+}
+
+message GetComputeAcceptedOutcomeResponse {
+  ComputeAcceptedOutcome outcome = 1;
+}

@@ -143,17 +143,18 @@ Psionic is also not:
 | Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, stage-program identity, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
 | Training orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment-posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, curriculum receipts, instability verdicts, and trainer-batch assembly requests over the run graph |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
-| Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
-| Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, deterministic reference sessions, digest-pinned package aliases, mixed-surface composition groups, and train/eval parity receipts, while kernel/Nexus still own registry and authority truth |
+| Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus now own canonical eval-run plus accepted-outcome authority truth |
+| Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, deterministic reference sessions, digest-pinned package aliases, mixed-surface composition groups, and train/eval parity receipts, while kernel/Nexus now own environment, checkpoint-family, validator-policy, benchmark-package, and training-policy registry truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
 
 Recent issue closure changed one important reading of this table:
 
-> environment packages, eval runs, and synthetic-data authority flows now exist
-> in the broader OpenAgents stack, and Psionic now owns the first environment
-> plus eval runtime crates, but broader generation loops still remain
-> unfinished.
+> environment packages, checkpoint-family policies, validator policies,
+> benchmark packages, training policies, eval runs, training runs, accepted
+> outcomes, and synthetic-data authority flows now exist in the broader
+> OpenAgents stack, and Psionic now owns the first environment plus eval runtime
+> crates, but broader generation loops still remain unfinished.
 
 ## Canonical Layer Model
 

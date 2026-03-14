@@ -63,6 +63,37 @@ impl ComputeEnvironmentPackageStatus {
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum ComputeRegistryStatus {
+    Draft,
+    #[default]
+    Active,
+    Deprecated,
+    Retired,
+}
+
+impl ComputeRegistryStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Active => "active",
+            Self::Deprecated => "deprecated",
+            Self::Retired => "retired",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "draft" => Some(Self::Draft),
+            "active" => Some(Self::Active),
+            "deprecated" => Some(Self::Deprecated),
+            "retired" => Some(Self::Retired),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ComputeEvaluationRunStatus {
     #[default]
     Queued,
@@ -88,6 +119,46 @@ impl ComputeEvaluationRunStatus {
             "queued" => Some(Self::Queued),
             "running" => Some(Self::Running),
             "finalized" => Some(Self::Finalized),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeTrainingRunStatus {
+    #[default]
+    Queued,
+    Preparing,
+    Running,
+    Finalizing,
+    Accepted,
+    Failed,
+    Cancelled,
+}
+
+impl ComputeTrainingRunStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Preparing => "preparing",
+            Self::Running => "running",
+            Self::Finalizing => "finalizing",
+            Self::Accepted => "accepted",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "queued" => Some(Self::Queued),
+            "preparing" => Some(Self::Preparing),
+            "running" => Some(Self::Running),
+            "finalizing" => Some(Self::Finalizing),
+            "accepted" => Some(Self::Accepted),
             "failed" => Some(Self::Failed),
             "cancelled" => Some(Self::Cancelled),
             _ => None,
@@ -124,6 +195,31 @@ impl ComputeEvaluationSampleStatus {
             "passed" => Some(Self::Passed),
             "failed" => Some(Self::Failed),
             "errored" => Some(Self::Errored),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAcceptedOutcomeKind {
+    #[default]
+    EvaluationRun,
+    TrainingRun,
+}
+
+impl ComputeAcceptedOutcomeKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::EvaluationRun => "evaluation_run",
+            Self::TrainingRun => "training_run",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "evaluation_run" => Some(Self::EvaluationRun),
+            "training_run" => Some(Self::TrainingRun),
             _ => None,
         }
     }
@@ -704,6 +800,247 @@ pub struct ComputeEvaluationSample {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeCheckpointFamilyPolicy {
+    pub checkpoint_family: String,
+    pub version: String,
+    pub owner_id: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default)]
+    pub status: ComputeRegistryStatus,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub source_family: Option<String>,
+    #[serde(default)]
+    pub default_recovery_posture: Option<String>,
+    #[serde(default)]
+    pub allowed_environment_refs: Vec<String>,
+    #[serde(default)]
+    pub validator_policy_ref: Option<String>,
+    #[serde(default)]
+    pub retention_policy_ref: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeValidatorPolicy {
+    pub policy_ref: String,
+    pub version: String,
+    pub owner_id: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default)]
+    pub status: ComputeRegistryStatus,
+    pub validator_pool_ref: String,
+    #[serde(default)]
+    pub minimum_validator_count: Option<u32>,
+    #[serde(default)]
+    pub challenge_window_ms: Option<u64>,
+    #[serde(default)]
+    pub required_proof_posture: Option<ComputeProofPosture>,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeBenchmarkPackage {
+    pub benchmark_package_ref: String,
+    pub version: String,
+    pub family: String,
+    pub display_name: String,
+    pub owner_id: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default)]
+    pub status: ComputeRegistryStatus,
+    pub environment_ref: String,
+    #[serde(default)]
+    pub environment_version: Option<String>,
+    #[serde(default)]
+    pub benchmark_suite_ref: Option<String>,
+    #[serde(default)]
+    pub adapter_kind: Option<String>,
+    #[serde(default)]
+    pub evaluator_policy_ref: Option<String>,
+    #[serde(default)]
+    pub pass_threshold_bps: Option<u32>,
+    #[serde(default)]
+    pub required_metric_ids: Vec<String>,
+    #[serde(default)]
+    pub artifact_refs: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingPolicy {
+    pub training_policy_ref: String,
+    pub version: String,
+    pub owner_id: String,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+    #[serde(default)]
+    pub status: ComputeRegistryStatus,
+    #[serde(default)]
+    pub environment_refs: Vec<String>,
+    pub checkpoint_family: String,
+    pub validator_policy_ref: String,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    #[serde(default)]
+    pub stage_policy_refs: Vec<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingSummary {
+    #[serde(default)]
+    pub completed_step_count: Option<u64>,
+    #[serde(default)]
+    pub processed_token_count: Option<u64>,
+    #[serde(default)]
+    pub average_loss: Option<f64>,
+    #[serde(default)]
+    pub best_eval_score_bps: Option<u32>,
+    #[serde(default)]
+    pub accepted_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub aggregate_metrics: Vec<ComputeEvaluationMetric>,
+    #[serde(default)]
+    pub artifacts: Vec<ComputeEvaluationArtifact>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingRun {
+    pub training_run_id: String,
+    pub training_policy_ref: String,
+    pub environment_binding: ComputeEnvironmentBinding,
+    pub checkpoint_binding: ComputeCheckpointBinding,
+    pub validator_policy_ref: String,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    #[serde(default)]
+    pub product_id: Option<String>,
+    #[serde(default)]
+    pub capacity_lot_id: Option<String>,
+    #[serde(default)]
+    pub instrument_id: Option<String>,
+    #[serde(default)]
+    pub delivery_proof_id: Option<String>,
+    #[serde(default)]
+    pub model_ref: Option<String>,
+    #[serde(default)]
+    pub source_ref: Option<String>,
+    #[serde(default)]
+    pub rollout_verification_eval_run_ids: Vec<String>,
+    pub created_at_ms: i64,
+    #[serde(default)]
+    pub started_at_ms: Option<i64>,
+    #[serde(default)]
+    pub finalized_at_ms: Option<i64>,
+    #[serde(default)]
+    pub expected_step_count: Option<u64>,
+    #[serde(default)]
+    pub completed_step_count: Option<u64>,
+    #[serde(default)]
+    pub status: ComputeTrainingRunStatus,
+    #[serde(default)]
+    pub final_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub promotion_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub summary: Option<ComputeTrainingSummary>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAcceptedOutcome {
+    pub outcome_id: String,
+    #[serde(default)]
+    pub outcome_kind: ComputeAcceptedOutcomeKind,
+    pub source_run_id: String,
+    pub environment_binding: ComputeEnvironmentBinding,
+    #[serde(default)]
+    pub checkpoint_binding: Option<ComputeCheckpointBinding>,
+    #[serde(default)]
+    pub validator_policy_ref: Option<String>,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    pub accepted_at_ms: i64,
+    #[serde(default)]
+    pub evaluation_summary: Option<ComputeEvaluationSummary>,
+    #[serde(default)]
+    pub training_summary: Option<ComputeTrainingSummary>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+impl ComputeAcceptedOutcome {
+    pub fn from_evaluation_run(
+        outcome_id: impl Into<String>,
+        accepted_at_ms: i64,
+        eval_run: &ComputeEvaluationRun,
+        metadata: Value,
+    ) -> Self {
+        Self {
+            outcome_id: outcome_id.into(),
+            outcome_kind: ComputeAcceptedOutcomeKind::EvaluationRun,
+            source_run_id: eval_run.eval_run_id.clone(),
+            environment_binding: eval_run.environment_binding.clone(),
+            checkpoint_binding: None,
+            validator_policy_ref: eval_run
+                .metadata
+                .get("validator_policy_ref")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+            benchmark_package_refs: eval_run
+                .metadata
+                .get("benchmark_package_refs")
+                .and_then(Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            accepted_at_ms,
+            evaluation_summary: eval_run.summary.clone(),
+            training_summary: None,
+            metadata,
+        }
+    }
+
+    pub fn from_training_run(
+        outcome_id: impl Into<String>,
+        accepted_at_ms: i64,
+        training_run: &ComputeTrainingRun,
+        metadata: Value,
+    ) -> Self {
+        Self {
+            outcome_id: outcome_id.into(),
+            outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+            source_run_id: training_run.training_run_id.clone(),
+            environment_binding: training_run.environment_binding.clone(),
+            checkpoint_binding: Some(training_run.checkpoint_binding.clone()),
+            validator_policy_ref: Some(training_run.validator_policy_ref.clone()),
+            benchmark_package_refs: training_run.benchmark_package_refs.clone(),
+            accepted_at_ms,
+            evaluation_summary: None,
+            training_summary: training_run.summary.clone(),
+            metadata,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct ComputeSyntheticDataJob {
     pub synthetic_job_id: String,
     pub environment_binding: ComputeEnvironmentBinding,
@@ -1263,6 +1600,340 @@ pub fn validate_compute_evaluation_sample(sample: &ComputeEvaluationSample) -> R
     }
     for artifact in &sample.artifacts {
         validate_compute_evaluation_artifact(artifact)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_checkpoint_family_policy(
+    policy: &ComputeCheckpointFamilyPolicy,
+) -> Result<(), String> {
+    if policy.checkpoint_family.trim().is_empty() {
+        return Err("compute_checkpoint_family_missing".to_string());
+    }
+    if policy.version.trim().is_empty() {
+        return Err("compute_checkpoint_policy_version_missing".to_string());
+    }
+    if policy.owner_id.trim().is_empty() {
+        return Err("compute_checkpoint_policy_owner_id_missing".to_string());
+    }
+    if policy.updated_at_ms < policy.created_at_ms {
+        return Err("compute_checkpoint_policy_timestamps_invalid".to_string());
+    }
+    if policy
+        .source_family
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_checkpoint_policy_source_family_invalid".to_string());
+    }
+    if policy
+        .default_recovery_posture
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_checkpoint_policy_recovery_posture_invalid".to_string());
+    }
+    for environment_ref in &policy.allowed_environment_refs {
+        if environment_ref.trim().is_empty() {
+            return Err("compute_checkpoint_policy_environment_ref_invalid".to_string());
+        }
+    }
+    if policy
+        .validator_policy_ref
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_checkpoint_policy_validator_policy_ref_invalid".to_string());
+    }
+    if policy
+        .retention_policy_ref
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_checkpoint_policy_retention_policy_ref_invalid".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_validator_policy(policy: &ComputeValidatorPolicy) -> Result<(), String> {
+    if policy.policy_ref.trim().is_empty() {
+        return Err("compute_validator_policy_ref_missing".to_string());
+    }
+    if policy.version.trim().is_empty() {
+        return Err("compute_validator_policy_version_missing".to_string());
+    }
+    if policy.owner_id.trim().is_empty() {
+        return Err("compute_validator_policy_owner_id_missing".to_string());
+    }
+    if policy.updated_at_ms < policy.created_at_ms {
+        return Err("compute_validator_policy_timestamps_invalid".to_string());
+    }
+    if policy.validator_pool_ref.trim().is_empty() {
+        return Err("compute_validator_policy_pool_ref_missing".to_string());
+    }
+    if policy.minimum_validator_count == Some(0) {
+        return Err("compute_validator_count_invalid".to_string());
+    }
+    for benchmark_package_ref in &policy.benchmark_package_refs {
+        if benchmark_package_ref.trim().is_empty() {
+            return Err("compute_validator_policy_benchmark_package_ref_invalid".to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_compute_benchmark_package(package: &ComputeBenchmarkPackage) -> Result<(), String> {
+    if package.benchmark_package_ref.trim().is_empty() {
+        return Err("compute_benchmark_package_ref_missing".to_string());
+    }
+    if package.version.trim().is_empty() {
+        return Err("compute_benchmark_package_version_missing".to_string());
+    }
+    if package.family.trim().is_empty() {
+        return Err("compute_benchmark_package_family_missing".to_string());
+    }
+    if package.display_name.trim().is_empty() {
+        return Err("compute_benchmark_package_display_name_missing".to_string());
+    }
+    if package.owner_id.trim().is_empty() {
+        return Err("compute_benchmark_package_owner_id_missing".to_string());
+    }
+    if package.updated_at_ms < package.created_at_ms {
+        return Err("compute_benchmark_package_timestamps_invalid".to_string());
+    }
+    if package.environment_ref.trim().is_empty() {
+        return Err("compute_environment_binding_ref_missing".to_string());
+    }
+    if package
+        .environment_version
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_binding_version_invalid".to_string());
+    }
+    if package
+        .pass_threshold_bps
+        .is_some_and(|value| value > 10_000)
+    {
+        return Err("compute_eval_pass_rate_invalid".to_string());
+    }
+    for metric_id in &package.required_metric_ids {
+        if metric_id.trim().is_empty() {
+            return Err("compute_benchmark_package_metric_id_invalid".to_string());
+        }
+    }
+    for artifact_ref in &package.artifact_refs {
+        if artifact_ref.trim().is_empty() {
+            return Err("compute_benchmark_package_artifact_ref_invalid".to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_compute_training_policy(policy: &ComputeTrainingPolicy) -> Result<(), String> {
+    if policy.training_policy_ref.trim().is_empty() {
+        return Err("compute_training_policy_ref_missing".to_string());
+    }
+    if policy.version.trim().is_empty() {
+        return Err("compute_training_policy_version_missing".to_string());
+    }
+    if policy.owner_id.trim().is_empty() {
+        return Err("compute_training_policy_owner_id_missing".to_string());
+    }
+    if policy.updated_at_ms < policy.created_at_ms {
+        return Err("compute_training_policy_timestamps_invalid".to_string());
+    }
+    if policy.checkpoint_family.trim().is_empty() {
+        return Err("compute_checkpoint_family_missing".to_string());
+    }
+    if policy.validator_policy_ref.trim().is_empty() {
+        return Err("compute_validator_policy_ref_missing".to_string());
+    }
+    if policy.environment_refs.is_empty() {
+        return Err("compute_training_policy_environment_refs_missing".to_string());
+    }
+    for environment_ref in &policy.environment_refs {
+        if environment_ref.trim().is_empty() {
+            return Err("compute_training_policy_environment_ref_invalid".to_string());
+        }
+    }
+    for benchmark_package_ref in &policy.benchmark_package_refs {
+        if benchmark_package_ref.trim().is_empty() {
+            return Err("compute_training_policy_benchmark_package_ref_invalid".to_string());
+        }
+    }
+    for stage_policy_ref in &policy.stage_policy_refs {
+        if stage_policy_ref.trim().is_empty() {
+            return Err("compute_training_policy_stage_policy_ref_invalid".to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_compute_training_summary(summary: &ComputeTrainingSummary) -> Result<(), String> {
+    if let (Some(completed), Some(processed)) =
+        (summary.completed_step_count, summary.processed_token_count)
+        && completed > 0
+        && processed == 0
+    {
+        return Err("compute_training_processed_token_count_invalid".to_string());
+    }
+    if summary
+        .best_eval_score_bps
+        .is_some_and(|value| value > 10_000)
+    {
+        return Err("compute_eval_score_invalid".to_string());
+    }
+    if summary
+        .accepted_checkpoint_ref
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_training_accepted_checkpoint_ref_invalid".to_string());
+    }
+    for metric in &summary.aggregate_metrics {
+        validate_compute_evaluation_metric(metric)?;
+    }
+    for artifact in &summary.artifacts {
+        validate_compute_evaluation_artifact(artifact)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_training_run(run: &ComputeTrainingRun) -> Result<(), String> {
+    if run.training_run_id.trim().is_empty() {
+        return Err("compute_training_run_id_missing".to_string());
+    }
+    if run.training_policy_ref.trim().is_empty() {
+        return Err("compute_training_policy_ref_missing".to_string());
+    }
+    if run.environment_binding.environment_ref.trim().is_empty() {
+        return Err("compute_environment_binding_ref_missing".to_string());
+    }
+    if run
+        .environment_binding
+        .environment_version
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_version_missing".to_string());
+    }
+    if run.checkpoint_binding.checkpoint_family.trim().is_empty() {
+        return Err("compute_checkpoint_family_missing".to_string());
+    }
+    if run.validator_policy_ref.trim().is_empty() {
+        return Err("compute_validator_policy_ref_missing".to_string());
+    }
+    if run.expected_step_count == Some(0) {
+        return Err("compute_training_expected_step_count_invalid".to_string());
+    }
+    if let (Some(expected), Some(completed)) = (run.expected_step_count, run.completed_step_count)
+        && completed > expected
+    {
+        return Err("compute_training_completed_step_count_invalid".to_string());
+    }
+    if matches!(
+        run.status,
+        ComputeTrainingRunStatus::Accepted
+            | ComputeTrainingRunStatus::Failed
+            | ComputeTrainingRunStatus::Cancelled
+    ) && run.finalized_at_ms.is_none()
+    {
+        return Err("compute_training_finalized_at_missing".to_string());
+    }
+    if matches!(run.status, ComputeTrainingRunStatus::Accepted)
+        && run
+            .final_checkpoint_ref
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_training_final_checkpoint_ref_missing".to_string());
+    }
+    for eval_run_id in &run.rollout_verification_eval_run_ids {
+        if eval_run_id.trim().is_empty() {
+            return Err("compute_training_rollout_verification_eval_run_id_invalid".to_string());
+        }
+    }
+    for benchmark_package_ref in &run.benchmark_package_refs {
+        if benchmark_package_ref.trim().is_empty() {
+            return Err("compute_training_benchmark_package_ref_invalid".to_string());
+        }
+    }
+    if let Some(summary) = run.summary.as_ref() {
+        validate_compute_training_summary(summary)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_accepted_outcome(outcome: &ComputeAcceptedOutcome) -> Result<(), String> {
+    if outcome.outcome_id.trim().is_empty() {
+        return Err("compute_accepted_outcome_id_missing".to_string());
+    }
+    if outcome.source_run_id.trim().is_empty() {
+        return Err("compute_accepted_outcome_source_run_id_missing".to_string());
+    }
+    if outcome
+        .environment_binding
+        .environment_ref
+        .trim()
+        .is_empty()
+    {
+        return Err("compute_environment_binding_ref_missing".to_string());
+    }
+    if outcome
+        .environment_binding
+        .environment_version
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err("compute_environment_version_missing".to_string());
+    }
+    if outcome.accepted_at_ms <= 0 {
+        return Err("compute_accepted_outcome_accepted_at_invalid".to_string());
+    }
+    if outcome
+        .validator_policy_ref
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_validator_policy_ref_missing".to_string());
+    }
+    for benchmark_package_ref in &outcome.benchmark_package_refs {
+        if benchmark_package_ref.trim().is_empty() {
+            return Err("compute_accepted_outcome_benchmark_package_ref_invalid".to_string());
+        }
+    }
+    match outcome.outcome_kind {
+        ComputeAcceptedOutcomeKind::EvaluationRun => {
+            if outcome.evaluation_summary.is_none() {
+                return Err("compute_accepted_outcome_eval_summary_missing".to_string());
+            }
+            if outcome.training_summary.is_some() {
+                return Err("compute_accepted_outcome_kind_mismatch".to_string());
+            }
+            if outcome.checkpoint_binding.is_some() {
+                return Err("compute_accepted_outcome_checkpoint_binding_invalid".to_string());
+            }
+            validate_compute_evaluation_summary(
+                outcome.evaluation_summary.as_ref().expect("checked"),
+            )?;
+        }
+        ComputeAcceptedOutcomeKind::TrainingRun => {
+            if outcome.training_summary.is_none() {
+                return Err("compute_accepted_outcome_training_summary_missing".to_string());
+            }
+            if outcome.evaluation_summary.is_some() {
+                return Err("compute_accepted_outcome_kind_mismatch".to_string());
+            }
+            let checkpoint_binding = outcome
+                .checkpoint_binding
+                .as_ref()
+                .ok_or_else(|| "compute_checkpoint_family_missing".to_string())?;
+            if checkpoint_binding.checkpoint_family.trim().is_empty() {
+                return Err("compute_checkpoint_family_missing".to_string());
+            }
+            validate_compute_training_summary(outcome.training_summary.as_ref().expect("checked"))?;
+        }
     }
     Ok(())
 }
@@ -2049,22 +2720,30 @@ pub fn validate_launch_compute_product(
 #[cfg(test)]
 mod tests {
     use super::{
-        COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeCheckpointBinding, ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
+        COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind,
+        ComputeBackendFamily, ComputeBenchmarkPackage, ComputeCapabilityEnvelope,
+        ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy,
+        ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
         ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
         ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
-        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationSampleStatus,
-        ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
-        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
+        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
+        ComputeEvaluationRunStatus, ComputeEvaluationSampleStatus, ComputeEvaluationSummary,
+        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeProduct,
+        ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind, ComputeRegistryStatus,
         ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
         ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
-        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
-        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        ComputeTrainingPolicy, ComputeTrainingRun, ComputeTrainingRunStatus,
+        ComputeTrainingSummary, ComputeValidatorPolicy, ComputeValidatorRequirements,
+        DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability,
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
-        validate_compute_capability_envelope, validate_compute_environment_package,
-        validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
-        validate_delivery_proof, validate_launch_compute_product,
+        validate_compute_accepted_outcome, validate_compute_benchmark_package,
+        validate_compute_capability_envelope, validate_compute_checkpoint_family_policy,
+        validate_compute_environment_package, validate_compute_synthetic_data_job,
+        validate_compute_synthetic_data_sample, validate_compute_training_policy,
+        validate_compute_training_run, validate_compute_validator_policy, validate_delivery_proof,
+        validate_launch_compute_product,
     };
     use serde_json::json;
 
@@ -2213,6 +2892,146 @@ mod tests {
                 }],
             }),
             metadata: json!({"pipeline": "teacher-verify"}),
+        }
+    }
+
+    fn checkpoint_family_policy() -> ComputeCheckpointFamilyPolicy {
+        ComputeCheckpointFamilyPolicy {
+            checkpoint_family: "decoder".to_string(),
+            version: "2026.03.14".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_600_000,
+            updated_at_ms: 1_762_000_601_000,
+            status: ComputeRegistryStatus::Active,
+            description: Some("Decoder checkpoint promotion policy".to_string()),
+            source_family: Some("sft".to_string()),
+            default_recovery_posture: Some("warm-resume".to_string()),
+            allowed_environment_refs: vec!["env.openagents.math.basic".to_string()],
+            validator_policy_ref: Some("policy://validator/training".to_string()),
+            retention_policy_ref: Some("policy://retention/checkpoints".to_string()),
+            metadata: json!({"tier": "reference"}),
+        }
+    }
+
+    fn validator_policy() -> ComputeValidatorPolicy {
+        ComputeValidatorPolicy {
+            policy_ref: "policy://validator/training".to_string(),
+            version: "2026.03.14".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_602_000,
+            updated_at_ms: 1_762_000_603_000,
+            status: ComputeRegistryStatus::Active,
+            validator_pool_ref: "validator-pool.training".to_string(),
+            minimum_validator_count: Some(2),
+            challenge_window_ms: Some(60_000),
+            required_proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+            benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+            metadata: json!({"repeat_runs": 2}),
+        }
+    }
+
+    fn benchmark_package() -> ComputeBenchmarkPackage {
+        ComputeBenchmarkPackage {
+            benchmark_package_ref: "benchmark://mmlu/reference".to_string(),
+            version: "2026.03.14".to_string(),
+            family: "mmlu".to_string(),
+            display_name: "Reference MMLU".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_604_000,
+            updated_at_ms: 1_762_000_605_000,
+            status: ComputeRegistryStatus::Active,
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: Some("2026.03.13".to_string()),
+            benchmark_suite_ref: Some("benchmark://mmlu/pro".to_string()),
+            adapter_kind: Some("mmlu_multiple_choice_v1".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            pass_threshold_bps: Some(9_000),
+            required_metric_ids: vec!["accuracy".to_string()],
+            artifact_refs: vec!["artifact://benchmarks/mmlu/manifest".to_string()],
+            metadata: json!({"repeat_runs": 2}),
+        }
+    }
+
+    fn training_policy() -> ComputeTrainingPolicy {
+        ComputeTrainingPolicy {
+            training_policy_ref: "policy://training/math/basic".to_string(),
+            version: "2026.03.14".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_606_000,
+            updated_at_ms: 1_762_000_607_000,
+            status: ComputeRegistryStatus::Active,
+            environment_refs: vec!["env.openagents.math.basic".to_string()],
+            checkpoint_family: "decoder".to_string(),
+            validator_policy_ref: "policy://validator/training".to_string(),
+            benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+            stage_policy_refs: vec![
+                "policy://training/math/basic/general_sft".to_string(),
+                "policy://training/math/basic/agentic_sft".to_string(),
+                "policy://training/math/basic/rl".to_string(),
+            ],
+            metadata: json!({"curriculum_policy_ref": "policy://curriculum/math/basic"}),
+        }
+    }
+
+    fn training_run() -> ComputeTrainingRun {
+        ComputeTrainingRun {
+            training_run_id: "train.math.basic.alpha".to_string(),
+            training_policy_ref: "policy://training/math/basic".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            },
+            checkpoint_binding: ComputeCheckpointBinding {
+                checkpoint_family: "decoder".to_string(),
+                latest_checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+                recovery_posture: Some("warm-resume".to_string()),
+            },
+            validator_policy_ref: "policy://validator/training".to_string(),
+            benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
+            product_id: Some("psionic.training.gradient.elastic".to_string()),
+            capacity_lot_id: Some("lot.training.alpha".to_string()),
+            instrument_id: Some("instrument.training.alpha".to_string()),
+            delivery_proof_id: Some("delivery.training.alpha".to_string()),
+            model_ref: Some("model://gpt-oss-20b".to_string()),
+            source_ref: Some("artifact://training/input/math-basic".to_string()),
+            rollout_verification_eval_run_ids: vec!["eval.synthetic.alpha".to_string()],
+            created_at_ms: 1_762_000_608_000,
+            started_at_ms: Some(1_762_000_609_000),
+            finalized_at_ms: Some(1_762_000_610_000),
+            expected_step_count: Some(64),
+            completed_step_count: Some(64),
+            status: ComputeTrainingRunStatus::Accepted,
+            final_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.alpha/final".to_string(),
+            ),
+            promotion_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.alpha/promotion".to_string(),
+            ),
+            summary: Some(ComputeTrainingSummary {
+                completed_step_count: Some(64),
+                processed_token_count: Some(128_000),
+                average_loss: Some(0.42),
+                best_eval_score_bps: Some(9_350),
+                accepted_checkpoint_ref: Some(
+                    "checkpoint://decoder/train.math.basic.alpha/promotion".to_string(),
+                ),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.935,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"benchmark_package_ref": "benchmark://mmlu/reference"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "training_manifest".to_string(),
+                    artifact_ref: "artifact://training/math-basic/manifest".to_string(),
+                    digest: Some("sha256:train-manifest".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            metadata: json!({"stability_verdict": "continue"}),
         }
     }
 
@@ -2379,6 +3198,112 @@ mod tests {
         let package = environment_package();
         validate_compute_environment_package(&package)
             .expect("environment package should validate");
+    }
+
+    #[test]
+    fn validates_training_registry_contracts() {
+        validate_compute_checkpoint_family_policy(&checkpoint_family_policy())
+            .expect("checkpoint family policy should validate");
+        validate_compute_validator_policy(&validator_policy())
+            .expect("validator policy should validate");
+        validate_compute_benchmark_package(&benchmark_package())
+            .expect("benchmark package should validate");
+        validate_compute_training_policy(&training_policy())
+            .expect("training policy should validate");
+    }
+
+    #[test]
+    fn validates_training_run_and_accepted_outcomes() {
+        let training = training_run();
+        validate_compute_training_run(&training).expect("training run should validate");
+
+        let training_outcome = ComputeAcceptedOutcome::from_training_run(
+            "accepted.training.alpha",
+            1_762_000_611_000,
+            &training,
+            json!({"accepted_by": "nexus"}),
+        );
+        validate_compute_accepted_outcome(&training_outcome)
+            .expect("training accepted outcome should validate");
+
+        let eval_run = ComputeEvaluationRun {
+            eval_run_id: "eval.training.alpha".to_string(),
+            environment_binding: training.environment_binding.clone(),
+            product_id: training.product_id.clone(),
+            capacity_lot_id: training.capacity_lot_id.clone(),
+            instrument_id: training.instrument_id.clone(),
+            delivery_proof_id: training.delivery_proof_id.clone(),
+            model_ref: training.model_ref.clone(),
+            source_ref: training.source_ref.clone(),
+            created_at_ms: 1_762_000_608_000,
+            expected_sample_count: Some(1),
+            status: ComputeEvaluationRunStatus::Finalized,
+            started_at_ms: Some(1_762_000_609_000),
+            finalized_at_ms: Some(1_762_000_610_000),
+            summary: Some(ComputeEvaluationSummary {
+                total_samples: 1,
+                scored_samples: 1,
+                passed_samples: 1,
+                failed_samples: 0,
+                errored_samples: 0,
+                average_score_bps: Some(9_600),
+                pass_rate_bps: Some(10_000),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "accuracy".to_string(),
+                    metric_value: 0.96,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({}),
+                }],
+                artifacts: Vec::new(),
+            }),
+            run_artifacts: Vec::new(),
+            metadata: json!({
+                "validator_policy_ref": "policy://validator/training",
+                "benchmark_package_refs": ["benchmark://mmlu/reference"],
+            }),
+        };
+        let eval_outcome = ComputeAcceptedOutcome::from_evaluation_run(
+            "accepted.eval.alpha",
+            1_762_000_612_000,
+            &eval_run,
+            json!({"accepted_by": "nexus"}),
+        );
+        validate_compute_accepted_outcome(&eval_outcome)
+            .expect("eval accepted outcome should validate");
+    }
+
+    #[test]
+    fn rejects_accepted_training_run_without_final_checkpoint() {
+        let mut training = training_run();
+        training.final_checkpoint_ref = None;
+        let err = validate_compute_training_run(&training)
+            .expect_err("accepted training run should require final checkpoint");
+        assert_eq!(err, "compute_training_final_checkpoint_ref_missing");
+    }
+
+    #[test]
+    fn rejects_eval_outcome_with_training_summary() {
+        let mut outcome = ComputeAcceptedOutcome::from_training_run(
+            "accepted.kind.mismatch",
+            1_762_000_613_000,
+            &training_run(),
+            json!({}),
+        );
+        outcome.outcome_kind = ComputeAcceptedOutcomeKind::EvaluationRun;
+        outcome.evaluation_summary = Some(ComputeEvaluationSummary {
+            total_samples: 1,
+            scored_samples: 1,
+            passed_samples: 1,
+            failed_samples: 0,
+            errored_samples: 0,
+            average_score_bps: Some(9_500),
+            pass_rate_bps: Some(10_000),
+            aggregate_metrics: Vec::new(),
+            artifacts: Vec::new(),
+        });
+        let err = validate_compute_accepted_outcome(&outcome)
+            .expect_err("kind mismatch should be rejected");
+        assert_eq!(err, "compute_accepted_outcome_kind_mismatch");
     }
 
     #[test]
