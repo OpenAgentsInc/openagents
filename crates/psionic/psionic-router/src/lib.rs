@@ -1,14 +1,22 @@
 //! Multi-model routing and worker-policy contracts for Psionic.
 //!
 //! This crate owns reusable fleet-routing truth for served Psionic workers.
-//! It does not own request execution, app UX, procurement, settlement, or
-//! long-term storage. Those concerns stay in `psionic-serve`, app code, and
-//! kernel or Nexus services.
+//! It also owns pluggable response-state retention backends for served agent
+//! loops. It does not own request execution, app UX, procurement, settlement,
+//! or app-facing product storage. Those concerns stay in `psionic-serve`, app
+//! code, and kernel or Nexus services.
 
 #![cfg_attr(
     test,
     allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)
 )]
+
+mod response_state;
+
+pub use response_state::{
+    ResponseConversationRef, ResponseStateBackend, ResponseStateCapability, ResponseStateContext,
+    ResponseStateError, ResponseStateRecord, ResponseStateRetentionPolicy, ResponseStateStore,
+};
 
 use psionic_runtime::{ExecutionCapabilityProfile, GenerationSchedulerPolicy, HealthStatus};
 use serde::{Deserialize, Serialize};

@@ -99,10 +99,11 @@ Implemented now:
   responses surfaces can return typed reasoning-aware response fields without
   falling back to raw-string scraping alone.
 - Psionic-owned response-state and conversation contracts on `/v1/responses`,
-  with bounded in-memory response/conversation state, explicit response and
-  conversation identifiers, truthful prompt-replay-only cache behavior,
-  per-model capability reporting, and explicit refusal for unsupported
-  continuation modes instead of pushing multi-turn state emulation into callers.
+  with router-owned pluggable in-memory or JSON-file backends, explicit
+  response and conversation identifiers, truthful prompt-replay-only cache
+  behavior, restart-safe local continuation on durable backends, per-model
+  capability reporting, and explicit refusal for unsupported continuation
+  modes instead of pushing multi-turn state emulation into callers.
 - a first Psionic-owned router control plane for served fleets, with explicit
   worker/model inventory, capability filters, warm/cache-aware placement,
   bounded power-of-two least-loaded choice over warm or cache-matched pools,

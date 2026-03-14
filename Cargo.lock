@@ -6602,8 +6602,11 @@ dependencies = [
 name = "psionic-router"
 version = "0.1.1"
 dependencies = [
+ "psionic-models",
  "psionic-runtime",
  "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
 ]
 
