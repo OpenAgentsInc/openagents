@@ -695,6 +695,8 @@ pub enum LazyOp {
     Input { name: String },
     /// Constant tensor.
     Constant,
+    /// Gradient-stopping identity.
+    Detach,
     /// Binary add.
     Add,
     /// Binary multiply.

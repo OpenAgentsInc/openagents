@@ -1,5 +1,7 @@
 //! Canonical graph and plan representation for Psionic.
 
+mod autodiff;
+
 use psionic_core::{
     BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, QuantizedTensorData, Shape,
     Tensor, TensorData, TensorId, TensorSpec,
@@ -8,8 +10,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub use autodiff::*;
+
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "canonical IR and execution plan types";
+pub const CRATE_ROLE: &str = "canonical graph, autodiff, and execution plan types";
 
 /// Error type raised during graph construction.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -141,6 +145,8 @@ pub enum OpKind {
         /// Constant data.
         data: TensorData,
     },
+    /// Gradient-stopping identity.
+    Detach,
     /// Binary add.
     Add,
     /// Binary multiply.
@@ -199,6 +205,7 @@ impl OpKind {
         match self {
             Self::Input { .. } => "input",
             Self::Constant { .. } => "constant",
+            Self::Detach => "detach",
             Self::Add => "add",
             Self::Mul => "mul",
             Self::Matmul => "matmul",
@@ -325,6 +332,8 @@ pub enum ExecutionOp {
         /// Constant data.
         data: TensorData,
     },
+    /// Gradient-stopping identity.
+    Detach,
     /// Binary add.
     Add,
     /// Binary multiply.
@@ -383,6 +392,7 @@ impl ExecutionOp {
         match self {
             Self::Input { .. } => "input",
             Self::Constant { .. } => "constant",
+            Self::Detach => "detach",
             Self::Add => "add",
             Self::Mul => "mul",
             Self::Matmul => "matmul",
@@ -403,6 +413,7 @@ impl ExecutionOp {
         match op {
             OpKind::Input { name } => Self::Input { name: name.clone() },
             OpKind::Constant { data } => Self::Constant { data: data.clone() },
+            OpKind::Detach => Self::Detach,
             OpKind::Add => Self::Add,
             OpKind::Mul => Self::Mul,
             OpKind::Matmul => Self::Matmul,
@@ -619,6 +630,16 @@ impl GraphBuilder {
     /// Adds two tensors.
     pub fn add(&mut self, left: &Tensor, right: &Tensor) -> Result<Tensor, GraphError> {
         self.binary_tensor_op(left, right, LazyOp::Add, OpKind::Add)
+    }
+
+    /// Adds a gradient-stopping identity node.
+    pub fn detach(&mut self, input: &Tensor) -> Tensor {
+        self.register(
+            LazyOp::Detach,
+            OpKind::Detach,
+            vec![input.id()],
+            input.spec().clone(),
+        )
     }
 
     /// Multiplies two tensors elementwise.
@@ -1182,6 +1203,7 @@ fn format_lazy_op(op: &LazyOp) -> String {
     match op {
         LazyOp::Input { name } => format!("input:{name}"),
         LazyOp::Constant => String::from("constant"),
+        LazyOp::Detach => String::from("detach"),
         LazyOp::Add => String::from("add"),
         LazyOp::Mul => String::from("mul"),
         LazyOp::Matmul => String::from("matmul"),
@@ -1209,6 +1231,7 @@ fn format_execution_payload(op: &ExecutionOp) -> String {
     match op {
         ExecutionOp::Constant { data } => format_tensor_data(data),
         ExecutionOp::Input { name } => format!("input:{name}"),
+        ExecutionOp::Detach => String::from("detach"),
         ExecutionOp::Permute { axes } => format!("axes={}", format_axes(axes)),
         ExecutionOp::Slice { axis, start, end } => {
             format!("axis={axis},start={start},end={end}")

@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Canonical graph and execution plan types for Psionic"
+description = "Canonical graph, autodiff, and execution plan types for Psionic"
 
 [lints]
 workspace = true

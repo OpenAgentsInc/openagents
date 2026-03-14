@@ -1215,10 +1215,11 @@ mod tests {
         ClusterNamespace, ClusterNodeIdentity, ClusterSnapshot, ClusterState, NodeEpoch, NodeId,
         NodeRole,
     };
-    use psionic_core::{DType, Device, Shape, TensorSpec};
+    use psionic_core::{DType, Device, Shape, TensorData, TensorSpec};
     use psionic_datastream::{
         DatastreamCheckpointBinding, DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind,
     };
+    use psionic_ir::{AutodiffContext, AutodiffGraphBuilder};
 
     use super::{
         FixedBudgetTrainingRun, OptimizerResidencyTransitionReason, OptimizerStateResidency,
@@ -1415,6 +1416,72 @@ mod tests {
             outcome.summary.final_parameter_norms_l2["token_embed"]
                 > outcome.summary.final_parameter_norms_l2["lm_head"]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn autodiff_gradients_compose_with_fixed_budget_training_core()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut autodiff =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let weights = autodiff.input("weights", Shape::new(vec![2]), DType::F32, true);
+        let features = autodiff.constant_f32(Shape::new(vec![2]), vec![3.0, -4.0])?;
+        let product = autodiff.mul(&weights, &features)?;
+        let loss = autodiff.reduce_sum(&product);
+        let graph = autodiff.finish(vec![loss.clone()]);
+
+        let backward = graph.backward_materialized(
+            loss.id(),
+            &BTreeMap::from([(weights.id(), TensorData::F32(vec![1.0, 2.0]))]),
+        )?;
+        let TensorData::F32(gradient_values) = backward
+            .gradient(weights.id())
+            .cloned()
+            .expect("weight gradient should materialize")
+        else {
+            panic!("expected dense weight gradient");
+        };
+        let loss_value = match backward
+            .forward_values
+            .get(&loss.id())
+            .expect("loss value should materialize")
+        {
+            TensorData::F32(values) => values[0],
+            TensorData::QuantizedBlocks(_) => panic!("expected dense loss value"),
+        };
+
+        let budget = TrainingLoopBudget::new(1, 1, 1)?;
+        let parameter_group = group(
+            "weights",
+            TrainingParameterClass::Head,
+            vec![1.0, 2.0],
+            TrainingOptimizerConfig::sgd(0.1),
+            TrainingOptimizerResidencyPolicy::host_only(),
+        )?;
+        let mut run = FixedBudgetTrainingRun::new(
+            "train-run-autodiff",
+            "train.autodiff",
+            budget,
+            vec![parameter_group],
+        )?;
+
+        run.apply_step(TrainingStepInput::new(
+            TrainingGradientBatch::new(
+                "autodiff-batch",
+                loss_value,
+                1,
+                gradients(&[("weights", gradient_values)])?,
+            ),
+            10,
+            20,
+        ))?;
+
+        let updated = run
+            .parameter_group("weights")
+            .expect("weights group")
+            .parameter
+            .as_f32_slice("weights")?;
+        assert_eq!(updated, &[0.7, 2.4]);
         Ok(())
     }
 

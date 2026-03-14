@@ -3,7 +3,8 @@
 > Status: canonical `#3609` closure doc, updated 2026-03-14 after landing the
 > runnable matrix hook in
 > `scripts/release/check-psionic-framework-core-acceptance.sh` and the
-> reusable-optimizer closure for `#3603`.
+> reusable-optimizer closure for `#3603` plus the reverse-mode autodiff closure
+> for `#3602`.
 
 Psionic can now make several higher-level claims:
 
@@ -40,10 +41,11 @@ scripts/release/check-psionic-framework-core-acceptance.sh --only replay-identit
 scripts/release/check-psionic-framework-core-acceptance.sh --only local-multi-device
 ```
 
-The runner is intentionally honest about open gaps:
+The runner is intentionally honest about remaining boundaries:
 
 - it executes the current validation hooks for each category
-- it prints explicit open-gap notes for rows that are still partial
+- it prints explicit refusal or implemented-early notes when a category is real
+  but still intentionally bounded
 - it does not treat serving or train acceptance as a substitute for
   framework-core closure
 
@@ -88,7 +90,7 @@ first.
 | Category | Current status | What a green category would mean | Current repo truth | Canonical hooks | Open gap / refusal discipline |
 | --- | --- | --- | --- | --- | --- |
 | Tensor semantics | `implemented_early` | typed tensor identity, shape/layout transforms, dtype and device semantics, and quantized payload containers behave deterministically enough to anchor compiler and IO layers | `psionic-core` owns `TensorSpec`, layout transforms, typed tensor payload containers, and stable device/dtype semantics | `psionic-core` tests for tensor spec, expand, and permute semantics | Do not claim eager full-framework tensor execution breadth from these layout or metadata tests alone |
-| Autodiff and optimizer behavior | `partial` | reverse-mode autodiff, detach semantics, training-mode gradient rules, and reusable optimizer families are all machine-checkable and not hidden inside one training loop | `psionic-train` already has an explicit-gradient fixed-budget core, reusable SGD/Adam/AdamW/LARS/LAMB optimizer contracts, and typed distributed-optimizer contracts | `psionic-train` training-core, reusable-optimizer, and distributed-optimizer tests | `#3602` remains open. Current hooks validate explicit-gradient training, reusable optimizer primitives, and train-owned distributed optimizer contracts, but not general reverse-mode autodiff or detach semantics |
+| Autodiff and optimizer behavior | `implemented_early` | reverse-mode autodiff, detach semantics, training-mode gradient rules, and reusable optimizer families are all machine-checkable and not hidden inside one training loop | `psionic-ir` now owns autodiff-aware graph construction, explicit `detach`, symbolic backward plans, dense reference materialization, and a trainer-integration proof, while `psionic-train` owns the reusable optimizer and distributed-optimizer contracts layered above it | `psionic-ir` autodiff tests plus `psionic-train` integration, optimizer, and distributed-optimizer tests | Keep the category honest: representative primitive coverage is real, but unsupported backend-extension gradients still refuse explicitly and broader operator-family coverage is outside this runner |
 | Model and state IO | `implemented_early` | model weights, optimizer state, adapter deltas, tokenizer bindings, and manifest receipts roundtrip through stable formats without losing role or spec truth | `psionic-train::model_io` already owns safetensors export/import, GGUF import, tensor-role manifests, and typed artifact receipts | `psionic-train` model-IO roundtrip and GGUF inventory tests | Do not treat a serving-family loader alone as full model-state IO closure; state-dict and optimizer-state roundtrip must stay in scope |
 | Compiler lowering and realize path | `implemented_early` | compile lowering is deterministic, topology-sensitive, extension-aware, and replayable from named fixtures instead of being only an internal implementation detail | `psionic-compiler` already owns deterministic graph compilation, topology-sensitive digests, and fixture-backed replay tests | `psionic-compiler` compile-graph and `process_replay` tests | Do not claim framework-core closure if lowering stays green only on one happy-path fixture while graph identity or topology sensitivity drifts |
 | Memory planning and cache behavior | `implemented_early` | model admission, allocator/cache budgets, KV/prefix cache state, and runtime resource reports stay explicit and bounded instead of being hidden behind backend heuristics | `psionic-runtime` already owns model-admission planning, runtime resource reports, prefix/KV cache contracts, and cache observations | `psionic-runtime` admission, budget, KV cache, and prefix-cache tests | Do not collapse runtime cache truth into product throughput headlines; framework-core acceptance cares about explicit policy and refusal behavior too |
@@ -116,22 +118,30 @@ Canonical hooks:
 
 ### 2. Autodiff and optimizer behavior
 
-This category remains intentionally partial.
+This category is now `implemented_early`.
 
 Current shipped foundation:
 
+- autodiff-aware IR graph construction with explicit `detach`
+- training/evaluation plus no-grad gradient semantics
+- symbolic backward plans and dense reference gradient materialization for representative primitive ops
+- trainer-step integration proof that autodiff gradients feed the fixed-budget training core
 - explicit-gradient trainer steps with typed telemetry
 - reusable SGD, Adam, AdamW, LARS, and LAMB primitives outside one trainer loop
 - typed per-group optimizer state plus distributed optimizer contracts
 
-Open core gaps:
+Implemented-early boundary:
 
-- reverse-mode autodiff
-- detach semantics
-- training-mode gradient semantics
+- unsupported backend-extension gradients must still refuse through typed paths
+- broader operator-family coverage remains outside the current representative hook set
 
 Canonical hooks:
 
+- `cargo test -p psionic-ir --lib autodiff::tests::reverse_mode_autodiff_materializes_matmul_chain_gradients -- --exact`
+- `cargo test -p psionic-ir --lib autodiff::tests::reverse_mode_autodiff_accumulates_shared_paths_and_honors_detach -- --exact`
+- `cargo test -p psionic-ir --lib autodiff::tests::autodiff_context_makes_training_and_no_grad_behavior_explicit -- --exact`
+- `cargo test -p psionic-ir --lib autodiff::tests::unsupported_gradient_ops_refuse_through_typed_error -- --exact`
+- `cargo test -p psionic-train --lib core_loop::tests::autodiff_gradients_compose_with_fixed_budget_training_core -- --exact`
 - `cargo test -p psionic-train --lib core_loop::tests::fixed_budget_training_loop_applies_updates_and_tracks_telemetry -- --exact`
 - `cargo test -p psionic-train --lib optimizer::tests::reusable_optimizer_surface_advances_small_model_with_sgd_and_adam -- --exact`
 - `cargo test -p psionic-train --lib optimizer::tests::reusable_optimizer_surface_supports_all_declared_optimizer_families -- --exact`
@@ -207,10 +217,12 @@ Canonical hooks:
 As of this matrix:
 
 - Psionic has real framework-core foundations for tensor/layout semantics,
-  model-state IO, compiler identity, memory/cache policy, replay truth, and
-  same-type local multi-device execution contracts.
-- Psionic does not yet have a closed framework-core story for reverse-mode
-  autodiff, detach, or training-mode gradient semantics.
+  autodiff or optimizer behavior, model-state IO, compiler identity,
+  memory/cache policy, replay truth, and same-type local multi-device
+  execution contracts.
+- Psionic still keeps representative-coverage boundaries explicit: unsupported
+  gradient families refuse cleanly, and the current hooks are not a claim that
+  every future op family already has full reverse-mode coverage.
 - A green serving or train acceptance result must not be cited as evidence that
   those framework-core gaps are closed.
 

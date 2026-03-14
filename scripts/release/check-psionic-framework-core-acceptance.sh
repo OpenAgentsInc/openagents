@@ -102,13 +102,18 @@ run_category() {
       run_filtered_test psionic-core lib tests::layout_permute_updates_shape_and_strides
       ;;
     autodiff-optimizer)
+      run_filtered_test psionic-ir lib autodiff::tests::reverse_mode_autodiff_materializes_matmul_chain_gradients
+      run_filtered_test psionic-ir lib autodiff::tests::reverse_mode_autodiff_accumulates_shared_paths_and_honors_detach
+      run_filtered_test psionic-ir lib autodiff::tests::autodiff_context_makes_training_and_no_grad_behavior_explicit
+      run_filtered_test psionic-ir lib autodiff::tests::unsupported_gradient_ops_refuse_through_typed_error
+      run_filtered_test psionic-train lib core_loop::tests::autodiff_gradients_compose_with_fixed_budget_training_core
       run_filtered_test psionic-train lib core_loop::tests::fixed_budget_training_loop_applies_updates_and_tracks_telemetry
       run_filtered_test psionic-train lib optimizer::tests::reusable_optimizer_surface_advances_small_model_with_sgd_and_adam
       run_filtered_test psionic-train lib optimizer::tests::reusable_optimizer_surface_supports_all_declared_optimizer_families
       run_filtered_test psionic-train lib optimizer::tests::reusable_optimizer_surface_refuses_state_kind_mismatch
       run_filtered_test psionic-train lib distributed_optimizer::tests::distributed_optimizer_contract_surfaces_precision_and_memory_truth
       run_filtered_test psionic-train lib distributed_optimizer::tests::distributed_optimizer_contract_refuses_incomplete_shard_coverage
-      run_note "open gap: #3602 remains open; current hooks validate explicit-gradient training core, reusable optimizer primitives, and train-owned distributed optimizer contracts, not general reverse-mode autodiff or detach semantics"
+      run_note "implemented-early boundary: current hooks validate reverse-mode autodiff, explicit detach/no-grad semantics, trainer-step integration, reusable optimizer primitives, and train-owned distributed optimizer contracts; unsupported backend-extension gradients still refuse explicitly and broader operator coverage remains outside this runner"
       ;;
     model-state-io)
       run_filtered_test psionic-train lib model_io::tests::portable_model_bundle_roundtrips_through_safetensors_manifest
@@ -155,6 +160,6 @@ done
 
 echo
 echo "Psionic framework-core acceptance hooks completed."
-echo "Open framework-core gap categories remain explicit:"
-echo "- autodiff-optimizer"
-echo "Do not treat this runner as proof of Tinygrad-class framework-core closure while #3602 remains open."
+echo "No framework-core categories are currently marked partial in the canonical matrix."
+echo "Implemented-early boundaries remain intentional."
+echo "Do not treat this runner as proof of sweeping Tinygrad-class closure without broader operator-family coverage."
