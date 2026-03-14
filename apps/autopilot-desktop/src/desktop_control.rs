@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -13,7 +13,16 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use openagents_kernel_core::authority::KernelAuthority;
+use openagents_kernel_core::compute::{
+    CapacityInstrument, CapacityInstrumentKind, ComputeCapabilityEnvelope,
+    ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus, DeliveryProof,
+    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    StructuredCapacityInstrumentStatus,
+};
 use openagents_kernel_core::ids::sha256_prefixed_text;
+use openagents_kernel_core::receipts::{Money, MoneyAmount};
 use openagents_provider_substrate::ProviderDesiredMode;
 use psionic_sandbox::{
     InMemorySandboxJobService, ProviderSandboxBackgroundJobSnapshot, ProviderSandboxEntrypointType,
@@ -44,7 +53,7 @@ use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 8;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 9;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -52,6 +61,8 @@ const DESKTOP_CONTROL_LOG_TAIL_LIMIT: usize = 64;
 const DESKTOP_CONTROL_EVENT_BUFFER_LIMIT: usize = 512;
 const DESKTOP_CONTROL_EVENT_QUERY_LIMIT: usize = 128;
 const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
+const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
+const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRuntimeConfig {
@@ -350,16 +361,113 @@ pub struct DesktopControlSandboxStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlSettlementHistoryStatus {
+    pub settlement_id: String,
+    pub settlement_kind: String,
+    pub status: String,
+    pub product_id: String,
+    pub delivery_proof_ids: Vec<String>,
+    pub challenge_ids: Vec<String>,
+    pub settlement_mode: String,
+    pub quantity: u64,
+    pub fixed_price_sats: Option<u64>,
+    pub reference_index_id: Option<String>,
+    pub created_at_epoch_ms: i64,
+    pub delivery_window_label: String,
+    pub reason_code: Option<String>,
+    pub reason_detail: Option<String>,
+    pub outcome_summary: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlProofHistoryStatus {
+    pub delivery_proof_id: String,
+    pub product_id: String,
+    pub capacity_lot_id: String,
+    pub instrument_id: Option<String>,
+    pub contract_id: Option<String>,
+    pub created_at_epoch_ms: i64,
+    pub proof_status: String,
+    pub proof_posture: String,
+    pub topology_kind: String,
+    pub provisioning_kind: String,
+    pub environment_ref: Option<String>,
+    pub environment_version: Option<String>,
+    pub metered_quantity: u64,
+    pub accepted_quantity: u64,
+    pub acceptance_summary: String,
+    pub settlement_status: Option<String>,
+    pub settlement_summary: Option<String>,
+    pub challenge_status: Option<String>,
+    pub challenge_summary: Option<String>,
+    pub proof_bundle_ref: Option<String>,
+    pub activation_fingerprint_ref: Option<String>,
+    pub validator_pool_ref: Option<String>,
+    pub validator_run_ref: Option<String>,
+    pub runtime_manifest_ref: Option<String>,
+    pub runtime_manifest_digest: Option<String>,
+    pub session_claims_ref: Option<String>,
+    pub session_identity_posture: Option<String>,
+    pub transport_identity_posture: Option<String>,
+    pub runtime_config_identity_mode: Option<String>,
+    pub mutable_runtime_variables_present: Option<bool>,
+    pub command_digest: Option<String>,
+    pub environment_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlProofStatus {
     pub available: bool,
+    pub source: String,
+    pub last_synced_at_epoch_ms: Option<u64>,
     pub pending_count: usize,
+    pub accepted_count: usize,
+    pub rejected_count: usize,
+    pub challenged_count: usize,
+    pub settlement_open_count: usize,
+    pub settlement_terminal_count: usize,
+    pub history: Vec<DesktopControlProofHistoryStatus>,
+    pub settlements: Vec<DesktopControlSettlementHistoryStatus>,
     pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlChallengeHistoryStatus {
+    pub challenge_id: String,
+    pub delivery_proof_ids: Vec<String>,
+    pub product_id: String,
+    pub runtime_backend: String,
+    pub model_id: Option<String>,
+    pub protocol_id: String,
+    pub status: String,
+    pub verdict: Option<String>,
+    pub reason_code: Option<String>,
+    pub attempts_used: u32,
+    pub active_attempt: Option<u32>,
+    pub validator_id: Option<String>,
+    pub validator_pool_ref: Option<String>,
+    pub proof_bundle_digest: String,
+    pub challenge_result_ref: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub finalized_at_epoch_ms: Option<u64>,
+    pub verified_row_count: Option<u32>,
+    pub settlement_impact_summary: Option<String>,
+    pub detail: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlChallengeStatus {
     pub available: bool,
+    pub source: String,
+    pub last_synced_at_epoch_ms: Option<u64>,
     pub open_count: usize,
+    pub queued_count: usize,
+    pub leased_count: usize,
+    pub retrying_count: usize,
+    pub verified_count: usize,
+    pub rejected_count: usize,
+    pub timed_out_count: usize,
+    pub history: Vec<DesktopControlChallengeHistoryStatus>,
     pub last_error: Option<String>,
 }
 
@@ -1042,6 +1150,9 @@ pub fn disable_runtime(state: &mut RenderState) -> String {
 
 pub fn pump_runtime(state: &mut RenderState) -> bool {
     let mut changed = false;
+    if refresh_compute_history_cache_if_due(state, false) {
+        changed = true;
+    }
     if drain_runtime_updates(state) {
         changed = true;
     }
@@ -1604,15 +1715,26 @@ fn sandbox_status_summary(status: &DesktopControlSandboxStatus) -> String {
 
 fn proof_status_summary(status: &DesktopControlProofStatus) -> String {
     format!(
-        "proofs available={} pending={}",
-        status.available, status.pending_count
+        "proofs available={} source={} pending={} accepted={} rejected={} challenged={} settlements_terminal={}",
+        status.available,
+        status.source,
+        status.pending_count,
+        status.accepted_count,
+        status.rejected_count,
+        status.challenged_count,
+        status.settlement_terminal_count
     )
 }
 
 fn challenge_status_summary(status: &DesktopControlChallengeStatus) -> String {
     format!(
-        "challenges available={} open={}",
-        status.available, status.open_count
+        "challenges available={} source={} open={} verified={} rejected={} timed_out={}",
+        status.available,
+        status.source,
+        status.open_count,
+        status.verified_count,
+        status.rejected_count,
+        status.timed_out_count
     )
 }
 
@@ -2060,8 +2182,8 @@ fn apply_action_request(
             job_id,
             relative_path,
         } => download_sandbox_workspace_action(job_id.as_str(), relative_path.as_str()),
-        DesktopControlActionRequest::GetProofStatus => proof_payload_response(),
-        DesktopControlActionRequest::GetChallengeStatus => challenge_payload_response(),
+        DesktopControlActionRequest::GetProofStatus => proof_payload_response(state),
+        DesktopControlActionRequest::GetChallengeStatus => challenge_payload_response(state),
         DesktopControlActionRequest::ListPanes => {
             pane_list_payload_response(state, "Captured desktop pane catalog")
         }
@@ -2771,8 +2893,9 @@ fn sandbox_status_payload_response(state: &RenderState) -> DesktopControlActionR
     }
 }
 
-fn proof_payload_response() -> DesktopControlActionResponse {
-    match serde_json::to_value(desktop_control_proof_status()) {
+fn proof_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
+    refresh_compute_history_cache_if_due(state, true);
+    match serde_json::to_value(desktop_control_proof_status(state)) {
         Ok(payload) => {
             DesktopControlActionResponse::ok_with_payload("Captured proof control state", payload)
         }
@@ -2782,8 +2905,9 @@ fn proof_payload_response() -> DesktopControlActionResponse {
     }
 }
 
-fn challenge_payload_response() -> DesktopControlActionResponse {
-    match serde_json::to_value(desktop_control_challenge_status()) {
+fn challenge_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
+    refresh_compute_history_cache_if_due(state, true);
+    match serde_json::to_value(desktop_control_challenge_status(state)) {
         Ok(payload) => DesktopControlActionResponse::ok_with_payload(
             "Captured challenge control state",
             payload,
@@ -3072,24 +3196,944 @@ fn desktop_control_sandbox_status(state: &RenderState) -> DesktopControlSandboxS
     }
 }
 
-fn desktop_control_proof_status() -> DesktopControlProofStatus {
-    DesktopControlProofStatus {
-        available: false,
-        pending_count: 0,
-        last_error: Some(
-            "proof inspection is not integrated into the desktop control plane yet".to_string(),
-        ),
+#[derive(Default)]
+struct LoadedComputeHistory {
+    delivery_proofs: Vec<DeliveryProof>,
+    capacity_instruments: Vec<CapacityInstrument>,
+    structured_capacity_instruments: Vec<StructuredCapacityInstrument>,
+    validator_challenges: Vec<ComputeValidatorChallengeSnapshot>,
+}
+
+fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) -> bool {
+    let now_epoch_ms = current_epoch_ms();
+    let provider_id = crate::kernel_control::provider_id_for_state(state);
+    let provider_changed = state.desktop_control.compute_history.provider_id.as_deref()
+        != Some(provider_id.as_str());
+    let due = force
+        || provider_changed
+        || state
+            .desktop_control
+            .compute_history
+            .last_refreshed_at_epoch_ms
+            .is_none_or(|last| {
+                now_epoch_ms.saturating_sub(last)
+                    >= DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS
+            });
+    if !due {
+        return false;
+    }
+
+    if provider_changed {
+        state.desktop_control.compute_history.provider_id = Some(provider_id.clone());
+        state.desktop_control.compute_history.delivery_proofs.clear();
+        state.desktop_control.compute_history.capacity_instruments.clear();
+        state
+            .desktop_control
+            .compute_history
+            .structured_capacity_instruments
+            .clear();
+        state
+            .desktop_control
+            .compute_history
+            .validator_challenges
+            .clear();
+    }
+
+    let result = load_compute_history_from_authority(state, provider_id.as_str());
+    let cache = &mut state.desktop_control.compute_history;
+    let mut changed = false;
+    match result {
+        Ok(loaded) => {
+            changed |= cache.delivery_proofs != loaded.delivery_proofs;
+            changed |= cache.capacity_instruments != loaded.capacity_instruments;
+            changed |= cache.structured_capacity_instruments
+                != loaded.structured_capacity_instruments;
+            changed |= cache.validator_challenges != loaded.validator_challenges;
+            changed |= cache.last_error.is_some();
+            cache.delivery_proofs = loaded.delivery_proofs;
+            cache.capacity_instruments = loaded.capacity_instruments;
+            cache.structured_capacity_instruments = loaded.structured_capacity_instruments;
+            cache.validator_challenges = loaded.validator_challenges;
+            cache.last_error = None;
+            cache.last_action = Some(format!(
+                "Loaded kernel compute proof, challenge, and settlement history for {} proofs",
+                cache.delivery_proofs.len()
+            ));
+        }
+        Err(error) => {
+            changed |= cache.last_error.as_deref() != Some(error.as_str());
+            cache.last_error = Some(error);
+            cache.last_action = Some("Kernel compute history refresh failed".to_string());
+        }
+    }
+    changed |= cache.last_refreshed_at_epoch_ms != Some(now_epoch_ms);
+    cache.last_refreshed_at_epoch_ms = Some(now_epoch_ms);
+    changed
+}
+
+fn load_compute_history_from_authority(
+    state: &RenderState,
+    provider_id: &str,
+) -> Result<LoadedComputeHistory, String> {
+    let client = crate::kernel_control::remote_authority_client_for_state(state)?;
+    crate::kernel_control::run_kernel_call(async move {
+        let lots = client.list_capacity_lots(None, None).await?;
+        let provider_lot_ids = lots
+            .into_iter()
+            .filter(|lot| lot.provider_id == provider_id)
+            .map(|lot| lot.capacity_lot_id)
+            .collect::<BTreeSet<_>>();
+
+        let mut delivery_proofs = Vec::new();
+        for lot_id in &provider_lot_ids {
+            delivery_proofs.extend(client.list_delivery_proofs(Some(lot_id.as_str()), None).await?);
+        }
+        delivery_proofs.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.delivery_proof_id.cmp(&right.delivery_proof_id))
+        });
+
+        let proof_instrument_ids = delivery_proofs
+            .iter()
+            .filter_map(|proof| proof.instrument_id.clone())
+            .collect::<BTreeSet<_>>();
+        let proof_bundle_digests = proof_bundle_digests_by_delivery_proof(delivery_proofs.as_slice());
+
+        let mut capacity_instruments = client.list_capacity_instruments(None, None, None).await?;
+        capacity_instruments.retain(|instrument| {
+            instrument.provider_id.as_deref() == Some(provider_id)
+                || proof_instrument_ids.contains(instrument.instrument_id.as_str())
+        });
+        capacity_instruments.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.instrument_id.cmp(&right.instrument_id))
+        });
+
+        let mut structured_capacity_instruments =
+            client.list_structured_capacity_instruments(None, None).await?;
+        structured_capacity_instruments.retain(|instrument| {
+            instrument.provider_id.as_deref() == Some(provider_id)
+                || instrument
+                    .legs
+                    .iter()
+                    .any(|leg| proof_instrument_ids.contains(leg.instrument_id.as_str()))
+        });
+        structured_capacity_instruments.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| {
+                    left.structured_instrument_id.cmp(&right.structured_instrument_id)
+                })
+        });
+
+        let mut validator_challenges = client.list_validator_challenges(None).await?;
+        validator_challenges.retain(|challenge| {
+            proof_bundle_digests
+                .get(challenge.request.context.proof_bundle_digest.as_str())
+                .is_some()
+                || challenge
+                    .request
+                    .context
+                    .delivery_proof_id
+                    .as_deref()
+                    .is_some_and(|proof_id| {
+                        delivery_proofs
+                            .iter()
+                            .any(|proof| proof.delivery_proof_id == proof_id)
+                    })
+        });
+        validator_challenges.sort_by(|left, right| {
+            challenge_sort_epoch_ms(right)
+                .cmp(&challenge_sort_epoch_ms(left))
+                .then_with(|| {
+                    left.request
+                        .context
+                        .challenge_id
+                        .cmp(&right.request.context.challenge_id)
+                })
+        });
+
+        Ok(LoadedComputeHistory {
+            delivery_proofs,
+            capacity_instruments,
+            structured_capacity_instruments,
+            validator_challenges,
+        })
+    })
+}
+
+fn proof_bundle_digests_by_delivery_proof(
+    proofs: &[DeliveryProof],
+) -> BTreeMap<String, Vec<String>> {
+    let mut digests = BTreeMap::new();
+    for proof in proofs {
+        let Some(proof_bundle_ref) = proof
+            .verification_evidence
+            .as_ref()
+            .and_then(|verification| verification.proof_bundle_ref.as_deref())
+        else {
+            continue;
+        };
+        digests
+            .entry(sha256_prefixed_text(proof_bundle_ref))
+            .or_insert_with(Vec::new)
+            .push(proof.delivery_proof_id.clone());
+    }
+    digests
+}
+
+fn challenge_sort_epoch_ms(challenge: &ComputeValidatorChallengeSnapshot) -> u64 {
+    challenge
+        .final_result
+        .as_ref()
+        .map(|result| result.finalized_at_ms)
+        .or_else(|| challenge.active_lease.as_ref().map(|lease| lease.leased_at_ms))
+        .unwrap_or(challenge.request.context.created_at_ms)
+}
+
+fn authority_history_source_label(state: &RenderState) -> String {
+    let authority_configured = state
+        .hosted_control_base_url
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        && state
+            .hosted_control_bearer_token
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+    let cache = &state.desktop_control.compute_history;
+    if !authority_configured {
+        return "unavailable".to_string();
+    }
+    if cache.last_refreshed_at_epoch_ms.is_none() {
+        return "kernel_authority_pending".to_string();
+    }
+    if cache.last_error.is_some() {
+        if cache.delivery_proofs.is_empty()
+            && cache.validator_challenges.is_empty()
+            && cache.capacity_instruments.is_empty()
+            && cache.structured_capacity_instruments.is_empty()
+        {
+            "kernel_authority_error".to_string()
+        } else {
+            "kernel_authority_stale".to_string()
+        }
+    } else {
+        "kernel_authority".to_string()
     }
 }
 
-fn desktop_control_challenge_status() -> DesktopControlChallengeStatus {
-    DesktopControlChallengeStatus {
-        available: false,
-        open_count: 0,
-        last_error: Some(
-            "challenge inspection is not integrated into the desktop control plane yet".to_string(),
-        ),
+fn desktop_control_proof_status(state: &RenderState) -> DesktopControlProofStatus {
+    let cache = &state.desktop_control.compute_history;
+    let source = authority_history_source_label(state);
+    let related_challenges = challenges_by_delivery_proof(
+        cache.delivery_proofs.as_slice(),
+        cache.validator_challenges.as_slice(),
+    );
+    let instruments_by_id = cache
+        .capacity_instruments
+        .iter()
+        .map(|instrument| (instrument.instrument_id.as_str(), instrument))
+        .collect::<BTreeMap<_, _>>();
+    let structured_by_instrument_id =
+        structured_instruments_by_leg(cache.structured_capacity_instruments.as_slice());
+
+    let history = cache
+        .delivery_proofs
+        .iter()
+        .take(DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT)
+        .map(|proof| {
+            let challenges = related_challenges
+                .get(proof.delivery_proof_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let instrument = proof
+                .instrument_id
+                .as_deref()
+                .and_then(|instrument_id| instruments_by_id.get(instrument_id).copied());
+            let structured = proof
+                .instrument_id
+                .as_deref()
+                .and_then(|instrument_id| structured_by_instrument_id.get(instrument_id))
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            desktop_control_proof_history_status(proof, instrument, structured, challenges)
+        })
+        .collect::<Vec<_>>();
+
+    let settlements = build_settlement_history(
+        cache.delivery_proofs.as_slice(),
+        cache.capacity_instruments.as_slice(),
+        cache.structured_capacity_instruments.as_slice(),
+        &related_challenges,
+    );
+
+    DesktopControlProofStatus {
+        available: cache.last_refreshed_at_epoch_ms.is_some(),
+        source,
+        last_synced_at_epoch_ms: cache.last_refreshed_at_epoch_ms,
+        pending_count: cache
+            .delivery_proofs
+            .iter()
+            .filter(|proof| proof.status == DeliveryProofStatus::Recorded)
+            .count(),
+        accepted_count: cache
+            .delivery_proofs
+            .iter()
+            .filter(|proof| proof.status == DeliveryProofStatus::Accepted)
+            .count(),
+        rejected_count: cache
+            .delivery_proofs
+            .iter()
+            .filter(|proof| proof.status == DeliveryProofStatus::Rejected)
+            .count(),
+        challenged_count: cache
+            .delivery_proofs
+            .iter()
+            .filter(|proof| {
+                related_challenges
+                    .get(proof.delivery_proof_id.as_str())
+                    .is_some_and(|items| !items.is_empty())
+            })
+            .count(),
+        settlement_open_count: settlements
+            .iter()
+            .filter(|settlement| !settlement_status_terminal(settlement.status.as_str()))
+            .count(),
+        settlement_terminal_count: settlements
+            .iter()
+            .filter(|settlement| settlement_status_terminal(settlement.status.as_str()))
+            .count(),
+        history,
+        settlements,
+        last_error: cache.last_error.clone(),
     }
+}
+
+fn desktop_control_challenge_status(state: &RenderState) -> DesktopControlChallengeStatus {
+    let cache = &state.desktop_control.compute_history;
+    let source = authority_history_source_label(state);
+    let related_challenges = challenges_by_delivery_proof(
+        cache.delivery_proofs.as_slice(),
+        cache.validator_challenges.as_slice(),
+    );
+    let proofs_by_id = cache
+        .delivery_proofs
+        .iter()
+        .map(|proof| (proof.delivery_proof_id.as_str(), proof))
+        .collect::<BTreeMap<_, _>>();
+    let capacity_instruments = cache
+        .capacity_instruments
+        .iter()
+        .map(|instrument| (instrument.instrument_id.as_str(), instrument))
+        .collect::<BTreeMap<_, _>>();
+    let structured_by_instrument_id =
+        structured_instruments_by_leg(cache.structured_capacity_instruments.as_slice());
+
+    let history = cache
+        .validator_challenges
+        .iter()
+        .take(DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT)
+        .map(|challenge| {
+            let delivery_proof_ids =
+                delivery_proof_ids_for_challenge(challenge, cache.delivery_proofs.as_slice());
+            let settlement_impact_summary = settlement_impact_summary_for_challenge(
+                delivery_proof_ids.as_slice(),
+                &proofs_by_id,
+                &capacity_instruments,
+                &structured_by_instrument_id,
+                &related_challenges,
+            );
+            desktop_control_challenge_history_status(
+                challenge,
+                delivery_proof_ids,
+                settlement_impact_summary,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    DesktopControlChallengeStatus {
+        available: cache.last_refreshed_at_epoch_ms.is_some(),
+        source,
+        last_synced_at_epoch_ms: cache.last_refreshed_at_epoch_ms,
+        open_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| {
+                matches!(
+                    challenge.status,
+                    ComputeValidatorChallengeStatus::Queued
+                        | ComputeValidatorChallengeStatus::Leased
+                        | ComputeValidatorChallengeStatus::Retrying
+                )
+            })
+            .count(),
+        queued_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Queued)
+            .count(),
+        leased_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Leased)
+            .count(),
+        retrying_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Retrying)
+            .count(),
+        verified_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Verified)
+            .count(),
+        rejected_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::Rejected)
+            .count(),
+        timed_out_count: cache
+            .validator_challenges
+            .iter()
+            .filter(|challenge| challenge.status == ComputeValidatorChallengeStatus::TimedOut)
+            .count(),
+        history,
+        last_error: cache.last_error.clone(),
+    }
+}
+
+fn challenges_by_delivery_proof<'a>(
+    proofs: &'a [DeliveryProof],
+    challenges: &'a [ComputeValidatorChallengeSnapshot],
+) -> BTreeMap<String, Vec<&'a ComputeValidatorChallengeSnapshot>> {
+    let proofs_by_bundle_digest = proof_bundle_digests_by_delivery_proof(proofs);
+    let mut grouped = BTreeMap::<String, Vec<&ComputeValidatorChallengeSnapshot>>::new();
+    for challenge in challenges {
+        for proof_id in delivery_proof_ids_for_challenge_with_bundle_map(
+            challenge,
+            &proofs_by_bundle_digest,
+        ) {
+            grouped.entry(proof_id).or_default().push(challenge);
+        }
+    }
+    grouped
+}
+
+fn delivery_proof_ids_for_challenge<'a>(
+    challenge: &'a ComputeValidatorChallengeSnapshot,
+    proofs: &'a [DeliveryProof],
+) -> Vec<String> {
+    let proofs_by_bundle_digest = proof_bundle_digests_by_delivery_proof(proofs);
+    delivery_proof_ids_for_challenge_with_bundle_map(challenge, &proofs_by_bundle_digest)
+}
+
+fn delivery_proof_ids_for_challenge_with_bundle_map(
+    challenge: &ComputeValidatorChallengeSnapshot,
+    proofs_by_bundle_digest: &BTreeMap<String, Vec<String>>,
+) -> Vec<String> {
+    if let Some(proof_id) = challenge.request.context.delivery_proof_id.as_deref() {
+        return vec![proof_id.to_string()];
+    }
+    proofs_by_bundle_digest
+        .get(challenge.request.context.proof_bundle_digest.as_str())
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn structured_instruments_by_leg<'a>(
+    instruments: &'a [StructuredCapacityInstrument],
+) -> BTreeMap<&'a str, Vec<&'a StructuredCapacityInstrument>> {
+    let mut grouped = BTreeMap::<&str, Vec<&StructuredCapacityInstrument>>::new();
+    for instrument in instruments {
+        for leg in &instrument.legs {
+            grouped
+                .entry(leg.instrument_id.as_str())
+                .or_default()
+                .push(instrument);
+        }
+    }
+    grouped
+}
+
+fn desktop_control_proof_history_status(
+    proof: &DeliveryProof,
+    instrument: Option<&CapacityInstrument>,
+    structured: &[&StructuredCapacityInstrument],
+    challenges: &[&ComputeValidatorChallengeSnapshot],
+) -> DesktopControlProofHistoryStatus {
+    let verification = proof.verification_evidence.as_ref();
+    let challenge_status = challenges
+        .first()
+        .map(|challenge| challenge.status.label().to_string());
+    let challenge_summary = challenges
+        .first()
+        .map(|challenge| challenge_summary_line(challenge, challenges.len()));
+    let settlement_status = settlement_status_for_proof(instrument, structured);
+    let settlement_summary = settlement_summary_for_proof(instrument, structured);
+    let environment_binding = proof_environment_binding(proof);
+    let metadata = &proof.metadata;
+    DesktopControlProofHistoryStatus {
+        delivery_proof_id: proof.delivery_proof_id.clone(),
+        product_id: proof.product_id.clone(),
+        capacity_lot_id: proof.capacity_lot_id.clone(),
+        instrument_id: proof.instrument_id.clone(),
+        contract_id: proof.contract_id.clone(),
+        created_at_epoch_ms: proof.created_at_ms,
+        proof_status: proof.status.label().to_string(),
+        proof_posture: capability_proof_posture_label(proof).to_string(),
+        topology_kind: capability_topology_kind_label(proof).to_string(),
+        provisioning_kind: capability_provisioning_kind_label(proof).to_string(),
+        environment_ref: verification
+            .and_then(|value| value.environment_ref.clone())
+            .or_else(|| environment_binding.as_ref().map(|binding| binding.0.clone())),
+        environment_version: verification
+            .and_then(|value| value.environment_version.clone())
+            .or_else(|| environment_binding.as_ref().and_then(|binding| binding.1.clone())),
+        metered_quantity: proof.metered_quantity,
+        accepted_quantity: proof.accepted_quantity,
+        acceptance_summary: delivery_acceptance_summary(proof),
+        settlement_status,
+        settlement_summary,
+        challenge_status,
+        challenge_summary,
+        proof_bundle_ref: verification.and_then(|value| value.proof_bundle_ref.clone()),
+        activation_fingerprint_ref: verification
+            .and_then(|value| value.activation_fingerprint_ref.clone()),
+        validator_pool_ref: verification.and_then(|value| value.validator_pool_ref.clone()),
+        validator_run_ref: verification.and_then(|value| value.validator_run_ref.clone()),
+        runtime_manifest_ref: metadata_string(
+            metadata,
+            &["runtime_manifest_ref", "runtime_manifest_id", "sharded_model_manifest_ref"],
+        ),
+        runtime_manifest_digest: metadata_string(
+            metadata,
+            &[
+                "runtime_manifest_digest",
+                "sharded_model_manifest_digest",
+                "model_manifest_digest",
+            ],
+        ),
+        session_claims_ref: metadata_string(
+            metadata,
+            &["session_claims_ref", "session_claims_bundle_ref"],
+        ),
+        session_identity_posture: metadata_string(
+            metadata,
+            &["session_identity_posture", "session_claims_posture"],
+        ),
+        transport_identity_posture: metadata_string(
+            metadata,
+            &["transport_identity_posture", "transport_claim_posture"],
+        ),
+        runtime_config_identity_mode: metadata_string(
+            metadata,
+            &["runtime_config_identity_mode", "config_identity_mode"],
+        ),
+        mutable_runtime_variables_present: metadata_bool(
+            metadata,
+            &["mutable_runtime_variables_present", "runtime_variables_mutable"],
+        ),
+        command_digest: proof
+            .sandbox_evidence
+            .as_ref()
+            .and_then(|value| value.command_digest.clone()),
+        environment_digest: proof
+            .sandbox_evidence
+            .as_ref()
+            .and_then(|value| value.environment_digest.clone()),
+    }
+}
+
+fn desktop_control_challenge_history_status(
+    challenge: &ComputeValidatorChallengeSnapshot,
+    delivery_proof_ids: Vec<String>,
+    settlement_impact_summary: Option<String>,
+) -> DesktopControlChallengeHistoryStatus {
+    let final_result = challenge.final_result.as_ref();
+    DesktopControlChallengeHistoryStatus {
+        challenge_id: challenge.request.context.challenge_id.clone(),
+        delivery_proof_ids,
+        product_id: challenge.request.context.product_id.clone(),
+        runtime_backend: challenge.request.context.runtime_backend.clone(),
+        model_id: challenge.request.context.model_id.clone(),
+        protocol_id: challenge.request.protocol.label().to_string(),
+        status: challenge.status.label().to_string(),
+        verdict: final_result.map(|result| result.verdict.label().to_string()),
+        reason_code: final_result
+            .and_then(|result| result.reason_code.map(|code| code.label().to_string())),
+        attempts_used: challenge.attempts_used,
+        active_attempt: challenge.active_lease.as_ref().map(|lease| lease.attempt),
+        validator_id: challenge
+            .active_lease
+            .as_ref()
+            .map(|lease| lease.validator_id.clone()),
+        validator_pool_ref: challenge.request.context.validator_pool_ref.clone(),
+        proof_bundle_digest: challenge.request.context.proof_bundle_digest.clone(),
+        challenge_result_ref: final_result.map(|result| result.challenge_result_ref.clone()),
+        created_at_epoch_ms: challenge.request.context.created_at_ms,
+        finalized_at_epoch_ms: final_result.map(|result| result.finalized_at_ms),
+        verified_row_count: final_result.and_then(|result| result.verified_row_count),
+        settlement_impact_summary,
+        detail: final_result
+            .map(|result| result.detail.clone())
+            .unwrap_or_else(|| challenge.status.label().to_string()),
+    }
+}
+
+fn build_settlement_history(
+    proofs: &[DeliveryProof],
+    capacity_instruments: &[CapacityInstrument],
+    structured_capacity_instruments: &[StructuredCapacityInstrument],
+    related_challenges: &BTreeMap<String, Vec<&ComputeValidatorChallengeSnapshot>>,
+) -> Vec<DesktopControlSettlementHistoryStatus> {
+    let proof_ids_by_instrument_id = proofs_by_instrument_id(proofs);
+    let mut settlements = capacity_instruments
+        .iter()
+        .map(|instrument| {
+            let delivery_proof_ids = proof_ids_by_instrument_id
+                .get(instrument.instrument_id.as_str())
+                .cloned()
+                .unwrap_or_default();
+            let challenge_ids = challenge_ids_for_delivery_proofs(
+                delivery_proof_ids.as_slice(),
+                related_challenges,
+            );
+            DesktopControlSettlementHistoryStatus {
+                settlement_id: instrument.instrument_id.clone(),
+                settlement_kind: capacity_instrument_kind_label(instrument.kind).to_string(),
+                status: instrument.status.label().to_string(),
+                product_id: instrument.product_id.clone(),
+                delivery_proof_ids,
+                challenge_ids,
+                settlement_mode: compute_settlement_mode_label(instrument.settlement_mode)
+                    .to_string(),
+                quantity: instrument.quantity,
+                fixed_price_sats: instrument
+                    .fixed_price
+                    .as_ref()
+                    .and_then(money_to_sats),
+                reference_index_id: instrument.reference_index_id.clone(),
+                created_at_epoch_ms: instrument.created_at_ms,
+                delivery_window_label: format!(
+                    "{}..{}",
+                    instrument.delivery_start_ms, instrument.delivery_end_ms
+                ),
+                reason_code: settlement_reason_code_for_instrument(instrument),
+                reason_detail: instrument.lifecycle_reason_detail.clone(),
+                outcome_summary: capacity_instrument_summary(instrument),
+            }
+        })
+        .collect::<Vec<_>>();
+    settlements.extend(structured_capacity_instruments.iter().map(|instrument| {
+        let delivery_proof_ids = instrument
+            .legs
+            .iter()
+            .filter_map(|leg| proof_ids_by_instrument_id.get(leg.instrument_id.as_str()))
+            .flat_map(|proof_ids| proof_ids.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let challenge_ids =
+            challenge_ids_for_delivery_proofs(delivery_proof_ids.as_slice(), related_challenges);
+        DesktopControlSettlementHistoryStatus {
+            settlement_id: instrument.structured_instrument_id.clone(),
+            settlement_kind: structured_instrument_kind_label(instrument.kind).to_string(),
+            status: instrument.status.label().to_string(),
+            product_id: instrument.product_id.clone(),
+            delivery_proof_ids,
+            challenge_ids,
+            settlement_mode: "structured".to_string(),
+            quantity: instrument.legs.len() as u64,
+            fixed_price_sats: None,
+            reference_index_id: None,
+            created_at_epoch_ms: instrument.created_at_ms,
+            delivery_window_label: "structured".to_string(),
+            reason_code: structured_instrument_reason_code(instrument),
+            reason_detail: instrument.lifecycle_reason_detail.clone(),
+            outcome_summary: structured_instrument_summary(instrument),
+        }
+    }));
+    settlements.sort_by(|left, right| {
+        right
+            .created_at_epoch_ms
+            .cmp(&left.created_at_epoch_ms)
+            .then_with(|| left.settlement_id.cmp(&right.settlement_id))
+    });
+    settlements.truncate(DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT);
+    settlements
+}
+
+fn proofs_by_instrument_id(proofs: &[DeliveryProof]) -> BTreeMap<&str, Vec<String>> {
+    let mut grouped = BTreeMap::<&str, Vec<String>>::new();
+    for proof in proofs {
+        let Some(instrument_id) = proof.instrument_id.as_deref() else {
+            continue;
+        };
+        grouped
+            .entry(instrument_id)
+            .or_default()
+            .push(proof.delivery_proof_id.clone());
+    }
+    grouped
+}
+
+fn challenge_ids_for_delivery_proofs(
+    delivery_proof_ids: &[String],
+    related_challenges: &BTreeMap<String, Vec<&ComputeValidatorChallengeSnapshot>>,
+) -> Vec<String> {
+    delivery_proof_ids
+        .iter()
+        .filter_map(|delivery_proof_id| related_challenges.get(delivery_proof_id.as_str()))
+        .flat_map(|items| items.iter())
+        .map(|challenge| challenge.request.context.challenge_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn settlement_status_for_proof(
+    instrument: Option<&CapacityInstrument>,
+    structured: &[&StructuredCapacityInstrument],
+) -> Option<String> {
+    structured
+        .first()
+        .map(|instrument| instrument.status.label().to_string())
+        .or_else(|| instrument.map(|instrument| instrument.status.label().to_string()))
+}
+
+fn settlement_summary_for_proof(
+    instrument: Option<&CapacityInstrument>,
+    structured: &[&StructuredCapacityInstrument],
+) -> Option<String> {
+    structured
+        .first()
+        .map(|instrument| structured_instrument_summary(instrument))
+        .or_else(|| instrument.map(capacity_instrument_summary))
+}
+
+fn settlement_impact_summary_for_challenge(
+    delivery_proof_ids: &[String],
+    proofs_by_id: &BTreeMap<&str, &DeliveryProof>,
+    capacity_instruments: &BTreeMap<&str, &CapacityInstrument>,
+    structured_by_instrument_id: &BTreeMap<&str, Vec<&StructuredCapacityInstrument>>,
+    related_challenges: &BTreeMap<String, Vec<&ComputeValidatorChallengeSnapshot>>,
+) -> Option<String> {
+    delivery_proof_ids
+        .iter()
+        .find_map(|delivery_proof_id| {
+            let proof = proofs_by_id.get(delivery_proof_id.as_str())?;
+            let instrument = proof
+                .instrument_id
+                .as_deref()
+                .and_then(|instrument_id| capacity_instruments.get(instrument_id).copied());
+            let structured = proof
+                .instrument_id
+                .as_deref()
+                .and_then(|instrument_id| structured_by_instrument_id.get(instrument_id))
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let challenge_count = related_challenges
+                .get(delivery_proof_id.as_str())
+                .map_or(0, Vec::len);
+            settlement_summary_for_proof(instrument, structured).map(|summary| {
+                format!("{summary} // related_challenges={challenge_count}")
+            })
+        })
+}
+
+fn delivery_acceptance_summary(proof: &DeliveryProof) -> String {
+    match proof.status {
+        DeliveryProofStatus::Recorded => format!(
+            "recorded quantity={} awaiting acceptance",
+            proof.metered_quantity
+        ),
+        DeliveryProofStatus::Accepted => format!(
+            "accepted {}/{} delivered",
+            proof.accepted_quantity, proof.metered_quantity
+        ),
+        DeliveryProofStatus::Rejected => {
+            let reason = proof
+                .rejection_reason
+                .map(|reason| reason.label().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            match proof.variance_reason_detail.as_deref() {
+                Some(detail) if !detail.trim().is_empty() => {
+                    format!("rejected {reason} ({detail})")
+                }
+                _ => format!("rejected {reason}"),
+            }
+        }
+    }
+}
+
+fn challenge_summary_line(
+    challenge: &ComputeValidatorChallengeSnapshot,
+    related_count: usize,
+) -> String {
+    let mut parts = vec![format!("status={}", challenge.status.label())];
+    if let Some(result) = challenge.final_result.as_ref() {
+        parts.push(format!("verdict={}", result.verdict.label()));
+        if let Some(reason_code) = result.reason_code {
+            parts.push(format!("reason={}", reason_code.label()));
+        }
+    }
+    parts.push(format!("attempts={}", challenge.attempts_used));
+    parts.push(format!("related={related_count}"));
+    parts.join(" ")
+}
+
+fn proof_environment_binding(proof: &DeliveryProof) -> Option<(String, Option<String>)> {
+    proof
+        .observed_capability_envelope
+        .as_ref()
+        .or(proof.promised_capability_envelope.as_ref())
+        .and_then(|envelope| envelope.environment_binding.as_ref())
+        .map(|binding| {
+            (
+                binding.environment_ref.clone(),
+                binding.environment_version.clone(),
+            )
+        })
+}
+
+fn capability_proof_posture_label(proof: &DeliveryProof) -> &'static str {
+    proof_capability_envelope(proof)
+        .and_then(|envelope| envelope.proof_posture)
+        .map_or("unknown", ComputeProofPosture::label)
+}
+
+fn capability_topology_kind_label(proof: &DeliveryProof) -> &'static str {
+    proof_capability_envelope(proof)
+        .and_then(|envelope| envelope.topology_kind)
+        .map_or("unknown", ComputeTopologyKind::label)
+}
+
+fn capability_provisioning_kind_label(proof: &DeliveryProof) -> &'static str {
+    proof_capability_envelope(proof)
+        .and_then(|envelope| envelope.provisioning_kind)
+        .map_or("unknown", ComputeProvisioningKind::label)
+}
+
+fn proof_capability_envelope(proof: &DeliveryProof) -> Option<&ComputeCapabilityEnvelope> {
+    proof
+        .observed_capability_envelope
+        .as_ref()
+        .or(proof.promised_capability_envelope.as_ref())
+}
+
+fn capacity_instrument_summary(instrument: &CapacityInstrument) -> String {
+    let mut parts = vec![
+        capacity_instrument_kind_label(instrument.kind).to_string(),
+        instrument.status.label().to_string(),
+    ];
+    if let Some(reason_code) = settlement_reason_code_for_instrument(instrument) {
+        parts.push(format!("reason={reason_code}"));
+    }
+    if let Some(detail) = instrument.lifecycle_reason_detail.as_deref()
+        && !detail.trim().is_empty()
+    {
+        parts.push(format!("detail={detail}"));
+    }
+    parts.join(" ")
+}
+
+fn structured_instrument_summary(instrument: &StructuredCapacityInstrument) -> String {
+    let mut parts = vec![
+        structured_instrument_kind_label(instrument.kind).to_string(),
+        instrument.status.label().to_string(),
+    ];
+    if let Some(reason_code) = structured_instrument_reason_code(instrument) {
+        parts.push(format!("reason={reason_code}"));
+    }
+    if let Some(detail) = instrument.lifecycle_reason_detail.as_deref()
+        && !detail.trim().is_empty()
+    {
+        parts.push(format!("detail={detail}"));
+    }
+    parts.join(" ")
+}
+
+fn settlement_reason_code_for_instrument(instrument: &CapacityInstrument) -> Option<String> {
+    instrument
+        .settlement_failure_reason
+        .map(|reason| reason.label().to_string())
+        .or_else(|| instrument.non_delivery_reason.map(|reason| reason.label().to_string()))
+        .or_else(|| instrument.closure_reason.map(|reason| reason.label().to_string()))
+}
+
+fn structured_instrument_reason_code(
+    instrument: &StructuredCapacityInstrument,
+) -> Option<String> {
+    match instrument.status {
+        StructuredCapacityInstrumentStatus::Defaulted => Some("defaulted".to_string()),
+        StructuredCapacityInstrumentStatus::Cancelled => Some("cancelled".to_string()),
+        StructuredCapacityInstrumentStatus::Expired => Some("expired".to_string()),
+        _ => None,
+    }
+}
+
+fn settlement_status_terminal(status: &str) -> bool {
+    matches!(
+        status,
+        "settled" | "defaulted" | "cancelled" | "expired" | "rejected"
+    )
+}
+
+fn capacity_instrument_kind_label(kind: CapacityInstrumentKind) -> &'static str {
+    match kind {
+        CapacityInstrumentKind::Spot => "spot",
+        CapacityInstrumentKind::ForwardPhysical => "forward_physical",
+        CapacityInstrumentKind::FutureCash => "future_cash",
+        CapacityInstrumentKind::Reservation => "reservation",
+    }
+}
+
+fn structured_instrument_kind_label(kind: StructuredCapacityInstrumentKind) -> &'static str {
+    match kind {
+        StructuredCapacityInstrumentKind::Reservation => "reservation",
+        StructuredCapacityInstrumentKind::Swap => "swap",
+        StructuredCapacityInstrumentKind::Strip => "strip",
+    }
+}
+
+fn compute_settlement_mode_label(
+    mode: openagents_kernel_core::compute::ComputeSettlementMode,
+) -> &'static str {
+    match mode {
+        openagents_kernel_core::compute::ComputeSettlementMode::Physical => "physical",
+        openagents_kernel_core::compute::ComputeSettlementMode::Cash => "cash",
+        openagents_kernel_core::compute::ComputeSettlementMode::BuyerElection => {
+            "buyer_election"
+        }
+    }
+}
+
+fn money_to_sats(money: &Money) -> Option<u64> {
+    match money.amount {
+        MoneyAmount::AmountSats(value) => Some(value),
+        MoneyAmount::AmountMsats(value) => Some(value / 1_000),
+    }
+}
+
+fn metadata_string(metadata: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        metadata
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
+}
+
+fn metadata_bool(metadata: &Value, keys: &[&str]) -> Option<bool> {
+    keys.iter()
+        .find_map(|key| metadata.get(*key).and_then(Value::as_bool))
 }
 
 fn procurement_backend_label(
@@ -3457,8 +4501,8 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
         buyer_procurement,
         cluster: desktop_control_cluster_status(),
         sandbox: desktop_control_sandbox_status(state),
-        proofs: desktop_control_proof_status(),
-        challenges: desktop_control_challenge_status(),
+        proofs: desktop_control_proof_status(state),
+        challenges: desktop_control_challenge_status(state),
         buy_mode: DesktopControlBuyModeStatus {
             enabled: state.buy_mode_payments.buy_mode_loop_enabled,
             approved_budget_sats: MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
@@ -4148,9 +5192,11 @@ mod tests {
         DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
         DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
         DesktopControlSnapshot, DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus,
-        DesktopControlWalletStatus, apply_response_snapshot_metadata, command_outcome_event,
-        command_received_event, snapshot_change_events, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlWalletStatus, apply_response_snapshot_metadata,
+        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
+        command_received_event, desktop_control_challenge_history_status,
+        desktop_control_proof_history_status, snapshot_change_events,
+        snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -4174,6 +5220,17 @@ mod tests {
         ChannelMetadata, Event, EventTemplate, GroupMetadata, GroupMetadataEvent,
         ManagedChannelCreateEvent, ManagedChannelHints, ManagedChannelMessageEvent,
         ManagedChannelType, NostrIdentity,
+    };
+    use openagents_kernel_core::compute::{
+        CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus,
+        ComputeCapabilityEnvelope, ComputeProofPosture, ComputeProvisioningKind,
+        ComputeTopologyKind,
+        ComputeValidatorChallengeContext, ComputeValidatorChallengeProtocolKind,
+        ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
+        ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
+        ComputeValidatorChallengeVerdict, DeliveryProof, DeliveryProofStatus,
+        DeliveryVerificationEvidence, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
     };
     use serde_json::{Value, json};
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -4440,19 +5497,23 @@ mod tests {
             },
             proofs: DesktopControlProofStatus {
                 available: false,
+                source: "unavailable".to_string(),
                 pending_count: 0,
                 last_error: Some(
-                    "proof inspection is not integrated into the desktop control plane yet"
+                    "kernel authority unavailable: hosted control endpoint is not configured"
                         .to_string(),
                 ),
+                ..DesktopControlProofStatus::default()
             },
             challenges: DesktopControlChallengeStatus {
                 available: false,
+                source: "unavailable".to_string(),
                 open_count: 0,
                 last_error: Some(
-                    "challenge inspection is not integrated into the desktop control plane yet"
+                    "kernel authority unavailable: hosted control endpoint is not configured"
                         .to_string(),
                 ),
+                ..DesktopControlChallengeStatus::default()
             },
             buy_mode: DesktopControlBuyModeStatus {
                 enabled: false,

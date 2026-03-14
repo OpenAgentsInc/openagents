@@ -4,8 +4,9 @@ use crate::compute::{
     ComputeEnvironmentPackageStatus, ComputeEvaluationRun, ComputeEvaluationRunStatus,
     ComputeEvaluationSample, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
     ComputeProductStatus, ComputeSettlementFailureReason, ComputeSyntheticDataJob,
-    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample, DeliveryProof, DeliveryProofStatus,
-    StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
+    ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus, DeliveryProof,
+    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -171,6 +172,14 @@ pub trait KernelAuthority: Send + Sync {
         status: Option<DeliveryProofStatus>,
     ) -> Result<Vec<DeliveryProof>>;
     async fn get_delivery_proof(&self, delivery_proof_id: &str) -> Result<DeliveryProof>;
+    async fn list_validator_challenges(
+        &self,
+        status: Option<ComputeValidatorChallengeStatus>,
+    ) -> Result<Vec<ComputeValidatorChallengeSnapshot>>;
+    async fn get_validator_challenge(
+        &self,
+        challenge_id: &str,
+    ) -> Result<ComputeValidatorChallengeSnapshot>;
     async fn list_compute_indices(&self, product_id: Option<&str>) -> Result<Vec<ComputeIndex>>;
     async fn get_compute_index(&self, index_id: &str) -> Result<ComputeIndex>;
     async fn register_data_asset(
@@ -1613,6 +1622,25 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::GetDeliveryProofResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::get_delivery_proof_response_from_proto(&response)
+    }
+
+    async fn list_validator_challenges(
+        &self,
+        status: Option<ComputeValidatorChallengeStatus>,
+    ) -> Result<Vec<ComputeValidatorChallengeSnapshot>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/validator_challenges",
+            &[("status", status.map(|value| value.label().to_string()))],
+        );
+        self.get_json(path.as_str()).await
+    }
+
+    async fn get_validator_challenge(
+        &self,
+        challenge_id: &str,
+    ) -> Result<ComputeValidatorChallengeSnapshot> {
+        let path = format!("/v1/kernel/compute/validator_challenges/{challenge_id}");
+        self.get_json(path.as_str()).await
     }
 
     async fn list_compute_indices(&self, product_id: Option<&str>) -> Result<Vec<ComputeIndex>> {

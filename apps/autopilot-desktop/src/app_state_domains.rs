@@ -785,6 +785,36 @@ pub struct DesktopControlState {
     pub last_command_completed_at_epoch_ms: Option<u64>,
     pub last_snapshot_revision: u64,
     pub last_snapshot_signature: Option<String>,
+    pub compute_history: DesktopControlComputeHistoryState,
+}
+
+#[derive(Clone, Debug)]
+pub struct DesktopControlComputeHistoryState {
+    pub provider_id: Option<String>,
+    pub delivery_proofs: Vec<openagents_kernel_core::compute::DeliveryProof>,
+    pub capacity_instruments: Vec<openagents_kernel_core::compute::CapacityInstrument>,
+    pub structured_capacity_instruments:
+        Vec<openagents_kernel_core::compute::StructuredCapacityInstrument>,
+    pub validator_challenges:
+        Vec<openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot>,
+    pub last_refreshed_at_epoch_ms: Option<u64>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
+impl Default for DesktopControlComputeHistoryState {
+    fn default() -> Self {
+        Self {
+            provider_id: None,
+            delivery_proofs: Vec::new(),
+            capacity_instruments: Vec::new(),
+            structured_capacity_instruments: Vec::new(),
+            validator_challenges: Vec::new(),
+            last_refreshed_at_epoch_ms: None,
+            last_error: None,
+            last_action: Some("Kernel proof and settlement history idle".to_string()),
+        }
+    }
 }
 
 impl Default for DesktopControlState {
@@ -803,6 +833,7 @@ impl Default for DesktopControlState {
             last_command_completed_at_epoch_ms: None,
             last_snapshot_revision: 0,
             last_snapshot_signature: None,
+            compute_history: DesktopControlComputeHistoryState::default(),
         }
     }
 }

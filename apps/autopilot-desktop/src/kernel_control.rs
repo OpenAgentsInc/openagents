@@ -626,7 +626,7 @@ struct LaunchComputeLinkage {
     compute_family: ComputeFamily,
 }
 
-fn remote_authority_client_for_state(
+pub(crate) fn remote_authority_client_for_state(
     state: &RenderState,
 ) -> Result<HttpKernelAuthorityClient, String> {
     match current_authority_mode(state) {
@@ -640,7 +640,7 @@ fn remote_authority_client_for_state(
     }
 }
 
-fn build_remote_authority_client(
+pub(crate) fn build_remote_authority_client(
     base_url: &str,
     bearer_auth: &str,
 ) -> Result<HttpKernelAuthorityClient, String> {
@@ -655,7 +655,7 @@ fn build_remote_authority_client(
     ))
 }
 
-fn run_kernel_call<F, T>(future: F) -> Result<T, String>
+pub(crate) fn run_kernel_call<F, T>(future: F) -> Result<T, String>
 where
     F: Future<Output = anyhow::Result<T>>,
 {
@@ -3077,7 +3077,7 @@ fn provider_inventory_evidence_refs(state: &RenderState) -> Vec<EvidenceRef> {
     evidence
 }
 
-fn provider_id_for_state(state: &RenderState) -> String {
+pub(crate) fn provider_id_for_state(state: &RenderState) -> String {
     state
         .nostr_identity
         .as_ref()

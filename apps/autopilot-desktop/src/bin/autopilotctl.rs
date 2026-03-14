@@ -1749,12 +1749,24 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.sandbox.active_job_count
     );
     println!(
-        "proofs: available={} pending={}",
-        snapshot.proofs.available, snapshot.proofs.pending_count
+        "proofs: available={} source={} pending={} accepted={} rejected={} challenged={} settlements_open={} settlements_terminal={}",
+        snapshot.proofs.available,
+        snapshot.proofs.source,
+        snapshot.proofs.pending_count,
+        snapshot.proofs.accepted_count,
+        snapshot.proofs.rejected_count,
+        snapshot.proofs.challenged_count,
+        snapshot.proofs.settlement_open_count,
+        snapshot.proofs.settlement_terminal_count
     );
     println!(
-        "challenges: available={} open={}",
-        snapshot.challenges.available, snapshot.challenges.open_count
+        "challenges: available={} source={} open={} verified={} rejected={} timed_out={}",
+        snapshot.challenges.available,
+        snapshot.challenges.source,
+        snapshot.challenges.open_count,
+        snapshot.challenges.verified_count,
+        snapshot.challenges.rejected_count,
+        snapshot.challenges.timed_out_count
     );
     println!(
         "buy mode: enabled={} approved_budget={} sats cadence={} next_dispatch={}",
@@ -2250,31 +2262,42 @@ fn print_sandbox_download_text(payload: &Value, output: Option<&PathBuf>) -> Res
 
 fn print_proof_text(payload: &Value) {
     println!(
-        "proofs: available={} pending={} last_error={}",
+        "proofs: available={} source={} last_sync={} pending={} accepted={} rejected={} challenged={} settlements_open={} settlements_terminal={} last_error={}",
         payload
             .get("available")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        payload
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_synced_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
         payload
             .get("pending_count")
             .and_then(Value::as_u64)
             .unwrap_or(0),
         payload
-            .get("last_error")
-            .and_then(Value::as_str)
-            .unwrap_or("-")
-    );
-}
-
-fn print_challenge_text(payload: &Value) {
-    println!(
-        "challenges: available={} open={} last_error={}",
+            .get("accepted_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
         payload
-            .get("available")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
+            .get("rejected_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
         payload
-            .get("open_count")
+            .get("challenged_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("settlement_open_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("settlement_terminal_count")
             .and_then(Value::as_u64)
             .unwrap_or(0),
         payload
@@ -2282,6 +2305,272 @@ fn print_challenge_text(payload: &Value) {
             .and_then(Value::as_str)
             .unwrap_or("-")
     );
+    for proof in payload
+        .get("history")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "proof={} status={} posture={} topology={} provisioning={} env={} qty={}/{} settlement={} challenge={}",
+            proof.get("delivery_proof_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("proof_status").and_then(Value::as_str).unwrap_or("-"),
+            proof.get("proof_posture")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("topology_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("provisioning_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("environment_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("accepted_quantity")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            proof.get("metered_quantity")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            proof.get("settlement_summary")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("challenge_summary")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+        println!(
+            "  refs: bundle={} activation={} validator_pool={} validator_run={} runtime_manifest={} runtime_manifest_digest={} session_claims={} session_posture={} transport_posture={} config_identity={} mutable_runtime_variables={}",
+            proof.get("proof_bundle_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("activation_fingerprint_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("validator_pool_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("validator_run_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("runtime_manifest_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("runtime_manifest_digest")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("session_claims_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("session_identity_posture")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("transport_identity_posture")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("runtime_config_identity_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("mutable_runtime_variables_present")
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+        println!(
+            "  review: acceptance={} command_digest={} environment_digest={}",
+            proof.get("acceptance_summary")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("command_digest")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            proof.get("environment_digest")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+    for settlement in payload
+        .get("settlements")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "settlement={} kind={} status={} product={} proofs={} challenges={} qty={} price_sats={} mode={} reason={} detail={}",
+            settlement
+                .get("settlement_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            settlement
+                .get("settlement_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            settlement.get("status").and_then(Value::as_str).unwrap_or("-"),
+            settlement
+                .get("product_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            settlement
+                .get("delivery_proof_ids")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string()),
+            settlement
+                .get("challenge_ids")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string()),
+            settlement
+                .get("quantity")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            settlement
+                .get("fixed_price_sats")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            settlement
+                .get("settlement_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            settlement
+                .get("reason_code")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            settlement
+                .get("reason_detail")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+        println!(
+            "  outcome: {}",
+            settlement
+                .get("outcome_summary")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+}
+
+fn print_challenge_text(payload: &Value) {
+    println!(
+        "challenges: available={} source={} last_sync={} open={} queued={} leased={} retrying={} verified={} rejected={} timed_out={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("last_synced_at_epoch_ms")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("open_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("queued_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("leased_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("retrying_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("verified_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("rejected_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("timed_out_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    for challenge in payload
+        .get("history")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "challenge={} status={} verdict={} reason={} backend={} model={} proofs={} attempts={} validator={} pool={} protocol={}",
+            challenge
+                .get("challenge_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge.get("status").and_then(Value::as_str).unwrap_or("-"),
+            challenge.get("verdict").and_then(Value::as_str).unwrap_or("-"),
+            challenge
+                .get("reason_code")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("runtime_backend")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge.get("model_id").and_then(Value::as_str).unwrap_or("-"),
+            challenge
+                .get("delivery_proof_ids")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string()),
+            challenge
+                .get("attempts_used")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            challenge
+                .get("validator_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("validator_pool_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("protocol_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+        println!(
+            "  detail: proof_bundle_digest={} challenge_result_ref={} settlement_impact={} {}",
+            challenge
+                .get("proof_bundle_digest")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("challenge_result_ref")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("settlement_impact_summary")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            challenge
+                .get("detail")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
 }
 
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
