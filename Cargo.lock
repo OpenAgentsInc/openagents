@@ -6391,8 +6391,10 @@ dependencies = [
  "hex",
  "psionic-core",
  "psionic-datastream",
+ "safetensors",
  "serde",
  "sha2",
+ "tempfile",
  "thiserror 2.0.17",
 ]
 
@@ -6641,6 +6643,7 @@ dependencies = [
  "psionic-runtime",
  "rand 0.9.2",
  "reqwest",
+ "safetensors",
  "serde",
  "serde_json",
  "sha2",

@@ -1,5 +1,14 @@
-use std::{path::Path, sync::Arc, time::Instant};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
+use psionic_adapters::{
+    AdapterArtifactIdentity, AdapterResidencyMode, AdapterServingBinding, AdapterTargetFamily,
+    LmHeadLoraAdapterArtifact,
+};
 use psionic_backend_cpu::{decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot};
 use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_core::QuantizationMode;
@@ -25,12 +34,22 @@ use crate::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecoderAdapterRuntimeSupport {
+    pub support_level: String,
+    pub import_formats: Vec<String>,
+    pub residency_modes: Vec<String>,
+    pub batching_mode: String,
+    pub unsupported_reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GgufDecoderRuntimeSupport {
     pub family: GgufDecoderFamily,
     pub supported_backends: Vec<String>,
     pub unsupported_backends: Vec<String>,
     pub unsupported_features: Vec<String>,
     pub quantization_modes: Vec<QuantizationMode>,
+    pub adapter_runtime: DecoderAdapterRuntimeSupport,
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +61,82 @@ pub struct CpuGgufTextGenerationService {
 enum CpuGgufServiceKind {
     GptOss(CpuGgufGptOssTextGenerationService),
     Dense(CpuDenseGgufTextGenerationService),
+}
+
+#[derive(Clone, Debug)]
+struct DenseAdapterRuntime {
+    binding: AdapterServingBinding,
+    adapter: LmHeadLoraAdapterArtifact,
+    merged_delta: Option<DenseMatrix>,
+}
+
+impl DenseAdapterRuntime {
+    fn new(
+        binding: AdapterServingBinding,
+        adapter: LmHeadLoraAdapterArtifact,
+    ) -> Result<Self, ReferenceTextGenerationError> {
+        let merged_delta = matches!(binding.residency_mode, AdapterResidencyMode::MergedResident)
+            .then(|| DenseMatrix {
+                rows: adapter.vocab_size,
+                columns: adapter.hidden_size,
+                values: adapter.merged_output_delta(),
+            });
+        Ok(Self {
+            binding,
+            adapter,
+            merged_delta,
+        })
+    }
+
+    fn apply_to_logits(
+        &self,
+        hidden: &[f32],
+        logits: &mut [f32],
+    ) -> Result<(), ReferenceTextGenerationError> {
+        if let Some(merged_delta) = self.merged_delta.as_ref() {
+            merged_delta.matvec_add(hidden, logits)?;
+            return Ok(());
+        }
+        self.adapter
+            .apply_to_logits(hidden, logits)
+            .map_err(
+                |error| ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: self.binding.binding_id.clone(),
+                    reason: error.to_string(),
+                },
+            )
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct DenseAdapterRuntimeStore {
+    runtimes: BTreeMap<String, DenseAdapterRuntime>,
+}
+
+impl DenseAdapterRuntimeStore {
+    fn insert(&mut self, runtime: DenseAdapterRuntime) {
+        self.runtimes
+            .insert(runtime.binding.served_adapter_digest.clone(), runtime);
+    }
+
+    fn remove(&mut self, served_adapter_digest: &str) -> Option<DenseAdapterRuntime> {
+        self.runtimes.remove(served_adapter_digest)
+    }
+
+    fn get(
+        &self,
+        binding: &AdapterServingBinding,
+    ) -> Result<&DenseAdapterRuntime, ReferenceTextGenerationError> {
+        self.runtimes
+            .get(&binding.served_adapter_digest)
+            .ok_or_else(|| ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                binding_id: binding.binding_id.clone(),
+                reason: format!(
+                    "adapter binding `{}` is not registered on this CPU GGUF runtime",
+                    binding.served_adapter_digest
+                ),
+            })
+    }
 }
 
 impl CpuGgufTextGenerationService {
@@ -89,6 +184,9 @@ impl CpuGgufTextGenerationService {
                     String::from("metal"),
                 ],
                 Vec::new(),
+                unsupported_adapter_runtime_support(
+                    "LM-head LoRA serving is currently implemented only on dense CPU GGUF families",
+                ),
             ),
             CpuGgufServiceKind::Dense(service) => service.runtime_support(),
         }
@@ -147,6 +245,90 @@ impl CpuGgufTextGenerationService {
         match &mut self.inner {
             CpuGgufServiceKind::GptOss(service) => service.generate_continuous_batch(requests),
             CpuGgufServiceKind::Dense(service) => service.generate_continuous_batch(requests),
+        }
+    }
+
+    pub fn register_lm_head_lora_adapter(
+        &mut self,
+        binding_id: impl Into<String>,
+        path: impl AsRef<Path>,
+        identity: AdapterArtifactIdentity,
+        alpha: f32,
+        residency_mode: AdapterResidencyMode,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        match &mut self.inner {
+            CpuGgufServiceKind::GptOss(_) => {
+                Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: binding_id.into(),
+                    reason: String::from(
+                        "LM-head LoRA serving is currently supported only on dense CPU GGUF families",
+                    ),
+                })
+            }
+            CpuGgufServiceKind::Dense(service) => service.register_lm_head_lora_adapter(
+                binding_id,
+                path,
+                identity,
+                alpha,
+                residency_mode,
+            ),
+        }
+    }
+
+    pub fn detach_adapter_binding(
+        &mut self,
+        served_adapter_digest: &str,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        match &mut self.inner {
+            CpuGgufServiceKind::GptOss(_) => {
+                Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: served_adapter_digest.to_string(),
+                    reason: String::from(
+                        "LM-head LoRA serving is currently supported only on dense CPU GGUF families",
+                    ),
+                })
+            }
+            CpuGgufServiceKind::Dense(service) => {
+                service.detach_adapter_binding(served_adapter_digest)
+            }
+        }
+    }
+
+    pub fn merge_adapter_binding(
+        &mut self,
+        served_adapter_digest: &str,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        match &mut self.inner {
+            CpuGgufServiceKind::GptOss(_) => {
+                Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: served_adapter_digest.to_string(),
+                    reason: String::from(
+                        "LM-head LoRA serving is currently supported only on dense CPU GGUF families",
+                    ),
+                })
+            }
+            CpuGgufServiceKind::Dense(service) => {
+                service.merge_adapter_binding(served_adapter_digest)
+            }
+        }
+    }
+
+    pub fn unmerge_adapter_binding(
+        &mut self,
+        served_adapter_digest: &str,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        match &mut self.inner {
+            CpuGgufServiceKind::GptOss(_) => {
+                Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: served_adapter_digest.to_string(),
+                    reason: String::from(
+                        "LM-head LoRA serving is currently supported only on dense CPU GGUF families",
+                    ),
+                })
+            }
+            CpuGgufServiceKind::Dense(service) => {
+                service.unmerge_adapter_binding(served_adapter_digest)
+            }
         }
     }
 }
@@ -222,12 +404,14 @@ struct CpuDenseGgufTextGenerationService {
     backend_health: super::BackendHealthTracker,
     model_descriptor: DecoderModelDescriptor,
     runtime_support: GgufDecoderRuntimeSupport,
+    adapters: Arc<Mutex<DenseAdapterRuntimeStore>>,
 }
 
 impl CpuDenseGgufTextGenerationService {
     fn from_gguf_path(path: impl AsRef<Path>) -> Result<Self, ReferenceTextGenerationError> {
         let backend = super::CpuBackend::new();
-        let model = CpuDenseGgufGenerationModel::from_gguf_path(path)?;
+        let adapters = Arc::new(Mutex::new(DenseAdapterRuntimeStore::default()));
+        let model = CpuDenseGgufGenerationModel::from_gguf_path(path, Arc::clone(&adapters))?;
         let model_descriptor = model.descriptor().clone();
         let runtime_support = model.runtime_support();
         let mut models = InMemoryGenerationModelRegistry::new();
@@ -249,6 +433,7 @@ impl CpuDenseGgufTextGenerationService {
             backend_health,
             model_descriptor,
             runtime_support,
+            adapters,
         })
     }
 
@@ -260,6 +445,115 @@ impl CpuDenseGgufTextGenerationService {
     #[must_use]
     fn runtime_support(&self) -> GgufDecoderRuntimeSupport {
         self.runtime_support.clone()
+    }
+
+    fn register_lm_head_lora_adapter(
+        &mut self,
+        binding_id: impl Into<String>,
+        path: impl AsRef<Path>,
+        identity: AdapterArtifactIdentity,
+        alpha: f32,
+        residency_mode: AdapterResidencyMode,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        let binding_id = binding_id.into();
+        let served_artifact =
+            crate::served_artifact_identity_for_decoder_backend(&self.model_descriptor, "cpu", &[]);
+        validate_adapter_identity(
+            &self.model_descriptor,
+            self.runtime_support.family,
+            served_artifact.served_artifact_digest.as_str(),
+            &identity,
+        )?;
+        let adapter =
+            LmHeadLoraAdapterArtifact::from_safetensors_path(path, identity.clone(), alpha)
+                .map_err(
+                    |error| ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                        binding_id: binding_id.clone(),
+                        reason: error.to_string(),
+                    },
+                )?;
+        validate_lm_head_lora_adapter(&self.model_descriptor, &adapter)?;
+        let binding = AdapterServingBinding::new(
+            binding_id,
+            self.model_descriptor.model.model_id.clone(),
+            self.model_descriptor.model.revision.clone(),
+            served_artifact.served_artifact_digest,
+            residency_mode,
+            vec![identity],
+        );
+        self.adapters
+            .lock()
+            .map_err(
+                |_| ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: binding.binding_id.clone(),
+                    reason: String::from("adapter registry is poisoned"),
+                },
+            )?
+            .insert(DenseAdapterRuntime::new(binding.clone(), adapter)?);
+        Ok(binding)
+    }
+
+    fn detach_adapter_binding(
+        &mut self,
+        served_adapter_digest: &str,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        self.adapters
+            .lock()
+            .map_err(
+                |_| ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                    binding_id: served_adapter_digest.to_string(),
+                    reason: String::from("adapter registry is poisoned"),
+                },
+            )?
+            .remove(served_adapter_digest)
+            .map(|runtime| runtime.binding)
+            .ok_or_else(|| ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                binding_id: served_adapter_digest.to_string(),
+                reason: String::from("adapter binding is not registered"),
+            })
+    }
+
+    fn merge_adapter_binding(
+        &mut self,
+        served_adapter_digest: &str,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        self.rebind_adapter_residency(served_adapter_digest, AdapterResidencyMode::MergedResident)
+    }
+
+    fn unmerge_adapter_binding(
+        &mut self,
+        served_adapter_digest: &str,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        self.rebind_adapter_residency(served_adapter_digest, AdapterResidencyMode::HotSwapOverlay)
+    }
+
+    fn rebind_adapter_residency(
+        &mut self,
+        served_adapter_digest: &str,
+        residency_mode: AdapterResidencyMode,
+    ) -> Result<AdapterServingBinding, ReferenceTextGenerationError> {
+        let mut adapters = self.adapters.lock().map_err(|_| {
+            ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                binding_id: served_adapter_digest.to_string(),
+                reason: String::from("adapter registry is poisoned"),
+            }
+        })?;
+        let runtime = adapters.remove(served_adapter_digest).ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                binding_id: served_adapter_digest.to_string(),
+                reason: String::from("adapter binding is not registered"),
+            }
+        })?;
+        let binding = AdapterServingBinding::new(
+            runtime.binding.binding_id.clone(),
+            runtime.binding.base_model_id.clone(),
+            runtime.binding.base_model_revision.clone(),
+            runtime.binding.base_served_artifact_digest.clone(),
+            residency_mode,
+            runtime.binding.adapters.clone(),
+        );
+        adapters.insert(DenseAdapterRuntime::new(binding.clone(), runtime.adapter)?);
+        Ok(binding)
     }
 
     #[must_use]
@@ -426,16 +720,21 @@ impl ManagedTextGenerationRuntime for CpuDenseGgufTextGenerationService {
 #[derive(Clone, Debug)]
 struct CpuDenseGgufGenerationModel {
     inner: Arc<DenseGgufModelInner>,
+    adapters: Arc<Mutex<DenseAdapterRuntimeStore>>,
 }
 
 impl CpuDenseGgufGenerationModel {
-    fn from_gguf_path(path: impl AsRef<Path>) -> Result<Self, ReferenceTextGenerationError> {
+    fn from_gguf_path(
+        path: impl AsRef<Path>,
+        adapters: Arc<Mutex<DenseAdapterRuntimeStore>>,
+    ) -> Result<Self, ReferenceTextGenerationError> {
         let artifact = GgufBlobArtifact::open_path(path, gguf_local_blob_open_options())?;
-        Self::from_blob_artifact(artifact)
+        Self::from_blob_artifact(artifact, adapters)
     }
 
     fn from_blob_artifact(
         artifact: GgufBlobArtifact,
+        adapters: Arc<Mutex<DenseAdapterRuntimeStore>>,
     ) -> Result<Self, ReferenceTextGenerationError> {
         let load_start = Instant::now();
         let adapter = GgufDecoderAdapterLoader.load_blob_artifact(&artifact)?;
@@ -485,6 +784,7 @@ impl CpuDenseGgufGenerationModel {
         };
         Ok(Self {
             inner: Arc::new(inner),
+            adapters,
         })
     }
 
@@ -500,6 +800,7 @@ impl CpuDenseGgufGenerationModel {
             self.inner.family_metadata.family,
             vec![String::from("cpu")],
             vec![String::from("cuda"), String::from("metal")],
+            dense_adapter_runtime_support(),
         )
     }
 }
@@ -562,6 +863,7 @@ impl super::CompiledWordGenerationModel for CpuDenseGgufGenerationModel {
             key: step.key,
             value: step.value,
             logits: step.logits,
+            hidden: Some(step.final_hidden),
             execution_plan_digest: Some(self.inner.plan_digest.clone()),
             compile_path: None,
             kernel_count: step.kernel_count,
@@ -582,6 +884,32 @@ impl super::CompiledWordGenerationModel for CpuDenseGgufGenerationModel {
 
     fn backend_compatibility(&self) -> &'static str {
         "cpu"
+    }
+
+    fn adjust_step_output(
+        &self,
+        step: &mut GenerationStepOutput,
+        request: &GenerationRequest,
+    ) -> Result<(), ReferenceTextGenerationError> {
+        let Some(binding) = request.adapter_serving.as_ref() else {
+            return Ok(());
+        };
+        let hidden = step.hidden.as_ref().ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                binding_id: binding.binding_id.clone(),
+                reason: String::from(
+                    "the active dense GGUF step does not expose the final hidden state needed for LM-head LoRA serving",
+                ),
+            }
+        })?;
+        let adapters = self.adapters.lock().map_err(|_| {
+            ReferenceTextGenerationError::UnsupportedAdapterBinding {
+                binding_id: binding.binding_id.clone(),
+                reason: String::from("adapter registry is poisoned"),
+            }
+        })?;
+        let runtime = adapters.get(binding)?;
+        runtime.apply_to_logits(hidden.as_slice(), step.logits.as_mut_slice())
     }
 }
 
@@ -736,6 +1064,7 @@ impl DenseGgufModelInner {
             key: cache_key,
             value: cache_value,
             logits,
+            final_hidden,
             kernel_count,
             bytes_moved,
         })
@@ -938,6 +1267,27 @@ impl DenseMatrix {
         }
         Ok(())
     }
+
+    fn matvec_add(&self, input: &[f32], output: &mut [f32]) -> Result<(), crate::RuntimeError> {
+        if input.len() != self.columns {
+            return Err(crate::RuntimeError::Backend(format!(
+                "dense matvec width mismatch: expected {}, actual {}",
+                self.columns,
+                input.len()
+            )));
+        }
+        if output.len() != self.rows {
+            return Err(crate::RuntimeError::Backend(format!(
+                "dense output row mismatch: expected {}, actual {}",
+                self.rows,
+                output.len()
+            )));
+        }
+        for (row_index, row) in self.values.chunks_exact(self.columns).enumerate() {
+            output[row_index] += dot(row, input);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -998,6 +1348,7 @@ struct DenseGgufForwardStep {
     key: Vec<f32>,
     value: Vec<f32>,
     logits: Vec<f32>,
+    final_hidden: Vec<f32>,
     kernel_count: usize,
     bytes_moved: u64,
 }
@@ -1011,6 +1362,7 @@ fn runtime_support_for_descriptor(
     family: GgufDecoderFamily,
     supported_backends: Vec<String>,
     unsupported_backends: Vec<String>,
+    adapter_runtime: DecoderAdapterRuntimeSupport,
 ) -> GgufDecoderRuntimeSupport {
     GgufDecoderRuntimeSupport {
         family,
@@ -1018,7 +1370,110 @@ fn runtime_support_for_descriptor(
         unsupported_backends,
         unsupported_features: Vec::new(),
         quantization_modes: descriptor.weights.quantization_modes.clone(),
+        adapter_runtime,
     }
+}
+
+fn unsupported_adapter_runtime_support(reason: impl Into<String>) -> DecoderAdapterRuntimeSupport {
+    DecoderAdapterRuntimeSupport {
+        support_level: String::from("unsupported"),
+        import_formats: Vec::new(),
+        residency_modes: Vec::new(),
+        batching_mode: String::from("not_available"),
+        unsupported_reasons: vec![reason.into()],
+    }
+}
+
+fn dense_adapter_runtime_support() -> DecoderAdapterRuntimeSupport {
+    DecoderAdapterRuntimeSupport {
+        support_level: String::from("lm_head_lora_cpu"),
+        import_formats: vec![String::from("safetensors")],
+        residency_modes: vec![
+            String::from("hot_swap_overlay"),
+            String::from("merged_resident"),
+        ],
+        batching_mode: String::from("mixed_adapter_bindings_per_request"),
+        unsupported_reasons: Vec::new(),
+    }
+}
+
+fn validate_adapter_identity(
+    descriptor: &DecoderModelDescriptor,
+    family: GgufDecoderFamily,
+    served_artifact_digest: &str,
+    identity: &AdapterArtifactIdentity,
+) -> Result<(), ReferenceTextGenerationError> {
+    if !matches!(
+        family,
+        GgufDecoderFamily::Llama | GgufDecoderFamily::Qwen | GgufDecoderFamily::Mistral
+    ) {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: identity.adapter_id.clone(),
+            reason: format!("decoder family `{family:?}` does not support LM-head LoRA serving"),
+        });
+    }
+    if identity.base_model_id != descriptor.model.model_id {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: identity.adapter_id.clone(),
+            reason: format!(
+                "adapter targets base model `{}`, but the loaded model is `{}`",
+                identity.base_model_id, descriptor.model.model_id
+            ),
+        });
+    }
+    if identity.base_model_revision != descriptor.model.revision {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: identity.adapter_id.clone(),
+            reason: format!(
+                "adapter targets base revision `{}`, but the loaded model is `{}`",
+                identity.base_model_revision, descriptor.model.revision
+            ),
+        });
+    }
+    if identity.base_served_artifact_digest != served_artifact_digest {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: identity.adapter_id.clone(),
+            reason: format!(
+                "adapter targets served artifact `{}`, but the loaded model is `{served_artifact_digest}`",
+                identity.base_served_artifact_digest
+            ),
+        });
+    }
+    if identity.target_family != AdapterTargetFamily::DecoderComposite {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: identity.adapter_id.clone(),
+            reason: format!(
+                "adapter target family `{:?}` is unsupported; only `decoder_composite` LM-head LoRA bindings are implemented",
+                identity.target_family
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn validate_lm_head_lora_adapter(
+    descriptor: &DecoderModelDescriptor,
+    adapter: &LmHeadLoraAdapterArtifact,
+) -> Result<(), ReferenceTextGenerationError> {
+    if adapter.hidden_size != descriptor.config.hidden_size {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: adapter.identity.adapter_id.clone(),
+            reason: format!(
+                "adapter hidden width {} does not match model hidden width {}",
+                adapter.hidden_size, descriptor.config.hidden_size
+            ),
+        });
+    }
+    if adapter.vocab_size != descriptor.config.vocab_size {
+        return Err(ReferenceTextGenerationError::UnsupportedAdapterBinding {
+            binding_id: adapter.identity.adapter_id.clone(),
+            reason: format!(
+                "adapter vocab width {} does not match model vocab width {}",
+                adapter.vocab_size, descriptor.config.vocab_size
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn digest_dense_gguf_plan(
@@ -1322,13 +1777,19 @@ impl GenerationEventStream for CompletedGenerationStream {
 
 #[cfg(test)]
 mod tests {
-    use super::CpuGgufTextGenerationService;
+    use super::{CpuGgufServiceKind, CpuGgufTextGenerationService};
     use crate::{
-        GenerationOptions, GenerationRequest, GenerationStreamEvent,
+        CompiledWordGenerationModel, GenerationModelHandle, GenerationOptions, GenerationRequest,
+        GenerationStreamEvent, InMemoryKvCache, ReferenceTextGenerationError,
         StreamingTextGenerationExecutor, TextGenerationExecutor,
+    };
+    use psionic_adapters::{
+        AdapterArtifactFormat, AdapterArtifactIdentity, AdapterArtifactKind, AdapterResidencyMode,
+        AdapterTargetFamily,
     };
     use psionic_core::QuantizationMode;
     use psionic_models::{GgufDecoderFamily, GgufMetadataValue, GgufTensorType};
+    use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
     use std::{fs, path::Path};
     use tempfile::tempdir;
 
@@ -1429,6 +1890,160 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn cpu_gguf_service_serves_lm_head_lora_overlay_and_merge_modes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("llama_lora.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny psionic llama lora").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let mut service = CpuGgufTextGenerationService::from_gguf_path(&path)?;
+        let descriptor = service.model_descriptor().clone();
+        let hidden = final_hidden_for_prompt(&mut service, "hello")?;
+        let adapter_path = temp.path().join("lm_head_lora.safetensors");
+        write_prompt_specific_lora_adapter(&adapter_path, hidden.as_slice(), 5, 32.0)?;
+        let binding = service.register_lm_head_lora_adapter(
+            "adapter-psionic",
+            &adapter_path,
+            sample_lora_identity(&descriptor, AdapterTargetFamily::DecoderComposite),
+            1.0,
+            AdapterResidencyMode::HotSwapOverlay,
+        )?;
+        let support = service.runtime_support();
+        assert_eq!(support.adapter_runtime.support_level, "lm_head_lora_cpu");
+        assert_eq!(
+            support.adapter_runtime.import_formats,
+            vec![String::from("safetensors")]
+        );
+
+        let baseline = service.generate(&GenerationRequest::new_text(
+            String::from("llama-baseline"),
+            descriptor.clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(1),
+        ))?;
+        assert_eq!(baseline.output.text, "world");
+
+        let overlay_request = GenerationRequest::new_text(
+            String::from("llama-overlay"),
+            descriptor.clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(1),
+        )
+        .with_adapter_serving(binding.clone());
+        let overlay = service.generate(&overlay_request)?;
+        assert_eq!(overlay.output.text, "psionic");
+        assert_eq!(
+            overlay
+                .provenance
+                .as_ref()
+                .and_then(|value| value.adapter_serving.clone()),
+            Some(binding.clone())
+        );
+
+        let merged_binding =
+            service.merge_adapter_binding(binding.served_adapter_digest.as_str())?;
+        let merged = service.generate(
+            &GenerationRequest::new_text(
+                String::from("llama-merged"),
+                descriptor.clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(1),
+            )
+            .with_adapter_serving(merged_binding.clone()),
+        )?;
+        assert_eq!(merged.output.text, "psionic");
+        assert_eq!(
+            merged_binding.residency_mode,
+            AdapterResidencyMode::MergedResident
+        );
+
+        let unmerged_binding =
+            service.unmerge_adapter_binding(merged_binding.served_adapter_digest.as_str())?;
+        let unmerged = service.generate(
+            &GenerationRequest::new_text(
+                String::from("llama-unmerged"),
+                descriptor.clone(),
+                None,
+                "hello",
+                GenerationOptions::greedy(1),
+            )
+            .with_adapter_serving(unmerged_binding.clone()),
+        )?;
+        assert_eq!(unmerged.output.text, "psionic");
+        assert_eq!(
+            unmerged_binding.residency_mode,
+            AdapterResidencyMode::HotSwapOverlay
+        );
+
+        let detached =
+            service.detach_adapter_binding(unmerged_binding.served_adapter_digest.as_str())?;
+        assert_eq!(
+            detached.served_adapter_digest,
+            unmerged_binding.served_adapter_digest
+        );
+        let error = service
+            .generate(
+                &GenerationRequest::new_text(
+                    String::from("llama-detached"),
+                    descriptor,
+                    None,
+                    "hello",
+                    GenerationOptions::greedy(1),
+                )
+                .with_adapter_serving(unmerged_binding),
+            )
+            .expect_err("detached adapter binding should be refused");
+        assert!(matches!(
+            error,
+            ReferenceTextGenerationError::UnsupportedAdapterBinding { .. }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_gguf_service_refuses_incompatible_lm_head_lora_binding()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("llama_lora_refusal.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny psionic llama refusal").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let mut service = CpuGgufTextGenerationService::from_gguf_path(&path)?;
+        let descriptor = service.model_descriptor().clone();
+        let hidden = final_hidden_for_prompt(&mut service, "hello")?;
+        let adapter_path = temp.path().join("lm_head_lora_bad.safetensors");
+        write_prompt_specific_lora_adapter(&adapter_path, hidden.as_slice(), 5, 32.0)?;
+        let error = service
+            .register_lm_head_lora_adapter(
+                "adapter-bad",
+                &adapter_path,
+                sample_lora_identity(&descriptor, AdapterTargetFamily::DecoderAttention),
+                1.0,
+                AdapterResidencyMode::HotSwapOverlay,
+            )
+            .expect_err("unsupported target family should be refused");
+        assert!(matches!(
+            error,
+            ReferenceTextGenerationError::UnsupportedAdapterBinding { .. }
+        ));
+        assert!(
+            error.to_string().contains("decoder_composite"),
+            "refusal should describe the supported adapter target"
+        );
+        Ok(())
+    }
+
     fn run_dense_family_case(
         family_label: &str,
         expected_family: GgufDecoderFamily,
@@ -1493,6 +2108,84 @@ mod tests {
             GgufDecoderFamily::Mistral => "mistral",
             GgufDecoderFamily::GptOss => "gpt_oss",
         }
+    }
+
+    fn final_hidden_for_prompt(
+        service: &mut CpuGgufTextGenerationService,
+        prompt: &str,
+    ) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+        let CpuGgufServiceKind::Dense(dense) = &mut service.inner else {
+            panic!("expected dense GGUF runtime");
+        };
+        let model_id = dense.model_descriptor.model.model_id.clone();
+        let loaded = dense
+            .models
+            .active(model_id.as_str())
+            .expect("dense model should be active")
+            .clone();
+        let prompt_tokens =
+            loaded.encode_prompt_input(&crate::GenerationInput::Text(prompt.into()))?;
+        let mut cache =
+            InMemoryKvCache::new(loaded.descriptor().config.max_context, loaded.cache_width());
+        let mut final_hidden = None;
+        for token in prompt_tokens.as_slice() {
+            let step = loaded.execute_step(&mut dense.backend, *token, cache.len(), &cache)?;
+            cache.append(*token, step.key, step.value)?;
+            final_hidden = step.hidden;
+        }
+        Ok(final_hidden.expect("prompt evaluation should produce hidden state"))
+    }
+
+    fn sample_lora_identity(
+        descriptor: &psionic_models::DecoderModelDescriptor,
+        target_family: AdapterTargetFamily,
+    ) -> AdapterArtifactIdentity {
+        AdapterArtifactIdentity::new(
+            "adapter-psionic",
+            "r1",
+            AdapterArtifactKind::Lora,
+            AdapterArtifactFormat::Safetensors,
+            descriptor.model.model_id.clone(),
+            descriptor.model.revision.clone(),
+            crate::served_artifact_identity_for_decoder_backend(descriptor, "cpu", &[])
+                .served_artifact_digest,
+            "adapter-artifact-digest",
+            QuantizationMode::None,
+            target_family,
+            10,
+        )
+    }
+
+    fn write_prompt_specific_lora_adapter(
+        path: &Path,
+        hidden: &[f32],
+        target_token_index: usize,
+        strength: f32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let norm = hidden.iter().map(|value| value * value).sum::<f32>();
+        let lora_a: Vec<f32> = hidden.iter().map(|value| value / norm.max(1e-6)).collect();
+        let mut lora_b = vec![0.0_f32; 6];
+        lora_b[target_token_index] = strength;
+        let lora_a_bytes = encode_f32_bytes(lora_a.as_slice());
+        let lora_b_bytes = encode_f32_bytes(lora_b.as_slice());
+        let mut tensors = std::collections::BTreeMap::new();
+        tensors.insert(
+            "lm_head.lora_A.weight".to_string(),
+            TensorView::new(SafeTensorsDType::F32, vec![1, hidden.len()], &lora_a_bytes)?,
+        );
+        tensors.insert(
+            "lm_head.lora_B.weight".to_string(),
+            TensorView::new(SafeTensorsDType::F32, vec![6, 1], &lora_b_bytes)?,
+        );
+        serialize_to_file(tensors, None, path)?;
+        Ok(())
+    }
+
+    fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect()
     }
 
     fn dense_llama_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
@@ -1783,13 +2476,6 @@ mod tests {
         } else {
             value + alignment - remainder
         }
-    }
-
-    fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
-        values
-            .iter()
-            .flat_map(|value| value.to_le_bytes())
-            .collect::<Vec<_>>()
     }
 
     fn gguf_metadata_value_type(value: &GgufMetadataValue) -> u32 {

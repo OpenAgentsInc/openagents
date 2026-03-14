@@ -7,8 +7,10 @@
 
 use psionic_core::QuantizationMode;
 use psionic_datastream::{DatastreamManifest, DatastreamManifestRef, DatastreamSubjectKind};
+use safetensors::{Dtype as SafeTensorsDType, SafeTensors};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::path::Path;
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -318,6 +320,152 @@ impl AdapterServingBinding {
     }
 }
 
+/// Loaded LM-head LoRA adapter artifact for hosted text-generation serving.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LmHeadLoraAdapterArtifact {
+    /// Stable adapter identity.
+    pub identity: AdapterArtifactIdentity,
+    /// LoRA rank.
+    pub rank: usize,
+    /// Scaling factor applied as `alpha / rank`.
+    pub alpha: f32,
+    /// Hidden width the adapter targets.
+    pub hidden_size: usize,
+    /// Vocabulary width the adapter targets.
+    pub vocab_size: usize,
+    lora_a: Vec<f32>,
+    lora_b: Vec<f32>,
+}
+
+impl LmHeadLoraAdapterArtifact {
+    /// Loads an LM-head LoRA adapter from a local safetensors artifact.
+    pub fn from_safetensors_path(
+        path: impl AsRef<Path>,
+        identity: AdapterArtifactIdentity,
+        alpha: f32,
+    ) -> Result<Self, LmHeadLoraLoadError> {
+        let bytes = std::fs::read(path.as_ref()).map_err(|error| LmHeadLoraLoadError::Read {
+            path: path.as_ref().display().to_string(),
+            message: error.to_string(),
+        })?;
+        Self::from_safetensors_bytes(&bytes, identity, alpha)
+    }
+
+    /// Loads an LM-head LoRA adapter from raw safetensors bytes.
+    pub fn from_safetensors_bytes(
+        bytes: &[u8],
+        identity: AdapterArtifactIdentity,
+        alpha: f32,
+    ) -> Result<Self, LmHeadLoraLoadError> {
+        if identity.kind != AdapterArtifactKind::Lora {
+            return Err(LmHeadLoraLoadError::UnsupportedIdentity(format!(
+                "expected adapter kind `lora`, found `{:?}`",
+                identity.kind
+            )));
+        }
+        if identity.format != AdapterArtifactFormat::Safetensors {
+            return Err(LmHeadLoraLoadError::UnsupportedIdentity(format!(
+                "expected adapter format `safetensors`, found `{:?}`",
+                identity.format
+            )));
+        }
+        let tensors = SafeTensors::deserialize(bytes)
+            .map_err(|error| LmHeadLoraLoadError::Format(error.to_string()))?;
+        let lora_a =
+            find_lora_tensor(&tensors, &["lm_head.lora_A.weight", "output.lora_A.weight"])?;
+        let lora_b =
+            find_lora_tensor(&tensors, &["lm_head.lora_B.weight", "output.lora_B.weight"])?;
+        let [rank, hidden_size] = lora_a.shape.as_slice() else {
+            return Err(LmHeadLoraLoadError::InvalidShape {
+                tensor: lora_a.name,
+                expected: vec![0, 0],
+                actual: lora_a.shape.clone(),
+            });
+        };
+        let [vocab_size, lora_b_rank] = lora_b.shape.as_slice() else {
+            return Err(LmHeadLoraLoadError::InvalidShape {
+                tensor: lora_b.name,
+                expected: vec![0, 0],
+                actual: lora_b.shape.clone(),
+            });
+        };
+        if rank != lora_b_rank {
+            return Err(LmHeadLoraLoadError::RankMismatch {
+                lora_a_rank: *rank,
+                lora_b_rank: *lora_b_rank,
+            });
+        }
+        Ok(Self {
+            identity,
+            rank: *rank,
+            alpha,
+            hidden_size: *hidden_size,
+            vocab_size: *vocab_size,
+            lora_a: decode_f32_tensor(&lora_a)?,
+            lora_b: decode_f32_tensor(&lora_b)?,
+        })
+    }
+
+    /// Returns the adapter scaling factor applied to the low-rank update.
+    #[must_use]
+    pub fn scale(&self) -> f32 {
+        self.alpha / (self.rank.max(1) as f32)
+    }
+
+    /// Applies the adapter directly to a logits vector for one final hidden state.
+    pub fn apply_to_logits(
+        &self,
+        hidden: &[f32],
+        logits: &mut [f32],
+    ) -> Result<(), LmHeadLoraRuntimeError> {
+        if hidden.len() != self.hidden_size {
+            return Err(LmHeadLoraRuntimeError::HiddenWidth {
+                expected: self.hidden_size,
+                actual: hidden.len(),
+            });
+        }
+        if logits.len() != self.vocab_size {
+            return Err(LmHeadLoraRuntimeError::LogitWidth {
+                expected: self.vocab_size,
+                actual: logits.len(),
+            });
+        }
+        let mut intermediate = vec![0.0_f32; self.rank];
+        for (rank_index, row) in self.lora_a.chunks_exact(self.hidden_size).enumerate() {
+            intermediate[rank_index] = dot(row, hidden);
+        }
+        let scale = self.scale();
+        for (vocab_index, row) in self.lora_b.chunks_exact(self.rank).enumerate() {
+            logits[vocab_index] += dot(row, intermediate.as_slice()) * scale;
+        }
+        Ok(())
+    }
+
+    /// Materializes the merged dense output delta matrix as `vocab x hidden`.
+    #[must_use]
+    pub fn merged_output_delta(&self) -> Vec<f32> {
+        let scale = self.scale();
+        let mut merged = vec![0.0_f32; self.vocab_size.saturating_mul(self.hidden_size)];
+        for vocab_index in 0..self.vocab_size {
+            let b_row = &self.lora_b[vocab_index * self.rank..(vocab_index + 1) * self.rank];
+            let merged_row =
+                &mut merged[vocab_index * self.hidden_size..(vocab_index + 1) * self.hidden_size];
+            for rank_index in 0..self.rank {
+                let weight = b_row[rank_index] * scale;
+                if weight == 0.0 {
+                    continue;
+                }
+                let a_row = &self.lora_a
+                    [rank_index * self.hidden_size..(rank_index + 1) * self.hidden_size];
+                for (index, value) in a_row.iter().enumerate() {
+                    merged_row[index] += value * weight;
+                }
+            }
+        }
+        merged
+    }
+}
+
 /// Errors returned while packaging adapter manifests.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum AdapterPackageError {
@@ -328,6 +476,77 @@ pub enum AdapterPackageError {
         stream_id: String,
         /// Actual datastream subject.
         actual: DatastreamSubjectKind,
+    },
+}
+
+/// Errors returned while loading an LM-head LoRA adapter artifact.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum LmHeadLoraLoadError {
+    /// The local safetensors artifact could not be read.
+    #[error("failed to read LM-head LoRA adapter `{path}`: {message}")]
+    Read {
+        /// Local file path.
+        path: String,
+        /// Plain-text failure reason.
+        message: String,
+    },
+    /// The safetensors payload was malformed.
+    #[error("invalid LM-head LoRA safetensors artifact: {0}")]
+    Format(String),
+    /// The adapter identity does not match the supported import path.
+    #[error("unsupported LM-head LoRA identity: {0}")]
+    UnsupportedIdentity(String),
+    /// One expected tensor was missing.
+    #[error("missing LM-head LoRA tensor `{0}`")]
+    MissingTensor(String),
+    /// One tensor used the wrong dtype.
+    #[error("LM-head LoRA tensor `{tensor}` must be `f32`, found `{actual}`")]
+    UnsupportedDType {
+        /// Tensor name.
+        tensor: String,
+        /// Actual dtype label.
+        actual: String,
+    },
+    /// One tensor used an invalid shape.
+    #[error(
+        "LM-head LoRA tensor `{tensor}` has invalid shape: expected {expected:?}, actual {actual:?}"
+    )]
+    InvalidShape {
+        /// Tensor name.
+        tensor: String,
+        /// Expected shape pattern.
+        expected: Vec<usize>,
+        /// Actual shape.
+        actual: Vec<usize>,
+    },
+    /// The two LoRA matrices disagree on rank.
+    #[error("LM-head LoRA rank mismatch: lora_A={lora_a_rank} lora_B={lora_b_rank}")]
+    RankMismatch {
+        /// Rank declared by `lora_A`.
+        lora_a_rank: usize,
+        /// Rank declared by `lora_B`.
+        lora_b_rank: usize,
+    },
+}
+
+/// Runtime failures returned while applying an LM-head LoRA artifact.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum LmHeadLoraRuntimeError {
+    /// The supplied hidden state used the wrong width.
+    #[error("LM-head LoRA hidden width mismatch: expected {expected}, actual {actual}")]
+    HiddenWidth {
+        /// Expected hidden width.
+        expected: usize,
+        /// Actual hidden width.
+        actual: usize,
+    },
+    /// The supplied logits vector used the wrong width.
+    #[error("LM-head LoRA logits width mismatch: expected {expected}, actual {actual}")]
+    LogitWidth {
+        /// Expected logits width.
+        expected: usize,
+        /// Actual logits width.
+        actual: usize,
     },
 }
 
@@ -388,6 +607,57 @@ fn stable_binding_digest(
     hex::encode(hasher.finalize())
 }
 
+#[derive(Clone, Debug)]
+struct LoraTensorRef<'a> {
+    name: String,
+    shape: Vec<usize>,
+    data: &'a [u8],
+}
+
+fn find_lora_tensor<'a>(
+    tensors: &'a SafeTensors<'a>,
+    names: &[&str],
+) -> Result<LoraTensorRef<'a>, LmHeadLoraLoadError> {
+    for name in names {
+        if let Ok(tensor) = tensors.tensor(name) {
+            if tensor.dtype() != SafeTensorsDType::F32 {
+                return Err(LmHeadLoraLoadError::UnsupportedDType {
+                    tensor: (*name).to_string(),
+                    actual: format!("{:?}", tensor.dtype()),
+                });
+            }
+            return Ok(LoraTensorRef {
+                name: (*name).to_string(),
+                shape: tensor.shape().to_vec(),
+                data: tensor.data(),
+            });
+        }
+    }
+    Err(LmHeadLoraLoadError::MissingTensor(
+        names.first().copied().unwrap_or("unknown").to_string(),
+    ))
+}
+
+fn decode_f32_tensor(tensor: &LoraTensorRef<'_>) -> Result<Vec<f32>, LmHeadLoraLoadError> {
+    let chunks = tensor.data.chunks_exact(std::mem::size_of::<f32>());
+    if !chunks.remainder().is_empty() {
+        return Err(LmHeadLoraLoadError::Format(format!(
+            "tensor `{}` length {} is not aligned to `f32`",
+            tensor.name,
+            tensor.data.len()
+        )));
+    }
+    Ok(chunks
+        .map(|chunk| f32::from_le_bytes(chunk.try_into().expect("f32 chunk")))
+        .collect())
+}
+
+fn dot(left: &[f32], right: &[f32]) -> f32 {
+    left.iter()
+        .zip(right.iter())
+        .fold(0.0_f32, |accumulator, (lhs, rhs)| accumulator + (lhs * rhs))
+}
+
 fn adapter_kind_label(kind: AdapterArtifactKind) -> &'static [u8] {
     match kind {
         AdapterArtifactKind::Lora => b"lora",
@@ -432,11 +702,13 @@ fn quantization_label(mode: QuantizationMode) -> &'static [u8] {
 mod tests {
     use psionic_core::QuantizationMode;
     use psionic_datastream::{DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind};
+    use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
+    use tempfile::tempdir;
 
     use super::{
         AdapterArtifactFormat, AdapterArtifactIdentity, AdapterArtifactKind, AdapterPackageError,
         AdapterPackageManifest, AdapterPackageTensor, AdapterResidencyMode, AdapterServingBinding,
-        AdapterTargetFamily,
+        AdapterTargetFamily, LmHeadLoraAdapterArtifact,
     };
 
     fn sample_adapter() -> AdapterArtifactIdentity {
@@ -528,5 +800,50 @@ mod tests {
 
         assert_eq!(binding.served_adapter_digest, second.served_adapter_digest);
         Ok(())
+    }
+
+    #[test]
+    fn lm_head_lora_adapter_loads_and_applies_overlay() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("lm_head_adapter.safetensors");
+        write_lora_safetensors(&path, &[1.0, 0.0, 0.0, 0.0], &[0.0, 0.0, 8.0])?;
+
+        let adapter =
+            LmHeadLoraAdapterArtifact::from_safetensors_path(&path, sample_adapter(), 1.0)?;
+        let mut logits = vec![0.0_f32, 0.0, 0.0];
+        adapter.apply_to_logits(&[1.0, 0.0, 0.0, 0.0], logits.as_mut_slice())?;
+
+        assert_eq!(adapter.rank, 1);
+        assert_eq!(adapter.hidden_size, 4);
+        assert_eq!(adapter.vocab_size, 3);
+        assert_eq!(logits, vec![0.0, 0.0, 8.0]);
+        Ok(())
+    }
+
+    fn write_lora_safetensors(
+        path: &std::path::Path,
+        lora_a: &[f32],
+        lora_b: &[f32],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let lora_a_bytes = encode_f32_bytes(lora_a);
+        let lora_b_bytes = encode_f32_bytes(lora_b);
+        let mut tensors = std::collections::BTreeMap::new();
+        tensors.insert(
+            "lm_head.lora_A.weight".to_string(),
+            TensorView::new(SafeTensorsDType::F32, vec![1, lora_a.len()], &lora_a_bytes)?,
+        );
+        tensors.insert(
+            "lm_head.lora_B.weight".to_string(),
+            TensorView::new(SafeTensorsDType::F32, vec![lora_b.len(), 1], &lora_b_bytes)?,
+        );
+        serialize_to_file(tensors, None, path)?;
+        Ok(())
+    }
+
+    fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect()
     }
 }

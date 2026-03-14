@@ -37,4 +37,5 @@ tokio-stream = "0.1"
 
 [dev-dependencies]
 psionic-provider = { path = "../psionic-provider" }
+safetensors = { workspace = true }
 tempfile = "3"

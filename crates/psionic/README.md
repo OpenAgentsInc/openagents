@@ -102,6 +102,11 @@ Implemented now:
   conversation identifiers, truthful prompt-replay-only cache behavior,
   per-model capability reporting, and explicit refusal for unsupported
   continuation modes instead of pushing multi-turn state emulation into callers.
+- a first truthful adapter-serving lane for dense CPU GGUF decoder families,
+  with LM-head LoRA import from safetensors, explicit attach/detach plus
+  merge/unmerge residency modes, adapter compatibility/refusal surfaces, and
+  real adapter-backed generation instead of metadata-only parsing or silent
+  fallback to the base model.
 - a first Psionic-owned continuous-batching scheduler for CPU text generation,
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded
