@@ -875,8 +875,14 @@ now `PSI-249` /
 too through a first dedicated `psionic-router` crate: explicit worker/model
 inventory, capability filters, deterministic worker-path selection, and generic
 server integration so route choice no longer hides inside `psionic-serve`
-alias maps. The next dependency-ordered issue in that chain is now `PSI-250` /
-[#3555](https://github.com/OpenAgentsInc/openagents/issues/3555).
+alias maps. `PSI-250` /
+[#3555](https://github.com/OpenAgentsInc/openagents/issues/3555) is now landed
+too through warm-state and safe cache-affinity inventory, bounded
+power-of-two least-loaded placement over warm/cache-matched candidate pools,
+per-route placement metrics, generic-server route headers, and response-state
+worker preference for multi-turn `/v1/responses` routing. The next
+dependency-ordered issue in that chain is now `PSI-251` /
+[#3556](https://github.com/OpenAgentsInc/openagents/issues/3556).
 
 ## Current Reality
 

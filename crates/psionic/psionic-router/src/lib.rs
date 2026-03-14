@@ -12,7 +12,10 @@
 
 use psionic_runtime::{ExecutionCapabilityProfile, GenerationSchedulerPolicy};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{
+    collections::{BTreeMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -73,6 +76,93 @@ impl RoutingCapabilityFilters {
     }
 }
 
+/// Request-side placement hints used by cache-aware and warm-aware policies.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoutingPolicyHints {
+    /// Stable cache-affinity key when a higher layer knows one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_key: Option<String>,
+    /// Tenant or security-domain boundary for cache reuse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tenant_scope: Option<String>,
+    /// Optional topology or route-pinning scope required for safe reuse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_scope: Option<String>,
+    /// Stable request key used to seed bounded-choice sampling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_key: Option<String>,
+}
+
+/// Warmth posture for one worker-local model route.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutedWarmState {
+    /// No loaded or warm state is available.
+    #[default]
+    Cold,
+    /// The model is loading or otherwise not yet warm.
+    Warming,
+    /// The model is warm and eligible for warm-route preference.
+    Warm,
+}
+
+impl RoutedWarmState {
+    #[must_use]
+    const fn is_warm(self) -> bool {
+        matches!(self, Self::Warm)
+    }
+}
+
+/// One cache entry that the router may safely bias toward.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoutedCacheEntry {
+    /// Stable cache-affinity key.
+    pub cache_key: String,
+    /// Tenant or security-domain scope required for reuse.
+    pub tenant_scope: String,
+    /// Optional topology or route-pinning scope required for reuse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_scope: Option<String>,
+    /// Approximate reusable token count represented by the cache entry.
+    pub reusable_tokens: usize,
+}
+
+impl RoutedCacheEntry {
+    /// Creates one cache entry.
+    #[must_use]
+    pub fn new(
+        cache_key: impl Into<String>,
+        tenant_scope: impl Into<String>,
+        reusable_tokens: usize,
+    ) -> Self {
+        Self {
+            cache_key: cache_key.into(),
+            tenant_scope: tenant_scope.into(),
+            topology_scope: None,
+            reusable_tokens,
+        }
+    }
+
+    /// Pins the cache entry to one topology or route scope.
+    #[must_use]
+    pub fn with_topology_scope(mut self, topology_scope: impl Into<String>) -> Self {
+        self.topology_scope = Some(topology_scope.into());
+        self
+    }
+}
+
+/// Live runtime state that routing policy can safely consume.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoutedModelRuntimeState {
+    /// Warmth posture for the routed model.
+    pub warm_state: RoutedWarmState,
+    /// Current active-request count for load-aware tie-breaking.
+    pub active_requests: usize,
+    /// Cache entries that are safe to reuse under explicit scope checks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_entries: Vec<RoutedCacheEntry>,
+}
+
 /// One model-route request evaluated against router inventory.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoutingRequest {
@@ -82,6 +172,8 @@ pub struct RoutingRequest {
     pub target: RoutingTarget,
     /// Required capabilities.
     pub capability_filters: RoutingCapabilityFilters,
+    /// Policy hints for warm/cache-aware routing.
+    pub policy_hints: RoutingPolicyHints,
     /// Ordered preferred worker identifiers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preferred_worker_ids: Vec<String>,
@@ -98,6 +190,7 @@ impl RoutingRequest {
             endpoint,
             target: RoutingTarget::Default,
             capability_filters: RoutingCapabilityFilters::default(),
+            policy_hints: RoutingPolicyHints::default(),
             preferred_worker_ids: Vec::new(),
             preferred_family: None,
         }
@@ -135,6 +228,32 @@ impl RoutingRequest {
     #[must_use]
     pub fn require_response_state(mut self) -> Self {
         self.capability_filters.response_state = true;
+        self
+    }
+
+    /// Adds a cache-affinity key and required tenant scope.
+    #[must_use]
+    pub fn with_cache_affinity(
+        mut self,
+        cache_key: impl Into<String>,
+        tenant_scope: impl Into<String>,
+    ) -> Self {
+        self.policy_hints.cache_key = Some(cache_key.into());
+        self.policy_hints.tenant_scope = Some(tenant_scope.into());
+        self
+    }
+
+    /// Adds one topology scope for safe cache or warm reuse.
+    #[must_use]
+    pub fn with_topology_scope(mut self, topology_scope: impl Into<String>) -> Self {
+        self.policy_hints.topology_scope = Some(topology_scope.into());
+        self
+    }
+
+    /// Supplies a stable request key used for bounded-choice sampling.
+    #[must_use]
+    pub fn with_request_key(mut self, request_key: impl Into<String>) -> Self {
+        self.policy_hints.request_key = Some(request_key.into());
         self
     }
 
@@ -178,6 +297,8 @@ pub struct RoutedModelInventory {
     pub tool_calling: bool,
     /// Whether response-state flows are supported.
     pub response_state: bool,
+    /// Live runtime facts that cache-aware and warm-aware policy can consume.
+    pub runtime_state: RoutedModelRuntimeState,
 }
 
 impl RoutedModelInventory {
@@ -206,6 +327,7 @@ impl RoutedModelInventory {
             structured_outputs: false,
             tool_calling: false,
             response_state: false,
+            runtime_state: RoutedModelRuntimeState::default(),
         }
     }
 
@@ -254,6 +376,27 @@ impl RoutedModelInventory {
     #[must_use]
     pub const fn with_response_state(mut self) -> Self {
         self.response_state = true;
+        self
+    }
+
+    /// Marks the model route warm.
+    #[must_use]
+    pub fn with_warm_state(mut self, warm_state: RoutedWarmState) -> Self {
+        self.runtime_state.warm_state = warm_state;
+        self
+    }
+
+    /// Sets the current active-request count.
+    #[must_use]
+    pub fn with_active_requests(mut self, active_requests: usize) -> Self {
+        self.runtime_state.active_requests = active_requests;
+        self
+    }
+
+    /// Appends one reusable cache entry.
+    #[must_use]
+    pub fn with_cache_entry(mut self, cache_entry: RoutedCacheEntry) -> Self {
+        self.runtime_state.cache_entries.push(cache_entry);
         self
     }
 }
@@ -310,6 +453,40 @@ impl RoutedWorkerInventory {
 }
 
 /// Machine-checkable route chosen by the router.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RouteSelectionStrategy {
+    /// No warm/cache state was available, so deterministic first-ready routing won.
+    FirstReady,
+    /// Cache-compatible candidates existed and one was selected directly.
+    CacheAware,
+    /// Warm candidates existed and one was selected directly.
+    WarmAware,
+    /// A bounded power-of-two choice among an already eligible pool picked the least-loaded route.
+    PowerOfTwoLeastLoaded,
+}
+
+/// Inspectable metrics and trace output for one placement decision.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteSelectionMetrics {
+    /// Number of candidates that passed compatibility checks.
+    pub eligible_workers: usize,
+    /// Number of candidates that were already warm.
+    pub warm_workers: usize,
+    /// Number of candidates with a safe cache-affinity match.
+    pub cache_matches: usize,
+    /// Number of candidates sampled by the bounded-choice picker.
+    pub sampled_workers: usize,
+    /// Active requests on the selected route at selection time.
+    pub selected_active_requests: usize,
+    /// Policy that selected the final route.
+    pub strategy: RouteSelectionStrategy,
+    /// Explicit reason when routing had to fall back to a simpler policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
+}
+
+/// Machine-checkable route chosen by the router.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RouteSelection {
     /// Worker chosen for the request.
@@ -333,6 +510,8 @@ pub struct RouteSelection {
     /// Routed scheduler policy when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduler_policy: Option<GenerationSchedulerPolicy>,
+    /// Inspectable metrics for the selection.
+    pub metrics: RouteSelectionMetrics,
     /// Plain-language route notes explaining tie-breaks and filters.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routing_notes: Vec<String>,
@@ -342,6 +521,15 @@ pub struct RouteSelection {
 struct RouteBinding {
     worker_id: String,
     model_key: String,
+}
+
+#[derive(Clone, Debug)]
+struct EligibleRoute {
+    preference_rank: usize,
+    active_requests: usize,
+    warm: bool,
+    cache_match_tokens: usize,
+    selection: RouteSelection,
 }
 
 /// Errors produced while constructing or using the router.
@@ -519,21 +707,28 @@ impl FleetRouter {
                 .iter()
                 .position(|preferred| preferred == &worker.worker_id)
                 .unwrap_or(usize::MAX);
-            eligible.push((
+            eligible.push(EligibleRoute {
                 preference_rank,
-                worker.worker_id.clone(),
-                model.canonical_name.clone(),
-                self.selection_for(worker, model, request.endpoint, &request.target),
-            ));
+                active_requests: model.runtime_state.active_requests,
+                warm: model.runtime_state.warm_state.is_warm(),
+                cache_match_tokens: cache_match_tokens(model, request),
+                selection: self.selection_for(worker, model, request.endpoint, &request.target),
+            });
         }
 
-        eligible.sort_by(|left, right| {
-            left.0
-                .cmp(&right.0)
-                .then_with(|| left.1.cmp(&right.1))
-                .then_with(|| left.2.cmp(&right.2))
-        });
-        let Some((preference_rank, _, _, mut selection)) = eligible.into_iter().next() else {
+        let eligible_workers = eligible.len();
+        let warm_workers = eligible.iter().filter(|candidate| candidate.warm).count();
+        let cache_matches = eligible
+            .iter()
+            .filter(|candidate| candidate.cache_match_tokens > 0)
+            .count();
+        let Some(mut selection) = self.select_from_policy_pool(
+            eligible,
+            request,
+            eligible_workers,
+            warm_workers,
+            cache_matches,
+        ) else {
             let reason = if refusal_notes.is_empty() {
                 String::from("no candidates matched the requested target")
             } else {
@@ -545,13 +740,6 @@ impl FleetRouter {
                 reason,
             });
         };
-
-        if preference_rank != usize::MAX {
-            selection.routing_notes.push(format!(
-                "selected preferred worker `{}` for routed request",
-                selection.worker_id
-            ));
-        }
         if let Some(preferred_family) = request.preferred_family.as_deref() {
             selection.routing_notes.push(format!(
                 "family filter `{preferred_family}` matched routed model"
@@ -563,6 +751,114 @@ impl FleetRouter {
             ));
         }
         Ok(selection)
+    }
+
+    fn select_from_policy_pool(
+        &self,
+        mut eligible: Vec<EligibleRoute>,
+        request: &RoutingRequest,
+        eligible_workers: usize,
+        warm_workers: usize,
+        cache_matches: usize,
+    ) -> Option<RouteSelection> {
+        if eligible.is_empty() {
+            return None;
+        }
+        sort_candidates(eligible.as_mut_slice());
+
+        let mut fallback_reason = None;
+        let mut pool_reason = "eligible";
+        let cache_pool = eligible
+            .iter()
+            .filter(|candidate| candidate.cache_match_tokens > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        let warm_pool = eligible
+            .iter()
+            .filter(|candidate| candidate.warm)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let selected_pool = if !cache_pool.is_empty() {
+            pool_reason = "cache-matched";
+            cache_pool
+        } else if request.policy_hints.cache_key.is_some()
+            && request.policy_hints.tenant_scope.is_none()
+        {
+            fallback_reason = Some(String::from(
+                "cache-affinity hint omitted tenant scope, so cache-aware placement was skipped",
+            ));
+            if !warm_pool.is_empty() {
+                pool_reason = "warm";
+                warm_pool
+            } else {
+                eligible.clone()
+            }
+        } else if request.policy_hints.cache_key.is_some() {
+            fallback_reason = Some(String::from(
+                "no safe cache-compatible worker route was available, so cache-aware placement fell back",
+            ));
+            if !warm_pool.is_empty() {
+                pool_reason = "warm";
+                warm_pool
+            } else {
+                eligible.clone()
+            }
+        } else if !warm_pool.is_empty() {
+            pool_reason = "warm";
+            warm_pool
+        } else {
+            fallback_reason = Some(String::from(
+                "no warm or cache-compatible worker route was available, so placement fell back to first-ready",
+            ));
+            eligible.clone()
+        };
+
+        let mut pool = selected_pool;
+        sort_candidates(pool.as_mut_slice());
+        let mut strategy = match pool_reason {
+            "cache-matched" => RouteSelectionStrategy::CacheAware,
+            "warm" => RouteSelectionStrategy::WarmAware,
+            _ => RouteSelectionStrategy::FirstReady,
+        };
+        let mut sampled_workers = 1usize;
+        let chosen = if pool.len() > 1 && !matches!(strategy, RouteSelectionStrategy::FirstReady) {
+            let sampled =
+                power_of_two_sample(pool.as_slice(), request, self.default_model.as_str());
+            sampled_workers = sampled.len();
+            strategy = RouteSelectionStrategy::PowerOfTwoLeastLoaded;
+            sampled
+                .into_iter()
+                .min_by(|left, right| compare_candidates(left, right))
+                .cloned()
+                .unwrap_or_else(|| pool[0].clone())
+        } else {
+            pool.into_iter().next().expect("non-empty pool guaranteed")
+        };
+
+        let mut selection = chosen.selection;
+        selection.metrics = RouteSelectionMetrics {
+            eligible_workers,
+            warm_workers,
+            cache_matches,
+            sampled_workers,
+            selected_active_requests: chosen.active_requests,
+            strategy,
+            fallback_reason: fallback_reason.clone(),
+        };
+        if chosen.preference_rank != usize::MAX {
+            selection.routing_notes.push(format!(
+                "selected preferred worker `{}` as the final route tiebreak",
+                selection.worker_id
+            ));
+        }
+        selection.routing_notes.push(format!(
+            "placement policy selected the route from the `{pool_reason}` candidate pool"
+        ));
+        if let Some(fallback_reason) = fallback_reason {
+            selection.routing_notes.push(fallback_reason);
+        }
+        Some(selection)
     }
 
     fn candidates_for_target(
@@ -628,9 +924,79 @@ impl FleetRouter {
             execution_engine_label: worker.execution_engine_label.clone(),
             execution_profile: model.execution_profile.clone(),
             scheduler_policy: model.scheduler_policy.clone(),
+            metrics: RouteSelectionMetrics {
+                eligible_workers: 0,
+                warm_workers: 0,
+                cache_matches: 0,
+                sampled_workers: 0,
+                selected_active_requests: model.runtime_state.active_requests,
+                strategy: RouteSelectionStrategy::FirstReady,
+                fallback_reason: None,
+            },
             routing_notes,
         }
     }
+}
+
+fn cache_match_tokens(model: &RoutedModelInventory, request: &RoutingRequest) -> usize {
+    let Some(cache_key) = request.policy_hints.cache_key.as_deref() else {
+        return 0;
+    };
+    let Some(tenant_scope) = request.policy_hints.tenant_scope.as_deref() else {
+        return 0;
+    };
+    model
+        .runtime_state
+        .cache_entries
+        .iter()
+        .fold(0, |best, entry| {
+            if entry.cache_key != cache_key || entry.tenant_scope != tenant_scope {
+                return best;
+            }
+            if let Some(topology_scope) = request.policy_hints.topology_scope.as_deref()
+                && entry.topology_scope.as_deref() != Some(topology_scope)
+            {
+                return best;
+            }
+            best.max(entry.reusable_tokens)
+        })
+}
+
+fn sort_candidates(candidates: &mut [EligibleRoute]) {
+    candidates.sort_by(compare_candidates);
+}
+
+fn compare_candidates(left: &EligibleRoute, right: &EligibleRoute) -> std::cmp::Ordering {
+    left.preference_rank
+        .cmp(&right.preference_rank)
+        .then_with(|| right.cache_match_tokens.cmp(&left.cache_match_tokens))
+        .then_with(|| right.warm.cmp(&left.warm))
+        .then_with(|| left.active_requests.cmp(&right.active_requests))
+        .then_with(|| left.selection.worker_id.cmp(&right.selection.worker_id))
+        .then_with(|| left.selection.model_key.cmp(&right.selection.model_key))
+}
+
+fn power_of_two_sample<'a>(
+    candidates: &'a [EligibleRoute],
+    request: &RoutingRequest,
+    default_model: &str,
+) -> Vec<&'a EligibleRoute> {
+    if candidates.len() <= 2 {
+        return candidates.iter().collect();
+    }
+    let mut hasher = DefaultHasher::new();
+    request.endpoint.path().hash(&mut hasher);
+    target_label(&request.target, default_model).hash(&mut hasher);
+    request.policy_hints.cache_key.hash(&mut hasher);
+    request.policy_hints.tenant_scope.hash(&mut hasher);
+    request.policy_hints.topology_scope.hash(&mut hasher);
+    request.policy_hints.request_key.hash(&mut hasher);
+    let first_index = (hasher.finish() as usize) % candidates.len();
+    let mut second_index = (first_index + (candidates.len() / 2).max(1)) % candidates.len();
+    if second_index == first_index {
+        second_index = (first_index + 1) % candidates.len();
+    }
+    vec![&candidates[first_index], &candidates[second_index]]
 }
 
 fn target_label(target: &RoutingTarget, default_model: &str) -> String {
@@ -644,8 +1010,8 @@ fn target_label(target: &RoutingTarget, default_model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        FleetRouter, RoutedModelInventory, RoutedWorkerInventory, RoutingEndpoint, RoutingError,
-        RoutingRequest,
+        FleetRouter, RouteSelectionStrategy, RoutedCacheEntry, RoutedModelInventory,
+        RoutedWarmState, RoutedWorkerInventory, RoutingEndpoint, RoutingError, RoutingRequest,
     };
     use psionic_runtime::{ExecutionCapabilityProfile, PrefillDecodeCapability};
 
@@ -778,5 +1144,124 @@ mod tests {
             error.to_string().contains("/v1/responses"),
             "refusal should name the unsupported endpoint"
         );
+    }
+
+    #[test]
+    fn router_prefers_safe_cache_match_over_cold_route() {
+        let cached =
+            RoutedModelInventory::new("tiny-llama", "tiny-llama", "llama", sample_profile())
+                .with_supported_endpoint(RoutingEndpoint::ChatCompletions)
+                .with_warm_state(RoutedWarmState::Warm)
+                .with_active_requests(3)
+                .with_cache_entry(RoutedCacheEntry::new("prefix-hello", "tenant-a", 96));
+        let cold = RoutedModelInventory::new("tiny-llama", "tiny-llama", "llama", sample_profile())
+            .with_supported_endpoint(RoutingEndpoint::ChatCompletions)
+            .with_active_requests(0);
+        let router = FleetRouter::new(
+            "tiny-llama",
+            vec![
+                RoutedWorkerInventory::new("worker-a", "cpu", "native", "psionic")
+                    .with_model(cached),
+                RoutedWorkerInventory::new("worker-b", "cpu", "native", "psionic").with_model(cold),
+            ],
+        )
+        .expect("router should build");
+
+        let selection = router
+            .resolve(
+                &RoutingRequest::new(RoutingEndpoint::ChatCompletions)
+                    .with_cache_affinity("prefix-hello", "tenant-a"),
+            )
+            .expect("safe cache-matched route should resolve");
+        assert_eq!(selection.worker_id, "worker-a");
+        assert_eq!(selection.metrics.cache_matches, 1);
+        assert!(matches!(
+            selection.metrics.strategy,
+            RouteSelectionStrategy::CacheAware
+        ));
+    }
+
+    #[test]
+    fn router_never_uses_unsafe_cache_match_across_tenants() {
+        let cached =
+            RoutedModelInventory::new("tiny-llama", "tiny-llama", "llama", sample_profile())
+                .with_supported_endpoint(RoutingEndpoint::ChatCompletions)
+                .with_warm_state(RoutedWarmState::Warm)
+                .with_cache_entry(RoutedCacheEntry::new("prefix-hello", "tenant-a", 96));
+        let warm_other =
+            RoutedModelInventory::new("tiny-llama", "tiny-llama", "llama", sample_profile())
+                .with_supported_endpoint(RoutingEndpoint::ChatCompletions)
+                .with_warm_state(RoutedWarmState::Warm)
+                .with_active_requests(1);
+        let router = FleetRouter::new(
+            "tiny-llama",
+            vec![
+                RoutedWorkerInventory::new("worker-a", "cpu", "native", "psionic")
+                    .with_model(cached),
+                RoutedWorkerInventory::new("worker-b", "cpu", "native", "psionic")
+                    .with_model(warm_other),
+            ],
+        )
+        .expect("router should build");
+
+        let selection = router
+            .resolve(
+                &RoutingRequest::new(RoutingEndpoint::ChatCompletions)
+                    .with_cache_affinity("prefix-hello", "tenant-b"),
+            )
+            .expect("unsafe tenant-mismatched cache hint should fall back safely");
+        assert_eq!(selection.metrics.cache_matches, 0);
+        assert!(
+            selection
+                .metrics
+                .fallback_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("no safe cache-compatible worker route"),
+            "fallback reason should explain why cache-aware routing was skipped"
+        );
+        assert!(
+            selection
+                .routing_notes
+                .iter()
+                .any(|note| note.contains("cache-aware placement fell back")),
+            "routing notes should preserve the explicit fallback trace"
+        );
+    }
+
+    #[test]
+    fn router_uses_power_of_two_to_pick_less_loaded_warm_route() {
+        let warm_a =
+            RoutedModelInventory::new("tiny-llama", "tiny-llama", "llama", sample_profile())
+                .with_supported_endpoint(RoutingEndpoint::ChatCompletions)
+                .with_warm_state(RoutedWarmState::Warm)
+                .with_active_requests(7);
+        let warm_b =
+            RoutedModelInventory::new("tiny-llama", "tiny-llama", "llama", sample_profile())
+                .with_supported_endpoint(RoutingEndpoint::ChatCompletions)
+                .with_warm_state(RoutedWarmState::Warm)
+                .with_active_requests(2);
+        let router = FleetRouter::new(
+            "tiny-llama",
+            vec![
+                RoutedWorkerInventory::new("worker-a", "cpu", "native", "psionic")
+                    .with_model(warm_a),
+                RoutedWorkerInventory::new("worker-b", "cpu", "native", "psionic")
+                    .with_model(warm_b),
+            ],
+        )
+        .expect("router should build");
+
+        let selection = router
+            .resolve(
+                &RoutingRequest::new(RoutingEndpoint::ChatCompletions).with_request_key("req-1"),
+            )
+            .expect("warm routes should resolve");
+        assert_eq!(selection.worker_id, "worker-b");
+        assert_eq!(selection.metrics.sampled_workers, 2);
+        assert!(matches!(
+            selection.metrics.strategy,
+            RouteSelectionStrategy::PowerOfTwoLeastLoaded
+        ));
     }
 }

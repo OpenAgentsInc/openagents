@@ -34,8 +34,8 @@ use psionic_models::{
     render_gpt_oss_harmony_prompt,
 };
 use psionic_router::{
-    FleetRouter, RouteSelection, RoutedModelInventory, RoutedWorkerInventory, RoutingEndpoint,
-    RoutingError, RoutingRequest, RoutingTarget,
+    FleetRouter, RouteSelection, RouteSelectionStrategy, RoutedModelInventory, RoutedWarmState,
+    RoutedWorkerInventory, RoutingEndpoint, RoutingError, RoutingRequest, RoutingTarget,
 };
 use psionic_runtime::{
     ExecutionCapabilityProfile, GenerationSchedulerPolicy, GenerationSchedulerRequestReceipt,
@@ -211,6 +211,7 @@ impl Default for ResponseStateRetentionPolicy {
 struct StoredResponseState {
     response_id: String,
     model_key: String,
+    worker_id: String,
     conversation_id: Option<String>,
     prompt_history: Vec<PromptMessage>,
 }
@@ -219,6 +220,7 @@ struct StoredResponseState {
 struct StoredConversationState {
     conversation_id: String,
     model_key: String,
+    worker_id: String,
     prompt_history: Vec<PromptMessage>,
     revision: u64,
     last_response_id: String,
@@ -227,6 +229,7 @@ struct StoredConversationState {
 #[derive(Clone, Debug, Default)]
 struct ResponseStateContext {
     model_key: Option<String>,
+    worker_id: Option<String>,
     conversation_id: Option<String>,
     prompt_history: Vec<PromptMessage>,
     previous_response_id: Option<String>,
@@ -279,6 +282,7 @@ impl ResponseStateStore {
             })?;
             return Ok(ResponseStateContext {
                 model_key: Some(stored.model_key.clone()),
+                worker_id: Some(stored.worker_id.clone()),
                 conversation_id: stored.conversation_id.clone(),
                 prompt_history: stored.prompt_history.clone(),
                 previous_response_id: Some(stored.response_id.clone()),
@@ -294,6 +298,7 @@ impl ResponseStateStore {
             })?;
             return Ok(ResponseStateContext {
                 model_key: Some(stored.model_key.clone()),
+                worker_id: Some(stored.worker_id.clone()),
                 conversation_id: Some(stored.conversation_id.clone()),
                 prompt_history: stored.prompt_history.clone(),
                 previous_response_id: Some(stored.last_response_id.clone()),
@@ -308,6 +313,7 @@ impl ResponseStateStore {
         &mut self,
         response_id: String,
         model_key: String,
+        worker_id: String,
         conversation_id: Option<String>,
         prompt_history: Vec<PromptMessage>,
     ) -> Result<Option<ResponseConversationRef>, OpenAiCompatHttpError> {
@@ -320,6 +326,7 @@ impl ResponseStateStore {
         let stored_response = StoredResponseState {
             response_id: response_id.clone(),
             model_key: model_key.clone(),
+            worker_id: worker_id.clone(),
             conversation_id: conversation_id.clone(),
             prompt_history: prompt_history.clone(),
         };
@@ -343,6 +350,7 @@ impl ResponseStateStore {
             StoredConversationState {
                 conversation_id: conversation_id.clone(),
                 model_key,
+                worker_id,
                 prompt_history,
                 revision,
                 last_response_id: response_id,
@@ -3017,6 +3025,7 @@ async fn handle_generic_chat_completions(
         insert_generic_execution_headers(
             response.headers_mut(),
             state.as_ref(),
+            &route.selection,
             structured_output_report.as_ref(),
             scheduler_receipt.as_ref(),
             prefill_decode_mode,
@@ -3085,6 +3094,7 @@ async fn handle_generic_chat_completions(
     insert_generic_execution_headers(
         response.headers_mut(),
         state.as_ref(),
+        &route.selection,
         structured_output_report.as_ref(),
         scheduler_receipt.as_ref(),
         prefill_decode_mode,
@@ -3148,6 +3158,9 @@ async fn handle_generic_responses(
         }
         if tool_contract.is_some() {
             route_request = route_request.require_tool_calling();
+        }
+        if let Some(worker_id) = response_state_context.worker_id.as_deref() {
+            route_request = route_request.prefer_worker(worker_id.to_string());
         }
         route_request
     };
@@ -3341,6 +3354,7 @@ async fn handle_generic_responses(
             response_state.record_response(
                 request_id.clone(),
                 loaded_model.model_key.clone(),
+                route.selection.worker_id.clone(),
                 assigned_conversation_id.clone(),
                 stored_prompt_history.clone(),
             )?
@@ -3438,6 +3452,7 @@ async fn handle_generic_responses(
     insert_generic_execution_headers(
         response.headers_mut(),
         state.as_ref(),
+        &route.selection,
         structured_output_report.as_ref(),
         scheduler_receipt.as_ref(),
         prefill_decode_mode,
@@ -3538,6 +3553,7 @@ async fn handle_generic_embeddings(
     insert_generic_execution_headers(
         response.headers_mut(),
         state.as_ref(),
+        &route.selection,
         None,
         None,
         None,
@@ -3948,6 +3964,7 @@ fn next_generic_request_id(state: &OpenAiCompatState, prefix: &str) -> String {
 fn insert_generic_execution_headers(
     headers: &mut HeaderMap,
     state: &OpenAiCompatState,
+    route_selection: &RouteSelection,
     structured_output: Option<&StructuredOutputExecutionReport>,
     scheduler: Option<&GenerationSchedulerRequestReceipt>,
     prefill_decode_mode: Option<psionic_runtime::PrefillDecodeExecutionMode>,
@@ -3985,6 +4002,50 @@ fn insert_generic_execution_headers(
         HeaderName::from_static("x-psionic-performance-class"),
         HeaderValue::from_static(CPU_SERVER_PERFORMANCE_CLASS),
     );
+    headers.insert(
+        HeaderName::from_static("x-psionic-route-worker"),
+        HeaderValue::from_str(route_selection.worker_id.as_str())
+            .unwrap_or_else(|_| HeaderValue::from_static("invalid")),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-route-strategy"),
+        HeaderValue::from_static(match route_selection.metrics.strategy {
+            RouteSelectionStrategy::FirstReady => "first_ready",
+            RouteSelectionStrategy::CacheAware => "cache_aware",
+            RouteSelectionStrategy::WarmAware => "warm_aware",
+            RouteSelectionStrategy::PowerOfTwoLeastLoaded => "power_of_two_least_loaded",
+        }),
+    );
+    insert_usize_header(
+        headers,
+        "x-psionic-route-eligible-workers",
+        route_selection.metrics.eligible_workers,
+    );
+    insert_usize_header(
+        headers,
+        "x-psionic-route-warm-workers",
+        route_selection.metrics.warm_workers,
+    );
+    insert_usize_header(
+        headers,
+        "x-psionic-route-cache-matches",
+        route_selection.metrics.cache_matches,
+    );
+    insert_usize_header(
+        headers,
+        "x-psionic-route-sampled-workers",
+        route_selection.metrics.sampled_workers,
+    );
+    insert_usize_header(
+        headers,
+        "x-psionic-route-active-requests",
+        route_selection.metrics.selected_active_requests,
+    );
+    if let Some(fallback_reason) = route_selection.metrics.fallback_reason.as_deref()
+        && let Ok(value) = HeaderValue::from_str(fallback_reason)
+    {
+        headers.insert(HeaderName::from_static("x-psionic-route-fallback"), value);
+    }
     if let Some(scheduler) = scheduler {
         headers.insert(
             HeaderName::from_static("x-psionic-batch-posture"),
@@ -4062,6 +4123,12 @@ fn insert_generic_execution_headers(
     insert_structured_output_headers(headers, structured_output);
 }
 
+fn insert_usize_header(headers: &mut HeaderMap, name: &'static str, value: usize) {
+    if let Ok(value) = HeaderValue::from_str(value.to_string().as_str()) {
+        headers.insert(HeaderName::from_static(name), value);
+    }
+}
+
 fn insert_structured_output_headers(
     headers: &mut HeaderMap,
     structured_output: Option<&StructuredOutputExecutionReport>,
@@ -4116,13 +4183,11 @@ fn resolve_generic_route<'a>(
             request.target = target;
             request
         }
-        None => RoutingRequest {
-            endpoint: RoutingEndpoint::ChatCompletions,
-            target,
-            capability_filters: psionic_router::RoutingCapabilityFilters::default(),
-            preferred_worker_ids: Vec::new(),
-            preferred_family: None,
-        },
+        None => {
+            let mut request = RoutingRequest::new(RoutingEndpoint::ChatCompletions);
+            request.target = target;
+            request
+        }
     };
     let selection = state
         .router
@@ -4262,6 +4327,7 @@ fn routed_inventory_for_loaded_model(
     if let Some(policy) = model.scheduler_policy() {
         inventory = inventory.with_scheduler_policy(policy.clone());
     }
+    inventory = inventory.with_warm_state(RoutedWarmState::Warm);
     if model.decoder().is_some() {
         inventory = inventory
             .with_structured_outputs()
@@ -6754,6 +6820,64 @@ mod tests {
         );
         assert_eq!(
             header_value(bypassed.headers(), "x-psionic-prefix-cache-reused-tokens"),
+            Some(String::from("0"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_server_route_headers_are_machine_checkable() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-route-llama.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny route llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let response =
+            tokio::runtime::Runtime::new()?.block_on(handle_generic_chat_completions(
+                std::sync::Arc::clone(&server.state),
+                ChatCompletionRequest {
+                    model: Some(String::from("tiny-route-llama")),
+                    messages: vec![ChatCompletionMessage {
+                        role: String::from("user"),
+                        content: String::from("hello"),
+                        name: None,
+                    }],
+                    temperature: Some(0.0),
+                    max_tokens: Some(1),
+                    stop: None,
+                    stream: false,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    response_format: None,
+                    psionic_grammar: None,
+                    psionic_structured_output: None,
+                    psionic_reasoning: None,
+                    psionic_prefix_cache: None,
+                },
+            ))?;
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-route-worker"),
+            Some(String::from(super::OPENAI_COMPAT_WORKER_ID))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-route-strategy"),
+            Some(String::from("warm_aware"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-route-eligible-workers"),
+            Some(String::from("1"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-route-warm-workers"),
+            Some(String::from("1"))
+        );
+        assert_eq!(
+            header_value(response.headers(), "x-psionic-route-cache-matches"),
             Some(String::from("0"))
         );
         Ok(())

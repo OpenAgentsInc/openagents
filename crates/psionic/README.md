@@ -104,9 +104,10 @@ Implemented now:
   per-model capability reporting, and explicit refusal for unsupported
   continuation modes instead of pushing multi-turn state emulation into callers.
 - a first Psionic-owned router control plane for served fleets, with explicit
-  worker/model inventory, capability filters, deterministic worker-path
-  selection, and generic-server integration so model routing no longer lives as
-  ad hoc alias logic inside `psionic-serve`.
+  worker/model inventory, capability filters, warm/cache-aware placement,
+  bounded power-of-two least-loaded choice over warm or cache-matched pools,
+  and generic-server route headers so model routing no longer lives as ad hoc
+  alias logic inside `psionic-serve`.
 - a first truthful adapter-serving lane for dense CPU GGUF decoder families,
   with LM-head LoRA import from safetensors, explicit attach/detach plus
   merge/unmerge residency modes, adapter compatibility/refusal surfaces, and
