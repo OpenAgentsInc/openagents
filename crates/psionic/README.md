@@ -108,6 +108,9 @@ Implemented now:
   bounded power-of-two least-loaded choice over warm or cache-matched pools,
   and generic-server route headers so model routing no longer lives as ad hoc
   alias logic inside `psionic-serve`.
+- router-owned reliability controls for served fleets, with explicit queue
+  depth, retry/refusal traces, rate-limit actions, circuit-breaker state, and
+  health gating in `psionic-router` instead of app-specific failure handling.
 - a first truthful adapter-serving lane for dense CPU GGUF decoder families,
   with LM-head LoRA import from safetensors, explicit attach/detach plus
   merge/unmerge residency modes, adapter compatibility/refusal surfaces, and

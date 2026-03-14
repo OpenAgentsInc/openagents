@@ -10,7 +10,7 @@
     allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)
 )]
 
-use psionic_runtime::{ExecutionCapabilityProfile, GenerationSchedulerPolicy};
+use psionic_runtime::{ExecutionCapabilityProfile, GenerationSchedulerPolicy, HealthStatus};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, hash_map::DefaultHasher},
@@ -938,6 +938,321 @@ impl FleetRouter {
     }
 }
 
+/// Reliability policy enforced by the router control plane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteReliabilityPolicy {
+    /// Maximum retry attempts before the router refuses the request.
+    pub max_retry_attempts: u8,
+    /// Maximum queued requests allowed per worker.
+    pub max_queue_depth: usize,
+    /// Maximum admitted requests per worker before rate limiting queues or refuses new work.
+    pub max_requests_per_window: usize,
+    /// Consecutive failures that open the worker circuit breaker.
+    pub circuit_breaker_failure_threshold: usize,
+}
+
+impl Default for RouteReliabilityPolicy {
+    fn default() -> Self {
+        Self {
+            max_retry_attempts: 2,
+            max_queue_depth: 8,
+            max_requests_per_window: 64,
+            circuit_breaker_failure_threshold: 3,
+        }
+    }
+}
+
+/// Circuit-breaker posture for one worker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerCircuitState {
+    /// Worker is healthy enough to receive traffic.
+    Closed,
+    /// Worker is quarantined from new traffic.
+    Open,
+    /// Worker recovered and is waiting for a successful probe.
+    HalfOpen,
+}
+
+/// High-level router-owned admission action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReliabilityAction {
+    /// Execute the request on the selected worker immediately.
+    Execute,
+    /// Queue the request instead of executing immediately.
+    Queue,
+    /// Retry the request against a future route selection.
+    Retry,
+    /// Refuse the request explicitly.
+    Refuse,
+}
+
+/// Explicit reason for one reliability action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReliabilityReason {
+    /// Worker health is offline.
+    WorkerOffline,
+    /// Worker circuit breaker is open.
+    CircuitOpen,
+    /// Worker rate limit window is exhausted.
+    RateLimited,
+    /// Worker queue is already full.
+    QueueSaturated,
+}
+
+/// Machine-checkable trace for one reliability decision.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteReliabilityTrace {
+    /// Worker the decision applied to.
+    pub worker_id: String,
+    /// Action the router chose.
+    pub action: ReliabilityAction,
+    /// Explicit reason for queue, retry, or refusal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<ReliabilityReason>,
+    /// Attempt ordinal supplied by the caller.
+    pub attempt: u8,
+    /// Current queue depth after the decision.
+    pub queue_depth: usize,
+    /// Current circuit-breaker posture.
+    pub circuit_state: WorkerCircuitState,
+    /// Current observed worker health.
+    pub health_status: HealthStatus,
+    /// Remaining retries before the router will refuse.
+    pub remaining_retries: u8,
+}
+
+/// Inspectable reliability metrics for one worker.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerReliabilityMetrics {
+    /// Worker identifier.
+    pub worker_id: String,
+    /// Current health status.
+    pub health_status: HealthStatus,
+    /// Current circuit-breaker posture.
+    pub circuit_state: WorkerCircuitState,
+    /// Current queued request count.
+    pub queue_depth: usize,
+    /// Requests admitted in the current synthetic rate-limit window.
+    pub requests_in_window: usize,
+    /// Consecutive recorded failures.
+    pub consecutive_failures: usize,
+    /// Number of rate-limited actions observed.
+    pub rate_limited_actions: usize,
+    /// Number of retry actions observed.
+    pub retry_actions: usize,
+    /// Number of queue actions observed.
+    pub queued_actions: usize,
+}
+
+#[derive(Clone, Debug)]
+struct WorkerReliabilityState {
+    health_status: HealthStatus,
+    circuit_state: WorkerCircuitState,
+    queue_depth: usize,
+    requests_in_window: usize,
+    consecutive_failures: usize,
+    rate_limited_actions: usize,
+    retry_actions: usize,
+    queued_actions: usize,
+}
+
+impl Default for WorkerReliabilityState {
+    fn default() -> Self {
+        Self {
+            health_status: HealthStatus::Ready,
+            circuit_state: WorkerCircuitState::Closed,
+            queue_depth: 0,
+            requests_in_window: 0,
+            consecutive_failures: 0,
+            rate_limited_actions: 0,
+            retry_actions: 0,
+            queued_actions: 0,
+        }
+    }
+}
+
+/// Mutable reliability controller layered on top of routed worker selections.
+#[derive(Clone, Debug)]
+pub struct RouteReliabilityController {
+    policy: RouteReliabilityPolicy,
+    workers: BTreeMap<String, WorkerReliabilityState>,
+}
+
+impl RouteReliabilityController {
+    /// Builds a reliability controller over a router inventory snapshot.
+    #[must_use]
+    pub fn new(router: &FleetRouter, policy: RouteReliabilityPolicy) -> Self {
+        let workers = router
+            .inventory()
+            .into_iter()
+            .map(|worker| (worker.worker_id, WorkerReliabilityState::default()))
+            .collect();
+        Self { policy, workers }
+    }
+
+    /// Records the latest health posture for one worker.
+    pub fn observe_worker_health(&mut self, worker_id: &str, status: HealthStatus) {
+        let state = self.workers.entry(worker_id.to_string()).or_default();
+        state.health_status = status;
+        state.circuit_state = match status {
+            HealthStatus::Ready => {
+                if matches!(state.circuit_state, WorkerCircuitState::Open) {
+                    WorkerCircuitState::HalfOpen
+                } else {
+                    state.circuit_state
+                }
+            }
+            HealthStatus::Degraded => state.circuit_state,
+            HealthStatus::Offline => WorkerCircuitState::Open,
+        };
+    }
+
+    /// Admits, queues, retries, or refuses one selected route.
+    pub fn admit(&mut self, selection: &RouteSelection, attempt: u8) -> RouteReliabilityTrace {
+        let state = self.workers.entry(selection.worker_id.clone()).or_default();
+        if state.health_status == HealthStatus::Offline {
+            return reliability_retry_or_refuse(
+                state,
+                selection.worker_id.clone(),
+                attempt,
+                self.policy.max_retry_attempts,
+                ReliabilityReason::WorkerOffline,
+            );
+        }
+        if matches!(state.circuit_state, WorkerCircuitState::Open) {
+            return reliability_retry_or_refuse(
+                state,
+                selection.worker_id.clone(),
+                attempt,
+                self.policy.max_retry_attempts,
+                ReliabilityReason::CircuitOpen,
+            );
+        }
+        if state.requests_in_window >= self.policy.max_requests_per_window {
+            state.rate_limited_actions = state.rate_limited_actions.saturating_add(1);
+            if state.queue_depth < self.policy.max_queue_depth {
+                state.queue_depth = state.queue_depth.saturating_add(1);
+                state.queued_actions = state.queued_actions.saturating_add(1);
+                return RouteReliabilityTrace {
+                    worker_id: selection.worker_id.clone(),
+                    action: ReliabilityAction::Queue,
+                    reason: Some(ReliabilityReason::RateLimited),
+                    attempt,
+                    queue_depth: state.queue_depth,
+                    circuit_state: state.circuit_state,
+                    health_status: state.health_status,
+                    remaining_retries: self.policy.max_retry_attempts.saturating_sub(attempt),
+                };
+            }
+            return reliability_retry_or_refuse(
+                state,
+                selection.worker_id.clone(),
+                attempt,
+                self.policy.max_retry_attempts,
+                ReliabilityReason::QueueSaturated,
+            );
+        }
+        if state.queue_depth >= self.policy.max_queue_depth {
+            return reliability_retry_or_refuse(
+                state,
+                selection.worker_id.clone(),
+                attempt,
+                self.policy.max_retry_attempts,
+                ReliabilityReason::QueueSaturated,
+            );
+        }
+
+        state.queue_depth = state.queue_depth.saturating_add(1);
+        state.requests_in_window = state.requests_in_window.saturating_add(1);
+        RouteReliabilityTrace {
+            worker_id: selection.worker_id.clone(),
+            action: ReliabilityAction::Execute,
+            reason: None,
+            attempt,
+            queue_depth: state.queue_depth,
+            circuit_state: state.circuit_state,
+            health_status: state.health_status,
+            remaining_retries: self.policy.max_retry_attempts.saturating_sub(attempt),
+        }
+    }
+
+    /// Records a successful execution completion and clears failure state.
+    pub fn record_success(&mut self, worker_id: &str) {
+        let state = self.workers.entry(worker_id.to_string()).or_default();
+        state.queue_depth = state.queue_depth.saturating_sub(1);
+        state.consecutive_failures = 0;
+        state.circuit_state = WorkerCircuitState::Closed;
+        if state.health_status == HealthStatus::Offline {
+            state.health_status = HealthStatus::Degraded;
+        }
+    }
+
+    /// Records a failed execution completion and opens the circuit when needed.
+    pub fn record_failure(&mut self, worker_id: &str) {
+        let state = self.workers.entry(worker_id.to_string()).or_default();
+        state.queue_depth = state.queue_depth.saturating_sub(1);
+        state.consecutive_failures = state.consecutive_failures.saturating_add(1);
+        if state.consecutive_failures >= self.policy.circuit_breaker_failure_threshold {
+            state.circuit_state = WorkerCircuitState::Open;
+        }
+    }
+
+    /// Resets the synthetic rate-limit window counters.
+    pub fn reset_rate_window(&mut self, worker_id: &str) {
+        if let Some(state) = self.workers.get_mut(worker_id) {
+            state.requests_in_window = 0;
+        }
+    }
+
+    /// Returns a metrics snapshot for all tracked workers.
+    #[must_use]
+    pub fn metrics(&self) -> Vec<WorkerReliabilityMetrics> {
+        self.workers
+            .iter()
+            .map(|(worker_id, state)| WorkerReliabilityMetrics {
+                worker_id: worker_id.clone(),
+                health_status: state.health_status,
+                circuit_state: state.circuit_state,
+                queue_depth: state.queue_depth,
+                requests_in_window: state.requests_in_window,
+                consecutive_failures: state.consecutive_failures,
+                rate_limited_actions: state.rate_limited_actions,
+                retry_actions: state.retry_actions,
+                queued_actions: state.queued_actions,
+            })
+            .collect()
+    }
+}
+
+fn reliability_retry_or_refuse(
+    state: &mut WorkerReliabilityState,
+    worker_id: String,
+    attempt: u8,
+    max_retry_attempts: u8,
+    reason: ReliabilityReason,
+) -> RouteReliabilityTrace {
+    let remaining_retries = max_retry_attempts.saturating_sub(attempt);
+    let action = if attempt < max_retry_attempts {
+        state.retry_actions = state.retry_actions.saturating_add(1);
+        ReliabilityAction::Retry
+    } else {
+        ReliabilityAction::Refuse
+    };
+    RouteReliabilityTrace {
+        worker_id,
+        action,
+        reason: Some(reason),
+        attempt,
+        queue_depth: state.queue_depth,
+        circuit_state: state.circuit_state,
+        health_status: state.health_status,
+        remaining_retries,
+    }
+}
+
 fn cache_match_tokens(model: &RoutedModelInventory, request: &RoutingRequest) -> usize {
     let Some(cache_key) = request.policy_hints.cache_key.as_deref() else {
         return 0;
@@ -1010,10 +1325,12 @@ fn target_label(target: &RoutingTarget, default_model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        FleetRouter, RouteSelectionStrategy, RoutedCacheEntry, RoutedModelInventory,
+        FleetRouter, ReliabilityAction, ReliabilityReason, RouteReliabilityController,
+        RouteReliabilityPolicy, RouteSelectionStrategy, RoutedCacheEntry, RoutedModelInventory,
         RoutedWarmState, RoutedWorkerInventory, RoutingEndpoint, RoutingError, RoutingRequest,
+        WorkerCircuitState,
     };
-    use psionic_runtime::{ExecutionCapabilityProfile, PrefillDecodeCapability};
+    use psionic_runtime::{ExecutionCapabilityProfile, HealthStatus, PrefillDecodeCapability};
 
     fn sample_profile() -> ExecutionCapabilityProfile {
         ExecutionCapabilityProfile::single_request_latency_optimized()
@@ -1263,5 +1580,139 @@ mod tests {
             selection.metrics.strategy,
             RouteSelectionStrategy::PowerOfTwoLeastLoaded
         ));
+    }
+
+    #[test]
+    fn reliability_controller_retries_offline_worker_before_refusing() {
+        let router = FleetRouter::new(
+            "tiny-llama",
+            vec![
+                RoutedWorkerInventory::new("worker-a", "cpu", "native", "psionic").with_model(
+                    RoutedModelInventory::new(
+                        "tiny-llama",
+                        "tiny-llama",
+                        "llama",
+                        sample_profile(),
+                    )
+                    .with_supported_endpoint(RoutingEndpoint::ChatCompletions),
+                ),
+            ],
+        )
+        .expect("router should build");
+        let selection = router
+            .resolve(&RoutingRequest::new(RoutingEndpoint::ChatCompletions))
+            .expect("route should resolve");
+        let mut controller = RouteReliabilityController::new(
+            &router,
+            RouteReliabilityPolicy {
+                max_retry_attempts: 1,
+                ..Default::default()
+            },
+        );
+        controller.observe_worker_health("worker-a", HealthStatus::Offline);
+
+        let retry = controller.admit(&selection, 0);
+        assert_eq!(retry.action, ReliabilityAction::Retry);
+        assert_eq!(retry.reason, Some(ReliabilityReason::WorkerOffline));
+
+        let refuse = controller.admit(&selection, 1);
+        assert_eq!(refuse.action, ReliabilityAction::Refuse);
+        assert_eq!(refuse.reason, Some(ReliabilityReason::WorkerOffline));
+    }
+
+    #[test]
+    fn reliability_controller_opens_circuit_after_failures() {
+        let router = FleetRouter::new(
+            "tiny-llama",
+            vec![
+                RoutedWorkerInventory::new("worker-a", "cpu", "native", "psionic").with_model(
+                    RoutedModelInventory::new(
+                        "tiny-llama",
+                        "tiny-llama",
+                        "llama",
+                        sample_profile(),
+                    )
+                    .with_supported_endpoint(RoutingEndpoint::ChatCompletions),
+                ),
+            ],
+        )
+        .expect("router should build");
+        let selection = router
+            .resolve(&RoutingRequest::new(RoutingEndpoint::ChatCompletions))
+            .expect("route should resolve");
+        let mut controller = RouteReliabilityController::new(
+            &router,
+            RouteReliabilityPolicy {
+                circuit_breaker_failure_threshold: 2,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            controller.admit(&selection, 0).action,
+            ReliabilityAction::Execute
+        );
+        controller.record_failure("worker-a");
+        assert_eq!(
+            controller.admit(&selection, 0).action,
+            ReliabilityAction::Execute
+        );
+        controller.record_failure("worker-a");
+
+        let retry = controller.admit(&selection, 0);
+        assert_eq!(retry.action, ReliabilityAction::Retry);
+        assert_eq!(retry.reason, Some(ReliabilityReason::CircuitOpen));
+        assert_eq!(
+            controller.metrics()[0].circuit_state,
+            WorkerCircuitState::Open
+        );
+    }
+
+    #[test]
+    fn reliability_controller_rate_limits_and_queues_explicitly() {
+        let router = FleetRouter::new(
+            "tiny-llama",
+            vec![
+                RoutedWorkerInventory::new("worker-a", "cpu", "native", "psionic").with_model(
+                    RoutedModelInventory::new(
+                        "tiny-llama",
+                        "tiny-llama",
+                        "llama",
+                        sample_profile(),
+                    )
+                    .with_supported_endpoint(RoutingEndpoint::ChatCompletions),
+                ),
+            ],
+        )
+        .expect("router should build");
+        let selection = router
+            .resolve(&RoutingRequest::new(RoutingEndpoint::ChatCompletions))
+            .expect("route should resolve");
+        let mut controller = RouteReliabilityController::new(
+            &router,
+            RouteReliabilityPolicy {
+                max_retry_attempts: 0,
+                max_queue_depth: 1,
+                max_requests_per_window: 1,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            controller.admit(&selection, 0).action,
+            ReliabilityAction::Execute
+        );
+        controller.record_success("worker-a");
+        let queued = controller.admit(&selection, 0);
+        assert_eq!(queued.action, ReliabilityAction::Queue);
+        assert_eq!(queued.reason, Some(ReliabilityReason::RateLimited));
+
+        let refused = controller.admit(&selection, 0);
+        assert_eq!(refused.action, ReliabilityAction::Refuse);
+        assert_eq!(refused.reason, Some(ReliabilityReason::QueueSaturated));
+
+        let metrics = controller.metrics();
+        assert_eq!(metrics[0].queued_actions, 1);
+        assert_eq!(metrics[0].rate_limited_actions, 2);
     }
 }
