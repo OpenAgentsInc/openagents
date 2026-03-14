@@ -24,6 +24,7 @@ mod chat_spacetime;
 mod chat_terminal;
 mod codex_lane;
 mod codex_remote;
+pub mod compute_mcp;
 mod credentials;
 pub mod desktop_control;
 mod desktop_shell;

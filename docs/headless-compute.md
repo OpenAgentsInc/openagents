@@ -10,6 +10,8 @@ The same repo now also has an app-owned desktop control plane for the running GU
 
 - `apps/autopilot-desktop/src/desktop_control.rs`
 - `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-desktop/src/compute_mcp.rs`
+- `apps/autopilot-desktop/src/bin/autopilot_compute_mcp.rs`
 
 That control plane is intentionally UI-synced. `autopilotctl` drives the running
 desktop app through the same split-shell truth model the user sees on screen:
@@ -42,6 +44,23 @@ It can:
 - list NIP-28 groups, channels, and recent messages
 - send or retry NIP-28 chat messages
 - start and stop Buy Mode against the same in-app state used by the GUI
+
+`autopilot-compute-mcp` is the model-facing companion surface for the same
+desktop-control contract. It speaks MCP over stdio and intentionally sits on
+top of the running app's manifest, auth token, and action schema instead of
+creating a second hidden compute RPC path.
+
+The current MCP tool surface exposes:
+
+- full compute snapshots and inventory summaries
+- provider online/offline requests
+- cluster status and topology inspection
+- sandbox create/get/upload/start/wait/download operations
+- proof and challenge inspection
+
+It does not bypass desktop-control policy or kernel authority. If the desktop
+would reject an operation through `autopilotctl`, the MCP layer returns the same
+failure through the corresponding tool call.
 
 The desktop control runtime writes and exposes:
 
@@ -85,6 +104,16 @@ autopilotctl pane status provider_control
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
+
+Useful MCP starting point:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilot-compute-mcp -- --manifest \
+  ~/.openagents/autopilot/desktop-control.json
+```
+
+Typical MCP clients should launch that stdio server after the desktop app is
+already running and the desktop-control manifest exists.
 
 Apple-specific bridge flows still exist for the shipped macOS release path:
 
