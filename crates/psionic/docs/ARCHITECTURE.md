@@ -140,6 +140,7 @@ Psionic is also not:
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
 | Collectives | `implemented_early` | elastic device-mesh observation and benchmark-gated collective planning exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, and elastic-membership session truth exist in `psionic-train` |
+| Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
 | Adapter lineage | `implemented_early` | adapter identity, packaging, and hosted binding lineage exist in `psionic-adapters` |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and operator-local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, tool/rubric hooks, expected artifact contracts, and deterministic reference sessions, while kernel/Nexus still own registry and authority truth |
@@ -306,7 +307,8 @@ training subsystems.
 | `AdapterArtifactIdentity` | `psionic-adapters` | stable identity for one adapter artifact | `implemented` |
 | `AdapterPackageManifest` | `psionic-adapters` | package manifest for adapter bytes tied to datastream | `implemented` |
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |
-| `TrainingRun` | planned train layer | root identity for one training program | `planned` |
+| `TrainingRun` | `psionic-train` | root identity, participant graph, and lifecycle state for one training program | `implemented_early` |
+| `TrainingWindow` | `psionic-train` | one synchronized contribution or trainer interval with contributor-set and transition state | `implemented_early` |
 | `EnvironmentPackage` | `psionic-environments` | reusable task, rubric, tool, dataset, and artifact environment package | `implemented_early` |
 | `BenchmarkPackage` | `psionic-eval` | validator-owned packaged benchmark harness or reference evaluation profile with repeat-run aggregation | `implemented_early` |
 | `EvalRun` | `psionic-eval` | one local evaluation execution over a declared environment and artifact set | `implemented_early` |

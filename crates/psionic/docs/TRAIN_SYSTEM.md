@@ -123,9 +123,9 @@ stable vocabulary for train-class execution.
 
 | Object | Purpose | Current Repo Status |
 | --- | --- | --- |
-| `TrainingRun` | Root identity for one training program | `planned` |
+| `TrainingRun` | Root identity for one training program | `implemented_early` |
 | `TrainingStage` | One named phase such as SFT, agentic SFT, or RL | `planned` |
-| `TrainingWindow` | One synchronized contribution or trainer interval with its own contributor set and transition state | `planned` |
+| `TrainingWindow` | One synchronized contribution or trainer interval with its own contributor set and transition state | `implemented_early` |
 | `TrainerStep` | One optimizer update over one trainer batch | `implemented_early` |
 | `PolicyRevision` | Versioned policy or weight state used by workers and trainer | `implemented_early` |
 | `RolloutArtifact` | One worker-produced trajectory or completion bundle | `implemented_early` |
@@ -188,6 +188,7 @@ shape already includes at least:
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
 | Sandbox for RL/train workloads | `partial` | bounded execution and background jobs exist, but not RL-throughput pooling or environment-native loops |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop with explicit parameter groups, optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
+| Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `planned` | no first-class rollout scheduler, batch assembler, or policy propagation engine |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
@@ -216,11 +217,12 @@ The current train-relevant ownership split in Psionic is:
     runtime sessions
 - `psionic-eval`
   - held-out eval runs, rubric-scored sample/runtime contracts, benchmark
-    packages, repeat-run aggregation, and operator-local validator simulation
+  packages, repeat-run aggregation, and operator-local validator simulation
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
-    elastic-membership posture, the fixed-budget training-core reference loop,
-    and RL-facing rollout or batch contracts
+    elastic-membership posture, typed run graphs, contributor-set revisions,
+    window lifecycle, the fixed-budget training-core reference loop, and
+    RL-facing rollout or batch contracts
 - `psionic-adapters`
   - adapter package identity and hosted binding lineage
 - `psionic-sandbox`
@@ -1216,12 +1218,28 @@ the reusable Psionic-side runtime and benchmark-contract layer only.
 
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 
-The current session substrate knows about membership and checkpoints, but it
-does not yet model one full training run. This issue should define stable run
-ids, stage ids, `TrainingWindow` ids, participant roles, topology revisions,
-and lifecycle events for join, leave, crash, timeout, eviction, and rejoin. It
-should also make heartbeat, departure, window-transition, and deterministic
-assignment semantics first-class train truth.
+Status: implemented on 2026-03-14 via GitHub issue `#3569`.
+
+Added run-graph contracts inside `psionic-train` for:
+
+- stable run ids, stage ids, topology revisions, contributor-set revisions, and
+  `TrainingWindow` ids
+- explicit participant admission, readiness, contribution, departure, and
+  suspension state
+- persistent participant ranking and deterministic contributor reselection
+- heartbeat, departure, rejoin, and contributor-suspension lifecycle events
+- replay-safe window planning with deterministic batch/eval slice assignment
+- machine-legible window transitions through `planned`, `active`, `sealed`,
+  `scored`, and `reconciled`
+
+The canonical runbook and harness are now:
+
+- `crates/psionic/docs/TRAIN_RUN_GRAPH_REFERENCE.md`
+- `scripts/release/check-psionic-train-run-graph.sh`
+
+This issue makes the run graph and participant lifecycle explicit typed Psionic
+truth instead of a scheduler convention. It does not yet land full
+orchestrator, checkpoint-pointer, or batch-propagation policy.
 
 ### 7. `Psionic Train: extend checkpoint lineage, recovery modes, and catch-up receipts`
 

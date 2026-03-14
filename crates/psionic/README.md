@@ -44,7 +44,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-collectives`: elastic device-mesh and benchmark-gated collective planning for training-class lanes.
 - `psionic-environments`: Rust-native environment package ABI, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
 - `psionic-eval`: held-out eval runs, rubric-scored sample/runtime contracts, validator-style benchmark packages, repeat-run aggregation, and local validator simulation.
-- `psionic-train`: training-session truth for async checkpointing, live recovery, and elastic membership on top of ordered cluster state and datastream manifests.
+- `psionic-train`: training-session truth for async checkpointing, live recovery, elastic membership, run graphs, contributor sets, and window lifecycle on top of ordered cluster state and datastream manifests.
 - `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
@@ -176,7 +176,8 @@ Implemented now:
   proof posture.
 - early train substrate: checkpoint-backed recovery, elastic membership,
   collective planning, typed fixed-budget trainer steps, checkpoint-anchored
-  restore, and adapter lineage.
+  restore, explicit run graphs, contributor-set revisions, window lifecycle,
+  and adapter lineage.
 - early RL substrate: checkpoint-aware policy revisions, proof-bearing rollout
   artifacts, deterministic trainer-batch assembly, and explicit policy-lineage
   digests inside `psionic-train`.
@@ -203,8 +204,8 @@ Still planned:
   productization.
 - broader distributed training completion, freshness or validator policy, and
   orchestrator layers.
-- training-window protocol, checkpoint pointer/manifest discipline, and deeper
-  benchmark or validator policy for training-class lanes.
+- checkpoint pointer/manifest discipline and deeper benchmark or validator
+  policy for training-class lanes.
 - policy-meaningful runtime and environment manifests plus proof-bearing
   session-claims discipline for clustered and sandboxed execution.
 - AMD execution support.
@@ -238,6 +239,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/EVAL_RUNTIME_REFERENCE.md](docs/EVAL_RUNTIME_REFERENCE.md)** —
   canonical held-out eval, benchmark-package, and local validator-simulation
   runbook for the first Psionic-native eval runtime.
+- **[docs/TRAIN_RUN_GRAPH_REFERENCE.md](docs/TRAIN_RUN_GRAPH_REFERENCE.md)** —
+  canonical run-graph, contributor-set, and window-lifecycle runbook for the
+  first Psionic-native training run-state machine.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

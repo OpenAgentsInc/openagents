@@ -22,9 +22,11 @@ use thiserror::Error;
 
 mod core_loop;
 mod rl_artifacts;
+mod run_graph;
 
 pub use core_loop::*;
 pub use rl_artifacts::*;
+pub use run_graph::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str =
