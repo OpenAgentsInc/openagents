@@ -206,6 +206,11 @@ Implemented now:
   contracts, benchmark packages with repeat-run aggregation, and operator-local
   validator simulation in `psionic-eval`, while kernel/Nexus still own
   canonical eval-run authority truth.
+- a first integrated `agentic_sft -> rl` reference program in `psionic-train`,
+  proving environment packages, dataset and checkpoint lineage, datastream
+  policy-weight delivery, sandbox reuse, rollout-worker protocol, validator
+  verdicts, benchmark aggregation, and one fixed-budget trainer step together
+  in one typed report instead of isolated subsystem tests.
 - broader-stack authority flows for environment packages, checkpoint-family
   policies, validator policies, benchmark packages, training policies, eval
   runs, training runs, accepted outcomes, and synthetic-data jobs now exist
@@ -287,6 +292,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TRAIN_ORCHESTRATOR_REFERENCE.md](docs/TRAIN_ORCHESTRATOR_REFERENCE.md)** —
   canonical window-control, assignment-posture, and trainer-batch assembly
   runbook for the first explicit Psionic train orchestrator.
+- **[docs/AGENTIC_SFT_RL_REFERENCE_PROGRAM.md](docs/AGENTIC_SFT_RL_REFERENCE_PROGRAM.md)** —
+  canonical end-to-end agentic-SFT-plus-RL pilot, including environment and
+  dataset lineage, sandbox reuse, rollout-worker receipts, validator verdicts,
+  online eval, benchmark aggregation, and operator-view pass criteria.
 - **[docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md](docs/TRAIN_OFF_POLICY_BUDGET_REFERENCE.md)** —
   canonical bounded stale-rollout admission, quarantine, and discard runbook
   for the first explicit Psionic off-policy control layer.

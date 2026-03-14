@@ -24,6 +24,7 @@ mod checkpoint_recovery;
 mod core_loop;
 mod curriculum;
 mod orchestrator;
+mod reference_program;
 mod rl_artifacts;
 mod rollout_validation;
 mod run_graph;
@@ -35,6 +36,7 @@ pub use checkpoint_recovery::*;
 pub use core_loop::*;
 pub use curriculum::*;
 pub use orchestrator::*;
+pub use reference_program::*;
 pub use rl_artifacts::*;
 pub use rollout_validation::*;
 pub use run_graph::*;
@@ -43,8 +45,7 @@ pub use stage_program::*;
 pub use worker_protocol::*;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str =
-    "training core, orchestrator, rollout artifacts, checkpoint, recovery, and elastic membership substrate";
+pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, checkpoint, recovery, and elastic membership substrate";
 
 /// Error returned by training-session state transitions.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -919,8 +920,8 @@ mod tests {
     }
 
     #[test]
-    fn observe_membership_advances_epoch_only_when_truth_changes(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn observe_membership_advances_epoch_only_when_truth_changes()
+    -> Result<(), Box<dyn std::error::Error>> {
         let stable = cluster_state(&[
             ("worker-a", ClusterMembershipStatus::Ready),
             ("worker-b", ClusterMembershipStatus::Ready),
@@ -950,8 +951,8 @@ mod tests {
     }
 
     #[test]
-    fn live_recovery_plan_exposes_recovery_and_late_join_semantics(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn live_recovery_plan_exposes_recovery_and_late_join_semantics()
+    -> Result<(), Box<dyn std::error::Error>> {
         let state = cluster_state(&[
             ("worker-a", ClusterMembershipStatus::Ready),
             ("worker-b", ClusterMembershipStatus::Ready),
@@ -994,15 +995,18 @@ mod tests {
             plan.recovery_context.late_joiner_node_ids,
             vec![String::from("worker-c")]
         );
-        assert!(plan
-            .actions
-            .contains(&TrainingRecoveryAction::ResumeFromDurableCheckpoint));
-        assert!(plan
-            .actions
-            .contains(&TrainingRecoveryAction::StageCheckpointForLateJoiners));
-        assert!(plan
-            .actions
-            .contains(&TrainingRecoveryAction::RebalanceWorldSize));
+        assert!(
+            plan.actions
+                .contains(&TrainingRecoveryAction::ResumeFromDurableCheckpoint)
+        );
+        assert!(
+            plan.actions
+                .contains(&TrainingRecoveryAction::StageCheckpointForLateJoiners)
+        );
+        assert!(
+            plan.actions
+                .contains(&TrainingRecoveryAction::RebalanceWorldSize)
+        );
         assert_eq!(plan.checkpoint_streams.len(), 1);
         assert!(!plan.plan_digest.is_empty());
         Ok(())

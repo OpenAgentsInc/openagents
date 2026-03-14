@@ -1654,11 +1654,35 @@ inspectable without reconstructing it from logs or ad hoc scripts.
 
 ### 22. `Reference Program: run one end-to-end agentic SFT plus RL pilot on the full stack`
 
-The train system should not be declared complete from isolated subsystem
-benchmarks. This issue should run one reference program that exercises
-environment packages, dataset and checkpoint lineage, rollout workers,
-validator-aware adjudication, sandbox reuse, online eval, and operator
-inspection together. It is the main integration gate for the core stack.
+Implemented on Saturday, March 14, 2026.
+
+`psionic-train` now ships a typed reference-program runner in
+`src/reference_program.rs` plus the runnable harness
+`scripts/release/check-psionic-agentic-sft-rl-reference-program.sh`.
+
+The pilot intentionally crosses the currently implemented Rust-owned stack
+instead of claiming completion from isolated subsystem tests:
+
+- one versioned weather-agent environment package is reused across SFT, RL,
+  online eval, and benchmark-mode eval
+- dataset lineage remains explicit through environment bindings, trace source
+  refs, and eval contracts
+- stage-program lineage crosses `general_sft -> agentic_sft -> rl` with
+  explicit checkpoint-promotion receipts
+- policy weights are delivered through `psionic-datastream` broadcast receipts
+- sandbox warm-pool reuse is proven through staged-input and iteration receipts
+- rollout-worker heartbeat, claim, upload, and outcome receipts run against the
+  real train orchestrator state
+- validator-aware adjudication emits typed verdicts over rollout bundles
+- benchmark aggregation and online eval both remain machine-legible
+- the trainer step consumes the orchestrator-produced trainer batch rather than
+  a disconnected toy batch
+- the final report includes a condensed operator view without discarding the
+  underlying typed receipts, lineage, and summaries
+
+This is the current main integration gate for the early train stack. It does
+not claim that distributed optimizer semantics, model IO, replay guarantees,
+security hardening, artifact lifecycle, or research-loop layers are complete.
 
 ### Production Completion And Hardening
 
