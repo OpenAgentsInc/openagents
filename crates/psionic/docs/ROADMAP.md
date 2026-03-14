@@ -871,7 +871,12 @@ merge/unmerge hosted serving modes, adapter compatibility/refusal surfaces, and
 real adapter-backed generation instead of metadata-only parsing or silent
 fallback to the base model. The next dependency-ordered issue in that chain is
 now `PSI-249` /
-[#3554](https://github.com/OpenAgentsInc/openagents/issues/3554).
+[#3554](https://github.com/OpenAgentsInc/openagents/issues/3554) is now landed
+too through a first dedicated `psionic-router` crate: explicit worker/model
+inventory, capability filters, deterministic worker-path selection, and generic
+server integration so route choice no longer hides inside `psionic-serve`
+alias maps. The next dependency-ordered issue in that chain is now `PSI-250` /
+[#3555](https://github.com/OpenAgentsInc/openagents/issues/3555).
 
 ## Current Reality
 

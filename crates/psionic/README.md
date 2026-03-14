@@ -45,6 +45,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
 - `psionic-models`: reusable model definitions and metadata.
 - `psionic-serve`: request/response and execution interfaces for served products.
+- `psionic-router`: multi-model routing inventory, capability filters, and worker-path selection for served Psionic fleets.
 - `psionic-provider`: capability, readiness, and receipt-facing types.
 - `psionic-backend-cpu`: CPU reference backend.
 - `psionic-backend-metal`: Metal backend with a first embeddings product path.
@@ -102,6 +103,10 @@ Implemented now:
   conversation identifiers, truthful prompt-replay-only cache behavior,
   per-model capability reporting, and explicit refusal for unsupported
   continuation modes instead of pushing multi-turn state emulation into callers.
+- a first Psionic-owned router control plane for served fleets, with explicit
+  worker/model inventory, capability filters, deterministic worker-path
+  selection, and generic-server integration so model routing no longer lives as
+  ad hoc alias logic inside `psionic-serve`.
 - a first truthful adapter-serving lane for dense CPU GGUF decoder families,
   with LM-head LoRA import from safetensors, explicit attach/detach plus
   merge/unmerge residency modes, adapter compatibility/refusal surfaces, and

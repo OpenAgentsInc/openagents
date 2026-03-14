@@ -32,6 +32,7 @@ members = [
     "crates/psionic/psionic-models",
     "crates/psionic/psionic-apple-fm",
     "crates/psionic/psionic-catalog",
+    "crates/psionic/psionic-router",
     "crates/psionic/psionic-serve",
     "crates/psionic/psionic-provider",
     "crates/psionic/psionic-backend-cpu",

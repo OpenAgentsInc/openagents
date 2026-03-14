@@ -33,6 +33,10 @@ use psionic_models::{
     parse_reasoning_response_text_for_decoder_family, reasoning_parser_for_decoder_family,
     render_gpt_oss_harmony_prompt,
 };
+use psionic_router::{
+    FleetRouter, RouteSelection, RoutedModelInventory, RoutedWorkerInventory, RoutingEndpoint,
+    RoutingError, RoutingRequest, RoutingTarget,
+};
 use psionic_runtime::{
     ExecutionCapabilityProfile, GenerationSchedulerPolicy, GenerationSchedulerRequestReceipt,
     PrefixCacheControl, PrefixCacheRefusalReason, PrefixCacheState, StructuredGrammarSyntax,
@@ -74,6 +78,7 @@ const CPU_SERVER_MEMORY_PRESSURE_REPORTING: &str = "not_implemented";
 const RESPONSE_STATE_STORAGE: &str = "memory_only";
 const RESPONSE_STATE_RETENTION_SCOPE: &str = "process_lifetime";
 const RESPONSE_STATE_CACHE_BEHAVIOR: &str = "prompt_replay_only";
+const OPENAI_COMPAT_WORKER_ID: &str = "local_cpu_0";
 
 fn structured_output_parser_labels() -> Vec<&'static str> {
     local_structured_output_parsers()
@@ -873,35 +878,18 @@ pub struct OpenAiCompatServer {
 }
 
 struct OpenAiCompatState {
-    worker: OpenAiCompatWorker,
+    workers: BTreeMap<String, OpenAiCompatWorker>,
+    router: FleetRouter,
     backend_label: &'static str,
     execution_mode_label: &'static str,
     execution_engine_label: &'static str,
     default_model_key: String,
     default_model_name: String,
     models_by_key: BTreeMap<String, OpenAiCompatLoadedModel>,
-    model_aliases: BTreeMap<String, String>,
     include_psionic_fields: bool,
     request_counter: AtomicU64,
     conversation_counter: AtomicU64,
     response_state: Mutex<ResponseStateStore>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum OpenAiCompatEndpoint {
-    ChatCompletions,
-    Responses,
-    Embeddings,
-}
-
-impl OpenAiCompatEndpoint {
-    fn path(self) -> &'static str {
-        match self {
-            Self::ChatCompletions => "/v1/chat/completions",
-            Self::Responses => "/v1/responses",
-            Self::Embeddings => "/v1/embeddings",
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -920,7 +908,7 @@ struct OpenAiCompatModelLoadPlan {
 struct OpenAiCompatLoadedModel {
     model_key: String,
     canonical_name: String,
-    supported_endpoints: Vec<OpenAiCompatEndpoint>,
+    supported_endpoints: Vec<RoutingEndpoint>,
     kind: OpenAiCompatLoadedModelKind,
 }
 
@@ -1064,7 +1052,7 @@ impl OpenAiCompatServer {
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
         let mut models_by_key = BTreeMap::new();
-        let mut model_aliases = BTreeMap::new();
+        let mut routed_models = Vec::new();
         let mut default_model_key = None;
         let mut default_canonical_model_name = None;
         let mut load_plans = Vec::new();
@@ -1094,16 +1082,10 @@ impl OpenAiCompatServer {
                     loaded_model.model_key
                 )));
             }
-            for accepted_name in accepted_names {
-                if let Some(existing) =
-                    model_aliases.insert(accepted_name.clone(), loaded_model.model_key.clone())
-                {
-                    return Err(OpenAiCompatServerError::Config(format!(
-                        "model alias `{accepted_name}` collides between `{existing}` and `{}`",
-                        loaded_model.model_key
-                    )));
-                }
-            }
+            routed_models.push(routed_inventory_for_loaded_model(
+                &loaded_model,
+                accepted_names.into_iter().collect(),
+            ));
             if default_model_key.is_none() {
                 default_model_key = Some(loaded_model.model_key.clone());
                 default_canonical_model_name = Some(loaded_model.canonical_name.clone());
@@ -1112,17 +1094,33 @@ impl OpenAiCompatServer {
         }
 
         let worker = OpenAiCompatWorker::spawn(load_plans)?;
+        let default_model_key = default_model_key.expect("validated non-empty model list");
+        let router = FleetRouter::new(
+            default_model_key.clone(),
+            vec![
+                RoutedWorkerInventory::new(
+                    OPENAI_COMPAT_WORKER_ID,
+                    config.backend.label(),
+                    "native",
+                    "psionic",
+                )
+                .with_model_entries(routed_models),
+            ],
+        )
+        .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
+        let mut workers = BTreeMap::new();
+        workers.insert(String::from(OPENAI_COMPAT_WORKER_ID), worker);
         Ok(Self {
             state: Arc::new(OpenAiCompatState {
-                worker,
+                workers,
+                router,
                 backend_label: config.backend.label(),
                 execution_mode_label: "native",
                 execution_engine_label: "psionic",
-                default_model_key: default_model_key.expect("validated non-empty model list"),
+                default_model_key,
                 default_model_name: default_canonical_model_name
                     .expect("validated non-empty model list"),
                 models_by_key,
-                model_aliases,
                 include_psionic_fields,
                 request_counter: AtomicU64::new(1),
                 conversation_counter: AtomicU64::new(1),
@@ -1800,7 +1798,7 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
             id: state.default_model_name.clone(),
             object: "model",
             owned_by: "psionic",
-            psionic_supported_endpoints: vec![OpenAiCompatEndpoint::ChatCompletions.path()],
+            psionic_supported_endpoints: vec![RoutingEndpoint::ChatCompletions.path()],
             psionic_model_family: state.descriptor.model.family.clone(),
             psionic_served_backend: None,
             psionic_residency_mode: None,
@@ -2862,11 +2860,24 @@ async fn handle_generic_chat_completions(
     state: Arc<OpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
-    let loaded_model = resolve_generic_model_for_endpoint(
+    let structured_output = structured_output_from_chat_request(&request)?;
+    let tool_contract = tool_contract_from_chat_request(&request, structured_output.is_some())?;
+    let route = resolve_generic_model_for_endpoint(
         state.as_ref(),
         request.model.as_deref(),
-        OpenAiCompatEndpoint::ChatCompletions,
+        RoutingEndpoint::ChatCompletions,
+        {
+            let mut route_request = RoutingRequest::new(RoutingEndpoint::ChatCompletions);
+            if structured_output.is_some() {
+                route_request = route_request.require_structured_outputs();
+            }
+            if tool_contract.is_some() {
+                route_request = route_request.require_tool_calling();
+            }
+            route_request
+        },
     )?;
+    let loaded_model = route.loaded_model;
     let model = loaded_model.decoder().ok_or_else(|| {
         OpenAiCompatHttpError::Internal(format!(
             "loaded model `{}` is missing decoder metadata",
@@ -2875,8 +2886,6 @@ async fn handle_generic_chat_completions(
     })?;
     let reasoning_request =
         reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
-    let structured_output = structured_output_from_chat_request(&request)?;
-    let tool_contract = tool_contract_from_chat_request(&request, structured_output.is_some())?;
     let prompt_messages = apply_tool_contract_to_prompt_messages(
         chat_messages_to_prompt_messages_for_family(&request.messages, model.family)?,
         tool_contract.as_ref(),
@@ -2904,9 +2913,8 @@ async fn handle_generic_chat_completions(
     )
     .with_prefix_cache_control(request.psionic_prefix_cache.clone().unwrap_or_default());
 
-    let response = state
-        .worker
-        .generate(loaded_model.model_key.clone(), generation_request)
+    let response = worker_for_route(state.as_ref(), &route.selection)?
+        .generate(route.selection.model_key.clone(), generation_request)
         .await
         .map_err(|error| {
             OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
@@ -3129,26 +3137,44 @@ async fn handle_generic_responses(
             request.previous_response_id.as_deref(),
             request.conversation.as_deref(),
         )?;
-    let loaded_model = match (
+    let structured_output = structured_output_from_responses_request(&request)?;
+    let tool_contract =
+        tool_contract_from_responses_request(&request, structured_output.is_some())?;
+    let route_request = {
+        let mut route_request =
+            RoutingRequest::new(RoutingEndpoint::Responses).require_response_state();
+        if structured_output.is_some() {
+            route_request = route_request.require_structured_outputs();
+        }
+        if tool_contract.is_some() {
+            route_request = route_request.require_tool_calling();
+        }
+        route_request
+    };
+    let route = match (
         request.model.as_deref(),
         response_state_context.model_key.as_deref(),
     ) {
         (Some(requested), _) => resolve_generic_model_for_endpoint(
             state.as_ref(),
             Some(requested),
-            OpenAiCompatEndpoint::Responses,
+            RoutingEndpoint::Responses,
+            route_request.clone(),
         )?,
         (None, Some(model_key)) => resolve_generic_model_key_for_endpoint(
             state.as_ref(),
             model_key,
-            OpenAiCompatEndpoint::Responses,
+            RoutingEndpoint::Responses,
+            route_request.clone(),
         )?,
         (None, None) => resolve_generic_model_for_endpoint(
             state.as_ref(),
             None,
-            OpenAiCompatEndpoint::Responses,
+            RoutingEndpoint::Responses,
+            route_request,
         )?,
     };
+    let loaded_model = route.loaded_model;
     if let Some(expected_model_key) = response_state_context.model_key.as_deref()
         && loaded_model.model_key != expected_model_key
     {
@@ -3174,9 +3200,6 @@ async fn handle_generic_responses(
     }
     let reasoning_request =
         reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
-    let structured_output = structured_output_from_responses_request(&request)?;
-    let tool_contract =
-        tool_contract_from_responses_request(&request, structured_output.is_some())?;
     let appended_prompt_messages = response_input_to_prompt_messages_with_options(
         &request,
         model.family,
@@ -3209,9 +3232,8 @@ async fn handle_generic_responses(
     )
     .with_prefix_cache_control(request.psionic_prefix_cache.clone().unwrap_or_default());
 
-    let response = state
-        .worker
-        .generate(loaded_model.model_key.clone(), generation_request)
+    let response = worker_for_route(state.as_ref(), &route.selection)?
+        .generate(route.selection.model_key.clone(), generation_request)
         .await
         .map_err(|error| {
             OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
@@ -3452,8 +3474,11 @@ async fn handle_generic_embeddings(
     let loaded_model = resolve_generic_model_for_endpoint(
         state.as_ref(),
         request.model.as_deref(),
-        OpenAiCompatEndpoint::Embeddings,
+        RoutingEndpoint::Embeddings,
+        RoutingRequest::new(RoutingEndpoint::Embeddings),
     )?;
+    let route = loaded_model;
+    let loaded_model = route.loaded_model;
     let model = loaded_model.embeddings().ok_or_else(|| {
         OpenAiCompatHttpError::Internal(format!(
             "loaded model `{}` is missing embeddings metadata",
@@ -3479,9 +3504,8 @@ async fn handle_generic_embeddings(
             request.input.into_vec(),
         )
     };
-    let response = state
-        .worker
-        .embed(loaded_model.model_key.clone(), embedding_request)
+    let response = worker_for_route(state.as_ref(), &route.selection)?
+        .embed(route.selection.model_key.clone(), embedding_request)
         .await?;
     let body = EmbeddingsResponse {
         object: "list",
@@ -4061,37 +4085,86 @@ struct GenericRenderedPrompt {
     stop_sequences: Vec<String>,
 }
 
+struct ResolvedGenericRoute<'a> {
+    selection: RouteSelection,
+    loaded_model: &'a OpenAiCompatLoadedModel,
+}
+
+#[cfg(test)]
 fn resolve_generic_model<'a>(
     state: &'a OpenAiCompatState,
     requested: Option<&str>,
 ) -> Result<&'a OpenAiCompatLoadedModel, OpenAiCompatHttpError> {
-    let model_key = match requested {
-        Some(requested) => state.model_aliases.get(requested).ok_or_else(|| {
-            OpenAiCompatHttpError::BadRequest(format!(
-                "requested model `{requested}` is not loaded"
-            ))
-        })?,
-        None => &state.default_model_key,
+    Ok(resolve_generic_route(
+        state,
+        match requested {
+            Some(requested) => RoutingTarget::RequestedModel(requested.to_string()),
+            None => RoutingTarget::Default,
+        },
+        None,
+    )?
+    .loaded_model)
+}
+
+fn resolve_generic_route<'a>(
+    state: &'a OpenAiCompatState,
+    target: RoutingTarget,
+    request: Option<RoutingRequest>,
+) -> Result<ResolvedGenericRoute<'a>, OpenAiCompatHttpError> {
+    let request = match request {
+        Some(mut request) => {
+            request.target = target;
+            request
+        }
+        None => RoutingRequest {
+            endpoint: RoutingEndpoint::ChatCompletions,
+            target,
+            capability_filters: psionic_router::RoutingCapabilityFilters::default(),
+            preferred_worker_ids: Vec::new(),
+            preferred_family: None,
+        },
     };
-    state.models_by_key.get(model_key).ok_or_else(|| {
-        OpenAiCompatHttpError::Internal(format!("loaded model `{model_key}` is missing"))
+    let selection = state
+        .router
+        .resolve(&request)
+        .map_err(openai_http_error_from_routing)?;
+    let loaded_model = state
+        .models_by_key
+        .get(selection.model_key.as_str())
+        .ok_or_else(|| {
+            OpenAiCompatHttpError::Internal(format!(
+                "loaded model `{}` selected by router is missing",
+                selection.model_key
+            ))
+        })?;
+    Ok(ResolvedGenericRoute {
+        selection,
+        loaded_model,
     })
 }
 
 fn resolve_generic_model_for_endpoint<'a>(
     state: &'a OpenAiCompatState,
     requested: Option<&str>,
-    endpoint: OpenAiCompatEndpoint,
-) -> Result<&'a OpenAiCompatLoadedModel, OpenAiCompatHttpError> {
-    let model = resolve_generic_model(state, requested)?;
-    if model.supported_endpoints.contains(&endpoint) {
-        Ok(model)
+    endpoint: RoutingEndpoint,
+    request: RoutingRequest,
+) -> Result<ResolvedGenericRoute<'a>, OpenAiCompatHttpError> {
+    let route = resolve_generic_route(
+        state,
+        match requested {
+            Some(requested) => RoutingTarget::RequestedModel(requested.to_string()),
+            None => RoutingTarget::Default,
+        },
+        Some(request),
+    )?;
+    if route.loaded_model.supported_endpoints.contains(&endpoint) {
+        Ok(route)
     } else {
         Err(OpenAiCompatHttpError::BadRequest(format!(
             "model `{}` does not support `{}`; supported endpoints: {}",
-            requested.unwrap_or(model.canonical_name.as_str()),
+            requested.unwrap_or(route.loaded_model.canonical_name.as_str()),
             endpoint.path(),
-            model_endpoint_paths(model).join(", ")
+            model_endpoint_paths(route.loaded_model).join(", ")
         )))
     }
 }
@@ -4099,21 +4172,57 @@ fn resolve_generic_model_for_endpoint<'a>(
 fn resolve_generic_model_key_for_endpoint<'a>(
     state: &'a OpenAiCompatState,
     model_key: &str,
-    endpoint: OpenAiCompatEndpoint,
-) -> Result<&'a OpenAiCompatLoadedModel, OpenAiCompatHttpError> {
-    let model = state.models_by_key.get(model_key).ok_or_else(|| {
-        OpenAiCompatHttpError::Internal(format!("loaded model `{model_key}` is missing"))
-    })?;
-    if model.supported_endpoints.contains(&endpoint) {
-        Ok(model)
+    endpoint: RoutingEndpoint,
+    request: RoutingRequest,
+) -> Result<ResolvedGenericRoute<'a>, OpenAiCompatHttpError> {
+    let route = resolve_generic_route(
+        state,
+        RoutingTarget::ModelKey(model_key.to_string()),
+        Some(request.with_model_key(model_key.to_string())),
+    )?;
+    if route.loaded_model.supported_endpoints.contains(&endpoint) {
+        Ok(route)
     } else {
         Err(OpenAiCompatHttpError::BadRequest(format!(
             "model `{}` does not support `{}`; supported endpoints: {}",
-            model.canonical_name,
+            route.loaded_model.canonical_name,
             endpoint.path(),
-            model_endpoint_paths(model).join(", ")
+            model_endpoint_paths(route.loaded_model).join(", ")
         )))
     }
+}
+
+fn openai_http_error_from_routing(error: RoutingError) -> OpenAiCompatHttpError {
+    match error {
+        RoutingError::UnknownRequestedModel { requested } => OpenAiCompatHttpError::BadRequest(
+            format!("requested model `{requested}` is not loaded"),
+        ),
+        RoutingError::UnknownModelKey { model_key } => OpenAiCompatHttpError::BadRequest(format!(
+            "requested model key `{model_key}` is not loaded"
+        )),
+        RoutingError::NoEligibleRoute { reason, .. } => OpenAiCompatHttpError::BadRequest(reason),
+        RoutingError::EmptyWorkerInventory
+        | RoutingError::DuplicateWorkerId { .. }
+        | RoutingError::UnknownDefaultModel { .. }
+        | RoutingError::InconsistentInventory { .. } => {
+            OpenAiCompatHttpError::Internal(error.to_string())
+        }
+    }
+}
+
+fn worker_for_route<'a>(
+    state: &'a OpenAiCompatState,
+    selection: &RouteSelection,
+) -> Result<&'a OpenAiCompatWorker, OpenAiCompatHttpError> {
+    state
+        .workers
+        .get(selection.worker_id.as_str())
+        .ok_or_else(|| {
+            OpenAiCompatHttpError::Internal(format!(
+                "worker `{}` selected by router is missing",
+                selection.worker_id
+            ))
+        })
 }
 
 fn model_endpoint_paths(model: &OpenAiCompatLoadedModel) -> Vec<&'static str> {
@@ -4132,6 +4241,34 @@ fn union_supported_endpoint_paths(state: &OpenAiCompatState) -> Vec<&'static str
         }
     }
     endpoints.into_iter().collect()
+}
+
+fn routed_inventory_for_loaded_model(
+    model: &OpenAiCompatLoadedModel,
+    accepted_names: Vec<String>,
+) -> RoutedModelInventory {
+    let mut inventory = RoutedModelInventory::new(
+        model.model_key.clone(),
+        model.canonical_name.clone(),
+        model.family_label().to_string(),
+        model.execution_profile().clone(),
+    );
+    for alias in accepted_names {
+        inventory = inventory.with_alias(alias);
+    }
+    for endpoint in &model.supported_endpoints {
+        inventory = inventory.with_supported_endpoint(*endpoint);
+    }
+    if let Some(policy) = model.scheduler_policy() {
+        inventory = inventory.with_scheduler_policy(policy.clone());
+    }
+    if model.decoder().is_some() {
+        inventory = inventory
+            .with_structured_outputs()
+            .with_tool_calling()
+            .with_response_state();
+    }
+    inventory
 }
 
 fn prompt_options_for_family(
@@ -4172,10 +4309,7 @@ fn load_generic_decoder_model(
     let loaded_model = OpenAiCompatLoadedModel {
         model_key: descriptor.model.model_id.clone(),
         canonical_name: default_model_name(model_path, descriptor.model.model_id.as_str()),
-        supported_endpoints: vec![
-            OpenAiCompatEndpoint::ChatCompletions,
-            OpenAiCompatEndpoint::Responses,
-        ],
+        supported_endpoints: vec![RoutingEndpoint::ChatCompletions, RoutingEndpoint::Responses],
         kind: OpenAiCompatLoadedModelKind::Decoder(OpenAiCompatLoadedDecoderModel {
             descriptor: descriptor.clone(),
             family,
@@ -4212,7 +4346,7 @@ fn load_generic_embeddings_model(
     let loaded_model = OpenAiCompatLoadedModel {
         model_key: descriptor.model.model_id.clone(),
         canonical_name: default_model_name(model_path, descriptor.model.model_id.as_str()),
-        supported_endpoints: vec![OpenAiCompatEndpoint::Embeddings],
+        supported_endpoints: vec![RoutingEndpoint::Embeddings],
         kind: OpenAiCompatLoadedModelKind::Embeddings(OpenAiCompatLoadedEmbeddingsModel {
             descriptor: descriptor.clone(),
             execution_profile: default_embeddings_execution_profile(),
@@ -5247,7 +5381,9 @@ mod tests {
         let response = tokio::runtime::Runtime::new()?.block_on(
             server
                 .state
-                .worker
+                .workers
+                .get(super::OPENAI_COMPAT_WORKER_ID)
+                .expect("generic test worker should exist")
                 .generate(qwen_model.model_key.clone(), generation_request),
         )?;
         assert_eq!(response.output.text, "world");
@@ -5306,7 +5442,9 @@ mod tests {
         let response = tokio::runtime::Runtime::new()?.block_on(
             server
                 .state
-                .worker
+                .workers
+                .get(super::OPENAI_COMPAT_WORKER_ID)
+                .expect("generic test worker should exist")
                 .generate(model.model_key.clone(), generation_request),
         )?;
         assert_eq!(response.usage.output_tokens, 1);

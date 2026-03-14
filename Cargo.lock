@@ -6599,6 +6599,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-router"
+version = "0.1.1"
+dependencies = [
+ "psionic-runtime",
+ "serde",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-runtime"
 version = "0.1.1"
 dependencies = [
@@ -6640,6 +6649,7 @@ dependencies = [
  "psionic-ir",
  "psionic-models",
  "psionic-provider",
+ "psionic-router",
  "psionic-runtime",
  "rand 0.9.2",
  "reqwest",
