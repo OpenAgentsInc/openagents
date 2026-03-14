@@ -5534,6 +5534,7 @@ name = "openagents-provider-substrate"
 version = "0.1.1"
 dependencies = [
  "axum 0.8.8",
+ "psionic-sandbox",
  "reqwest",
  "rusqlite",
  "serde",
@@ -6571,6 +6572,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-sandbox"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]

@@ -13,20 +13,23 @@ Psionic is structured as a layered engine subtree.
 4. `psionic-runtime`
    Runtime traits for devices, buffers, allocators, execution, low-level
    quantization dispatch, and worker batching/parking decisions.
-5. `psionic-net`
+5. `psionic-sandbox`
+   Bounded sandbox runtime detection, profile realization, execution adapters,
+   and execution evidence for sandbox compute lanes.
+6. `psionic-net`
    Peer identity, direct/NAT/relay session lifecycle, relay-backed rendezvous,
    durable trust/candidate state, logical-stream reservation, bounded HTTP
    service tunnels, and transport observations.
-6. `psionic-datastream`
+7. `psionic-datastream`
    Resumable dataset/checkpoint manifests, chunk transport, and delivery
    receipts for staged artifact and training/eval data movement.
-7. Backend crates
+8. Backend crates
    Backend-specific runtime implementations only.
-8. `psionic-models`
+9. `psionic-models`
    Model abstractions and metadata over core/runtime primitives.
-9. `psionic-serve`
+10. `psionic-serve`
    Served compute product contracts and execution interfaces.
-10. `psionic-provider`
+11. `psionic-provider`
    Capability envelopes, readiness, receipts, and provider adapter types.
 
 ## Dependency Direction
@@ -36,6 +39,8 @@ Psionic is structured as a layered engine subtree.
 - `psionic-compiler` may depend on `psionic-ir` and `psionic-core`.
 - `psionic-runtime` may depend on `psionic-core`, `psionic-ir`, and
   `psionic-compiler`.
+- `psionic-sandbox` may depend on reusable engine crates only and owns no
+  market authority or app behavior.
 - `psionic-net` may depend on reusable runtime-facing crates but owns no market
   authority or app behavior.
 - `psionic-datastream` may depend on reusable engine crates only and owns no
