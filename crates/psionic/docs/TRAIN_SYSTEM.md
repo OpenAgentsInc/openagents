@@ -94,6 +94,8 @@ It already has real substrate for:
 - per-group optimizer state and residency policy
 - reusable optimizer contracts plus typed SGD, Adam, AdamW, LARS, and LAMB
   state/update semantics
+- reverse-mode autodiff, explicit detach, and training/no-grad gradient
+  semantics over canonical IR primitives
 - machine-legible step telemetry and checkpoint-anchored restore lineage
 - checkpoint-aware policy revisions
 - proof-bearing rollout artifacts and trainer-batch assembly
@@ -190,7 +192,7 @@ shape already includes at least:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
-| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, reusable SGD/Adam/AdamW/LARS/LAMB optimizer contracts, explicit optimizer state/residency, step telemetry, and checkpoint restore lineage over explicit gradient batches |
+| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, and `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
@@ -500,7 +502,7 @@ Psionic cannot honestly claim any of the following yet:
 - full Rust-native RL or post-training
 - trainer-step execution
 - optimizer state ownership
-- backward/autodiff training graph substrate
+- broad autodiff coverage across every future backend-extension and training op
 - rollout artifact recording
 - off-policy accounting
 - environment package execution
@@ -1146,16 +1148,23 @@ Issue `#3603` extends that core with a reusable optimizer layer in
 longer trainer-private. The fixed-budget loop now composes with the reusable
 optimizer surface instead of carrying its own ad hoc update implementation.
 
+Issue `#3602` adds reusable autodiff underneath that loop in `psionic-ir`:
+explicit gradient-bearing graph construction, an IR-level `detach` op,
+training/evaluation plus no-grad posture, symbolic backward plans, dense
+reference materialization, and a trainer-integration proof that the resulting
+gradients can feed the fixed-budget training core without trainer-local
+gradient logic.
+
 The canonical runbook and harness are now:
 
 - `crates/psionic/docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md`
 - `scripts/release/check-psionic-training-core.sh`
 
 The current step path is intentionally an explicit-gradient reference loop over
-`f32` tensor payloads. That is enough to make trainer-step truth real without
-pretending the later tensor and autodiff issues are already solved, while still
-keeping optimizer behavior reusable across trainer loops, research loops, and
-future fine-tune programs.
+`f32` tensor payloads, but it no longer implies trainer-private gradient logic.
+Autodiff and optimizer behavior now live in reusable lower Psionic layers,
+while broader operator-family coverage and higher-order training behavior still
+remain future work.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 

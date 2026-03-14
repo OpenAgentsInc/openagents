@@ -141,6 +141,7 @@ Psionic is also not:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, streamed iteration, and long-context packing policies |
 | Sandbox execution | `implemented_early` | bounded execution, runtime detection, background jobs, file transfer, warm reusable pools, staged loop inputs, and repeated agentic iteration receipts exist in `psionic-sandbox` |
 | Execution proof bundles | `implemented_early` | canonical execution-proof bundles live in `psionic-runtime` |
+| Framework-core autodiff | `implemented_early` | `psionic-ir` now owns autodiff-aware graph construction, an explicit `detach` op, training/evaluation plus no-grad semantics, symbolic reverse-mode backward plans, dense reference materialization, and a fixed-budget trainer integration proof |
 | Collectives | `implemented_early` | elastic device-mesh observation, bandwidth-aware local/global sync planning, and benchmark-gated collective cadence receipts exist in `psionic-collectives` |
 | Train recovery substrate | `implemented_early` | checkpoint, live-recovery, elastic-membership session truth, explicit checkpoint manifests or pointers, and restore receipts exist in `psionic-train` |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed training runs, stage-program identity, contributor-set revisions, topology revisions, participant lifecycle, and window transitions |
@@ -193,7 +194,8 @@ Applications / Operators / Authority
 1. `psionic-core`
    - foundational tensor, dtype, shape, and device types
 2. `psionic-ir`
-   - canonical graph and execution-plan representation
+   - canonical graph, detach/no-grad/autodiff tracking, symbolic backward
+     plans, and execution-plan representation
 3. `psionic-compiler`
    - lowering and scheduling boundaries over IR
    - compiler replay fixtures now guard deterministic lowering and

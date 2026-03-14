@@ -6735,6 +6735,7 @@ dependencies = [
  "psionic-datastream",
  "psionic-environments",
  "psionic-eval",
+ "psionic-ir",
  "psionic-models",
  "psionic-runtime",
  "psionic-sandbox",
