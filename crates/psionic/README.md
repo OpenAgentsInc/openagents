@@ -353,6 +353,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/NETWORK_EXECUTION_IDENTITY_REFERENCE.md](docs/NETWORK_EXECUTION_IDENTITY_REFERENCE.md)** —
   canonical runtime-manifest, session-claims, required-vs-best-effort posture,
   and operator-surface runbook for proof-bearing networked execution identity.
+- **[docs/RESEARCH_EXPERIMENT_REFERENCE.md](docs/RESEARCH_EXPERIMENT_REFERENCE.md)** —
+  canonical experiment-spec, bounded result-manifest, score-contract, and
+  promotion-record reference for Psionic hillclimb loops.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.

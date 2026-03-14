@@ -6637,6 +6637,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-research"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-router"
 version = "0.1.1"
 dependencies = [
