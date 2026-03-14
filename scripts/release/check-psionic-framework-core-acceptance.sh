@@ -129,10 +129,11 @@ run_category() {
       run_filtered_test psionic-compiler test matmul_add_replay_fixture_matches process_replay
       ;;
     local-multi-device)
-      run_filtered_test psionic-runtime lib tests::backend_selection_can_surface_multi_device_topology_truth
+      run_filtered_test psionic-models lib sharding::tests::gguf_decoder_family_tensor_parallel_contract_is_declarative_and_inspectable
+      run_filtered_test psionic-runtime lib local_multi_device::tests::local_multi_device_plan_runner_executes_tensor_sharded_workload_without_cluster_truth
+      run_filtered_test psionic-runtime lib local_multi_device::tests::local_sharding_contract_refuses_backend_memory_and_device_count_mismatches
       run_filtered_test psionic-compiler lib tests::compile_graph_with_topology_changes_digest_when_sharding_changes
-      run_note "open gap: #3608 remains open; current hooks validate multi-device topology identity and topology-sensitive compile digests, not a shipped same-host multi-device plan runner"
-      run_note "adjacent refusal contract: TOPOLOGY_ACCEPTANCE_MATRIX.md still keeps local tensor/pipeline/layer/replica topologies unsupported until the local runner issue closes"
+      run_note "local serving topology remains intentionally unsupported: TOPOLOGY_ACCEPTANCE_MATRIX.md still keeps local tensor/pipeline/layer/replica serving off until one served lane adopts the lower-level same-host multi-device runner"
       ;;
     *)
       echo "unknown category: $1" >&2
@@ -153,5 +154,4 @@ echo
 echo "Psionic framework-core acceptance hooks completed."
 echo "Open framework-core gap categories remain explicit:"
 echo "- autodiff-optimizer"
-echo "- local-multi-device"
-echo "Do not treat this runner as proof of Tinygrad-class framework-core closure while #3602, #3603, and #3608 remain open."
+echo "Do not treat this runner as proof of Tinygrad-class framework-core closure while #3602 and #3603 remain open."

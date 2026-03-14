@@ -2,6 +2,7 @@
 
 mod activation_fingerprint;
 mod gpt_oss;
+mod local_multi_device;
 mod parity;
 mod proof;
 mod structured_output;
@@ -12,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub use activation_fingerprint::*;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 pub use gpt_oss::*;
+pub use local_multi_device::*;
 pub use parity::*;
 pub use proof::*;
 use psionic_core::{

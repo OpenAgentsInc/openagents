@@ -166,7 +166,7 @@ run_suite() {
       run_filtered_test psionic-cluster lib tensor_sharded_scheduler_refuses_metal_backend_explicitly
       run_filtered_test psionic-cluster lib layer_sharded_scheduler_refuses_non_cuda_backend
       run_note "expert-parallel serving remains unsupported: no ClusterExecutionLane::ExpertParallel and no ExecutionTopologyKind::ExpertParallel exist in the current serving contracts"
-      run_note "local tensor/pipeline/layer/replica topologies remain unsupported: the local serving surface is still one runtime owner with explicit local PD, not a shipped multi-device local planner"
+      run_note "local tensor/pipeline/layer/replica topologies remain unsupported: Psionic now has a lower-level same-type local multi-device runner, but no local serving lane is wired to that runner yet"
       ;;
     benchmarks)
       PSIONIC_CLUSTER_BENCH_WHOLE_REQUEST_ITERATIONS=50 \
