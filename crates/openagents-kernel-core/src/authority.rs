@@ -1,7 +1,8 @@
 use crate::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
     CapacityLotStatus, CapacityNonDeliveryReason, ComputeEnvironmentPackage,
-    ComputeEnvironmentPackageStatus, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
+    ComputeEnvironmentPackageStatus, ComputeEvaluationRun, ComputeEvaluationRunStatus,
+    ComputeEvaluationSample, ComputeIndex, ComputeIndexCorrectionReason, ComputeProduct,
     ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
     StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
 };
@@ -37,6 +38,18 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: RegisterComputeEnvironmentPackageRequest,
     ) -> Result<RegisterComputeEnvironmentPackageResponse>;
+    async fn create_compute_evaluation_run(
+        &self,
+        req: CreateComputeEvaluationRunRequest,
+    ) -> Result<CreateComputeEvaluationRunResponse>;
+    async fn append_compute_evaluation_samples(
+        &self,
+        req: AppendComputeEvaluationSamplesRequest,
+    ) -> Result<AppendComputeEvaluationSamplesResponse>;
+    async fn finalize_compute_evaluation_run(
+        &self,
+        req: FinalizeComputeEvaluationRunRequest,
+    ) -> Result<FinalizeComputeEvaluationRunResponse>;
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
@@ -88,6 +101,17 @@ pub trait KernelAuthority: Send + Sync {
         environment_ref: &str,
         version: Option<&str>,
     ) -> Result<ComputeEnvironmentPackage>;
+    async fn list_compute_evaluation_runs(
+        &self,
+        environment_ref: Option<&str>,
+        product_id: Option<&str>,
+        status: Option<ComputeEvaluationRunStatus>,
+    ) -> Result<Vec<ComputeEvaluationRun>>;
+    async fn get_compute_evaluation_run(&self, eval_run_id: &str) -> Result<ComputeEvaluationRun>;
+    async fn list_compute_evaluation_samples(
+        &self,
+        eval_run_id: &str,
+    ) -> Result<Vec<ComputeEvaluationSample>>;
     async fn list_capacity_lots(
         &self,
         product_id: Option<&str>,
@@ -299,6 +323,70 @@ pub struct RegisterComputeEnvironmentPackageRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RegisterComputeEnvironmentPackageResponse {
     pub package: ComputeEnvironmentPackage,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateComputeEvaluationRunRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub eval_run: ComputeEvaluationRun,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateComputeEvaluationRunResponse {
+    pub eval_run: ComputeEvaluationRun,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AppendComputeEvaluationSamplesRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub eval_run_id: String,
+    #[serde(default)]
+    pub samples: Vec<ComputeEvaluationSample>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AppendComputeEvaluationSamplesResponse {
+    pub eval_run: ComputeEvaluationRun,
+    #[serde(default)]
+    pub samples: Vec<ComputeEvaluationSample>,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FinalizeComputeEvaluationRunRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub eval_run_id: String,
+    pub status: ComputeEvaluationRunStatus,
+    pub finalized_at_ms: i64,
+    #[serde(default)]
+    pub artifacts: Vec<crate::compute::ComputeEvaluationArtifact>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FinalizeComputeEvaluationRunResponse {
+    pub eval_run: ComputeEvaluationRun,
     pub receipt: Receipt,
 }
 
@@ -976,6 +1064,44 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::register_compute_environment_package_response_from_proto(&response)
     }
 
+    async fn create_compute_evaluation_run(
+        &self,
+        req: CreateComputeEvaluationRunRequest,
+    ) -> Result<CreateComputeEvaluationRunResponse> {
+        let wire = compute_contracts::create_compute_evaluation_run_request_to_proto(&req)?;
+        let response: proto_compute::CreateComputeEvaluationRunResponse =
+            self.post_json("/v1/kernel/compute/evals", &wire).await?;
+        compute_contracts::create_compute_evaluation_run_response_from_proto(&response)
+    }
+
+    async fn append_compute_evaluation_samples(
+        &self,
+        req: AppendComputeEvaluationSamplesRequest,
+    ) -> Result<AppendComputeEvaluationSamplesResponse> {
+        let path = format!(
+            "/v1/kernel/compute/evals/{}/samples",
+            req.eval_run_id.trim()
+        );
+        let wire = compute_contracts::append_compute_evaluation_samples_request_to_proto(&req)?;
+        let response: proto_compute::AppendComputeEvaluationSamplesResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::append_compute_evaluation_samples_response_from_proto(&response)
+    }
+
+    async fn finalize_compute_evaluation_run(
+        &self,
+        req: FinalizeComputeEvaluationRunRequest,
+    ) -> Result<FinalizeComputeEvaluationRunResponse> {
+        let path = format!(
+            "/v1/kernel/compute/evals/{}/finalize",
+            req.eval_run_id.trim()
+        );
+        let wire = compute_contracts::finalize_compute_evaluation_run_request_to_proto(&req)?;
+        let response: proto_compute::FinalizeComputeEvaluationRunResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::finalize_compute_evaluation_run_response_from_proto(&response)
+    }
+
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
@@ -1137,6 +1263,42 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::GetComputeEnvironmentPackageResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::get_compute_environment_package_response_from_proto(&response)
+    }
+
+    async fn list_compute_evaluation_runs(
+        &self,
+        environment_ref: Option<&str>,
+        product_id: Option<&str>,
+        status: Option<ComputeEvaluationRunStatus>,
+    ) -> Result<Vec<ComputeEvaluationRun>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/evals",
+            &[
+                ("environment_ref", environment_ref.map(ToOwned::to_owned)),
+                ("product_id", product_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeEvaluationRunsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_evaluation_runs_response_from_proto(&response)
+    }
+
+    async fn get_compute_evaluation_run(&self, eval_run_id: &str) -> Result<ComputeEvaluationRun> {
+        let path = format!("/v1/kernel/compute/evals/{eval_run_id}");
+        let response: proto_compute::GetComputeEvaluationRunResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_evaluation_run_response_from_proto(&response)
+    }
+
+    async fn list_compute_evaluation_samples(
+        &self,
+        eval_run_id: &str,
+    ) -> Result<Vec<ComputeEvaluationSample>> {
+        let path = format!("/v1/kernel/compute/evals/{eval_run_id}/samples");
+        let response: proto_compute::ListComputeEvaluationSamplesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_evaluation_samples_response_from_proto(&response)
     }
 
     async fn list_capacity_lots(

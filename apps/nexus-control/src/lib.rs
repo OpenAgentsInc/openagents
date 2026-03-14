@@ -44,7 +44,8 @@ use openagents_kernel_core::authority::{
 };
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeEnvironmentPackageStatus,
-    ComputeProductStatus, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeEvaluationRunStatus, ComputeProductStatus, DeliveryProofStatus,
+    StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
@@ -714,6 +715,23 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/compute/environments/{environment_ref}",
             get(get_kernel_compute_environment_package),
+        )
+        .route(
+            "/v1/kernel/compute/evals",
+            get(list_kernel_compute_evaluation_runs).post(create_kernel_compute_evaluation_run),
+        )
+        .route(
+            "/v1/kernel/compute/evals/{eval_run_id}",
+            get(get_kernel_compute_evaluation_run),
+        )
+        .route(
+            "/v1/kernel/compute/evals/{eval_run_id}/samples",
+            get(list_kernel_compute_evaluation_samples)
+                .post(append_kernel_compute_evaluation_samples),
+        )
+        .route(
+            "/v1/kernel/compute/evals/{eval_run_id}/finalize",
+            post(finalize_kernel_compute_evaluation_run),
         )
         .route(
             "/v1/kernel/compute/lots",
@@ -1809,6 +1827,13 @@ struct ComputeEnvironmentPackageVersionQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct ComputeEvaluationRunsQuery {
+    environment_ref: Option<String>,
+    product_id: Option<String>,
+    status: Option<ComputeEvaluationRunStatus>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CapacityLotsQuery {
     product_id: Option<String>,
     status: Option<CapacityLotStatus>,
@@ -1931,6 +1956,93 @@ async fn get_kernel_compute_environment_package(
     };
     let response = compute_contracts::get_compute_environment_package_response_to_proto(&package)
         .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_evaluation_runs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeEvaluationRunsQuery>,
+) -> Result<Json<proto_compute::ListComputeEvaluationRunsResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_compute_evaluation_runs_response_to_proto(
+        store
+            .kernel
+            .list_compute_evaluation_runs(
+                query.environment_ref.as_deref(),
+                query.product_id.as_deref(),
+                query.status,
+            )
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_compute_evaluation_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(eval_run_id): Path<String>,
+) -> Result<Json<proto_compute::GetComputeEvaluationRunResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let eval_run_id =
+        normalize_required_field(eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(eval_run) = store
+        .kernel
+        .get_compute_evaluation_run(eval_run_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_eval_run_not_found".to_string(),
+        });
+    };
+    let response = compute_contracts::get_compute_evaluation_run_response_to_proto(&eval_run)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_compute_evaluation_samples(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(eval_run_id): Path<String>,
+) -> Result<Json<proto_compute::ListComputeEvaluationSamplesResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let eval_run_id =
+        normalize_required_field(eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    if store
+        .kernel
+        .get_compute_evaluation_run(eval_run_id.as_str())
+        .is_none()
+    {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_eval_run_not_found".to_string(),
+        });
+    }
+    let response = compute_contracts::list_compute_evaluation_samples_response_to_proto(
+        store
+            .kernel
+            .list_compute_evaluation_samples(eval_run_id.as_str())
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -2393,6 +2505,130 @@ async fn register_kernel_compute_environment_package(
     );
     let response =
         compute_contracts::register_compute_environment_package_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn create_kernel_compute_evaluation_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::CreateComputeEvaluationRunRequest>,
+) -> Result<Json<proto_compute::CreateComputeEvaluationRunResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::create_compute_evaluation_run_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_compute_evaluation_run(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.eval_run.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::create_compute_evaluation_run_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn append_kernel_compute_evaluation_samples(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(eval_run_id): Path<String>,
+    Json(mut request): Json<proto_compute::AppendComputeEvaluationSamplesRequest>,
+) -> Result<Json<proto_compute::AppendComputeEvaluationSamplesResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let eval_run_id =
+        normalize_required_field(eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+    if !request.eval_run_id.trim().is_empty() && request.eval_run_id != eval_run_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_compute_eval_run_id_mismatch".to_string(),
+        });
+    }
+    request.eval_run_id = eval_run_id;
+    let request = compute_contracts::append_compute_evaluation_samples_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .append_compute_evaluation_samples(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.eval_run.samples_appended",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::append_compute_evaluation_samples_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn finalize_kernel_compute_evaluation_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(eval_run_id): Path<String>,
+    Json(mut request): Json<proto_compute::FinalizeComputeEvaluationRunRequest>,
+) -> Result<Json<proto_compute::FinalizeComputeEvaluationRunResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let eval_run_id =
+        normalize_required_field(eval_run_id.as_str(), "compute_eval_run_id_missing")?;
+    if !request.eval_run_id.trim().is_empty() && request.eval_run_id != eval_run_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_compute_eval_run_id_mismatch".to_string(),
+        });
+    }
+    request.eval_run_id = eval_run_id;
+    let request = compute_contracts::finalize_compute_evaluation_run_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .finalize_compute_evaluation_run(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.eval_run.finalized",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::finalize_compute_evaluation_run_response_to_proto(&result.response)
             .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
@@ -3392,10 +3628,13 @@ fn kernel_api_error(reason: String) -> ApiError {
         "kernel_contract_not_found"
         | "kernel_work_unit_not_found"
         | "compute_product_not_found"
+        | "compute_environment_package_not_found"
         | "kernel_compute_environment_package_not_found"
+        | "compute_eval_run_not_found"
         | "compute_index_not_found"
         | "capacity_lot_not_found"
         | "capacity_instrument_not_found"
+        | "delivery_proof_not_found"
         | "structured_capacity_instrument_not_found"
         | "structured_capacity_leg_not_found"
         | "data_asset_not_found"
@@ -3411,6 +3650,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
         | "kernel_capacity_lot_id_mismatch"
+        | "kernel_compute_eval_run_id_mismatch"
         | "kernel_access_grant_id_mismatch"
         | "kernel_reserve_partition_id_mismatch"
         | "kernel_risk_claim_id_mismatch"
@@ -3418,6 +3658,18 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_capacity_instrument_mismatch"
         | "compute_product_reference_index_mismatch"
         | "capacity_lot_instrument_mismatch"
+        | "compute_eval_run_id_conflict"
+        | "compute_eval_run_product_mismatch"
+        | "compute_eval_run_capacity_lot_mismatch"
+        | "compute_eval_run_instrument_mismatch"
+        | "compute_eval_run_environment_mismatch"
+        | "compute_eval_sample_run_mismatch"
+        | "compute_eval_run_finalized"
+        | "compute_eval_run_already_finalized"
+        | "compute_eval_sample_already_exists"
+        | "compute_eval_sample_count_exceeds_expected"
+        | "compute_eval_sample_count_incomplete"
+        | "delivery_proof_eval_run_conflict"
         | "structured_capacity_instrument_id_conflict"
         | "capacity_instrument_already_structured"
         | "structured_capacity_leg_product_mismatch"
@@ -3479,6 +3731,25 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "contract_id_missing"
         | "receipt_id_missing"
         | "compute_product_id_missing"
+        | "compute_eval_run_id_missing"
+        | "compute_eval_sample_id_missing"
+        | "compute_eval_samples_missing"
+        | "compute_eval_run_create_status_invalid"
+        | "compute_eval_finalize_status_invalid"
+        | "compute_eval_expected_sample_count_invalid"
+        | "compute_eval_finalized_at_missing"
+        | "compute_eval_summary_missing"
+        | "compute_eval_summary_counts_invalid"
+        | "compute_eval_metric_id_missing"
+        | "compute_eval_metric_value_invalid"
+        | "compute_eval_metric_unit_invalid"
+        | "compute_eval_artifact_kind_missing"
+        | "compute_eval_artifact_ref_missing"
+        | "compute_eval_artifact_digest_invalid"
+        | "compute_eval_score_invalid"
+        | "compute_eval_pass_rate_invalid"
+        | "compute_eval_sample_recorded_at_invalid"
+        | "compute_eval_sample_error_reason_missing"
         | "compute_environment_ref_missing"
         | "compute_environment_version_missing"
         | "compute_environment_family_missing"
@@ -4329,20 +4600,21 @@ mod tests {
     use axum::response::Response;
     use openagents_kernel_core::authority::{
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-        AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest, BindCoverageRequest,
+        BindCoverageResponse, CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
         CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
         CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-        CreateCapacityLotRequest, CreateComputeProductRequest, CreateContractRequest,
-        CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
-        CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
-        CreateRiskClaimResponse, CreateStructuredCapacityInstrumentRequest, CreateWorkUnitRequest,
-        CreateWorkUnitResponse, ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
-        FinalizeVerdictRequest, FinalizeVerdictResponse, HttpKernelAuthorityClient,
-        IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
-        IssueLiquidityEnvelopeResponse, KernelAuthority, PlaceCoverageOfferRequest,
-        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
-        PublishRiskSignalResponse, RecordDeliveryProofRequest,
+        CreateCapacityLotRequest, CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
+        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
+        CreateStructuredCapacityInstrumentRequest, CreateWorkUnitRequest, CreateWorkUnitResponse,
+        ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
+        FinalizeComputeEvaluationRunRequest, FinalizeVerdictRequest, FinalizeVerdictResponse,
+        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, KernelAuthority,
+        PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishComputeIndexRequest,
+        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
         RegisterComputeEnvironmentPackageRequest, RegisterDataAssetRequest,
         RegisterDataAssetResponse, RegisterReservePartitionRequest,
         RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
@@ -4356,12 +4628,14 @@ mod tests {
         ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeEnvironmentArtifactExpectation,
         ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
         ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
-        ComputeEnvironmentRubricBinding, ComputeExecutionKind, ComputeFamily,
-        ComputeHostCapability, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
-        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
-        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, GptOssRuntimeCapability,
-        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample,
+        ComputeEvaluationSampleStatus, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
+        ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
+        ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
+        DeliveryProofStatus, GptOssRuntimeCapability, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+        StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
@@ -4755,6 +5029,128 @@ mod tests {
                 ],
                 metadata: json!({"tier": "reference"}),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_evaluation_run_request(
+        eval_run_id: &str,
+        delivery_proof_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateComputeEvaluationRunRequest {
+        CreateComputeEvaluationRunRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            eval_run: ComputeEvaluationRun {
+                eval_run_id: eval_run_id.to_string(),
+                environment_binding: ComputeEnvironmentBinding {
+                    environment_ref: "env.openagents.math.basic".to_string(),
+                    environment_version: None,
+                    dataset_ref: None,
+                    rubric_ref: None,
+                    evaluator_policy_ref: None,
+                },
+                product_id: Some("ollama.text_generation".to_string()),
+                capacity_lot_id: Some("lot.compute.client".to_string()),
+                instrument_id: Some("instrument.compute.client".to_string()),
+                delivery_proof_id: Some(delivery_proof_id.to_string()),
+                model_ref: Some("model://llama3.3".to_string()),
+                source_ref: Some("artifact://eval/input-bundle".to_string()),
+                created_at_ms,
+                expected_sample_count: Some(2),
+                status: ComputeEvaluationRunStatus::Queued,
+                started_at_ms: None,
+                finalized_at_ms: None,
+                summary: None,
+                run_artifacts: Vec::new(),
+                metadata: json!({"suite": "math-basic"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_evaluation_sample(
+        eval_run_id: &str,
+        sample_id: &str,
+        ordinal: u64,
+        score_bps: u32,
+        recorded_at_ms: i64,
+    ) -> ComputeEvaluationSample {
+        ComputeEvaluationSample {
+            eval_run_id: eval_run_id.to_string(),
+            sample_id: sample_id.to_string(),
+            ordinal: Some(ordinal),
+            status: ComputeEvaluationSampleStatus::Scored,
+            input_ref: Some(format!("artifact://eval/input/{sample_id}")),
+            output_ref: Some(format!("artifact://eval/output/{sample_id}")),
+            expected_output_ref: Some(format!("artifact://eval/expected/{sample_id}")),
+            score_bps: Some(score_bps),
+            metrics: vec![ComputeEvaluationMetric {
+                metric_id: "accuracy".to_string(),
+                metric_value: score_bps as f64 / 10_000.0,
+                unit: Some("fraction".to_string()),
+                metadata: json!({"sample_id": sample_id}),
+            }],
+            artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "sample_report".to_string(),
+                artifact_ref: format!("artifact://eval/sample/{sample_id}/report"),
+                digest: Some(format!("sha256:sample:{sample_id}")),
+                metadata: json!({"ordinal": ordinal}),
+            }],
+            error_reason: None,
+            recorded_at_ms,
+            metadata: json!({"prompt_tokens": 64}),
+        }
+    }
+
+    fn append_compute_evaluation_samples_request(
+        eval_run_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> AppendComputeEvaluationSamplesRequest {
+        AppendComputeEvaluationSamplesRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            eval_run_id: eval_run_id.to_string(),
+            samples: vec![
+                compute_evaluation_sample(eval_run_id, "sample.alpha", 1, 9_500, created_at_ms),
+                compute_evaluation_sample(
+                    eval_run_id,
+                    "sample.beta",
+                    2,
+                    8_500,
+                    created_at_ms + 100,
+                ),
+            ],
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn finalize_compute_evaluation_run_request(
+        eval_run_id: &str,
+        idempotency_key: &str,
+        finalized_at_ms: i64,
+    ) -> FinalizeComputeEvaluationRunRequest {
+        FinalizeComputeEvaluationRunRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            eval_run_id: eval_run_id.to_string(),
+            status: ComputeEvaluationRunStatus::Finalized,
+            finalized_at_ms,
+            artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "scorecard".to_string(),
+                artifact_ref: "artifact://eval/scorecard".to_string(),
+                digest: Some("sha256:scorecard".to_string()),
+                metadata: json!({"schema": "v1"}),
+            }],
+            metadata: json!({"source": "test"}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -8619,6 +9015,72 @@ mod tests {
                 .as_ref()
                 .and_then(|evidence| evidence.environment_version.as_deref()),
             Some("2026.03.13")
+        );
+
+        let eval_run = client
+            .create_compute_evaluation_run(compute_evaluation_run_request(
+                "eval.run.client",
+                "delivery.compute.client",
+                "idemp.compute.client.eval_run",
+                created_at_ms + 3_200,
+            ))
+            .await?;
+        assert_eq!(eval_run.eval_run.eval_run_id, "eval.run.client");
+        assert_eq!(
+            eval_run
+                .eval_run
+                .environment_binding
+                .environment_version
+                .as_deref(),
+            Some("2026.03.13")
+        );
+
+        let appended = client
+            .append_compute_evaluation_samples(append_compute_evaluation_samples_request(
+                "eval.run.client",
+                "idemp.compute.client.eval_run.samples",
+                created_at_ms + 3_300,
+            ))
+            .await?;
+        assert_eq!(appended.samples.len(), 2);
+        assert_eq!(
+            appended.eval_run.status,
+            ComputeEvaluationRunStatus::Running
+        );
+
+        let finalized = client
+            .finalize_compute_evaluation_run(finalize_compute_evaluation_run_request(
+                "eval.run.client",
+                "idemp.compute.client.eval_run.finalize",
+                created_at_ms + 3_400,
+            ))
+            .await?;
+        assert_eq!(
+            finalized.eval_run.status,
+            ComputeEvaluationRunStatus::Finalized
+        );
+        assert_eq!(
+            finalized
+                .eval_run
+                .summary
+                .as_ref()
+                .map(|summary| summary.pass_rate_bps),
+            Some(Some(5_000))
+        );
+        let fetched_eval_run = client.get_compute_evaluation_run("eval.run.client").await?;
+        assert_eq!(fetched_eval_run.eval_run_id, "eval.run.client");
+        let eval_samples = client
+            .list_compute_evaluation_samples("eval.run.client")
+            .await?;
+        assert_eq!(eval_samples.len(), 2);
+
+        let delivery_with_eval = client.get_delivery_proof("delivery.compute.client").await?;
+        assert_eq!(
+            delivery_with_eval
+                .verification_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.eval_run_ref.as_deref()),
+            Some("eval.run.client")
         );
 
         let index = client
