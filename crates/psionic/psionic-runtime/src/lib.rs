@@ -1665,6 +1665,9 @@ pub struct ClusterExecutionContext {
     /// Optional training recovery posture when the clustered lane is training-class.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub training_recovery: Option<TrainingRecoveryContext>,
+    /// Optional training collective and device-mesh posture for training-class clustered execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub training_collective: Option<TrainingCollectiveContext>,
 }
 
 impl ClusterExecutionContext {
@@ -1702,6 +1705,7 @@ impl ClusterExecutionContext {
             fallback_history: Vec::new(),
             degraded_reason: None,
             training_recovery: None,
+            training_collective: None,
         }
     }
 
@@ -1847,6 +1851,16 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_training_recovery(mut self, training_recovery: TrainingRecoveryContext) -> Self {
         self.training_recovery = Some(training_recovery);
+        self
+    }
+
+    /// Attaches training collective and device-mesh posture for training-class clustered execution.
+    #[must_use]
+    pub fn with_training_collective(
+        mut self,
+        training_collective: TrainingCollectiveContext,
+    ) -> Self {
+        self.training_collective = Some(training_collective);
         self
     }
 
@@ -2681,6 +2695,222 @@ impl TrainingRecoveryContext {
     }
 
     /// Attaches plain-language detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// High-level training device-mesh axis kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingDeviceMeshAxisKind {
+    /// Data-parallel replica axis.
+    DataParallel,
+    /// Tensor-parallel shard axis.
+    TensorParallel,
+    /// Pipeline stage axis.
+    PipelineParallel,
+    /// Expert-parallel axis.
+    ExpertParallel,
+}
+
+/// One named axis in an elastic training device mesh.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingDeviceMeshAxis {
+    /// Stable axis identifier.
+    pub axis_id: String,
+    /// High-level axis kind.
+    pub kind: TrainingDeviceMeshAxisKind,
+    /// Logical extent of the axis.
+    pub extent: usize,
+    /// Collective group size realized on this axis.
+    pub collective_group_size: usize,
+    /// Plain-language axis detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl TrainingDeviceMeshAxis {
+    /// Creates a device-mesh axis from explicit identity and extent.
+    #[must_use]
+    pub fn new(
+        axis_id: impl Into<String>,
+        kind: TrainingDeviceMeshAxisKind,
+        extent: usize,
+    ) -> Self {
+        let extent = extent.max(1);
+        Self {
+            axis_id: axis_id.into(),
+            kind,
+            extent,
+            collective_group_size: extent,
+            detail: None,
+        }
+    }
+
+    /// Overrides the collective group size for this axis.
+    #[must_use]
+    pub fn with_collective_group_size(mut self, collective_group_size: usize) -> Self {
+        self.collective_group_size = collective_group_size.max(1);
+        self
+    }
+
+    /// Attaches plain-language axis detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Runtime-visible device-mesh posture for training-class execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingDeviceMeshContext {
+    /// Stable mesh identifier.
+    pub mesh_id: String,
+    /// Monotonic mesh revision derived from elastic membership truth.
+    pub mesh_revision: u64,
+    /// Effective backend running the mesh.
+    pub effective_backend: String,
+    /// Communication class required by the mesh.
+    pub communication_class: ClusterCommunicationClass,
+    /// Elastic membership facts currently constraining the mesh.
+    pub elastic_membership: TrainingElasticMembershipContext,
+    /// Explicit node IDs participating in this mesh revision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub member_node_ids: Vec<String>,
+    /// Explicit axes realized by the mesh.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub axes: Vec<TrainingDeviceMeshAxis>,
+}
+
+impl TrainingDeviceMeshContext {
+    /// Creates a device-mesh context from explicit identity and membership facts.
+    #[must_use]
+    pub fn new(
+        mesh_id: impl Into<String>,
+        mesh_revision: u64,
+        effective_backend: impl Into<String>,
+        communication_class: ClusterCommunicationClass,
+        elastic_membership: TrainingElasticMembershipContext,
+        member_node_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            mesh_id: mesh_id.into(),
+            mesh_revision,
+            effective_backend: effective_backend.into(),
+            communication_class,
+            elastic_membership,
+            member_node_ids: sorted_distinct_strings(member_node_ids),
+            axes: Vec::new(),
+        }
+    }
+
+    /// Replaces the explicit axis set.
+    #[must_use]
+    pub fn with_axes(mut self, axes: Vec<TrainingDeviceMeshAxis>) -> Self {
+        self.axes = axes;
+        self
+    }
+}
+
+/// High-level training collective kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingCollectiveKind {
+    /// All members reduce and receive the full result.
+    AllReduce,
+    /// All members gather the full set of shards.
+    AllGather,
+    /// All members receive only their reduced partition.
+    ReduceScatter,
+    /// One member broadcasts state to the rest of the mesh.
+    Broadcast,
+}
+
+/// Explicit quantization mode for collective communication.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingCollectiveQuantization {
+    /// No communication quantization is applied.
+    None,
+    /// Symmetric int8 packing for the collective payload.
+    Int8Symmetric,
+    /// Blockwise NF4-style packing for the collective payload.
+    Nf4Blockwise,
+}
+
+/// Runtime-visible collective posture attached to clustered training execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrainingCollectiveContext {
+    /// Device-mesh posture used for the collective.
+    pub device_mesh: TrainingDeviceMeshContext,
+    /// High-level collective kind.
+    pub kind: TrainingCollectiveKind,
+    /// Quantization mode applied to communication.
+    pub quantization: TrainingCollectiveQuantization,
+    /// Logical payload size before wire-level quantization.
+    pub payload_bytes: u64,
+    /// Estimated wire bytes after collective quantization and fanout.
+    pub estimated_wire_bytes: u64,
+    /// Number of mesh workers participating in the collective.
+    pub worker_count: usize,
+    /// Stable digest for the benchmark that justified the quantized path, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub benchmark_digest: Option<String>,
+    /// Relative speedup in basis points versus the baseline benchmark.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub benchmark_speedup_bps: Option<u64>,
+    /// Maximum relative numerical error observed in the benchmark.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_relative_error_bps: Option<u64>,
+    /// Plain-language collective detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl TrainingCollectiveContext {
+    /// Creates collective posture from explicit mesh, payload, and worker facts.
+    #[must_use]
+    pub fn new(
+        device_mesh: TrainingDeviceMeshContext,
+        kind: TrainingCollectiveKind,
+        quantization: TrainingCollectiveQuantization,
+        payload_bytes: u64,
+        estimated_wire_bytes: u64,
+        worker_count: usize,
+    ) -> Self {
+        Self {
+            device_mesh,
+            kind,
+            quantization,
+            payload_bytes,
+            estimated_wire_bytes,
+            worker_count: worker_count.max(1),
+            benchmark_digest: None,
+            benchmark_speedup_bps: None,
+            max_relative_error_bps: None,
+            detail: None,
+        }
+    }
+
+    /// Attaches benchmark justification for the collective path.
+    #[must_use]
+    pub fn with_benchmark(
+        mut self,
+        benchmark_digest: impl Into<String>,
+        benchmark_speedup_bps: u64,
+        max_relative_error_bps: u64,
+    ) -> Self {
+        self.benchmark_digest = Some(benchmark_digest.into());
+        self.benchmark_speedup_bps = Some(benchmark_speedup_bps);
+        self.max_relative_error_bps = Some(max_relative_error_bps);
+        self
+    }
+
+    /// Attaches plain-language collective detail.
     #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
@@ -7771,6 +8001,8 @@ mod tests {
         SettlementLinkageInput, ShardedModelArtifactRef, ShardedModelLayoutKind,
         ShardedModelManifest, ShardedModelManifestError, SignedClusterEvidenceBundle,
         ThroughputClass, TokenSampler, TrainingCheckpointAvailability, TrainingCheckpointReference,
+        TrainingCollectiveContext, TrainingCollectiveKind, TrainingCollectiveQuantization,
+        TrainingDeviceMeshAxis, TrainingDeviceMeshAxisKind, TrainingDeviceMeshContext,
         TrainingElasticMembershipContext, TrainingRecoveryContext, TrainingRecoveryPosture,
         apply_sampling_penalties, benchmark_dispatch_plan, benchmark_quantization_dispatch,
         default_cache_invalidation_policy, plan_model_admission,
@@ -9705,6 +9937,81 @@ mod tests {
                 .as_ref()
                 .and_then(|value| value.training_recovery.clone()),
             Some(training_recovery)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn delivered_execution_context_can_carry_training_collective_context()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let membership = TrainingElasticMembershipContext::new(
+            7,
+            "cluster-state-digest",
+            "topology-digest",
+            vec![String::from("worker-a"), String::from("worker-b")],
+        )
+        .with_joining_node_ids(vec![String::from("worker-c")]);
+        let collective = TrainingCollectiveContext::new(
+            TrainingDeviceMeshContext::new(
+                "mesh-train",
+                3,
+                "cuda",
+                ClusterCommunicationClass::TensorCollectiveMesh,
+                membership,
+                vec![String::from("worker-a"), String::from("worker-b")],
+            )
+            .with_axes(vec![
+                TrainingDeviceMeshAxis::new("dp", TrainingDeviceMeshAxisKind::DataParallel, 1),
+                TrainingDeviceMeshAxis::new("tp", TrainingDeviceMeshAxisKind::TensorParallel, 2)
+                    .with_collective_group_size(2),
+            ]),
+            TrainingCollectiveKind::AllReduce,
+            TrainingCollectiveQuantization::Int8Symmetric,
+            16 * 1024 * 1024,
+            4 * 1024 * 1024,
+            2,
+        )
+        .with_benchmark("collective-benchmark", 2_400, 55)
+        .with_detail("int8 all-reduce is benchmark-approved for this tensor-parallel mesh");
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::Sharded,
+        )
+        .with_training_collective(collective.clone());
+        let delivered = DeliveredExecutionContext::new("cuda", None, Vec::new())
+            .with_cluster_execution(cluster_execution.clone());
+
+        let encoded = serde_json::to_value(&delivered)?;
+        assert_eq!(
+            encoded["cluster_execution"]["training_collective"]["kind"],
+            json!("all_reduce")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["training_collective"]["quantization"],
+            json!("int8_symmetric")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["training_collective"]["device_mesh"]["mesh_revision"],
+            json!(3)
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["training_collective"]["device_mesh"]["axes"][1]["kind"],
+            json!("tensor_parallel")
+        );
+        assert_eq!(
+            serde_json::from_value::<DeliveredExecutionContext>(encoded)?,
+            delivered
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|value| value.training_collective.clone()),
+            Some(collective)
         );
         Ok(())
     }
