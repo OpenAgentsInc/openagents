@@ -1198,6 +1198,7 @@ fn delivery_verification_evidence_to_proto(
         validator_run_ref: value.validator_run_ref.clone(),
         challenge_result_refs: value.challenge_result_refs.clone(),
         environment_ref: value.environment_ref.clone(),
+        environment_version: value.environment_version.clone(),
         eval_run_ref: value.eval_run_ref.clone(),
     }
 }
@@ -1214,6 +1215,7 @@ fn delivery_verification_evidence_from_proto(
         validator_run_ref: optional_string_as_none(value.validator_run_ref.clone()),
         challenge_result_refs: value.challenge_result_refs.clone(),
         environment_ref: optional_string_as_none(value.environment_ref.clone()),
+        environment_version: optional_string_as_none(value.environment_version.clone()),
         eval_run_ref: optional_string_as_none(value.eval_run_ref.clone()),
     }
 }
@@ -1352,6 +1354,30 @@ fn compute_index_correction_reason_from_proto(value: i32) -> Option<ComputeIndex
     }
 }
 
+fn compute_environment_binding_to_proto(
+    binding: &ComputeEnvironmentBinding,
+) -> proto_compute::ComputeEnvironmentBinding {
+    proto_compute::ComputeEnvironmentBinding {
+        environment_ref: binding.environment_ref.clone(),
+        environment_version: binding.environment_version.clone(),
+        dataset_ref: binding.dataset_ref.clone(),
+        rubric_ref: binding.rubric_ref.clone(),
+        evaluator_policy_ref: binding.evaluator_policy_ref.clone(),
+    }
+}
+
+fn compute_environment_binding_from_proto(
+    binding: &proto_compute::ComputeEnvironmentBinding,
+) -> ComputeEnvironmentBinding {
+    ComputeEnvironmentBinding {
+        environment_ref: binding.environment_ref.clone(),
+        environment_version: optional_string_as_none(binding.environment_version.clone()),
+        dataset_ref: optional_string_as_none(binding.dataset_ref.clone()),
+        rubric_ref: optional_string_as_none(binding.rubric_ref.clone()),
+        evaluator_policy_ref: optional_string_as_none(binding.evaluator_policy_ref.clone()),
+    }
+}
+
 pub fn compute_capability_envelope_to_proto(
     envelope: &ComputeCapabilityEnvelope,
 ) -> Result<proto_compute::ComputeCapabilityEnvelope> {
@@ -1399,15 +1425,10 @@ pub fn compute_capability_envelope_to_proto(
                 warm: residency.warm,
             }
         }),
-        environment_binding: envelope.environment_binding.as_ref().map(|binding| {
-            proto_compute::ComputeEnvironmentBinding {
-                environment_ref: binding.environment_ref.clone(),
-                environment_version: binding.environment_version.clone(),
-                dataset_ref: binding.dataset_ref.clone(),
-                rubric_ref: binding.rubric_ref.clone(),
-                evaluator_policy_ref: binding.evaluator_policy_ref.clone(),
-            }
-        }),
+        environment_binding: envelope
+            .environment_binding
+            .as_ref()
+            .map(compute_environment_binding_to_proto),
         checkpoint_binding: envelope.checkpoint_binding.as_ref().map(|binding| {
             proto_compute::ComputeCheckpointBinding {
                 checkpoint_family: binding.checkpoint_family.clone(),
@@ -1490,15 +1511,10 @@ pub fn compute_capability_envelope_from_proto(
                 warm: residency.warm,
             }
         }),
-        environment_binding: envelope.environment_binding.as_ref().map(|binding| {
-            ComputeEnvironmentBinding {
-                environment_ref: binding.environment_ref.clone(),
-                environment_version: binding.environment_version.clone(),
-                dataset_ref: binding.dataset_ref.clone(),
-                rubric_ref: binding.rubric_ref.clone(),
-                evaluator_policy_ref: binding.evaluator_policy_ref.clone(),
-            }
-        }),
+        environment_binding: envelope
+            .environment_binding
+            .as_ref()
+            .map(compute_environment_binding_from_proto),
         checkpoint_binding: envelope.checkpoint_binding.as_ref().map(|binding| {
             ComputeCheckpointBinding {
                 checkpoint_family: binding.checkpoint_family.clone(),
@@ -1772,6 +1788,10 @@ pub fn capacity_lot_to_proto(lot: &CapacityLot) -> Result<proto_compute::Capacit
         cancellation_reason: proto_compute::CapacityLotCancellationReason::Unspecified as i32,
         curtailment_reason: proto_compute::CapacityCurtailmentReason::Unspecified as i32,
         lifecycle_reason_detail: None,
+        environment_binding: lot
+            .environment_binding
+            .as_ref()
+            .map(compute_environment_binding_to_proto),
         metadata_json: json_value_to_string(&lot.metadata)?,
     })
 }
@@ -1794,6 +1814,10 @@ pub fn capacity_lot_from_proto(lot: &proto_compute::CapacityLot) -> Result<Capac
         reserve_state: capacity_reserve_state_from_proto(lot.reserve_state),
         offer_expires_at_ms: lot.offer_expires_at_ms,
         status: capacity_lot_status_from_proto(lot.status),
+        environment_binding: lot
+            .environment_binding
+            .as_ref()
+            .map(compute_environment_binding_from_proto),
         metadata: json_string_to_value(lot.metadata_json.as_str())?,
     })
 }
@@ -1816,6 +1840,10 @@ pub fn capacity_instrument_to_proto(
         settlement_mode: settlement_mode_to_proto(instrument.settlement_mode),
         created_at_ms: instrument.created_at_ms,
         status: capacity_instrument_status_to_proto(instrument.status),
+        environment_binding: instrument
+            .environment_binding
+            .as_ref()
+            .map(compute_environment_binding_to_proto),
         closure_reason: instrument
             .closure_reason
             .map(capacity_instrument_closure_reason_to_proto)
@@ -1855,6 +1883,10 @@ pub fn capacity_instrument_from_proto(
         settlement_mode: settlement_mode_from_proto(instrument.settlement_mode),
         created_at_ms: instrument.created_at_ms,
         status: capacity_instrument_status_from_proto(instrument.status),
+        environment_binding: instrument
+            .environment_binding
+            .as_ref()
+            .map(compute_environment_binding_from_proto),
         closure_reason: capacity_instrument_closure_reason_from_proto(instrument.closure_reason),
         non_delivery_reason: capacity_non_delivery_reason_from_proto(
             instrument.non_delivery_reason,
@@ -3320,6 +3352,7 @@ mod tests {
             reserve_state: CapacityReserveState::Available,
             offer_expires_at_ms: 1_700_000_030_000,
             status: CapacityLotStatus::Open,
+            environment_binding: None,
             metadata: json!({"session_scope": true}),
         }
     }
@@ -3340,6 +3373,7 @@ mod tests {
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms: 1_700_000_001_000,
             status: CapacityInstrumentStatus::Active,
+            environment_binding: None,
             closure_reason: Some(CapacityInstrumentClosureReason::Filled),
             non_delivery_reason: None,
             settlement_failure_reason: Some(ComputeSettlementFailureReason::ReceiptRejected),
@@ -3672,6 +3706,7 @@ mod tests {
             validator_run_ref: Some("validator_run:cluster".to_string()),
             challenge_result_refs: vec!["validator_challenge_result:ok".to_string()],
             environment_ref: None,
+            environment_version: None,
             eval_run_ref: None,
         });
 
@@ -3721,6 +3756,7 @@ mod tests {
             validator_run_ref: None,
             challenge_result_refs: Vec::new(),
             environment_ref: Some("env://sandbox/base".to_string()),
+            environment_version: Some("v1".to_string()),
             eval_run_ref: None,
         });
 

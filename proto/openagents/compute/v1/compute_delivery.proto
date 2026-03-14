@@ -55,7 +55,8 @@ message DeliveryVerificationEvidence {
   optional string validator_run_ref = 4;
   repeated string challenge_result_refs = 5;
   optional string environment_ref = 6;
-  optional string eval_run_ref = 7;
+  optional string environment_version = 7;
+  optional string eval_run_ref = 8;
 }
 
 message DeliveryProof {

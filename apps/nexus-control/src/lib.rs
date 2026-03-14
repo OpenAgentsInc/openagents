@@ -4354,10 +4354,11 @@ mod tests {
         CapacityInstrumentClosureReason, CapacityInstrumentKind, CapacityInstrumentStatus,
         CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState,
         ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeEnvironmentArtifactExpectation,
-        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
-        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeExecutionKind,
-        ComputeFamily, ComputeHostCapability, ComputeIndex, ComputeIndexCorrectionReason,
-        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
+        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+        ComputeEnvironmentRubricBinding, ComputeExecutionKind, ComputeFamily,
+        ComputeHostCapability, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
         ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, GptOssRuntimeCapability,
         StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
         StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
@@ -4785,6 +4786,7 @@ mod tests {
                 reserve_state: CapacityReserveState::Available,
                 offer_expires_at_ms: delivery_start_ms + 300_000,
                 status: CapacityLotStatus::Open,
+                environment_binding: None,
                 metadata: json!({
                     "provider_class": "desktop"
                 }),
@@ -4823,6 +4825,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Physical,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Active,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -5112,6 +5115,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Cash,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Open,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -5169,6 +5173,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::BuyerElection,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Open,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -7037,6 +7042,7 @@ mod tests {
                 validator_run_ref: None,
                 challenge_result_refs: Vec::new(),
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             },
         );
@@ -8503,15 +8509,6 @@ mod tests {
         )?;
         let created_at_ms = super::now_unix_ms() as i64;
 
-        let product = client
-            .create_compute_product(compute_product_request(
-                "ollama.text_generation",
-                "idemp.compute.client.product",
-                created_at_ms,
-            ))
-            .await?;
-        assert_eq!(product.product.product_id, "ollama.text_generation");
-
         let environment = client
             .register_compute_environment_package(compute_environment_package_request(
                 "env.openagents.math.basic",
@@ -8525,6 +8522,35 @@ mod tests {
             "env.openagents.math.basic"
         );
 
+        let mut product_request = compute_product_request(
+            "ollama.text_generation",
+            "idemp.compute.client.product",
+            created_at_ms,
+        );
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: None,
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        });
+        let product = client.create_compute_product(product_request).await?;
+        assert_eq!(product.product.product_id, "ollama.text_generation");
+        assert_eq!(
+            product
+                .product
+                .capability_envelope
+                .as_ref()
+                .and_then(|envelope| envelope.environment_binding.as_ref())
+                .and_then(|binding| binding.environment_version.as_deref()),
+            Some("2026.03.13")
+        );
+
         let lot = client
             .create_capacity_lot(capacity_lot_request(
                 "lot.compute.client",
@@ -8534,6 +8560,13 @@ mod tests {
             ))
             .await?;
         assert_eq!(lot.lot.capacity_lot_id, "lot.compute.client");
+        assert_eq!(
+            lot.lot
+                .environment_binding
+                .as_ref()
+                .and_then(|binding| binding.environment_version.as_deref()),
+            Some("2026.03.13")
+        );
 
         let instrument = client
             .create_capacity_instrument(capacity_instrument_request(
@@ -8547,6 +8580,14 @@ mod tests {
         assert_eq!(
             instrument.instrument.instrument_id,
             "instrument.compute.client"
+        );
+        assert_eq!(
+            instrument
+                .instrument
+                .environment_binding
+                .as_ref()
+                .and_then(|binding| binding.environment_version.as_deref()),
+            Some("2026.03.13")
         );
 
         let delivery = client
@@ -8562,6 +8603,22 @@ mod tests {
         assert_eq!(
             delivery.delivery_proof.delivery_proof_id,
             "delivery.compute.client"
+        );
+        assert_eq!(
+            delivery
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.environment_ref.as_deref()),
+            Some("env.openagents.math.basic")
+        );
+        assert_eq!(
+            delivery
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.environment_version.as_deref()),
+            Some("2026.03.13")
         );
 
         let index = client

@@ -960,6 +960,7 @@ This is the recommended issue order for fully implementing the stack above.
    - An environment package should bind dataset refs, harness requirements, rubric refs, artifact expectations, and policy metadata.
 
 33. **Environments: bind environment refs into compute products and delivery proofs**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3517`.
    - Allow compute products, lots, and jobs to declare the environments they support or require.
    - This is how capacity becomes market-relevant to real eval and training flows.
 
