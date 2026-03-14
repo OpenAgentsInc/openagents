@@ -1,4 +1,5 @@
-//! Resumable streamed dataset and checkpoint delivery contracts for Psionic.
+//! Resumable streamed dataset, checkpoint, and policy-weight delivery contracts
+//! for Psionic.
 
 use psionic_runtime::{
     KvResidencyExternalLocator, RuntimeDispatchPlan, RuntimeDispatchPolicy,
@@ -20,6 +21,8 @@ pub enum DatastreamSubjectKind {
     EvalBundle,
     /// Model checkpoint or optimizer-state delivery.
     Checkpoint,
+    /// Training-policy or weight-state shard delivery.
+    PolicyWeights,
     /// Served-artifact delivery such as sharded weights.
     ServedArtifact,
     /// Adapter or LoRA package delivery.
@@ -34,6 +37,7 @@ impl DatastreamSubjectKind {
             Self::TokenizedCorpus => "tokenized_corpus",
             Self::EvalBundle => "eval_bundle",
             Self::Checkpoint => "checkpoint",
+            Self::PolicyWeights => "policy_weights",
             Self::ServedArtifact => "served_artifact",
             Self::AdapterPackage => "adapter_package",
         }
@@ -169,6 +173,103 @@ impl DatastreamCheckpointBinding {
     }
 }
 
+/// Policy-weight-scoped identity carried alongside one stream.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatastreamPolicyWeightBinding {
+    /// Stable policy family or identifier.
+    pub policy_id: String,
+    /// Monotonic policy revision.
+    pub policy_revision: u64,
+    /// Stable shard identifier.
+    pub shard_id: String,
+    /// Stable shard index inside the broadcast.
+    pub shard_index: usize,
+    /// Total shard count for the assembled artifact.
+    pub shard_count: usize,
+    /// Stable digest for the assembled full-weight artifact.
+    pub assembled_artifact_digest: String,
+    /// Publication timestamp for freshness enforcement.
+    pub published_at_ms: u64,
+    /// Freshness window for accepting this artifact.
+    pub freshness_window_ms: u64,
+}
+
+impl DatastreamPolicyWeightBinding {
+    /// Creates one policy-weight binding from explicit policy and shard facts.
+    #[must_use]
+    pub fn new(
+        policy_id: impl Into<String>,
+        policy_revision: u64,
+        shard_id: impl Into<String>,
+        shard_index: usize,
+        shard_count: usize,
+        assembled_artifact_digest: impl Into<String>,
+        published_at_ms: u64,
+        freshness_window_ms: u64,
+    ) -> Self {
+        Self {
+            policy_id: policy_id.into(),
+            policy_revision,
+            shard_id: shard_id.into(),
+            shard_index,
+            shard_count: shard_count.max(1),
+            assembled_artifact_digest: assembled_artifact_digest.into(),
+            published_at_ms,
+            freshness_window_ms: freshness_window_ms.max(1),
+        }
+    }
+
+    /// Returns the last admissible timestamp for this shard.
+    #[must_use]
+    pub fn fresh_until_ms(&self) -> u64 {
+        self.published_at_ms
+            .saturating_add(self.freshness_window_ms)
+    }
+
+    /// Returns whether the shard is stale at the provided timestamp.
+    #[must_use]
+    pub fn is_stale_at_ms(&self, observed_at_ms: u64) -> bool {
+        observed_at_ms > self.fresh_until_ms()
+    }
+}
+
+/// Control-plane-visible mirror type for one heavy artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatastreamMirrorKind {
+    /// Pull the artifact from an HTTP mirror.
+    HttpPull,
+    /// Resolve the artifact through relay metadata.
+    Relay,
+}
+
+/// Lightweight mirror metadata for one heavy artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatastreamMirrorLocator {
+    /// Stable mirror identifier.
+    pub mirror_id: String,
+    /// Mirror transport kind.
+    pub kind: DatastreamMirrorKind,
+    /// HTTP URL or relay locator.
+    pub locator: String,
+}
+
+impl DatastreamMirrorLocator {
+    /// Creates one mirror locator.
+    #[must_use]
+    pub fn new(
+        mirror_id: impl Into<String>,
+        kind: DatastreamMirrorKind,
+        locator: impl Into<String>,
+    ) -> Self {
+        Self {
+            mirror_id: mirror_id.into(),
+            kind,
+            locator: locator.into(),
+        }
+    }
+}
+
 /// One stable chunk boundary inside a streamed payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatastreamChunkDescriptor {
@@ -209,6 +310,12 @@ pub struct DatastreamManifest {
     /// Optional checkpoint binding.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint_binding: Option<DatastreamCheckpointBinding>,
+    /// Optional policy-weight binding.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy_weight_binding: Option<DatastreamPolicyWeightBinding>,
+    /// Optional mirror metadata for replay-safe control-plane refs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<DatastreamMirrorLocator>,
     /// Stable chunk descriptors in transfer order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chunks: Vec<DatastreamChunkDescriptor>,
@@ -247,6 +354,8 @@ impl DatastreamManifest {
             provenance_digest: None,
             dataset_binding: None,
             checkpoint_binding: None,
+            policy_weight_binding: None,
+            mirrors: Vec::new(),
             chunks,
         }
     }
@@ -279,6 +388,23 @@ impl DatastreamManifest {
         checkpoint_binding: DatastreamCheckpointBinding,
     ) -> Self {
         self.checkpoint_binding = Some(checkpoint_binding);
+        self
+    }
+
+    /// Attaches policy-weight identity for the stream.
+    #[must_use]
+    pub fn with_policy_weight_binding(
+        mut self,
+        policy_weight_binding: DatastreamPolicyWeightBinding,
+    ) -> Self {
+        self.policy_weight_binding = Some(policy_weight_binding);
+        self
+    }
+
+    /// Adds one mirror locator for this artifact.
+    #[must_use]
+    pub fn with_mirror(mut self, mirror: DatastreamMirrorLocator) -> Self {
+        self.mirrors.push(mirror);
         self
     }
 
@@ -345,6 +471,32 @@ impl DatastreamManifest {
                 hasher.update(step.to_string().as_bytes());
             }
         }
+        if let Some(policy_weight_binding) = &self.policy_weight_binding {
+            hasher.update(b"|policy_weight|");
+            hasher.update(policy_weight_binding.policy_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.policy_revision.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.shard_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.shard_index.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.shard_count.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.assembled_artifact_digest.as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.published_at_ms.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(policy_weight_binding.freshness_window_ms.to_string().as_bytes());
+        }
+        for mirror in &self.mirrors {
+            hasher.update(b"|mirror|");
+            hasher.update(mirror.mirror_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(mirror_kind_label(mirror.kind));
+            hasher.update(b"|");
+            hasher.update(mirror.locator.as_bytes());
+        }
         for chunk in &self.chunks {
             hasher.update(b"|chunk|");
             hasher.update(chunk.index.to_string().as_bytes());
@@ -392,6 +544,8 @@ impl DatastreamManifest {
             provenance_digest: self.provenance_digest.clone(),
             dataset_binding: self.dataset_binding.clone(),
             checkpoint_binding: self.checkpoint_binding.clone(),
+            policy_weight_binding: self.policy_weight_binding.clone(),
+            mirrors: self.mirrors.clone(),
         }
     }
 
@@ -520,6 +674,12 @@ pub struct DatastreamManifestRef {
     /// Optional checkpoint binding.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint_binding: Option<DatastreamCheckpointBinding>,
+    /// Optional policy-weight binding.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy_weight_binding: Option<DatastreamPolicyWeightBinding>,
+    /// Optional mirror metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<DatastreamMirrorLocator>,
 }
 
 impl DatastreamManifestRef {
@@ -566,6 +726,249 @@ impl DatastreamManifestRef {
         )
         .with_detail(detail))
     }
+
+    fn policy_weight_binding(
+        &self,
+    ) -> Result<&DatastreamPolicyWeightBinding, DatastreamTransferError> {
+        if self.subject != DatastreamSubjectKind::PolicyWeights {
+            return Err(DatastreamTransferError::PolicyWeightContractInvalid {
+                stream_id: self.stream_id.clone(),
+                subject: self.subject,
+            });
+        }
+        self.policy_weight_binding.as_ref().ok_or_else(|| {
+            DatastreamTransferError::PolicyWeightBindingMissing {
+                stream_id: self.stream_id.clone(),
+            }
+        })
+    }
+
+    /// Exports this manifest reference as a lightweight control-plane ref for policy weights.
+    pub fn policy_weight_control_plane_ref(
+        &self,
+        observed_at_ms: u64,
+    ) -> Result<DatastreamPolicyWeightControlPlaneRef, DatastreamTransferError> {
+        let binding = self.policy_weight_binding()?;
+        if binding.is_stale_at_ms(observed_at_ms) {
+            return Err(DatastreamTransferError::PolicyWeightStale {
+                stream_id: self.stream_id.clone(),
+                policy_id: binding.policy_id.clone(),
+                policy_revision: binding.policy_revision,
+                published_at_ms: binding.published_at_ms,
+                freshness_window_ms: binding.freshness_window_ms,
+                observed_at_ms,
+            });
+        }
+        DatastreamPolicyWeightControlPlaneRef::new(self.clone())
+    }
+}
+
+/// Lightweight control-plane reference for one heavy policy-weight shard.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatastreamPolicyWeightControlPlaneRef {
+    /// Stable stream identifier.
+    pub stream_id: String,
+    /// Stable manifest digest for the heavy artifact.
+    pub manifest_digest: String,
+    /// Stable object digest for the shard payload.
+    pub object_digest: String,
+    /// Stable policy identifier.
+    pub policy_id: String,
+    /// Monotonic policy revision.
+    pub policy_revision: u64,
+    /// Stable shard identifier.
+    pub shard_id: String,
+    /// Stable shard index.
+    pub shard_index: usize,
+    /// Total shard count.
+    pub shard_count: usize,
+    /// Assembled full-artifact digest.
+    pub assembled_artifact_digest: String,
+    /// Publication timestamp.
+    pub published_at_ms: u64,
+    /// Freshness window.
+    pub freshness_window_ms: u64,
+    /// Control-plane-visible mirrors.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<DatastreamMirrorLocator>,
+    /// Stable digest over the control-plane ref.
+    pub control_plane_digest: String,
+}
+
+impl DatastreamPolicyWeightControlPlaneRef {
+    /// Builds one lightweight control-plane ref from a manifest ref.
+    pub fn new(manifest: DatastreamManifestRef) -> Result<Self, DatastreamTransferError> {
+        let binding = manifest.policy_weight_binding.clone().ok_or_else(|| {
+            DatastreamTransferError::PolicyWeightBindingMissing {
+                stream_id: manifest.stream_id.clone(),
+            }
+        })?;
+        let control_plane_digest = stable_policy_weight_control_plane_digest(
+            manifest.stream_id.as_str(),
+            manifest.manifest_digest.as_str(),
+            manifest.object_digest.as_str(),
+            &binding,
+            manifest.mirrors.as_slice(),
+        );
+        Ok(Self {
+            stream_id: manifest.stream_id,
+            manifest_digest: manifest.manifest_digest,
+            object_digest: manifest.object_digest,
+            policy_id: binding.policy_id,
+            policy_revision: binding.policy_revision,
+            shard_id: binding.shard_id,
+            shard_index: binding.shard_index,
+            shard_count: binding.shard_count,
+            assembled_artifact_digest: binding.assembled_artifact_digest,
+            published_at_ms: binding.published_at_ms,
+            freshness_window_ms: binding.freshness_window_ms,
+            mirrors: manifest.mirrors,
+            control_plane_digest,
+        })
+    }
+
+    /// Returns the last admissible timestamp for this ref.
+    #[must_use]
+    pub fn fresh_until_ms(&self) -> u64 {
+        self.published_at_ms
+            .saturating_add(self.freshness_window_ms)
+    }
+
+    /// Returns an estimate of the ref size without heavy payload bytes.
+    #[must_use]
+    pub fn estimated_control_plane_bytes(&self) -> usize {
+        self.stream_id.len()
+            + self.manifest_digest.len()
+            + self.object_digest.len()
+            + self.policy_id.len()
+            + self.shard_id.len()
+            + self.assembled_artifact_digest.len()
+            + self.control_plane_digest.len()
+            + self
+                .mirrors
+                .iter()
+                .map(|mirror| mirror.mirror_id.len() + mirror.locator.len() + 8)
+                .sum::<usize>()
+            + 64
+    }
+}
+
+/// Control-plane summary for a multi-shard policy-weight broadcast.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatastreamPolicyWeightBroadcastManifest {
+    /// Stable policy identifier.
+    pub policy_id: String,
+    /// Monotonic policy revision.
+    pub policy_revision: u64,
+    /// Stable digest for the assembled full-weight artifact.
+    pub assembled_artifact_digest: String,
+    /// Publication timestamp shared by the broadcast.
+    pub published_at_ms: u64,
+    /// Freshness window for the full broadcast.
+    pub freshness_window_ms: u64,
+    /// Ordered shard refs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shards: Vec<DatastreamPolicyWeightControlPlaneRef>,
+    /// Stable digest over the full broadcast contract.
+    pub broadcast_digest: String,
+}
+
+impl DatastreamPolicyWeightBroadcastManifest {
+    /// Creates a broadcast manifest from validated shard refs.
+    pub fn from_manifest_refs(
+        manifest_refs: Vec<DatastreamManifestRef>,
+        observed_at_ms: u64,
+    ) -> Result<Self, DatastreamTransferError> {
+        let mut shards = manifest_refs
+            .into_iter()
+            .map(|manifest_ref| manifest_ref.policy_weight_control_plane_ref(observed_at_ms))
+            .collect::<Result<Vec<_>, _>>()?;
+        shards.sort_by_key(|shard| shard.shard_index);
+        let Some(first) = shards.first() else {
+            return Err(DatastreamTransferError::PolicyWeightBroadcastEmpty);
+        };
+        for shard in &shards {
+            if shard.policy_id != first.policy_id
+                || shard.policy_revision != first.policy_revision
+                || shard.assembled_artifact_digest != first.assembled_artifact_digest
+                || shard.shard_count != first.shard_count
+                || shard.published_at_ms != first.published_at_ms
+                || shard.freshness_window_ms != first.freshness_window_ms
+            {
+                return Err(DatastreamTransferError::PolicyWeightBroadcastBindingMismatch {
+                    expected_policy_id: first.policy_id.clone(),
+                    actual_policy_id: shard.policy_id.clone(),
+                    expected_policy_revision: first.policy_revision,
+                    actual_policy_revision: shard.policy_revision,
+                });
+            }
+        }
+        let observed_indices = shards.iter().map(|shard| shard.shard_index).collect::<Vec<_>>();
+        if observed_indices.len() != first.shard_count
+            || observed_indices
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != first.shard_count
+            || !observed_indices
+                .iter()
+                .copied()
+                .eq(0..first.shard_count)
+        {
+            return Err(DatastreamTransferError::PolicyWeightBroadcastShardCoverageInvalid {
+                expected_shard_count: first.shard_count,
+                observed_indices,
+            });
+        }
+        let broadcast_digest = stable_policy_weight_broadcast_digest(shards.as_slice());
+        Ok(Self {
+            policy_id: first.policy_id.clone(),
+            policy_revision: first.policy_revision,
+            assembled_artifact_digest: first.assembled_artifact_digest.clone(),
+            published_at_ms: first.published_at_ms,
+            freshness_window_ms: first.freshness_window_ms,
+            shards,
+            broadcast_digest,
+        })
+    }
+
+    /// Returns an estimate of control-plane bytes for the full broadcast.
+    #[must_use]
+    pub fn estimated_control_plane_bytes(&self) -> usize {
+        self.policy_id.len()
+            + self.assembled_artifact_digest.len()
+            + self.broadcast_digest.len()
+            + self
+                .shards
+                .iter()
+                .map(DatastreamPolicyWeightControlPlaneRef::estimated_control_plane_bytes)
+                .sum::<usize>()
+            + 64
+    }
+}
+
+/// One delivered shard receipt inside a broadcast.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatastreamPolicyWeightShardReceipt {
+    /// Lightweight shard ref.
+    pub shard: DatastreamPolicyWeightControlPlaneRef,
+    /// Underlying datastream receipt.
+    pub delivery: DatastreamDeliveryReceipt,
+}
+
+/// Final receipt for one multi-shard policy-weight broadcast.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatastreamPolicyWeightBroadcastReceipt {
+    /// Lightweight broadcast contract.
+    pub broadcast: DatastreamPolicyWeightBroadcastManifest,
+    /// Delivered shard receipts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shards: Vec<DatastreamPolicyWeightShardReceipt>,
+    /// Total bytes delivered across all shards.
+    pub bytes_delivered: u64,
+    /// Stable digest over the receipt.
+    pub receipt_digest: String,
 }
 
 /// Resume cursor describing the next chunk boundary a client expects.
@@ -747,6 +1150,55 @@ pub enum DatastreamTransferError {
         subject: DatastreamSubjectKind,
         checkpoint_family: Option<String>,
     },
+    /// The manifest reference is not a valid policy-weight contract.
+    #[error(
+        "datastream `{stream_id}` is not a valid policy-weight contract: subject `{subject:?}`"
+    )]
+    PolicyWeightContractInvalid {
+        stream_id: String,
+        subject: DatastreamSubjectKind,
+    },
+    /// A policy-weight manifest is missing its binding.
+    #[error("datastream `{stream_id}` is missing policy-weight binding")]
+    PolicyWeightBindingMissing { stream_id: String },
+    /// A policy-weight ref is stale for the requested timestamp.
+    #[error(
+        "policy-weight datastream `{stream_id}` for policy `{policy_id}` revision `{policy_revision}` is stale at `{observed_at_ms}` (published `{published_at_ms}`, freshness window `{freshness_window_ms}`)"
+    )]
+    PolicyWeightStale {
+        stream_id: String,
+        policy_id: String,
+        policy_revision: u64,
+        published_at_ms: u64,
+        freshness_window_ms: u64,
+        observed_at_ms: u64,
+    },
+    /// The broadcast contains no shard refs.
+    #[error("policy-weight broadcast cannot be empty")]
+    PolicyWeightBroadcastEmpty,
+    /// Not every shard agreed on the same policy and assembly identity.
+    #[error(
+        "policy-weight broadcast binding mismatch: expected `{expected_policy_id}` revision `{expected_policy_revision}`, found `{actual_policy_id}` revision `{actual_policy_revision}`"
+    )]
+    PolicyWeightBroadcastBindingMismatch {
+        expected_policy_id: String,
+        actual_policy_id: String,
+        expected_policy_revision: u64,
+        actual_policy_revision: u64,
+    },
+    /// The broadcast shards are missing coverage or contain duplicates.
+    #[error(
+        "policy-weight broadcast shard coverage invalid: expected `{expected_shard_count}` shards but saw indices `{observed_indices:?}`"
+    )]
+    PolicyWeightBroadcastShardCoverageInvalid {
+        expected_shard_count: usize,
+        observed_indices: Vec<usize>,
+    },
+    /// The delivered shards do not reassemble to the expected full-artifact digest.
+    #[error(
+        "policy-weight assembled artifact digest mismatch: expected `{expected}` but assembled `{actual}`"
+    )]
+    PolicyWeightAssemblyDigestMismatch { expected: String, actual: String },
 }
 
 /// In-memory server that exposes one manifest-backed payload over resumable windows.
@@ -1034,6 +1486,174 @@ impl InMemoryDatastreamClient {
     }
 }
 
+/// In-memory multi-shard policy-weight broadcast built on the resumable datastream plane.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InMemoryPolicyWeightBroadcast {
+    broadcast: DatastreamPolicyWeightBroadcastManifest,
+    servers: Vec<InMemoryDatastreamServer>,
+}
+
+impl InMemoryPolicyWeightBroadcast {
+    /// Creates a broadcast from manifest-backed shard servers.
+    pub fn new(
+        mut servers: Vec<InMemoryDatastreamServer>,
+        observed_at_ms: u64,
+    ) -> Result<Self, DatastreamTransferError> {
+        servers.sort_by_key(|server| {
+            server
+                .manifest()
+                .policy_weight_binding
+                .as_ref()
+                .map_or(usize::MAX, |binding| binding.shard_index)
+        });
+        let broadcast = DatastreamPolicyWeightBroadcastManifest::from_manifest_refs(
+            servers.iter().map(InMemoryDatastreamServer::manifest_ref).collect(),
+            observed_at_ms,
+        )?;
+        Ok(Self { broadcast, servers })
+    }
+
+    /// Returns the lightweight control-plane summary for the broadcast.
+    #[must_use]
+    pub const fn broadcast(&self) -> &DatastreamPolicyWeightBroadcastManifest {
+        &self.broadcast
+    }
+
+    /// Downloads every shard over the resumable heavy artifact plane and assembles a receipt.
+    pub fn deliver(
+        &self,
+        observed_at_ms: u64,
+        max_chunks_in_flight: usize,
+    ) -> Result<DatastreamPolicyWeightBroadcastReceipt, DatastreamTransferError> {
+        let mut shard_receipts = Vec::new();
+        let mut assembled = Vec::new();
+        for server in &self.servers {
+            let manifest = server.manifest();
+            let manifest_ref = manifest.manifest_ref();
+            let shard_ref = manifest_ref.policy_weight_control_plane_ref(observed_at_ms)?;
+            let mut session = server.open(
+                DatastreamOpenRequest::new(manifest.stable_digest())
+                    .with_max_chunks_in_flight(max_chunks_in_flight),
+            )?;
+            let mut client = InMemoryDatastreamClient::new(manifest.clone());
+            loop {
+                let window = session.next_window()?;
+                if window.is_empty() {
+                    break;
+                }
+                for chunk in window {
+                    client.apply_chunk(chunk)?;
+                }
+            }
+            assembled.extend_from_slice(client.received_bytes());
+            let delivery = client.finish()?;
+            shard_receipts.push(DatastreamPolicyWeightShardReceipt {
+                shard: shard_ref,
+                delivery,
+            });
+        }
+        let actual_assembled_digest = digest_bytes(&assembled);
+        if actual_assembled_digest != self.broadcast.assembled_artifact_digest {
+            return Err(DatastreamTransferError::PolicyWeightAssemblyDigestMismatch {
+                expected: self.broadcast.assembled_artifact_digest.clone(),
+                actual: actual_assembled_digest,
+            });
+        }
+        let bytes_delivered = shard_receipts
+            .iter()
+            .fold(0_u64, |acc, receipt| acc.saturating_add(receipt.delivery.bytes_delivered));
+        let receipt_digest =
+            stable_policy_weight_broadcast_receipt_digest(&self.broadcast, shard_receipts.as_slice(), bytes_delivered);
+        Ok(DatastreamPolicyWeightBroadcastReceipt {
+            broadcast: self.broadcast.clone(),
+            shards: shard_receipts,
+            bytes_delivered,
+            receipt_digest,
+        })
+    }
+}
+
+fn stable_policy_weight_control_plane_digest(
+    stream_id: &str,
+    manifest_digest: &str,
+    object_digest: &str,
+    binding: &DatastreamPolicyWeightBinding,
+    mirrors: &[DatastreamMirrorLocator],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_policy_weight_control_plane_ref|");
+    hasher.update(stream_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(manifest_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(object_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.policy_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.policy_revision.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.shard_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.shard_index.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.shard_count.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.assembled_artifact_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.published_at_ms.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(binding.freshness_window_ms.to_string().as_bytes());
+    for mirror in mirrors {
+        hasher.update(b"|mirror|");
+        hasher.update(mirror.mirror_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(mirror_kind_label(mirror.kind));
+        hasher.update(b"|");
+        hasher.update(mirror.locator.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_policy_weight_broadcast_digest(
+    shards: &[DatastreamPolicyWeightControlPlaneRef],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_policy_weight_broadcast_manifest|");
+    for shard in shards {
+        hasher.update(b"|shard|");
+        hasher.update(shard.control_plane_digest.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_policy_weight_broadcast_receipt_digest(
+    broadcast: &DatastreamPolicyWeightBroadcastManifest,
+    shards: &[DatastreamPolicyWeightShardReceipt],
+    bytes_delivered: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_policy_weight_broadcast_receipt|");
+    hasher.update(broadcast.broadcast_digest.as_bytes());
+    hasher.update(b"|bytes|");
+    hasher.update(bytes_delivered.to_string().as_bytes());
+    for shard in shards {
+        hasher.update(b"|receipt|");
+        hasher.update(shard.shard.control_plane_digest.as_bytes());
+        hasher.update(b"|");
+        hasher.update(shard.delivery.manifest.manifest_digest.as_bytes());
+        hasher.update(b"|");
+        hasher.update(shard.delivery.bytes_delivered.to_string().as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn mirror_kind_label(kind: DatastreamMirrorKind) -> &'static [u8] {
+    match kind {
+        DatastreamMirrorKind::HttpPull => b"http_pull",
+        DatastreamMirrorKind::Relay => b"relay",
+    }
+}
+
 fn digest_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -1076,9 +1696,15 @@ mod tests {
 
     use super::{
         DatastreamCheckpointBinding, DatastreamDatasetBinding, DatastreamEncoding,
-        DatastreamOpenRequest, DatastreamSubjectKind, DatastreamTransferError,
-        InMemoryDatastreamClient, InMemoryDatastreamServer,
+        DatastreamMirrorKind, DatastreamMirrorLocator, DatastreamOpenRequest,
+        DatastreamPolicyWeightBinding, DatastreamSubjectKind, DatastreamTransferError,
+        InMemoryDatastreamClient, InMemoryDatastreamServer, InMemoryPolicyWeightBroadcast,
     };
+
+    fn assembled_digest(shards: &[&[u8]]) -> String {
+        let bytes = shards.iter().flat_map(|shard| shard.iter().copied()).collect::<Vec<_>>();
+        super::digest_bytes(&bytes)
+    }
 
     #[test]
     fn dataset_stream_round_trips_with_resume_and_receipt() -> Result<(), Box<dyn std::error::Error>>
@@ -1296,5 +1922,184 @@ mod tests {
                 checkpoint_family: None,
             }
         );
+    }
+
+    #[test]
+    fn policy_weight_broadcast_keeps_control_plane_lightweight_and_delivers_bytes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let shard_a = b"policy-weight-shard-a".repeat(32);
+        let shard_b = b"policy-weight-shard-b".repeat(32);
+        let assembled_artifact_digest = assembled_digest(&[shard_a.as_slice(), shard_b.as_slice()]);
+        let published_at_ms = 1_000;
+        let freshness_window_ms = 5_000;
+        let manifest_a = super::DatastreamManifest::from_bytes(
+            "policy-weights-0",
+            DatastreamSubjectKind::PolicyWeights,
+            &shard_a,
+            5,
+            DatastreamEncoding::Safetensors,
+        )
+        .with_policy_weight_binding(DatastreamPolicyWeightBinding::new(
+            "policy.decoder",
+            7,
+            "shard-a",
+            0,
+            2,
+            assembled_artifact_digest.clone(),
+            published_at_ms,
+            freshness_window_ms,
+        ))
+        .with_mirror(DatastreamMirrorLocator::new(
+            "mirror-http-a",
+            DatastreamMirrorKind::HttpPull,
+            "https://weights.example/shard-a",
+        ));
+        let manifest_b = super::DatastreamManifest::from_bytes(
+            "policy-weights-1",
+            DatastreamSubjectKind::PolicyWeights,
+            &shard_b,
+            5,
+            DatastreamEncoding::Safetensors,
+        )
+        .with_policy_weight_binding(DatastreamPolicyWeightBinding::new(
+            "policy.decoder",
+            7,
+            "shard-b",
+            1,
+            2,
+            assembled_artifact_digest.clone(),
+            published_at_ms,
+            freshness_window_ms,
+        ))
+        .with_mirror(DatastreamMirrorLocator::new(
+            "relay-weights",
+            DatastreamMirrorKind::Relay,
+            "wss://relay.example/policy.decoder/7",
+        ));
+        let broadcast = InMemoryPolicyWeightBroadcast::new(
+            vec![
+                InMemoryDatastreamServer::new(manifest_a, shard_a.clone())?,
+                InMemoryDatastreamServer::new(manifest_b, shard_b.clone())?,
+            ],
+            1_500,
+        )?;
+
+        assert_eq!(broadcast.broadcast().shards.len(), 2);
+        assert!(
+            broadcast.broadcast().estimated_control_plane_bytes()
+                < (shard_a.len() + shard_b.len())
+        );
+        assert_eq!(
+            broadcast.broadcast().shards[0].mirrors[0].mirror_id,
+            "mirror-http-a"
+        );
+
+        let receipt = broadcast.deliver(1_500, 2)?;
+        assert_eq!(receipt.bytes_delivered, (shard_a.len() + shard_b.len()) as u64);
+        assert_eq!(
+            receipt.broadcast.assembled_artifact_digest,
+            assembled_artifact_digest
+        );
+        assert_eq!(receipt.shards.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn stale_policy_weight_ref_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let shard = b"stale-policy-shard".to_vec();
+        let manifest = super::DatastreamManifest::from_bytes(
+            "policy-weights-stale",
+            DatastreamSubjectKind::PolicyWeights,
+            &shard,
+            4,
+            DatastreamEncoding::Safetensors,
+        )
+        .with_policy_weight_binding(DatastreamPolicyWeightBinding::new(
+            "policy.decoder",
+            8,
+            "shard-a",
+            0,
+            1,
+            assembled_digest(&[shard.as_slice()]),
+            1_000,
+            500,
+        ));
+
+        let error = manifest
+            .manifest_ref()
+            .policy_weight_control_plane_ref(2_000)
+            .expect_err("stale policy-weight ref should be rejected");
+        assert_eq!(
+            error,
+            DatastreamTransferError::PolicyWeightStale {
+                stream_id: String::from("policy-weights-stale"),
+                policy_id: String::from("policy.decoder"),
+                policy_revision: 8,
+                published_at_ms: 1_000,
+                freshness_window_ms: 500,
+                observed_at_ms: 2_000,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn policy_weight_broadcast_rejects_binding_mismatch()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let shard_a = b"policy-weight-shard-a".to_vec();
+        let shard_b = b"policy-weight-shard-b".to_vec();
+        let manifest_a = super::DatastreamManifest::from_bytes(
+            "policy-weights-0",
+            DatastreamSubjectKind::PolicyWeights,
+            &shard_a,
+            5,
+            DatastreamEncoding::Safetensors,
+        )
+        .with_policy_weight_binding(DatastreamPolicyWeightBinding::new(
+            "policy.decoder",
+            7,
+            "shard-a",
+            0,
+            2,
+            assembled_digest(&[shard_a.as_slice(), shard_b.as_slice()]),
+            1_000,
+            5_000,
+        ));
+        let manifest_b = super::DatastreamManifest::from_bytes(
+            "policy-weights-1",
+            DatastreamSubjectKind::PolicyWeights,
+            &shard_b,
+            5,
+            DatastreamEncoding::Safetensors,
+        )
+        .with_policy_weight_binding(DatastreamPolicyWeightBinding::new(
+            "policy.other",
+            9,
+            "shard-b",
+            1,
+            2,
+            assembled_digest(&[shard_a.as_slice(), shard_b.as_slice()]),
+            1_000,
+            5_000,
+        ));
+
+        let error = InMemoryPolicyWeightBroadcast::new(
+            vec![
+                InMemoryDatastreamServer::new(manifest_a, shard_a)?,
+                InMemoryDatastreamServer::new(manifest_b, shard_b)?,
+            ],
+            1_500,
+        )
+        .expect_err("mismatched bindings should be rejected");
+        assert_eq!(
+            error,
+            DatastreamTransferError::PolicyWeightBroadcastBindingMismatch {
+                expected_policy_id: String::from("policy.decoder"),
+                actual_policy_id: String::from("policy.other"),
+                expected_policy_revision: 7,
+                actual_policy_revision: 9,
+            }
+        );
+        Ok(())
     }
 }

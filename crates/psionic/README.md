@@ -38,7 +38,7 @@ engine can evolve without bleeding product-specific behavior into shared crates.
   posture.
 - `psionic-sandbox`: bounded sandbox runtime detection, profile realization, and execution receipts.
 - `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, policy-gated HTTP service tunnels, and transport observations.
-- `psionic-datastream`: resumable dataset/checkpoint manifests, chunk transport, and delivery receipts.
+- `psionic-datastream`: resumable dataset/checkpoint/policy-weight manifests, chunk transport, freshness-aware broadcast control refs, and delivery receipts.
 - `psionic-data`: versioned dataset manifests, tokenizer digests, split declarations, streamed iteration contracts, and long-context packing policies.
 - `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
 - `psionic-collectives`: elastic device-mesh, bandwidth-aware local/global sync planning, and benchmark-gated collective policy for training-class lanes.
@@ -170,6 +170,9 @@ Implemented now:
   tiers.
 - benchmark-backed quantization dispatch plus low-level batching and parking
   hooks used by serve and datastream layers.
+- explicit policy-weight shard manifests, lightweight control-plane refs,
+  freshness windows, mirror metadata, and assembled broadcast receipts on top
+  of the resumable datastream plane.
 - `psionic-sandbox` runtime detection, bounded execution, background jobs, and
   file-transfer lifecycle.
 - canonical execution-proof bundles and embeddings-first activation-fingerprint
@@ -249,6 +252,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/COLLECTIVE_SYNC_POLICY_REFERENCE.md](docs/COLLECTIVE_SYNC_POLICY_REFERENCE.md)** —
   canonical local/global sync cadence, transport-feedback, and replanning
   runbook for the first explicit Psionic collective sync planner.
+- **[docs/POLICY_WEIGHT_BROADCAST_REFERENCE.md](docs/POLICY_WEIGHT_BROADCAST_REFERENCE.md)** —
+  canonical policy-weight shard, freshness, and heavy-artifact broadcast
+  runbook for the first explicit Psionic datastream control-plane split.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
