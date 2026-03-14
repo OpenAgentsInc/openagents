@@ -94,11 +94,12 @@ message CapacityInstrument {
   ComputeSettlementMode settlement_mode = 12;
   int64 created_at_ms = 13;
   CapacityInstrumentStatus status = 14;
-  CapacityInstrumentClosureReason closure_reason = 15;
-  CapacityNonDeliveryReason non_delivery_reason = 16;
-  ComputeSettlementFailureReason settlement_failure_reason = 17;
-  optional string lifecycle_reason_detail = 18;
-  string metadata_json = 19;
+  optional ComputeEnvironmentBinding environment_binding = 15;
+  CapacityInstrumentClosureReason closure_reason = 16;
+  CapacityNonDeliveryReason non_delivery_reason = 17;
+  ComputeSettlementFailureReason settlement_failure_reason = 18;
+  optional string lifecycle_reason_detail = 19;
+  string metadata_json = 20;
 }
 
 message StructuredCapacityLeg {

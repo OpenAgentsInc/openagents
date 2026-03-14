@@ -714,6 +714,13 @@ pub fn validate_compute_capability_envelope(
         if environment_binding.environment_ref.trim().is_empty() {
             return Err("compute_environment_binding_ref_missing".to_string());
         }
+        if environment_binding
+            .environment_version
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("compute_environment_binding_version_invalid".to_string());
+        }
     }
 
     if let Some(checkpoint_binding) = envelope.checkpoint_binding.as_ref() {
@@ -883,6 +890,8 @@ pub struct CapacityLot {
     #[serde(default)]
     pub status: CapacityLotStatus,
     #[serde(default)]
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
+    #[serde(default)]
     pub metadata: Value,
 }
 
@@ -973,6 +982,8 @@ pub struct DeliveryVerificationEvidence {
     #[serde(default)]
     pub environment_ref: Option<String>,
     #[serde(default)]
+    pub environment_version: Option<String>,
+    #[serde(default)]
     pub eval_run_ref: Option<String>,
 }
 
@@ -1000,6 +1011,16 @@ pub fn validate_delivery_proof(proof: &DeliveryProof) -> Result<(), String> {
             && verification_evidence.proof_bundle_ref.is_none()
         {
             return Err("delivery_proof_challenge_requires_proof_bundle".to_string());
+        }
+        if verification_evidence.environment_version.is_some()
+            && verification_evidence.environment_ref.is_none()
+        {
+            return Err("delivery_proof_environment_version_requires_environment_ref".to_string());
+        }
+        if verification_evidence.environment_ref.is_some()
+            && verification_evidence.environment_version.is_none()
+        {
+            return Err("delivery_proof_environment_version_missing".to_string());
         }
         if verification_evidence.eval_run_ref.is_some()
             && verification_evidence.environment_ref.is_none()
@@ -1174,6 +1195,8 @@ pub struct CapacityInstrument {
     pub created_at_ms: i64,
     #[serde(default)]
     pub status: CapacityInstrumentStatus,
+    #[serde(default)]
+    pub environment_binding: Option<ComputeEnvironmentBinding>,
     #[serde(default)]
     pub closure_reason: Option<CapacityInstrumentClosureReason>,
     #[serde(default)]
@@ -1653,6 +1676,7 @@ mod tests {
                 validator_run_ref: Some("validator_run:cluster".to_string()),
                 challenge_result_refs: vec!["validator_challenge_result:ok".to_string()],
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             }),
             promised_capability_envelope: Some(ComputeCapabilityEnvelope {
@@ -1717,6 +1741,7 @@ mod tests {
                 validator_run_ref: None,
                 challenge_result_refs: Vec::new(),
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             }),
             promised_capability_envelope: Some(ComputeCapabilityEnvelope {

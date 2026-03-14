@@ -26,12 +26,13 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
     CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
-    ComputeDeliveryVarianceReason, ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
-    ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
-    ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
-    DeliveryRejectionReason, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-    StructuredCapacityInstrumentStatus, StructuredCapacityLegRole, canonical_compute_product_id,
-    validate_compute_environment_package, validate_delivery_proof, validate_launch_compute_product,
+    ComputeDeliveryVarianceReason, ComputeEnvironmentBinding, ComputeEnvironmentPackage,
+    ComputeEnvironmentPackageStatus, ComputeIndex, ComputeIndexCorrectionReason,
+    ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
+    DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
+    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+    StructuredCapacityLegRole, canonical_compute_product_id, validate_compute_environment_package,
+    validate_delivery_proof, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -889,6 +890,18 @@ fn append_delivery_proof_evidence(evidence: &mut Vec<EvidenceRef>, proof: &Deliv
                 sha256_prefixed_text(challenge_result_ref),
             ));
         }
+        if let Some(environment_ref) = verification_evidence.environment_ref.as_deref() {
+            let environment_digest = verification_evidence
+                .environment_version
+                .as_deref()
+                .map(|version| format!("{environment_ref}@{version}"))
+                .unwrap_or_else(|| environment_ref.to_string());
+            evidence.push(EvidenceRef::new(
+                "compute_delivery_environment",
+                environment_ref.to_string(),
+                sha256_prefixed_text(environment_digest.as_str()),
+            ));
+        }
     }
     if let Some(variance_reason) = proof.variance_reason {
         evidence.push(EvidenceRef::new(
@@ -1211,6 +1224,174 @@ impl KernelState {
 
     pub fn set_compute_runtime_policy(&mut self, policy: ComputeRuntimePolicy) {
         self.compute_runtime_policy = policy;
+    }
+
+    fn normalize_compute_environment_binding(
+        binding: &mut ComputeEnvironmentBinding,
+    ) -> Result<(), String> {
+        binding.environment_ref = binding.environment_ref.trim().to_string();
+        if binding.environment_ref.is_empty() {
+            return Err("compute_environment_binding_ref_missing".to_string());
+        }
+        binding.environment_version = binding
+            .environment_version
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        binding.dataset_ref = binding
+            .dataset_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        binding.rubric_ref = binding
+            .rubric_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        binding.evaluator_policy_ref = binding
+            .evaluator_policy_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        Ok(())
+    }
+
+    fn resolve_compute_environment_binding(
+        &self,
+        binding: &ComputeEnvironmentBinding,
+    ) -> Result<(ComputeEnvironmentBinding, ComputeEnvironmentPackage), String> {
+        let mut resolved = binding.clone();
+        Self::normalize_compute_environment_binding(&mut resolved)?;
+        let Some(package) = self.get_compute_environment_package(
+            resolved.environment_ref.as_str(),
+            resolved.environment_version.as_deref(),
+        ) else {
+            return Err("compute_environment_package_not_found".to_string());
+        };
+        resolved.environment_version = Some(package.version.clone());
+        Ok((resolved, package))
+    }
+
+    fn merge_compute_environment_binding(
+        parent: Option<ComputeEnvironmentBinding>,
+        child: Option<ComputeEnvironmentBinding>,
+    ) -> Result<Option<ComputeEnvironmentBinding>, String> {
+        match (parent, child) {
+            (None, None) => Ok(None),
+            (Some(parent), None) => Ok(Some(parent)),
+            (None, Some(mut child)) => {
+                Self::normalize_compute_environment_binding(&mut child)?;
+                Ok(Some(child))
+            }
+            (Some(parent), Some(mut child)) => {
+                Self::normalize_compute_environment_binding(&mut child)?;
+                if child.environment_ref != parent.environment_ref {
+                    return Err("compute_environment_binding_mismatch".to_string());
+                }
+                if child.environment_version.is_none() {
+                    child.environment_version = parent.environment_version.clone();
+                }
+                if child.environment_version != parent.environment_version {
+                    return Err("compute_environment_binding_mismatch".to_string());
+                }
+                if child.dataset_ref.is_none() {
+                    child.dataset_ref = parent.dataset_ref.clone();
+                }
+                if child.rubric_ref.is_none() {
+                    child.rubric_ref = parent.rubric_ref.clone();
+                }
+                if child.evaluator_policy_ref.is_none() {
+                    child.evaluator_policy_ref = parent.evaluator_policy_ref.clone();
+                }
+                if parent.dataset_ref.is_some() && child.dataset_ref != parent.dataset_ref {
+                    return Err("compute_environment_binding_mismatch".to_string());
+                }
+                if parent.rubric_ref.is_some() && child.rubric_ref != parent.rubric_ref {
+                    return Err("compute_environment_binding_mismatch".to_string());
+                }
+                if parent.evaluator_policy_ref.is_some()
+                    && child.evaluator_policy_ref != parent.evaluator_policy_ref
+                {
+                    return Err("compute_environment_binding_mismatch".to_string());
+                }
+                Ok(Some(child))
+            }
+        }
+    }
+
+    fn expected_compute_environment_binding(
+        product: &ComputeProduct,
+        lot: Option<&CapacityLot>,
+        instrument: Option<&CapacityInstrument>,
+    ) -> Option<ComputeEnvironmentBinding> {
+        instrument
+            .and_then(|instrument| instrument.environment_binding.clone())
+            .or_else(|| lot.and_then(|lot| lot.environment_binding.clone()))
+            .or_else(|| {
+                product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|envelope| envelope.environment_binding.clone())
+            })
+    }
+
+    fn resolve_delivery_environment_binding(
+        &self,
+        proof: &mut DeliveryProof,
+        expected: Option<&ComputeEnvironmentBinding>,
+    ) -> Result<(), String> {
+        let mut verification = proof.verification_evidence.clone().unwrap_or_default();
+        verification.environment_ref = verification
+            .environment_ref
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        verification.environment_version = verification
+            .environment_version
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        if let Some(expected) = expected {
+            if verification.environment_ref.is_none() {
+                verification.environment_ref = Some(expected.environment_ref.clone());
+            }
+            if verification.environment_version.is_none() {
+                verification.environment_version = expected.environment_version.clone();
+            }
+            if verification.environment_ref.as_deref() != Some(expected.environment_ref.as_str())
+                || verification.environment_version != expected.environment_version
+            {
+                reject_delivery_proof(
+                    proof,
+                    DeliveryRejectionReason::NonConformingDelivery,
+                    "delivery_proof_environment_binding_mismatch",
+                );
+            }
+        } else if let Some(environment_ref) = verification.environment_ref.as_deref() {
+            let Some(package) = self.get_compute_environment_package(
+                environment_ref,
+                verification.environment_version.as_deref(),
+            ) else {
+                return Err("compute_environment_package_not_found".to_string());
+            };
+            verification.environment_version = Some(package.version);
+        }
+
+        if verification.environment_ref.is_some()
+            || verification.environment_version.is_some()
+            || verification.eval_run_ref.is_some()
+            || verification.proof_bundle_ref.is_some()
+            || verification.activation_fingerprint_ref.is_some()
+            || verification.validator_pool_ref.is_some()
+            || verification.validator_run_ref.is_some()
+            || !verification.challenge_result_refs.is_empty()
+        {
+            proof.verification_evidence = Some(verification);
+        }
+
+        validate_delivery_proof(proof)?;
+        Ok(())
     }
 
     pub fn list_compute_products(
@@ -2028,6 +2209,12 @@ impl KernelState {
         req.product.product_id.clone_from(&product_id);
         req.product.created_at_ms =
             normalize_created_at_ms(req.product.created_at_ms, context.now_unix_ms);
+        if let Some(envelope) = req.product.capability_envelope.as_mut()
+            && let Some(binding) = envelope.environment_binding.as_ref()
+        {
+            let (resolved_binding, _) = self.resolve_compute_environment_binding(binding)?;
+            envelope.environment_binding = Some(resolved_binding);
+        }
         validate_launch_compute_product(&req.product)?;
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
@@ -2047,6 +2234,11 @@ impl KernelState {
                     "resource_class": req.product.resource_class.clone(),
                     "status": req.product.status,
                     "index_eligible": req.product.index_eligible,
+                    "environment_binding": req
+                        .product
+                        .capability_envelope
+                        .as_ref()
+                        .and_then(|envelope| envelope.environment_binding.clone()),
                 }),
                 evidence: req.evidence.clone(),
                 hints: req.hints.clone(),
@@ -2202,6 +2394,20 @@ impl KernelState {
         if req.lot.offer_expires_at_ms <= 0 {
             req.lot.offer_expires_at_ms = req.lot.delivery_start_ms;
         }
+        let product_environment_binding = product_record
+            .product
+            .capability_envelope
+            .as_ref()
+            .and_then(|envelope| envelope.environment_binding.clone());
+        let merged_environment_binding = Self::merge_compute_environment_binding(
+            product_environment_binding,
+            req.lot.environment_binding.clone(),
+        )?;
+        req.lot.environment_binding = merged_environment_binding
+            .as_ref()
+            .map(|binding| self.resolve_compute_environment_binding(binding))
+            .transpose()?
+            .map(|(binding, _)| binding);
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
@@ -2227,6 +2433,7 @@ impl KernelState {
                     "product_id": product_id.clone(),
                     "provider_id": req.lot.provider_id.clone(),
                     "status": req.lot.status,
+                    "environment_binding": req.lot.environment_binding.clone(),
                     "product_receipt_id": product_record.receipt_id.clone(),
                 }),
                 evidence,
@@ -2694,6 +2901,27 @@ impl KernelState {
                 return Err("capacity_lot_quantity_unavailable".to_string());
             }
         }
+        let product_environment_binding = product_record
+            .product
+            .capability_envelope
+            .as_ref()
+            .and_then(|envelope| envelope.environment_binding.clone());
+        let lot_environment_binding = lot_record
+            .as_ref()
+            .and_then(|(_, record)| record.lot.environment_binding.clone());
+        let inherited_environment_binding = Self::merge_compute_environment_binding(
+            product_environment_binding,
+            lot_environment_binding,
+        )?;
+        let merged_environment_binding = Self::merge_compute_environment_binding(
+            inherited_environment_binding,
+            req.instrument.environment_binding.clone(),
+        )?;
+        req.instrument.environment_binding = merged_environment_binding
+            .as_ref()
+            .map(|binding| self.resolve_compute_environment_binding(binding))
+            .transpose()?
+            .map(|(binding, _)| binding);
         let committed_capability_envelope = product_record
             .product
             .capability_envelope
@@ -3032,6 +3260,7 @@ impl KernelState {
                     "product_id": product_id.clone(),
                     "capacity_lot_id": req.instrument.capacity_lot_id.clone(),
                     "status": req.instrument.status,
+                    "environment_binding": req.instrument.environment_binding.clone(),
                     "product_receipt_id": product_record.receipt_id.clone(),
                     "capacity_lot_receipt_id": lot_record.as_ref().map(|(_, record)| record.receipt_id.clone()),
                 }),
@@ -4246,6 +4475,17 @@ impl KernelState {
             instrument_record
                 .as_ref()
                 .map(|(_, record)| &record.instrument),
+        )?;
+        let expected_environment_binding = Self::expected_compute_environment_binding(
+            &product_record.product,
+            Some(&lot_record.lot),
+            instrument_record
+                .as_ref()
+                .map(|(_, record)| &record.instrument),
+        );
+        self.resolve_delivery_environment_binding(
+            &mut req.delivery_proof,
+            expected_environment_binding.as_ref(),
         )?;
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
@@ -9753,14 +9993,15 @@ mod tests {
         CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeEnvironmentArtifactExpectation,
-        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
-        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeExecutionKind,
-        ComputeFamily, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
-        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
-        ComputeSettlementMode, ComputeTopologyKind, DeliveryProof, DeliveryProofStatus,
-        DeliveryRejectionReason, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-        GptOssRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
-        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
+        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+        ComputeEnvironmentRubricBinding, ComputeExecutionKind, ComputeFamily, ComputeIndex,
+        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+        ComputeSettlementFailureReason, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
+        DeliveryProofStatus, DeliveryRejectionReason, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+        StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::liquidity::{ReservePartition, ReservePartitionStatus};
     use openagents_kernel_core::receipts::{
@@ -9927,6 +10168,7 @@ mod tests {
                 reserve_state: CapacityReserveState::Available,
                 offer_expires_at_ms: created_at_ms + 60_000,
                 status: CapacityLotStatus::Open,
+                environment_binding: None,
                 metadata: json!({"source": "test"}),
             },
             evidence: Vec::new(),
@@ -9957,6 +10199,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Physical,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Active,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -10354,6 +10597,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Cash,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Open,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -10408,6 +10652,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::BuyerElection,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Open,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -10456,6 +10701,7 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Physical,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Open,
+                environment_binding: None,
                 closure_reason: None,
                 non_delivery_reason: None,
                 settlement_failure_reason: None,
@@ -10689,6 +10935,196 @@ mod tests {
                 .as_ref()
                 .and_then(|harness| harness.time_budget_ms),
             Some(300_000)
+        );
+    }
+
+    #[test]
+    fn environment_binding_inherits_from_product_into_lot_instrument_and_delivery() {
+        let created_at_ms = 1_762_000_321_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+
+        let expected_binding = ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: Some("2026.03.13".to_string()),
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: Some("rubric://math/basic".to_string()),
+            evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+        };
+        let mut product_request = compute_product_request(created_at_ms as i64 + 500);
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: expected_binding.environment_ref.clone(),
+            environment_version: None,
+            dataset_ref: expected_binding.dataset_ref.clone(),
+            rubric_ref: expected_binding.rubric_ref.clone(),
+            evaluator_policy_ref: expected_binding.evaluator_policy_ref.clone(),
+        });
+        let product = kernel
+            .create_compute_product(&fixture_context(created_at_ms + 500), product_request)
+            .expect("create product");
+        assert_eq!(
+            product
+                .response
+                .product
+                .capability_envelope
+                .as_ref()
+                .and_then(|envelope| envelope.environment_binding.clone()),
+            Some(expected_binding.clone())
+        );
+
+        let lot = kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create lot");
+        assert_eq!(
+            lot.response.lot.environment_binding,
+            Some(expected_binding.clone())
+        );
+
+        let instrument = kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create instrument");
+        assert_eq!(
+            instrument.response.instrument.environment_binding,
+            Some(expected_binding.clone())
+        );
+
+        let delivery = kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery");
+        assert_eq!(
+            delivery
+                .response
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.environment_ref.as_deref()),
+            Some("env.openagents.math.basic")
+        );
+        assert_eq!(
+            delivery
+                .response
+                .delivery_proof
+                .verification_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.environment_version.as_deref()),
+            Some("2026.03.13")
+        );
+        let receipt_event = delivery.receipt_event.expect("delivery receipt event");
+        assert!(
+            receipt_event
+                .receipt
+                .evidence
+                .iter()
+                .any(|evidence| evidence.kind == "compute_delivery_environment")
+        );
+    }
+
+    #[test]
+    fn delivery_proof_environment_binding_mismatch_rejects_delivery() {
+        let created_at_ms = 1_762_000_322_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .register_compute_environment_package(
+                &context,
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+
+        let mut product_request = compute_product_request(created_at_ms as i64 + 500);
+        product_request
+            .product
+            .capability_envelope
+            .as_mut()
+            .expect("capability envelope")
+            .environment_binding = Some(ComputeEnvironmentBinding {
+            environment_ref: "env.openagents.math.basic".to_string(),
+            environment_version: None,
+            dataset_ref: Some("dataset://math/basic".to_string()),
+            rubric_ref: None,
+            evaluator_policy_ref: None,
+        });
+        kernel
+            .create_compute_product(&fixture_context(created_at_ms + 500), product_request)
+            .expect("create product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create instrument");
+
+        let mut request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        request.delivery_proof.verification_evidence = Some(DeliveryVerificationEvidence {
+            proof_bundle_ref: None,
+            activation_fingerprint_ref: None,
+            validator_pool_ref: None,
+            validator_run_ref: None,
+            challenge_result_refs: Vec::new(),
+            environment_ref: Some("env.openagents.math.other".to_string()),
+            environment_version: Some("2026.04.01".to_string()),
+            eval_run_ref: None,
+        });
+
+        let response = kernel
+            .record_delivery_proof(&fixture_context(created_at_ms + 3_000), request)
+            .expect("record delivery proof");
+        assert_eq!(
+            response.response.delivery_proof.status,
+            DeliveryProofStatus::Rejected
+        );
+        assert_eq!(
+            response.response.delivery_proof.rejection_reason,
+            Some(DeliveryRejectionReason::NonConformingDelivery)
+        );
+        assert_eq!(
+            response
+                .response
+                .delivery_proof
+                .variance_reason_detail
+                .as_deref(),
+            Some("delivery_proof_environment_binding_mismatch")
+        );
+        assert_eq!(
+            kernel
+                .get_capacity_instrument("instrument.compute.alpha")
+                .expect("instrument")
+                .status,
+            CapacityInstrumentStatus::Defaulted
         );
     }
 
@@ -11458,6 +11894,7 @@ mod tests {
             validator_run_ref: None,
             challenge_result_refs: Vec::new(),
             environment_ref: None,
+            environment_version: None,
             eval_run_ref: None,
         });
 
@@ -11516,6 +11953,7 @@ mod tests {
             validator_run_ref: None,
             challenge_result_refs: vec!["validator_challenge_result:ok".to_string()],
             environment_ref: None,
+            environment_version: None,
             eval_run_ref: None,
         });
 
@@ -11561,6 +11999,7 @@ mod tests {
                 validator_run_ref: None,
                 challenge_result_refs: Vec::new(),
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             });
         kernel
@@ -11676,6 +12115,7 @@ mod tests {
                 validator_run_ref: None,
                 challenge_result_refs: Vec::new(),
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             });
         kernel
@@ -11775,6 +12215,7 @@ mod tests {
                 validator_run_ref: None,
                 challenge_result_refs: Vec::new(),
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             });
         kernel
@@ -12213,6 +12654,7 @@ mod tests {
                 validator_run_ref: None,
                 challenge_result_refs: Vec::new(),
                 environment_ref: None,
+                environment_version: None,
                 eval_run_ref: None,
             });
         delivery_request.delivery_proof.delivery_proof_id = "delivery.compute.beta".to_string();

@@ -4,6 +4,7 @@ package openagents.compute.v1;
 
 import "openagents/common/v1/common.proto";
 import "openagents/economy/v1/receipt.proto";
+import "openagents/compute/v1/compute_products.proto";
 
 enum CapacityReserveState {
   CAPACITY_RESERVE_STATE_UNSPECIFIED = 0;
@@ -57,6 +58,7 @@ message CapacityLot {
   CapacityCurtailmentReason curtailment_reason = 14;
   optional string lifecycle_reason_detail = 15;
   string metadata_json = 16;
+  optional ComputeEnvironmentBinding environment_binding = 17;
 }
 
 message CreateCapacityLotRequest {
