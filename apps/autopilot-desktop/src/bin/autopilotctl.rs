@@ -13,7 +13,10 @@ use autopilot_desktop::desktop_control::{
     DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
     DesktopControlManifest, DesktopControlSnapshot, control_manifest_path,
 };
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use clap::{Parser, Subcommand, ValueEnum};
+use psionic_sandbox::ProviderSandboxEntrypointType;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -40,6 +43,22 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     Status,
+    Cluster {
+        #[command(subcommand)]
+        command: ClusterCommand,
+    },
+    Sandbox {
+        #[command(subcommand)]
+        command: SandboxCommand,
+    },
+    Proof {
+        #[command(subcommand)]
+        command: ProofCommand,
+    },
+    Challenge {
+        #[command(subcommand)]
+        command: ChallengeCommand,
+    },
     Pane {
         #[command(subcommand)]
         command: PaneCommand,
@@ -125,6 +144,87 @@ enum PaneCommand {
     Focus { pane: String },
     Close { pane: String },
     Status { pane: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum ClusterCommand {
+    Status,
+    Topology,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum SandboxEntrypointTypeArg {
+    WorkspaceFile,
+    InlinePayload,
+    Command,
+}
+
+#[derive(Subcommand, Debug)]
+enum SandboxCommand {
+    Status,
+    Job {
+        job_id: String,
+    },
+    Create {
+        profile_id: String,
+        job_id: String,
+        workspace_root: PathBuf,
+        #[arg(long, value_enum, default_value_t = SandboxEntrypointTypeArg::WorkspaceFile)]
+        entrypoint_type: SandboxEntrypointTypeArg,
+        #[arg(long)]
+        entrypoint: String,
+        #[arg(long)]
+        payload: Option<String>,
+        #[arg(long = "arg")]
+        arguments: Vec<String>,
+        #[arg(long = "expected-output")]
+        expected_outputs: Vec<String>,
+        #[arg(long, default_value_t = 60)]
+        timeout_s: u64,
+        #[arg(long, default_value = "host_inherit")]
+        network: String,
+        #[arg(long, default_value = "host_inherit")]
+        filesystem: String,
+        #[arg(long)]
+        payout_reference: Option<String>,
+        #[arg(long)]
+        verification_posture: Option<String>,
+    },
+    Upload {
+        job_id: String,
+        relative_path: String,
+        file: PathBuf,
+    },
+    Start {
+        job_id: String,
+    },
+    Wait {
+        job_id: String,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
+    DownloadArtifact {
+        job_id: String,
+        relative_path: String,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    DownloadWorkspace {
+        job_id: String,
+        relative_path: String,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ProofCommand {
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum ChallengeCommand {
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
@@ -259,6 +359,117 @@ impl PaneCommand {
             Self::Status { pane } => {
                 DesktopControlActionRequest::GetPaneSnapshot { pane: pane.clone() }
             }
+        }
+    }
+}
+
+impl SandboxEntrypointTypeArg {
+    const fn into_request_type(self) -> ProviderSandboxEntrypointType {
+        match self {
+            Self::WorkspaceFile => ProviderSandboxEntrypointType::WorkspaceFile,
+            Self::InlinePayload => ProviderSandboxEntrypointType::InlinePayload,
+            Self::Command => ProviderSandboxEntrypointType::Command,
+        }
+    }
+}
+
+impl ClusterCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetClusterStatus,
+            Self::Topology => DesktopControlActionRequest::GetClusterTopology,
+        }
+    }
+}
+
+impl SandboxCommand {
+    fn action_request(&self) -> Result<Option<DesktopControlActionRequest>> {
+        match self {
+            Self::Status => Ok(None),
+            Self::Job { job_id } => Ok(Some(DesktopControlActionRequest::GetSandboxJob {
+                job_id: job_id.clone(),
+            })),
+            Self::Create {
+                profile_id,
+                job_id,
+                workspace_root,
+                entrypoint_type,
+                entrypoint,
+                payload,
+                arguments,
+                expected_outputs,
+                timeout_s,
+                network,
+                filesystem,
+                payout_reference,
+                verification_posture,
+            } => Ok(Some(DesktopControlActionRequest::CreateSandboxJob {
+                profile_id: profile_id.clone(),
+                job_id: job_id.clone(),
+                workspace_root: workspace_root.display().to_string(),
+                entrypoint_type: entrypoint_type.into_request_type(),
+                entrypoint: entrypoint.clone(),
+                payload: payload.clone(),
+                arguments: arguments.clone(),
+                expected_outputs: expected_outputs.clone(),
+                timeout_request_s: *timeout_s,
+                network_request: network.clone(),
+                filesystem_request: filesystem.clone(),
+                payout_reference: payout_reference.clone(),
+                verification_posture: verification_posture.clone(),
+            })),
+            Self::Upload {
+                job_id,
+                relative_path,
+                file,
+            } => {
+                let bytes =
+                    fs::read(file).with_context(|| format!("read sandbox upload {}", file.display()))?;
+                Ok(Some(DesktopControlActionRequest::UploadSandboxFile {
+                    job_id: job_id.clone(),
+                    relative_path: relative_path.clone(),
+                    content_base64: URL_SAFE_NO_PAD.encode(bytes.as_slice()),
+                }))
+            }
+            Self::Start { job_id } => Ok(Some(DesktopControlActionRequest::StartSandboxJob {
+                job_id: job_id.clone(),
+            })),
+            Self::Wait { job_id, timeout_ms } => Ok(Some(DesktopControlActionRequest::WaitSandboxJob {
+                job_id: job_id.clone(),
+                timeout_ms: *timeout_ms,
+            })),
+            Self::DownloadArtifact {
+                job_id,
+                relative_path,
+                ..
+            } => Ok(Some(DesktopControlActionRequest::DownloadSandboxArtifact {
+                job_id: job_id.clone(),
+                relative_path: relative_path.clone(),
+            })),
+            Self::DownloadWorkspace {
+                job_id,
+                relative_path,
+                ..
+            } => Ok(Some(DesktopControlActionRequest::DownloadSandboxWorkspaceFile {
+                job_id: job_id.clone(),
+                relative_path: relative_path.clone(),
+            })),
+        }
+    }
+}
+
+impl ProofCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetProofStatus,
+        }
+    }
+}
+
+impl ChallengeCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetChallengeStatus,
         }
     }
 }
@@ -455,6 +666,95 @@ fn main() -> Result<()> {
                 })?;
             } else {
                 print_status_text(&client.target, &snapshot);
+            }
+        }
+        Command::Cluster { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                print_cluster_text(payload);
+            }
+        }
+        Command::Sandbox { command } => match command {
+            SandboxCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.sandbox)?;
+                } else {
+                    print_sandbox_status_text(&snapshot);
+                }
+            }
+            SandboxCommand::Job { .. } => {
+                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox job inspection did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    print_sandbox_job_text(payload);
+                }
+            }
+            SandboxCommand::Create { .. }
+            | SandboxCommand::Upload { .. }
+            | SandboxCommand::Start { .. } => {
+                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox command did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    println!("{}", response.message);
+                    print_sandbox_payload_summary(payload);
+                }
+            }
+            SandboxCommand::Wait { .. } => {
+                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox wait did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    println!("{}", response.message);
+                    print_sandbox_job_text(payload);
+                }
+            }
+            SandboxCommand::DownloadArtifact { ref output, .. }
+            | SandboxCommand::DownloadWorkspace { ref output, .. } => {
+                let action = command.action_request()?.ok_or_else(|| anyhow!("sandbox download did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    print_sandbox_download_text(payload, output.as_ref())?;
+                }
+            }
+        },
+        Command::Proof { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                print_proof_text(payload);
+            }
+        }
+        Command::Challenge { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(payload)?;
+            } else {
+                print_challenge_text(payload);
             }
         }
         Command::Pane { command } => match command {
@@ -1419,6 +1719,28 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.tunnels.open_tunnel_count
     );
     println!(
+        "cluster: available={} topology={} members={}",
+        snapshot.cluster.available,
+        snapshot.cluster.topology_label,
+        snapshot.cluster.member_count
+    );
+    println!(
+        "sandbox: available={} profiles={}/{} jobs={} active_jobs={}",
+        snapshot.sandbox.available,
+        snapshot.sandbox.ready_profile_count,
+        snapshot.sandbox.declared_profile_count,
+        snapshot.sandbox.job_count,
+        snapshot.sandbox.active_job_count
+    );
+    println!(
+        "proofs: available={} pending={}",
+        snapshot.proofs.available, snapshot.proofs.pending_count
+    );
+    println!(
+        "challenges: available={} open={}",
+        snapshot.challenges.available, snapshot.challenges.open_count
+    );
+    println!(
         "buy mode: enabled={} approved_budget={} sats cadence={} next_dispatch={}",
         snapshot.buy_mode.enabled,
         snapshot.buy_mode.approved_budget_sats,
@@ -1551,6 +1873,235 @@ fn print_tunnels_text(snapshot: &DesktopControlSnapshot) {
             tunnel.last_error.as_deref().unwrap_or("-")
         );
     }
+}
+
+fn print_cluster_text(payload: &Value) {
+    println!(
+        "cluster: available={} topology={} members={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("topology_label")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("member_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    for member in payload
+        .get("members")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "member={} state={} transport={} session_path={} last_error={}",
+            member
+                .get("peer_node_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            member.get("state").and_then(Value::as_str).unwrap_or("-"),
+            member
+                .get("transport_class")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            member
+                .get("session_path_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            member
+                .get("last_error")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+}
+
+fn print_sandbox_status_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "sandbox: available={} profiles={}/{} jobs={} active_jobs={} last_error={}",
+        snapshot.sandbox.available,
+        snapshot.sandbox.ready_profile_count,
+        snapshot.sandbox.declared_profile_count,
+        snapshot.sandbox.job_count,
+        snapshot.sandbox.active_job_count,
+        snapshot.sandbox.last_error.as_deref().unwrap_or("-")
+    );
+    for profile in &snapshot.sandbox.profiles {
+        println!(
+            "profile={} execution={} runtime={} ready={}",
+            profile.profile_id,
+            profile.execution_class,
+            profile.runtime_kind,
+            profile.runtime_ready
+        );
+    }
+    for job in &snapshot.sandbox.jobs {
+        println!(
+            "job={} state={} profile={} outputs={}/{} receipt_type={} detail={}",
+            job.job_id,
+            job.state,
+            job.profile_id,
+            job.upload_count,
+            job.download_count,
+            job.terminal_receipt_type.as_deref().unwrap_or("-"),
+            job.last_detail.as_deref().unwrap_or("-")
+        );
+    }
+}
+
+fn print_sandbox_job_text(payload: &Value) {
+    println!(
+        "sandbox job: job={} state={} profile={} compute_product={} uploads={} downloads={} receipt_type={}",
+        payload.get("job_id").and_then(Value::as_str).unwrap_or("-"),
+        payload.get("state").and_then(Value::as_str).unwrap_or("-"),
+        payload.get("profile_id").and_then(Value::as_str).unwrap_or("-"),
+        payload
+            .get("compute_product_id")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("uploads")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("downloads")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        payload
+            .get("terminal_receipt")
+            .and_then(|receipt| receipt.get("receipt_type"))
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    if let Some(events) = payload.get("lifecycle_events").and_then(Value::as_array) {
+        for event in events.iter().rev().take(4).rev() {
+            println!(
+                "event: state={} at={} detail={}",
+                event.get("state").and_then(Value::as_str).unwrap_or("-"),
+                event.get("observed_at_ms").and_then(Value::as_i64).unwrap_or(0),
+                event.get("detail").and_then(Value::as_str).unwrap_or("-")
+            );
+        }
+    }
+}
+
+fn print_sandbox_payload_summary(payload: &Value) {
+    if payload.get("job_id").is_some() {
+        print_sandbox_job_text(payload);
+        return;
+    }
+    if payload.get("transfer_id").is_some() {
+        println!(
+            "sandbox transfer: id={} kind={} path={} size={} digest={}",
+            payload
+                .get("transfer_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            payload
+                .get("transfer_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            payload
+                .get("relative_path")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            payload
+                .get("size_bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            payload
+                .get("sha256_digest")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+        return;
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(payload).unwrap_or_else(|_| payload.to_string())
+    );
+}
+
+fn print_sandbox_download_text(payload: &Value, output: Option<&PathBuf>) -> Result<()> {
+    let content_base64 = payload
+        .get("content_base64")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("sandbox download payload was missing content_base64"))?;
+    let bytes = URL_SAFE_NO_PAD
+        .decode(content_base64.as_bytes())
+        .context("decode sandbox download payload")?;
+    if let Some(output) = output {
+        fs::write(output, bytes.as_slice())
+            .with_context(|| format!("write sandbox download {}", output.display()))?;
+        println!("wrote sandbox file: {}", output.display());
+    } else if let Some(preview) = payload.get("utf8_preview").and_then(Value::as_str) {
+        println!("{preview}");
+    }
+    let receipt = payload.get("receipt").unwrap_or(&Value::Null);
+    println!(
+        "sandbox download: kind={} path={} size={} digest={}",
+        receipt
+            .get("transfer_kind")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        receipt
+            .get("relative_path")
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        receipt
+            .get("size_bytes")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        receipt
+            .get("sha256_digest")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    Ok(())
+}
+
+fn print_proof_text(payload: &Value) {
+    println!(
+        "proofs: available={} pending={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("pending_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+}
+
+fn print_challenge_text(payload: &Value) {
+    println!(
+        "challenges: available={} open={} last_error={}",
+        payload
+            .get("available")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("open_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
 }
 
 fn print_local_runtime_text(snapshot: &DesktopControlSnapshot) {
@@ -1892,8 +2443,9 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppleFmCommand, BuyModeCommand, ChatCommand, GptOssCommand, LocalRuntimeCommand,
-        ProviderCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        AppleFmCommand, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
+        GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, SandboxCommand,
+        SandboxEntrypointTypeArg, WaitCondition, WaitConditionArg, WalletCommand,
         buy_mode_has_failed_request, buy_mode_has_paid_request, ensure_buy_mode_budget_ack,
         request_has_failed, request_has_paid, request_has_payment_required,
     };
@@ -1901,6 +2453,8 @@ mod tests {
         DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
         DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus, DesktopControlSnapshot,
     };
+    use psionic_sandbox::ProviderSandboxEntrypointType;
+    use std::path::PathBuf;
 
     fn sample_snapshot() -> DesktopControlSnapshot {
         DesktopControlSnapshot {
@@ -2067,6 +2621,89 @@ mod tests {
         assert_eq!(BuyModeCommand::Status.action_request(), None);
         assert_eq!(BuyModeCommand::Target.action_request(), None);
         assert_eq!(BuyModeCommand::Roster { limit: 5 }.action_request(), None);
+        assert_eq!(
+            ClusterCommand::Status.action_request(),
+            DesktopControlActionRequest::GetClusterStatus
+        );
+        assert_eq!(
+            ClusterCommand::Topology.action_request(),
+            DesktopControlActionRequest::GetClusterTopology
+        );
+        assert_eq!(
+            ProofCommand::Status.action_request(),
+            DesktopControlActionRequest::GetProofStatus
+        );
+        assert_eq!(
+            ChallengeCommand::Status.action_request(),
+            DesktopControlActionRequest::GetChallengeStatus
+        );
+        assert_eq!(SandboxCommand::Status.action_request().unwrap(), None);
+        assert_eq!(
+            SandboxCommand::Job {
+                job_id: "job-1".to_string(),
+            }
+            .action_request()
+            .unwrap(),
+            Some(DesktopControlActionRequest::GetSandboxJob {
+                job_id: "job-1".to_string(),
+            })
+        );
+        assert_eq!(
+            SandboxCommand::Create {
+                profile_id: "pythonexec-profile".to_string(),
+                job_id: "job-2".to_string(),
+                workspace_root: PathBuf::from("/tmp/openagents-sandbox"),
+                entrypoint_type: SandboxEntrypointTypeArg::WorkspaceFile,
+                entrypoint: "scripts/job.py".to_string(),
+                payload: None,
+                arguments: vec!["--flag".to_string()],
+                expected_outputs: vec!["result.txt".to_string()],
+                timeout_s: 30,
+                network: "host_inherit".to_string(),
+                filesystem: "host_inherit".to_string(),
+                payout_reference: Some("payment-1".to_string()),
+                verification_posture: Some("hash_only".to_string()),
+            }
+            .action_request()
+            .unwrap(),
+            Some(DesktopControlActionRequest::CreateSandboxJob {
+                profile_id: "pythonexec-profile".to_string(),
+                job_id: "job-2".to_string(),
+                workspace_root: "/tmp/openagents-sandbox".to_string(),
+                entrypoint_type: ProviderSandboxEntrypointType::WorkspaceFile,
+                entrypoint: "scripts/job.py".to_string(),
+                payload: None,
+                arguments: vec!["--flag".to_string()],
+                expected_outputs: vec!["result.txt".to_string()],
+                timeout_request_s: 30,
+                network_request: "host_inherit".to_string(),
+                filesystem_request: "host_inherit".to_string(),
+                payout_reference: Some("payment-1".to_string()),
+                verification_posture: Some("hash_only".to_string()),
+            })
+        );
+        assert_eq!(
+            SandboxCommand::Start {
+                job_id: "job-3".to_string(),
+            }
+            .action_request()
+            .unwrap(),
+            Some(DesktopControlActionRequest::StartSandboxJob {
+                job_id: "job-3".to_string(),
+            })
+        );
+        assert_eq!(
+            SandboxCommand::Wait {
+                job_id: "job-4".to_string(),
+                timeout_ms: 5_000,
+            }
+            .action_request()
+            .unwrap(),
+            Some(DesktopControlActionRequest::WaitSandboxJob {
+                job_id: "job-4".to_string(),
+                timeout_ms: 5_000,
+            })
+        );
         assert_eq!(
             ChatCommand::Main.action_request(),
             Some(DesktopControlActionRequest::SelectNip28MainChannel)

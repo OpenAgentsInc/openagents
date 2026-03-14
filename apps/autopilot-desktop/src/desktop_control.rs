@@ -3,7 +3,7 @@ use std::fs;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -15,6 +15,11 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_provider_substrate::ProviderDesiredMode;
+use psionic_sandbox::{
+    InMemorySandboxJobService, ProviderSandboxBackgroundJobSnapshot,
+    ProviderSandboxEntrypointType, ProviderSandboxExecutionControls,
+    ProviderSandboxFileTransferReceipt, ProviderSandboxJobRequest, ProviderSandboxProfile,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Notify, mpsc as tokio_mpsc, oneshot};
@@ -34,7 +39,7 @@ use crate::pane_registry::{enabled_pane_specs, pane_spec};
 use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderControlPaneAction};
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 5;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 6;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -63,6 +68,10 @@ pub struct DesktopControlSnapshot {
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
     pub tunnels: DesktopControlTunnelsStatus,
+    pub cluster: DesktopControlClusterStatus,
+    pub sandbox: DesktopControlSandboxStatus,
+    pub proofs: DesktopControlProofStatus,
+    pub challenges: DesktopControlChallengeStatus,
     pub buy_mode: DesktopControlBuyModeStatus,
     pub active_job: Option<DesktopControlActiveJobStatus>,
     pub nip28: DesktopControlNip28Status,
@@ -209,6 +218,75 @@ pub struct DesktopControlTunnelsStatus {
     pub open_tunnel_count: usize,
     pub services: Vec<DesktopControlTunnelServiceStatus>,
     pub tunnels: Vec<DesktopControlTunnelStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlClusterMemberStatus {
+    pub peer_node_id: String,
+    pub state: String,
+    pub transport_class: String,
+    pub session_path_kind: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlClusterStatus {
+    pub available: bool,
+    pub topology_label: String,
+    pub member_count: usize,
+    pub members: Vec<DesktopControlClusterMemberStatus>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlSandboxProfileStatus {
+    pub profile_id: String,
+    pub profile_digest: String,
+    pub execution_class: String,
+    pub runtime_kind: String,
+    pub runtime_ready: bool,
+    pub capability_summary: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlSandboxJobStatus {
+    pub job_id: String,
+    pub profile_id: String,
+    pub profile_digest: String,
+    pub compute_product_id: String,
+    pub state: String,
+    pub created_at_epoch_ms: i64,
+    pub updated_at_epoch_ms: i64,
+    pub upload_count: usize,
+    pub download_count: usize,
+    pub last_detail: Option<String>,
+    pub terminal_receipt_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlSandboxStatus {
+    pub available: bool,
+    pub declared_profile_count: usize,
+    pub ready_profile_count: usize,
+    pub job_count: usize,
+    pub active_job_count: usize,
+    pub profiles: Vec<DesktopControlSandboxProfileStatus>,
+    pub jobs: Vec<DesktopControlSandboxJobStatus>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlProofStatus {
+    pub available: bool,
+    pub pending_count: usize,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlChallengeStatus {
+    pub available: bool,
+    pub open_count: usize,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -384,10 +462,55 @@ pub struct DesktopControlManifest {
     pub latest_session_log_path: String,
 }
 
+static DESKTOP_CONTROL_SANDBOX_SERVICE: OnceLock<InMemorySandboxJobService> = OnceLock::new();
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum DesktopControlActionRequest {
     GetSnapshot,
+    GetClusterStatus,
+    GetClusterTopology,
+    GetSandboxStatus,
+    CreateSandboxJob {
+        profile_id: String,
+        job_id: String,
+        workspace_root: String,
+        entrypoint_type: ProviderSandboxEntrypointType,
+        entrypoint: String,
+        payload: Option<String>,
+        arguments: Vec<String>,
+        expected_outputs: Vec<String>,
+        timeout_request_s: u64,
+        network_request: String,
+        filesystem_request: String,
+        payout_reference: Option<String>,
+        verification_posture: Option<String>,
+    },
+    GetSandboxJob {
+        job_id: String,
+    },
+    UploadSandboxFile {
+        job_id: String,
+        relative_path: String,
+        content_base64: String,
+    },
+    StartSandboxJob {
+        job_id: String,
+    },
+    WaitSandboxJob {
+        job_id: String,
+        timeout_ms: u64,
+    },
+    DownloadSandboxArtifact {
+        job_id: String,
+        relative_path: String,
+    },
+    DownloadSandboxWorkspaceFile {
+        job_id: String,
+        relative_path: String,
+    },
+    GetProofStatus,
+    GetChallengeStatus,
     ListPanes,
     OpenPane {
         pane: String,
@@ -440,6 +563,18 @@ impl DesktopControlActionRequest {
     fn label(&self) -> &'static str {
         match self {
             Self::GetSnapshot => "get-snapshot",
+            Self::GetClusterStatus => "cluster-status",
+            Self::GetClusterTopology => "cluster-topology",
+            Self::GetSandboxStatus => "sandbox-status",
+            Self::CreateSandboxJob { .. } => "sandbox-create",
+            Self::GetSandboxJob { .. } => "sandbox-get",
+            Self::UploadSandboxFile { .. } => "sandbox-upload",
+            Self::StartSandboxJob { .. } => "sandbox-start",
+            Self::WaitSandboxJob { .. } => "sandbox-wait",
+            Self::DownloadSandboxArtifact { .. } => "sandbox-download-artifact",
+            Self::DownloadSandboxWorkspaceFile { .. } => "sandbox-download-workspace",
+            Self::GetProofStatus => "proof-status",
+            Self::GetChallengeStatus => "challenge-status",
             Self::ListPanes => "pane-list",
             Self::OpenPane { .. } => "pane-open",
             Self::FocusPane { .. } => "pane-focus",
@@ -1040,6 +1175,75 @@ fn command_outcome_event(
 fn command_payload(action: &DesktopControlActionRequest) -> Value {
     match action {
         DesktopControlActionRequest::GetSnapshot => json!({ "command_label": action.label() }),
+        DesktopControlActionRequest::GetClusterStatus
+        | DesktopControlActionRequest::GetClusterTopology
+        | DesktopControlActionRequest::GetSandboxStatus
+        | DesktopControlActionRequest::GetProofStatus
+        | DesktopControlActionRequest::GetChallengeStatus => {
+            json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::CreateSandboxJob {
+            profile_id,
+            job_id,
+            workspace_root,
+            entrypoint_type,
+            entrypoint,
+            payload,
+            arguments,
+            expected_outputs,
+            timeout_request_s,
+            network_request,
+            filesystem_request,
+            payout_reference,
+            verification_posture,
+        } => json!({
+            "command_label": action.label(),
+            "profile_id": profile_id,
+            "job_id": job_id,
+            "workspace_root": workspace_root,
+            "entrypoint_type": entrypoint_type,
+            "entrypoint": entrypoint,
+            "payload_length": payload.as_ref().map(|value| value.len()),
+            "argument_count": arguments.len(),
+            "expected_output_count": expected_outputs.len(),
+            "timeout_request_s": timeout_request_s,
+            "network_request": network_request,
+            "filesystem_request": filesystem_request,
+            "payout_reference": payout_reference,
+            "verification_posture": verification_posture,
+        }),
+        DesktopControlActionRequest::GetSandboxJob { job_id }
+        | DesktopControlActionRequest::StartSandboxJob { job_id } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+        }),
+        DesktopControlActionRequest::WaitSandboxJob { job_id, timeout_ms } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+            "timeout_ms": timeout_ms,
+        }),
+        DesktopControlActionRequest::UploadSandboxFile {
+            job_id,
+            relative_path,
+            content_base64,
+        } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+            "relative_path": relative_path,
+            "content_length": content_base64.len(),
+        }),
+        DesktopControlActionRequest::DownloadSandboxArtifact {
+            job_id,
+            relative_path,
+        }
+        | DesktopControlActionRequest::DownloadSandboxWorkspaceFile {
+            job_id,
+            relative_path,
+        } => json!({
+            "command_label": action.label(),
+            "job_id": job_id,
+            "relative_path": relative_path,
+        }),
         DesktopControlActionRequest::ListPanes => json!({ "command_label": action.label() }),
         DesktopControlActionRequest::OpenPane { pane }
         | DesktopControlActionRequest::FocusPane { pane }
@@ -1152,6 +1356,46 @@ fn snapshot_change_events(
             payload: serde_json::to_value(&current.wallet).ok(),
         });
     }
+    if previous.is_none_or(|snapshot| snapshot.cluster != current.cluster) {
+        changed_domains.push("cluster");
+        events.push(DesktopControlEventDraft {
+            event_type: "cluster.state.changed".to_string(),
+            summary: cluster_status_summary(&current.cluster),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.cluster).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.sandbox != current.sandbox) {
+        changed_domains.push("sandbox");
+        events.push(DesktopControlEventDraft {
+            event_type: "sandbox.state.changed".to_string(),
+            summary: sandbox_status_summary(&current.sandbox),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.sandbox).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.proofs != current.proofs) {
+        changed_domains.push("proofs");
+        events.push(DesktopControlEventDraft {
+            event_type: "proof.state.changed".to_string(),
+            summary: proof_status_summary(&current.proofs),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.proofs).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.challenges != current.challenges) {
+        changed_domains.push("challenges");
+        events.push(DesktopControlEventDraft {
+            event_type: "challenge.state.changed".to_string(),
+            summary: challenge_status_summary(&current.challenges),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.challenges).ok(),
+        });
+    }
     if buy_mode_status_changed(
         previous.map(|snapshot| &snapshot.buy_mode),
         &current.buy_mode,
@@ -1243,6 +1487,38 @@ fn local_runtime_status_summary(status: &DesktopControlLocalRuntimeStatus) -> St
         status.supports_sessions,
         status.action,
         status.action_enabled
+    )
+}
+
+fn cluster_status_summary(status: &DesktopControlClusterStatus) -> String {
+    format!(
+        "cluster available={} topology={} members={}",
+        status.available, status.topology_label, status.member_count
+    )
+}
+
+fn sandbox_status_summary(status: &DesktopControlSandboxStatus) -> String {
+    format!(
+        "sandbox available={} profiles={}/{} jobs={} active_jobs={}",
+        status.available,
+        status.ready_profile_count,
+        status.declared_profile_count,
+        status.job_count,
+        status.active_job_count
+    )
+}
+
+fn proof_status_summary(status: &DesktopControlProofStatus) -> String {
+    format!(
+        "proofs available={} pending={}",
+        status.available, status.pending_count
+    )
+}
+
+fn challenge_status_summary(status: &DesktopControlChallengeStatus) -> String {
+    format!(
+        "challenges available={} open={}",
+        status.available, status.open_count
     )
 }
 
@@ -1615,6 +1891,63 @@ fn apply_action_request(
         DesktopControlActionRequest::GetSnapshot => {
             snapshot_payload_response(state, "Captured desktop control snapshot")
         }
+        DesktopControlActionRequest::GetClusterStatus
+        | DesktopControlActionRequest::GetClusterTopology => cluster_payload_response(state),
+        DesktopControlActionRequest::GetSandboxStatus => sandbox_status_payload_response(state),
+        DesktopControlActionRequest::CreateSandboxJob {
+            profile_id,
+            job_id,
+            workspace_root,
+            entrypoint_type,
+            entrypoint,
+            payload,
+            arguments,
+            expected_outputs,
+            timeout_request_s,
+            network_request,
+            filesystem_request,
+            payout_reference,
+            verification_posture,
+        } => create_sandbox_job_action(
+            state,
+            profile_id.as_str(),
+            job_id.as_str(),
+            workspace_root.as_str(),
+            *entrypoint_type,
+            entrypoint.as_str(),
+            payload.as_deref(),
+            arguments.as_slice(),
+            expected_outputs.as_slice(),
+            *timeout_request_s,
+            network_request.as_str(),
+            filesystem_request.as_str(),
+            payout_reference.as_deref(),
+            verification_posture.as_deref(),
+        ),
+        DesktopControlActionRequest::GetSandboxJob { job_id } => {
+            sandbox_job_payload_response(job_id.as_str())
+        }
+        DesktopControlActionRequest::UploadSandboxFile {
+            job_id,
+            relative_path,
+            content_base64,
+        } => upload_sandbox_file_action(job_id.as_str(), relative_path.as_str(), content_base64.as_str()),
+        DesktopControlActionRequest::StartSandboxJob { job_id } => {
+            start_sandbox_job_action(job_id.as_str())
+        }
+        DesktopControlActionRequest::WaitSandboxJob { job_id, timeout_ms } => {
+            wait_sandbox_job_action(job_id.as_str(), *timeout_ms)
+        }
+        DesktopControlActionRequest::DownloadSandboxArtifact {
+            job_id,
+            relative_path,
+        } => download_sandbox_artifact_action(job_id.as_str(), relative_path.as_str()),
+        DesktopControlActionRequest::DownloadSandboxWorkspaceFile {
+            job_id,
+            relative_path,
+        } => download_sandbox_workspace_action(job_id.as_str(), relative_path.as_str()),
+        DesktopControlActionRequest::GetProofStatus => proof_payload_response(),
+        DesktopControlActionRequest::GetChallengeStatus => challenge_payload_response(),
         DesktopControlActionRequest::ListPanes => {
             pane_list_payload_response(state, "Captured desktop pane catalog")
         }
@@ -2302,6 +2635,218 @@ fn active_job_payload_response(state: &RenderState) -> DesktopControlActionRespo
     }
 }
 
+fn cluster_payload_response(state: &RenderState) -> DesktopControlActionResponse {
+    match serde_json::to_value(snapshot_for_state(state).cluster) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            "Captured cluster control state",
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode cluster control state: {error}"
+        )),
+    }
+}
+
+fn sandbox_status_payload_response(state: &RenderState) -> DesktopControlActionResponse {
+    match serde_json::to_value(snapshot_for_state(state).sandbox) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            "Captured sandbox control state",
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode sandbox control state: {error}"
+        )),
+    }
+}
+
+fn proof_payload_response() -> DesktopControlActionResponse {
+    match serde_json::to_value(desktop_control_proof_status()) {
+        Ok(payload) => {
+            DesktopControlActionResponse::ok_with_payload("Captured proof control state", payload)
+        }
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode proof control state: {error}"
+        )),
+    }
+}
+
+fn challenge_payload_response() -> DesktopControlActionResponse {
+    match serde_json::to_value(desktop_control_challenge_status()) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(
+            "Captured challenge control state",
+            payload,
+        ),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode challenge control state: {error}"
+        )),
+    }
+}
+
+fn sandbox_error_response(error: impl Into<String>) -> DesktopControlActionResponse {
+    DesktopControlActionResponse::error(format!("Sandbox control error: {}", error.into()))
+}
+
+fn find_sandbox_profile(
+    state: &RenderState,
+    profile_id: &str,
+) -> Result<ProviderSandboxProfile, DesktopControlActionResponse> {
+    state
+        .provider_runtime
+        .sandbox
+        .profiles
+        .iter()
+        .find(|profile| profile.profile_id == profile_id)
+        .cloned()
+        .ok_or_else(|| {
+            sandbox_error_response(format!(
+                "unknown sandbox profile `{profile_id}` in current desktop runtime"
+            ))
+        })
+}
+
+fn create_sandbox_job_action(
+    state: &RenderState,
+    profile_id: &str,
+    job_id: &str,
+    workspace_root: &str,
+    entrypoint_type: ProviderSandboxEntrypointType,
+    entrypoint: &str,
+    payload: Option<&str>,
+    arguments: &[String],
+    expected_outputs: &[String],
+    timeout_request_s: u64,
+    network_request: &str,
+    filesystem_request: &str,
+    payout_reference: Option<&str>,
+    verification_posture: Option<&str>,
+) -> DesktopControlActionResponse {
+    let profile = match find_sandbox_profile(state, profile_id) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let request = ProviderSandboxJobRequest {
+        job_id: job_id.to_string(),
+        provider_id: "desktop-control".to_string(),
+        compute_product_id: profile.execution_class.product_id().to_string(),
+        execution_class: profile.execution_class,
+        entrypoint_type,
+        entrypoint: entrypoint.to_string(),
+        payload: payload.map(ToString::to_string),
+        arguments: arguments.to_vec(),
+        workspace_root: PathBuf::from(workspace_root),
+        expected_outputs: expected_outputs.to_vec(),
+        timeout_request_s,
+        network_request: network_request.to_string(),
+        filesystem_request: filesystem_request.to_string(),
+        environment: Vec::new(),
+        resource_request: Default::default(),
+        payout_reference: payout_reference.map(ToString::to_string),
+        verification_posture: verification_posture.map(ToString::to_string),
+    };
+    match desktop_control_sandbox_service().create_job(
+        profile,
+        request,
+        ProviderSandboxExecutionControls::default(),
+    ) {
+        Ok(job) => DesktopControlActionResponse::ok_with_payload(
+            format!("Created sandbox job {}", job.job_id),
+            serde_json::to_value(job).unwrap_or(Value::Null),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
+fn sandbox_job_payload_response(job_id: &str) -> DesktopControlActionResponse {
+    match desktop_control_sandbox_service().poll_job(job_id) {
+        Ok(job) => DesktopControlActionResponse::ok_with_payload(
+            format!("Captured sandbox job {}", job.job_id),
+            serde_json::to_value(job).unwrap_or(Value::Null),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
+fn upload_sandbox_file_action(
+    job_id: &str,
+    relative_path: &str,
+    content_base64: &str,
+) -> DesktopControlActionResponse {
+    let decoded = match URL_SAFE_NO_PAD.decode(content_base64.as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return sandbox_error_response(format!(
+                "invalid base64 content for sandbox upload: {error}"
+            ));
+        }
+    };
+    match desktop_control_sandbox_service().upload_file(job_id, relative_path, decoded.as_slice()) {
+        Ok(receipt) => DesktopControlActionResponse::ok_with_payload(
+            format!("Uploaded sandbox file `{relative_path}` for job {job_id}"),
+            serde_json::to_value(receipt).unwrap_or(Value::Null),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
+fn start_sandbox_job_action(job_id: &str) -> DesktopControlActionResponse {
+    match desktop_control_sandbox_service().start_job(job_id) {
+        Ok(job) => DesktopControlActionResponse::ok_with_payload(
+            format!("Started sandbox job {job_id}"),
+            serde_json::to_value(job).unwrap_or(Value::Null),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
+fn wait_sandbox_job_action(job_id: &str, timeout_ms: u64) -> DesktopControlActionResponse {
+    match desktop_control_sandbox_service()
+        .wait_for_job(job_id, Duration::from_millis(timeout_ms.max(1)))
+    {
+        Ok(job) => DesktopControlActionResponse::ok_with_payload(
+            format!("Waited on sandbox job {job_id}"),
+            serde_json::to_value(job).unwrap_or(Value::Null),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
+fn sandbox_download_payload(
+    receipt: ProviderSandboxFileTransferReceipt,
+    bytes: Vec<u8>,
+) -> Value {
+    json!({
+        "receipt": receipt,
+        "content_base64": URL_SAFE_NO_PAD.encode(bytes.as_slice()),
+        "utf8_preview": String::from_utf8(bytes).ok(),
+    })
+}
+
+fn download_sandbox_artifact_action(
+    job_id: &str,
+    relative_path: &str,
+) -> DesktopControlActionResponse {
+    match desktop_control_sandbox_service().download_artifact(job_id, relative_path) {
+        Ok(file) => DesktopControlActionResponse::ok_with_payload(
+            format!("Downloaded sandbox artifact `{relative_path}` for job {job_id}"),
+            sandbox_download_payload(file.receipt, file.bytes),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
+fn download_sandbox_workspace_action(
+    job_id: &str,
+    relative_path: &str,
+) -> DesktopControlActionResponse {
+    match desktop_control_sandbox_service().download_workspace_file(job_id, relative_path) {
+        Ok(file) => DesktopControlActionResponse::ok_with_payload(
+            format!("Downloaded sandbox workspace file `{relative_path}` for job {job_id}"),
+            sandbox_download_payload(file.receipt, file.bytes),
+        ),
+        Err(error) => sandbox_error_response(error.to_string()),
+    }
+}
+
 fn withdraw_action(state: &mut RenderState, bolt11: &str) -> DesktopControlActionResponse {
     let trimmed = bolt11.trim();
     if trimmed.is_empty() {
@@ -2324,6 +2869,108 @@ fn log_tail_response(state: &RenderState, limit: usize) -> DesktopControlActionR
         format!("Captured {} Mission Control log line(s)", lines.len()),
         json!({ "lines": lines }),
     )
+}
+
+fn desktop_control_sandbox_service() -> &'static InMemorySandboxJobService {
+    DESKTOP_CONTROL_SANDBOX_SERVICE.get_or_init(InMemorySandboxJobService::default)
+}
+
+fn desktop_control_cluster_status() -> DesktopControlClusterStatus {
+    DesktopControlClusterStatus {
+        available: false,
+        topology_label: "not_integrated".to_string(),
+        member_count: 0,
+        members: Vec::new(),
+        last_error: Some("cluster transport is not integrated into the desktop control plane yet".to_string()),
+    }
+}
+
+fn desktop_control_sandbox_profile_status(
+    profile: &ProviderSandboxProfile,
+) -> DesktopControlSandboxProfileStatus {
+    DesktopControlSandboxProfileStatus {
+        profile_id: profile.profile_id.clone(),
+        profile_digest: profile.profile_digest.clone(),
+        execution_class: profile.execution_class.product_id().to_string(),
+        runtime_kind: profile.runtime_kind.id().to_string(),
+        runtime_ready: profile.runtime_ready,
+        capability_summary: profile.capability_summary.clone(),
+    }
+}
+
+fn desktop_control_sandbox_job_status(
+    job: &ProviderSandboxBackgroundJobSnapshot,
+) -> DesktopControlSandboxJobStatus {
+    DesktopControlSandboxJobStatus {
+        job_id: job.job_id.clone(),
+        profile_id: job.profile_id.clone(),
+        profile_digest: job.profile_digest.clone(),
+        compute_product_id: job.compute_product_id.clone(),
+        state: format!("{:?}", job.state).to_ascii_lowercase(),
+        created_at_epoch_ms: job.created_at_ms,
+        updated_at_epoch_ms: job.updated_at_ms,
+        upload_count: job.uploads.len(),
+        download_count: job.downloads.len(),
+        last_detail: job
+            .lifecycle_events
+            .last()
+            .and_then(|event| event.detail.clone()),
+        terminal_receipt_type: job
+            .terminal_receipt
+            .as_ref()
+            .map(|receipt| receipt.receipt_type.clone()),
+    }
+}
+
+fn desktop_control_sandbox_status(state: &RenderState) -> DesktopControlSandboxStatus {
+    let mut jobs = desktop_control_sandbox_service().list_jobs();
+    jobs.sort_by(|left, right| {
+        right
+            .updated_at_ms
+            .cmp(&left.updated_at_ms)
+            .then_with(|| right.job_id.cmp(&left.job_id))
+    });
+    let profiles = state
+        .provider_runtime
+        .sandbox
+        .profiles
+        .iter()
+        .map(desktop_control_sandbox_profile_status)
+        .collect::<Vec<_>>();
+    let active_job_count = jobs.iter().filter(|job| !job.state.is_terminal()).count();
+    DesktopControlSandboxStatus {
+        available: !profiles.is_empty(),
+        declared_profile_count: profiles.len(),
+        ready_profile_count: profiles.iter().filter(|profile| profile.runtime_ready).count(),
+        job_count: jobs.len(),
+        active_job_count,
+        profiles,
+        jobs: jobs
+            .iter()
+            .map(desktop_control_sandbox_job_status)
+            .collect::<Vec<_>>(),
+        last_error: if state.provider_runtime.sandbox.profiles.is_empty() {
+            Some("no declared sandbox profiles are available in the current desktop runtime".to_string())
+        } else {
+            None
+        },
+    }
+}
+
+fn desktop_control_proof_status() -> DesktopControlProofStatus {
+    DesktopControlProofStatus {
+        available: false,
+        pending_count: 0,
+        last_error: Some("proof inspection is not integrated into the desktop control plane yet".to_string()),
+    }
+}
+
+fn desktop_control_challenge_status() -> DesktopControlChallengeStatus {
+    DesktopControlChallengeStatus {
+        available: false,
+        open_count: 0,
+        last_error: Some("challenge inspection is not integrated into the desktop control plane yet".to_string()),
+    }
 }
 
 pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
@@ -2427,6 +3074,10 @@ pub fn snapshot_for_state(state: &RenderState) -> DesktopControlSnapshot {
             last_error: state.spark_wallet.last_error.clone(),
         },
         tunnels: DesktopControlTunnelsStatus::default(),
+        cluster: desktop_control_cluster_status(),
+        sandbox: desktop_control_sandbox_status(state),
+        proofs: desktop_control_proof_status(),
+        challenges: desktop_control_challenge_status(),
         buy_mode: DesktopControlBuyModeStatus {
             enabled: state.buy_mode_payments.buy_mode_loop_enabled,
             approved_budget_sats: MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
@@ -3106,13 +3757,16 @@ mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
         DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
-        DesktopControlBuyModeTargetSelectionStatus, DesktopControlEventBatch,
-        DesktopControlEventDraft, DesktopControlGptOssStatus, DesktopControlLocalRuntimeStatus,
-        DesktopControlMissionControlStatus, DesktopControlProviderStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlWalletStatus, apply_response_snapshot_metadata,
-        command_outcome_event, command_received_event, snapshot_change_events,
-        snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlBuyModeTargetSelectionStatus, DesktopControlChallengeStatus,
+        DesktopControlClusterStatus, DesktopControlEventBatch, DesktopControlEventDraft,
+        DesktopControlGptOssStatus, DesktopControlLocalRuntimeStatus,
+        DesktopControlMissionControlStatus, DesktopControlProofStatus,
+        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
+        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
+        DesktopControlSnapshot, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus,
+        apply_response_snapshot_metadata, command_outcome_event, command_received_event,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -3261,6 +3915,42 @@ mod tests {
                     last_error: None,
                 }],
                 tunnels: Vec::new(),
+            },
+            cluster: DesktopControlClusterStatus {
+                available: false,
+                topology_label: "not_integrated".to_string(),
+                member_count: 0,
+                members: Vec::new(),
+                last_error: Some(
+                    "cluster transport is not integrated into the desktop control plane yet"
+                        .to_string(),
+                ),
+            },
+            sandbox: DesktopControlSandboxStatus {
+                available: true,
+                declared_profile_count: 1,
+                ready_profile_count: 1,
+                job_count: 0,
+                active_job_count: 0,
+                profiles: Vec::new(),
+                jobs: Vec::new(),
+                last_error: None,
+            },
+            proofs: DesktopControlProofStatus {
+                available: false,
+                pending_count: 0,
+                last_error: Some(
+                    "proof inspection is not integrated into the desktop control plane yet"
+                        .to_string(),
+                ),
+            },
+            challenges: DesktopControlChallengeStatus {
+                available: false,
+                open_count: 0,
+                last_error: Some(
+                    "challenge inspection is not integrated into the desktop control plane yet"
+                        .to_string(),
+                ),
             },
             buy_mode: DesktopControlBuyModeStatus {
                 enabled: false,
@@ -4291,6 +4981,17 @@ mod tests {
 
         let mut changed = first;
         changed.wallet.balance_sats = 88;
+        assert_ne!(snapshot_sync_signature(&changed), signature);
+    }
+
+    #[test]
+    fn snapshot_signature_changes_when_sandbox_truth_changes() {
+        let first = sample_snapshot();
+        let signature = snapshot_sync_signature(&first);
+
+        let mut changed = first;
+        changed.sandbox.job_count = 1;
+        changed.sandbox.active_job_count = 1;
         assert_ne!(snapshot_sync_signature(&changed), signature);
     }
 
