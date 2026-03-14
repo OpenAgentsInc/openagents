@@ -78,6 +78,8 @@ Implemented now:
 - generic `psionic-openai-server` boot and model inventory for GPT-OSS plus
   non-GPT-OSS GGUF families on one `/v1/chat/completions` surface, with
   unfinished APIs still refused explicitly.
+- explicit CPU-lane residency, fallback, and unsupported-control truth on that
+  generic server surface instead of vague accelerator claims.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded

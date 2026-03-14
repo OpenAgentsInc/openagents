@@ -600,6 +600,13 @@ Psionic-owned `/v1/chat/completions` surface, exposes explicit model inventory,
 and still refuses unfinished APIs such as `/v1/embeddings` instead of
 pretending the broader serving plane is already complete.
 
+Implemented now: `PSI-235` is materially landed in-tree through explicit
+CPU-lane serving truth on that generic server. `/health`, `/v1/models`, and
+response headers now report CPU-only residency, unsupported hybrid offload,
+refuse-on-fallback posture, and explicit non-implemented warm/unload and
+memory-pressure controls instead of implying a broader backend lane than what
+is actually shipped.
+
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-232` | Psionic Inference: codify the `llama.cpp` / `vLLM` / `SGLang` source split and completion matrix | docs plus runtime/serve boundary docs | mixed | Freeze the reference hierarchy for Psionic inference work so future issues are judged against the right source at the right layer instead of treating all three repos as substitutes. | current docs only |
