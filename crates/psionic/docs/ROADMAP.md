@@ -882,7 +882,12 @@ power-of-two least-loaded placement over warm/cache-matched candidate pools,
 per-route placement metrics, generic-server route headers, and response-state
 worker preference for multi-turn `/v1/responses` routing. The next
 dependency-ordered issue in that chain is now `PSI-251` /
-[#3556](https://github.com/OpenAgentsInc/openagents/issues/3556).
+[#3556](https://github.com/OpenAgentsInc/openagents/issues/3556) is now landed
+too through a router-owned reliability controller: retries, queue depth
+controls, rate limiting, circuit-breaker state, worker health gating, and
+explicit metrics or traces exercised in failure-injection tests. The next
+dependency-ordered issue in that chain is now `PSI-252` /
+[#3557](https://github.com/OpenAgentsInc/openagents/issues/3557).
 
 ## Current Reality
 
