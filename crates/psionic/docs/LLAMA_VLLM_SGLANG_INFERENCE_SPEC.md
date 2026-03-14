@@ -268,7 +268,7 @@ already real.
 | Model and artifact ingress | GGUF and Ollama-style artifact ingestion, GGUF decoder metadata for Llama/Qwen/Mistral/GPT-OSS, GGUF embeddings families, OCI ingestion, served-artifact identity, governance, invalidation | mostly `llama.cpp`-class lessons | loader coverage is broader than fully executed decoder coverage |
 | Real decoder execution | real GPT-OSS GGUF execution model, Harmony prompt/render/parse, CUDA GPT-OSS serving, CPU GGUF GPT-OSS service in code, partial Metal GPT-OSS service | mostly `llama.cpp` plus Psionic-owned CUDA work | still too GPT-OSS-centric; generic real-GGUF decoder execution is not yet productized |
 | Local server surface | narrow GPT-OSS OpenAI-compatible server with `/health`, `/v1/models`, `/v1/chat/completions`; generic serve library has generation and embeddings runtime concepts | mostly `llama.cpp`-style local serving shape | not yet one generic Psionic-native server for many families and APIs |
-| Scheduler and queue semantics | execution-profile truth, queue-policy truth, throughput-class truth, first continuous-batching CPU scheduler, mixed prefill/decode scheduling receipts, caller-static-batch embeddings, seeded sampler, warm/load/unload lifecycle | adjacent to `vLLM` concepts, but now partly realized in Psionic-owned runtime and serve code | still no real block/paged KV manager, no automatic prefix-caching scheduler policy, and no disaggregated prefill/decode runtime |
+| Scheduler and queue semantics | execution-profile truth, queue-policy truth, throughput-class truth, first continuous-batching CPU scheduler, mixed prefill/decode scheduling receipts, real request-owned block/paged KV management, caller-static-batch embeddings, seeded sampler, warm/load/unload lifecycle | adjacent to `vLLM` concepts, but now partly realized in Psionic-owned runtime and serve code | still no automatic prefix-caching scheduler policy and no disaggregated prefill/decode runtime |
 | KV and cache substrate | paged-KV policy types, prefix-cache accounting, cache invalidation policies, cluster prefix/KV compatibility truth | partial `vLLM`-style and cluster groundwork | no full `vLLM`-class block KV manager or `SGLang`-class hierarchical KV runtime |
 | Distributed serving topology | selected-device truth, topology plans, replica serving, pipeline sharding, layer sharding, tensor sharding, sharded-model manifests | mostly `vLLM`-class and Prime-adjacent serving-topology lessons | local scheduler and clustered scheduler are still not one fully unified product path |
 | Structured outputs and tools | no full structured-output backend, no general tool-calling contract, no reasoning-parser registry, no `/v1/responses` runtime | essentially not yet adapted from `vLLM`/`SGLang` in a shipped way | this is one of the biggest missing layers |
@@ -304,6 +304,8 @@ The following `llama.cpp` lessons are not fully adapted yet:
 The following is already partially adapted:
 
 - explicit execution profiles and queue-policy truth
+- real continuous batching
+- real request-owned block/paged KV runtime
 - selected-device and topology-plan truth
 - replica, pipeline, layer, and tensor sharding semantics
 - prefix/KV cache compatibility and invalidation truth
@@ -312,8 +314,6 @@ The following is already partially adapted:
 
 The following `vLLM` lessons are not fully adapted yet:
 
-- real continuous batching
-- real block/paged KV runtime
 - automatic prefix caching under a shared scheduler
 - generic high-throughput multi-family serving under one server
 - disaggregated prefill/decode as a real productized runtime
@@ -620,6 +620,13 @@ truth, mixed prefill/decode admission, generic-server metadata that surfaces
 continuous-batch posture explicitly, and per-request scheduling receipts and
 headers instead of a blanket `single_request_only` claim on the shared local
 server path.
+
+Implemented now: `PSI-238` is materially landed in-tree too. The shared
+scheduler and the GPT-OSS single-request paths now sit on a Psionic-owned
+block/paged KV manager with request/session/shared-prefix owner bindings,
+deterministic allocation and reclaim, oldest-page eviction support, backend
+current-state accounting, scheduler KV peak metrics, and per-response KV
+ownership receipts instead of only exposing a logical KV policy schema.
 
 | Local ID | Proposed GitHub issue title | Scope | Primary reference | Description | Depends on |
 | --- | --- | --- | --- | --- | --- |

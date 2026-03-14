@@ -88,6 +88,9 @@ Implemented now:
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded
   `single_request_only` posture on the shared local server lane.
+- a real request-owned block/paged KV manager behind that scheduler, with page
+  allocation, reclaim, eviction, session/request/shared-prefix owner bindings,
+  and explicit KV ownership receipts across CPU and GPT-OSS execution paths.
 - `psionic-net` direct, NAT, and relay session establishment.
 - `psionic-cluster` ordered state, admission, catch-up, and clustered serving
   topology truth across replica, pipeline, layer-sharded, and tensor-sharded

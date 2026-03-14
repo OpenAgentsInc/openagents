@@ -5713,6 +5713,18 @@ pub struct GenerationSchedulerMetrics {
     pub total_prefill_tokens: usize,
     /// Total decode tokens executed across all requests.
     pub total_decode_tokens: usize,
+    /// Total KV pages allocated while requests were live on the scheduler.
+    pub total_kv_pages_allocated: usize,
+    /// Total KV pages reclaimed while requests were live on the scheduler.
+    pub total_kv_pages_reclaimed: usize,
+    /// Total KV bytes allocated while requests were live on the scheduler.
+    pub total_kv_bytes_allocated: u64,
+    /// Total KV bytes reclaimed while requests were live on the scheduler.
+    pub total_kv_bytes_reclaimed: u64,
+    /// Peak KV page footprint observed across the active scheduler set.
+    pub peak_kv_pages_in_use: usize,
+    /// Peak KV byte footprint observed across the active scheduler set.
+    pub peak_kv_bytes_in_use: u64,
     /// Last realized scheduling class, when one tick made progress.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_scheduling_class: Option<GenerationSchedulingClass>,
@@ -5734,6 +5746,12 @@ impl GenerationSchedulerMetrics {
             max_batch_size: 0,
             total_prefill_tokens: 0,
             total_decode_tokens: 0,
+            total_kv_pages_allocated: 0,
+            total_kv_pages_reclaimed: 0,
+            total_kv_bytes_allocated: 0,
+            total_kv_bytes_reclaimed: 0,
+            peak_kv_pages_in_use: 0,
+            peak_kv_bytes_in_use: 0,
             last_scheduling_class: None,
             fallback_counts: Vec::new(),
         }
@@ -6520,6 +6538,134 @@ pub struct KvCacheGrowth {
     pub bytes: u64,
     /// Net page growth between the baseline and current state.
     pub pages: usize,
+}
+
+/// Stable owner class for one paged-KV residency binding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvCacheOwnerClass {
+    /// Pages are owned by a durable session cache.
+    Session,
+    /// Pages are owned by one realized request path.
+    Request,
+    /// Pages are owned by a shared prefix entry.
+    SharedPrefix,
+}
+
+/// Stable scheduler-scoped residency binding for one request-owned KV cache.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheSchedulerBinding {
+    /// Realized batching posture for the request path.
+    pub batch_posture: BatchExecutionPosture,
+    /// Queue depth observed when the request was admitted, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_depth_at_admission: Option<usize>,
+}
+
+/// Stable owner binding for one realized paged-KV cache.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheOwnerBinding {
+    /// Owner class for the bound cache.
+    pub owner_class: KvCacheOwnerClass,
+    /// Stable owner identifier.
+    pub owner_id: String,
+    /// Model identity that owns the current cache image.
+    pub model_id: String,
+    /// Bound session identifier when the cache is session-scoped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Scheduler binding when the cache is request-owned under a shared queue.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<KvCacheSchedulerBinding>,
+}
+
+impl KvCacheOwnerBinding {
+    /// Creates one owner binding for a realized cache image.
+    #[must_use]
+    pub fn new(
+        owner_class: KvCacheOwnerClass,
+        owner_id: impl Into<String>,
+        model_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            owner_class,
+            owner_id: owner_id.into(),
+            model_id: model_id.into(),
+            session_id: None,
+            scheduler: None,
+        }
+    }
+
+    /// Binds the cache owner to one durable session identifier.
+    #[must_use]
+    pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+
+    /// Binds the cache owner to one scheduler-scoped execution path.
+    #[must_use]
+    pub fn with_scheduler(mut self, scheduler: KvCacheSchedulerBinding) -> Self {
+        self.scheduler = Some(scheduler);
+        self
+    }
+}
+
+/// One logical paged-KV span owned by a realized cache image.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCachePageSpan {
+    /// Stable logical page identifier for this cache image.
+    pub page_index: usize,
+    /// First token position owned by the page.
+    pub start_token_position: usize,
+    /// Number of resident token slots stored in the page.
+    pub token_count: usize,
+    /// Number of resident bytes currently owned by the page.
+    pub bytes_used: u64,
+}
+
+/// Request- or session-owned paged-KV accounting with explicit page movement.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheOwnershipAccounting {
+    /// Stable owner binding for the cache image.
+    pub owner: KvCacheOwnerBinding,
+    /// Baseline cache state at the start of the observed window.
+    pub previous: KvCacheState,
+    /// Current cache state at the end of the observed window.
+    pub current: KvCacheState,
+    /// Net growth between the baseline and current state.
+    pub growth: KvCacheGrowth,
+    /// Pages allocated during the observed window.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allocated_pages: Vec<KvCachePageSpan>,
+    /// Pages reclaimed during the observed window.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reclaimed_pages: Vec<KvCachePageSpan>,
+}
+
+impl KvCacheOwnershipAccounting {
+    /// Creates ownership accounting from one baseline, current state, and page-event set.
+    #[must_use]
+    pub fn new(
+        owner: KvCacheOwnerBinding,
+        previous: KvCacheState,
+        current: KvCacheState,
+        allocated_pages: Vec<KvCachePageSpan>,
+        reclaimed_pages: Vec<KvCachePageSpan>,
+    ) -> Self {
+        Self {
+            growth: KvCacheGrowth {
+                tokens: current.tokens.saturating_sub(previous.tokens),
+                bytes: current.bytes.saturating_sub(previous.bytes),
+                pages: current.pages.saturating_sub(previous.pages),
+            },
+            owner,
+            previous,
+            current,
+            allocated_pages,
+            reclaimed_pages,
+        }
+    }
 }
 
 /// Current paged-KV state plus request-local growth accounting.

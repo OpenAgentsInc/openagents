@@ -5186,6 +5186,9 @@ mod tests {
                     kv_growth: None,
                 }),
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5316,6 +5319,9 @@ mod tests {
                     kv_growth: None,
                 }),
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5412,6 +5418,9 @@ mod tests {
                     kv_growth: None,
                 }),
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5501,6 +5510,9 @@ mod tests {
                 compile_path: None,
                 delivery_proof: None,
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5607,6 +5619,9 @@ mod tests {
                 compile_path: None,
                 delivery_proof: None,
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5720,6 +5735,9 @@ mod tests {
                 compile_path: None,
                 delivery_proof: None,
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5830,6 +5848,9 @@ mod tests {
                 compile_path: None,
                 delivery_proof: None,
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -5989,6 +6010,9 @@ mod tests {
                     }),
                 }),
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -6265,6 +6289,9 @@ mod tests {
                 compile_path: None,
                 delivery_proof: None,
                 cache_observations: Vec::new(),
+                scheduler: None,
+                kv_ownership: None,
+                structured_output: None,
             },
         );
         let terminal = GenerationStreamTerminal {

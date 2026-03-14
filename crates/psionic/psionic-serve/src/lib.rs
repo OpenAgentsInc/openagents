@@ -65,11 +65,12 @@ use psionic_runtime::{
     ClusterExecutionContext, CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile,
     ExecutionDeliveryProof, GenerationSchedulerMetrics, GenerationSchedulerPolicy,
     GenerationSchedulerRequestReceipt, GenerationSchedulingClass, HealthStatus, KvCacheAccounting,
-    KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-    LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchDecision,
+    KvCacheDeviceScope, KvCacheOwnerBinding, KvCacheOwnerClass, KvCacheOwnershipAccounting,
+    KvCachePageLayout, KvCachePageSpan, KvCachePolicy, KvCacheSchedulerBinding, KvCacheSpillPolicy,
+    KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
+    LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
+    MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchDecision,
     QuantizationDispatchRequest, QuantizationDispatchWorkload, RuntimeError,
     RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
     SamplingStrategy, ServedArtifactIdentity, ShardedModelManifest, ShardedModelManifestError,
@@ -251,6 +252,44 @@ pub fn default_generation_scheduler_policy() -> GenerationSchedulerPolicy {
 pub fn continuous_batch_text_generation_execution_profile() -> ExecutionCapabilityProfile {
     ExecutionCapabilityProfile::continuous_batch_throughput_optimized(
         &default_generation_scheduler_policy(),
+    )
+}
+
+fn session_kv_owner(model_id: &str, session_id: &SessionId) -> KvCacheOwnerBinding {
+    KvCacheOwnerBinding::new(
+        KvCacheOwnerClass::Session,
+        session_id.as_str(),
+        model_id.to_string(),
+    )
+    .with_session_id(session_id.as_str())
+}
+
+fn request_kv_owner(
+    request: &GenerationRequest,
+    batch_posture: psionic_runtime::BatchExecutionPosture,
+    queue_depth_at_admission: Option<usize>,
+) -> KvCacheOwnerBinding {
+    let owner = KvCacheOwnerBinding::new(
+        KvCacheOwnerClass::Request,
+        request.request_id.clone(),
+        request.model.model.model_id.clone(),
+    )
+    .with_scheduler(KvCacheSchedulerBinding {
+        batch_posture,
+        queue_depth_at_admission,
+    });
+    if let Some(session_id) = &request.session_id {
+        owner.with_session_id(session_id.as_str())
+    } else {
+        owner
+    }
+}
+
+fn shared_prefix_kv_owner(identity: &PrefixCacheIdentity) -> KvCacheOwnerBinding {
+    KvCacheOwnerBinding::new(
+        KvCacheOwnerClass::SharedPrefix,
+        identity.prefix_digest.clone(),
+        identity.model_id.clone(),
     )
 }
 
@@ -1488,6 +1527,9 @@ pub struct GenerationProvenance {
     /// Explicit paged-KV policy for the request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache_policy: Option<KvCachePolicy>,
+    /// Explicit request- or session-owned paged-KV accounting for the realized path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_ownership: Option<KvCacheOwnershipAccounting>,
     /// Observable shared prefix-cache state for the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_state: Option<PrefixCacheState>,
@@ -2535,6 +2577,36 @@ pub struct InMemoryKvCache {
     width: usize,
     policy: KvCachePolicy,
     entries: Vec<KvCacheEntry>,
+    owner: Option<KvCacheOwnerBinding>,
+    pages: Vec<KvCacheLogicalPage>,
+    next_page_index: usize,
+    allocation_events: Vec<KvCachePageSpan>,
+    reclaim_events: Vec<KvCachePageSpan>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct KvCacheLogicalPage {
+    page_index: usize,
+    start_position: usize,
+    token_count: usize,
+}
+
+impl KvCacheLogicalPage {
+    fn span(&self, layout: &KvCachePageLayout) -> KvCachePageSpan {
+        KvCachePageSpan {
+            page_index: self.page_index,
+            start_token_position: self.start_position,
+            token_count: self.token_count,
+            bytes_used: layout.bytes_for_tokens(self.token_count),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct KvCacheLedgerCheckpoint {
+    previous_state: KvCacheState,
+    allocation_cursor: usize,
+    reclaim_cursor: usize,
 }
 
 impl InMemoryKvCache {
@@ -2556,6 +2628,11 @@ impl InMemoryKvCache {
             width,
             policy,
             entries: Vec::new(),
+            owner: None,
+            pages: Vec::new(),
+            next_page_index: 0,
+            allocation_events: Vec::new(),
+            reclaim_events: Vec::new(),
         }
     }
 
@@ -2583,6 +2660,17 @@ impl InMemoryKvCache {
         &self.policy.page_layout
     }
 
+    /// Binds the cache image to one explicit owner.
+    pub fn bind_owner(&mut self, owner: KvCacheOwnerBinding) {
+        self.owner = Some(owner);
+    }
+
+    /// Returns the bound cache owner, when present.
+    #[must_use]
+    pub fn owner(&self) -> Option<&KvCacheOwnerBinding> {
+        self.owner.as_ref()
+    }
+
     /// Returns the number of cached slots.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -2601,10 +2689,62 @@ impl InMemoryKvCache {
         &self.entries
     }
 
+    /// Returns the current logical page spans owned by the cache.
+    #[must_use]
+    pub fn page_spans(&self) -> Vec<KvCachePageSpan> {
+        self.pages
+            .iter()
+            .map(|page| page.span(self.page_layout()))
+            .collect()
+    }
+
+    fn checkpoint(&self) -> KvCacheLedgerCheckpoint {
+        self.checkpoint_with_state(self.state())
+    }
+
+    fn checkpoint_with_state(&self, previous_state: KvCacheState) -> KvCacheLedgerCheckpoint {
+        KvCacheLedgerCheckpoint {
+            previous_state,
+            allocation_cursor: self.allocation_events.len(),
+            reclaim_cursor: self.reclaim_events.len(),
+        }
+    }
+
+    fn ownership_since(
+        &self,
+        checkpoint: &KvCacheLedgerCheckpoint,
+    ) -> Option<KvCacheOwnershipAccounting> {
+        self.ownership_since_with_current_state(checkpoint, self.state())
+    }
+
+    fn ownership_since_with_current_state(
+        &self,
+        checkpoint: &KvCacheLedgerCheckpoint,
+        current_state: KvCacheState,
+    ) -> Option<KvCacheOwnershipAccounting> {
+        self.owner.clone().map(|owner| {
+            KvCacheOwnershipAccounting::new(
+                owner,
+                checkpoint.previous_state.clone(),
+                current_state,
+                self.allocation_events[checkpoint.allocation_cursor..].to_vec(),
+                self.reclaim_events[checkpoint.reclaim_cursor..].to_vec(),
+            )
+        })
+    }
+
     /// Returns the current paged-KV snapshot for the cache.
     #[must_use]
     pub fn state(&self) -> KvCacheState {
-        KvCacheState::paged(self.page_layout(), self.len())
+        KvCacheState {
+            tokens: self.len(),
+            bytes: self
+                .pages
+                .iter()
+                .map(|page| self.page_layout().bytes_for_tokens(page.token_count))
+                .sum(),
+            pages: self.pages.len(),
+        }
     }
 
     /// Appends a token KV pair to the cache.
@@ -2614,14 +2754,6 @@ impl InMemoryKvCache {
         key: Vec<f32>,
         value: Vec<f32>,
     ) -> Result<(), KvCacheError> {
-        if self.entries.len() >= self.max_context {
-            return Err(KvCacheError::PageBudgetExceeded {
-                requested_tokens: self.entries.len().saturating_add(1),
-                max_context: self.max_context,
-                max_pages: self.page_layout().max_pages,
-                spill_policy: self.policy.spill_policy,
-            });
-        }
         if key.len() != self.width || value.len() != self.width {
             return Err(KvCacheError::WidthMismatch {
                 expected: self.width,
@@ -2629,19 +2761,131 @@ impl InMemoryKvCache {
                 actual_value: value.len(),
             });
         }
-
+        self.ensure_capacity_for_append()?;
+        self.allocate_tail_page_if_needed()?;
         self.entries.push(KvCacheEntry {
             position: self.entries.len(),
             token,
             key,
             value,
         });
+        if let Some(page) = self.pages.last_mut() {
+            page.token_count = page.token_count.saturating_add(1);
+        }
         Ok(())
+    }
+
+    fn ensure_capacity_for_append(&mut self) -> Result<(), KvCacheError> {
+        while self.entries.len() >= self.max_context
+            || (self.tail_page_full() && self.pages.len() >= self.page_layout().max_pages)
+        {
+            match self.policy.spill_policy {
+                KvCacheSpillPolicy::EvictOldestPages => self.evict_oldest_page()?,
+                KvCacheSpillPolicy::RefuseNewPages | KvCacheSpillPolicy::SpillToHost => {
+                    return Err(KvCacheError::PageBudgetExceeded {
+                        requested_tokens: self.entries.len().saturating_add(1),
+                        max_context: self.max_context,
+                        max_pages: self.page_layout().max_pages,
+                        spill_policy: self.policy.spill_policy,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn allocate_tail_page_if_needed(&mut self) -> Result<(), KvCacheError> {
+        if !self.pages.is_empty() && !self.tail_page_full() {
+            return Ok(());
+        }
+        if self.pages.len() >= self.page_layout().max_pages {
+            return Err(KvCacheError::PageBudgetExceeded {
+                requested_tokens: self.entries.len().saturating_add(1),
+                max_context: self.max_context,
+                max_pages: self.page_layout().max_pages,
+                spill_policy: self.policy.spill_policy,
+            });
+        }
+        let page = KvCacheLogicalPage {
+            page_index: self.next_page_index,
+            start_position: self.entries.len(),
+            token_count: 0,
+        };
+        self.next_page_index = self.next_page_index.saturating_add(1);
+        self.allocation_events.push(page.span(self.page_layout()));
+        self.pages.push(page);
+        Ok(())
+    }
+
+    fn tail_page_full(&self) -> bool {
+        self.pages
+            .last()
+            .is_some_and(|page| page.token_count >= self.page_layout().tokens_per_page)
+    }
+
+    fn evict_oldest_page(&mut self) -> Result<(), KvCacheError> {
+        let Some(page) = self.pages.first().cloned() else {
+            return Err(KvCacheError::PageBudgetExceeded {
+                requested_tokens: self.entries.len().saturating_add(1),
+                max_context: self.max_context,
+                max_pages: self.page_layout().max_pages,
+                spill_policy: self.policy.spill_policy,
+            });
+        };
+        let removed_tokens = page.token_count;
+        self.reclaim_events.push(page.span(self.page_layout()));
+        self.pages.remove(0);
+        self.entries.drain(..removed_tokens);
+        for (position, entry) in self.entries.iter_mut().enumerate() {
+            entry.position = position;
+        }
+        for page in &mut self.pages {
+            page.start_position = page.start_position.saturating_sub(removed_tokens);
+        }
+        Ok(())
+    }
+
+    /// Truncates the cache to a target token count and records reclaimed pages.
+    pub fn truncate(&mut self, token_count: usize) {
+        if token_count >= self.entries.len() {
+            return;
+        }
+        let page_layout = self.page_layout().clone();
+        self.entries.truncate(token_count);
+        while self
+            .pages
+            .last()
+            .is_some_and(|page| page.start_position >= token_count)
+        {
+            if let Some(page) = self.pages.pop() {
+                self.reclaim_events.push(page.span(&page_layout));
+            }
+        }
+        if let Some(page) = self.pages.last_mut() {
+            let page_end = page.start_position.saturating_add(page.token_count);
+            if page_end > token_count {
+                let retained_tokens = token_count.saturating_sub(page.start_position);
+                let reclaimed_tokens = page.token_count.saturating_sub(retained_tokens);
+                if retained_tokens == 0 {
+                    let removed_page = self.pages.pop().expect("tail page exists");
+                    self.reclaim_events.push(removed_page.span(&page_layout));
+                } else if reclaimed_tokens > 0 {
+                    let reclaimed_bytes = page_layout.bytes_for_tokens(reclaimed_tokens);
+                    self.reclaim_events.push(KvCachePageSpan {
+                        page_index: page.page_index,
+                        start_token_position: token_count,
+                        token_count: reclaimed_tokens,
+                        bytes_used: reclaimed_bytes,
+                    });
+                    page.token_count = retained_tokens;
+                }
+            }
+        }
     }
 
     /// Clears all cached slots.
     pub fn reset(&mut self) {
-        self.entries.clear();
+        self.truncate(0);
     }
 }
 
@@ -2796,9 +3040,15 @@ impl InMemoryGenerationSessionStore {
             kv_cache_policy: policy.clone(),
             kv_cache: KvCacheState::default(),
         };
+        let mut cache =
+            InMemoryKvCache::with_policy(descriptor.config.max_context, cache_width, policy);
+        cache.bind_owner(session_kv_owner(
+            descriptor.model.model_id.as_str(),
+            &session_id,
+        ));
         let state = GenerationSessionState {
             session: session.clone(),
-            cache: InMemoryKvCache::with_policy(descriptor.config.max_context, cache_width, policy),
+            cache,
             tokens: Vec::new(),
         };
         self.sessions.insert(session_id, state);
@@ -2894,7 +3144,7 @@ impl InMemoryGenerationSessionStore {
         session_id: &SessionId,
         model: &DecoderModelDescriptor,
         served_artifact_digest: &str,
-        cache: InMemoryKvCache,
+        mut cache: InMemoryKvCache,
         tokens: TokenSequence,
     ) -> Result<GenerationSession, SessionStoreError> {
         let state = self
@@ -2913,6 +3163,7 @@ impl InMemoryGenerationSessionStore {
             });
         }
 
+        cache.bind_owner(session_kv_owner(model.model.model_id.as_str(), session_id));
         state.cache = cache;
         state.tokens = tokens.as_slice().to_vec();
         sync_session_cache_state(&mut state.session, &state.cache);
@@ -2988,7 +3239,7 @@ impl SharedPrefixStore {
             })
             .map(|entry| {
                 let mut cache = entry.cache.clone();
-                cache.entries.truncate(prompt_tokens.len());
+                cache.truncate(prompt_tokens.len());
                 ExactPrefixLookupResult {
                     identity: prefix_identity(compatibility, prompt_tokens.as_slice()),
                     cache,
@@ -3042,7 +3293,7 @@ impl SharedPrefixStore {
         if let Some((index, shared)) = best {
             let entry = &self.entries[index];
             let mut cache = entry.cache.clone();
-            cache.entries.truncate(shared);
+            cache.truncate(shared);
             let exact_prompt_hit = entry.prompt_tokens.as_slice() == prompt_tokens.as_slice();
             let can_return_prefix_logits = entry.prompt_logits.len() >= shared;
             return PrefixLookupResult {
@@ -3108,6 +3359,8 @@ impl SharedPrefixStore {
         cache: &InMemoryKvCache,
     ) -> PrefixCacheIdentity {
         let identity = prefix_identity(&compatibility, prompt_tokens.as_slice());
+        let mut cache = cache.clone();
+        cache.bind_owner(shared_prefix_kv_owner(&identity));
         let greedy_prompt_token = prompt_logits
             .last()
             .and_then(|logits| select_argmax_token(logits.as_slice()));
@@ -3118,7 +3371,7 @@ impl SharedPrefixStore {
             existing.prompt_logits = prompt_logits.to_vec();
             existing.last_prompt_logits = prompt_logits.last().cloned().unwrap_or_default();
             existing.greedy_prompt_token = greedy_prompt_token;
-            existing.cache = cache.clone();
+            existing.cache = cache;
         } else {
             self.entries.push(SharedPrefixEntry {
                 compatibility,
@@ -3126,7 +3379,7 @@ impl SharedPrefixStore {
                 prompt_logits: prompt_logits.to_vec(),
                 last_prompt_logits: prompt_logits.last().cloned().unwrap_or_default(),
                 greedy_prompt_token,
-                cache: cache.clone(),
+                cache,
             });
         }
         identity
@@ -4794,6 +5047,7 @@ where
     context_window: ContextWindowAccounting,
     previous_kv_state: KvCacheState,
     cache: InMemoryKvCache,
+    request_kv_checkpoint: KvCacheLedgerCheckpoint,
     session_tokens: Vec<TokenId>,
     prompt_tokens: TokenSequence,
     prompt_logits: Vec<Vec<f32>>,
@@ -4915,7 +5169,7 @@ where
             )?;
             let mut prompt_logits = Vec::new();
             let mut last_logits = Vec::new();
-            let cache = if shared_prefix_eligible {
+            let mut cache = if shared_prefix_eligible {
                 let lookup = shared_prefixes.lookup(&prefix_compatibility, &prompt_tokens);
                 prefix_state = lookup.state;
                 prefix_tokens_reused = lookup.reused_tokens;
@@ -4946,6 +5200,12 @@ where
                     kv_width: cache.width(),
                 });
             }
+            cache.bind_owner(request_kv_owner(
+                request,
+                psionic_runtime::BatchExecutionPosture::ContinuousBatch,
+                None,
+            ));
+            let request_kv_checkpoint = cache.checkpoint();
 
             let prompt_prefix_recorded =
                 !shared_prefix_eligible || prefix_tokens_reused == prompt_tokens.len();
@@ -4967,6 +5227,7 @@ where
                 context_window,
                 previous_kv_state,
                 cache,
+                request_kv_checkpoint,
                 session_tokens,
                 prompt_tokens,
                 prompt_logits,
@@ -5011,6 +5272,14 @@ where
 
     fn finish_request(&self, models: &mut InMemoryGenerationModelRegistry<M>) {
         let _ = models.finish_request(self.model_id.as_str(), current_time_millis());
+    }
+
+    fn bind_scheduler_owner(&mut self, queue_depth_at_admission: usize) {
+        self.cache.bind_owner(request_kv_owner(
+            &self.request,
+            psionic_runtime::BatchExecutionPosture::ContinuousBatch,
+            Some(queue_depth_at_admission),
+        ));
     }
 
     fn step_prefill<B>(
@@ -5208,6 +5477,7 @@ where
             prefix_tokens_reused: Some(self.prefix_tokens_reused),
             gpt_oss_perf: self.gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
+        let kv_ownership = self.cache.ownership_since(&self.request_kv_checkpoint);
         let delivery_plan_digest = self
             .execution_plan_digest
             .clone()
@@ -5224,6 +5494,7 @@ where
             residency_policy: self.residency_policy,
             residency_snapshot: self.residency_snapshot,
             kv_cache_policy: Some(self.cache.policy().clone()),
+            kv_ownership,
             prefix_cache_state: Some(self.prefix_state),
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
@@ -5284,8 +5555,9 @@ where
     fn new(
         index: usize,
         queue_depth_at_admission: usize,
-        state: ScheduledGenerationState<M>,
+        mut state: ScheduledGenerationState<M>,
     ) -> Self {
+        state.bind_scheduler_owner(queue_depth_at_admission);
         Self {
             index,
             queue_depth_at_admission,
@@ -5332,6 +5604,38 @@ fn response_with_scheduler_receipt(
         provenance.scheduler = Some(receipt);
     }
     response
+}
+
+fn generation_response_kv_ownership(
+    response: &GenerationResponse,
+) -> Option<&KvCacheOwnershipAccounting> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|provenance| provenance.kv_ownership.as_ref())
+}
+
+fn update_scheduler_kv_peaks<M>(
+    scheduler_metrics: &mut GenerationSchedulerMetrics,
+    active: &VecDeque<ActiveScheduledGenerationRequest<M>>,
+) where
+    M: CompiledWordGenerationModel,
+{
+    let active_state = active
+        .iter()
+        .fold(KvCacheState::default(), |mut state, entry| {
+            let cache_state = entry.state.cache.state();
+            state.tokens = state.tokens.saturating_add(cache_state.tokens);
+            state.bytes = state.bytes.saturating_add(cache_state.bytes);
+            state.pages = state.pages.saturating_add(cache_state.pages);
+            state
+        });
+    scheduler_metrics.peak_kv_pages_in_use = scheduler_metrics
+        .peak_kv_pages_in_use
+        .max(active_state.pages);
+    scheduler_metrics.peak_kv_bytes_in_use = scheduler_metrics
+        .peak_kv_bytes_in_use
+        .max(active_state.bytes);
 }
 
 fn fallback_single_request_receipt(
@@ -5435,6 +5739,7 @@ where
         if active.is_empty() {
             continue;
         }
+        update_scheduler_kv_peaks(&mut scheduler_metrics, &active);
 
         scheduler_metrics.total_cycles = scheduler_metrics.total_cycles.saturating_add(1);
         scheduler_metrics.max_batch_size = scheduler_metrics.max_batch_size.max(active.len());
@@ -5481,6 +5786,31 @@ where
                     let receipt = entry.scheduler_receipt(&policy);
                     match entry.state.finalize(models, sessions, Some(receipt)) {
                         Ok(response) => {
+                            if let Some(kv_ownership) = generation_response_kv_ownership(&response)
+                            {
+                                scheduler_metrics.total_kv_pages_allocated = scheduler_metrics
+                                    .total_kv_pages_allocated
+                                    .saturating_add(kv_ownership.allocated_pages.len());
+                                scheduler_metrics.total_kv_pages_reclaimed = scheduler_metrics
+                                    .total_kv_pages_reclaimed
+                                    .saturating_add(kv_ownership.reclaimed_pages.len());
+                                scheduler_metrics.total_kv_bytes_allocated =
+                                    scheduler_metrics.total_kv_bytes_allocated.saturating_add(
+                                        kv_ownership
+                                            .allocated_pages
+                                            .iter()
+                                            .map(|page| page.bytes_used)
+                                            .sum::<u64>(),
+                                    );
+                                scheduler_metrics.total_kv_bytes_reclaimed =
+                                    scheduler_metrics.total_kv_bytes_reclaimed.saturating_add(
+                                        kv_ownership
+                                            .reclaimed_pages
+                                            .iter()
+                                            .map(|page| page.bytes_used)
+                                            .sum::<u64>(),
+                                    );
+                            }
                             scheduler_metrics.total_completed_requests =
                                 scheduler_metrics.total_completed_requests.saturating_add(1);
                             responses[entry.index] = Some(Ok(response));
@@ -5545,6 +5875,7 @@ where
                 break;
             }
         }
+        update_scheduler_kv_peaks(&mut scheduler_metrics, &active);
 
         let observed_class = if cycle_decode_tokens > 0 && cycle_prefill_tokens > 0 {
             Some(GenerationSchedulingClass::MixedPrefillDecode)
@@ -5615,6 +5946,7 @@ where
     context_window: ContextWindowAccounting,
     previous_kv_state: KvCacheState,
     cache: InMemoryKvCache,
+    request_kv_checkpoint: KvCacheLedgerCheckpoint,
     sampler: GenerationSampler,
     session_tokens: Vec<TokenId>,
     prompt_tokens: TokenSequence,
@@ -5775,6 +6107,12 @@ where
                     kv_width: cache.width(),
                 });
             }
+            cache.bind_owner(request_kv_owner(
+                request,
+                psionic_runtime::BatchExecutionPosture::SingleRequestOnly,
+                None,
+            ));
+            let request_kv_checkpoint = cache.checkpoint();
             for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
                 let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
                 if execution_plan_digest.is_none() {
@@ -5811,6 +6149,7 @@ where
                 context_window,
                 previous_kv_state,
                 cache,
+                request_kv_checkpoint,
                 session_tokens,
                 prefix_policy,
                 prefix_state,
@@ -5833,6 +6172,7 @@ where
                 context_window,
                 previous_kv_state,
                 cache,
+                request_kv_checkpoint,
                 session_tokens,
                 prefix_policy,
                 prefix_state,
@@ -5866,6 +6206,7 @@ where
                 context_window,
                 previous_kv_state,
                 cache,
+                request_kv_checkpoint,
                 sampler: GenerationSampler::new(&request.options)?,
                 session_tokens,
                 prompt_tokens,
@@ -5949,6 +6290,7 @@ where
             residency_policy: self.residency_policy.clone(),
             residency_snapshot: self.residency_snapshot.clone(),
             kv_cache_policy: Some(self.cache.policy().clone()),
+            kv_ownership: self.cache.ownership_since(&self.request_kv_checkpoint),
             prefix_cache_state: Some(self.prefix_state),
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
@@ -6410,6 +6752,12 @@ where
                 kv_width: cache.width(),
             });
         }
+        cache.bind_owner(request_kv_owner(
+            request,
+            psionic_runtime::BatchExecutionPosture::SingleRequestOnly,
+            None,
+        ));
+        let request_kv_checkpoint = cache.checkpoint();
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
             accumulate_generation_step_counters(
@@ -6553,6 +6901,7 @@ where
             residency_policy,
             residency_snapshot,
             kv_cache_policy: Some(cache.policy().clone()),
+            kv_ownership: cache.ownership_since(&request_kv_checkpoint),
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
@@ -8040,7 +8389,7 @@ mod tests {
     use psionic_core::{DType, Shape};
     use psionic_runtime::{
         AdmissionRefusalReason, BackendSelection, ExecutionPartition, HealthStatus,
-        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheAccounting, KvCacheDeviceScope, KvCacheOwnerClass, KvCachePageLayout, KvCachePolicy,
         KvCacheSpillPolicy, KvCacheState, LoadedModelState, LocalRuntimeErrorCode,
         LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy, PrefixCacheState,
         QuantizationKernelStrategy, ResidencyPressureAction, RuntimeTransitionEvent,
@@ -8068,7 +8417,7 @@ mod tests {
         default_generation_streaming_policy, finalize_embedding_values,
         generation_product_supported, load_sharded_model_manifest_json, prefix_compatibility,
         prefix_compatibility_for_request, recommended_generation_quantization_dispatch,
-        served_artifact_identity_for_decoder_model,
+        request_kv_owner, served_artifact_identity_for_decoder_model,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use psionic_models::{
@@ -8714,6 +9063,59 @@ mod tests {
     }
 
     #[test]
+    fn paged_kv_cache_tracks_owner_bound_page_eviction_and_reclaim()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let policy = KvCachePolicy {
+            device_scope: KvCacheDeviceScope::SameDeviceOnly,
+            spill_policy: KvCacheSpillPolicy::EvictOldestPages,
+            page_layout: KvCachePageLayout::new(4, 2, 32),
+        };
+        let mut cache = InMemoryKvCache::with_policy(4, 2, policy);
+        cache.bind_owner(request_kv_owner(
+            &GenerationRequest::new_text(
+                "req-1",
+                sample_named_decoder_descriptor("owner-bound"),
+                None,
+                "hello",
+                GenerationOptions::greedy(1),
+            ),
+            psionic_runtime::BatchExecutionPosture::ContinuousBatch,
+            Some(0),
+        ));
+        let checkpoint = cache.checkpoint();
+
+        for token in 1..=5 {
+            cache.append(TokenId(token), vec![0.0; 2], vec![1.0; 2])?;
+        }
+        let ownership = cache
+            .ownership_since(&checkpoint)
+            .expect("owner-bound accounting");
+        assert_eq!(ownership.owner.owner_class, KvCacheOwnerClass::Request);
+        assert_eq!(ownership.owner.owner_id, "req-1");
+        assert_eq!(ownership.current.tokens, 3);
+        assert_eq!(ownership.current.pages, 2);
+        assert_eq!(ownership.allocated_pages.len(), 3);
+        assert_eq!(ownership.reclaimed_pages.len(), 1);
+        assert_eq!(ownership.reclaimed_pages[0].page_index, 0);
+
+        let reclaim_checkpoint = cache.checkpoint();
+        cache.truncate(1);
+        let reclaim = cache
+            .ownership_since(&reclaim_checkpoint)
+            .expect("truncate accounting");
+        assert_eq!(reclaim.current.tokens, 1);
+        assert_eq!(reclaim.current.pages, 1);
+        assert_eq!(reclaim.reclaimed_pages.len(), 2);
+        assert!(
+            reclaim
+                .reclaimed_pages
+                .iter()
+                .any(|page| page.token_count == 1)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn shared_prefix_store_reports_hit_miss_and_rebuilt() -> Result<(), Box<dyn std::error::Error>>
     {
         let loaded_model = CpuWordGenerationModel::new(ReferenceWordDecoder::new())?;
@@ -8741,6 +9143,14 @@ mod tests {
 
         let mut store = SharedPrefixStore::default();
         store.record(compatibility.clone(), &hello_world, &prompt_logits, &cache);
+        assert_eq!(
+            store.entries[0]
+                .cache
+                .owner()
+                .expect("shared prefix owner")
+                .owner_class,
+            KvCacheOwnerClass::SharedPrefix
+        );
 
         let hit = store.lookup(&compatibility, &hello);
         assert_eq!(hit.state, PrefixCacheState::Hit);
@@ -8791,7 +9201,9 @@ mod tests {
         assert_eq!(miss.state, PrefixCacheState::Miss);
         assert_eq!(miss.reused_tokens, 0);
 
-        store.entries[0].cache.entries.pop();
+        store.entries[0]
+            .cache
+            .truncate(hello_world.len().saturating_sub(1));
         let rebuilt = store.lookup(&compatibility, &hello_world);
         assert_eq!(rebuilt.state, PrefixCacheState::Rebuilt);
         assert!(store.entries.is_empty());
@@ -9123,6 +9535,9 @@ mod tests {
         );
         assert!(result.scheduler_metrics.total_prefill_tokens >= 6);
         assert!(result.scheduler_metrics.total_decode_tokens >= 3);
+        assert!(result.scheduler_metrics.peak_kv_pages_in_use > 0);
+        assert!(result.scheduler_metrics.peak_kv_bytes_in_use > 0);
+        assert!(result.scheduler_metrics.total_kv_pages_allocated >= 2);
 
         let responses = result
             .responses
@@ -9147,6 +9562,22 @@ mod tests {
                     | psionic_runtime::GenerationSchedulingClass::Decode
             ));
             assert!(receipt.max_batch_size_observed >= 1);
+            let kv_ownership = response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.kv_ownership.as_ref())
+                .expect("kv ownership");
+            assert_eq!(kv_ownership.owner.owner_class, KvCacheOwnerClass::Request);
+            assert_eq!(kv_ownership.owner.model_id, response.model_id);
+            assert_eq!(
+                kv_ownership
+                    .owner
+                    .scheduler
+                    .as_ref()
+                    .and_then(|value| value.queue_depth_at_admission),
+                Some(receipt.queue_depth_at_admission)
+            );
+            assert!(kv_ownership.current.pages >= kv_ownership.previous.pages);
         }
         Ok(())
     }

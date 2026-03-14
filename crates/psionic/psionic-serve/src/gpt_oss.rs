@@ -1621,6 +1621,14 @@ fn run_cuda_generation_request(
         } else {
             CudaKvCacheMirror::from_host_cache(backend, &cache, reserve_tokens)?
         };
+        cache.bind_owner(super::request_kv_owner(
+            request,
+            psionic_runtime::BatchExecutionPosture::SingleRequestOnly,
+            None,
+        ));
+        let request_kv_checkpoint = cache.checkpoint_with_state(
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len()),
+        );
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             ensure_cuda_decode_step_plan(
                 &loaded_model,
@@ -1868,6 +1876,10 @@ fn run_cuda_generation_request(
             residency_policy,
             residency_snapshot,
             kv_cache_policy: Some(cache.policy().clone()),
+            kv_ownership: cache.ownership_since_with_current_state(
+                &request_kv_checkpoint,
+                psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len()),
+            ),
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
@@ -2046,6 +2058,14 @@ fn run_cuda_hybrid_generation_request(
         }
         let reserve_tokens = request.options.max_output_tokens.saturating_add(1);
         let mut cuda_cache = CudaKvCacheMirror::from_host_cache(backend, &cache, reserve_tokens)?;
+        cache.bind_owner(super::request_kv_owner(
+            request,
+            psionic_runtime::BatchExecutionPosture::SingleRequestOnly,
+            None,
+        ));
+        let request_kv_checkpoint = cache.checkpoint_with_state(
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len()),
+        );
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             let step_start = Instant::now();
             let step = loaded_model.inner.forward_step_with_output_mode(
@@ -2221,10 +2241,12 @@ fn run_cuda_hybrid_generation_request(
         let usage = super::GenerationUsage {
             input_tokens: prompt_tokens.len(),
             output_tokens: generated.len(),
-            cache_tokens: cache.len(),
+            cache_tokens: generated_cache_tokens,
         };
-        let kv_cache =
-            psionic_runtime::KvCacheAccounting::from_states(&previous_kv_state, cache.state());
+        let kv_cache = psionic_runtime::KvCacheAccounting::from_states(
+            &previous_kv_state,
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), generated_cache_tokens),
+        );
         let total_duration_ns = generation_start
             .elapsed()
             .as_nanos()
@@ -2260,6 +2282,10 @@ fn run_cuda_hybrid_generation_request(
             residency_policy,
             residency_snapshot,
             kv_cache_policy: Some(cache.policy().clone()),
+            kv_ownership: cache.ownership_since_with_current_state(
+                &request_kv_checkpoint,
+                psionic_runtime::KvCacheState::paged(cache.page_layout(), generated_cache_tokens),
+            ),
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
@@ -2424,7 +2450,7 @@ fn run_metal_generation_request(
                     && lookup.reused_tokens == prompt_tokens.len()
                     && lookup.caches.is_some()
             });
-        let cache = if shared_prefix_eligible && request.session_id.is_none() {
+        let mut cache = if shared_prefix_eligible && request.session_id.is_none() {
             if let Some(lookup) = sessionless_metal_lookup.as_ref() {
                 prefix_state = lookup.state;
                 prefix_tokens_reused = lookup.reused_tokens;
@@ -2516,6 +2542,13 @@ fn run_metal_generation_request(
                 request.options.max_output_tokens.saturating_add(1),
             )?
         };
+        cache.bind_owner(super::request_kv_owner(
+            request,
+            psionic_runtime::BatchExecutionPosture::SingleRequestOnly,
+            None,
+        ));
+        let request_kv_checkpoint =
+            cache.checkpoint_with_state(metal_layer_cache_state(layer_caches.as_slice()));
         let metal_prefix_identity = prefix_identity.clone().or_else(|| {
             metal_lookup
                 .as_ref()
@@ -2886,6 +2919,10 @@ fn run_metal_generation_request(
             residency_policy,
             residency_snapshot,
             kv_cache_policy: Some(cache.policy().clone()),
+            kv_ownership: cache.ownership_since_with_current_state(
+                &request_kv_checkpoint,
+                metal_layer_cache_state(layer_caches.as_slice()),
+            ),
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
