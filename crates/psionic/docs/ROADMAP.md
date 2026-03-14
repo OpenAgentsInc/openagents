@@ -916,7 +916,14 @@ claims for local PD, replica-routed DP, pipeline-sharded PP, layer-sharded,
 tensor-sharded TP, and expert-parallel non-support are now explicit, executable,
 and tied to cache, routing, artifact, and receipt truth instead of scattered
 test knowledge. The next dependency-ordered issue in that chain is now
-`PSI-256` / [#3561](https://github.com/OpenAgentsInc/openagents/issues/3561).
+`PSI-256` / [#3561](https://github.com/OpenAgentsInc/openagents/issues/3561),
+and it is now landed too by adding the canonical product-class split in
+`PRODUCT_CLASS_ACCEPTANCE_MATRICES.md` plus the runnable
+`scripts/release/check-psionic-product-class-acceptance.sh` harness. Psionic
+claims are now explicitly separated across local portability, high-throughput
+serving, and structured-agent serving so one benchmark class can no longer
+pretend to close the others. The next dependency-ordered issue in that chain is
+now `PSI-257` / [#3562](https://github.com/OpenAgentsInc/openagents/issues/3562).
 
 ## Current Reality
 

@@ -3,6 +3,10 @@
 This document is the human-readable source for the minimum shipped hardware
 validation profile:
 
+This matrix is the local-portability acceptance authority only. It does not
+close high-throughput serving or structured-agent acceptance by itself; use
+`PRODUCT_CLASS_ACCEPTANCE_MATRICES.md` for the three-way product-class split.
+
 - `matrix_id = psionic.minimum_hardware_validation.v1`
 - machine-readable reference type:
   `psionic_runtime::ValidationMatrixReference`

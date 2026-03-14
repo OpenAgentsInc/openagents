@@ -201,6 +201,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical support matrix and runnable validation entrypoint for local and
   clustered serving topologies, including `DP`, `PP`, `TP`, `PD`, explicit
   refusal boundaries, and current expert-parallel non-support.
+- **[docs/PRODUCT_CLASS_ACCEPTANCE_MATRICES.md](docs/PRODUCT_CLASS_ACCEPTANCE_MATRICES.md)** —
+  canonical split between local portability, high-throughput serving, and
+  structured-agent acceptance, plus the runnable category harness that keeps
+  those product claims from collapsing into one benchmark headline.
 - **[docs/FM_BRIDGE_CONSIDERATIONS.md](docs/FM_BRIDGE_CONSIDERATIONS.md)** — Apple Foundation Models bridge: architecture, binary discovery, build, run, test, shipping, and user requirements in full detail.
 - **[docs/ACTIVATION_FINGERPRINT_PROOFS.md](docs/ACTIVATION_FINGERPRINT_PROOFS.md)** — activation-fingerprint proof posture, embeddings-first artifact generation, and benchmark semantics.
 - **[docs/ROADMAP_FM.md](docs/ROADMAP_FM.md)** — Apple FM lane roadmap and API coverage.
