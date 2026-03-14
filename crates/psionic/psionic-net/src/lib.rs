@@ -14,7 +14,9 @@ use std::{
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use psionic_runtime::{ClusterEvidenceBundleVerificationError, SignedClusterEvidenceBundle};
+use psionic_runtime::{
+    ClusterEvidenceBundleVerificationError, RuntimeManifest, SignedClusterEvidenceBundle,
+};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -35,7 +37,8 @@ pub use psionic_runtime::{
 };
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "transport and session substrate for psionic clusters";
+pub const CRATE_ROLE: &str =
+    "transport, session-claims, and network identity substrate for psionic clusters";
 
 const HELLO_INTERVAL: Duration = Duration::from_millis(100);
 const PING_INTERVAL: Duration = Duration::from_millis(75);
@@ -45,6 +48,7 @@ const SIGNING_KEY_BYTES: usize = 32;
 const VERIFYING_KEY_BYTES: usize = 32;
 const SIGNATURE_BYTES: usize = 64;
 const DEFAULT_TUNNEL_HTTP_BODY_BYTES: usize = 4 * 1024;
+const SESSION_CLAIMS_SCHEMA_VERSION: u16 = 1;
 
 /// Errors returned by the local cluster transport.
 #[derive(Debug, Error)]
@@ -638,6 +642,315 @@ impl ClusterTransportPath {
             kind: ClusterTransportPathKind::RelayedDatagram,
             peer_addr,
             relay: Some(relay),
+        }
+    }
+}
+
+/// Policy posture for session-bound execution claims on one transport.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterSessionClaimsPosture {
+    /// No claim-bearing execution identity is expected on this lane.
+    #[default]
+    None,
+    /// Claims are accepted and surfaced when available, but absence does not reject the peer.
+    BestEffort,
+    /// Claims are required for truthful policy-meaningful execution identity.
+    Required,
+}
+
+/// Proof posture surfaced by one concrete session-claims bundle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionClaimsProofPosture {
+    /// No stronger proof posture is available for this lane.
+    None,
+    /// The lane carries claims but still exposes degraded proof posture.
+    BestEffort,
+    /// The lane is claiming proof-bearing execution identity.
+    ProofBearing,
+}
+
+/// Transport binding carried by one session-claims bundle.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionClaimsTransportBinding {
+    /// Peer identity the claims bundle is bound to.
+    pub peer_node_id: NodeId,
+    /// Peer message-authentication key the claims bundle is bound to.
+    pub peer_auth_public_key: String,
+    /// Transport path kind the claims bundle was emitted on.
+    pub path_kind: ClusterTransportPathKind,
+    /// Relay identifier when the path depended on relay infrastructure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relay_id: Option<String>,
+    /// Session tag when the path depended on relay infrastructure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_tag: Option<String>,
+}
+
+impl SessionClaimsTransportBinding {
+    /// Creates one transport binding from the sending identity and selected path.
+    #[must_use]
+    pub fn for_sender_and_path(sender: &ClusterNodeIdentity, path: &ClusterTransportPath) -> Self {
+        Self {
+            peer_node_id: sender.node_id.clone(),
+            peer_auth_public_key: sender.auth_public_key.clone(),
+            path_kind: path.kind,
+            relay_id: path.relay.as_ref().map(|relay| relay.relay_id.clone()),
+            session_tag: path.relay.as_ref().map(|relay| relay.session_tag.clone()),
+        }
+    }
+}
+
+/// Session-scoped claims that bind network identity to runtime and artifact lineage.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionClaimsBundle {
+    /// Stable schema version.
+    pub schema_version: u16,
+    /// Stable claims identifier.
+    pub claims_id: String,
+    /// Transport binding for the claims bundle.
+    pub binding: SessionClaimsTransportBinding,
+    /// Runtime, environment, and artifact lineage carried by the claims bundle.
+    pub runtime_manifest: RuntimeManifest,
+    /// Actual proof posture surfaced by the lane.
+    pub proof_posture: SessionClaimsProofPosture,
+    /// Logical issuance timestamp.
+    pub issued_at_ms: u64,
+    /// Stable digest for the claims bundle.
+    pub claims_digest: String,
+}
+
+impl SessionClaimsBundle {
+    /// Creates one claims bundle for the sending identity and selected path.
+    #[must_use]
+    pub fn for_sender_and_path(
+        claims_id: impl Into<String>,
+        sender: &ClusterNodeIdentity,
+        path: &ClusterTransportPath,
+        runtime_manifest: RuntimeManifest,
+        proof_posture: SessionClaimsProofPosture,
+        issued_at_ms: u64,
+    ) -> Self {
+        let claims_id = claims_id.into();
+        let binding = SessionClaimsTransportBinding::for_sender_and_path(sender, path);
+        let claims_digest = stable_session_claims_digest(
+            claims_id.as_str(),
+            &binding,
+            &runtime_manifest,
+            proof_posture,
+            issued_at_ms,
+        );
+        Self {
+            schema_version: SESSION_CLAIMS_SCHEMA_VERSION,
+            claims_id,
+            binding,
+            runtime_manifest,
+            proof_posture,
+            issued_at_ms,
+            claims_digest,
+        }
+    }
+
+    /// Verifies the self-consistency and sender/path binding for the claims bundle.
+    pub fn verify_for_sender(
+        &self,
+        sender: &ClusterNodeIdentity,
+        path: &ClusterTransportPath,
+    ) -> Result<(), SessionClaimsVerificationError> {
+        let expected_claims_digest = stable_session_claims_digest(
+            self.claims_id.as_str(),
+            &self.binding,
+            &self.runtime_manifest,
+            self.proof_posture,
+            self.issued_at_ms,
+        );
+        if self.claims_digest != expected_claims_digest {
+            return Err(SessionClaimsVerificationError::ClaimsDigestMismatch {
+                expected: expected_claims_digest,
+                actual: self.claims_digest.clone(),
+            });
+        }
+        if self.runtime_manifest.identity_digest != self.runtime_manifest.stable_identity_digest() {
+            return Err(
+                SessionClaimsVerificationError::RuntimeManifestIdentityMismatch {
+                    expected: self.runtime_manifest.stable_identity_digest(),
+                    actual: self.runtime_manifest.identity_digest.clone(),
+                },
+            );
+        }
+        if self.runtime_manifest.manifest_digest != self.runtime_manifest.stable_manifest_digest() {
+            return Err(
+                SessionClaimsVerificationError::RuntimeManifestDigestMismatch {
+                    expected: self.runtime_manifest.stable_manifest_digest(),
+                    actual: self.runtime_manifest.manifest_digest.clone(),
+                },
+            );
+        }
+        if self.binding.peer_node_id != sender.node_id {
+            return Err(SessionClaimsVerificationError::SenderNodeMismatch {
+                expected: sender.node_id.clone(),
+                actual: self.binding.peer_node_id.clone(),
+            });
+        }
+        if self.binding.peer_auth_public_key != sender.auth_public_key {
+            return Err(SessionClaimsVerificationError::SenderKeyMismatch {
+                expected: sender.auth_public_key.clone(),
+                actual: self.binding.peer_auth_public_key.clone(),
+            });
+        }
+        if self.binding.path_kind != path.kind {
+            return Err(SessionClaimsVerificationError::PathKindMismatch {
+                expected: path.kind,
+                actual: self.binding.path_kind,
+            });
+        }
+        match path.kind {
+            ClusterTransportPathKind::RelayedDatagram => {
+                let relay = path
+                    .relay
+                    .as_ref()
+                    .ok_or(SessionClaimsVerificationError::RelayBindingMissing)?;
+                if self.binding.relay_id.as_deref() != Some(relay.relay_id.as_str())
+                    || self.binding.session_tag.as_deref() != Some(relay.session_tag.as_str())
+                {
+                    return Err(SessionClaimsVerificationError::RelayBindingMismatch {
+                        expected_relay_id: Some(relay.relay_id.clone()),
+                        actual_relay_id: self.binding.relay_id.clone(),
+                        expected_session_tag: Some(relay.session_tag.clone()),
+                        actual_session_tag: self.binding.session_tag.clone(),
+                    });
+                }
+            }
+            ClusterTransportPathKind::DirectDatagram
+            | ClusterTransportPathKind::NatTraversalDatagram => {
+                if self.binding.relay_id.is_some() || self.binding.session_tag.is_some() {
+                    return Err(SessionClaimsVerificationError::RelayBindingMismatch {
+                        expected_relay_id: None,
+                        actual_relay_id: self.binding.relay_id.clone(),
+                        expected_session_tag: None,
+                        actual_session_tag: self.binding.session_tag.clone(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Verification error for one session-claims bundle.
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionClaimsVerificationError {
+    /// The claims digest was not self-consistent.
+    #[error("session claims digest mismatch: expected {expected}, found {actual}")]
+    ClaimsDigestMismatch { expected: String, actual: String },
+    /// The embedded runtime-manifest identity digest was not self-consistent.
+    #[error("runtime manifest identity digest mismatch: expected {expected}, found {actual}")]
+    RuntimeManifestIdentityMismatch { expected: String, actual: String },
+    /// The embedded runtime-manifest digest was not self-consistent.
+    #[error("runtime manifest digest mismatch: expected {expected}, found {actual}")]
+    RuntimeManifestDigestMismatch { expected: String, actual: String },
+    /// The claims bundle was bound to a different node ID.
+    #[error("session claims sender node mismatch: expected {expected:?}, found {actual:?}")]
+    SenderNodeMismatch { expected: NodeId, actual: NodeId },
+    /// The claims bundle was bound to a different auth key.
+    #[error("session claims sender key mismatch: expected {expected}, found {actual}")]
+    SenderKeyMismatch { expected: String, actual: String },
+    /// The claims bundle was emitted for a different transport kind.
+    #[error("session claims path kind mismatch: expected {expected:?}, found {actual:?}")]
+    PathKindMismatch {
+        expected: ClusterTransportPathKind,
+        actual: ClusterTransportPathKind,
+    },
+    /// The claims bundle expected relay-scoped binding facts but none were present.
+    #[error("session claims relay binding missing")]
+    RelayBindingMissing,
+    /// The relay/session binding facts were detached from the current path.
+    #[error("session claims relay binding mismatch")]
+    RelayBindingMismatch {
+        expected_relay_id: Option<String>,
+        actual_relay_id: Option<String>,
+        expected_session_tag: Option<String>,
+        actual_session_tag: Option<String>,
+    },
+}
+
+/// Verification disposition surfaced for one peer's session claims.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionClaimsVerificationDisposition {
+    /// The lane did not surface session claims.
+    Unavailable,
+    /// The lane surfaced verified session claims.
+    Verified,
+    /// The lane surfaced claims that were internally invalid.
+    Invalid,
+    /// The lane surfaced claims detached from the observed transport or sender identity.
+    Detached,
+}
+
+/// Operator-facing snapshot of one peer's latest session-claims posture.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerSessionClaimsSnapshot {
+    /// Policy posture active for the lane.
+    pub policy_posture: ClusterSessionClaimsPosture,
+    /// Verification disposition for the latest claims observation.
+    pub disposition: SessionClaimsVerificationDisposition,
+    /// Runtime-manifest identity digest when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_manifest_identity_digest: Option<String>,
+    /// Full runtime-manifest digest when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_manifest_digest: Option<String>,
+    /// Claims profile identifier when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claims_profile_id: Option<String>,
+    /// Proof posture surfaced by the claims bundle, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_posture: Option<SessionClaimsProofPosture>,
+    /// Machine-readable detail string when the posture is degraded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl PeerSessionClaimsSnapshot {
+    fn unavailable(policy_posture: ClusterSessionClaimsPosture) -> Self {
+        Self {
+            policy_posture,
+            disposition: SessionClaimsVerificationDisposition::Unavailable,
+            runtime_manifest_identity_digest: None,
+            runtime_manifest_digest: None,
+            claims_profile_id: None,
+            proof_posture: None,
+            detail: None,
+        }
+    }
+
+    fn verified(policy_posture: ClusterSessionClaimsPosture, bundle: &SessionClaimsBundle) -> Self {
+        Self {
+            policy_posture,
+            disposition: SessionClaimsVerificationDisposition::Verified,
+            runtime_manifest_identity_digest: Some(bundle.runtime_manifest.identity_digest.clone()),
+            runtime_manifest_digest: Some(bundle.runtime_manifest.manifest_digest.clone()),
+            claims_profile_id: bundle.runtime_manifest.claims_profile_id.clone(),
+            proof_posture: Some(bundle.proof_posture),
+            detail: None,
+        }
+    }
+
+    fn degraded(
+        policy_posture: ClusterSessionClaimsPosture,
+        disposition: SessionClaimsVerificationDisposition,
+        detail: String,
+    ) -> Self {
+        Self {
+            policy_posture,
+            disposition,
+            runtime_manifest_identity_digest: None,
+            runtime_manifest_digest: None,
+            claims_profile_id: None,
+            proof_posture: None,
+            detail: Some(detail),
         }
     }
 }
@@ -1597,6 +1910,58 @@ impl ClusterNonLanDiscoveryAssessment {
 
 /// Machine-checkable trust policy for one local cluster transport.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterSessionClaimsPolicy {
+    /// Policy posture for claims on this lane.
+    pub posture: ClusterSessionClaimsPosture,
+    /// Local runtime manifest to bind into outbound session claims, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_manifest: Option<RuntimeManifest>,
+}
+
+impl ClusterSessionClaimsPolicy {
+    /// Declares that the lane does not surface session claims.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            posture: ClusterSessionClaimsPosture::None,
+            runtime_manifest: None,
+        }
+    }
+
+    /// Declares best-effort claims posture for the lane.
+    #[must_use]
+    pub const fn best_effort() -> Self {
+        Self {
+            posture: ClusterSessionClaimsPosture::BestEffort,
+            runtime_manifest: None,
+        }
+    }
+
+    /// Declares required claims posture for the lane.
+    #[must_use]
+    pub const fn required() -> Self {
+        Self {
+            posture: ClusterSessionClaimsPosture::Required,
+            runtime_manifest: None,
+        }
+    }
+
+    /// Attaches the runtime manifest that outbound claims should carry.
+    #[must_use]
+    pub fn with_runtime_manifest(mut self, runtime_manifest: RuntimeManifest) -> Self {
+        self.runtime_manifest = Some(runtime_manifest);
+        self
+    }
+}
+
+impl Default for ClusterSessionClaimsPolicy {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+/// Machine-checkable trust policy for one local cluster transport.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterTrustPolicy {
     /// Trust posture active for this configuration.
     pub posture: ClusterTrustPosture,
@@ -1611,6 +1976,9 @@ pub struct ClusterTrustPolicy {
     /// Additional trust-bundle versions accepted during explicit rollout overlap.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub accepted_trust_bundle_versions: Vec<u64>,
+    /// Session-claims posture and runtime-manifest source for the lane.
+    #[serde(default)]
+    pub session_claims_policy: ClusterSessionClaimsPolicy,
     /// Explicit authenticated peers when configured-peer posture is active.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub configured_peers: Vec<ConfiguredClusterPeer>,
@@ -1630,6 +1998,7 @@ impl ClusterTrustPolicy {
             replay_window_size: 0,
             trust_bundle_version: 1,
             accepted_trust_bundle_versions: Vec::new(),
+            session_claims_policy: ClusterSessionClaimsPolicy::none(),
             configured_peers: Vec::new(),
             configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
@@ -1645,6 +2014,7 @@ impl ClusterTrustPolicy {
             replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
             trust_bundle_version: 1,
             accepted_trust_bundle_versions: Vec::new(),
+            session_claims_policy: ClusterSessionClaimsPolicy::best_effort(),
             configured_peers,
             configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
@@ -1660,6 +2030,7 @@ impl ClusterTrustPolicy {
             replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
             trust_bundle_version: 1,
             accepted_trust_bundle_versions: Vec::new(),
+            session_claims_policy: ClusterSessionClaimsPolicy::best_effort(),
             configured_peers,
             configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
@@ -1681,6 +2052,16 @@ impl ClusterTrustPolicy {
         accepted_trust_bundle_versions.sort_unstable();
         accepted_trust_bundle_versions.dedup();
         self.accepted_trust_bundle_versions = accepted_trust_bundle_versions;
+        self
+    }
+
+    /// Overrides the session-claims policy for this cluster config.
+    #[must_use]
+    pub fn with_session_claims_policy(
+        mut self,
+        session_claims_policy: ClusterSessionClaimsPolicy,
+    ) -> Self {
+        self.session_claims_policy = session_claims_policy;
         self
     }
 
@@ -1738,6 +2119,18 @@ impl ClusterTrustPolicy {
         for accepted_version in &self.accepted_trust_bundle_versions {
             hasher.update(b"|accepted_version|");
             hasher.update(accepted_version.to_string().as_bytes());
+        }
+        hasher.update(b"|session_claims_posture|");
+        hasher.update(match self.session_claims_policy.posture {
+            ClusterSessionClaimsPosture::None => b"none".as_slice(),
+            ClusterSessionClaimsPosture::BestEffort => b"best_effort".as_slice(),
+            ClusterSessionClaimsPosture::Required => b"required".as_slice(),
+        });
+        if let Some(runtime_manifest) = &self.session_claims_policy.runtime_manifest {
+            hasher.update(b"|runtime_manifest_identity_digest|");
+            hasher.update(runtime_manifest.identity_digest.as_bytes());
+            hasher.update(b"|runtime_manifest_digest|");
+            hasher.update(runtime_manifest.manifest_digest.as_bytes());
         }
         for peer in &self.configured_peers {
             hasher.update(b"|peer|");
@@ -2362,6 +2755,12 @@ pub enum ClusterJoinRefusalReason {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         accepted: Vec<u64>,
     },
+    /// The remote message omitted session claims while policy required them.
+    SessionClaimsMissing,
+    /// The remote message carried detached session claims.
+    SessionClaimsDetached,
+    /// The remote message carried invalid session claims.
+    SessionClaimsInvalid,
     /// The remote message replayed an already-observed or expired authenticated counter.
     ReplayDetected {
         /// Highest authenticated counter already observed for this peer.
@@ -2406,6 +2805,9 @@ pub struct PeerSnapshot {
     pub handshake: PeerHandshakeState,
     /// Selected path and observed transport metrics for the peer.
     pub transport: ClusterTransportObservation,
+    /// Latest session-claims posture observed for the peer, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_claims: Option<PeerSessionClaimsSnapshot>,
 }
 
 /// Stable logical-stream purpose carried over one peer session.
@@ -3297,6 +3699,7 @@ struct PendingTunnelClosureDispatch {
 
 struct SharedState {
     peers: BTreeMap<NodeId, PeerSnapshot>,
+    peer_session_claims: BTreeMap<NodeId, PeerSessionClaimsSnapshot>,
     configured_peers: BTreeMap<NodeId, ConfiguredClusterPeer>,
     configured_peer_health: BTreeMap<NodeId, ConfiguredPeerHealthSnapshot>,
     trust_rollout_diagnostics: BTreeMap<NodeId, ClusterTrustRolloutDiagnostic>,
@@ -3355,6 +3758,7 @@ impl SharedState {
             .collect();
         Self {
             peers: BTreeMap::new(),
+            peer_session_claims: BTreeMap::new(),
             configured_peers,
             configured_peer_health,
             trust_rollout_diagnostics: BTreeMap::new(),
@@ -3375,6 +3779,14 @@ impl SharedState {
             next_logical_stream_id: 1,
             next_tunnel_id: 1,
             next_tunnel_request_id: 1,
+        }
+    }
+
+    fn store_peer_session_claims(&mut self, node_id: &NodeId, snapshot: PeerSessionClaimsSnapshot) {
+        self.peer_session_claims
+            .insert(node_id.clone(), snapshot.clone());
+        if let Some(peer_snapshot) = self.peers.get_mut(node_id) {
+            peer_snapshot.session_claims = Some(snapshot);
         }
     }
 
@@ -4360,6 +4772,7 @@ impl SharedState {
                     last_ping_sequence: None,
                 },
                 transport: ClusterTransportObservation::new(path.clone(), multiplex_profile),
+                session_claims: self.peer_session_claims.get(&identity.node_id).cloned(),
             });
         if identity.node_epoch > entry.identity.node_epoch {
             entry.handshake = PeerHandshakeState {
@@ -4373,6 +4786,7 @@ impl SharedState {
         entry.transport.path = path;
         entry.transport.multiplex_profile = multiplex_profile;
         entry.transport.active_streams = active_streams;
+        entry.session_claims = self.peer_session_claims.get(&identity.node_id).cloned();
         entry
     }
 
@@ -4635,6 +5049,8 @@ struct WireEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     trust_bundle_version: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    session_claims: Option<SessionClaimsBundle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     authenticated_counter: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     signature_hex: Option<String>,
@@ -4727,6 +5143,35 @@ fn current_time_ms() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn stable_session_claims_digest(
+    claims_id: &str,
+    binding: &SessionClaimsTransportBinding,
+    runtime_manifest: &RuntimeManifest,
+    proof_posture: SessionClaimsProofPosture,
+    issued_at_ms: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"session_claims|");
+    hasher.update(claims_id.as_bytes());
+    hasher.update(b"|binding|");
+    hasher.update(
+        serde_json::to_vec(binding).unwrap_or_else(|_| unreachable!("binding should serialize")),
+    );
+    hasher.update(b"|runtime_manifest_identity|");
+    hasher.update(runtime_manifest.identity_digest.as_bytes());
+    hasher.update(b"|runtime_manifest|");
+    hasher.update(runtime_manifest.manifest_digest.as_bytes());
+    hasher.update(b"|proof_posture|");
+    hasher.update(match proof_posture {
+        SessionClaimsProofPosture::None => b"none".as_slice(),
+        SessionClaimsProofPosture::BestEffort => b"best_effort".as_slice(),
+        SessionClaimsProofPosture::ProofBearing => b"proof_bearing".as_slice(),
+    });
+    hasher.update(b"|issued_at_ms|");
+    hasher.update(issued_at_ms.to_string().as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 fn load_or_create_network_state(
@@ -5351,10 +5796,10 @@ async fn handle_wire_envelope(
         return Ok(());
     }
 
-    let trust_rollout_diagnostic = {
+    let authenticated_outcome = {
         let guard = state.lock().await;
         match authenticate_incoming_envelope(&envelope, &transport, config, &guard) {
-            Ok(trust_rollout_diagnostic) => trust_rollout_diagnostic,
+            Ok(authenticated_outcome) => authenticated_outcome,
             Err(reason) => {
                 let rollout_diagnostic = trust_rollout_diagnostic_from_refusal(
                     &envelope,
@@ -5378,7 +5823,14 @@ async fn handle_wire_envelope(
             }
         }
     };
-    if let Some(trust_rollout_diagnostic) = trust_rollout_diagnostic {
+    {
+        let mut guard = state.lock().await;
+        guard.store_peer_session_claims(
+            &envelope.message.sender().node_id,
+            authenticated_outcome.session_claims.clone(),
+        );
+    }
+    if let Some(trust_rollout_diagnostic) = authenticated_outcome.trust_rollout_diagnostic {
         state
             .lock()
             .await
@@ -5801,12 +6253,43 @@ fn decode_raw_http_response(
 async fn outbound_envelope(
     state: &Arc<Mutex<SharedState>>,
     config: &TransportConfig,
+    path: &ClusterTransportPath,
     message: WireMessage,
 ) -> Result<WireEnvelope, String> {
     let authenticated_counter = if config.trust_policy.require_message_authentication {
         Some(state.lock().await.next_authenticated_message_counter())
     } else {
         None
+    };
+    let session_claims = match config.trust_policy.session_claims_policy.posture {
+        ClusterSessionClaimsPosture::None => None,
+        ClusterSessionClaimsPosture::BestEffort | ClusterSessionClaimsPosture::Required => config
+            .trust_policy
+            .session_claims_policy
+            .runtime_manifest
+            .clone()
+            .map(|runtime_manifest| {
+                SessionClaimsBundle::for_sender_and_path(
+                    format!(
+                        "{}-{}",
+                        config.local_identity.node_id.as_str(),
+                        runtime_manifest.identity_digest
+                    ),
+                    &config.local_identity,
+                    path,
+                    runtime_manifest,
+                    match config.trust_policy.session_claims_policy.posture {
+                        ClusterSessionClaimsPosture::None => SessionClaimsProofPosture::None,
+                        ClusterSessionClaimsPosture::BestEffort => {
+                            SessionClaimsProofPosture::BestEffort
+                        }
+                        ClusterSessionClaimsPosture::Required => {
+                            SessionClaimsProofPosture::ProofBearing
+                        }
+                    },
+                    current_time_ms(),
+                )
+            }),
     };
     let mut envelope = WireEnvelope {
         namespace: config.namespace.clone(),
@@ -5815,6 +6298,7 @@ async fn outbound_envelope(
             .trust_policy
             .require_message_authentication
             .then_some(config.trust_policy.trust_bundle_version),
+        session_claims,
         authenticated_counter,
         signature_hex: None,
         message,
@@ -5838,7 +6322,7 @@ async fn send_wire_message_to_path(
     message: WireMessage,
     is_hello: bool,
 ) -> Result<(), String> {
-    let envelope = outbound_envelope(state, config, message).await?;
+    let envelope = outbound_envelope(state, config, &path, message).await?;
     let datagram = match path.kind {
         ClusterTransportPathKind::DirectDatagram
         | ClusterTransportPathKind::NatTraversalDatagram => TransportDatagram::Direct { envelope },
@@ -5879,12 +6363,82 @@ async fn send_wire_message_to_path(
     send_encoded_datagram(socket, outbound_addr, &encoded).await
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AuthenticatedEnvelopeOutcome {
+    trust_rollout_diagnostic: Option<ClusterTrustRolloutDiagnostic>,
+    session_claims: PeerSessionClaimsSnapshot,
+}
+
+fn session_claims_disposition(
+    error: &SessionClaimsVerificationError,
+) -> SessionClaimsVerificationDisposition {
+    match error {
+        SessionClaimsVerificationError::SenderNodeMismatch { .. }
+        | SessionClaimsVerificationError::SenderKeyMismatch { .. }
+        | SessionClaimsVerificationError::PathKindMismatch { .. }
+        | SessionClaimsVerificationError::RelayBindingMissing
+        | SessionClaimsVerificationError::RelayBindingMismatch { .. } => {
+            SessionClaimsVerificationDisposition::Detached
+        }
+        SessionClaimsVerificationError::ClaimsDigestMismatch { .. }
+        | SessionClaimsVerificationError::RuntimeManifestIdentityMismatch { .. }
+        | SessionClaimsVerificationError::RuntimeManifestDigestMismatch { .. } => {
+            SessionClaimsVerificationDisposition::Invalid
+        }
+    }
+}
+
+fn session_claims_refusal_reason(
+    error: &SessionClaimsVerificationError,
+) -> ClusterJoinRefusalReason {
+    match session_claims_disposition(error) {
+        SessionClaimsVerificationDisposition::Detached => {
+            ClusterJoinRefusalReason::SessionClaimsDetached
+        }
+        SessionClaimsVerificationDisposition::Invalid
+        | SessionClaimsVerificationDisposition::Unavailable
+        | SessionClaimsVerificationDisposition::Verified => {
+            ClusterJoinRefusalReason::SessionClaimsInvalid
+        }
+    }
+}
+
+fn evaluate_session_claims(
+    envelope: &WireEnvelope,
+    path: &ClusterTransportPath,
+    policy: &ClusterSessionClaimsPolicy,
+) -> Result<PeerSessionClaimsSnapshot, ClusterJoinRefusalReason> {
+    match &envelope.session_claims {
+        Some(bundle) => match bundle.verify_for_sender(envelope.message.sender(), path) {
+            Ok(()) => Ok(PeerSessionClaimsSnapshot::verified(policy.posture, bundle)),
+            Err(error) => {
+                if policy.posture == ClusterSessionClaimsPosture::Required {
+                    Err(session_claims_refusal_reason(&error))
+                } else {
+                    Ok(PeerSessionClaimsSnapshot::degraded(
+                        policy.posture,
+                        session_claims_disposition(&error),
+                        error.to_string(),
+                    ))
+                }
+            }
+        },
+        None => {
+            if policy.posture == ClusterSessionClaimsPosture::Required {
+                Err(ClusterJoinRefusalReason::SessionClaimsMissing)
+            } else {
+                Ok(PeerSessionClaimsSnapshot::unavailable(policy.posture))
+            }
+        }
+    }
+}
+
 fn authenticate_incoming_envelope(
     envelope: &WireEnvelope,
     transport: &InboundTransportContext,
     config: &TransportConfig,
     state: &SharedState,
-) -> Result<Option<ClusterTrustRolloutDiagnostic>, ClusterJoinRefusalReason> {
+) -> Result<AuthenticatedEnvelopeOutcome, ClusterJoinRefusalReason> {
     let mut trust_rollout_diagnostic = None;
     if matches!(
         config.trust_policy.posture,
@@ -6005,27 +6559,34 @@ fn authenticate_incoming_envelope(
             }
         }
     }
-    if !config.trust_policy.require_message_authentication {
-        return Ok(trust_rollout_diagnostic);
+    if config.trust_policy.require_message_authentication {
+        let counter = envelope
+            .authenticated_counter
+            .ok_or(ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
+        let signature_hex = envelope
+            .signature_hex
+            .as_deref()
+            .ok_or(ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
+        let verifying_key = decode_verifying_key(&envelope.message.sender().auth_public_key)?;
+        let signature = decode_signature(signature_hex)?;
+        verifying_key
+            .verify(
+                &wire_signing_payload(envelope)
+                    .map_err(|_| ClusterJoinRefusalReason::MessageAuthenticationFailed)?,
+                &signature,
+            )
+            .map_err(|_| ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
+        let _ = counter;
     }
-    let counter = envelope
-        .authenticated_counter
-        .ok_or(ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
-    let signature_hex = envelope
-        .signature_hex
-        .as_deref()
-        .ok_or(ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
-    let verifying_key = decode_verifying_key(&envelope.message.sender().auth_public_key)?;
-    let signature = decode_signature(signature_hex)?;
-    verifying_key
-        .verify(
-            &wire_signing_payload(envelope)
-                .map_err(|_| ClusterJoinRefusalReason::MessageAuthenticationFailed)?,
-            &signature,
-        )
-        .map_err(|_| ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
-    let _ = counter;
-    Ok(trust_rollout_diagnostic)
+    let session_claims = evaluate_session_claims(
+        envelope,
+        &transport.path,
+        &config.trust_policy.session_claims_policy,
+    )?;
+    Ok(AuthenticatedEnvelopeOutcome {
+        trust_rollout_diagnostic,
+        session_claims,
+    })
 }
 
 async fn run_relay_server(
@@ -6177,6 +6738,7 @@ fn wire_signing_payload(envelope: &WireEnvelope) -> Result<Vec<u8>, serde_json::
         &envelope.namespace,
         &envelope.admission_digest,
         envelope.trust_bundle_version,
+        &envelope.session_claims,
         envelope.authenticated_counter,
         &envelope.message,
     ))
@@ -6313,7 +6875,36 @@ mod tests {
         )
     }
 
-    fn signed_ping_envelope(
+    fn sample_runtime_manifest() -> RuntimeManifest {
+        RuntimeManifest::new(
+            "runtime-manifest-1",
+            psionic_runtime::ExecutionProofRuntimeIdentity::new(
+                "cuda",
+                psionic_runtime::BackendToolchainIdentity::new(
+                    "cuda",
+                    "cuda@1.2.3",
+                    vec![String::from("tensor_cores")],
+                )
+                .with_probe(
+                    psionic_runtime::BackendProbeState::CompiledAndProbed,
+                    vec![],
+                ),
+            ),
+        )
+        .with_environment_ref("env://oa.train/2026.03")
+        .with_artifact_binding(psionic_runtime::RuntimeManifestArtifactBinding::new(
+            psionic_runtime::RuntimeManifestArtifactKind::ServedArtifact,
+            "served://gpt-oss-20b",
+            "served-digest-1",
+        ))
+        .with_static_config_binding(psionic_runtime::RuntimeManifestStaticConfigBinding::new(
+            "scheduler.policy",
+            "scheduler-digest-1",
+        ))
+        .with_claims_profile_id("cluster.proof.required.v1")
+    }
+
+    fn signed_ping_envelope_with_session_claims(
         namespace: &ClusterNamespace,
         admission_digest: &str,
         trust_bundle_version: Option<u64>,
@@ -6321,11 +6912,13 @@ mod tests {
         signing_key: &SigningKey,
         authenticated_counter: u64,
         sequence: u64,
+        session_claims: Option<SessionClaimsBundle>,
     ) -> WireEnvelope {
         let mut envelope = WireEnvelope {
             namespace: namespace.clone(),
             admission_digest: admission_digest.to_owned(),
             trust_bundle_version,
+            session_claims,
             authenticated_counter: Some(authenticated_counter),
             signature_hex: None,
             message: WireMessage::Ping(PingMessage { sender, sequence }),
@@ -6336,6 +6929,27 @@ mod tests {
         );
         envelope.signature_hex = Some(hex::encode(signature.to_bytes()));
         envelope
+    }
+
+    fn signed_ping_envelope(
+        namespace: &ClusterNamespace,
+        admission_digest: &str,
+        trust_bundle_version: Option<u64>,
+        sender: ClusterNodeIdentity,
+        signing_key: &SigningKey,
+        authenticated_counter: u64,
+        sequence: u64,
+    ) -> WireEnvelope {
+        signed_ping_envelope_with_session_claims(
+            namespace,
+            admission_digest,
+            trust_bundle_version,
+            sender,
+            signing_key,
+            authenticated_counter,
+            sequence,
+            None,
+        )
     }
 
     #[test]
@@ -7001,6 +7615,236 @@ mod tests {
         );
 
         assert!(refusal.is_ok(), "matching attestation should be accepted");
+    }
+
+    #[test]
+    fn required_session_claims_reject_missing_claims() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(30);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(31);
+        let remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        let remote_addr = loopback_addr(31007);
+        let trust_policy =
+            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )])
+            .with_session_claims_policy(
+                ClusterSessionClaimsPolicy::required()
+                    .with_runtime_manifest(sample_runtime_manifest()),
+            );
+        let config = sample_transport_config(local_identity, local_signing_key, trust_policy);
+        let envelope = signed_ping_envelope(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity,
+            &remote_signing_key,
+            1,
+            7,
+        );
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
+        let refusal = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        );
+        assert_eq!(refusal, Err(ClusterJoinRefusalReason::SessionClaimsMissing));
+    }
+
+    #[test]
+    fn best_effort_session_claims_accept_missing_bundle_but_mark_unavailable() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(34);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(35);
+        let remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        let remote_addr = loopback_addr(31009);
+        let trust_policy =
+            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )])
+            .with_session_claims_policy(ClusterSessionClaimsPolicy::best_effort());
+        let config = sample_transport_config(local_identity, local_signing_key, trust_policy);
+        let envelope = signed_ping_envelope(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity,
+            &remote_signing_key,
+            1,
+            7,
+        );
+        let state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
+        let outcome = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        )
+        .expect("best-effort posture should not reject missing claims");
+        assert_eq!(
+            outcome.session_claims.disposition,
+            SessionClaimsVerificationDisposition::Unavailable
+        );
+        assert_eq!(
+            outcome.session_claims.policy_posture,
+            ClusterSessionClaimsPosture::BestEffort
+        );
+    }
+
+    #[test]
+    fn verified_session_claims_surface_runtime_manifest_posture() {
+        let admission = sample_admission();
+        let local_signing_key = sample_signing_key(32);
+        let local_identity = sample_identity(
+            &admission,
+            "local",
+            NodeRole::CoordinatorOnly,
+            &local_signing_key,
+        );
+        let remote_signing_key = sample_signing_key(33);
+        let remote_identity = sample_identity(
+            &admission,
+            "remote",
+            NodeRole::ExecutorOnly,
+            &remote_signing_key,
+        );
+        let remote_addr = loopback_addr(31008);
+        let trust_policy =
+            ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                remote_identity.node_id.clone(),
+                remote_addr,
+                remote_identity.auth_public_key.clone(),
+            )])
+            .with_session_claims_policy(
+                ClusterSessionClaimsPolicy::required()
+                    .with_runtime_manifest(sample_runtime_manifest()),
+            );
+        let config = sample_transport_config(local_identity, local_signing_key, trust_policy);
+        let path = ClusterTransportPath::direct(remote_addr);
+        let session_claims = SessionClaimsBundle::for_sender_and_path(
+            "claims-verified",
+            &remote_identity,
+            &path,
+            sample_runtime_manifest(),
+            SessionClaimsProofPosture::ProofBearing,
+            1_000,
+        );
+        let envelope = signed_ping_envelope_with_session_claims(
+            &config.namespace,
+            &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
+            remote_identity.clone(),
+            &remote_signing_key,
+            1,
+            7,
+            Some(session_claims),
+        );
+        let mut state = SharedState::new(
+            BTreeSet::new(),
+            &config.trust_policy,
+            &ClusterTunnelPolicy::default(),
+            PersistedClusterNetworkState::empty(),
+            ClusterNetworkStatePersistence::Ephemeral,
+        );
+        let outcome = authenticate_incoming_envelope(
+            &envelope,
+            &direct_transport(remote_addr),
+            &config,
+            &state,
+        )
+        .expect("verified claims should authenticate");
+        assert_eq!(
+            outcome.session_claims.disposition,
+            SessionClaimsVerificationDisposition::Verified
+        );
+        assert_eq!(
+            outcome.session_claims.policy_posture,
+            ClusterSessionClaimsPosture::Required
+        );
+        assert_eq!(
+            outcome.session_claims.claims_profile_id.as_deref(),
+            Some("cluster.proof.required.v1")
+        );
+        assert!(
+            outcome
+                .session_claims
+                .runtime_manifest_identity_digest
+                .is_some()
+        );
+        state.store_peer_session_claims(&remote_identity.node_id, outcome.session_claims.clone());
+        state
+            .record_ping(
+                remote_addr,
+                remote_identity,
+                path,
+                serde_json::to_vec(&envelope)
+                    .expect("test envelope should serialize")
+                    .len(),
+                7,
+                envelope.authenticated_counter,
+                config.trust_policy.replay_window_size,
+            )
+            .expect("verified claims should survive into peer snapshot state");
+        let peer_snapshots = state.peer_snapshots();
+        let remote_snapshot = peer_snapshots
+            .iter()
+            .find(|snapshot| snapshot.identity.node_id == NodeId::new("remote"))
+            .expect("remote snapshot should exist");
+        let session_claims = remote_snapshot
+            .session_claims
+            .as_ref()
+            .expect("remote snapshot should surface session claims");
+        assert_eq!(
+            session_claims.disposition,
+            SessionClaimsVerificationDisposition::Verified
+        );
+        assert_eq!(
+            session_claims.claims_profile_id.as_deref(),
+            Some("cluster.proof.required.v1")
+        );
+        assert_eq!(
+            session_claims.proof_posture,
+            Some(SessionClaimsProofPosture::ProofBearing)
+        );
     }
 
     #[test]

@@ -350,6 +350,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical rollout-verification bundle, sampled-adjudication, duplicate-
   detection, and validator-verdict runbook for the first validator-ready train
   integrity layer.
+- **[docs/NETWORK_EXECUTION_IDENTITY_REFERENCE.md](docs/NETWORK_EXECUTION_IDENTITY_REFERENCE.md)** —
+  canonical runtime-manifest, session-claims, required-vs-best-effort posture,
+  and operator-surface runbook for proof-bearing networked execution identity.
 - **[docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md](docs/LLAMA_VLLM_SGLANG_INFERENCE_SPEC.md)** —
   canonical source split, owner matrix, completion matrix, and issue-program
   authority for the current `PSI-232` through `PSI-258` inference backlog.
