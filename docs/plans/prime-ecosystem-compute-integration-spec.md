@@ -1007,6 +1007,7 @@ This is the recommended issue order for fully implementing the stack above.
    - The resulting flow should terminate in canonical lots and instruments.
 
 42. **Kernel: add forward physical and reservation products for clustered compute**
+   - Status: implemented on 2026-03-13 via GitHub issue `#3526`.
    - Once spot clustered compute is credible, add reservation and forward-window instruments for scarce cluster products.
    - This should reuse the widened delivery and proof posture rather than inventing separate futures-only logic.
 
