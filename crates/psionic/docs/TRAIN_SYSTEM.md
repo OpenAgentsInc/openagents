@@ -1764,11 +1764,25 @@ receipt, same recomputation rules" instead of best-effort repeatability.
 
 ### 26. `Security: harden environment packages, artifact provenance, and untrusted worker admission`
 
-The validator loop is only one part of security. This issue should define the
-malicious-worker threat model, environment-package verification, artifact
-signing and trust roots, rollout spam or poisoning controls, admission control,
-and rate limiting for untrusted workers. It should connect rollout validation
-to a broader security posture for the train system.
+Implemented on Saturday, March 14, 2026.
+
+`psionic-train` now owns a train-security posture layer in
+`src/security_posture.rs`.
+
+The new contract makes these hardening seams explicit:
+
+- environment package identity and digest verification
+- required environment verification and safety policy references
+- artifact signing contracts plus trust roots
+- minimum signature counts for admitted artifacts
+- untrusted-worker rate limits and burst controls
+- required execution-proof posture for untrusted workers
+- duplicate-artifact rejection and duplicate-response-signature quarantine
+- validator-bound security receipts with typed reason codes
+
+This does not replace the validator loop. It does connect rollout validation to
+the broader train security posture instead of leaving environment trust,
+artifact provenance, and untrusted-worker admission as implicit assumptions.
 
 ### 27. `Artifact Storage: define retention, garbage collection, archival, and cold-restore policy`
 
