@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 mod artifact_storage;
+mod benchmarking;
 mod checkpoint_recovery;
 mod core_loop;
 mod curriculum;
@@ -40,6 +41,7 @@ mod stage_program;
 mod worker_protocol;
 
 pub use artifact_storage::*;
+pub use benchmarking::*;
 pub use checkpoint_recovery::*;
 pub use core_loop::*;
 pub use curriculum::*;
@@ -59,7 +61,7 @@ pub use stage_program::*;
 pub use worker_protocol::*;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, scheduling/accounting, reliability, artifact lifecycle, checkpoint, recovery, and elastic membership substrate";
+pub const CRATE_ROLE: &str = "training core, orchestrator, rollout artifacts, scheduling/accounting, reliability, benchmark acceptance, artifact lifecycle, checkpoint, recovery, and elastic membership substrate";
 
 /// Error returned by training-session state transitions.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
