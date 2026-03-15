@@ -447,6 +447,19 @@ pub fn run_headless_provider(config: HeadlessProviderConfig) -> Result<()> {
                                     request_id: job.request.request_id.clone(),
                                     prompt: provider_prompt(&job.request),
                                     requested_model: None,
+                                    adapter_id: job.request.execution_params.iter().find_map(
+                                        |param| {
+                                            matches!(
+                                                param.key.trim(),
+                                                "adapter_id"
+                                                    | "apple_adapter_id"
+                                                    | "apple_fm_adapter_id"
+                                            )
+                                            .then(|| param.value.trim())
+                                            .filter(|value| !value.is_empty())
+                                            .map(ToString::to_string)
+                                        },
+                                    ),
                                 }))
                                 .map_err(|error| {
                                     anyhow!("failed to queue Apple FM job: {error}")

@@ -445,7 +445,8 @@ fn scope_for_product(
     match product {
         ProviderComputeProduct::GptOssInference
         | ProviderComputeProduct::GptOssEmbeddings
-        | ProviderComputeProduct::AppleFoundationModelsInference => {
+        | ProviderComputeProduct::AppleFoundationModelsInference
+        | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
             ("local", "local", "single_node")
         }
         ProviderComputeProduct::SandboxContainerExec
@@ -479,7 +480,8 @@ fn environment_binding_for_product(
             .gpt_oss_ready_model
             .or(input.gpt_oss_configured_model)
             .map(|model| format!("model:{model}")),
-        ProviderComputeProduct::AppleFoundationModelsInference => input
+        ProviderComputeProduct::AppleFoundationModelsInference
+        | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => input
             .apple_fm_ready_model
             .map(|model| format!("model:{model}")),
         ProviderComputeProduct::SandboxContainerExec
@@ -512,6 +514,9 @@ fn blocker_reason_for_row(
         ProviderComputeProduct::AppleFoundationModelsInference => {
             Some("Apple Foundation Models is not ready to advertise this product".to_string())
         }
+        ProviderComputeProduct::AppleFoundationModelsAdapterHosting => Some(
+            "Apple adapter hosting requires a ready Apple FM runtime plus at least one compatible loaded adapter".to_string(),
+        ),
         ProviderComputeProduct::SandboxContainerExec
         | ProviderComputeProduct::SandboxPythonExec
         | ProviderComputeProduct::SandboxNodeExec

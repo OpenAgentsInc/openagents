@@ -603,6 +603,7 @@ mod tests {
                 backend: "gpt_oss".to_string(),
                 requested_model: Some("nomic-embed-text".to_string()),
                 served_model: "nomic-embed-text".to_string(),
+                served_adapter: None,
                 normalized_prompt_digest: "sha256:prompt".to_string(),
                 normalized_options_json: "{}".to_string(),
                 normalized_options_digest: "sha256:opts".to_string(),

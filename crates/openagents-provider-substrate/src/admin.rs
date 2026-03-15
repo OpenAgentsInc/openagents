@@ -1463,6 +1463,7 @@ mod tests {
                     latency_ms_p50: Some(110),
                 },
                 apple_foundation_models: ProviderBackendHealth::default(),
+                apple_adapter_hosting: Default::default(),
                 sandbox: ProviderSandboxAvailability {
                     runtimes: vec![ProviderSandboxRuntimeHealth {
                         runtime_kind: ProviderSandboxRuntimeKind::Python,
