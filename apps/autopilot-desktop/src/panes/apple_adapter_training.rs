@@ -347,9 +347,12 @@ fn training_summary_text(
         },
     );
     format!(
-        "APPLE ADAPTER TRAINING // {} runs // {} active // {} accepted outcomes // {head} // {selection}",
+        "APPLE ADAPTER TRAINING // {} runs // {} active // {} windows // {} contributions // contributor {} // {} accepted outcomes // {head} // {selection}",
         training_status.operator.run_count,
         training_status.operator.active_run_count,
+        training_status.adapter_window_count,
+        training_status.contribution_count,
+        training_status.contributor.assignment_state,
         training_status.accepted_outcome_count,
     )
 }
@@ -390,6 +393,39 @@ fn paint_preflight_panel(
         format!(
             "Checkpoint refs: {}",
             join_labels(training_status.checkpoint_refs.iter().map(String::as_str))
+        ),
+        format!(
+            "Adapter windows: {} total // {} active // {} promotion-ready",
+            training_status.adapter_window_count,
+            training_status.active_adapter_window_count,
+            training_status.promotion_ready_window_count
+        ),
+        format!(
+            "Contribution receipts: {} total // contributor state {}",
+            training_status.contribution_count,
+            training_status.contributor.assignment_state
+        ),
+        format!(
+            "Contributor node: {}",
+            training_status
+                .contributor
+                .local_node_id
+                .as_deref()
+                .unwrap_or("-")
+        ),
+        format!(
+            "Contributor match: {} // enabled {} // backend ready {}",
+            truth_label(training_status.contributor.match_eligible),
+            truth_label(training_status.contributor.product_enabled),
+            truth_label(training_status.contributor.backend_ready)
+        ),
+        format!(
+            "Contributor detail: {}",
+            training_status
+                .contributor
+                .readiness_detail
+                .as_deref()
+                .unwrap_or("-")
         ),
     ];
     let chunk_len = section_chunk_len(summary_bounds);
@@ -546,7 +582,7 @@ fn paint_detail_panel(
     let summary_max_y = export_bounds.origin.y - 10.0;
     let mut y = badge_y + 38.0;
     let detail_lines = if let Some(run) = selected_run {
-        detail_lines_for_run(run)
+        detail_lines_for_run(run, training_status)
     } else {
         vec![
             "No Apple adapter operator run is selected yet.".to_string(),
@@ -554,6 +590,10 @@ fn paint_detail_panel(
             format!(
                 "Visible operator runs: {}",
                 filtered_runs(training_status, pane_state.stage_filter).len()
+            ),
+            format!(
+                "Contributor state: {}",
+                training_status.contributor.assignment_state
             ),
         ]
     };
@@ -891,8 +931,9 @@ fn sync_selected_run_detail_state(
 
 pub(crate) fn detail_lines_for_run(
     run: &DesktopControlAppleAdapterOperatorRunStatus,
+    training_status: &DesktopControlTrainingStatus,
 ) -> Vec<String> {
-    vec![
+    let mut lines = vec![
         format!("Run id: {}", run.run_id),
         format!(
             "Package: {} // author {} // license {}",
@@ -969,7 +1010,92 @@ pub(crate) fn detail_lines_for_run(
         ),
         format!("Last action: {}", run.last_action.as_deref().unwrap_or("-")),
         format!("Last error: {}", run.last_error.as_deref().unwrap_or("-")),
-    ]
+    ];
+    if let Some(training_run_id) = run.authority.training_run_id.as_deref() {
+        let matching_windows = training_status
+            .windows
+            .iter()
+            .filter(|window| window.training_run_id == training_run_id)
+            .collect::<Vec<_>>();
+        if matching_windows.is_empty() {
+            lines.push(format!(
+                "Decentralized windows: no authority windows projected yet for {}",
+                training_run_id
+            ));
+        } else {
+            for window in matching_windows.iter().take(2) {
+                lines.push(format!(
+                    "Window {} // stage {} // status {} // uploaded {}/{} // accepted {} // promotion {} // accepted outcome {}",
+                    window.window_id,
+                    fallback_dash(window.stage_id.as_str()),
+                    window.status,
+                    window.uploaded_contributions,
+                    window.total_contributions,
+                    window.accepted_contributions,
+                    if window.promotion_ready {
+                        "ready"
+                    } else {
+                        "blocked"
+                    },
+                    window.accepted_outcome_id.as_deref().unwrap_or("-")
+                ));
+                lines.push(format!(
+                    "Window scores {} / {} // runtime smoke {} // gates {} // holds {}",
+                    window
+                        .held_out_average_score_bps
+                        .map(format_bps)
+                        .unwrap_or_else(|| "-".to_string()),
+                    window
+                        .benchmark_pass_rate_bps
+                        .map(format_bps)
+                        .unwrap_or_else(|| "-".to_string()),
+                    window
+                        .runtime_smoke_passed
+                        .map(truth_label)
+                        .unwrap_or("unknown"),
+                    join_labels(window.gate_reason_codes.iter().map(String::as_str)),
+                    join_labels(window.hold_reason_codes.iter().map(String::as_str))
+                ));
+            }
+            let matching_contributions = training_status
+                .contributions
+                .iter()
+                .filter(|contribution| contribution.training_run_id == training_run_id)
+                .collect::<Vec<_>>();
+            if matching_contributions.is_empty() {
+                lines.push("Contributions: no contributor receipts projected yet".to_string());
+            } else {
+                for contribution in matching_contributions.iter().take(3) {
+                    lines.push(format!(
+                        "Contribution {} // node {} // disposition {} // upload {} // payout {}",
+                        compact_id(contribution.contribution_id.as_str(), 18),
+                        compact_id(contribution.contributor_node_id.as_str(), 18),
+                        contribution.validator_disposition,
+                        contribution.upload_state,
+                        contribution.payout_state
+                    ));
+                }
+            }
+        }
+    } else {
+        lines.push("Decentralized windows: pending kernel training-run linkage".to_string());
+    }
+    lines.push(format!(
+        "Contributor state: {} // eligible {} // local assignments {} // settlement ready {}",
+        training_status.contributor.assignment_state,
+        truth_label(training_status.contributor.match_eligible),
+        training_status.contributor.local_assignment_count,
+        training_status.contributor.local_settlement_ready_count
+    ));
+    lines.push(format!(
+        "Contributor detail: {}",
+        training_status
+            .contributor
+            .readiness_detail
+            .as_deref()
+            .unwrap_or("-")
+    ));
+    lines
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1616,8 +1742,28 @@ mod tests {
             },
             ..DesktopControlAppleAdapterOperatorRunStatus::default()
         };
+        let training = DesktopControlTrainingStatus {
+            windows: vec![crate::desktop_control::DesktopControlAdapterTrainingWindowStatus {
+                window_id: "window-1".to_string(),
+                training_run_id: "train-1".to_string(),
+                stage_id: "stage-a".to_string(),
+                status: "active".to_string(),
+                total_contributions: 2,
+                accepted_contributions: 1,
+                uploaded_contributions: 1,
+                promotion_ready: false,
+                accepted_outcome_id: Some("accepted-1".to_string()),
+                ..crate::desktop_control::DesktopControlAdapterTrainingWindowStatus::default()
+            }],
+            contributor: crate::desktop_control::DesktopControlTrainingContributorStatus {
+                assignment_state: "awaiting_assignment".to_string(),
+                match_eligible: true,
+                ..crate::desktop_control::DesktopControlTrainingContributorStatus::default()
+            },
+            ..DesktopControlTrainingStatus::default()
+        };
 
-        let lines = detail_lines_for_run(&run);
+        let lines = detail_lines_for_run(&run, &training);
         assert!(
             lines
                 .iter()
@@ -1630,6 +1776,11 @@ mod tests {
             lines
                 .iter()
                 .any(|line| line.contains("accepted accepted-1"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Window window-1 // stage stage-a // status active"))
         );
     }
 

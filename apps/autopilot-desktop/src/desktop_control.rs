@@ -17,15 +17,24 @@ use chrono::{TimeZone, Utc};
 use openagents_kernel_core::authority::KernelAuthority;
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentKind, ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind,
-    ComputeCapabilityEnvelope, ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
-    ComputeTrainingRun, ComputeTrainingRunStatus, ComputeValidatorChallengeSnapshot,
-    ComputeValidatorChallengeStatus, DeliveryProof, DeliveryProofStatus,
-    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
+    ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
+    ComputeAdapterPromotionDisposition, ComputeAdapterPromotionHoldReasonCode,
+    ComputeAdapterTrainingWindow, ComputeAdapterWindowGateReasonCode,
+    ComputeAdapterWindowStatus, ComputeCapabilityEnvelope, ComputeProofPosture,
+    ComputeProvisioningKind, ComputeTopologyKind, ComputeTrainingRun, ComputeTrainingRunStatus,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus, DeliveryProof,
+    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{Money, MoneyAmount};
-use openagents_provider_substrate::ProviderDesiredMode;
+use openagents_provider_substrate::{
+    ProviderAdapterTrainingExecutionBackend, ProviderAdapterTrainingMatchReasonCode,
+    ProviderAdapterTrainingMatchRequest, ProviderAdapterTrainingSettlementTrigger,
+    ProviderComputeProduct, ProviderDesiredMode, match_adapter_training_contributor,
+    settlement_hook_from_authority,
+};
 use psionic_apple_fm::{AppleFmAdapterInventoryEntry, AppleFmAdapterSelection};
 use psionic_sandbox::{
     InMemorySandboxJobService, ProviderSandboxBackgroundJobSnapshot, ProviderSandboxEntrypointType,
@@ -64,7 +73,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 13;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 14;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -430,6 +439,91 @@ pub struct DesktopControlTrainingParticipantStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAdapterTrainingWindowStatus {
+    pub window_id: String,
+    pub training_run_id: String,
+    pub stage_id: String,
+    pub status: String,
+    pub contributor_set_revision_id: String,
+    pub validator_policy_ref: String,
+    pub adapter_target_id: String,
+    pub adapter_family: String,
+    pub adapter_format: String,
+    pub total_contributions: u32,
+    pub admitted_contributions: u32,
+    pub accepted_contributions: u32,
+    pub quarantined_contributions: u32,
+    pub rejected_contributions: u32,
+    pub replay_required_contributions: u32,
+    pub uploaded_contributions: u32,
+    pub held_out_average_score_bps: Option<u32>,
+    pub benchmark_pass_rate_bps: Option<u32>,
+    pub runtime_smoke_passed: Option<bool>,
+    pub promotion_ready: bool,
+    pub gate_reason_codes: Vec<String>,
+    pub promotion_disposition: Option<String>,
+    pub hold_reason_codes: Vec<String>,
+    pub accepted_outcome_id: Option<String>,
+    pub recorded_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAdapterContributionStatus {
+    pub contribution_id: String,
+    pub training_run_id: String,
+    pub stage_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub contributor_node_id: String,
+    pub worker_id: String,
+    pub validator_policy_ref: String,
+    pub validator_disposition: String,
+    pub validation_reason_codes: Vec<String>,
+    pub aggregation_eligibility: String,
+    pub accepted_for_aggregation: bool,
+    pub aggregation_weight_bps: Option<u32>,
+    pub upload_state: String,
+    pub payout_state: String,
+    pub settlement_trigger: Option<String>,
+    pub recorded_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTrainingContributorStatus {
+    pub available: bool,
+    pub local_node_id: Option<String>,
+    pub product_enabled: bool,
+    pub backend_ready: bool,
+    pub contributor_supported: bool,
+    pub coordinator_match_supported: bool,
+    pub authority_receipt_supported: bool,
+    pub execution_backends: Vec<String>,
+    pub adapter_families: Vec<String>,
+    pub adapter_formats: Vec<String>,
+    pub validator_policy_refs: Vec<String>,
+    pub checkpoint_families: Vec<String>,
+    pub environment_refs: Vec<String>,
+    pub available_memory_gb: Option<u32>,
+    pub minimum_memory_gb: Option<u32>,
+    pub settlement_trigger: Option<String>,
+    pub match_eligible: bool,
+    pub match_reason_codes: Vec<String>,
+    pub assignment_state: String,
+    pub local_assignment_count: usize,
+    pub local_active_assignment_count: usize,
+    pub local_uploaded_count: usize,
+    pub local_accepted_count: usize,
+    pub local_quarantined_count: usize,
+    pub local_rejected_count: usize,
+    pub local_replay_required_count: usize,
+    pub local_settlement_ready_count: usize,
+    pub latest_window_id: Option<String>,
+    pub latest_assignment_id: Option<String>,
+    pub latest_payout_state: Option<String>,
+    pub readiness_detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlAppleAdapterOperatorAuthorityStatus {
     pub core_environment_ref: Option<String>,
     pub benchmark_environment_ref: Option<String>,
@@ -519,8 +613,15 @@ pub struct DesktopControlTrainingStatus {
     pub validator_timed_out_count: usize,
     pub sandbox_ready_profile_count: usize,
     pub sandbox_active_job_count: usize,
+    pub adapter_window_count: usize,
+    pub active_adapter_window_count: usize,
+    pub promotion_ready_window_count: usize,
+    pub contribution_count: usize,
     pub runs: Vec<DesktopControlTrainingRunStatus>,
     pub participants: Vec<DesktopControlTrainingParticipantStatus>,
+    pub windows: Vec<DesktopControlAdapterTrainingWindowStatus>,
+    pub contributions: Vec<DesktopControlAdapterContributionStatus>,
+    pub contributor: DesktopControlTrainingContributorStatus,
     pub operator: DesktopControlAppleAdapterOperatorStatus,
     pub last_error: Option<String>,
 }
@@ -2115,19 +2216,23 @@ fn sandbox_status_summary(status: &DesktopControlSandboxStatus) -> String {
 
 fn training_status_summary(status: &DesktopControlTrainingStatus) -> String {
     format!(
-        "training available={} source={} control={} artifact={} runs={} active_runs={} accepted_outcomes={} participants={}/{} validator={}/{}/{} operator={} operator_runs={}/{}",
+        "training available={} source={} control={} artifact={} runs={} active_runs={} windows={}/{} contributions={} accepted_outcomes={} participants={}/{} validator={}/{}/{} contributor={} operator={} operator_runs={}/{}",
         status.available,
         status.source,
         status.control_plane_state,
         status.artifact_plane_state,
         status.run_count,
         status.active_run_count,
+        status.active_adapter_window_count,
+        status.adapter_window_count,
+        status.contribution_count,
         status.accepted_outcome_count,
         status.contributing_participant_count,
         status.admitted_participant_count,
         status.validator_verified_count,
         status.validator_rejected_count,
         status.validator_timed_out_count,
+        status.contributor.assignment_state,
         status.operator.workflow_state,
         status.operator.active_run_count,
         status.operator.run_count
@@ -4127,6 +4232,8 @@ struct LoadedComputeHistory {
     capacity_instruments: Vec<CapacityInstrument>,
     structured_capacity_instruments: Vec<StructuredCapacityInstrument>,
     training_runs: Vec<ComputeTrainingRun>,
+    adapter_training_windows: Vec<ComputeAdapterTrainingWindow>,
+    adapter_contribution_outcomes: Vec<ComputeAdapterContributionOutcome>,
     accepted_outcomes: Vec<ComputeAcceptedOutcome>,
     validator_challenges: Vec<ComputeValidatorChallengeSnapshot>,
 }
@@ -4171,6 +4278,16 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
         state
             .desktop_control
             .compute_history
+            .adapter_training_windows
+            .clear();
+        state
+            .desktop_control
+            .compute_history
+            .adapter_contribution_outcomes
+            .clear();
+        state
+            .desktop_control
+            .compute_history
             .accepted_outcomes
             .clear();
         state
@@ -4190,6 +4307,9 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
             changed |=
                 cache.structured_capacity_instruments != loaded.structured_capacity_instruments;
             changed |= cache.training_runs != loaded.training_runs;
+            changed |= cache.adapter_training_windows != loaded.adapter_training_windows;
+            changed |=
+                cache.adapter_contribution_outcomes != loaded.adapter_contribution_outcomes;
             changed |= cache.accepted_outcomes != loaded.accepted_outcomes;
             changed |= cache.validator_challenges != loaded.validator_challenges;
             changed |= cache.last_error.is_some();
@@ -4197,13 +4317,17 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
             cache.capacity_instruments = loaded.capacity_instruments;
             cache.structured_capacity_instruments = loaded.structured_capacity_instruments;
             cache.training_runs = loaded.training_runs;
+            cache.adapter_training_windows = loaded.adapter_training_windows;
+            cache.adapter_contribution_outcomes = loaded.adapter_contribution_outcomes;
             cache.accepted_outcomes = loaded.accepted_outcomes;
             cache.validator_challenges = loaded.validator_challenges;
             cache.last_error = None;
             cache.last_action = Some(format!(
-                "Loaded kernel compute proof, challenge, training, and outcome history for {} proofs / {} runs / {} outcomes",
+                "Loaded kernel compute proof, challenge, training, adapter, and outcome history for {} proofs / {} runs / {} windows / {} contributions / {} outcomes",
                 cache.delivery_proofs.len(),
                 cache.training_runs.len(),
+                cache.adapter_training_windows.len(),
+                cache.adapter_contribution_outcomes.len(),
                 cache.accepted_outcomes.len()
             ));
         }
@@ -4333,6 +4457,36 @@ fn load_compute_history_from_authority(
             .iter()
             .map(|run| run.training_run_id.clone())
             .collect::<BTreeSet<_>>();
+        let mut adapter_training_windows = Vec::new();
+        let mut adapter_contribution_outcomes = Vec::new();
+        for training_run_id in &training_run_ids {
+            adapter_training_windows.extend(
+                client
+                    .list_compute_adapter_training_windows(Some(training_run_id.as_str()), None)
+                    .await?,
+            );
+            adapter_contribution_outcomes.extend(
+                client
+                    .list_compute_adapter_contribution_outcomes(
+                        Some(training_run_id.as_str()),
+                        None,
+                        None,
+                    )
+                    .await?,
+            );
+        }
+        adapter_training_windows.sort_by(|left, right| {
+            right
+                .recorded_at_ms
+                .cmp(&left.recorded_at_ms)
+                .then_with(|| left.window_id.cmp(&right.window_id))
+        });
+        adapter_contribution_outcomes.sort_by(|left, right| {
+            right
+                .recorded_at_ms
+                .cmp(&left.recorded_at_ms)
+                .then_with(|| left.contribution_id.cmp(&right.contribution_id))
+        });
         let related_eval_run_ids = training_runs
             .iter()
             .flat_map(|run| run.rollout_verification_eval_run_ids.iter().cloned())
@@ -4358,6 +4512,8 @@ fn load_compute_history_from_authority(
             capacity_instruments,
             structured_capacity_instruments,
             training_runs,
+            adapter_training_windows,
+            adapter_contribution_outcomes,
             accepted_outcomes,
             validator_challenges,
         })
@@ -4404,6 +4560,422 @@ fn training_run_sort_epoch_ms(run: &ComputeTrainingRun) -> i64 {
         .unwrap_or(run.created_at_ms)
 }
 
+fn adapter_window_gate_reason_label(code: ComputeAdapterWindowGateReasonCode) -> &'static str {
+    match code {
+        ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing => "held_out_eval_missing",
+        ComputeAdapterWindowGateReasonCode::HeldOutEvalBelowThreshold => {
+            "held_out_eval_below_threshold"
+        }
+        ComputeAdapterWindowGateReasonCode::BenchmarkMissing => "benchmark_missing",
+        ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold => {
+            "benchmark_below_threshold"
+        }
+        ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired => "runtime_smoke_required",
+        ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed => "runtime_smoke_failed",
+    }
+}
+
+fn adapter_promotion_hold_reason_label(
+    code: ComputeAdapterPromotionHoldReasonCode,
+) -> &'static str {
+    match code {
+        ComputeAdapterPromotionHoldReasonCode::InsufficientAcceptedWork => {
+            "insufficient_accepted_work"
+        }
+        ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady => {
+            "validator_window_not_promotion_ready"
+        }
+    }
+}
+
+fn adapter_contribution_validation_reason_label(
+    code: ComputeAdapterContributionValidationReasonCode,
+) -> &'static str {
+    match code {
+        ComputeAdapterContributionValidationReasonCode::SecurityRejected => "security_rejected",
+        ComputeAdapterContributionValidationReasonCode::SecurityQuarantined => {
+            "security_quarantined"
+        }
+        ComputeAdapterContributionValidationReasonCode::ReplayRequired => "replay_required",
+        ComputeAdapterContributionValidationReasonCode::ReplayMismatch => "replay_mismatch",
+    }
+}
+
+fn provider_adapter_training_match_reason_label(
+    code: ProviderAdapterTrainingMatchReasonCode,
+) -> &'static str {
+    match code {
+        ProviderAdapterTrainingMatchReasonCode::ContributorUnavailable => {
+            "contributor_unavailable"
+        }
+        ProviderAdapterTrainingMatchReasonCode::CoordinatorMatchUnavailable => {
+            "coordinator_match_unavailable"
+        }
+        ProviderAdapterTrainingMatchReasonCode::AuthorityReceiptsUnavailable => {
+            "authority_receipts_unavailable"
+        }
+        ProviderAdapterTrainingMatchReasonCode::ExecutionBackendUnsupported => {
+            "execution_backend_unsupported"
+        }
+        ProviderAdapterTrainingMatchReasonCode::AdapterFamilyUnsupported => {
+            "adapter_family_unsupported"
+        }
+        ProviderAdapterTrainingMatchReasonCode::AdapterFormatUnsupported => {
+            "adapter_format_unsupported"
+        }
+        ProviderAdapterTrainingMatchReasonCode::ValidatorPolicyUnsupported => {
+            "validator_policy_unsupported"
+        }
+        ProviderAdapterTrainingMatchReasonCode::EnvironmentUnsupported => {
+            "environment_unsupported"
+        }
+        ProviderAdapterTrainingMatchReasonCode::CheckpointFamilyUnsupported => {
+            "checkpoint_family_unsupported"
+        }
+        ProviderAdapterTrainingMatchReasonCode::MemoryInsufficient => "memory_insufficient",
+        ProviderAdapterTrainingMatchReasonCode::SettlementTriggerUnsupported => {
+            "settlement_trigger_unsupported"
+        }
+    }
+}
+
+fn adapter_contribution_upload_state(contribution: &ComputeAdapterContributionOutcome) -> String {
+    if contribution.artifact_receipt_digest.trim().is_empty() {
+        "pending_upload".to_string()
+    } else if contribution.validator_receipt_digest.trim().is_empty() {
+        "uploaded".to_string()
+    } else {
+        "validated".to_string()
+    }
+}
+
+fn adapter_contribution_payout_state(
+    window: Option<&ComputeAdapterTrainingWindow>,
+    contribution: &ComputeAdapterContributionOutcome,
+    settlement_trigger: Option<ProviderAdapterTrainingSettlementTrigger>,
+) -> String {
+    let Some(trigger) = settlement_trigger else {
+        return "no_settlement_trigger".to_string();
+    };
+    let Some(window) = window else {
+        return "window_unavailable".to_string();
+    };
+    if settlement_hook_from_authority(window, Some(contribution), trigger).is_some() {
+        return "settlement_ready".to_string();
+    }
+    match contribution.validator_disposition {
+        ComputeAdapterContributionDisposition::Accepted => {
+            if contribution.accepted_for_aggregation
+                && contribution.aggregation_eligibility
+                    == ComputeAdapterAggregationEligibility::Eligible
+            {
+                "accepted_pending_settlement".to_string()
+            } else {
+                "accepted_not_payable".to_string()
+            }
+        }
+        ComputeAdapterContributionDisposition::Quarantined => "quarantined".to_string(),
+        ComputeAdapterContributionDisposition::Rejected => "rejected".to_string(),
+        ComputeAdapterContributionDisposition::ReplayRequired => "replay_required".to_string(),
+    }
+}
+
+fn map_adapter_training_window_status(
+    window: &ComputeAdapterTrainingWindow,
+    contributions: &[&ComputeAdapterContributionOutcome],
+) -> DesktopControlAdapterTrainingWindowStatus {
+    DesktopControlAdapterTrainingWindowStatus {
+        window_id: window.window_id.clone(),
+        training_run_id: window.training_run_id.clone(),
+        stage_id: window.stage_id.clone(),
+        status: window.status.label().to_string(),
+        contributor_set_revision_id: window.contributor_set_revision_id.clone(),
+        validator_policy_ref: window.validator_policy_ref.clone(),
+        adapter_target_id: window.adapter_target_id.clone(),
+        adapter_family: window.adapter_family.clone(),
+        adapter_format: window.adapter_format.clone(),
+        total_contributions: window.total_contributions,
+        admitted_contributions: window.admitted_contributions,
+        accepted_contributions: window.accepted_contributions,
+        quarantined_contributions: window.quarantined_contributions,
+        rejected_contributions: window.rejected_contributions,
+        replay_required_contributions: window.replay_required_contributions,
+        uploaded_contributions: contributions
+            .iter()
+            .filter(|contribution| !contribution.artifact_receipt_digest.trim().is_empty())
+            .count() as u32,
+        held_out_average_score_bps: window.held_out_average_score_bps,
+        benchmark_pass_rate_bps: window.benchmark_pass_rate_bps,
+        runtime_smoke_passed: window.runtime_smoke_passed,
+        promotion_ready: window.promotion_ready,
+        gate_reason_codes: window
+            .gate_reason_codes
+            .iter()
+            .map(|value| adapter_window_gate_reason_label(*value).to_string())
+            .collect(),
+        promotion_disposition: window
+            .promotion_disposition
+            .map(ComputeAdapterPromotionDisposition::label)
+            .map(str::to_string),
+        hold_reason_codes: window
+            .hold_reason_codes
+            .iter()
+            .map(|value| adapter_promotion_hold_reason_label(*value).to_string())
+            .collect(),
+        accepted_outcome_id: window.accepted_outcome_id.clone(),
+        recorded_at_ms: window.recorded_at_ms,
+    }
+}
+
+fn map_adapter_contribution_status(
+    contribution: &ComputeAdapterContributionOutcome,
+    window: Option<&ComputeAdapterTrainingWindow>,
+    settlement_trigger: Option<ProviderAdapterTrainingSettlementTrigger>,
+) -> DesktopControlAdapterContributionStatus {
+    DesktopControlAdapterContributionStatus {
+        contribution_id: contribution.contribution_id.clone(),
+        training_run_id: contribution.training_run_id.clone(),
+        stage_id: contribution.stage_id.clone(),
+        window_id: contribution.window_id.clone(),
+        assignment_id: contribution.assignment_id.clone(),
+        contributor_node_id: contribution.contributor_node_id.clone(),
+        worker_id: contribution.worker_id.clone(),
+        validator_policy_ref: contribution.validator_policy_ref.clone(),
+        validator_disposition: contribution.validator_disposition.label().to_string(),
+        validation_reason_codes: contribution
+            .validation_reason_codes
+            .iter()
+            .map(|value| adapter_contribution_validation_reason_label(*value).to_string())
+            .collect(),
+        aggregation_eligibility: contribution.aggregation_eligibility.label().to_string(),
+        accepted_for_aggregation: contribution.accepted_for_aggregation,
+        aggregation_weight_bps: contribution.aggregation_weight_bps,
+        upload_state: adapter_contribution_upload_state(contribution),
+        payout_state: adapter_contribution_payout_state(window, contribution, settlement_trigger),
+        settlement_trigger: settlement_trigger.map(|value| value.label().to_string()),
+        recorded_at_ms: contribution.recorded_at_ms,
+    }
+}
+
+fn build_training_contributor_status(
+    state: &RenderState,
+    windows: &[ComputeAdapterTrainingWindow],
+    contributions: &[ComputeAdapterContributionOutcome],
+    training_runs: &[ComputeTrainingRun],
+) -> DesktopControlTrainingContributorStatus {
+    let availability = state
+        .provider_runtime
+        .availability()
+        .adapter_training_contributor;
+    let product_enabled = state
+        .provider_runtime
+        .inventory_controls
+        .is_advertised(ProviderComputeProduct::AdapterTrainingContributor);
+    let backend_ready = state
+        .provider_runtime
+        .availability()
+        .product_backend_ready(ProviderComputeProduct::AdapterTrainingContributor);
+    let settlement_trigger = availability.settlement_trigger;
+    let local_node_id = state.spacetime_presence_snapshot.node_id.trim().to_string();
+    let local_node_id = (!local_node_id.is_empty() && local_node_id != "uninitialized")
+        .then_some(local_node_id);
+    let training_runs_by_id = training_runs
+        .iter()
+        .map(|run| (run.training_run_id.as_str(), run))
+        .collect::<BTreeMap<_, _>>();
+    let windows_by_id = windows
+        .iter()
+        .map(|window| (window.window_id.as_str(), window))
+        .collect::<BTreeMap<_, _>>();
+    let latest_window = windows.first();
+    let latest_match_request = latest_window.map(|window| {
+        let run = training_runs_by_id.get(window.training_run_id.as_str()).copied();
+        ProviderAdapterTrainingMatchRequest {
+            training_run_id: window.training_run_id.clone(),
+            adapter_family: window.adapter_family.clone(),
+            adapter_format: window.adapter_format.clone(),
+            validator_policy_ref: window.validator_policy_ref.clone(),
+            environment_ref: run.map(|value| value.environment_binding.environment_ref.clone()),
+            checkpoint_family: run.map(|value| value.checkpoint_binding.checkpoint_family.clone()),
+            minimum_memory_gb: availability.minimum_memory_gb,
+            execution_backend: Some(ProviderAdapterTrainingExecutionBackend::AppleFoundationModels),
+            settlement_trigger: settlement_trigger
+                .unwrap_or(ProviderAdapterTrainingSettlementTrigger::AcceptedContribution),
+        }
+    });
+    let match_verdict = latest_match_request
+        .as_ref()
+        .map(|request| match_adapter_training_contributor(&availability, request))
+        .unwrap_or_default();
+
+    let local_contributions = local_node_id
+        .as_deref()
+        .map(|node_id| {
+            contributions
+                .iter()
+                .filter(|contribution| {
+                    contribution.contributor_node_id == node_id || contribution.worker_id == node_id
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let local_active_assignment_count = local_contributions
+        .iter()
+        .filter(|contribution| {
+            windows_by_id
+                .get(contribution.window_id.as_str())
+                .is_some_and(|window| {
+                    matches!(
+                        window.status,
+                        ComputeAdapterWindowStatus::Planned | ComputeAdapterWindowStatus::Active
+                    )
+                })
+        })
+        .count();
+    let local_uploaded_count = local_contributions
+        .iter()
+        .filter(|contribution| !contribution.artifact_receipt_digest.trim().is_empty())
+        .count();
+    let local_accepted_count = local_contributions
+        .iter()
+        .filter(|contribution| {
+            contribution.validator_disposition == ComputeAdapterContributionDisposition::Accepted
+        })
+        .count();
+    let local_quarantined_count = local_contributions
+        .iter()
+        .filter(|contribution| {
+            contribution.validator_disposition
+                == ComputeAdapterContributionDisposition::Quarantined
+        })
+        .count();
+    let local_rejected_count = local_contributions
+        .iter()
+        .filter(|contribution| {
+            contribution.validator_disposition == ComputeAdapterContributionDisposition::Rejected
+        })
+        .count();
+    let local_replay_required_count = local_contributions
+        .iter()
+        .filter(|contribution| {
+            contribution.validator_disposition
+                == ComputeAdapterContributionDisposition::ReplayRequired
+        })
+        .count();
+    let local_settlement_ready_count = local_contributions
+        .iter()
+        .filter(|contribution| {
+            windows_by_id
+                .get(contribution.window_id.as_str())
+                .and_then(|window| {
+                    settlement_hook_from_authority(
+                        window,
+                        Some(contribution),
+                        settlement_trigger
+                            .unwrap_or(ProviderAdapterTrainingSettlementTrigger::AcceptedContribution),
+                    )
+                })
+                .is_some()
+        })
+        .count();
+    let latest_local_contribution = local_contributions.first().copied();
+    let latest_payout_state = latest_local_contribution.map(|contribution| {
+        adapter_contribution_payout_state(
+            windows_by_id
+                .get(contribution.window_id.as_str())
+                .copied(),
+            contribution,
+            settlement_trigger,
+        )
+    });
+    let latest_assignment_id = latest_local_contribution.map(|value| value.assignment_id.clone());
+    let assignment_state = if !product_enabled {
+        "inventory_disabled"
+    } else if local_settlement_ready_count > 0 {
+        "settlement_ready"
+    } else if local_accepted_count > 0 {
+        "accepted"
+    } else if local_quarantined_count > 0 {
+        "quarantined"
+    } else if local_rejected_count > 0 {
+        "rejected"
+    } else if local_replay_required_count > 0 {
+        "replay_required"
+    } else if !local_contributions.is_empty() {
+        "submitted"
+    } else if latest_window.is_some() && match_verdict.eligible {
+        "awaiting_assignment"
+    } else if latest_window.is_some() {
+        "prerequisites_blocked"
+    } else if availability.contributor_supported {
+        "idle"
+    } else {
+        "unavailable"
+    }
+    .to_string();
+    let readiness_detail = if !product_enabled {
+        Some("Provider inventory keeps adapter training contributor disabled".to_string())
+    } else if !match_verdict.reason_codes.is_empty() {
+        Some(format!(
+            "Match blocked: {}",
+            match_verdict
+                .reason_codes
+                .iter()
+                .map(|value| provider_adapter_training_match_reason_label(*value))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    } else if local_settlement_ready_count > 0 {
+        Some("Accepted local contribution is ready for settlement".to_string())
+    } else if latest_window.is_some() {
+        Some("Contributor prerequisites satisfy the latest decentralized adapter window".to_string())
+    } else {
+        state.provider_runtime.apple_fm.readiness_block_reason()
+    };
+
+    DesktopControlTrainingContributorStatus {
+        available: availability.has_authoritative_state(),
+        local_node_id,
+        product_enabled,
+        backend_ready,
+        contributor_supported: availability.contributor_supported,
+        coordinator_match_supported: availability.coordinator_match_supported,
+        authority_receipt_supported: availability.authority_receipt_supported,
+        execution_backends: availability
+            .execution_backends
+            .iter()
+            .map(|value| value.label().to_string())
+            .collect(),
+        adapter_families: availability.adapter_families.clone(),
+        adapter_formats: availability.adapter_formats.clone(),
+        validator_policy_refs: availability.validator_policy_refs.clone(),
+        checkpoint_families: availability.checkpoint_families.clone(),
+        environment_refs: availability.environment_refs.clone(),
+        available_memory_gb: availability.available_memory_gb,
+        minimum_memory_gb: availability.minimum_memory_gb,
+        settlement_trigger: settlement_trigger.map(|value| value.label().to_string()),
+        match_eligible: match_verdict.eligible,
+        match_reason_codes: match_verdict
+            .reason_codes
+            .iter()
+            .map(|value| provider_adapter_training_match_reason_label(*value).to_string())
+            .collect(),
+        assignment_state,
+        local_assignment_count: local_contributions.len(),
+        local_active_assignment_count,
+        local_uploaded_count,
+        local_accepted_count,
+        local_quarantined_count,
+        local_rejected_count,
+        local_replay_required_count,
+        local_settlement_ready_count,
+        latest_window_id: latest_window.map(|window| window.window_id.clone()),
+        latest_assignment_id,
+        latest_payout_state,
+        readiness_detail,
+    }
+}
+
 fn authority_history_source_label(state: &RenderState) -> String {
     let authority_configured = state
         .hosted_control_base_url
@@ -4426,6 +4998,8 @@ fn authority_history_source_label(state: &RenderState) -> String {
             && cache.capacity_instruments.is_empty()
             && cache.structured_capacity_instruments.is_empty()
             && cache.training_runs.is_empty()
+            && cache.adapter_training_windows.is_empty()
+            && cache.adapter_contribution_outcomes.is_empty()
             && cache.accepted_outcomes.is_empty()
         {
             "kernel_authority_error".to_string()
@@ -4480,6 +5054,23 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
         .iter()
         .filter(|outcome| outcome.outcome_kind == ComputeAcceptedOutcomeKind::TrainingRun)
         .map(|outcome| (outcome.source_run_id.as_str(), outcome))
+        .collect::<BTreeMap<_, _>>();
+    let window_contributions = cache
+        .adapter_contribution_outcomes
+        .iter()
+        .fold(
+            BTreeMap::<&str, Vec<&ComputeAdapterContributionOutcome>>::new(),
+            |mut acc, contribution| {
+                acc.entry(contribution.window_id.as_str())
+                    .or_default()
+                    .push(contribution);
+                acc
+            },
+        );
+    let windows_by_id = cache
+        .adapter_training_windows
+        .iter()
+        .map(|window| (window.window_id.as_str(), window))
         .collect::<BTreeMap<_, _>>();
 
     let environment_versions = cache
@@ -4680,6 +5271,40 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
             }
         })
         .collect::<Vec<_>>();
+    let contributor = build_training_contributor_status(
+        state,
+        cache.adapter_training_windows.as_slice(),
+        cache.adapter_contribution_outcomes.as_slice(),
+        cache.training_runs.as_slice(),
+    );
+    let windows = cache
+        .adapter_training_windows
+        .iter()
+        .take(DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT)
+        .map(|window| {
+            let contributions = window_contributions
+                .get(window.window_id.as_str())
+                .cloned()
+                .unwrap_or_default();
+            map_adapter_training_window_status(window, contributions.as_slice())
+        })
+        .collect::<Vec<_>>();
+    let contributions = cache
+        .adapter_contribution_outcomes
+        .iter()
+        .take(DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT)
+        .map(|contribution| {
+            map_adapter_contribution_status(
+                contribution,
+                windows_by_id.get(contribution.window_id.as_str()).copied(),
+                state
+                    .provider_runtime
+                    .availability()
+                    .adapter_training_contributor
+                    .settlement_trigger,
+            )
+        })
+        .collect::<Vec<_>>();
 
     DesktopControlTrainingStatus {
         available,
@@ -4738,8 +5363,28 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
             .count(),
         sandbox_ready_profile_count: sandbox.ready_profile_count,
         sandbox_active_job_count: sandbox.active_job_count,
+        adapter_window_count: cache.adapter_training_windows.len(),
+        active_adapter_window_count: cache
+            .adapter_training_windows
+            .iter()
+            .filter(|window| {
+                matches!(
+                    window.status,
+                    ComputeAdapterWindowStatus::Planned | ComputeAdapterWindowStatus::Active
+                )
+            })
+            .count(),
+        promotion_ready_window_count: cache
+            .adapter_training_windows
+            .iter()
+            .filter(|window| window.promotion_ready)
+            .count(),
+        contribution_count: cache.adapter_contribution_outcomes.len(),
         runs,
         participants,
+        windows,
+        contributions,
+        contributor,
         operator,
         last_error: cache.last_error.clone(),
     }
@@ -5644,6 +6289,9 @@ fn procurement_backend_label(
         Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
         Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => {
             "apple_foundation_models"
+        }
+        Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => {
+            "psionic_train"
         }
         None if matches!(
             compute_family,
@@ -7055,6 +7703,10 @@ mod tests {
                 validator_timed_out_count: 0,
                 sandbox_ready_profile_count: 1,
                 sandbox_active_job_count: 0,
+                adapter_window_count: 0,
+                active_adapter_window_count: 0,
+                promotion_ready_window_count: 0,
+                contribution_count: 0,
                 runs: vec![DesktopControlTrainingRunStatus {
                     training_run_id: "training-run-1".to_string(),
                     status: "running".to_string(),
@@ -7094,6 +7746,9 @@ mod tests {
                         exclusion_reason: None,
                     },
                 ],
+                windows: Vec::new(),
+                contributions: Vec::new(),
+                contributor: crate::desktop_control::DesktopControlTrainingContributorStatus::default(),
                 operator: DesktopControlAppleAdapterOperatorStatus::default(),
                 last_error: None,
             },

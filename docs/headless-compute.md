@@ -160,6 +160,20 @@ versions, checkpoint refs, stale-rollout and duplicate-handling counters,
 validator verdict totals, sandbox pool readiness, and the currently visible
 training runs or participants when those surfaces are available.
 
+The same status surface now also projects the first decentralized adapter
+training read model. It includes:
+
+- contributor readiness and inventory truth for the local `adapter_training`
+  contributor lane
+- the latest projected adapter windows, including window status, upload counts,
+  accepted or quarantined or replay-required contribution totals, validation
+  gates, and promotion readiness
+- projected contribution outcomes, including contributor node, validator
+  disposition, aggregation eligibility, and payout-relevant settlement state
+- a contributor-focused summary for the current desktop node so operators can
+  see whether the local runtime is blocked, awaiting assignment, submitted,
+  accepted, quarantined, replay-required, or settlement-ready
+
 For the Apple adapter lane, the training command group is now an operator
 workflow rather than a status-only surface:
 
@@ -174,6 +188,9 @@ workflow rather than a status-only surface:
 
 The status payload now renders the Apple operator stages separately so launched,
 evaluated, exported, and accepted states stay distinct across restart or replay.
+It also renders decentralized adapter window and contribution lines so scripted
+operation no longer requires dropping down to raw kernel API calls to inspect
+the latest contributor outcomes.
 
 `autopilotctl proof status` now drills into recent delivery proofs instead of
 stopping at a count. The payload includes proof posture, topology and

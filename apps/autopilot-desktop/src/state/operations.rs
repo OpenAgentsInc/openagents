@@ -738,6 +738,7 @@ impl SpotComputeRfqDraft {
         match self.preferred_backend {
             Some(ComputeBackendFamily::GptOss) => "gpt_oss",
             Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            Some(ComputeBackendFamily::PsionicTrain) => "psionic_train",
             None => "any",
         }
     }
@@ -784,6 +785,7 @@ impl ForwardComputeRfqDraft {
         match self.preferred_backend {
             Some(ComputeBackendFamily::GptOss) => "gpt_oss",
             Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            Some(ComputeBackendFamily::PsionicTrain) => "psionic_train",
             None => "any",
         }
     }
@@ -832,6 +834,7 @@ impl SpotComputeQuoteCandidate {
         match self.backend_family {
             Some(ComputeBackendFamily::GptOss) => "gpt_oss",
             Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            Some(ComputeBackendFamily::PsionicTrain) => "psionic_train",
             None if matches!(self.compute_family, ComputeFamily::SandboxExecution) => "sandbox",
             None => "unknown",
         }
@@ -921,6 +924,7 @@ impl ForwardComputeQuoteCandidate {
         match self.backend_family {
             Some(ComputeBackendFamily::GptOss) => "gpt_oss",
             Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            Some(ComputeBackendFamily::PsionicTrain) => "psionic_train",
             None if matches!(self.compute_family, ComputeFamily::SandboxExecution) => "sandbox",
             None => "unknown",
         }

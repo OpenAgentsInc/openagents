@@ -9,10 +9,12 @@ use std::time::{Duration, Instant};
 
 use crate::local_inference_runtime::LocalInferenceExecutionMetrics;
 pub use openagents_provider_substrate::{
-    ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
-    ProviderAppleAdapterHostingEntry, ProviderAvailability, ProviderBackendHealth,
-    ProviderBackendKind, ProviderBlocker, ProviderComputeProduct, ProviderFailureClass,
-    ProviderInventoryControls, ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
+    ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
+    ProviderAdapterTrainingSettlementTrigger, ProviderAdvertisedProduct,
+    ProviderAppleAdapterHostingAvailability, ProviderAppleAdapterHostingEntry,
+    ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderBlocker,
+    ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
+    ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
     ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
 };
 use psionic_apple_fm::{
@@ -23,6 +25,14 @@ use psionic_apple_fm::{
 pub type LocalInferenceBackend = ProviderBackendKind;
 pub type EarnFailureClass = ProviderFailureClass;
 pub type ProviderInventoryProductToggleTarget = ProviderComputeProduct;
+
+const APPLE_ADAPTER_REFERENCE_ENVIRONMENT_REF: &str =
+    "env.openagents.apple_adapter.helpdesk.core";
+const APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF: &str =
+    "policy://validator/apple_adapter/helpdesk";
+const APPLE_ADAPTER_REFERENCE_CHECKPOINT_FAMILY: &str = "apple_adapter";
+const APPLE_ADAPTER_REFERENCE_ADAPTER_FAMILY: &str = "apple_adapter";
+const APPLE_ADAPTER_REFERENCE_ADAPTER_FORMAT: &str = "openagents.apple-fmadapter.v1";
 
 #[derive(Clone, Debug, Default)]
 pub struct ProviderGptOssRuntimeState {
@@ -169,6 +179,44 @@ impl ProviderAppleFmRuntimeState {
                 .collect(),
         }
     }
+
+    pub fn substrate_training_contributor(&self) -> ProviderAdapterTrainingContributorAvailability {
+        let contributor_supported = self.reachable || self.has_authoritative_capability_state();
+        let runtime_ready = self.is_ready();
+        ProviderAdapterTrainingContributorAvailability {
+            contributor_supported,
+            coordinator_match_supported: runtime_ready,
+            authority_receipt_supported: runtime_ready,
+            execution_backends: contributor_supported
+                .then_some(ProviderAdapterTrainingExecutionBackend::AppleFoundationModels)
+                .into_iter()
+                .collect(),
+            adapter_families: contributor_supported
+                .then_some(APPLE_ADAPTER_REFERENCE_ADAPTER_FAMILY.to_string())
+                .into_iter()
+                .collect(),
+            adapter_formats: contributor_supported
+                .then_some(APPLE_ADAPTER_REFERENCE_ADAPTER_FORMAT.to_string())
+                .into_iter()
+                .collect(),
+            validator_policy_refs: contributor_supported
+                .then_some(APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF.to_string())
+                .into_iter()
+                .collect(),
+            checkpoint_families: contributor_supported
+                .then_some(APPLE_ADAPTER_REFERENCE_CHECKPOINT_FAMILY.to_string())
+                .into_iter()
+                .collect(),
+            environment_refs: contributor_supported
+                .then_some(APPLE_ADAPTER_REFERENCE_ENVIRONMENT_REF.to_string())
+                .into_iter()
+                .collect(),
+            minimum_memory_gb: None,
+            available_memory_gb: None,
+            settlement_trigger: contributor_supported
+                .then_some(ProviderAdapterTrainingSettlementTrigger::AcceptedContribution),
+        }
+    }
 }
 
 fn is_positive_apple_fm_availability_message(message: &str) -> bool {
@@ -271,6 +319,7 @@ impl ProviderRuntimeState {
             gpt_oss: self.gpt_oss.substrate_health(),
             apple_foundation_models: self.apple_fm.substrate_health(),
             apple_adapter_hosting: self.apple_fm.substrate_adapter_hosting(),
+            adapter_training_contributor: self.apple_fm.substrate_training_contributor(),
             sandbox: self.sandbox.clone(),
         }
     }
@@ -362,8 +411,10 @@ impl ProviderRuntimeState {
 #[cfg(test)]
 mod tests {
     use super::{
-        LocalInferenceBackend, ProviderInventoryControls, ProviderInventoryProductToggleTarget,
-        ProviderRuntimeState,
+        APPLE_ADAPTER_REFERENCE_ADAPTER_FAMILY, APPLE_ADAPTER_REFERENCE_ADAPTER_FORMAT,
+        APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF, LocalInferenceBackend,
+        ProviderAdapterTrainingExecutionBackend, ProviderAdapterTrainingSettlementTrigger,
+        ProviderInventoryControls, ProviderInventoryProductToggleTarget, ProviderRuntimeState,
     };
     use psionic_apple_fm::AppleFmSystemLanguageModelUnavailableReason;
 
@@ -450,6 +501,52 @@ mod tests {
         assert_eq!(
             availability.apple_adapter_hosting.adapters[0].attached_session_count,
             2
+        );
+    }
+
+    #[test]
+    fn apple_runtime_projects_training_contributor_into_substrate_availability() {
+        let mut runtime = ProviderRuntimeState::default();
+        runtime.apple_fm.reachable = true;
+        runtime.apple_fm.model_available = true;
+        runtime.apple_fm.ready_model = Some("apple-foundation-model".to_string());
+
+        let availability = runtime.availability();
+
+        assert!(availability.adapter_training_contributor.contributor_supported);
+        assert!(
+            availability
+                .adapter_training_contributor
+                .coordinator_match_supported
+        );
+        assert!(
+            availability
+                .adapter_training_contributor
+                .authority_receipt_supported
+        );
+        assert_eq!(
+            availability.adapter_training_contributor.execution_backends,
+            vec![ProviderAdapterTrainingExecutionBackend::AppleFoundationModels]
+        );
+        assert_eq!(
+            availability.adapter_training_contributor.adapter_families,
+            vec![APPLE_ADAPTER_REFERENCE_ADAPTER_FAMILY.to_string()]
+        );
+        assert_eq!(
+            availability.adapter_training_contributor.adapter_formats,
+            vec![APPLE_ADAPTER_REFERENCE_ADAPTER_FORMAT.to_string()]
+        );
+        assert_eq!(
+            availability
+                .adapter_training_contributor
+                .validator_policy_refs,
+            vec![APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF.to_string()]
+        );
+        assert_eq!(
+            availability
+                .adapter_training_contributor
+                .settlement_trigger,
+            Some(ProviderAdapterTrainingSettlementTrigger::AcceptedContribution)
         );
     }
 

@@ -449,6 +449,9 @@ fn scope_for_product(
         | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
             ("local", "local", "single_node")
         }
+        ProviderComputeProduct::AdapterTrainingContributor => {
+            ("local", "training", "cluster_attached")
+        }
         ProviderComputeProduct::SandboxContainerExec
         | ProviderComputeProduct::SandboxPythonExec
         | ProviderComputeProduct::SandboxNodeExec
@@ -484,6 +487,9 @@ fn environment_binding_for_product(
         | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => input
             .apple_fm_ready_model
             .map(|model| format!("model:{model}")),
+        ProviderComputeProduct::AdapterTrainingContributor => input
+            .apple_fm_ready_model
+            .map(|model| format!("training:{model}")),
         ProviderComputeProduct::SandboxContainerExec
         | ProviderComputeProduct::SandboxPythonExec
         | ProviderComputeProduct::SandboxNodeExec
@@ -516,6 +522,9 @@ fn blocker_reason_for_row(
         }
         ProviderComputeProduct::AppleFoundationModelsAdapterHosting => Some(
             "Apple adapter hosting requires a ready Apple FM runtime plus at least one compatible loaded adapter".to_string(),
+        ),
+        ProviderComputeProduct::AdapterTrainingContributor => Some(
+            "Psionic training contributor requires the Apple adapter lane to be ready and advertising enabled".to_string(),
         ),
         ProviderComputeProduct::SandboxContainerExec
         | ProviderComputeProduct::SandboxPythonExec

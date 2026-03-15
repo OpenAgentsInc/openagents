@@ -172,6 +172,9 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
                     LocalInferenceBackend::GptOss => {
                         state.provider_runtime.gpt_oss.last_action.clone()
                     }
+                    LocalInferenceBackend::PsionicTrain => {
+                        state.provider_runtime.apple_fm.last_action.clone()
+                    }
                 });
             state.provider_runtime.mode_changed_at = now;
         }
