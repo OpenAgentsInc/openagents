@@ -46,19 +46,26 @@ So: Swift talks to Apple; Rust talks to the bridge over HTTP; the desktop app ow
   - **`GET /health`** — Returns system model availability, supported use cases, guardrails. Used to decide “is the bridge up and is the system model ready?”
   - **`GET /v1/models`** — List of model IDs (e.g. `apple-foundation-model`).
   - **`POST /v1/chat/completions`** — OpenAI-style chat completion.
-  - Session, stream, and structured-generation endpoints are also part of the contract; see `ROADMAP_FM.md` and the audit for full coverage.
-  - The Rust contract now also reserves adapter-management surfaces for the next bridge step:
+  - Session, stream, and structured-generation endpoints are also part of the
+    live bridge contract.
+  - Adapter-management surfaces are now implemented in the retained Swift
+    bridge:
     - **`GET /v1/adapters`**
     - **`POST /v1/adapters/load`**
     - **`DELETE /v1/adapters/{adapter_id}`**
     - **`POST /v1/sessions/{session_id}/adapter`**
     - **`DELETE /v1/sessions/{session_id}/adapter`**
-  - Those adapter endpoints are now part of the reusable Rust contract and client, while Swift-side implementation still lands separately.
+  - Session create, session response, structured response, and one-shot chat
+    completion requests can also carry optional adapter selections. Session
+    attach is durable; per-request adapter overrides are temporary and do not
+    mutate the session’s default binding.
 
 - **Readiness** (from the app’s point of view): the bridge is **ready** when:
   - **Reachable**: `GET /health` succeeds.
   - **Model available**: the health response indicates the system model is available (not disabled or unavailable).
   - **Ready model**: we have a non-empty model ID (from health or list_models) to use for requests.
+  - **Adapter state**: health now also reports adapter-inventory support,
+    adapter attach/detach support, and the currently loaded adapter inventory.
 
 If the bridge process is running but Apple Intelligence is off (or the system model is unavailable for another reason), the app sees “reachable but not ready” and should tell the user to enable Apple Intelligence (see user requirements below).
 
@@ -82,7 +89,11 @@ If none of these yield an existing binary, the app may try to **auto-build** onc
 
 - **Build** (from repo root):
   `cd swift/foundation-bridge && ./build.sh`
-  Produces **`bin/foundation-bridge`**. The bridge is written in **Swift**, so the build requires the **Swift compiler** (Xcode from the App Store, or **`xcode-select --install`** for Command Line Tools only—no full Xcode needed).
+  Produces **`bin/foundation-bridge`** and ad-hoc signs the copied binary so
+  macOS will launch the rebuilt sidecar locally. The bridge is written in
+  **Swift**, so the build requires the **Swift compiler** (Xcode from the App
+  Store, or **`xcode-select --install`** for Command Line Tools only—no full
+  Xcode needed).
 - **Run**:
   `./bin/foundation-bridge`
   Default port **11435**. Optional: `./bin/foundation-bridge 8080` for a different port (and set `OPENAGENTS_APPLE_FM_BASE_URL` accordingly).

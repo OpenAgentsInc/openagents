@@ -14,7 +14,8 @@ HTTP server that exposes Apple's Foundation Models via an OpenAI-compatible API.
 ./build.sh
 ```
 
-This compiles the binary to `../../bin/foundation-bridge`.
+This compiles the binary to `../../bin/foundation-bridge` and ad-hoc signs it so
+macOS will launch the rebuilt sidecar locally.
 
 ## Usage
 
@@ -27,9 +28,26 @@ This compiles the binary to `../../bin/foundation-bridge`.
 
 - `GET /health`
 - `GET /v1/models`
+- `GET /v1/adapters`
+- `POST /v1/adapters/load`
+- `DELETE /v1/adapters/{adapter_id}`
+- `POST /v1/sessions`
+- `GET /v1/sessions/{id}`
+- `GET /v1/sessions/{id}/transcript`
+- `POST /v1/sessions/{id}/adapter`
+- `DELETE /v1/sessions/{id}/adapter`
+- `POST /v1/sessions/{id}/responses`
+- `POST /v1/sessions/{id}/responses/structured`
+- `POST /v1/sessions/{id}/responses/stream`
+- `POST /v1/sessions/{id}/reset`
+- `DELETE /v1/sessions/{id}`
 - `POST /v1/chat/completions`
 
-The bridge is intended to be supervised by the desktop app as a localhost sidecar for Apple Foundation Models inference only. For full detail (architecture, discovery, shipping, user requirements, agent workflow), see **[crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](../../crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md)**.
+The bridge is intended to be supervised by the desktop app as a localhost
+sidecar for Apple Foundation Models inference plus adapter load/attach testing.
+For full detail (architecture, discovery, shipping, user requirements, agent
+workflow), see
+**[crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](../../crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md)**.
 
 ## Shipping the app (no build on user machines)
 
