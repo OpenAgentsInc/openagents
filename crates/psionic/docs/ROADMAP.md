@@ -421,6 +421,11 @@ The largest open gaps are now more architectural than existential:
   still needs convergence
 - train-class execution is real but still narrow, adapter-first, and not yet
   equivalent to framework-level distributed training semantics
+- structured interactive environment turns, trajectory receipts, and benchmark
+  bridges are still too text-session-oriented for ARC-AGI-3-class and similar
+  interactive eval families
+- train-class operator, collective, and model-state coverage is still too
+  narrow for HRM-class and similar non-adapter model ports
 
 ## Roadmap Shape
 
@@ -718,6 +723,10 @@ semantics land in Epic 6 on top of the execution substrate defined here.
 | `PLIB-509` | planned | Define reusable process-group and collective semantics, distinct from lane-local cluster membership, so framework-level distributed training has a stable substrate. |
 | `PLIB-510` | planned | Add bounded remote-execution and RPC contracts with explicit provenance, capability, refusal, and receipt semantics. |
 | `PLIB-511` | planned | Add elastic membership and fault-tolerant distributed run-control substrate for restart, rejoin, and topology revision without hiding failures. |
+| `PLIB-512` | planned | Add structured interactive environment turn contracts with typed observations, actions, resets, terminal transitions, and resume-safe session snapshots for ARC-AGI-3-class and other benchmark environments. |
+| `PLIB-513` | planned | Add episode and trajectory receipt families with per-step observation/action/result hashing and final episode summaries distinct from text-session transcripts. |
+| `PLIB-514` | planned | Add a generic bridge from interactive environment sessions into eval samples, repeated-run aggregation, and benchmark evidence packs. |
+| `PLIB-515` | planned | Turn collective semantics into actual train-class collective execution paths with evidence for `all_reduce`, `all_gather`, and related multi-rank behavior that higher-level training lanes can rely on. |
 
 ## Epic 6: Training, Eval, And Research
 
@@ -782,6 +791,9 @@ This epic already has an active GitHub issue program:
 | `PLIB-609` | planned | Add pipeline-parallel stage, schedule, microbatch, and activation-lifetime semantics as a reusable training capability family. |
 | `PLIB-610` | planned | Add dense and sharded distributed checkpoint semantics, including optimizer-state checkpointing and restart or recovery contracts for train-class runs. |
 | `PLIB-611` | planned | Build elastic and fault-tolerant distributed training semantics on top of Epic 5 membership contracts instead of lane-specific orchestration. |
+| `PLIB-612` | planned | Expand train-class operator coverage for non-adapter models: gather, scatter-add, pad, argmax, BCE-with-logits, and softmax cross-entropy. |
+| `PLIB-613` | planned | Strengthen model-state and train-state IO with stable manifests, promoted checkpoint shapes, and small-model local training harnesses suitable for research workloads beyond the current adapter-first lane. |
+| `PLIB-614` | planned | Add training-class attention, sparse-embedding, and ACT-style loop support so small recursive and HRM-class models can target Psionic through reusable contracts rather than local exceptions. |
 
 ## Epic 7: Interop And Adoption
 
@@ -881,11 +893,11 @@ This is the recommended dependency order for the next full-library work.
 
 ### Phase 5: reconcile distributed execution truth
 
-29. `PLIB-501` through `PLIB-511`
+29. `PLIB-501` through `PLIB-515`
 
 ### Phase 6: execute the training and eval program
 
-30. `PLIB-601` through `PLIB-611`
+30. `PLIB-601` through `PLIB-614`
 
 ### Phase 7: only then expose broader adoption and compatibility shells
 
@@ -946,6 +958,16 @@ system.
 If operator, dtype, tensor-family, backend, distributed, quantization, and
 export matrices all expand at once without tiered targets, the roadmap will
 produce scattered partial coverage instead of honest replacement lanes.
+
+### Risk 11: interactive benchmark growth staying trapped in text-session abstractions
+
+If `PLIB-512` through `PLIB-514` slip, interactive benchmark families will keep
+rebuilding environment and trajectory logic outside the reusable Psionic layer.
+
+### Risk 12: adapter-first training substrate mistaken for broader model closure
+
+If `PLIB-612` through `PLIB-614` do not land, non-adapter model ports will
+either stall or force benchmark-specific training primitives into higher layers.
 
 ## Roadmap Rules
 

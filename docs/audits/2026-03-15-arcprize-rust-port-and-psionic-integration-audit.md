@@ -200,22 +200,35 @@ correct plan is:
 
 ## Proposed `crates/arc/*` Tree
 
-The cleanest layout is a namespace subtree under `crates/arc/`:
+The cleanest layout is a namespace subtree under `crates/arc/`, with
+directories such as `crates/arc/core` and package names such as `arc-core`:
 
 | Crate | Owns | Main upstream source |
 | --- | --- | --- |
-| `arc-core` | shared ARC task, grid, frame, action, scorecard, and recording types | `ARC-AGI-2`, `ARC-AGI`, `ARC-AGI-3` docs |
+| `arc-core` | shared ARC schema and value types: tasks, grids, frames, actions, states, operation modes, scorecards, recordings, score-policy IDs, canonicalization, objects, relations, budgets, and solver result envelopes | `ARC-AGI-2`, `ARC-AGI`, `ARC-AGI-3` docs |
 | `arc-datasets` | ARC-AGI-2 loaders, ARC augmentation builders, Psionic dataset-manifest export | `ARC-AGI-2`, `hierarchical-reasoning-model-analysis/dataset/*` |
 | `arc-engine` | deterministic local game engine, sprite/camera/level logic, game package loading | `ARCEngine` |
 | `arc-client` | ARC REST client, cookie-affine session handling, local/remote wrappers, compatibility server | `ARC-AGI` |
-| `arc-benchmark` | static exact-match scoring, interactive RHAE scoring, scorecards, recordings, checkpoints, run manifests | `arc-agi-benchmarking`, `arc-agi-3-benchmarking` |
-| `arc-solvers` | agent trait, baseline agents, prompt policies, model adapter traits, Psionic-backed local solver integration | `arc-agi-3-benchmarking`, `ARC-AGI-3-Agents` |
+| `arc-benchmark` | static exact-match scoring, versioned interactive RHAE scoring, scorecards, recordings, checkpoints, run manifests, and benchmark-policy truth | `arc-agi-benchmarking`, `arc-agi-3-benchmarking` |
+| `arc-solvers` | ARC DSL, hypothesis IR, search/refinement control, verifier, arbiter, agent traits, baseline agents, prompt policies, and Psionic-backed local solver integration | `arc-agi-3-benchmarking`, `ARC-AGI-3-Agents` |
 | `arc-ml` | HRM and baseline model definitions, training/eval bridges, ARC-specific metrics over Psionic train/eval | `hierarchical-reasoning-model-analysis` |
 
 That split respects `docs/OWNERSHIP.md`:
 
 - ARC-specific semantics stay in `crates/arc/*`
 - reusable execution substrate stays in `crates/psionic/*`
+
+Recommended dependency shape:
+
+- `arc-core` is the shared base and should not depend on other ARC crates
+- `arc-engine` should depend on `arc-core`
+- `arc-client` should depend on `arc-core` and `arc-engine`
+- `arc-benchmark` should consume `arc-core` contracts and optionally replay
+  through `arc-engine` or `arc-client`
+- `arc-solvers` should sit above `arc-core` and `arc-engine`, using `arc-client`
+  only for remote or compatibility-backed interactive runs
+- `arc-ml` should consume `arc-core` and `arc-datasets`, with solver-facing
+  adapters pointing from `arc-solvers` into `arc-ml` to avoid cycles
 
 ## Repo-By-Repo Port Plan
 
@@ -258,7 +271,9 @@ Port these pieces:
 - local wrapper over `arc-engine`
 - remote wrapper over the REST API
 - cookie-preserving session behavior
+- rate-limit-aware retry and backoff behavior
 - scorecard open/get/close flows
+- default scorecard reuse behavior in the convenience client
 - local compatibility server matching `docs/arc3v1.yaml`
 
 What not to copy literally:
@@ -268,7 +283,7 @@ What not to copy literally:
 
 Rust shape:
 
-- `reqwest` client with cookie jar for remote mode
+- `reqwest` client with cookie jar and typed `429` handling for remote mode
 - `axum` or `hyper` server for local compatibility mode
 - filesystem-discovered game packages loaded into `arc-engine`
 
@@ -279,9 +294,11 @@ This is mostly schema and scorer work.
 Port directly:
 
 - task JSON schema
+- canonicalization and object/relation extraction
 - exact-match success rule across all test pairs
 - hashable task identity
 - loader utilities
+- shared budget/result envelopes consumed by benchmark and solver crates
 
 Then bridge it into Psionic:
 
@@ -334,6 +351,20 @@ Port:
 - `GameStep`, `GameResult`, action and model-call records
 - result saving and resume semantics
 - runner registry and agent trait
+- competition-mode policy restrictions
+- JSONL recording compatibility
+- versioned interactive score-policy wiring
+
+In the Rust split:
+
+- `arc-benchmark` should own scorecards, recordings, checkpoints, and final
+  run truth
+- `arc-benchmark` should also own score-policy versioning because the upstream
+  docs currently describe competition-specific weighting/squaring and earlier
+  preview RHAE prose that must not be left ambiguous
+- `arc-solvers` should own the agent trait and action-selection logic
+- `arc-engine` should remain the deterministic state-transition substrate those
+  agents act against in local mode
 
 Keep the ADCR pattern, but move it to `arc-solvers` as a baseline, not as the
 core library contract.
@@ -564,6 +595,8 @@ Port:
 
 - ARC-AGI-2 task schema
 - ARC-AGI-3 frame/action/recording/scorecard schema
+- ARC-AGI-3 action-space/state/operation-mode contracts
+- canonicalization, object extraction, and relation views
 - exact-match scorer
 - RHAE scorer
 - augmentation builders and dataset lineage
@@ -603,6 +636,7 @@ Port:
 
 - static benchmark runner
 - interactive benchmark runner
+- score-policy versioning for interactive runs
 - checkpoints
 - recordings
 - scorecards
@@ -616,6 +650,7 @@ Integrate:
 Deliverable:
 
 - resumable Rust benchmark runs for ARC-AGI-2 and ARC-AGI-3
+- competition-mode and score-policy fixtures with explicit parity evidence
 
 ## Phase 4: solver layer
 
@@ -625,6 +660,8 @@ Build:
 
 Port:
 
+- ARC DSL and interpreter
+- common verifier and arbiter
 - random baseline
 - ADCR baseline
 - minimal prompt-based LLM solver
@@ -678,8 +715,10 @@ Minimum required parity harnesses:
 
 - `ARCEngine` parity on test games under `ARC-AGI/test_environment_files`
 - static task JSON round-trip and exact-match scoring parity on ARC-AGI-2
-- interactive scorecard and RHAE parity on documented examples
+- interactive scorecard and versioned RHAE parity on documented examples
 - REST client/server conformance to `docs/arc3v1.yaml`
+- session-affinity cookie behavior and typed `429` backoff behavior
+- competition-mode restriction fixtures
 - recording and checkpoint replay parity on captured fixtures
 - HRM evaluator parity for `pass@k` aggregation before model porting
 - model-level parity only on tiny deterministic fixtures before any large-scale
