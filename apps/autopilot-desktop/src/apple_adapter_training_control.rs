@@ -2141,8 +2141,8 @@ fn build_execution_config(
             base_model_signature,
             tokenizer_digest: dataset.metadata.tokenizer.tokenizer_digest.clone(),
             prompt_shaping_digest: dataset.metadata.prompt_shaping_digest.clone(),
-            input_width: 12,
-            output_width: 8,
+            input_width: 48,
+            output_width: 24,
             targets: vec![
                 AppleAdapterTrainableTarget {
                     target_id: "decoder.attn.q_proj".to_string(),

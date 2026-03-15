@@ -179,9 +179,13 @@ The current path is:
    train/eval/benchmark environment package family so the train, held-out eval,
    and runtime-smoke lanes all point at one versioned environment truth.
 3. `psionic-train` uses the repo-owned `AppleAdapterTrainingExecutionBackend`
-   to turn packed samples into deterministic feature batches, freeze the base
-   model, and train only the low-rank adapter parameter groups through the
-   fixed-budget trainer core.
+   to turn packed samples into token-sequence reference batches with
+   turn-aware prompt pooling, tool/schema boundary encoding, and
+   completion-side token-sequence supervision, freeze the base model, and train
+   only the low-rank adapter parameter groups through the fixed-budget trainer
+   core. The backend now carries an explicit fidelity plan that says which
+   parts of the Apple-compatible path are faithful today and which parts remain
+   bounded.
 4. `run_apple_adapter_sft_export(...)` emits typed step receipts, gradient
    batch records, initial/final adapter-only bundle snapshots, adapter delta,
    summary metadata, and a valid `.fmadapter` package through
@@ -204,6 +208,9 @@ The shipped Apple reference lane is intentionally narrow:
 - the current activation-checkpoint posture is `disabled`
 - tokenizer and packing truth now come from a repo-owned Apple-compatible
   transcript preprocessor, not an Apple-exact tokenizer oracle
+- the current backend is now token-sequence-aware and order-sensitive, but it
+  still uses hashed lexical token traces and pooled regression instead of
+  native Apple hidden states or a full decoder-loss trainer
 - the higher-level optional follow-on is draft-model distillation, not a second
   generic full-model trainer
 
