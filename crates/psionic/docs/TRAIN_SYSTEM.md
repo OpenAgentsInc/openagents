@@ -1800,6 +1800,23 @@ Apple adapter eval harnesses:
 - typed failure separation between dataset/config problems, package
   incompatibility, and bridge/runtime refusal
 
+On 2026-03-15, GitHub issue `#3653` added the first real-run benchmark and
+acceptance gate for the `Psionic architecture explainer` target:
+
+- the benchmark package can now be enriched from the curated corpus so each
+  benchmark case carries task-family, expected-behavior, and source-provenance
+  metadata
+- `psionic-eval` now compares base-model and adapted-model benchmark runs over
+  the same cases and emits machine-legible per-case, per-task-family, aggregate,
+  and improved-case deltas
+- a reproducible acceptance policy now blocks calling a run "real" unless the
+  adapted model beats the base model by the declared score, pass-rate, and
+  improved-case thresholds
+
+The canonical gate for that layer is now:
+
+- `scripts/release/check-psionic-apple-architecture-explainer-benchmark.sh`
+
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 
 Status: implemented on 2026-03-14 via GitHub issue `#3569`.
