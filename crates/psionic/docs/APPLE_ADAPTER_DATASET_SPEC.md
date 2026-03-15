@@ -143,6 +143,29 @@ must treat the following as part of the dataset contract:
 Those values belong in lineage metadata and fixture expectations rather than in
 every dataset row.
 
+## Curated Corpus Overlay
+
+For reviewed real-run corpora, OpenAgents may attach a repo-owned curation
+manifest next to the raw JSONL splits without changing the Apple-compatible row
+shape itself.
+
+That overlay is where the repo should freeze:
+
+- target identity and scope
+- reviewed source inventory
+- per-split sample annotations
+- task-family tags
+- source-provenance tags
+- split-leakage policy
+
+The first such corpus now lives under:
+
+- `crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/`
+
+The raw JSONL files remain the canonical Apple-style training records. The
+curation overlay adds OpenAgents review and provenance semantics on top of
+those rows.
+
 ## Fixture Corpus
 
 Positive fixtures:
@@ -151,6 +174,10 @@ Positive fixtures:
 - `crates/psionic/fixtures/apple_adapter/datasets/schema_free_guided_generation_train.jsonl`
 - `crates/psionic/fixtures/apple_adapter/datasets/guided_generation_with_schema_train.jsonl`
 - `crates/psionic/fixtures/apple_adapter/datasets/tool_calling_train.jsonl`
+- `crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/train.jsonl`
+- `crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/held_out.jsonl`
+- `crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/benchmark.jsonl`
+- `crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/corpus_manifest.json`
 
 Negative fixtures:
 

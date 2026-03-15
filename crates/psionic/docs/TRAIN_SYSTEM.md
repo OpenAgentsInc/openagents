@@ -1734,6 +1734,20 @@ repo-owned Apple adapter dataset path:
 - deterministic Apple sample packing over explicit prompt/completion/tool/schema
   token captures, with typed refusal on tokenizer or prompt-shaping drift
 
+On 2026-03-15, GitHub issue `#3651` added the first reviewed real-run corpus
+on top of that same Apple dataset contract for the `Psionic architecture
+explainer` target:
+
+- curated `train`, `held_out`, and `benchmark` JSONL splits under
+  `crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/`
+- a repo-owned curation manifest that tags every split-local sample with task
+  family, expected behavior, review posture, and source provenance
+- machine-checkable split-leakage validation so benchmark rows remain distinct
+  from train and held-out rows even when they draw from the same stable docs
+
+This is still a first reviewed positive-path corpus, not yet the full
+truthfulness or refusal slice for the first real run.
+
 ### 5. `Psionic Eval: create the Rust-native eval and rubric runtime`
 
 Status: implemented on 2026-03-14 via GitHub issue `#3568`.

@@ -5,7 +5,9 @@ for issue `#3616`.
 
 ## Scope
 
-- `datasets/`: positive and negative JSONL training-data examples
+- `datasets/`: positive and negative JSONL training-data examples, plus the
+  first reviewed real-run corpus splits under
+  `datasets/psionic_architecture_explainer/`
 - `packages/`: positive and negative `.fmadapter` inventory fixtures
 - `lineage/`: positive and negative OpenAgents lineage payloads
 
