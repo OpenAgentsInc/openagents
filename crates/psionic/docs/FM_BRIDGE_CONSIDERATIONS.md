@@ -47,6 +47,13 @@ So: Swift talks to Apple; Rust talks to the bridge over HTTP; the desktop app ow
   - **`GET /v1/models`** — List of model IDs (e.g. `apple-foundation-model`).
   - **`POST /v1/chat/completions`** — OpenAI-style chat completion.
   - Session, stream, and structured-generation endpoints are also part of the contract; see `ROADMAP_FM.md` and the audit for full coverage.
+  - The Rust contract now also reserves adapter-management surfaces for the next bridge step:
+    - **`GET /v1/adapters`**
+    - **`POST /v1/adapters/load`**
+    - **`DELETE /v1/adapters/{adapter_id}`**
+    - **`POST /v1/sessions/{session_id}/adapter`**
+    - **`DELETE /v1/sessions/{session_id}/adapter`**
+  - Those adapter endpoints are now part of the reusable Rust contract and client, while Swift-side implementation still lands separately.
 
 - **Readiness** (from the app’s point of view): the bridge is **ready** when:
   - **Reachable**: `GET /health` succeeds.

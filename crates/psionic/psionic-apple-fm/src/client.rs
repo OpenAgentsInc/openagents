@@ -15,12 +15,15 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::contract::{
+    APPLE_FM_BRIDGE_ADAPTER_SUFFIX, APPLE_FM_BRIDGE_ADAPTERS_PATH,
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
     APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_STREAM_SUFFIX,
     APPLE_FM_BRIDGE_STRUCTURED_SUFFIX, APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX,
-    AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmCompletionResult,
-    AppleFmErrorResponse, AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError,
-    AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
+    AppleFmAdapterAttachRequest, AppleFmAdapterInventoryEntry, AppleFmAdapterLoadRequest,
+    AppleFmAdapterLoadResponse, AppleFmAdaptersResponse, AppleFmChatCompletionRequest,
+    AppleFmChatCompletionResponse, AppleFmCompletionResult, AppleFmErrorResponse,
+    AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError, AppleFmHealthResponse,
+    AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
     AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
     AppleFmSessionStructuredGenerationRequest, AppleFmSessionStructuredGenerationResponse,
     AppleFmStructuredGenerationRequest, AppleFmStructuredGenerationResponse,
@@ -140,6 +143,52 @@ impl AppleFmBridgeClient {
         Ok(self.health()?.system_model_availability())
     }
 
+    /// Fetches adapter inventory and capability reporting from the bridge.
+    pub fn list_adapters(&self) -> Result<AppleFmAdaptersResponse, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .get(self.endpoint(APPLE_FM_BRIDGE_ADAPTERS_PATH)?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "list_adapters",
+                error: error.to_string(),
+            })?;
+        decode_json_response("list_adapters", response)
+    }
+
+    /// Loads one `.fmadapter` package into bridge inventory.
+    pub fn load_adapter(
+        &self,
+        request: &AppleFmAdapterLoadRequest,
+    ) -> Result<AppleFmAdapterInventoryEntry, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .post(self.endpoint(&adapter_load_path())?)
+            .json(request)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "load_adapter",
+                error: error.to_string(),
+            })?;
+        Ok(decode_json_response::<AppleFmAdapterLoadResponse>("load_adapter", response)?.adapter)
+    }
+
+    /// Unloads one adapter from bridge inventory.
+    pub fn unload_adapter(&self, adapter_id: &str) -> Result<(), AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .delete(self.endpoint(&adapter_path(adapter_id))?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "unload_adapter",
+                error: error.to_string(),
+            })?;
+        if !response.status().is_success() {
+            return Err(map_status_response("unload_adapter", response));
+        }
+        Ok(())
+    }
+
     /// Creates a new Apple FM session or restores one from transcript JSON.
     pub fn create_session(
         &self,
@@ -237,6 +286,40 @@ impl AppleFmBridgeClient {
                 error: error.to_string(),
             })?;
         decode_json_response("session", response)
+    }
+
+    /// Attaches one adapter to an existing session.
+    pub fn attach_session_adapter(
+        &self,
+        session_id: &str,
+        request: &AppleFmAdapterAttachRequest,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .post(self.endpoint(&session_adapter_path(session_id))?)
+            .json(request)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "attach_session_adapter",
+                error: error.to_string(),
+            })?;
+        decode_json_response("attach_session_adapter", response)
+    }
+
+    /// Detaches any active adapter from an existing session.
+    pub fn detach_session_adapter(
+        &self,
+        session_id: &str,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .delete(self.endpoint(&session_adapter_path(session_id))?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "detach_session_adapter",
+                error: error.to_string(),
+            })?;
+        decode_json_response("detach_session_adapter", response)
     }
 
     /// Exports the current session transcript as a typed transcript snapshot.
@@ -418,6 +501,7 @@ impl AppleFmBridgeClient {
             model: model.map(Into::into),
             prompt: prompt.into(),
             options,
+            adapter: None,
         };
         Ok(self.generate_text(&request)?.completion_result())
     }
@@ -438,6 +522,7 @@ impl AppleFmBridgeClient {
                     ..Default::default()
                 }),
                 tools: Vec::new(),
+                adapter: None,
                 tool_callback: None,
                 transcript_json: None,
                 transcript: None,
@@ -449,6 +534,7 @@ impl AppleFmBridgeClient {
             &AppleFmSessionRespondRequest {
                 prompt: prompt.into(),
                 options,
+                adapter: None,
             },
         );
         let _ = self.delete_session(session.id.as_str());
@@ -489,6 +575,7 @@ impl AppleFmBridgeClient {
                     ..Default::default()
                 }),
             tools: Vec::new(),
+            adapter: request.adapter.clone(),
             tool_callback: None,
             transcript_json: None,
             transcript: None,
@@ -499,6 +586,7 @@ impl AppleFmBridgeClient {
                 prompt: request.prompt.clone(),
                 schema: request.schema.clone(),
                 options: request.options.clone(),
+                adapter: request.adapter.clone(),
             },
         );
         let _ = self.delete_session(session.id.as_str());
@@ -531,6 +619,7 @@ impl AppleFmBridgeClient {
             prompt: prompt.into(),
             schema,
             options,
+            adapter: None,
         })?;
         response.content.to_typed::<T>().map_err(|error| {
             AppleFmBridgeClientError::StructuredDecode {
@@ -574,6 +663,78 @@ impl AppleFmAsyncBridgeClient {
                 path: path.to_string(),
                 error: error.to_string(),
             })
+    }
+
+    /// Fetches adapter inventory asynchronously.
+    pub async fn list_adapters(&self) -> Result<AppleFmAdaptersResponse, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .get(self.endpoint(APPLE_FM_BRIDGE_ADAPTERS_PATH)?)
+            .send()
+            .await
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "list_adapters",
+                error: error.to_string(),
+            })?;
+        decode_async_json_response("list_adapters", response).await
+    }
+
+    /// Loads one `.fmadapter` package into bridge inventory asynchronously.
+    pub async fn load_adapter(
+        &self,
+        request: &AppleFmAdapterLoadRequest,
+    ) -> Result<AppleFmAdapterInventoryEntry, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .post(self.endpoint(&adapter_load_path())?)
+            .json(request)
+            .send()
+            .await
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "load_adapter",
+                error: error.to_string(),
+            })?;
+        Ok(
+            decode_async_json_response::<AppleFmAdapterLoadResponse>("load_adapter", response)
+                .await?
+                .adapter,
+        )
+    }
+
+    /// Attaches one adapter to an existing session asynchronously.
+    pub async fn attach_session_adapter(
+        &self,
+        session_id: &str,
+        request: &AppleFmAdapterAttachRequest,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .post(self.endpoint(&session_adapter_path(session_id))?)
+            .json(request)
+            .send()
+            .await
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "attach_session_adapter",
+                error: error.to_string(),
+            })?;
+        decode_async_json_response("attach_session_adapter", response).await
+    }
+
+    /// Detaches any active adapter from an existing session asynchronously.
+    pub async fn detach_session_adapter(
+        &self,
+        session_id: &str,
+    ) -> Result<AppleFmSession, AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .delete(self.endpoint(&session_adapter_path(session_id))?)
+            .send()
+            .await
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "detach_session_adapter",
+                error: error.to_string(),
+            })?;
+        decode_async_json_response("detach_session_adapter", response).await
     }
 
     /// Opens a true streaming session-response transport with snapshot semantics.
@@ -666,6 +827,14 @@ fn session_path(session_id: &str) -> String {
     format!("{APPLE_FM_BRIDGE_SESSIONS_PATH}/{session_id}")
 }
 
+fn adapter_load_path() -> String {
+    format!("{APPLE_FM_BRIDGE_ADAPTERS_PATH}/load")
+}
+
+fn adapter_path(adapter_id: &str) -> String {
+    format!("{APPLE_FM_BRIDGE_ADAPTERS_PATH}/{adapter_id}")
+}
+
 fn session_reset_path(session_id: &str) -> String {
     format!("{}/reset", session_path(session_id))
 }
@@ -698,6 +867,14 @@ fn session_structured_responses_path(session_id: &str) -> String {
     )
 }
 
+fn session_adapter_path(session_id: &str) -> String {
+    format!(
+        "{}{}",
+        session_path(session_id),
+        APPLE_FM_BRIDGE_ADAPTER_SUFFIX
+    )
+}
+
 fn decode_json_response<T: DeserializeOwned>(
     operation: &'static str,
     response: reqwest::blocking::Response,
@@ -707,6 +884,24 @@ fn decode_json_response<T: DeserializeOwned>(
     }
     response
         .json::<T>()
+        .map_err(|error| AppleFmBridgeClientError::Decode {
+            operation,
+            error: error.to_string(),
+        })
+}
+
+async fn decode_async_json_response<T: DeserializeOwned>(
+    operation: &'static str,
+    response: reqwest::Response,
+) -> Result<T, AppleFmBridgeClientError> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(map_status_payload(operation, status, body));
+    }
+    response
+        .json::<T>()
+        .await
         .map_err(|error| AppleFmBridgeClientError::Decode {
             operation,
             error: error.to_string(),
@@ -859,6 +1054,7 @@ fn handle_tool_callback_connection(
                     r#type: "not_found".to_string(),
                     code: Some("not_found".to_string()),
                     tool_name: None,
+                    adapter_id: None,
                     underlying_error: None,
                     failure_reason: None,
                     recovery_suggestion: None,
@@ -1268,6 +1464,7 @@ mod tests {
         AppleFmToolCallbackRuntime, dispatch_tool_call,
     };
     use crate::contract::{
+        AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmAdapterSelection,
         AppleFmErrorCode, AppleFmGenerationOptions, AppleFmSamplingMode,
         AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
         AppleFmSessionStructuredGenerationRequest, AppleFmStructuredGenerationRequest,
@@ -1465,6 +1662,24 @@ mod tests {
         .to_string()
     }
 
+    fn mock_adapter_entry(attached_session_ids: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "adapter": {
+                "adapter_id": "loaded-fixture",
+                "package_digest": "pkg-123"
+            },
+            "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+            "package_format_version": "openagents.apple-fmadapter.v1",
+            "draft_model_present": false,
+            "compatibility": {
+                "compatible": true,
+                "reason_code": null,
+                "message": "compatible with the current Apple FM runtime"
+            },
+            "attached_session_ids": attached_session_ids
+        })
+    }
+
     fn spawn_mock_bridge() -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock bridge");
         listener
@@ -1496,9 +1711,50 @@ mod tests {
                         "default_use_case": "general",
                         "default_guardrails": "default",
                         "supported_use_cases": ["general", "content_tagging"],
-                        "supported_guardrails": ["default", "permissive_content_transformations"]
+                        "supported_guardrails": ["default", "permissive_content_transformations"],
+                        "adapter_inventory_supported": true,
+                        "adapter_attach_supported": true,
+                        "loaded_adapters": [mock_adapter_entry(&[])]
                     })
                     .to_string())
+                } else if method == "GET" && path == "/v1/adapters" {
+                    (
+                        200,
+                        serde_json::json!({
+                            "adapters": [mock_adapter_entry(&[])],
+                            "attach_supported": true
+                        })
+                        .to_string(),
+                    )
+                } else if method == "POST" && path == "/v1/adapters/load" {
+                    let request_json: serde_json::Value =
+                        serde_json::from_str(request_body.as_str()).expect("adapter load json");
+                    let adapter_id = request_json["requested_adapter_id"]
+                        .as_str()
+                        .unwrap_or("loaded-fixture");
+                    (
+                        200,
+                        serde_json::json!({
+                            "adapter": {
+                                "adapter": {
+                                    "adapter_id": adapter_id,
+                                    "package_digest": "pkg-123"
+                                },
+                                "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+                                "package_format_version": "openagents.apple-fmadapter.v1",
+                                "draft_model_present": false,
+                                "compatibility": {
+                                    "compatible": true,
+                                    "reason_code": null,
+                                    "message": "compatible with the current Apple FM runtime"
+                                },
+                                "attached_session_ids": []
+                            }
+                        })
+                        .to_string(),
+                    )
+                } else if method == "DELETE" && path == "/v1/adapters/loaded-fixture" {
+                    (204, String::new())
                 } else if method == "GET" && path == "/v1/models" {
                     (200, serde_json::json!({
                         "object": "list",
@@ -1539,6 +1795,7 @@ mod tests {
                                     "guardrails": "default"
                                 },
                                 "tools": tools,
+                                "adapter": request_json["adapter"].clone(),
                                 "is_responding": false,
                                 "transcript_json": transcript_json
                             }
@@ -1559,6 +1816,58 @@ mod tests {
                         non_empty_transcript_json()
                     };
                     (200, transcript_json)
+                } else if method == "POST"
+                    && path.starts_with("/v1/sessions/sess-")
+                    && path.ends_with("/adapter")
+                {
+                    let request_json: serde_json::Value =
+                        serde_json::from_str(request_body.as_str()).expect("adapter attach json");
+                    let session_id = path
+                        .trim_start_matches("/v1/sessions/")
+                        .trim_end_matches("/adapter")
+                        .trim_end_matches('/');
+                    (
+                        200,
+                        serde_json::json!({
+                            "id": session_id,
+                            "instructions": "You are a helper",
+                            "model": {
+                                "id": "apple-foundation-model",
+                                "use_case": "general",
+                                "guardrails": "default"
+                            },
+                            "tools": [{ "name": "search", "description": "Search docs" }],
+                            "adapter": request_json["adapter"].clone(),
+                            "is_responding": false,
+                            "transcript_json": empty_transcript_json()
+                        })
+                        .to_string(),
+                    )
+                } else if method == "DELETE"
+                    && path.starts_with("/v1/sessions/sess-")
+                    && path.ends_with("/adapter")
+                {
+                    let session_id = path
+                        .trim_start_matches("/v1/sessions/")
+                        .trim_end_matches("/adapter")
+                        .trim_end_matches('/');
+                    (
+                        200,
+                        serde_json::json!({
+                            "id": session_id,
+                            "instructions": "You are a helper",
+                            "model": {
+                                "id": "apple-foundation-model",
+                                "use_case": "general",
+                                "guardrails": "default"
+                            },
+                            "tools": [{ "name": "search", "description": "Search docs" }],
+                            "adapter": null,
+                            "is_responding": false,
+                            "transcript_json": empty_transcript_json()
+                        })
+                        .to_string(),
+                    )
                 } else if method == "GET" && path.starts_with("/v1/sessions/sess-") {
                     let session_id = path.trim_start_matches("/v1/sessions/");
                     let transcript_json = if session_id == "sess-1" {
@@ -1577,6 +1886,7 @@ mod tests {
                                 "guardrails": "default"
                             },
                             "tools": [{ "name": "search", "description": "Search docs" }],
+                            "adapter": null,
                             "is_responding": false,
                             "transcript_json": transcript_json
                         })
@@ -1601,6 +1911,7 @@ mod tests {
                                 "guardrails": "default"
                             },
                             "tools": [{ "name": "search", "description": "Search docs" }],
+                            "adapter": null,
                             "is_responding": false,
                             "transcript_json": empty_transcript_json()
                         })
@@ -1686,13 +1997,14 @@ mod tests {
                                     "instructions": "You are a helper",
                                     "model": {
                                         "id": "apple-foundation-model",
-                                        "use_case": "general",
-                                        "guardrails": "default"
-                                    },
-                                    "tools": [{ "name": "search", "description": "Search docs" }],
-                                    "is_responding": false,
-                                    "transcript_json": non_empty_transcript_json()
+                                    "use_case": "general",
+                                    "guardrails": "default"
                                 },
+                                "tools": [{ "name": "search", "description": "Search docs" }],
+                                "adapter": request_json["adapter"].clone(),
+                                "is_responding": false,
+                                "transcript_json": non_empty_transcript_json()
+                            },
                                 "model": "apple-foundation-model",
                                 "output": "session hello from apple fm",
                                 "usage": {
@@ -1744,13 +2056,14 @@ mod tests {
                                     "instructions": "You are a helper",
                                     "model": {
                                         "id": "apple-foundation-model",
-                                        "use_case": "general",
-                                        "guardrails": "default"
-                                    },
-                                    "tools": [],
-                                    "is_responding": false,
-                                    "transcript_json": non_empty_transcript_json()
+                                    "use_case": "general",
+                                    "guardrails": "default"
                                 },
+                                "tools": [],
+                                "adapter": request_json["adapter"].clone(),
+                                "is_responding": false,
+                                "transcript_json": non_empty_transcript_json()
+                            },
                                 "model": "apple-foundation-model",
                                 "content": {
                                     "generation_id": "gen-1",
@@ -1998,6 +2311,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: Some("You are a helper".to_string()),
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![search_tool_definition()],
+                adapter: None,
                 tool_callback: None,
                 transcript_json: None,
                 transcript: None,
@@ -2041,6 +2355,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                         )
                         .expect("valid session options"),
                     ),
+                    adapter: None,
                 },
             )
             .expect("session respond");
@@ -2071,6 +2386,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 &AppleFmSessionRespondRequest {
                     prompt: "blocked".to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect_err("busy session should fail");
@@ -2095,6 +2411,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: None,
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![],
+                adapter: None,
                 tool_callback: None,
                 transcript_json: None,
                 transcript: None,
@@ -2164,6 +2481,59 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
     }
 
     #[test]
+    fn client_lists_loads_and_attaches_adapters() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let health = client.health().expect("health");
+        assert!(health.adapter_inventory_supported);
+        assert!(health.adapter_attach_supported);
+        assert_eq!(health.loaded_adapters.len(), 1);
+
+        let adapters = client.list_adapters().expect("list adapters");
+        assert_eq!(adapters.adapters.len(), 1);
+        assert_eq!(adapters.adapters[0].adapter.adapter_id, "loaded-fixture");
+
+        let loaded = client
+            .load_adapter(&AppleFmAdapterLoadRequest {
+                package_path: "/tmp/fixture.fmadapter".to_string(),
+                requested_adapter_id: Some("loaded-fixture".to_string()),
+            })
+            .expect("load adapter");
+        assert_eq!(loaded.adapter.adapter_id, "loaded-fixture");
+
+        let attached = client
+            .attach_session_adapter(
+                "sess-1",
+                &AppleFmAdapterAttachRequest {
+                    adapter: AppleFmAdapterSelection {
+                        adapter_id: "loaded-fixture".to_string(),
+                        package_digest: Some("pkg-123".to_string()),
+                    },
+                },
+            )
+            .expect("attach session adapter");
+        assert_eq!(
+            attached
+                .adapter
+                .as_ref()
+                .map(|adapter| adapter.adapter_id.as_str()),
+            Some("loaded-fixture")
+        );
+
+        let detached = client
+            .detach_session_adapter("sess-1")
+            .expect("detach session adapter");
+        assert!(detached.adapter.is_none());
+
+        client
+            .unload_adapter("loaded-fixture")
+            .expect("unload adapter");
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
     fn client_rejects_invalid_generation_options_locally() {
         let (base_url, handle) = spawn_mock_bridge();
         let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
@@ -2206,6 +2576,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: None,
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![],
+                adapter: None,
                 tool_callback: None,
                 transcript_json: Some("{".to_string()),
                 transcript: None,
@@ -2233,6 +2604,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 instructions: None,
                 model: Some(AppleFmSystemLanguageModel::default()),
                 tools: vec![],
+                adapter: None,
                 tool_callback: None,
                 transcript_json: None,
                 transcript: None,
@@ -2266,6 +2638,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                         )
                         .expect("valid structured options"),
                     ),
+                    adapter: None,
                 },
             )
             .expect("structured response");
@@ -2285,6 +2658,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 prompt: "summarize this task".to_string(),
                 schema: AppleFmGenerationSchema::from_type::<TaskSummary>().expect("typed schema"),
                 options: None,
+                adapter: None,
             })
             .expect("one-shot structured response");
         assert_eq!(
@@ -2373,6 +2747,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     ),
                     model: Some(AppleFmSystemLanguageModel::default()),
                     tools: vec![],
+                    adapter: None,
                     tool_callback: None,
                     transcript_json: None,
                     transcript: None,
@@ -2402,6 +2777,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 &AppleFmSessionRespondRequest {
                     prompt: "fail tool".to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect_err("tool failure should map to typed Foundation Models error");
@@ -2431,6 +2807,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 &AppleFmSessionRespondRequest {
                     prompt: "trip guardrail".to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect_err("guardrail should fail");
@@ -2457,6 +2834,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 &AppleFmSessionRespondRequest {
                     prompt: "overflow context".to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect_err("context overflow should fail");
@@ -2494,6 +2872,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     )
                     .expect("broken schema json"),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect_err("invalid schema should fail");
@@ -2538,6 +2917,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 )
                 .expect("age schema"),
                 options: None,
+                adapter: None,
             })
             .expect("live age structured generation");
         assert!(age.content.is_complete);
@@ -2579,6 +2959,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     ),
                     model: Some(AppleFmSystemLanguageModel::default()),
                     tools: vec![],
+                    adapter: None,
                     tool_callback: None,
                     transcript_json: None,
                     transcript: None,
@@ -2596,6 +2977,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 &AppleFmSessionRespondRequest {
                     prompt: "Use the lookup_secret_code tool to fetch the secret code for fm_status. Return the code.".to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect("live secret tool call");
@@ -2607,6 +2989,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 &AppleFmSessionRespondRequest {
                     prompt: "Use the lookup_user_profile tool to fetch the profile for user 1. Tell me the user's name.".to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect("live user tool call");
@@ -2632,6 +3015,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 )
                 .expect("invalid schema json"),
                 options: None,
+                adapter: None,
             })
             .expect_err("invalid schema should fail");
 
@@ -2656,6 +3040,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     ),
                     model: Some(AppleFmSystemLanguageModel::default()),
                     tools: vec![],
+                    adapter: None,
                     tool_callback: None,
                     transcript_json: None,
                     transcript: None,
@@ -2671,6 +3056,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                     prompt: "Use the always_fail tool with key explode and tell me the result."
                         .to_string(),
                     options: None,
+                    adapter: None,
                 },
             )
             .expect_err("live tool failure should fail");
@@ -2702,6 +3088,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             model: Some("apple-foundation-model".to_string()),
             prompt,
             options: None,
+            adapter: None,
         });
 
         let error = match outcome {
@@ -2736,6 +3123,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 let request = AppleFmSessionRespondRequest {
                     prompt: "hello".to_string(),
                     options: None,
+                    adapter: None,
                 };
                 let mut stream = client
                     .stream_session_response("sess-1", &request)
@@ -2774,5 +3162,57 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         })
         .join()
         .expect("stream test thread should complete");
+    }
+
+    #[test]
+    fn async_client_lists_loads_and_attaches_adapters() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build tokio runtime");
+        runtime.block_on(async {
+            let (base_url, handle) = spawn_mock_bridge();
+            let client = AppleFmAsyncBridgeClient::new(base_url).expect("async bridge client");
+
+            let adapters = client.list_adapters().await.expect("list adapters");
+            assert_eq!(adapters.adapters.len(), 1);
+
+            let loaded = client
+                .load_adapter(&AppleFmAdapterLoadRequest {
+                    package_path: "/tmp/fixture.fmadapter".to_string(),
+                    requested_adapter_id: Some("loaded-fixture".to_string()),
+                })
+                .await
+                .expect("load adapter");
+            assert!(loaded.compatibility.compatible);
+
+            let attached = client
+                .attach_session_adapter(
+                    "sess-1",
+                    &AppleFmAdapterAttachRequest {
+                        adapter: AppleFmAdapterSelection {
+                            adapter_id: "loaded-fixture".to_string(),
+                            package_digest: Some("pkg-123".to_string()),
+                        },
+                    },
+                )
+                .await
+                .expect("attach session adapter");
+            assert_eq!(
+                attached
+                    .adapter
+                    .as_ref()
+                    .and_then(|adapter| adapter.package_digest.as_deref()),
+                Some("pkg-123")
+            );
+
+            let detached = client
+                .detach_session_adapter("sess-1")
+                .await
+                .expect("detach session adapter");
+            assert!(detached.adapter.is_none());
+
+            handle.join().expect("mock bridge thread");
+        });
     }
 }

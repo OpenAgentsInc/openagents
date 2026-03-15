@@ -17,6 +17,8 @@ pub const APPLE_FM_BRIDGE_MODELS_PATH: &str = "/v1/models";
 
 /// Session-management endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_SESSIONS_PATH: &str = "/v1/sessions";
+/// Adapter-inventory endpoint path exposed by the retained Swift bridge.
+pub const APPLE_FM_BRIDGE_ADAPTERS_PATH: &str = "/v1/adapters";
 
 /// Chat-completions endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
@@ -29,6 +31,8 @@ pub const APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX: &str = "/transcript";
 
 /// Session-structured-response suffix exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_STRUCTURED_SUFFIX: &str = "/structured";
+/// Session-adapter binding suffix exposed by the retained Swift bridge.
+pub const APPLE_FM_BRIDGE_ADAPTER_SUFFIX: &str = "/adapter";
 
 /// Typed system-model use cases exposed by Apple's Foundation Models surface.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -173,6 +177,86 @@ impl AppleFmSystemLanguageModelAvailability {
     pub const fn is_ready(&self) -> bool {
         self.available
     }
+}
+
+/// One concrete adapter selection surfaced by the bridge.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterSelection {
+    /// Stable adapter identifier.
+    pub adapter_id: String,
+    /// Optional package digest for stronger identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_digest: Option<String>,
+}
+
+/// Compatibility report for one adapter against the active Apple runtime.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterCompatibility {
+    /// Whether the bridge currently considers the adapter compatible.
+    pub compatible: bool,
+    /// Optional machine-readable reason code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+    /// Optional human-readable compatibility detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// One adapter entry in bridge-side inventory.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterInventoryEntry {
+    /// Stable adapter selection identity.
+    pub adapter: AppleFmAdapterSelection,
+    /// Optional base-model signature captured from package metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_model_signature: Option<String>,
+    /// Optional package-format version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_format_version: Option<String>,
+    /// Whether the adapter package included a draft-model payload.
+    #[serde(default)]
+    pub draft_model_present: bool,
+    /// Bridge-side compatibility report.
+    #[serde(default)]
+    pub compatibility: AppleFmAdapterCompatibility,
+    /// Session ids currently attached to the adapter when surfaced by the bridge.
+    #[serde(default)]
+    pub attached_session_ids: Vec<String>,
+}
+
+/// Adapter inventory response exposed by the bridge.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdaptersResponse {
+    /// Adapter entries visible to the bridge.
+    #[serde(default)]
+    pub adapters: Vec<AppleFmAdapterInventoryEntry>,
+    /// Whether the bridge currently supports session-level attach/detach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_supported: Option<bool>,
+}
+
+/// Adapter load request for importing one `.fmadapter` package into bridge inventory.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterLoadRequest {
+    /// Local package path the bridge should load.
+    pub package_path: String,
+    /// Optional caller-requested adapter id override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_adapter_id: Option<String>,
+}
+
+/// Adapter load response.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterLoadResponse {
+    /// Loaded adapter inventory entry.
+    pub adapter: AppleFmAdapterInventoryEntry,
+}
+
+/// Session-level adapter attach request.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterAttachRequest {
+    /// Adapter selection to attach.
+    pub adapter: AppleFmAdapterSelection,
 }
 
 /// Sampling mode families exposed by the Apple FM SDK.
@@ -389,6 +473,9 @@ pub struct AppleFmChatCompletionRequest {
     /// Typed generation options carried through the bridge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<AppleFmGenerationOptions>,
+    /// Optional request-level adapter binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
     /// Whether streaming is requested.
     pub stream: bool,
 }
@@ -433,8 +520,16 @@ impl AppleFmChatCompletionRequest {
             temperature,
             max_tokens,
             options,
+            adapter: None,
             stream: false,
         }
+    }
+
+    /// Attaches an optional request-level adapter selection.
+    #[must_use]
+    pub fn with_adapter(mut self, adapter: Option<AppleFmAdapterSelection>) -> Self {
+        self.adapter = adapter;
+        self
     }
 
     /// Validates chat-completion generation options before transport.
@@ -508,6 +603,15 @@ pub struct AppleFmHealthResponse {
     /// Whether Apple Intelligence is required for this lane.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apple_intelligence_required: Option<bool>,
+    /// Whether adapter inventory is currently supported by the bridge.
+    #[serde(default)]
+    pub adapter_inventory_supported: bool,
+    /// Whether adapter attach or detach is currently supported by the bridge.
+    #[serde(default)]
+    pub adapter_attach_supported: bool,
+    /// Currently loaded adapters surfaced by health for quick capability inspection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loaded_adapters: Vec<AppleFmAdapterInventoryEntry>,
 }
 
 impl AppleFmHealthResponse {
@@ -783,6 +887,10 @@ pub enum AppleFmErrorCode {
     InvalidGenerationSchema,
     /// A registered tool call failed.
     ToolCallFailed,
+    /// The requested adapter was not found in bridge inventory.
+    AdapterNotFound,
+    /// The requested adapter was known but incompatible with the active runtime.
+    AdapterIncompatible,
     /// The request payload itself was invalid.
     InvalidRequest,
     /// The bridge hit an internal server failure.
@@ -808,6 +916,8 @@ impl AppleFmErrorCode {
             Self::Refusal => "refusal",
             Self::InvalidGenerationSchema => "invalid_generation_schema",
             Self::ToolCallFailed => "tool_call_failed",
+            Self::AdapterNotFound => "adapter_not_found",
+            Self::AdapterIncompatible => "adapter_incompatible",
             Self::InvalidRequest => "invalid_request",
             Self::ServerError => "server_error",
             Self::Unknown => "unknown",
@@ -834,6 +944,8 @@ impl AppleFmErrorCode {
             "refusal" => Self::Refusal,
             "invalid_generation_schema" | "invalid_schema" => Self::InvalidGenerationSchema,
             "tool_call_failed" => Self::ToolCallFailed,
+            "adapter_not_found" => Self::AdapterNotFound,
+            "adapter_incompatible" | "adapter_compatibility_failed" => Self::AdapterIncompatible,
             "invalid_request" | "invalid_request_error" => Self::InvalidRequest,
             "server_error" | "request_failed" | "error" => Self::ServerError,
             _ => Self::Unknown,
@@ -854,6 +966,9 @@ pub struct AppleFmErrorDetail {
     /// Optional failed tool name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
+    /// Optional failed adapter id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_id: Option<String>,
     /// Optional underlying tool error detail.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub underlying_error: Option<String>,
@@ -911,6 +1026,9 @@ pub struct AppleFmTextGenerationRequest {
     /// Typed generation options.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<AppleFmGenerationOptions>,
+    /// Optional request-level adapter binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
 }
 
 impl AppleFmTextGenerationRequest {
@@ -930,6 +1048,7 @@ impl AppleFmTextGenerationRequest {
             self.model,
             self.options,
         )
+        .with_adapter(self.adapter)
     }
 }
 
@@ -1122,6 +1241,9 @@ pub struct AppleFmSession {
     /// Registered tool metadata.
     #[serde(default)]
     pub tools: Vec<AppleFmSessionToolMetadata>,
+    /// Optional adapter currently attached to the session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
     /// Whether a request is currently queued or executing for this session.
     #[serde(default)]
     pub is_responding: bool,
@@ -1152,6 +1274,9 @@ pub struct AppleFmSessionCreateRequest {
     /// Active tool definitions registered for this session.
     #[serde(default)]
     pub tools: Vec<AppleFmToolDefinition>,
+    /// Optional adapter attached when the session is created or restored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
     /// Optional loopback callback configuration for tool execution.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_callback: Option<AppleFmToolCallbackConfiguration>,
@@ -1175,6 +1300,7 @@ impl AppleFmSessionCreateRequest {
             instructions: None,
             model,
             tools,
+            adapter: None,
             tool_callback: None,
             transcript_json: Some(transcript_json.into()),
             transcript: None,
@@ -1192,6 +1318,7 @@ impl AppleFmSessionCreateRequest {
             instructions: None,
             model,
             tools,
+            adapter: None,
             tool_callback: None,
             transcript_json: None,
             transcript: Some(transcript),
@@ -1238,6 +1365,9 @@ pub struct AppleFmSessionRespondRequest {
     /// Typed generation options for this response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<AppleFmGenerationOptions>,
+    /// Optional request-level adapter override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
 }
 
 impl AppleFmSessionRespondRequest {
@@ -1277,6 +1407,9 @@ pub struct AppleFmStructuredGenerationRequest {
     /// Typed generation options.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<AppleFmGenerationOptions>,
+    /// Optional request-level adapter binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
 }
 
 impl AppleFmStructuredGenerationRequest {
@@ -1316,6 +1449,9 @@ pub struct AppleFmSessionStructuredGenerationRequest {
     /// Typed generation options.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<AppleFmGenerationOptions>,
+    /// Optional request-level adapter override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<AppleFmAdapterSelection>,
 }
 
 impl AppleFmSessionStructuredGenerationRequest {
@@ -1678,6 +1814,7 @@ mod tests {
             instructions: None,
             model: None,
             tools: vec![],
+            adapter: None,
             tool_callback: None,
             transcript_json: Some(
                 r#"{"version":1,"type":"FoundationModels.Transcript","transcript":{"entries":[]}}"#
@@ -1716,6 +1853,7 @@ mod tests {
                 )
                 .expect("valid generation options"),
             ),
+            adapter: None,
         };
 
         request.validate().expect("request should validate");
@@ -1746,6 +1884,7 @@ mod tests {
                 temperature: None,
                 maximum_response_tokens: None,
             }),
+            adapter: None,
         };
 
         let error = request
@@ -1776,6 +1915,7 @@ mod tests {
                 temperature: None,
                 maximum_response_tokens: None,
             }),
+            adapter: None,
         };
 
         let error = request
