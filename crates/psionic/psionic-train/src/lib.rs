@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod adapter_cluster;
 mod adapter_window;
 mod apple_adapter;
 mod artifact_storage;
@@ -43,6 +44,7 @@ mod stability;
 mod stage_program;
 mod worker_protocol;
 
+pub use adapter_cluster::*;
 pub use adapter_window::*;
 pub use apple_adapter::*;
 pub use artifact_storage::*;

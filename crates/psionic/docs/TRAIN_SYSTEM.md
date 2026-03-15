@@ -20,7 +20,7 @@
 > `crates/psionic/psionic-sandbox/src/lib.rs`,
 > `apps/autopilot-desktop/src/desktop_control.rs`, and
 > `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
-> train-adjacent issue backlog through `#3637` and the decentralized adapter
+> train-adjacent issue backlog through `#3638` and the decentralized adapter
 > training issue program starting at `#3636`.
 
 ## Why This Doc Exists
@@ -280,6 +280,15 @@ from planning through reconciliation. What remains open after this step is the
 live cluster, artifact, validator, authority, operator, and product projection
 work in the later issue set.
 
+The next control-plane layer is now implemented too. `psionic-train` also owns
+an adapter cluster coordinator in
+`crates/psionic/psionic-train/src/adapter_cluster.rs` that mirrors live
+`psionic-cluster` membership and telemetry into adapter contributor eligibility,
+derives deterministic contributor ranking from readiness plus capability facts,
+and plans typed adapter windows with inspectable contributor-set revisions and
+assignment seeds. The new reference harness proves membership churn can evict
+or replace contributors for later windows without collapsing the whole run.
+
 ### First Lane, Next Lane, And Non-Goals
 
 The first live execution lane remains the narrow single-host Apple adapter path
@@ -475,6 +484,7 @@ shape already includes at least:
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
 | Validator-aware RL verification | `implemented_early` | `psionic-train` now owns rollout-verification bundles, replay or duplicate detection, sampled benchmark checks, and typed validator verdicts; broader service productization is still later |
 | Decentralized adapter window contracts | `implemented_early` | `psionic-train` now owns typed adapter-window receipts and a runnable window harness covering assignment, execution, upload, validator disposition, aggregation eligibility, seal, aggregation, and reconcile over one adapter-targeted window |
+| Decentralized adapter cluster selection | `implemented_early` | `psionic-train` now owns a cluster-backed adapter coordinator that mirrors live membership and telemetry into contributor eligibility, deterministic ranking, contributor-set revisions, assignment seeds, and churn-safe window replanning |
 
 ## Current Crate Ownership
 
