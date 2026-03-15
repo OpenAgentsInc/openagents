@@ -5,6 +5,8 @@
     allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)
 )]
 
+mod apple_adapter;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -13,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+pub use apple_adapter::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "environment package ABI and runtime contract";
@@ -420,6 +424,20 @@ impl EnvironmentPackageContract {
         self
     }
 
+    /// Attaches extension metadata.
+    #[must_use]
+    pub fn with_metadata(mut self, metadata: BTreeMap<String, Value>) -> Self {
+        self.metadata = metadata;
+        self
+    }
+
+    /// Attaches one extension metadata entry.
+    #[must_use]
+    pub fn with_metadata_entry(mut self, key: impl Into<String>, value: Value) -> Self {
+        self.metadata.insert(key.into(), value);
+        self
+    }
+
     /// Returns the canonical storage key.
     #[must_use]
     pub fn storage_key(&self) -> String {
@@ -531,6 +549,12 @@ impl EnvironmentPackageContract {
                 hasher.update(b"|");
                 hasher.update(strategy.as_bytes());
             }
+        }
+        for (key, value) in &self.metadata {
+            hasher.update(b"|metadata|");
+            hasher.update(key.as_bytes());
+            hasher.update(b"|");
+            hasher.update(environment_canonical_json(value).as_bytes());
         }
         hex::encode(hasher.finalize())
     }
@@ -1423,6 +1447,10 @@ fn stable_session_summary_digest(
         hasher.update(if rubric.passed { b"|pass" } else { b"|fail" });
     }
     hex::encode(hasher.finalize())
+}
+
+fn environment_canonical_json(value: &Value) -> String {
+    serde_json::to_string(value).expect("environment metadata should serialize")
 }
 
 fn environment_family_label(family: EnvironmentPackageFamily) -> &'static [u8] {
