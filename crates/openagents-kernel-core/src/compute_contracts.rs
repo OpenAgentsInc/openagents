@@ -15,22 +15,28 @@ use crate::authority::{
     FinalizeComputeEvaluationRunRequest, FinalizeComputeEvaluationRunResponse,
     FinalizeComputeSyntheticDataGenerationRequest, FinalizeComputeSyntheticDataGenerationResponse,
     FinalizeComputeTrainingRunRequest, FinalizeComputeTrainingRunResponse,
-    PublishComputeIndexRequest, PublishComputeIndexResponse,
-    RecordComputeSyntheticDataVerificationRequest, RecordComputeSyntheticDataVerificationResponse,
-    RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    RegisterComputeBenchmarkPackageRequest, RegisterComputeBenchmarkPackageResponse,
-    RegisterComputeCheckpointFamilyPolicyRequest, RegisterComputeCheckpointFamilyPolicyResponse,
-    RegisterComputeEnvironmentPackageRequest, RegisterComputeEnvironmentPackageResponse,
-    RegisterComputeTrainingPolicyRequest, RegisterComputeTrainingPolicyResponse,
-    RegisterComputeValidatorPolicyRequest, RegisterComputeValidatorPolicyResponse,
+    PublishComputeIndexRequest, PublishComputeIndexResponse, RecordComputeAdapterWindowRequest,
+    RecordComputeAdapterWindowResponse, RecordComputeSyntheticDataVerificationRequest,
+    RecordComputeSyntheticDataVerificationResponse, RecordDeliveryProofRequest,
+    RecordDeliveryProofResponse, RegisterComputeBenchmarkPackageRequest,
+    RegisterComputeBenchmarkPackageResponse, RegisterComputeCheckpointFamilyPolicyRequest,
+    RegisterComputeCheckpointFamilyPolicyResponse, RegisterComputeEnvironmentPackageRequest,
+    RegisterComputeEnvironmentPackageResponse, RegisterComputeTrainingPolicyRequest,
+    RegisterComputeTrainingPolicyResponse, RegisterComputeValidatorPolicyRequest,
+    RegisterComputeValidatorPolicyResponse,
 };
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
     CapacityNonDeliveryReason, CapacityReserveState, ComputeAcceptedOutcome,
-    ComputeAcceptedOutcomeKind, ComputeArtifactResidency, ComputeBackendFamily,
-    ComputeBenchmarkPackage, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
-    ComputeCheckpointFamilyPolicy, ComputeDeliveryVarianceReason,
+    ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
+    ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
+    ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
+    ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
+    ComputeAdapterPromotionHoldReasonCode, ComputeAdapterTrainingWindow,
+    ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus, ComputeArtifactResidency,
+    ComputeBackendFamily, ComputeBenchmarkPackage, ComputeCapabilityEnvelope,
+    ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy, ComputeDeliveryVarianceReason,
     ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
     ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
     ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact,
@@ -695,6 +701,265 @@ fn compute_accepted_outcome_kind_from_proto(value: i32) -> ComputeAcceptedOutcom
         | proto_compute::ComputeAcceptedOutcomeKind::EvaluationRun => {
             ComputeAcceptedOutcomeKind::EvaluationRun
         }
+    }
+}
+
+fn compute_adapter_window_status_to_proto(value: ComputeAdapterWindowStatus) -> i32 {
+    match value {
+        ComputeAdapterWindowStatus::Planned => {
+            proto_compute::ComputeAdapterWindowStatus::Planned as i32
+        }
+        ComputeAdapterWindowStatus::Active => {
+            proto_compute::ComputeAdapterWindowStatus::Active as i32
+        }
+        ComputeAdapterWindowStatus::Sealed => {
+            proto_compute::ComputeAdapterWindowStatus::Sealed as i32
+        }
+        ComputeAdapterWindowStatus::Scored => {
+            proto_compute::ComputeAdapterWindowStatus::Scored as i32
+        }
+        ComputeAdapterWindowStatus::Reconciled => {
+            proto_compute::ComputeAdapterWindowStatus::Reconciled as i32
+        }
+    }
+}
+
+fn compute_adapter_window_status_from_proto(value: i32) -> ComputeAdapterWindowStatus {
+    match proto_compute::ComputeAdapterWindowStatus::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterWindowStatus::Planned)
+    {
+        proto_compute::ComputeAdapterWindowStatus::Active => ComputeAdapterWindowStatus::Active,
+        proto_compute::ComputeAdapterWindowStatus::Sealed => ComputeAdapterWindowStatus::Sealed,
+        proto_compute::ComputeAdapterWindowStatus::Scored => ComputeAdapterWindowStatus::Scored,
+        proto_compute::ComputeAdapterWindowStatus::Reconciled => {
+            ComputeAdapterWindowStatus::Reconciled
+        }
+        proto_compute::ComputeAdapterWindowStatus::Unspecified
+        | proto_compute::ComputeAdapterWindowStatus::Planned => ComputeAdapterWindowStatus::Planned,
+    }
+}
+
+fn compute_adapter_contribution_disposition_to_proto(
+    value: ComputeAdapterContributionDisposition,
+) -> i32 {
+    match value {
+        ComputeAdapterContributionDisposition::Accepted => {
+            proto_compute::ComputeAdapterContributionDisposition::Accepted as i32
+        }
+        ComputeAdapterContributionDisposition::Quarantined => {
+            proto_compute::ComputeAdapterContributionDisposition::Quarantined as i32
+        }
+        ComputeAdapterContributionDisposition::Rejected => {
+            proto_compute::ComputeAdapterContributionDisposition::Rejected as i32
+        }
+        ComputeAdapterContributionDisposition::ReplayRequired => {
+            proto_compute::ComputeAdapterContributionDisposition::ReplayRequired as i32
+        }
+    }
+}
+
+fn compute_adapter_contribution_disposition_from_proto(
+    value: i32,
+) -> ComputeAdapterContributionDisposition {
+    match proto_compute::ComputeAdapterContributionDisposition::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterContributionDisposition::ReplayRequired)
+    {
+        proto_compute::ComputeAdapterContributionDisposition::Accepted => {
+            ComputeAdapterContributionDisposition::Accepted
+        }
+        proto_compute::ComputeAdapterContributionDisposition::Quarantined => {
+            ComputeAdapterContributionDisposition::Quarantined
+        }
+        proto_compute::ComputeAdapterContributionDisposition::Rejected => {
+            ComputeAdapterContributionDisposition::Rejected
+        }
+        proto_compute::ComputeAdapterContributionDisposition::Unspecified
+        | proto_compute::ComputeAdapterContributionDisposition::ReplayRequired => {
+            ComputeAdapterContributionDisposition::ReplayRequired
+        }
+    }
+}
+
+fn compute_adapter_aggregation_eligibility_to_proto(
+    value: ComputeAdapterAggregationEligibility,
+) -> i32 {
+    match value {
+        ComputeAdapterAggregationEligibility::Eligible => {
+            proto_compute::ComputeAdapterAggregationEligibility::Eligible as i32
+        }
+        ComputeAdapterAggregationEligibility::Ineligible => {
+            proto_compute::ComputeAdapterAggregationEligibility::Ineligible as i32
+        }
+    }
+}
+
+fn compute_adapter_aggregation_eligibility_from_proto(
+    value: i32,
+) -> ComputeAdapterAggregationEligibility {
+    match proto_compute::ComputeAdapterAggregationEligibility::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterAggregationEligibility::Eligible)
+    {
+        proto_compute::ComputeAdapterAggregationEligibility::Ineligible => {
+            ComputeAdapterAggregationEligibility::Ineligible
+        }
+        proto_compute::ComputeAdapterAggregationEligibility::Unspecified
+        | proto_compute::ComputeAdapterAggregationEligibility::Eligible => {
+            ComputeAdapterAggregationEligibility::Eligible
+        }
+    }
+}
+
+fn compute_adapter_promotion_disposition_to_proto(
+    value: ComputeAdapterPromotionDisposition,
+) -> i32 {
+    match value {
+        ComputeAdapterPromotionDisposition::Promoted => {
+            proto_compute::ComputeAdapterPromotionDisposition::Promoted as i32
+        }
+        ComputeAdapterPromotionDisposition::Held => {
+            proto_compute::ComputeAdapterPromotionDisposition::Held as i32
+        }
+    }
+}
+
+fn compute_adapter_promotion_disposition_from_proto(
+    value: i32,
+) -> Option<ComputeAdapterPromotionDisposition> {
+    match proto_compute::ComputeAdapterPromotionDisposition::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterPromotionDisposition::Unspecified)
+    {
+        proto_compute::ComputeAdapterPromotionDisposition::Promoted => {
+            Some(ComputeAdapterPromotionDisposition::Promoted)
+        }
+        proto_compute::ComputeAdapterPromotionDisposition::Held => {
+            Some(ComputeAdapterPromotionDisposition::Held)
+        }
+        proto_compute::ComputeAdapterPromotionDisposition::Unspecified => None,
+    }
+}
+
+fn compute_adapter_promotion_hold_reason_code_to_proto(
+    value: ComputeAdapterPromotionHoldReasonCode,
+) -> i32 {
+    match value {
+        ComputeAdapterPromotionHoldReasonCode::InsufficientAcceptedWork => {
+            proto_compute::ComputeAdapterPromotionHoldReasonCode::InsufficientAcceptedWork as i32
+        }
+        ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady => {
+            proto_compute::ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady
+                as i32
+        }
+    }
+}
+
+fn compute_adapter_promotion_hold_reason_code_from_proto(
+    value: i32,
+) -> Option<ComputeAdapterPromotionHoldReasonCode> {
+    match proto_compute::ComputeAdapterPromotionHoldReasonCode::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterPromotionHoldReasonCode::Unspecified)
+    {
+        proto_compute::ComputeAdapterPromotionHoldReasonCode::InsufficientAcceptedWork => {
+            Some(ComputeAdapterPromotionHoldReasonCode::InsufficientAcceptedWork)
+        }
+        proto_compute::ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady => {
+            Some(ComputeAdapterPromotionHoldReasonCode::ValidatorWindowNotPromotionReady)
+        }
+        proto_compute::ComputeAdapterPromotionHoldReasonCode::Unspecified => None,
+    }
+}
+
+fn compute_adapter_contribution_validation_reason_code_to_proto(
+    value: ComputeAdapterContributionValidationReasonCode,
+) -> i32 {
+    match value {
+        ComputeAdapterContributionValidationReasonCode::SecurityRejected => {
+            proto_compute::ComputeAdapterContributionValidationReasonCode::SecurityRejected as i32
+        }
+        ComputeAdapterContributionValidationReasonCode::SecurityQuarantined => {
+            proto_compute::ComputeAdapterContributionValidationReasonCode::SecurityQuarantined
+                as i32
+        }
+        ComputeAdapterContributionValidationReasonCode::ReplayRequired => {
+            proto_compute::ComputeAdapterContributionValidationReasonCode::ReplayRequired as i32
+        }
+        ComputeAdapterContributionValidationReasonCode::ReplayMismatch => {
+            proto_compute::ComputeAdapterContributionValidationReasonCode::ReplayMismatch as i32
+        }
+    }
+}
+
+fn compute_adapter_contribution_validation_reason_code_from_proto(
+    value: i32,
+) -> Option<ComputeAdapterContributionValidationReasonCode> {
+    match proto_compute::ComputeAdapterContributionValidationReasonCode::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterContributionValidationReasonCode::Unspecified)
+    {
+        proto_compute::ComputeAdapterContributionValidationReasonCode::SecurityRejected => {
+            Some(ComputeAdapterContributionValidationReasonCode::SecurityRejected)
+        }
+        proto_compute::ComputeAdapterContributionValidationReasonCode::SecurityQuarantined => {
+            Some(ComputeAdapterContributionValidationReasonCode::SecurityQuarantined)
+        }
+        proto_compute::ComputeAdapterContributionValidationReasonCode::ReplayRequired => {
+            Some(ComputeAdapterContributionValidationReasonCode::ReplayRequired)
+        }
+        proto_compute::ComputeAdapterContributionValidationReasonCode::ReplayMismatch => {
+            Some(ComputeAdapterContributionValidationReasonCode::ReplayMismatch)
+        }
+        proto_compute::ComputeAdapterContributionValidationReasonCode::Unspecified => None,
+    }
+}
+
+fn compute_adapter_window_gate_reason_code_to_proto(
+    value: ComputeAdapterWindowGateReasonCode,
+) -> i32 {
+    match value {
+        ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing => {
+            proto_compute::ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing as i32
+        }
+        ComputeAdapterWindowGateReasonCode::HeldOutEvalBelowThreshold => {
+            proto_compute::ComputeAdapterWindowGateReasonCode::HeldOutEvalBelowThreshold as i32
+        }
+        ComputeAdapterWindowGateReasonCode::BenchmarkMissing => {
+            proto_compute::ComputeAdapterWindowGateReasonCode::BenchmarkMissing as i32
+        }
+        ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold => {
+            proto_compute::ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold as i32
+        }
+        ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired => {
+            proto_compute::ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired as i32
+        }
+        ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed => {
+            proto_compute::ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed as i32
+        }
+    }
+}
+
+fn compute_adapter_window_gate_reason_code_from_proto(
+    value: i32,
+) -> Option<ComputeAdapterWindowGateReasonCode> {
+    match proto_compute::ComputeAdapterWindowGateReasonCode::try_from(value)
+        .unwrap_or(proto_compute::ComputeAdapterWindowGateReasonCode::Unspecified)
+    {
+        proto_compute::ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing => {
+            Some(ComputeAdapterWindowGateReasonCode::HeldOutEvalMissing)
+        }
+        proto_compute::ComputeAdapterWindowGateReasonCode::HeldOutEvalBelowThreshold => {
+            Some(ComputeAdapterWindowGateReasonCode::HeldOutEvalBelowThreshold)
+        }
+        proto_compute::ComputeAdapterWindowGateReasonCode::BenchmarkMissing => {
+            Some(ComputeAdapterWindowGateReasonCode::BenchmarkMissing)
+        }
+        proto_compute::ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold => {
+            Some(ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold)
+        }
+        proto_compute::ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired => {
+            Some(ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired)
+        }
+        proto_compute::ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed => {
+            Some(ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed)
+        }
+        proto_compute::ComputeAdapterWindowGateReasonCode::Unspecified => None,
     }
 }
 
@@ -2626,6 +2891,333 @@ pub fn compute_accepted_outcome_from_proto(
     })
 }
 
+fn compute_adapter_policy_revision_to_proto(
+    revision: &ComputeAdapterPolicyRevision,
+) -> Result<proto_compute::ComputeAdapterPolicyRevision> {
+    Ok(proto_compute::ComputeAdapterPolicyRevision {
+        policy_family: revision.policy_family.clone(),
+        revision_id: revision.revision_id.clone(),
+        revision_number: revision.revision_number,
+        policy_digest: revision.policy_digest.clone(),
+        parent_revision_id: revision.parent_revision_id.clone(),
+        produced_at_ms: revision.produced_at_ms,
+    })
+}
+
+fn compute_adapter_policy_revision_from_proto(
+    revision: &proto_compute::ComputeAdapterPolicyRevision,
+) -> Result<ComputeAdapterPolicyRevision> {
+    Ok(ComputeAdapterPolicyRevision {
+        policy_family: revision.policy_family.clone(),
+        revision_id: revision.revision_id.clone(),
+        revision_number: revision.revision_number,
+        policy_digest: revision.policy_digest.clone(),
+        parent_revision_id: optional_string_as_none(revision.parent_revision_id.clone()),
+        produced_at_ms: revision.produced_at_ms,
+    })
+}
+
+fn compute_adapter_checkpoint_pointer_to_proto(
+    pointer: &ComputeAdapterCheckpointPointer,
+) -> Result<proto_compute::ComputeAdapterCheckpointPointer> {
+    Ok(proto_compute::ComputeAdapterCheckpointPointer {
+        scope_kind: pointer.scope_kind.clone(),
+        scope_id: pointer.scope_id.clone(),
+        checkpoint_family: pointer.checkpoint_family.clone(),
+        checkpoint_ref: pointer.checkpoint_ref.clone(),
+        manifest_digest: pointer.manifest_digest.clone(),
+        updated_at_ms: pointer.updated_at_ms,
+        pointer_digest: pointer.pointer_digest.clone(),
+    })
+}
+
+fn compute_adapter_checkpoint_pointer_from_proto(
+    pointer: &proto_compute::ComputeAdapterCheckpointPointer,
+) -> Result<ComputeAdapterCheckpointPointer> {
+    Ok(ComputeAdapterCheckpointPointer {
+        scope_kind: pointer.scope_kind.clone(),
+        scope_id: pointer.scope_id.clone(),
+        checkpoint_family: pointer.checkpoint_family.clone(),
+        checkpoint_ref: pointer.checkpoint_ref.clone(),
+        manifest_digest: pointer.manifest_digest.clone(),
+        updated_at_ms: pointer.updated_at_ms,
+        pointer_digest: pointer.pointer_digest.clone(),
+    })
+}
+
+fn compute_adapter_dataset_slice_to_proto(
+    dataset_slice: &ComputeAdapterDatasetSlice,
+) -> Result<proto_compute::ComputeAdapterDatasetSlice> {
+    Ok(proto_compute::ComputeAdapterDatasetSlice {
+        dataset_id: dataset_slice.dataset_id.clone(),
+        split_name: dataset_slice.split_name.clone(),
+        slice_id: dataset_slice.slice_id.clone(),
+        slice_digest: dataset_slice.slice_digest.clone(),
+    })
+}
+
+fn compute_adapter_dataset_slice_from_proto(
+    dataset_slice: &proto_compute::ComputeAdapterDatasetSlice,
+) -> Result<ComputeAdapterDatasetSlice> {
+    Ok(ComputeAdapterDatasetSlice {
+        dataset_id: dataset_slice.dataset_id.clone(),
+        split_name: dataset_slice.split_name.clone(),
+        slice_id: dataset_slice.slice_id.clone(),
+        slice_digest: dataset_slice.slice_digest.clone(),
+    })
+}
+
+pub fn compute_adapter_training_window_to_proto(
+    window: &ComputeAdapterTrainingWindow,
+) -> Result<proto_compute::ComputeAdapterTrainingWindow> {
+    Ok(proto_compute::ComputeAdapterTrainingWindow {
+        window_id: window.window_id.clone(),
+        training_run_id: window.training_run_id.clone(),
+        stage_id: window.stage_id.clone(),
+        contributor_set_revision_id: window.contributor_set_revision_id.clone(),
+        validator_policy_ref: window.validator_policy_ref.clone(),
+        adapter_target_id: window.adapter_target_id.clone(),
+        adapter_family: window.adapter_family.clone(),
+        base_model_ref: window.base_model_ref.clone(),
+        adapter_format: window.adapter_format.clone(),
+        source_policy_revision: Some(compute_adapter_policy_revision_to_proto(
+            &window.source_policy_revision,
+        )?),
+        source_checkpoint_pointer: Some(compute_adapter_checkpoint_pointer_to_proto(
+            &window.source_checkpoint_pointer,
+        )?),
+        status: compute_adapter_window_status_to_proto(window.status),
+        total_contributions: window.total_contributions,
+        admitted_contributions: window.admitted_contributions,
+        accepted_contributions: window.accepted_contributions,
+        quarantined_contributions: window.quarantined_contributions,
+        rejected_contributions: window.rejected_contributions,
+        replay_required_contributions: window.replay_required_contributions,
+        replay_checked_contributions: window.replay_checked_contributions,
+        held_out_average_score_bps: window.held_out_average_score_bps,
+        benchmark_pass_rate_bps: window.benchmark_pass_rate_bps,
+        runtime_smoke_passed: window.runtime_smoke_passed,
+        promotion_ready: window.promotion_ready,
+        gate_reason_codes: window
+            .gate_reason_codes
+            .iter()
+            .map(|value| compute_adapter_window_gate_reason_code_to_proto(*value))
+            .collect(),
+        window_summary_digest: window.window_summary_digest.clone(),
+        promotion_disposition: window
+            .promotion_disposition
+            .map(compute_adapter_promotion_disposition_to_proto),
+        hold_reason_codes: window
+            .hold_reason_codes
+            .iter()
+            .map(|value| compute_adapter_promotion_hold_reason_code_to_proto(*value))
+            .collect(),
+        aggregated_delta_digest: window.aggregated_delta_digest.clone(),
+        output_policy_revision: window
+            .output_policy_revision
+            .as_ref()
+            .map(compute_adapter_policy_revision_to_proto)
+            .transpose()?,
+        output_checkpoint_pointer: window
+            .output_checkpoint_pointer
+            .as_ref()
+            .map(compute_adapter_checkpoint_pointer_to_proto)
+            .transpose()?,
+        accepted_outcome_id: window.accepted_outcome_id.clone(),
+        recorded_at_ms: window.recorded_at_ms,
+        metadata_json: json_value_to_string(&window.metadata)?,
+    })
+}
+
+pub fn compute_adapter_training_window_from_proto(
+    window: &proto_compute::ComputeAdapterTrainingWindow,
+) -> Result<ComputeAdapterTrainingWindow> {
+    Ok(ComputeAdapterTrainingWindow {
+        window_id: window.window_id.clone(),
+        training_run_id: window.training_run_id.clone(),
+        stage_id: window.stage_id.clone(),
+        contributor_set_revision_id: window.contributor_set_revision_id.clone(),
+        validator_policy_ref: window.validator_policy_ref.clone(),
+        adapter_target_id: window.adapter_target_id.clone(),
+        adapter_family: window.adapter_family.clone(),
+        base_model_ref: window.base_model_ref.clone(),
+        adapter_format: window.adapter_format.clone(),
+        source_policy_revision: compute_adapter_policy_revision_from_proto(
+            window
+                .source_policy_revision
+                .as_ref()
+                .ok_or_else(|| missing("source_policy_revision"))?,
+        )?,
+        source_checkpoint_pointer: compute_adapter_checkpoint_pointer_from_proto(
+            window
+                .source_checkpoint_pointer
+                .as_ref()
+                .ok_or_else(|| missing("source_checkpoint_pointer"))?,
+        )?,
+        status: compute_adapter_window_status_from_proto(window.status),
+        total_contributions: window.total_contributions,
+        admitted_contributions: window.admitted_contributions,
+        accepted_contributions: window.accepted_contributions,
+        quarantined_contributions: window.quarantined_contributions,
+        rejected_contributions: window.rejected_contributions,
+        replay_required_contributions: window.replay_required_contributions,
+        replay_checked_contributions: window.replay_checked_contributions,
+        held_out_average_score_bps: window.held_out_average_score_bps,
+        benchmark_pass_rate_bps: window.benchmark_pass_rate_bps,
+        runtime_smoke_passed: window.runtime_smoke_passed,
+        promotion_ready: window.promotion_ready,
+        gate_reason_codes: window
+            .gate_reason_codes
+            .iter()
+            .filter_map(|value| compute_adapter_window_gate_reason_code_from_proto(*value))
+            .collect(),
+        window_summary_digest: window.window_summary_digest.clone(),
+        promotion_disposition: window
+            .promotion_disposition
+            .and_then(compute_adapter_promotion_disposition_from_proto),
+        hold_reason_codes: window
+            .hold_reason_codes
+            .iter()
+            .filter_map(|value| compute_adapter_promotion_hold_reason_code_from_proto(*value))
+            .collect(),
+        aggregated_delta_digest: optional_string_as_none(window.aggregated_delta_digest.clone()),
+        output_policy_revision: window
+            .output_policy_revision
+            .as_ref()
+            .map(compute_adapter_policy_revision_from_proto)
+            .transpose()?,
+        output_checkpoint_pointer: window
+            .output_checkpoint_pointer
+            .as_ref()
+            .map(compute_adapter_checkpoint_pointer_from_proto)
+            .transpose()?,
+        accepted_outcome_id: optional_string_as_none(window.accepted_outcome_id.clone()),
+        recorded_at_ms: window.recorded_at_ms,
+        metadata: json_string_to_value(window.metadata_json.as_str())?,
+    })
+}
+
+pub fn compute_adapter_contribution_outcome_to_proto(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> Result<proto_compute::ComputeAdapterContributionOutcome> {
+    Ok(proto_compute::ComputeAdapterContributionOutcome {
+        contribution_id: contribution.contribution_id.clone(),
+        training_run_id: contribution.training_run_id.clone(),
+        stage_id: contribution.stage_id.clone(),
+        window_id: contribution.window_id.clone(),
+        contributor_set_revision_id: contribution.contributor_set_revision_id.clone(),
+        assignment_id: contribution.assignment_id.clone(),
+        contributor_node_id: contribution.contributor_node_id.clone(),
+        worker_id: contribution.worker_id.clone(),
+        validator_policy_ref: contribution.validator_policy_ref.clone(),
+        adapter_target_id: contribution.adapter_target_id.clone(),
+        adapter_family: contribution.adapter_family.clone(),
+        base_model_ref: contribution.base_model_ref.clone(),
+        adapter_format: contribution.adapter_format.clone(),
+        dataset_slice: Some(compute_adapter_dataset_slice_to_proto(
+            &contribution.dataset_slice,
+        )?),
+        source_policy_revision: Some(compute_adapter_policy_revision_to_proto(
+            &contribution.source_policy_revision,
+        )?),
+        source_checkpoint_pointer: Some(compute_adapter_checkpoint_pointer_to_proto(
+            &contribution.source_checkpoint_pointer,
+        )?),
+        submission_receipt_digest: contribution.submission_receipt_digest.clone(),
+        artifact_id: contribution.artifact_id.clone(),
+        manifest_digest: contribution.manifest_digest.clone(),
+        object_digest: contribution.object_digest.clone(),
+        artifact_receipt_digest: contribution.artifact_receipt_digest.clone(),
+        provenance_bundle_digest: contribution.provenance_bundle_digest.clone(),
+        security_receipt_digest: contribution.security_receipt_digest.clone(),
+        replay_receipt_digest: contribution.replay_receipt_digest.clone(),
+        validator_disposition: compute_adapter_contribution_disposition_to_proto(
+            contribution.validator_disposition,
+        ),
+        validation_reason_codes: contribution
+            .validation_reason_codes
+            .iter()
+            .map(|value| compute_adapter_contribution_validation_reason_code_to_proto(*value))
+            .collect(),
+        validator_receipt_digest: contribution.validator_receipt_digest.clone(),
+        aggregation_eligibility: compute_adapter_aggregation_eligibility_to_proto(
+            contribution.aggregation_eligibility,
+        ),
+        accepted_for_aggregation: contribution.accepted_for_aggregation,
+        aggregation_weight_bps: contribution.aggregation_weight_bps,
+        promotion_receipt_digest: contribution.promotion_receipt_digest.clone(),
+        recorded_at_ms: contribution.recorded_at_ms,
+        metadata_json: json_value_to_string(&contribution.metadata)?,
+    })
+}
+
+pub fn compute_adapter_contribution_outcome_from_proto(
+    contribution: &proto_compute::ComputeAdapterContributionOutcome,
+) -> Result<ComputeAdapterContributionOutcome> {
+    Ok(ComputeAdapterContributionOutcome {
+        contribution_id: contribution.contribution_id.clone(),
+        training_run_id: contribution.training_run_id.clone(),
+        stage_id: contribution.stage_id.clone(),
+        window_id: contribution.window_id.clone(),
+        contributor_set_revision_id: contribution.contributor_set_revision_id.clone(),
+        assignment_id: contribution.assignment_id.clone(),
+        contributor_node_id: contribution.contributor_node_id.clone(),
+        worker_id: contribution.worker_id.clone(),
+        validator_policy_ref: contribution.validator_policy_ref.clone(),
+        adapter_target_id: contribution.adapter_target_id.clone(),
+        adapter_family: contribution.adapter_family.clone(),
+        base_model_ref: contribution.base_model_ref.clone(),
+        adapter_format: contribution.adapter_format.clone(),
+        dataset_slice: compute_adapter_dataset_slice_from_proto(
+            contribution
+                .dataset_slice
+                .as_ref()
+                .ok_or_else(|| missing("dataset_slice"))?,
+        )?,
+        source_policy_revision: compute_adapter_policy_revision_from_proto(
+            contribution
+                .source_policy_revision
+                .as_ref()
+                .ok_or_else(|| missing("source_policy_revision"))?,
+        )?,
+        source_checkpoint_pointer: compute_adapter_checkpoint_pointer_from_proto(
+            contribution
+                .source_checkpoint_pointer
+                .as_ref()
+                .ok_or_else(|| missing("source_checkpoint_pointer"))?,
+        )?,
+        submission_receipt_digest: contribution.submission_receipt_digest.clone(),
+        artifact_id: contribution.artifact_id.clone(),
+        manifest_digest: contribution.manifest_digest.clone(),
+        object_digest: contribution.object_digest.clone(),
+        artifact_receipt_digest: contribution.artifact_receipt_digest.clone(),
+        provenance_bundle_digest: contribution.provenance_bundle_digest.clone(),
+        security_receipt_digest: contribution.security_receipt_digest.clone(),
+        replay_receipt_digest: optional_string_as_none(contribution.replay_receipt_digest.clone()),
+        validator_disposition: compute_adapter_contribution_disposition_from_proto(
+            contribution.validator_disposition,
+        ),
+        validation_reason_codes: contribution
+            .validation_reason_codes
+            .iter()
+            .filter_map(|value| {
+                compute_adapter_contribution_validation_reason_code_from_proto(*value)
+            })
+            .collect(),
+        validator_receipt_digest: contribution.validator_receipt_digest.clone(),
+        aggregation_eligibility: compute_adapter_aggregation_eligibility_from_proto(
+            contribution.aggregation_eligibility,
+        ),
+        accepted_for_aggregation: contribution.accepted_for_aggregation,
+        aggregation_weight_bps: contribution.aggregation_weight_bps,
+        promotion_receipt_digest: optional_string_as_none(
+            contribution.promotion_receipt_digest.clone(),
+        ),
+        recorded_at_ms: contribution.recorded_at_ms,
+        metadata: json_string_to_value(contribution.metadata_json.as_str())?,
+    })
+}
+
 pub fn compute_synthetic_data_job_to_proto(
     job: &ComputeSyntheticDataJob,
 ) -> Result<proto_compute::ComputeSyntheticDataJob> {
@@ -3952,6 +4544,87 @@ pub fn accept_compute_outcome_response_from_proto(
                 .as_ref()
                 .ok_or_else(|| missing("outcome"))?,
         )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn record_compute_adapter_window_request_to_proto(
+    request: &RecordComputeAdapterWindowRequest,
+) -> Result<proto_compute::RecordComputeAdapterWindowRequest> {
+    Ok(proto_compute::RecordComputeAdapterWindowRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        window: Some(compute_adapter_training_window_to_proto(&request.window)?),
+        contribution_outcomes: request
+            .contribution_outcomes
+            .iter()
+            .map(compute_adapter_contribution_outcome_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn record_compute_adapter_window_request_from_proto(
+    request: &proto_compute::RecordComputeAdapterWindowRequest,
+) -> Result<RecordComputeAdapterWindowRequest> {
+    Ok(RecordComputeAdapterWindowRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        window: compute_adapter_training_window_from_proto(
+            request.window.as_ref().ok_or_else(|| missing("window"))?,
+        )?,
+        contribution_outcomes: request
+            .contribution_outcomes
+            .iter()
+            .map(compute_adapter_contribution_outcome_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn record_compute_adapter_window_response_to_proto(
+    response: &RecordComputeAdapterWindowResponse,
+) -> Result<proto_compute::RecordComputeAdapterWindowResponse> {
+    Ok(proto_compute::RecordComputeAdapterWindowResponse {
+        window: Some(compute_adapter_training_window_to_proto(&response.window)?),
+        contribution_outcomes: response
+            .contribution_outcomes
+            .iter()
+            .map(compute_adapter_contribution_outcome_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn record_compute_adapter_window_response_from_proto(
+    response: &proto_compute::RecordComputeAdapterWindowResponse,
+) -> Result<RecordComputeAdapterWindowResponse> {
+    Ok(RecordComputeAdapterWindowResponse {
+        window: compute_adapter_training_window_from_proto(
+            response.window.as_ref().ok_or_else(|| missing("window"))?,
+        )?,
+        contribution_outcomes: response
+            .contribution_outcomes
+            .iter()
+            .map(compute_adapter_contribution_outcome_from_proto)
+            .collect::<Result<Vec<_>>>()?,
         receipt: receipt_from_proto(
             response
                 .receipt
@@ -5289,6 +5962,87 @@ pub fn get_compute_training_run_response_from_proto(
             .training_run
             .as_ref()
             .ok_or_else(|| missing("training_run"))?,
+    )
+}
+
+pub fn list_compute_adapter_training_windows_response_to_proto(
+    windows: &[ComputeAdapterTrainingWindow],
+) -> Result<proto_compute::ListComputeAdapterTrainingWindowsResponse> {
+    Ok(proto_compute::ListComputeAdapterTrainingWindowsResponse {
+        windows: windows
+            .iter()
+            .map(compute_adapter_training_window_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_compute_adapter_training_windows_response_from_proto(
+    response: &proto_compute::ListComputeAdapterTrainingWindowsResponse,
+) -> Result<Vec<ComputeAdapterTrainingWindow>> {
+    response
+        .windows
+        .iter()
+        .map(compute_adapter_training_window_from_proto)
+        .collect()
+}
+
+pub fn get_compute_adapter_training_window_response_to_proto(
+    window: &ComputeAdapterTrainingWindow,
+) -> Result<proto_compute::GetComputeAdapterTrainingWindowResponse> {
+    Ok(proto_compute::GetComputeAdapterTrainingWindowResponse {
+        window: Some(compute_adapter_training_window_to_proto(window)?),
+    })
+}
+
+pub fn get_compute_adapter_training_window_response_from_proto(
+    response: &proto_compute::GetComputeAdapterTrainingWindowResponse,
+) -> Result<ComputeAdapterTrainingWindow> {
+    compute_adapter_training_window_from_proto(
+        response.window.as_ref().ok_or_else(|| missing("window"))?,
+    )
+}
+
+pub fn list_compute_adapter_contribution_outcomes_response_to_proto(
+    contributions: &[ComputeAdapterContributionOutcome],
+) -> Result<proto_compute::ListComputeAdapterContributionOutcomesResponse> {
+    Ok(
+        proto_compute::ListComputeAdapterContributionOutcomesResponse {
+            contributions: contributions
+                .iter()
+                .map(compute_adapter_contribution_outcome_to_proto)
+                .collect::<Result<Vec<_>>>()?,
+        },
+    )
+}
+
+pub fn list_compute_adapter_contribution_outcomes_response_from_proto(
+    response: &proto_compute::ListComputeAdapterContributionOutcomesResponse,
+) -> Result<Vec<ComputeAdapterContributionOutcome>> {
+    response
+        .contributions
+        .iter()
+        .map(compute_adapter_contribution_outcome_from_proto)
+        .collect()
+}
+
+pub fn get_compute_adapter_contribution_outcome_response_to_proto(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> Result<proto_compute::GetComputeAdapterContributionOutcomeResponse> {
+    Ok(
+        proto_compute::GetComputeAdapterContributionOutcomeResponse {
+            contribution: Some(compute_adapter_contribution_outcome_to_proto(contribution)?),
+        },
+    )
+}
+
+pub fn get_compute_adapter_contribution_outcome_response_from_proto(
+    response: &proto_compute::GetComputeAdapterContributionOutcomeResponse,
+) -> Result<ComputeAdapterContributionOutcome> {
+    compute_adapter_contribution_outcome_from_proto(
+        response
+            .contribution
+            .as_ref()
+            .ok_or_else(|| missing("contribution"))?,
     )
 }
 
