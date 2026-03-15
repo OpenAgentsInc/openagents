@@ -21,6 +21,22 @@
 > lane-specific references, but they are no longer the canonical answer to
 > "what is the Psionic program overall?"
 
+## Executive Summary
+
+- Psionic is now a full-library program, not a single runtime-swap project.
+- The architecture has three layers: compact core, broad semantics, and
+  Psionic-native execution truth.
+- The next critical missing layer is semantics and compatibility, not another
+  host-specific benchmark queue.
+- CPU semantic truth and replay truth are foundational and should gate later
+  backend claims.
+- Backend lanes widen only through explicit reusable contracts, not through
+  lane-local shortcuts.
+- Training should broaden only after module, state, and checkpoint semantics
+  are honest.
+- PyTorch-facing shells or interop layers come after the Rust-native substrate
+  is real, not before.
+
 ## Why This Doc Exists
 
 The old roadmap set drifted toward:
@@ -83,6 +99,22 @@ It is a plan to build:
 > a tinygrad-disciplined framework core, a PyTorch-credible semantics layer,
 > and Psionic-native system truth around both.
 
+## Explicit Non-Goals
+
+These are not goals of this roadmap:
+
+- full upstream PyTorch closure
+- eager support for every historical PyTorch serialization artifact
+- silent backend fallbacks that hide capability gaps
+- benchmark wins achieved through lane-specific behavior that bypasses reusable
+  library contracts
+- Python-first API polish before Rust-native semantics are credible
+- distributed training breadth before single-host training semantics are honest
+- product-specific routing, wallet, payout, or UX logic inside `crates/psionic/*`
+- host-specific throughput wins treated as equivalent to full-library progress
+- ambiguous claims that imply upstream PyTorch closure when the implementation
+  is only `PyTorch-credible` or `PyTorch-compatible` in a bounded sense
+
 ## Architectural Direction
 
 The governing architectural rule is:
@@ -144,16 +176,46 @@ Owns:
 
 Current crates already span this layer broadly.
 
+## Crate Boundary Rules
+
+The layer split above needs implementation guardrails.
+
+- `psionic-core` owns minimal tensor, value, dtype, device, and layout
+  identity only.
+- `psionic-ir` owns graph and autodiff representation, not PyTorch-shaped user
+  semantics.
+- `psionic-compiler` owns lowering, scheduling, planning, replay identity, and
+  cache identity.
+- `psionic-runtime` owns runtime and execution contracts, not model-family
+  quirks or product logic.
+- semantics and compatibility code must live above the core crates rather than
+  backflowing into them.
+- model-family and serving logic must not backflow into compiler or runtime
+  primitives except through explicit reusable contracts.
+- cluster, sandbox, provider, and training truth must remain separate from
+  app-owned product orchestration and UX.
+
+## Reference Truth Rule
+
+- CPU is the canonical reference backend for semantic correctness.
+- replay fixtures and parity harnesses must pass on CPU before accelerated
+  backend claims are accepted as equivalent behavior.
+- accelerated backends may narrow capability through explicit refusal, but they
+  may not silently widen semantics or silently fall back to incomparable
+  alternate behavior.
+- backend-specific performance wins do not count as framework progress if the
+  CPU reference and replay truth are still disputed.
+
 ## Success Bar
 
-Psionic should be judged against four progressively stronger claims.
+Psionic should be judged against five progressively stronger claims.
 
-### Claim 1: serious framework core
+### Claim 1: `framework-core`
 
 This means the framework-core acceptance matrix is honestly green at meaningful
 breadth, not only at representative happy-paths.
 
-### Claim 2: usable ML library
+### Claim 2: `library-usable`
 
 This means common inference and training workloads can run with:
 
@@ -162,7 +224,7 @@ This means common inference and training workloads can run with:
 - real optimizer behavior
 - real model IO and checkpoint restore
 
-### Claim 3: truthful execution substrate
+### Claim 3: `execution-truthful`
 
 This means Psionic can honestly expose:
 
@@ -173,11 +235,42 @@ This means Psionic can honestly expose:
 - router and cache behavior
 - cluster and sandbox behavior
 
-### Claim 4: practical PyTorch replacement for most AI workloads
+### Claim 4: `PyTorch-credible`
 
-This does **not** mean full upstream PyTorch closure.
+This means common PyTorch-shaped workloads see credible breadth in:
 
-It means:
+- operator semantics
+- autodiff behavior
+- modules and state
+- optimizers
+- checkpoints and conversion paths
+- fake or symbolic compiler hygiene
+
+This still does **not** mean full upstream PyTorch closure.
+
+### Claim 5: `PyTorch-compatible`
+
+This means bounded, explicit, separately tested interop or shell surfaces exist
+for existing PyTorch-shaped workflows.
+
+This claim is narrower than full upstream compatibility and must stay explicitly
+scoped.
+
+## Claim Acceptance Scoreboard
+
+| Claim | Required green surfaces | Disqualifiers |
+| --- | --- | --- |
+| `framework-core` | tensor semantics, autodiff breadth floor, compiler replay, deterministic CPU reference, fake/meta path, local multi-device correctness | backend-specific shortcuts, missing replay identity, happy-path-only coverage |
+| `library-usable` | modules, parameters and buffers, state load/save, optimizer and scheduler behavior, common model IO, basic train and infer smoke suites | checkpoint loads only for curated demos, no strict/non-strict load semantics |
+| `execution-truthful` | capability reporting, refusal taxonomy, receipts and manifests, topology truth, cache truth, provider truth | hidden fallbacks, unverifiable runtime claims, lane-local evidence only |
+| `PyTorch-credible` | parity matrices, common checkpoint migration, practical operator and module breadth, fake/symbolic/compiler hygiene | PyTorch-looking shell without tested semantics |
+| `PyTorch-compatible` | explicitly bounded and separately tested interop shells | ambiguous marketing or roadmap language implying upstream closure |
+
+The phrase "drop-in replacement for most AI workloads" only becomes honest when
+Claims 1 through 4 are substantively green and Claim 5 is bounded rather than
+hand-waved.
+
+For clarity, "drop-in replacement for most AI workloads" still means:
 
 - most common inference and training workloads are semantically credible
 - common checkpoints and model code are portable or convertible
@@ -325,6 +418,7 @@ opaque monolith.
 | `PLIB-105` | planned | Deepen compiler passes: schedule formation, fusion policy, memory planning, plan cache identity, and compile-cache evidence. |
 | `PLIB-106` | planned | Complete same-type local multi-device behavior beyond implemented-early substrate, including sharding policy and refusal taxonomy. |
 | `PLIB-107` | planned | Promote framework-core acceptance from representative proof to broad contract coverage with fixture-backed replay and failure tests. |
+| `PLIB-108` | planned | Define one cross-library refusal taxonomy covering unsupported ops, unsupported gradients, unsupported layouts, unsupported backend capabilities, serialization incompatibility, sandbox policy denial, and topology mismatch. |
 
 ## Epic 2: Semantics And Compatibility
 
@@ -444,6 +538,8 @@ compute.
 - provider capability surfaces derive from runtime truth rather than ad hoc
   product glue
 - receipts, manifests, replay, and proof bundles remain first-class
+- graph, plan, kernel, cache, refusal, and topology explanations are
+  inspectable enough that the system remains visibly debuggable
 
 ### Shipped Foundations
 
@@ -465,6 +561,7 @@ compute.
 | `PLIB-505` | planned | Tighten provider capability derivation so all advertised compute products map back to explicit runtime evidence and refusal conditions. |
 | `PLIB-506` | planned | Clarify kernel/Nexus authority boundaries for execution evidence, accepted outcomes, and later settlement-facing projections. |
 | `PLIB-507` | planned | Add chaos and failure-injection coverage across cluster, artifact, replay, and sandbox paths. |
+| `PLIB-508` | planned | Add one cross-library observability and debug surface covering graph and plan inspection, kernel evidence, cache reasoning, refusal explanation, topology explanation, and train/eval receipt inspection. |
 
 ## Epic 6: Training, Eval, And Research
 
@@ -550,6 +647,16 @@ teams with PyTorch-shaped workflows."
 | `PLIB-705` | planned | Define distribution and packaging for Psionic as a standalone library, not only as an internal repo subtree. |
 | `PLIB-706` | planned | Publish a clear adoption story for teams choosing between Psionic-native, PyTorch-compatible, and mixed-runtime usage. |
 
+### Migration Staircase
+
+The adoption path should stay explicit:
+
+1. Psionic-native internal models and runtimes.
+2. Imported checkpoints through explicit conversion.
+3. Mixed-runtime usage where interoperability is bounded and named.
+4. A bounded Torch-facing or Python-facing shell.
+5. Only after the earlier steps are honest: "most workloads" adoption claims.
+
 ## Current Execution Order
 
 This is the recommended dependency order for the next full-library work.
@@ -596,6 +703,44 @@ This is the recommended dependency order for the next full-library work.
 
 21. `PLIB-701` through `PLIB-706`
 
+## Program Risks And Dependency Hazards
+
+### Risk 1: operator breadth before operator schema discipline
+
+If `PLIB-101` and `PLIB-102` are weak, later parity work becomes expensive
+churn rather than reusable growth.
+
+### Risk 2: module and state semantics lag training and checkpoint work
+
+If `PLIB-201` and `PLIB-202` slip, Epic 6 will become lane-specific and
+fragile instead of library-reusable.
+
+### Risk 3: backend closure racing ahead of CPU reference truth
+
+If accelerated lanes advance faster than `PLIB-401` and the CPU reference rule,
+correctness disputes will become hard to adjudicate.
+
+### Risk 4: runtime-family glue outrunning reusable contracts
+
+If model-family work lands as family-specific exceptions, Epic 3 becomes
+another pile of local wins rather than a coherent library runtime layer.
+
+### Risk 5: interop pressure arriving before semantics are real
+
+If `PLIB-703` starts early, the team will optimize a demo surface instead of
+the substrate.
+
+### Risk 6: refusal taxonomy drift across crates
+
+If `PLIB-108` does not land early, the system will become harder to reason
+about exactly where and why behavior is unsupported.
+
+### Risk 7: observability scattered instead of designed
+
+If inspection, receipts, replay, cache, and refusal explanation remain spread
+across ad hoc surfaces, Psionic will lose the "small, visible core" advantage
+even if the code remains technically modular.
+
 ## Roadmap Rules
 
 ### 1. Do not treat one host or one benchmark chain as the whole roadmap
@@ -624,6 +769,19 @@ This remains non-negotiable under `docs/OWNERSHIP.md`.
 A PyTorch-looking shell without real semantics is not adoption.
 
 It is a demo.
+
+## Benchmark Honesty Rules
+
+- every benchmark claim must declare backend, dtype, quantization, batch
+  shape, cache state, warm/cold status, and refusal conditions
+- no benchmark acceptance based on app-local patches or hidden environment
+  assumptions
+- performance wins are not roadmap progress if they bypass reusable library
+  contracts
+- unsupported workloads must refuse explicitly, not degrade silently into
+  incomparable alternate paths
+- benchmark evidence must remain attributable to the library path being claimed,
+  not to a lane-local workaround
 
 ## Bottom Line
 
