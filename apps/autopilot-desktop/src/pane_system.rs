@@ -487,6 +487,7 @@ pub enum AppleAdapterTrainingPaneAction {
     SelectRun(usize),
     LaunchRun,
     ExportRun,
+    OpenWorkbench,
     ArmAcceptRun,
     AcceptRun,
 }
@@ -2947,7 +2948,7 @@ pub fn apple_adapter_training_export_path_input_bounds(content_bounds: Bounds) -
 pub fn apple_adapter_training_export_button_bounds(content_bounds: Bounds) -> Bounds {
     let detail = apple_adapter_training_detail_panel_body_bounds(content_bounds);
     let export_input = apple_adapter_training_export_path_input_bounds(content_bounds);
-    let button_width = ((detail.size.width - 16.0) / 3.0).max(88.0);
+    let button_width = ((detail.size.width - 24.0) / 4.0).max(80.0);
     Bounds::new(
         export_input.origin.x,
         export_input.max_y() + 10.0,
@@ -2956,7 +2957,7 @@ pub fn apple_adapter_training_export_button_bounds(content_bounds: Bounds) -> Bo
     )
 }
 
-pub fn apple_adapter_training_arm_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn apple_adapter_training_open_workbench_button_bounds(content_bounds: Bounds) -> Bounds {
     let export_button = apple_adapter_training_export_button_bounds(content_bounds);
     Bounds::new(
         export_button.max_x() + 8.0,
@@ -2966,13 +2967,22 @@ pub fn apple_adapter_training_arm_accept_button_bounds(content_bounds: Bounds) -
     )
 }
 
+pub fn apple_adapter_training_arm_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let open_workbench = apple_adapter_training_open_workbench_button_bounds(content_bounds);
+    Bounds::new(
+        open_workbench.max_x() + 8.0,
+        open_workbench.origin.y,
+        open_workbench.size.width,
+        open_workbench.size.height,
+    )
+}
+
 pub fn apple_adapter_training_accept_button_bounds(content_bounds: Bounds) -> Bounds {
     let arm = apple_adapter_training_arm_accept_button_bounds(content_bounds);
-    let detail = apple_adapter_training_detail_panel_body_bounds(content_bounds);
     Bounds::new(
         arm.max_x() + 8.0,
         arm.origin.y,
-        (detail.max_x() - arm.max_x() - 8.0).max(88.0),
+        arm.size.width,
         arm.size.height,
     )
 }
@@ -5710,6 +5720,11 @@ fn pane_hit_action_for_pane(
             if apple_adapter_training_export_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AppleAdapterTraining(
                     AppleAdapterTrainingPaneAction::ExportRun,
+                ));
+            }
+            if apple_adapter_training_open_workbench_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleAdapterTraining(
+                    AppleAdapterTrainingPaneAction::OpenWorkbench,
                 ));
             }
             if apple_adapter_training_arm_accept_button_bounds(content_bounds).contains(point) {

@@ -5,7 +5,8 @@ use wgpui::components::sections::{TerminalLine, TerminalStream};
 use wgpui::{Bounds, Component, Hsla, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
-    AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, PaneLoadState, RenderState,
+    AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, AppleFmWorkbenchPaneInputs,
+    AppleFmWorkbenchPaneState, PaneLoadState, RenderState,
 };
 use crate::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse,
@@ -21,6 +22,7 @@ use crate::pane_system::{
     apple_adapter_training_held_out_dataset_input_bounds,
     apple_adapter_training_launch_button_bounds, apple_adapter_training_layout,
     apple_adapter_training_license_input_bounds, apple_adapter_training_log_tail_bounds,
+    apple_adapter_training_open_workbench_button_bounds,
     apple_adapter_training_package_name_input_bounds,
     apple_adapter_training_preflight_summary_bounds, apple_adapter_training_run_row_bounds,
     apple_adapter_training_train_dataset_input_bounds,
@@ -538,6 +540,7 @@ fn paint_detail_panel(
     let log_bounds = apple_adapter_training_log_tail_bounds(content_bounds);
     let export_bounds = apple_adapter_training_export_path_input_bounds(content_bounds);
     let export_button_bounds = apple_adapter_training_export_button_bounds(content_bounds);
+    let open_workbench_bounds = apple_adapter_training_open_workbench_button_bounds(content_bounds);
     let arm_accept_bounds = apple_adapter_training_arm_accept_button_bounds(content_bounds);
     let accept_bounds = apple_adapter_training_accept_button_bounds(content_bounds);
     let summary_max_y = export_bounds.origin.y - 10.0;
@@ -596,6 +599,15 @@ fn paint_detail_panel(
             .set_max_width(export_bounds.size.width.max(180.0));
         inputs.export_path.paint(export_bounds, paint);
         paint_action_button(export_button_bounds, export_button_label(run), paint);
+        paint_action_button(
+            open_workbench_bounds,
+            if can_open_workbench(run) {
+                "Open Apple FM"
+            } else {
+                "Workbench blocked"
+            },
+            paint,
+        );
         paint_secondary_button(
             arm_accept_bounds,
             if pane_state.accept_confirmation_armed {
@@ -961,6 +973,14 @@ pub(crate) fn detail_lines_for_run(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AppleAdapterTrainingWorkbenchHandoff {
+    pub run_id: String,
+    pub package_path: String,
+    pub adapter_identifier: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AppleAdapterTrainingLaunchForm {
     pub train_dataset_path: String,
     pub held_out_dataset_path: String,
@@ -1004,6 +1024,45 @@ pub(crate) fn build_accept_request(
     Ok(DesktopControlActionRequest::AcceptAppleAdapterTraining {
         run_id: run.run_id.clone(),
     })
+}
+
+pub(crate) fn build_workbench_handoff(
+    pane_state: &AppleAdapterTrainingPaneState,
+    training_status: &DesktopControlTrainingStatus,
+) -> Result<AppleAdapterTrainingWorkbenchHandoff, String> {
+    let run = selected_run_for_action(pane_state, training_status)?;
+    let package_path = workbench_package_path(run)?;
+    Ok(AppleAdapterTrainingWorkbenchHandoff {
+        run_id: run.run_id.clone(),
+        package_path: package_path.clone(),
+        adapter_identifier: run.adapter_identifier.clone(),
+        summary: format!(
+            "run {} // adapter {} // pkg {}",
+            compact_id(run.run_id.as_str(), 18),
+            run.adapter_identifier
+                .as_deref()
+                .map(|value| compact_id(value, 18))
+                .unwrap_or_else(|| "pending".to_string()),
+            compact_id(package_path.as_str(), 34)
+        ),
+    })
+}
+
+pub(crate) fn apply_workbench_handoff(
+    workbench_state: &mut AppleFmWorkbenchPaneState,
+    workbench_inputs: &mut AppleFmWorkbenchPaneInputs,
+    handoff: &AppleAdapterTrainingWorkbenchHandoff,
+) {
+    workbench_inputs
+        .adapter_package_path
+        .set_value(handoff.package_path.clone());
+    workbench_inputs
+        .adapter_id
+        .set_value(handoff.adapter_identifier.clone().unwrap_or_default());
+    workbench_state.handoff_source_run_id = Some(handoff.run_id.clone());
+    workbench_state.handoff_adapter_identifier = handoff.adapter_identifier.clone();
+    workbench_state.handoff_package_path = Some(handoff.package_path.clone());
+    workbench_state.handoff_summary = Some(handoff.summary.clone());
 }
 
 pub(crate) fn validate_launch_form(
@@ -1292,6 +1351,22 @@ fn can_accept_run(run: &DesktopControlAppleAdapterOperatorRunStatus) -> bool {
     acceptance_gate_reason(run).is_none()
 }
 
+fn can_open_workbench(run: &DesktopControlAppleAdapterOperatorRunStatus) -> bool {
+    workbench_package_path(run).is_ok()
+}
+
+fn workbench_package_path(
+    run: &DesktopControlAppleAdapterOperatorRunStatus,
+) -> Result<String, String> {
+    run.exported_package_path
+        .clone()
+        .or_else(|| run.staged_package_path.clone())
+        .ok_or_else(|| {
+            "Apple FM workbench handoff is blocked until a staged or exported adapter exists"
+                .to_string()
+        })
+}
+
 fn training_log_stream(line: &str) -> TerminalStream {
     let lowered = line.to_ascii_lowercase();
     if lowered.contains("error") || lowered.contains("failed") || lowered.contains("blocked") {
@@ -1329,9 +1404,11 @@ fn training_red() -> Hsla {
 mod tests {
     use super::{
         acceptance_gate_reason, apply_launch_response, build_accept_request, build_export_request,
-        detail_lines_for_run, paint, validate_launch_form,
+        build_workbench_handoff, detail_lines_for_run, paint, validate_launch_form,
     };
-    use crate::app_state::{AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState};
+    use crate::app_state::{
+        AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, AppleFmWorkbenchPaneInputs,
+    };
     use crate::desktop_control::{
         DesktopControlActionResponse, DesktopControlAppleAdapterOperatorRunStatus,
         DesktopControlTrainingStatus,
@@ -1568,6 +1645,64 @@ mod tests {
         assert_eq!(
             acceptance_gate_reason(&run).as_deref(),
             Some("Acceptance blocked until export completes")
+        );
+    }
+
+    #[test]
+    fn build_workbench_handoff_prefers_exported_path_and_adapter_id() {
+        let mut pane_state = AppleAdapterTrainingPaneState::default();
+        pane_state.selected_run_id = Some("apple-run-9".to_string());
+        let training = DesktopControlTrainingStatus {
+            operator: crate::desktop_control::DesktopControlAppleAdapterOperatorStatus {
+                runs: vec![DesktopControlAppleAdapterOperatorRunStatus {
+                    run_id: "apple-run-9".to_string(),
+                    staged_package_path: Some("/tmp/staged/weather-helper".to_string()),
+                    exported_package_path: Some("/tmp/export/weather-helper.fmadapter".to_string()),
+                    adapter_identifier: Some("adapter.weather.helper".to_string()),
+                    ..DesktopControlAppleAdapterOperatorRunStatus::default()
+                }],
+                ..crate::desktop_control::DesktopControlAppleAdapterOperatorStatus::default()
+            },
+            ..DesktopControlTrainingStatus::default()
+        };
+
+        let handoff = build_workbench_handoff(&pane_state, &training).expect("handoff");
+        assert_eq!(handoff.run_id, "apple-run-9");
+        assert_eq!(
+            handoff.package_path,
+            "/tmp/export/weather-helper.fmadapter".to_string()
+        );
+        assert_eq!(
+            handoff.adapter_identifier.as_deref(),
+            Some("adapter.weather.helper")
+        );
+    }
+
+    #[test]
+    fn apply_workbench_handoff_populates_inputs_and_context() {
+        let handoff = super::AppleAdapterTrainingWorkbenchHandoff {
+            run_id: "apple-run-10".to_string(),
+            package_path: "/tmp/export/final.fmadapter".to_string(),
+            adapter_identifier: Some("adapter.final".to_string()),
+            summary: "Training handoff".to_string(),
+        };
+        let mut workbench = crate::app_state::AppleFmWorkbenchPaneState::default();
+        let mut inputs = AppleFmWorkbenchPaneInputs::default();
+
+        super::apply_workbench_handoff(&mut workbench, &mut inputs, &handoff);
+
+        assert_eq!(
+            inputs.adapter_package_path.get_value(),
+            "/tmp/export/final.fmadapter"
+        );
+        assert_eq!(inputs.adapter_id.get_value(), "adapter.final");
+        assert_eq!(
+            workbench.handoff_source_run_id.as_deref(),
+            Some("apple-run-10")
+        );
+        assert_eq!(
+            workbench.handoff_package_path.as_deref(),
+            Some("/tmp/export/final.fmadapter")
         );
     }
 }
