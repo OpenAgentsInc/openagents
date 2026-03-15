@@ -26,7 +26,7 @@ specs. Use the files in this subtree for definitive market-by-market reality.
 
 | Market | Product surface today | Kernel authority today | Wire/proto today | Canonical doc |
 | --- | --- | --- | --- | --- |
-| `Compute` | `implemented` and productized in Autopilot's provider earn loop | `implemented` and deepest of the five, with a materially stronger Psionic execution/train/eval substrate beneath future compute families | `implemented` thin `openagents.compute.v1` slice plus generated Rust types | [compute-market.md](./compute-market.md) |
+| `Compute` | `implemented` and productized in Autopilot's provider earn loop, with a narrow live Apple adapter-hosting family and an authority-backed Apple training operator path beyond the core inference loop | `implemented` and deepest of the five, with a materially stronger Psionic execution/train/eval substrate beneath later compute families | `implemented` thin `openagents.compute.v1` slice plus generated Rust types | [compute-market.md](./compute-market.md) |
 | `Data` | not productized | `implemented` starter authority slice | no dedicated checked-in `openagents.data.v1` package yet | [data-market.md](./data-market.md) |
 | `Labor` | partially productized through the compute-provider flow and local Codex orchestration | `implemented` starter authority slice | `implemented` thin `openagents.labor.v1` slice | [labor-market.md](./labor-market.md) |
 | `Liquidity` | not productized | `implemented` starter authority slice | no dedicated checked-in liquidity proto package yet | [liquidity-market.md](./liquidity-market.md) |

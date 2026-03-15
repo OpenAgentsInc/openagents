@@ -118,6 +118,29 @@ They keep one machine-legible accepted record with:
 - accepted-at timestamp
 - canonical evaluation or training summary
 
+## Current Apple Operator Path
+
+The retained Apple adapter path now has a concrete operator-to-authority flow
+in `apps/autopilot-desktop`:
+
+1. desktop control or `autopilotctl` launches a repo-native Apple adapter run
+2. the run stages one `.fmadapter` package locally
+3. held-out eval plus runtime-smoke checks execute before authority acceptance
+4. export is optional operator materialization, not canonical market truth
+5. acceptance registers the canonical environment, benchmark, validator,
+   checkpoint-family, training-policy, eval-run, training-run, and
+   accepted-outcome records
+
+That means the repo now has a truthful boundary between:
+
+- local artifact success
+- and accepted authority truth
+
+The important rule is simple:
+
+- exported Apple adapters are not economic truth by themselves
+- accepted training outcomes are
+
 ## Lifecycle And Binding Rules
 
 ### Registry registration

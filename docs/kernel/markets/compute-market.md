@@ -422,8 +422,8 @@ Completion thresholds for the most important current partial lanes:
 | Cash-settled hedges and derivatives | `partial`, mostly authority-first | The kernel already models more than the MVP UI shows, but these are not yet a live user-facing exchange product. |
 | Compute indices and corrections | `implemented`, early | Index publication and correction routes exist, but full governance, external feeds, and deeper market-depth operations are still ahead. |
 | Operator control surfaces | `partial` | `autopilotctl`, desktop control, and headless compute are real, but a full compute-market operator plane for cluster, proof, and sandbox operations is still incomplete. |
-| Training-class products | `planned` | The market definition reserves space for them, but they are not yet live compute-market products even though Psionic now has early train/eval runtime plus reusable autodiff/optimizer substrate beneath that future lane. |
-| Adapter-hosting products | `planned` | Not productized yet. |
+| Training-class products | `partial` | Apple adapter training now has a repo-native desktop operator flow, canonical environment/benchmark/policy registration, held-out eval plus runtime-smoke gating, and accepted training outcomes in kernel authority. It is not yet a broad provider-inventory or buyer-procurement family. |
+| Adapter-hosting products | `implemented`, narrow | Apple FM adapter hosting is now a real provider inventory family with capability publication and kernel compute-family mapping, but the retained live scope is the Apple FM single-node lane only. |
 
 ## Current Product Truth
 
@@ -447,10 +447,53 @@ It is important to separate current repo truth from older planning language:
 - the retained MVP and `v0.1` product truth are Apple-FM-first on the historical
   macOS release path
 - the retained operator and provider-substrate truth also includes GPT-OSS
-  inference, GPT-OSS embeddings descriptors, and sandbox execution descriptors
+  inference, GPT-OSS embeddings descriptors, sandbox execution descriptors, and
+  a narrow Apple FM adapter-hosting family
+- the retained desktop operator truth now includes repo-native Apple adapter
+  training launch, export, evaluation, and acceptance into canonical kernel
+  training/eval/outcome records
 - older long-horizon compute planning documents may still reference `Ollama`
   from pre-prune work; treat that as historical planning context rather than
   the current retained MVP code truth
+
+## Apple Later-Family Boundary
+
+The current Apple-specific later-family boundary is:
+
+- `adapter_hosting` is now a real, narrow compute family
+- Apple adapter `training` is now real as operator-plus-authority truth
+- neither of those changes replaces the inference-led MVP earn loop
+
+That distinction matters because the repo no longer needs to pretend these
+Apple lanes are purely aspirational, but it still must not market them as a
+generic spot market for ordinary buyers/providers.
+
+What is real today:
+
+- provider inventory and provider-substrate descriptors can advertise
+  `apple_foundation_models.adapter_hosting`
+- that family is only eligible when the Apple FM runtime is ready, adapter
+  inventory is available, session attach is supported, and at least one loaded
+  adapter is runtime-compatible
+- the capability summary now carries compatible adapter digests rather than
+  only a generic backend-ready bit
+- desktop control and `autopilotctl` can launch, evaluate, export, and accept
+  one repo-native Apple adapter training run
+- the acceptance boundary registers canonical environment, benchmark,
+  validator-policy, checkpoint-family, training-policy, training-run, eval-run,
+  and accepted-outcome records in kernel authority
+
+What is not real yet:
+
+- a broad provider inventory family for on-demand Apple training jobs
+- buyer procurement UX for Apple training capacity
+- a claim that export alone is market truth
+
+The honest language is therefore:
+
+- Apple FM adapter hosting is a live later compute family
+- Apple adapter training is a live operator and authority path
+- generalized market procurement for training remains later work
 
 ## Pricing And Procurement Semantics
 
@@ -976,10 +1019,13 @@ meaningfully stronger:
 That means the Prime audit is not asking the repo to imagine these categories
 from zero. It is asking the repo to finish productizing and market-linking them.
 
-Those closures do not make training-class compute products live. They do mean
-the future eval-linked, benchmark-linked, and training-linked compute families
-no longer depend on trainer-private gradient logic or an inference-only
-execution story.
+Those closures alone did not make training-class compute products live. What is
+different now is that the repo also has a narrow Apple adapter operator path
+that can train, evaluate, export, and accept an Apple run into canonical
+authority truth. The remaining gap is not "can the repo produce an accepted
+Apple training outcome at all?" It is "can the broader market expose training
+capacity as an ordinary provider/buyer family with the same honesty that
+inference already has?"
 
 ## What Is Only Partial Today
 
@@ -1055,7 +1101,8 @@ not only in docs.
 - remote sandbox execution as a first-class sold family
 - environment-linked compute offerings and environment-compatibility policy in
   the normal procurement path
-- clearer compute-family expansion to eval, training, and adapter-hosting lanes
+- broader compute-family expansion beyond the current Apple adapter-hosting
+  family and Apple adapter operator-training lane
 
 ### Missing proof and risk pieces
 
@@ -1096,8 +1143,8 @@ That means the compute market now has to absorb, at minimum:
 - proof bundles, validator services, and challenge-linked settlement
 - environment, eval, synthetic-data, and benchmark substrate
 - operator-grade CLI, control-plane, and attach/tunnel-like surfaces
-- later training-class and adapter-hosting families after the substrate is
-  credible
+- later broad training-class and adapter-hosting families after the substrate
+  and procurement surfaces are credible
 
 In practical terms:
 
