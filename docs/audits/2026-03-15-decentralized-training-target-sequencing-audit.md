@@ -5,9 +5,11 @@
 This audit answers a forward-looking product and systems question:
 
 > if the priority is decentralized training where many people around the world
-> contribute compute toward a shared model, are Apple Foundation Model adapters
-> a good first target, and what is the logical build order from here to
-> something much larger that truly needs global contributed compute?
+> contribute compute toward a shared model, what should OpenAgents actually
+> build first, and in what order, if the chosen target is decentralized
+> training of adapters?
+
+This audit now assumes that OpenAgents is adopting that plan.
 
 This is not an MVP proposal for `Autopilot`.
 
@@ -47,16 +49,19 @@ OpenAgents sources reviewed:
 
 ## Executive Summary
 
-Apple Foundation Model adapters are a good first target only in one specific
-sense:
+OpenAgents should treat decentralized training of adapters as the chosen
+later-family Psionic program, with Apple Foundation Model adapters as the first
+bounded live lane.
 
-> they are a good first decentralized training **product lane** for proving
-> contribution windows, validator-owned evaluation, accepted-outcome authority,
-> and bounded artifact exchange.
+That decision should be read precisely:
 
-They are not the best first decentralized training **substrate** if the real
-goal is a worldwide training network with broad contributor participation and a
-path to much larger models.
+- Apple adapters are the right first decentralized training **product lane**
+  because the repo already has real train/eval/export/authority closure for
+  them.
+- The actual implementation target is a generic decentralized **adapter
+  training system**, not an Apple-only island.
+- Worldwide decentralized training should begin with asynchronous bounded
+  contributor windows, not with immediate world-scale synchronous collectives.
 
 The reason is simple:
 
@@ -67,7 +72,7 @@ The reason is simple:
 - Apple hardware and Apple FM runtime constraints make that lane too narrow to
   be the long-term center of gravity for a global training network
 
-The right sequence is therefore:
+The committed sequence is therefore:
 
 1. use Apple adapters to prove the first narrow decentralized training market
    and acceptance loop
@@ -80,9 +85,10 @@ The right sequence is therefore:
 
 If reduced to one sentence:
 
-> Apple adapters are a good first proving ground for decentralized training
-> economics and control flow, but they should be the first rung of the ladder,
-> not the final substrate.
+> OpenAgents should build decentralized adapter training by using Apple
+> adapters as the first proving lane, while keeping the control plane,
+> validator model, and authority model generic enough to widen to non-Apple
+> adapter backends.
 
 ## Current Repo Reality
 
@@ -126,11 +132,12 @@ It needs to ask:
 > which training lane best exploits the current narrow Apple closure while
 > preserving a path to a broader decentralized system?
 
-## Is Apple Foundation Model Adapter Training A Good First Target?
+## Program Decision: Apple First, Generic Adapter System
 
-Yes, with a strict qualifier.
+OpenAgents should now commit to Apple adapters as the first live decentralized
+adapter-training lane.
 
-It is a good first target if the near-term goal is:
+That commitment is correct because the near-term goal is:
 
 - proving that many independent contributors can participate in one bounded
   training program
@@ -139,15 +146,17 @@ It is a good first target if the near-term goal is:
 - proving a first seller-side training market where contributed work is small
   enough to move and inspect
 
-It is **not** the best first target if the near-term goal is:
+Apple is still **not** the long-term center of gravity if the goal is:
 
 - maximizing contributor count as fast as possible
 - using heterogeneous global hardware immediately
 - building the definitive substrate for large synchronized model training
 
-The distinction between those two goals is the core strategic decision.
+That distinction is now the core architectural rule for the program:
 
-### Why Apple Adapters Are Attractive First
+> Apple is the first execution lane, not the permanent architecture.
+
+### Why Apple Adapters Are The Right First Lane
 
 Apple adapters are strategically attractive because they constrain the problem.
 
@@ -179,7 +188,7 @@ This is exactly the kind of narrow lane that should be used to harden:
 without immediately dragging the project into full distributed optimizer and
 large-model memory-sharding complexity.
 
-### Why Apple Adapters Are Not Enough
+### Why Apple Adapters Are Not The Whole Plan
 
 Apple adapters are still the wrong place to anchor the whole long-term system.
 
@@ -237,11 +246,13 @@ The thing to copy first is window discipline.
 
 The thing to delay is global synchronization.
 
-## Recommended Build Order
+## Committed Build Order
 
 ## Stage 1: Close The Narrow Apple Adapter Training Truth Surface
 
-Use the current Apple lane as the first controlled proving ground.
+Use the current Apple lane as the first controlled proving ground and close the
+remaining gap between single-host Apple training and real decentralized adapter
+windows.
 
 Priority outcomes:
 
@@ -292,7 +303,8 @@ It matters more than adding collectives early.
 
 ## Stage 3: Make Apple Adapter Contributions Asynchronous And Aggregatable
 
-Once windowing exists, use Apple as the first live decentralized training lane.
+Once windowing exists, use Apple as the first live decentralized adapter
+training lane.
 
 The correct first design is not "everyone participates in one simultaneous
 gradient exchange."
@@ -411,9 +423,96 @@ That order is important because each stage validates a harder assumption:
 - then that broad participation is sound
 - only then that synchronized high-throughput training is sound
 
+## GitHub Issue Program
+
+This audit is no longer only a strategy note.
+
+The following GitHub issue program now exists as the concrete execution plan
+for decentralized adapter training:
+
+- [#3649](https://github.com/OpenAgentsInc/openagents/issues/3649) Roadmap:
+  deliver decentralized adapter training on Psionic.
+  This is the master task and the canonical exit-criteria issue for the whole
+  program.
+- [#3636](https://github.com/OpenAgentsInc/openagents/issues/3636) Psionic
+  Docs: freeze the decentralized adapter training system spec and acceptance
+  matrix.
+  This issue makes the program canonical in Psionic docs and fixes the object
+  vocabulary, acceptance states, aggregation rules, and explicit non-goals.
+- [#3637](https://github.com/OpenAgentsInc/openagents/issues/3637) Psionic
+  Train: implement decentralized adapter training window contracts and
+  contribution receipts.
+  This is the first core train issue because the generic `TrainingWindow`
+  object must gain adapter-specific contribution truth before any live
+  multi-party execution can be honest.
+- [#3638](https://github.com/OpenAgentsInc/openagents/issues/3638) Psionic
+  Cluster: connect live cluster membership and contributor selection to adapter
+  training windows.
+  This turns the existing run-graph and contributor-selection model into a live
+  multi-machine admission and reselection path.
+- [#3639](https://github.com/OpenAgentsInc/openagents/issues/3639) Psionic
+  Train: add decentralized adapter worker claim, heartbeat, and assignment
+  protocol.
+  This issue defines how contributors actually participate in one active window
+  and is the first live worker-facing protocol step.
+- [#3640](https://github.com/OpenAgentsInc/openagents/issues/3640) Psionic
+  Datastream and Artifact Storage: stage adapter delta uploads, manifests, and
+  checkpoint pointers per window.
+  This closes the artifact-movement gap so contributions are resumable,
+  inspectable, and recoverable instead of being local-only outputs.
+- [#3641](https://github.com/OpenAgentsInc/openagents/issues/3641) Security:
+  sign contributor submissions and bind adapter artifacts to worker and session
+  provenance.
+  This is required because decentralized adapter training assumes untrusted
+  participants; upload success alone is not enough for acceptance.
+- [#3642](https://github.com/OpenAgentsInc/openagents/issues/3642) Psionic
+  Eval and Validator: add adapter contribution replay, sampled verification,
+  and window scoring.
+  This turns validator-owned review into a per-contribution and per-window
+  acceptance mechanism rather than only a final exported-model check.
+- [#3643](https://github.com/OpenAgentsInc/openagents/issues/3643) Psionic
+  Train: aggregate accepted adapter deltas and promote policy revisions.
+  This is the issue that makes decentralized training real, because accepted
+  multi-party work must deterministically become the next policy revision.
+- [#3644](https://github.com/OpenAgentsInc/openagents/issues/3644) Kernel and
+  Nexus: persist decentralized adapter window receipts and contribution
+  acceptance projections.
+  This closes the authority gap so run, window, contribution, and promotion
+  truth are queryable and durable beyond local execution state.
+- [#3645](https://github.com/OpenAgentsInc/openagents/issues/3645) Compute
+  Market and Provider Substrate: add the decentralized adapter training
+  contributor product family.
+  This issue turns decentralized adapter training from an operator-only system
+  into a real contributor market with explicit capability and settlement hooks.
+- [#3646](https://github.com/OpenAgentsInc/openagents/issues/3646) Autopilot
+  Desktop and autopilotctl: ship decentralized adapter training operator and
+  contributor flows.
+  This provides the first honest operator and contributor UX while preserving
+  the app's role as orchestration over crate-owned runtime truth.
+- [#3647](https://github.com/OpenAgentsInc/openagents/issues/3647) Psionic
+  Train: generalize decentralized adapter execution beyond Apple FM to an open
+  adapter backend.
+  This is the widening step that prevents the whole program from hardening into
+  an Apple-only architecture.
+- [#3648](https://github.com/OpenAgentsInc/openagents/issues/3648) QA and
+  Reference Program: add end-to-end decentralized adapter training gates, chaos
+  tests, and reference runs.
+  This is the final confidence issue and is part of the definition of done, not
+  a later polish pass.
+
+The dependency spine of the program is:
+
+1. `#3636` defines the canonical spec.
+2. `#3637` through `#3643` make decentralized adapter contribution and
+   promotion real inside Psionic execution truth.
+3. `#3644` and `#3645` project that truth into authority and market semantics.
+4. `#3646` exposes the operator and contributor surfaces.
+5. `#3647` proves the architecture is broader than Apple.
+6. `#3648` proves the system works under end-to-end and failure conditions.
+
 ## Recommendation
 
-The best answer is:
+The program decision is now:
 
 - yes, Apple Foundation Model adapters are a good first decentralized training
   target for OpenAgents
