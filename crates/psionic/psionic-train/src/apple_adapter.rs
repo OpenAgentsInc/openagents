@@ -25,6 +25,7 @@ use crate::{
 };
 
 const OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION: &str = "openagents.apple-fmadapter.v1";
+const APPLE_ADAPTER_FIDELITY_PLAN_ID: &str = "openagents.apple.token_sequence_reference.v1";
 
 /// Precision posture for the first repo-owned Apple reference backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,6 +232,25 @@ pub struct AppleAdapterPackedTrainingBatch {
     pub batch_digest: String,
 }
 
+/// Explicit fidelity statement for the current repo-owned Apple execution lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppleAdapterExecutionFidelityPlan {
+    /// Stable plan identifier.
+    pub plan_id: String,
+    /// Human-readable token encoder description.
+    pub token_encoder: String,
+    /// Human-readable prompt pooling description.
+    pub prompt_pooling: String,
+    /// Human-readable target supervision description.
+    pub target_supervision: String,
+    /// Faithful parts of the Apple-compatible path this backend now preserves.
+    #[serde(default)]
+    pub faithful_components: Vec<String>,
+    /// Explicitly bounded or still-synthetic parts of the path.
+    #[serde(default)]
+    pub bounded_components: Vec<String>,
+}
+
 /// Machine-legible provenance frozen by the repo-owned Apple execution backend.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppleAdapterExecutionProvenance {
@@ -246,6 +266,8 @@ pub struct AppleAdapterExecutionProvenance {
     pub precision_policy: AppleAdapterPrecisionPolicy,
     /// Explicit activation-checkpoint posture.
     pub activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy,
+    /// Explicit first-real-run fidelity statement for this backend.
+    pub fidelity_plan: AppleAdapterExecutionFidelityPlan,
 }
 
 /// Gradient-production artifact emitted by the repo-owned Apple backend.
@@ -335,6 +357,7 @@ impl AppleAdapterTrainingExecutionBackend {
                 packing_policy_digest: packing_plan.policy_digest.clone(),
                 precision_policy: config.precision_policy,
                 activation_checkpoint_policy: config.activation_checkpoint_policy,
+                fidelity_plan: apple_adapter_execution_fidelity_plan(),
             },
             config,
             batches,
@@ -1247,6 +1270,11 @@ fn export_metadata(
         String::from("adapterArtifactDigest"),
         serde_json::Value::String(final_bundle_receipt.artifact_digest.clone()),
     );
+    creator_defined.insert(
+        String::from("executionFidelityPlan"),
+        serde_json::to_value(&backend.provenance().fidelity_plan)
+            .unwrap_or(serde_json::Value::Null),
+    );
     if let Some(draft_artifacts) = draft_artifacts {
         creator_defined.insert(
             String::from("draftModelId"),
@@ -2063,6 +2091,32 @@ fn build_packed_batches(
     Ok(batches)
 }
 
+fn apple_adapter_execution_fidelity_plan() -> AppleAdapterExecutionFidelityPlan {
+    AppleAdapterExecutionFidelityPlan {
+        plan_id: APPLE_ADAPTER_FIDELITY_PLAN_ID.to_string(),
+        token_encoder: String::from("hashed lexical token sequence with unigram and bigram traces"),
+        prompt_pooling: String::from(
+            "turn-aware position-weighted pooling with explicit role, tool, and schema boundaries",
+        ),
+        target_supervision: String::from(
+            "assistant token-sequence regression over pooled completion traces",
+        ),
+        faithful_components: vec![
+            String::from("multi_turn_prompt_context"),
+            String::from("role_aware_prompt_shaping"),
+            String::from("tool_and_schema_attachment_encoding"),
+            String::from("position_sensitive_token_pooling"),
+            String::from("assistant_completion_token_supervision"),
+        ],
+        bounded_components: vec![
+            String::from("repo_owned_lexical_tokenizer_not_apple_exact"),
+            String::from("hashed_token_embeddings_not_native_hidden_states"),
+            String::from("pooled_sequence_regression_not_full_decoder_loss"),
+            String::from("single_host_f32_reference_execution"),
+        ],
+    }
+}
+
 fn prompt_feature_vector(
     sample: &psionic_data::AppleAdapterTrainingSample,
     capture: &AppleAdapterSampleTokenCapture,
@@ -2070,28 +2124,57 @@ fn prompt_feature_vector(
 ) -> Vec<f32> {
     let mut features = vec![0.0_f32; width];
     let prompt_scale = 1.0_f32 / capture.prompt_tokens.max(1) as f32;
-    for message in prompt_messages(sample).iter() {
-        accumulate_bucketed_text(
+    let total_tokens = capture.total_tokens().max(1) as f32;
+    for (turn_index, message) in prompt_messages(sample).iter().enumerate() {
+        accumulate_sequence_text(
             features.as_mut_slice(),
-            format!("{}:{}", role_label(message.role), message.content).as_str(),
+            role_label(message.role),
+            prompt_scale * 0.35,
+            turn_index,
+            "role",
+        );
+        accumulate_sequence_text(
+            features.as_mut_slice(),
+            message.content.as_str(),
             prompt_scale,
+            turn_index,
+            role_label(message.role),
         );
         if let Some(response_format) = &message.response_format {
-            accumulate_bucketed_text(
+            accumulate_sequence_text(
                 features.as_mut_slice(),
                 canonical_json(response_format).as_str(),
-                capture.response_schema_tokens.max(1) as f32 / capture.total_tokens().max(1) as f32,
+                capture.response_schema_tokens.max(1) as f32 / total_tokens,
+                turn_index,
+                "response_schema",
             );
         }
         if !message.tools.is_empty() {
-            accumulate_bucketed_text(
+            accumulate_sequence_text(
                 features.as_mut_slice(),
                 canonical_json(&message.tools).as_str(),
-                capture.tool_tokens.max(1) as f32 / capture.total_tokens().max(1) as f32,
+                capture.tool_tokens.max(1) as f32 / total_tokens,
+                turn_index,
+                "tools",
             );
         }
     }
-    features[sample_kind_bucket(sample.sample_kind, width)] += 0.5;
+    accumulate_ratio_feature(
+        features.as_mut_slice(),
+        "prompt_token_ratio",
+        capture.prompt_tokens as f32 / total_tokens,
+    );
+    accumulate_ratio_feature(
+        features.as_mut_slice(),
+        "tool_token_ratio",
+        capture.tool_tokens as f32 / total_tokens,
+    );
+    accumulate_ratio_feature(
+        features.as_mut_slice(),
+        "schema_token_ratio",
+        capture.response_schema_tokens as f32 / total_tokens,
+    );
+    features[sample_kind_bucket(sample.sample_kind, width)] += 0.75;
     normalize_unit(features.as_mut_slice());
     features
 }
@@ -2107,15 +2190,29 @@ fn target_feature_vector(
         .last()
         .expect("validated Apple samples always end with assistant");
     let scale = 1.0_f32 / capture.completion_tokens.max(1) as f32;
-    accumulate_bucketed_text(features.as_mut_slice(), assistant.content.as_str(), scale);
+    let total_tokens = capture.total_tokens().max(1) as f32;
+    accumulate_sequence_text(
+        features.as_mut_slice(),
+        assistant.content.as_str(),
+        scale,
+        0,
+        "assistant_target",
+    );
     if let Some(structured) = &sample.structured_assistant_output {
-        accumulate_bucketed_text(
+        accumulate_sequence_text(
             features.as_mut_slice(),
             canonical_json(structured).as_str(),
             scale,
+            0,
+            "assistant_structured",
         );
     }
-    features[sample_kind_bucket(sample.sample_kind, width)] += 0.5;
+    accumulate_ratio_feature(
+        features.as_mut_slice(),
+        "completion_token_ratio",
+        capture.completion_tokens as f32 / total_tokens,
+    );
+    features[sample_kind_bucket(sample.sample_kind, width)] += 0.75;
     normalize_unit(features.as_mut_slice());
     features
 }
@@ -2244,19 +2341,121 @@ fn normalize_unit(values: &mut [f32]) {
     }
 }
 
-fn accumulate_bucketed_text(out: &mut [f32], text: &str, scale: f32) {
-    let tokens = if text.split_whitespace().next().is_some() {
-        text.split_whitespace()
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>()
+fn accumulate_sequence_text(
+    out: &mut [f32],
+    text: &str,
+    scale: f32,
+    turn_index: usize,
+    channel: &str,
+) {
+    let tokens = lexical_tokens(text);
+    if tokens.is_empty() {
+        accumulate_hashed_feature(
+            out,
+            format!("{channel}|turn={turn_index}|empty").as_str(),
+            scale.max(0.05),
+        );
+        return;
+    }
+
+    accumulate_hashed_feature(
+        out,
+        format!("{channel}|turn={turn_index}|begin").as_str(),
+        scale * 0.35,
+    );
+
+    let turn_scale = 1.0_f32 / (1.0 + turn_index as f32 * 0.15);
+    for (token_index, token) in tokens.iter().enumerate() {
+        let position_scale =
+            scale * turn_scale * (1.0 + token_index as f32 / tokens.len().max(1) as f32);
+        accumulate_hashed_feature(
+            out,
+            format!("{channel}|turn={turn_index}|token={token_index}|{token}").as_str(),
+            position_scale,
+        );
+        accumulate_hashed_feature(
+            out,
+            format!(
+                "{channel}|turn={turn_index}|class={}",
+                lexical_token_class(token.as_str())
+            )
+            .as_str(),
+            position_scale * 0.25,
+        );
+        if token_index > 0 {
+            accumulate_hashed_feature(
+                out,
+                format!(
+                    "{channel}|turn={turn_index}|bigram={}>{}",
+                    tokens[token_index - 1],
+                    token
+                )
+                .as_str(),
+                position_scale * 0.5,
+            );
+        }
+    }
+
+    accumulate_hashed_feature(
+        out,
+        format!("{channel}|turn={turn_index}|end|len={}", tokens.len()).as_str(),
+        scale * 0.35,
+    );
+}
+
+fn accumulate_ratio_feature(out: &mut [f32], channel: &str, ratio: f32) {
+    let bucket = (ratio.clamp(0.0, 1.0) * 10.0).round() as i32;
+    accumulate_hashed_feature(
+        out,
+        format!("{channel}|bucket={bucket}").as_str(),
+        ratio.clamp(0.0, 1.0),
+    );
+}
+
+fn accumulate_hashed_feature(out: &mut [f32], key: &str, scale: f32) {
+    let digest = Sha256::digest(key.as_bytes());
+    let index = (((digest[0] as usize) << 8) | digest[1] as usize) % out.len().max(1);
+    let sign = if digest[2] & 1 == 0 { 1.0 } else { -1.0 };
+    out[index] += sign * scale;
+}
+
+fn lexical_tokens(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for ch in input.chars() {
+        if ch.is_whitespace() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        if ch.is_alphanumeric() || ch == '_' {
+            current.push(ch);
+            continue;
+        }
+        if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+        tokens.push(ch.to_string());
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+fn lexical_token_class(token: &str) -> &'static str {
+    if token.chars().all(|ch| ch.is_ascii_digit()) {
+        "number"
+    } else if token.len() == 1
+        && token
+            .chars()
+            .next()
+            .is_some_and(|ch| !ch.is_alphanumeric() && !ch.is_whitespace())
+    {
+        "punct"
     } else {
-        vec![String::from(text)]
-    };
-    for token in tokens {
-        let digest = Sha256::digest(token.as_bytes());
-        let index = (((digest[0] as usize) << 8) | digest[1] as usize) % out.len().max(1);
-        let sign = if digest[2] & 1 == 0 { 1.0 } else { -1.0 };
-        out[index] += sign * scale;
+        "word"
     }
 }
 
@@ -2287,6 +2486,8 @@ fn stable_feature_digest(
     hasher.update(input_width.to_string().as_bytes());
     hasher.update(b"|");
     hasher.update(output_width.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(APPLE_ADAPTER_FIDELITY_PLAN_ID.as_bytes());
     hex::encode(hasher.finalize())
 }
 
@@ -2531,8 +2732,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_backend_produces_repo_owned_gradients_and_fixed_budget_steps()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_backend_produces_repo_owned_gradients_and_fixed_budget_steps(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
         let backend = AppleAdapterTrainingExecutionBackend::new(
             config(),
@@ -2550,12 +2751,10 @@ mod tests {
         let (step_input, gradient_record) = backend.produce_step_input(&run, 0, 1_000, 1_040)?;
         assert!(!gradient_record.training_batch.gradients.is_empty());
         assert!(gradient_record.mean_loss > 0.0);
-        assert!(
-            gradient_record
-                .gradient_norms_l2
-                .values()
-                .all(|norm| *norm > 0.0)
-        );
+        assert!(gradient_record
+            .gradient_norms_l2
+            .values()
+            .all(|norm| *norm > 0.0));
 
         let receipt = run.apply_step(step_input)?;
         assert_eq!(
@@ -2598,8 +2797,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_sft_lane_trains_and_exports_valid_fmadapter_package()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_sft_lane_trains_and_exports_valid_fmadapter_package(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
         let environment = environment_bundle();
         let backend = AppleAdapterTrainingExecutionBackend::new(
@@ -2645,12 +2844,36 @@ mod tests {
             Some(OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION)
         );
         assert_eq!(reread.package_digest, outcome.summary.package_digest);
+        assert_eq!(
+            outcome.summary.execution_provenance.fidelity_plan.plan_id,
+            APPLE_ADAPTER_FIDELITY_PLAN_ID
+        );
+        assert!(reread.lineage.extra.contains_key("executionFidelityPlan"));
         Ok(())
     }
 
     #[test]
-    fn apple_adapter_draft_lane_exports_valid_fmadapter_with_draft_payload()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_prompt_features_are_order_sensitive() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let left = AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"user","content":"alpha beta gamma"},{"role":"assistant","content":"ok"}]"#,
+            dataset_metadata(),
+        )?;
+        let right = AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"user","content":"gamma beta alpha"},{"role":"assistant","content":"ok"}]"#,
+            dataset_metadata(),
+        )?;
+        let left_capture = left.derive_token_captures()?;
+        let right_capture = right.derive_token_captures()?;
+        let left_features = prompt_feature_vector(&left.samples[0], &left_capture[0], 24);
+        let right_features = prompt_feature_vector(&right.samples[0], &right_capture[0], 24);
+        assert_ne!(left_features, right_features);
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_draft_lane_exports_valid_fmadapter_with_draft_payload(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
         let environment = environment_bundle();
         let backend = AppleAdapterTrainingExecutionBackend::new(
