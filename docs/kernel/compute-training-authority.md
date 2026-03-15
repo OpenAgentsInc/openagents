@@ -146,6 +146,10 @@ They keep one machine-legible accepted record with:
 - the validator policy must match the training policy
 - the environment must be permitted by the training policy
 - benchmark packages must exist and match the resolved environment
+- Apple benchmark packages may satisfy that environment check either by matching
+  the run's top-level environment directly or, for benchmark-split packages, by
+  carrying `metadata.apple_adapter.core_environment_ref` that matches the run's
+  resolved core environment
 - Nexus resolves and locks `environment_version`
 - only non-terminal initial statuses are accepted on create
 - Apple training runs additionally require typed `metadata.apple_adapter`
@@ -159,6 +163,13 @@ They keep one machine-legible accepted record with:
 - accepted runs require `final_checkpoint_ref`
 - terminal summary state is stored on the run and emitted in the finalize
   receipt
+- when finalize metadata includes `apple_adapter`, Nexus promotes that payload
+  back into the canonical run metadata so the final package digest and eval or
+  runtime-validation refs live on the stored `ComputeTrainingRun`, not only in
+  an opaque finalize sidecar
+- accepted Apple runs require the typed package digest and held-out eval ref,
+  plus the runtime-validation eval ref when the Apple runtime-validation
+  posture requires runtime smoke
 
 ### Accepted outcomes
 
@@ -169,6 +180,14 @@ They keep one machine-legible accepted record with:
   training run
 - if the caller omitted the final summary, Nexus copies it from the source run
 - accepted outcomes are durable, typed read models rather than log-only events
+- Apple training outcomes are published only after the held-out eval run meets
+  the benchmark threshold and, when the Apple runtime-validation posture
+  requires it, a separate runtime-smoke eval run is finalized with positive
+  runtime-smoke evidence
+- for accepted Apple training outcomes, Nexus also copies typed
+  `metadata.apple_adapter` into the accepted outcome so the package digest,
+  held-out eval ref, and runtime-validation eval ref remain available to later
+  projections without inventing a second local truth source
 
 ## HTTP Authority Surface
 
