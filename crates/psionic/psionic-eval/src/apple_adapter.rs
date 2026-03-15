@@ -5,11 +5,12 @@ use psionic_adapters::{AppleFmAdapterPackage, AppleFmAdapterPackageError};
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterInventoryEntry, AppleFmAdapterLoadRequest,
     AppleFmBridgeClient, AppleFmBridgeClientError, AppleFmErrorCode, AppleFmGenerationOptions,
-    AppleFmGenerationSchema, AppleFmSession, AppleFmSessionCreateRequest,
+    AppleFmGenerationSchema, AppleFmHealthResponse, AppleFmSession, AppleFmSessionCreateRequest,
     AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
     AppleFmSessionStructuredGenerationRequest, AppleFmSessionStructuredGenerationResponse,
+    AppleFmSystemLanguageModelUnavailableReason, DEFAULT_APPLE_FM_MODEL_ID,
 };
-use psionic_data::AppleAdapterDatasetContract;
+use psionic_data::{AppleAdapterDatasetContract, AppleAdapterRuntimeCompatibilityProfile};
 use psionic_environments::{
     AppleAdapterEnvironmentBundle, AppleAdapterEnvironmentError, EnvironmentContractError,
     EnvironmentDatasetBinding,
@@ -165,6 +166,40 @@ impl AppleAdapterRuntimeSmokeRequest {
     }
 }
 
+/// Bridge-reported Apple runtime compatibility state captured during validation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppleAdapterRuntimeCompatibilityState {
+    /// Stable Apple runtime model id.
+    pub model_id: String,
+    /// Stable bridge-reported use-case label.
+    pub use_case: String,
+    /// Stable bridge-reported guardrail label.
+    pub guardrails: String,
+    /// Stable derived base-model signature for the current runtime posture.
+    pub base_model_signature: String,
+    /// Whether the Apple runtime was available when sampled.
+    pub model_available: bool,
+    /// Optional typed unavailability reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    /// Optional human-readable availability detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_message: Option<String>,
+    /// Optional bridge version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_version: Option<String>,
+    /// Optional bridge platform.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_platform: Option<String>,
+    /// Whether adapter inventory is currently supported.
+    pub adapter_inventory_supported: bool,
+    /// Whether session attach is currently supported.
+    pub adapter_attach_supported: bool,
+    /// Adapter ids the bridge already had loaded when validation began.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loaded_adapter_ids: Vec<String>,
+}
+
 /// Machine-legible runtime-smoke receipt for an Apple adapter package.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppleAdapterRuntimeSmokeReceipt {
@@ -181,6 +216,8 @@ pub struct AppleAdapterRuntimeSmokeReceipt {
     /// Prompt-shaping digest observed from the package lineage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_shaping_digest: Option<String>,
+    /// Bridge-reported runtime compatibility state captured during validation.
+    pub runtime_state: AppleAdapterRuntimeCompatibilityState,
     /// Session id used for the smoke run.
     pub session_id: String,
     /// Whether session attach was confirmed.
@@ -202,8 +239,68 @@ pub struct AppleAdapterRuntimeSmokeReceipt {
     pub smoke_digest: String,
 }
 
+/// Machine-legible drift reasons when a previously validated package no longer
+/// matches the current Apple runtime posture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAdapterRuntimeDriftReasonCode {
+    /// The current runtime health endpoint could not be queried.
+    HealthUnavailable,
+    /// The current runtime is no longer available.
+    RuntimeUnavailable,
+    /// The current Apple base-model family differs from the earlier validation.
+    BaseModelFamilyChanged,
+    /// The bridge version changed between validations.
+    BridgeVersionChanged,
+    /// The bridge platform changed between validations.
+    BridgePlatformChanged,
+    /// The bridge availability message or unavailable reason changed.
+    AvailabilityChanged,
+    /// The bridge lost adapter inventory support.
+    AdapterInventorySupportLost,
+    /// The bridge lost session attach support.
+    AdapterAttachSupportLost,
+    /// The package bytes or digest changed after the prior validation.
+    PackageDigestChanged,
+    /// The package tokenizer lineage changed after the prior validation.
+    TokenizerDigestChanged,
+    /// The package prompt-shaping lineage changed after the prior validation.
+    PromptShapingDigestChanged,
+    /// The current runtime refused or rejected the package.
+    RuntimeRejectedPackage,
+    /// Session attach no longer succeeds.
+    AttachConfirmationLost,
+    /// A rerun of runtime smoke no longer passes.
+    SmokeFailed,
+}
+
+/// Explicit drift report comparing a prior runtime-smoke receipt to the
+/// current bridge-backed runtime posture.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterRuntimeDriftReport {
+    /// Whether any compatibility drift was detected.
+    pub drifted: bool,
+    /// Whether the current runtime-smoke rerun passed.
+    pub current_validation_passed: bool,
+    /// Current runtime compatibility state when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_runtime_state: Option<AppleAdapterRuntimeCompatibilityState>,
+    /// Current smoke digest when a rerun succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_smoke_digest: Option<String>,
+    /// Machine-legible reason codes for the detected drift.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reason_codes: Vec<AppleAdapterRuntimeDriftReasonCode>,
+    /// Optional human-readable detail when the current validation failed early.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 /// Runtime bridge interface required by the Apple smoke harness.
 pub trait AppleAdapterRuntimeBridge {
+    /// Returns the current bridge health payload.
+    fn health(&self) -> Result<AppleFmHealthResponse, AppleAdapterEvalError>;
+
     /// Loads one adapter package into bridge inventory.
     fn load_adapter(
         &self,
@@ -245,6 +342,10 @@ pub trait AppleAdapterRuntimeBridge {
 }
 
 impl AppleAdapterRuntimeBridge for AppleFmBridgeClient {
+    fn health(&self) -> Result<AppleFmHealthResponse, AppleAdapterEvalError> {
+        self.health().map_err(map_bridge_error)
+    }
+
     fn load_adapter(
         &self,
         request: &AppleFmAdapterLoadRequest,
@@ -455,6 +556,25 @@ impl AppleAdapterEvalHarness {
         let package =
             AppleFmAdapterPackage::read_from_directory(Path::new(request.package_path.as_str()))
                 .map_err(AppleAdapterEvalError::AdapterPackage)?;
+        let health = runtime.health()?;
+        let runtime_state = runtime_state_from_health(&health);
+        if !runtime_state.model_available {
+            return Err(AppleAdapterEvalError::RuntimeModelUnavailable {
+                reason_code: runtime_state.unavailable_reason.clone(),
+                message: runtime_state
+                    .availability_message
+                    .clone()
+                    .unwrap_or_else(|| {
+                        String::from("Apple runtime reported the model unavailable")
+                    }),
+            });
+        }
+        if !runtime_state.adapter_inventory_supported {
+            return Err(AppleAdapterEvalError::RuntimeAdapterInventoryUnsupported);
+        }
+        if !runtime_state.adapter_attach_supported {
+            return Err(AppleAdapterEvalError::RuntimeAttachUnsupported);
+        }
         if let Some(expected_base_model_signature) = &request.expected_base_model_signature {
             if package.metadata.base_model_signature != *expected_base_model_signature {
                 return Err(AppleAdapterEvalError::RuntimeBaseModelSignatureDrift {
@@ -618,6 +738,7 @@ impl AppleAdapterEvalHarness {
             package.package_digest.as_str(),
             loaded_adapter.adapter.adapter_id.as_str(),
             session_id.as_str(),
+            &runtime_state,
             metrics.as_slice(),
             passed,
         );
@@ -627,6 +748,7 @@ impl AppleAdapterEvalHarness {
             base_model_signature: Some(package.metadata.base_model_signature),
             tokenizer_digest: package.lineage.tokenizer_digest,
             prompt_shaping_digest: package.lineage.template_digest,
+            runtime_state,
             session_id,
             attach_confirmed,
             text_output: text_response.output,
@@ -636,6 +758,98 @@ impl AppleAdapterEvalHarness {
             passed,
             smoke_digest,
         })
+    }
+
+    /// Compares a prior runtime-smoke receipt to the current bridge-backed
+    /// runtime posture and reports any explicit compatibility drift.
+    #[must_use]
+    pub fn detect_runtime_drift<R: AppleAdapterRuntimeBridge>(
+        &self,
+        runtime: &R,
+        request: &AppleAdapterRuntimeSmokeRequest,
+        previous: &AppleAdapterRuntimeSmokeReceipt,
+    ) -> AppleAdapterRuntimeDriftReport {
+        let current_runtime_state = runtime
+            .health()
+            .ok()
+            .map(|health| runtime_state_from_health(&health));
+        let mut reason_codes = Vec::new();
+
+        if let Some(current_state) = current_runtime_state.as_ref() {
+            if !current_state.model_available {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::RuntimeUnavailable);
+            }
+            if current_state.base_model_signature != previous.runtime_state.base_model_signature {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::BaseModelFamilyChanged);
+            }
+            if current_state.bridge_version != previous.runtime_state.bridge_version {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::BridgeVersionChanged);
+            }
+            if current_state.bridge_platform != previous.runtime_state.bridge_platform {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::BridgePlatformChanged);
+            }
+            if current_state.unavailable_reason != previous.runtime_state.unavailable_reason
+                || current_state.availability_message != previous.runtime_state.availability_message
+            {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::AvailabilityChanged);
+            }
+            if previous.runtime_state.adapter_inventory_supported
+                && !current_state.adapter_inventory_supported
+            {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::AdapterInventorySupportLost);
+            }
+            if previous.runtime_state.adapter_attach_supported
+                && !current_state.adapter_attach_supported
+            {
+                reason_codes.push(AppleAdapterRuntimeDriftReasonCode::AdapterAttachSupportLost);
+            }
+        } else {
+            reason_codes.push(AppleAdapterRuntimeDriftReasonCode::HealthUnavailable);
+        }
+
+        match self.run_runtime_smoke(runtime, request) {
+            Ok(current) => {
+                if current.package_digest != previous.package_digest {
+                    reason_codes.push(AppleAdapterRuntimeDriftReasonCode::PackageDigestChanged);
+                }
+                if current.tokenizer_digest != previous.tokenizer_digest {
+                    reason_codes.push(AppleAdapterRuntimeDriftReasonCode::TokenizerDigestChanged);
+                }
+                if current.prompt_shaping_digest != previous.prompt_shaping_digest {
+                    reason_codes
+                        .push(AppleAdapterRuntimeDriftReasonCode::PromptShapingDigestChanged);
+                }
+                if !current.attach_confirmed {
+                    reason_codes.push(AppleAdapterRuntimeDriftReasonCode::AttachConfirmationLost);
+                }
+                if !current.passed {
+                    reason_codes.push(AppleAdapterRuntimeDriftReasonCode::SmokeFailed);
+                }
+                reason_codes.sort_unstable_by_key(|code| format!("{code:?}"));
+                reason_codes.dedup();
+                AppleAdapterRuntimeDriftReport {
+                    drifted: !reason_codes.is_empty(),
+                    current_validation_passed: current.passed,
+                    current_runtime_state: Some(current.runtime_state),
+                    current_smoke_digest: Some(current.smoke_digest),
+                    reason_codes,
+                    detail: None,
+                }
+            }
+            Err(error) => {
+                reason_codes.extend(drift_reason_codes_from_error(&error));
+                reason_codes.sort_unstable_by_key(|code| format!("{code:?}"));
+                reason_codes.dedup();
+                AppleAdapterRuntimeDriftReport {
+                    drifted: true,
+                    current_validation_passed: false,
+                    current_runtime_state,
+                    current_smoke_digest: None,
+                    reason_codes,
+                    detail: Some(error.to_string()),
+                }
+            }
+        }
     }
 
     fn run_eval(
@@ -764,6 +978,20 @@ pub enum AppleAdapterEvalError {
         "Apple adapter runtime smoke requires prompt, schema, and expected output together for structured checks"
     )]
     IncompleteStructuredSmokeConfig,
+    /// Bridge health reported the runtime unavailable before validation.
+    #[error("Apple adapter runtime is unavailable: {message}")]
+    RuntimeModelUnavailable {
+        /// Optional machine-readable reason code.
+        reason_code: Option<String>,
+        /// Human-readable availability detail.
+        message: String,
+    },
+    /// The bridge does not currently expose adapter inventory APIs.
+    #[error("Apple adapter runtime does not currently support adapter inventory")]
+    RuntimeAdapterInventoryUnsupported,
+    /// The bridge does not currently expose session-level attach/detach.
+    #[error("Apple adapter runtime does not currently support session attach")]
+    RuntimeAttachUnsupported,
     /// Runtime bridge refused the adapter as incompatible.
     #[error("Apple adapter runtime refused adapter `{adapter_id}` as incompatible")]
     RuntimePackageIncompatible {
@@ -822,6 +1050,83 @@ pub enum AppleAdapterEvalError {
         /// Error detail.
         error: String,
     },
+}
+
+fn runtime_state_from_health(
+    health: &AppleFmHealthResponse,
+) -> AppleAdapterRuntimeCompatibilityState {
+    let mut profile = AppleAdapterRuntimeCompatibilityProfile::new(
+        DEFAULT_APPLE_FM_MODEL_ID,
+        health.default_use_case.label(),
+        health.default_guardrails.label(),
+    );
+    if let Some(version) = health
+        .version
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        profile = profile.with_bridge_version(version.to_string());
+    }
+    if let Some(platform) = health
+        .platform
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        profile = profile.with_bridge_platform(platform.to_string());
+    }
+    AppleAdapterRuntimeCompatibilityState {
+        model_id: DEFAULT_APPLE_FM_MODEL_ID.to_string(),
+        use_case: health.default_use_case.label().to_string(),
+        guardrails: health.default_guardrails.label().to_string(),
+        base_model_signature: profile.base_model_signature(),
+        model_available: health.model_available,
+        unavailable_reason: health
+            .unavailable_reason
+            .as_ref()
+            .map(AppleFmSystemLanguageModelUnavailableReason::label)
+            .map(str::to_string),
+        availability_message: health.availability_message.clone(),
+        bridge_version: health.version.clone(),
+        bridge_platform: health.platform.clone(),
+        adapter_inventory_supported: health.adapter_inventory_supported,
+        adapter_attach_supported: health.adapter_attach_supported,
+        loaded_adapter_ids: health
+            .loaded_adapters
+            .iter()
+            .map(|entry| entry.adapter.adapter_id.clone())
+            .collect(),
+    }
+}
+
+fn drift_reason_codes_from_error(
+    error: &AppleAdapterEvalError,
+) -> Vec<AppleAdapterRuntimeDriftReasonCode> {
+    match error {
+        AppleAdapterEvalError::RuntimeModelUnavailable { .. } => {
+            vec![AppleAdapterRuntimeDriftReasonCode::RuntimeUnavailable]
+        }
+        AppleAdapterEvalError::RuntimeAdapterInventoryUnsupported => {
+            vec![AppleAdapterRuntimeDriftReasonCode::AdapterInventorySupportLost]
+        }
+        AppleAdapterEvalError::RuntimeAttachUnsupported => {
+            vec![AppleAdapterRuntimeDriftReasonCode::AdapterAttachSupportLost]
+        }
+        AppleAdapterEvalError::RuntimePackageIncompatible { .. }
+        | AppleAdapterEvalError::RuntimeRefusal { .. }
+        | AppleAdapterEvalError::RuntimeBridge { .. } => {
+            vec![AppleAdapterRuntimeDriftReasonCode::RuntimeRejectedPackage]
+        }
+        AppleAdapterEvalError::RuntimeBaseModelSignatureDrift { .. } => {
+            vec![AppleAdapterRuntimeDriftReasonCode::BaseModelFamilyChanged]
+        }
+        AppleAdapterEvalError::RuntimeTokenizerDigestDrift { .. } => {
+            vec![AppleAdapterRuntimeDriftReasonCode::TokenizerDigestChanged]
+        }
+        AppleAdapterEvalError::RuntimePromptShapingDigestDrift { .. } => {
+            vec![AppleAdapterRuntimeDriftReasonCode::PromptShapingDigestChanged]
+        }
+        _ => vec![AppleAdapterRuntimeDriftReasonCode::SmokeFailed],
+    }
 }
 
 fn observed_output_map(
@@ -994,6 +1299,7 @@ fn stable_runtime_smoke_digest(
     package_digest: &str,
     adapter_id: &str,
     session_id: &str,
+    runtime_state: &AppleAdapterRuntimeCompatibilityState,
     metrics: &[EvalMetric],
     passed: bool,
 ) -> String {
@@ -1004,6 +1310,20 @@ fn stable_runtime_smoke_digest(
     hasher.update(adapter_id.as_bytes());
     hasher.update(b"|");
     hasher.update(session_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(runtime_state.base_model_signature.as_bytes());
+    hasher.update(b"|");
+    hasher.update(runtime_state.use_case.as_bytes());
+    hasher.update(b"|");
+    hasher.update(runtime_state.guardrails.as_bytes());
+    if let Some(version) = runtime_state.bridge_version.as_deref() {
+        hasher.update(b"|version|");
+        hasher.update(version.as_bytes());
+    }
+    if let Some(platform) = runtime_state.bridge_platform.as_deref() {
+        hasher.update(b"|platform|");
+        hasher.update(platform.as_bytes());
+    }
     hasher.update(b"|");
     hasher.update(if passed { b"pass" } else { b"fail" });
     for metric in metrics {
@@ -1099,6 +1419,8 @@ mod tests {
     };
     use psionic_apple_fm::{
         AppleFmAdapterCompatibility, AppleFmAdapterSelection, AppleFmGeneratedContent,
+        AppleFmHealthResponse, AppleFmSystemLanguageModelGuardrails,
+        AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
     };
     use psionic_data::DatasetKey;
     use psionic_data::{AppleAdapterDatasetMetadata, TokenizerDigest, TokenizerFamily};
@@ -1113,9 +1435,16 @@ mod tests {
     #[derive(Clone, Default)]
     struct FakeRuntime {
         structured_value: Option<Value>,
+        health: AppleFmHealthResponse,
+        attach_confirmed: bool,
+        incompatible: bool,
     }
 
     impl AppleAdapterRuntimeBridge for FakeRuntime {
+        fn health(&self) -> Result<AppleFmHealthResponse, AppleAdapterEvalError> {
+            Ok(self.health.clone())
+        }
+
         fn load_adapter(
             &self,
             request: &AppleFmAdapterLoadRequest,
@@ -1134,9 +1463,13 @@ mod tests {
                 package_format_version: Some(String::from("openagents.apple-fmadapter.v1")),
                 draft_model_present: false,
                 compatibility: AppleFmAdapterCompatibility {
-                    compatible: true,
-                    reason_code: None,
-                    message: None,
+                    compatible: !self.incompatible,
+                    reason_code: self
+                        .incompatible
+                        .then(|| String::from("adapter_incompatible")),
+                    message: self
+                        .incompatible
+                        .then(|| String::from("runtime rejected adapter after drift")),
                 },
                 attached_session_ids: Vec::new(),
             })
@@ -1167,7 +1500,7 @@ mod tests {
                 instructions: None,
                 model: Default::default(),
                 tools: Vec::new(),
-                adapter: Some(request.adapter.clone()),
+                adapter: self.attach_confirmed.then(|| request.adapter.clone()),
                 is_responding: false,
                 transcript_json: None,
             })
@@ -1233,6 +1566,33 @@ mod tests {
 
         fn unload_adapter(&self, _adapter_id: &str) -> Result<(), AppleAdapterEvalError> {
             Ok(())
+        }
+    }
+
+    impl FakeRuntime {
+        fn healthy() -> Self {
+            Self {
+                structured_value: None,
+                health: AppleFmHealthResponse {
+                    status: String::from("ok"),
+                    model_available: true,
+                    version: Some(String::from("bridge-1.0.0")),
+                    platform: Some(String::from("macos26-arm64")),
+                    availability_message: Some(String::from("Apple runtime ready")),
+                    unavailable_reason: None,
+                    default_use_case: AppleFmSystemLanguageModelUseCase::General,
+                    default_guardrails: AppleFmSystemLanguageModelGuardrails::Default,
+                    supported_use_cases: vec![AppleFmSystemLanguageModelUseCase::General],
+                    supported_guardrails: vec![AppleFmSystemLanguageModelGuardrails::Default],
+                    apple_silicon_required: Some(true),
+                    apple_intelligence_required: Some(true),
+                    adapter_inventory_supported: true,
+                    adapter_attach_supported: true,
+                    loaded_adapters: Vec::new(),
+                },
+                attach_confirmed: true,
+                incompatible: false,
+            }
         }
     }
 
@@ -1465,11 +1825,9 @@ mod tests {
     fn apple_adapter_runtime_smoke_produces_machine_legible_receipt(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
-        let runtime = FakeRuntime {
-            structured_value: Some(
-                serde_json::json!({"response": {"year": 1976, "month": 4, "day": 1}}),
-            ),
-        };
+        let mut runtime = FakeRuntime::healthy();
+        runtime.structured_value =
+            Some(serde_json::json!({"response": {"year": 1976, "month": 4, "day": 1}}));
         let request = AppleAdapterRuntimeSmokeRequest {
             package_path: format!(
                 "{}/../fixtures/apple_adapter/packages/minimal_chat_adapter.fmadapter",
@@ -1528,6 +1886,11 @@ mod tests {
             receipt.prompt_shaping_digest.as_deref(),
             Some("sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b")
         );
+        assert_eq!(
+            receipt.runtime_state.bridge_version.as_deref(),
+            Some("bridge-1.0.0")
+        );
+        assert!(!receipt.runtime_state.base_model_signature.is_empty());
         assert!(!receipt.smoke_digest.is_empty());
         Ok(())
     }
@@ -1536,7 +1899,7 @@ mod tests {
     fn apple_adapter_runtime_smoke_refuses_lineage_drift() -> Result<(), Box<dyn std::error::Error>>
     {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
-        let runtime = FakeRuntime::default();
+        let runtime = FakeRuntime::healthy();
         let request = AppleAdapterRuntimeSmokeRequest {
             package_path: format!(
                 "{}/../fixtures/apple_adapter/packages/minimal_chat_adapter.fmadapter",
@@ -1561,6 +1924,61 @@ mod tests {
             error,
             AppleAdapterEvalError::RuntimeBaseModelSignatureDrift { .. }
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_runtime_drift_report_flags_bridge_version_change(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
+        let previous_runtime = FakeRuntime::healthy();
+        let request = AppleAdapterRuntimeSmokeRequest::new(
+            format!(
+                "{}/../fixtures/apple_adapter/packages/minimal_chat_adapter.fmadapter",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            "What does a mutex do?",
+        );
+        let previous = harness.run_runtime_smoke(&previous_runtime, &request)?;
+
+        let mut current_runtime = FakeRuntime::healthy();
+        current_runtime.health.version = Some(String::from("bridge-1.1.0"));
+        let report = harness.detect_runtime_drift(&current_runtime, &request, &previous);
+        assert!(report.drifted);
+        assert!(report.current_validation_passed);
+        assert!(report
+            .reason_codes
+            .contains(&AppleAdapterRuntimeDriftReasonCode::BridgeVersionChanged));
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_runtime_drift_report_explains_runtime_unavailability(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
+        let previous_runtime = FakeRuntime::healthy();
+        let request = AppleAdapterRuntimeSmokeRequest::new(
+            format!(
+                "{}/../fixtures/apple_adapter/packages/minimal_chat_adapter.fmadapter",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            "What does a mutex do?",
+        );
+        let previous = harness.run_runtime_smoke(&previous_runtime, &request)?;
+
+        let mut current_runtime = FakeRuntime::healthy();
+        current_runtime.health.model_available = false;
+        current_runtime.health.availability_message =
+            Some(String::from("Background Assets are still preparing"));
+        current_runtime.health.unavailable_reason =
+            Some(AppleFmSystemLanguageModelUnavailableReason::ModelNotReady);
+        let report = harness.detect_runtime_drift(&current_runtime, &request, &previous);
+        assert!(report.drifted);
+        assert!(!report.current_validation_passed);
+        assert!(report
+            .reason_codes
+            .contains(&AppleAdapterRuntimeDriftReasonCode::RuntimeUnavailable));
+        assert!(report.detail.is_some());
         Ok(())
     }
 }
