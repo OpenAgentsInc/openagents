@@ -292,6 +292,25 @@ pub struct ArcGrid {
 }
 ```
 
+`ArcGrid` storage is row-major.
+
+Index formula:
+
+`index = row * width + column`
+
+`cells` MUST be stored as a flat contiguous buffer of length
+`height * width`.
+
+Static ARC task grids MUST satisfy:
+
+- `height in 1..=30`
+- `width in 1..=30`
+- `color in 0..=9`
+
+These limits apply to ARC task grids.
+Interactive ARC-AGI-3 frame rasters remain governed by their frame and engine
+contracts rather than by `ArcGrid`.
+
 #### Interactive environment types
 
 ```rust
@@ -369,7 +388,41 @@ Canonicalization must include:
 - train/test dimension summaries
 - correspondence candidates between train input and train output
 
+Canonicalization MUST produce stable ordering for:
+
+- objects
+- relations
+- correspondence candidates
+
+Tie-breaking MUST use:
+
+1. bounding-box top-left
+2. area
+3. color histogram
+4. stable fallback to original scan order
+
 ### 4.3 Object and relation model
+
+```rust
+pub struct BitGrid {
+    pub width: u8,
+    pub height: u8,
+    pub bits: Vec<u64>,
+}
+```
+
+`BitGrid` is row-major and packed contiguously.
+
+Bit index formula:
+
+`bit_index = row * width + column`
+
+Packing rules:
+
+- `word_index = bit_index / 64`
+- `bit_offset = bit_index % 64`
+- the least-significant bit in each `u64` is the first stored bit for that word
+- trailing bits past `width * height` MUST be zero
 
 ```rust
 pub struct ArcObject {
@@ -728,6 +781,13 @@ pub struct CandidateIdentity {
     pub action_plan_digest: Option<String>,
 }
 
+pub struct PlannedActionStep {
+    pub action: ArcAction,
+    pub expected_state: Option<ArcGameState>,
+    pub expected_level_index: Option<u16>,
+    pub reset_marker: bool,
+}
+
 pub struct Hypothesis {
     pub id: HypothesisId,
     pub kind: HypothesisKind,
@@ -736,7 +796,7 @@ pub struct Hypothesis {
     pub candidate_identity: CandidateIdentity,
     pub program: Option<ArcProgram>,
     pub static_answer: Option<ArcGrid>,
-    pub interactive_plan: Option<Vec<ArcAction>>,
+    pub interactive_plan: Option<Vec<PlannedActionStep>>,
     pub local_score: f32,
     pub trace_locator: TraceLocator,
     pub budget_delta: BudgetCounterDelta,
@@ -752,6 +812,7 @@ pub enum LaneBatchStatus {
     Proposed,
     Empty,
     Refused,
+    BudgetExhausted,
 }
 
 pub struct LaneProposalBatch {
@@ -773,7 +834,7 @@ pub struct VerificationReport {
     pub simplicity_score: f32,
     pub stability_score: f32,
     pub spuriousness_risk: f32,
-    pub accepted: bool,
+    pub verifier_pass: bool,
     pub trace_locator: TraceLocator,
     pub budget_delta: BudgetCounterDelta,
 }
@@ -791,6 +852,7 @@ pub struct ArbiterDecision {
 }
 
 pub struct TraceBundleManifest {
+    pub schema_version: u32,
     pub bundle_id: String,
     pub task_id: String,
     pub seed_bundle_digest: String,
@@ -818,6 +880,12 @@ Normative rules:
 
 - `HypothesisId` must be stable within one run from lane identity, attempt
   index, and canonical candidate identity.
+- `CandidateIdentity.canonical_signature` MUST be a deterministic digest
+  derived from:
+  - hypothesis kind
+  - normalized program AST if present
+  - normalized output grid if present
+  - normalized action plan if present
 - candidate deduplication is keyed by
   `CandidateIdentity.canonical_signature`
   - static duplicates share the same answer digest and, where present, the same
@@ -832,13 +900,19 @@ Normative rules:
   honestly run because of capability, policy, or minimum-budget constraints
 - `LaneProposalBatch.status = Empty` means the lane ran within budget and found
   no admissible distinct proposal
+- `LaneProposalBatch.status = BudgetExhausted` means the lane began valid work
+  but exhausted budget before producing an admissible distinct proposal batch
 - `VerificationReport` must be deterministic for the same canonical task,
   hypothesis, verifier config digest, and seed bundle
+- verifier pass/fail belongs to `VerificationReport`; final acceptance belongs
+  to the arbiter
 - every propose, refine, verify, and arbitrate step must emit exactly one
   `BudgetCounterDelta`
 - the sum of all `BudgetCounterDelta` entries in a trace bundle MUST equal the
   `budget_summary` recorded in `SolveResult`
 - each step MUST check budget availability before performing work
+- lane implementations MUST check `TaskBudget` before expanding search
+  branches, model calls, or program execution
 - any step that would exceed `TaskBudget` MUST refuse before executing
 - budget counters are monotonic; any step that would overdraw a `TaskBudget`
   must refuse or stop before doing out-of-budget work
