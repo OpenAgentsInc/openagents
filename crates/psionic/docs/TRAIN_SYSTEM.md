@@ -20,7 +20,7 @@
 > `crates/psionic/psionic-sandbox/src/lib.rs`,
 > `apps/autopilot-desktop/src/desktop_control.rs`, and
 > `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
-> train-adjacent issue backlog through `#3640` and the decentralized adapter
+> train-adjacent issue backlog through `#3641` and the decentralized adapter
 > training issue program starting at `#3636`.
 
 ## Why This Doc Exists
@@ -311,6 +311,17 @@ uploads can resume from a committed cursor, corrupt chunks are refused without
 advancing state, and the latest promoted checkpoint for a window can be
 restored deterministically.
 
+The provenance-security layer is now implemented too in
+`crates/psionic/psionic-train/src/adapter_submission_security.rs`. The crate
+now owns signed adapter-manifest envelopes that bind assignment digest, claim
+digest, worker id, session id, auth subject, trust class, target policy
+revision, target checkpoint pointer, upload expectation, upload reference, and
+manifest/object digests under the worker session's submission-signing key.
+Accepted contributions now preserve independently verifiable provenance bundles,
+while signature mismatch, reassigned worker/session identity, and stale-session
+checks surface typed reject or quarantine receipts for later validator and
+aggregation stages.
+
 ### First Lane, Next Lane, And Non-Goals
 
 The first live execution lane remains the narrow single-host Apple adapter path
@@ -509,6 +520,7 @@ shape already includes at least:
 | Decentralized adapter cluster selection | `implemented_early` | `psionic-train` now owns a cluster-backed adapter coordinator that mirrors live membership and telemetry into contributor eligibility, deterministic ranking, contributor-set revisions, assignment seeds, and churn-safe window replanning |
 | Decentralized adapter worker protocol | `implemented_early` | `psionic-train` now owns typed adapter-worker sessions, heartbeats, claim/ack flows, progress telemetry, superseded-claim retries, and contribution submission receipts bound to policy revision, checkpoint pointer, and upload expectations for one active adapter window |
 | Decentralized adapter artifact staging | `implemented_early` | `psionic-train` now owns resumable adapter contribution uploads, manifest/chunk verification, typed contribution-artifact receipts, disposition-aware retention windows, and promoted window checkpoint manifests plus pointers for deterministic restore |
+| Decentralized adapter provenance security | `implemented_early` | `psionic-train` now owns signed manifest envelopes, worker/session/auth-subject binding, independently verifiable accepted provenance bundles, and typed reject or quarantine receipts for signature mismatch, reassignment, or stale-session cases |
 
 ## Current Crate Ownership
 
