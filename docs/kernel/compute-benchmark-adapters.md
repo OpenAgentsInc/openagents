@@ -1,6 +1,6 @@
 # Compute Benchmark Adapters
 
-This document defines the first benchmark-adapter layer landed for the compute
+This document defines the retained benchmark-adapter layer for the compute
 expansion.
 
 ## Purpose
@@ -24,6 +24,7 @@ It defines:
 
 - `ComputeBenchmarkAdapterKind`
   - currently `mmlu_multiple_choice_v1`
+  - `apple_adapter_eval_v1`
 - `ComputeBenchmarkImportRequest`
   - generic adapter input carrying benchmark family, suite ref, environment
     binding, compute linkage, timestamps, cases, run artifacts, and metadata
@@ -35,9 +36,9 @@ It defines:
   - generated `AppendComputeEvaluationSamplesRequest`
   - generated `FinalizeComputeEvaluationRunRequest`
 
-## Concrete Adapter
+## Concrete Adapters
 
-The first concrete adapter is `mmlu_multiple_choice_v1`.
+### `mmlu_multiple_choice_v1`
 
 Per-case metadata is captured as `MmluMultipleChoiceCaseMetadata`:
 
@@ -56,6 +57,40 @@ Adapter behavior:
   `benchmark_case`
 - stamps run-level metadata with `benchmark_adapter_kind`,
   `benchmark_family`, and `benchmark_suite_ref`
+
+### `apple_adapter_eval_v1`
+
+The Apple lane uses one mixed benchmark adapter rather than a separate import
+path per sample family.
+
+Per-case metadata is captured as `AppleAdapterBenchmarkCaseMetadata`:
+
+- `sample_kind`
+  - `supervised_fine_tune`
+  - `schema_free_guided_generation`
+  - `guided_generation_with_schema`
+  - `tool_calling`
+- `expected_output_digest`
+- `expected_output_text`
+- `observed_output_text`
+- optional `expected_structured_output`
+- optional `observed_structured_output`
+- optional `required_tool_names[]`
+- optional `observed_tool_calls[]`
+
+Adapter behavior:
+
+- converts each Apple benchmark case into a canonical
+  `ComputeEvaluationSample`
+- always emits `apple_adapter.text_match`
+- emits `apple_adapter.structured_output_match` for structured-generation
+  cases
+- emits `apple_adapter.tool_call_coverage` for tool-calling cases
+- averages emitted metrics into canonical `score_bps`
+- preserves the typed Apple case payload inside sample metadata under
+  `benchmark_case`
+- rejects malformed Apple imports before authority submission when required
+  structured output or required tool names are missing
 
 ## Integration Path
 
@@ -78,6 +113,8 @@ The landed tests cover:
 - adapter-unit validation in `openagents-kernel-core`
 - end-to-end MMLU import through `HttpKernelAuthorityClient` into Nexus eval
   endpoints in `apps/nexus-control`
+- mixed Apple adapter import cases in `openagents-kernel-core`, including
+  structured-output and tool-call scoring plus malformed-request rejection
 
 ## Next Integration Path
 

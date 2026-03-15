@@ -1,8 +1,18 @@
+use std::collections::BTreeSet;
+
 use crate::receipts::Money;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 pub const COMPUTE_LAUNCH_TAXONOMY_VERSION: &str = "compute.launch.v1";
+pub const COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION: &str =
+    "compute.apple_adapter_benchmark_package.v1";
+pub const COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION: &str =
+    "compute.apple_adapter_training_policy.v1";
+pub const COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION: &str =
+    "compute.apple_adapter_training_run.v1";
+
+const COMPUTE_APPLE_METADATA_KEY: &str = "apple_adapter";
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -223,6 +233,106 @@ impl ComputeAcceptedOutcomeKind {
             _ => None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAppleAdapterSampleKind {
+    SupervisedFineTune,
+    SchemaFreeGuidedGeneration,
+    GuidedGenerationWithSchema,
+    ToolCalling,
+}
+
+impl ComputeAppleAdapterSampleKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::SupervisedFineTune => "supervised_fine_tune",
+            Self::SchemaFreeGuidedGeneration => "schema_free_guided_generation",
+            Self::GuidedGenerationWithSchema => "guided_generation_with_schema",
+            Self::ToolCalling => "tool_calling",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "supervised_fine_tune" => Some(Self::SupervisedFineTune),
+            "schema_free_guided_generation" => Some(Self::SchemaFreeGuidedGeneration),
+            "guided_generation_with_schema" => Some(Self::GuidedGenerationWithSchema),
+            "tool_calling" => Some(Self::ToolCalling),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAppleRuntimeValidationPosture {
+    HeldOutOnly,
+    HeldOutAndRuntimeSmoke,
+    BenchmarkAndRuntimeSmoke,
+}
+
+impl ComputeAppleRuntimeValidationPosture {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HeldOutOnly => "held_out_only",
+            Self::HeldOutAndRuntimeSmoke => "held_out_and_runtime_smoke",
+            Self::BenchmarkAndRuntimeSmoke => "benchmark_and_runtime_smoke",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "held_out_only" => Some(Self::HeldOutOnly),
+            "held_out_and_runtime_smoke" => Some(Self::HeldOutAndRuntimeSmoke),
+            "benchmark_and_runtime_smoke" => Some(Self::BenchmarkAndRuntimeSmoke),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAppleBenchmarkPackageMetadata {
+    pub abi_version: String,
+    pub base_model_signature: String,
+    pub tokenizer_digest: String,
+    pub package_format_version: String,
+    pub environment_ref: String,
+    pub core_environment_ref: String,
+    pub environment_group_ref: String,
+    pub validator_policy_ref: String,
+    pub runtime_validation_posture: ComputeAppleRuntimeValidationPosture,
+    #[serde(default)]
+    pub sample_kinds: Vec<ComputeAppleAdapterSampleKind>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAppleTrainingPolicyMetadata {
+    pub abi_version: String,
+    pub base_model_signature: String,
+    pub tokenizer_digest: String,
+    pub package_format_version: String,
+    pub environment_ref: String,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    pub validator_policy_ref: String,
+    pub draft_model_present: bool,
+    pub runtime_validation_posture: ComputeAppleRuntimeValidationPosture,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAppleTrainingRunMetadata {
+    pub abi_version: String,
+    pub base_model_signature: String,
+    pub tokenizer_digest: String,
+    pub package_format_version: String,
+    pub environment_ref: String,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    pub validator_policy_ref: String,
+    pub draft_model_present: bool,
+    pub runtime_validation_posture: ComputeAppleRuntimeValidationPosture,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
@@ -1727,6 +1837,269 @@ pub fn validate_compute_benchmark_package(package: &ComputeBenchmarkPackage) -> 
             return Err("compute_benchmark_package_artifact_ref_invalid".to_string());
         }
     }
+    if let Some(adapter_kind) = package.adapter_kind.as_deref() {
+        if adapter_kind.trim().is_empty() {
+            return Err("compute_benchmark_adapter_kind_invalid".to_string());
+        }
+        if crate::compute_benchmarks::ComputeBenchmarkAdapterKind::parse(adapter_kind).is_none() {
+            return Err("compute_benchmark_adapter_kind_invalid".to_string());
+        }
+    }
+    if let Some(metadata) = compute_apple_benchmark_package_metadata(package)? {
+        validate_compute_apple_benchmark_package_metadata(package, &metadata)?;
+    }
+    Ok(())
+}
+
+fn apple_metadata_object(metadata: &Value) -> Option<&Value> {
+    metadata
+        .as_object()
+        .and_then(|object| object.get(COMPUTE_APPLE_METADATA_KEY))
+}
+
+fn deserialize_apple_metadata<T: DeserializeOwned>(
+    metadata: &Value,
+    missing_reason: &str,
+    invalid_prefix: &str,
+) -> Result<T, String> {
+    let payload = apple_metadata_object(metadata).ok_or_else(|| missing_reason.to_string())?;
+    serde_json::from_value(payload.clone()).map_err(|error| format!("{invalid_prefix}:{error}"))
+}
+
+fn trimmed_string_set(values: &[String]) -> BTreeSet<&str> {
+    values
+        .iter()
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn looks_like_apple_adapter_ref(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed.contains("apple_adapter")
+}
+
+fn benchmark_package_requires_apple_metadata(package: &ComputeBenchmarkPackage) -> bool {
+    apple_metadata_object(&package.metadata).is_some()
+        || package.adapter_kind.as_deref().is_some_and(|value| {
+            matches!(
+                crate::compute_benchmarks::ComputeBenchmarkAdapterKind::parse(value),
+                Some(crate::compute_benchmarks::ComputeBenchmarkAdapterKind::AppleAdapterEvalV1)
+            )
+        })
+        || looks_like_apple_adapter_ref(package.environment_ref.as_str())
+        || looks_like_apple_adapter_ref(package.benchmark_package_ref.as_str())
+}
+
+fn training_policy_requires_apple_metadata(policy: &ComputeTrainingPolicy) -> bool {
+    apple_metadata_object(&policy.metadata).is_some()
+        || policy
+            .environment_refs
+            .iter()
+            .any(|value| looks_like_apple_adapter_ref(value.as_str()))
+        || policy
+            .benchmark_package_refs
+            .iter()
+            .any(|value| looks_like_apple_adapter_ref(value.as_str()))
+}
+
+fn training_run_requires_apple_metadata(run: &ComputeTrainingRun) -> bool {
+    apple_metadata_object(&run.metadata).is_some()
+        || looks_like_apple_adapter_ref(run.environment_binding.environment_ref.as_str())
+        || run
+            .benchmark_package_refs
+            .iter()
+            .any(|value| looks_like_apple_adapter_ref(value.as_str()))
+}
+
+pub fn compute_apple_benchmark_package_metadata(
+    package: &ComputeBenchmarkPackage,
+) -> Result<Option<ComputeAppleBenchmarkPackageMetadata>, String> {
+    if !benchmark_package_requires_apple_metadata(package) {
+        return Ok(None);
+    }
+    let metadata = deserialize_apple_metadata::<ComputeAppleBenchmarkPackageMetadata>(
+        &package.metadata,
+        "compute_apple_benchmark_package_metadata_missing",
+        "compute_apple_benchmark_package_metadata_invalid",
+    )?;
+    Ok(Some(metadata))
+}
+
+pub fn validate_compute_apple_benchmark_package_metadata(
+    package: &ComputeBenchmarkPackage,
+    metadata: &ComputeAppleBenchmarkPackageMetadata,
+) -> Result<(), String> {
+    if metadata.abi_version != COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION {
+        return Err("compute_apple_benchmark_package_abi_version_invalid".to_string());
+    }
+    if metadata.base_model_signature.trim().is_empty() {
+        return Err("compute_apple_base_model_signature_missing".to_string());
+    }
+    if metadata.tokenizer_digest.trim().is_empty() {
+        return Err("compute_apple_tokenizer_digest_missing".to_string());
+    }
+    if metadata.package_format_version.trim().is_empty() {
+        return Err("compute_apple_package_format_version_missing".to_string());
+    }
+    if metadata.environment_ref.trim().is_empty() {
+        return Err("compute_apple_environment_ref_missing".to_string());
+    }
+    if metadata.environment_ref != package.environment_ref {
+        return Err("compute_apple_benchmark_package_environment_ref_mismatch".to_string());
+    }
+    if metadata.core_environment_ref.trim().is_empty() {
+        return Err("compute_apple_benchmark_package_core_environment_ref_missing".to_string());
+    }
+    if metadata.environment_group_ref.trim().is_empty() {
+        return Err("compute_apple_benchmark_package_environment_group_ref_missing".to_string());
+    }
+    if metadata.validator_policy_ref.trim().is_empty() {
+        return Err("compute_apple_validator_policy_ref_missing".to_string());
+    }
+    if metadata.sample_kinds.is_empty() {
+        return Err("compute_apple_benchmark_package_sample_kinds_missing".to_string());
+    }
+    if !package
+        .required_metric_ids
+        .iter()
+        .any(|metric_id| metric_id == "apple_adapter.text_match")
+    {
+        return Err("compute_apple_benchmark_package_required_metrics_missing".to_string());
+    }
+    if metadata
+        .sample_kinds
+        .iter()
+        .any(|kind| kind == &ComputeAppleAdapterSampleKind::GuidedGenerationWithSchema)
+        && !package
+            .required_metric_ids
+            .iter()
+            .any(|metric_id| metric_id == "apple_adapter.structured_output_match")
+    {
+        return Err("compute_apple_benchmark_package_required_metrics_missing".to_string());
+    }
+    if metadata
+        .sample_kinds
+        .iter()
+        .any(|kind| kind == &ComputeAppleAdapterSampleKind::ToolCalling)
+        && !package
+            .required_metric_ids
+            .iter()
+            .any(|metric_id| metric_id == "apple_adapter.tool_call_coverage")
+    {
+        return Err("compute_apple_benchmark_package_required_metrics_missing".to_string());
+    }
+    Ok(())
+}
+
+pub fn compute_apple_training_policy_metadata(
+    policy: &ComputeTrainingPolicy,
+) -> Result<Option<ComputeAppleTrainingPolicyMetadata>, String> {
+    if !training_policy_requires_apple_metadata(policy) {
+        return Ok(None);
+    }
+    let metadata = deserialize_apple_metadata::<ComputeAppleTrainingPolicyMetadata>(
+        &policy.metadata,
+        "compute_apple_training_policy_metadata_missing",
+        "compute_apple_training_policy_metadata_invalid",
+    )?;
+    Ok(Some(metadata))
+}
+
+fn validate_compute_apple_training_policy_metadata(
+    policy: &ComputeTrainingPolicy,
+    metadata: &ComputeAppleTrainingPolicyMetadata,
+) -> Result<(), String> {
+    if metadata.abi_version != COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION {
+        return Err("compute_apple_training_policy_abi_version_invalid".to_string());
+    }
+    if metadata.base_model_signature.trim().is_empty() {
+        return Err("compute_apple_base_model_signature_missing".to_string());
+    }
+    if metadata.tokenizer_digest.trim().is_empty() {
+        return Err("compute_apple_tokenizer_digest_missing".to_string());
+    }
+    if metadata.package_format_version.trim().is_empty() {
+        return Err("compute_apple_package_format_version_missing".to_string());
+    }
+    if metadata.environment_ref.trim().is_empty() {
+        return Err("compute_apple_environment_ref_missing".to_string());
+    }
+    if !policy
+        .environment_refs
+        .iter()
+        .any(|environment_ref| environment_ref == &metadata.environment_ref)
+    {
+        return Err("compute_apple_training_policy_environment_ref_mismatch".to_string());
+    }
+    if metadata.benchmark_package_refs.is_empty() {
+        return Err("compute_apple_benchmark_package_refs_missing".to_string());
+    }
+    if trimmed_string_set(policy.benchmark_package_refs.as_slice())
+        != trimmed_string_set(metadata.benchmark_package_refs.as_slice())
+    {
+        return Err("compute_apple_training_policy_benchmark_refs_mismatch".to_string());
+    }
+    if metadata.validator_policy_ref.trim().is_empty() {
+        return Err("compute_apple_validator_policy_ref_missing".to_string());
+    }
+    if metadata.validator_policy_ref != policy.validator_policy_ref {
+        return Err("compute_apple_training_policy_validator_policy_ref_mismatch".to_string());
+    }
+    Ok(())
+}
+
+pub fn compute_apple_training_run_metadata(
+    run: &ComputeTrainingRun,
+) -> Result<Option<ComputeAppleTrainingRunMetadata>, String> {
+    if !training_run_requires_apple_metadata(run) {
+        return Ok(None);
+    }
+    let metadata = deserialize_apple_metadata::<ComputeAppleTrainingRunMetadata>(
+        &run.metadata,
+        "compute_apple_training_run_metadata_missing",
+        "compute_apple_training_run_metadata_invalid",
+    )?;
+    Ok(Some(metadata))
+}
+
+fn validate_compute_apple_training_run_metadata(
+    run: &ComputeTrainingRun,
+    metadata: &ComputeAppleTrainingRunMetadata,
+) -> Result<(), String> {
+    if metadata.abi_version != COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION {
+        return Err("compute_apple_training_run_abi_version_invalid".to_string());
+    }
+    if metadata.base_model_signature.trim().is_empty() {
+        return Err("compute_apple_base_model_signature_missing".to_string());
+    }
+    if metadata.tokenizer_digest.trim().is_empty() {
+        return Err("compute_apple_tokenizer_digest_missing".to_string());
+    }
+    if metadata.package_format_version.trim().is_empty() {
+        return Err("compute_apple_package_format_version_missing".to_string());
+    }
+    if metadata.environment_ref.trim().is_empty() {
+        return Err("compute_apple_environment_ref_missing".to_string());
+    }
+    if metadata.environment_ref != run.environment_binding.environment_ref {
+        return Err("compute_apple_training_run_environment_ref_mismatch".to_string());
+    }
+    if metadata.benchmark_package_refs.is_empty() {
+        return Err("compute_apple_benchmark_package_refs_missing".to_string());
+    }
+    if trimmed_string_set(run.benchmark_package_refs.as_slice())
+        != trimmed_string_set(metadata.benchmark_package_refs.as_slice())
+    {
+        return Err("compute_apple_training_run_benchmark_refs_mismatch".to_string());
+    }
+    if metadata.validator_policy_ref.trim().is_empty() {
+        return Err("compute_apple_validator_policy_ref_missing".to_string());
+    }
+    if metadata.validator_policy_ref != run.validator_policy_ref {
+        return Err("compute_apple_training_run_validator_policy_ref_mismatch".to_string());
+    }
     Ok(())
 }
 
@@ -1766,6 +2139,9 @@ pub fn validate_compute_training_policy(policy: &ComputeTrainingPolicy) -> Resul
         if stage_policy_ref.trim().is_empty() {
             return Err("compute_training_policy_stage_policy_ref_invalid".to_string());
         }
+    }
+    if let Some(metadata) = compute_apple_training_policy_metadata(policy)? {
+        validate_compute_apple_training_policy_metadata(policy, &metadata)?;
     }
     Ok(())
 }
@@ -1861,6 +2237,9 @@ pub fn validate_compute_training_run(run: &ComputeTrainingRun) -> Result<(), Str
     }
     if let Some(summary) = run.summary.as_ref() {
         validate_compute_training_summary(summary)?;
+    }
+    if let Some(metadata) = compute_apple_training_run_metadata(run)? {
+        validate_compute_apple_training_run_metadata(run, &metadata)?;
     }
     Ok(())
 }
@@ -2720,29 +3099,34 @@ pub fn validate_launch_compute_product(
 #[cfg(test)]
 mod tests {
     use super::{
-        COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind,
-        ComputeBackendFamily, ComputeBenchmarkPackage, ComputeCapabilityEnvelope,
-        ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy,
-        ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
-        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
-        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
-        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
-        ComputeEvaluationRunStatus, ComputeEvaluationSampleStatus, ComputeEvaluationSummary,
-        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeProduct,
-        ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind, ComputeRegistryStatus,
-        ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
-        ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
-        ComputeTrainingPolicy, ComputeTrainingRun, ComputeTrainingRunStatus,
-        ComputeTrainingSummary, ComputeValidatorPolicy, ComputeValidatorRequirements,
-        DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence, DeliveryTopologyEvidence,
-        DeliveryVerificationEvidence, GptOssRuntimeCapability,
-        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
-        PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
-        validate_compute_accepted_outcome, validate_compute_benchmark_package,
-        validate_compute_capability_envelope, validate_compute_checkpoint_family_policy,
-        validate_compute_environment_package, validate_compute_synthetic_data_job,
-        validate_compute_synthetic_data_sample, validate_compute_training_policy,
-        validate_compute_training_run, validate_compute_validator_policy, validate_delivery_proof,
+        COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION,
+        COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION,
+        COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION, COMPUTE_LAUNCH_TAXONOMY_VERSION,
+        ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAppleAdapterSampleKind,
+        ComputeAppleBenchmarkPackageMetadata, ComputeAppleRuntimeValidationPosture,
+        ComputeAppleTrainingPolicyMetadata, ComputeAppleTrainingRunMetadata, ComputeBackendFamily,
+        ComputeBenchmarkPackage, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
+        ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
+        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
+        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
+        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSampleStatus,
+        ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
+        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
+        ComputeRegistryStatus, ComputeSettlementMode, ComputeSyntheticDataJob,
+        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
+        ComputeSyntheticDataSampleStatus, ComputeTopologyKind, ComputeTrainingPolicy,
+        ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
+        ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
+        DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
+        GptOssRuntimeCapability, PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
+        PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
+        canonical_compute_product_id, validate_compute_accepted_outcome,
+        validate_compute_benchmark_package, validate_compute_capability_envelope,
+        validate_compute_checkpoint_family_policy, validate_compute_environment_package,
+        validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
+        validate_compute_training_policy, validate_compute_training_run,
+        validate_compute_validator_policy, validate_delivery_proof,
         validate_launch_compute_product,
     };
     use serde_json::json;
@@ -2952,6 +3336,53 @@ mod tests {
         }
     }
 
+    fn apple_benchmark_package() -> ComputeBenchmarkPackage {
+        ComputeBenchmarkPackage {
+            benchmark_package_ref: "benchmark://apple_adapter/helpdesk/reference".to_string(),
+            version: "2026.03.15".to_string(),
+            family: "apple_adapter.helpdesk".to_string(),
+            display_name: "Apple Adapter Helpdesk".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_614_000,
+            updated_at_ms: 1_762_000_615_000,
+            status: ComputeRegistryStatus::Active,
+            environment_ref: "env.openagents.apple_adapter.helpdesk.benchmark".to_string(),
+            environment_version: Some("2026.03.15".to_string()),
+            benchmark_suite_ref: Some(
+                "benchmark://apple_adapter/helpdesk/reference-suite".to_string(),
+            ),
+            adapter_kind: Some("apple_adapter_eval_v1".to_string()),
+            evaluator_policy_ref: Some("policy://eval/apple_adapter/helpdesk".to_string()),
+            pass_threshold_bps: Some(9_000),
+            required_metric_ids: vec![
+                "apple_adapter.text_match".to_string(),
+                "apple_adapter.structured_output_match".to_string(),
+                "apple_adapter.tool_call_coverage".to_string(),
+            ],
+            artifact_refs: vec!["artifact://benchmarks/apple_adapter/helpdesk".to_string()],
+            metadata: json!({
+                "apple_adapter": serde_json::to_value(ComputeAppleBenchmarkPackageMetadata {
+                    abi_version: COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION.to_string(),
+                    base_model_signature: "apple.foundation.v1".to_string(),
+                    tokenizer_digest: "sha256:apple-tokenizer".to_string(),
+                    package_format_version: "1".to_string(),
+                    environment_ref: "env.openagents.apple_adapter.helpdesk.benchmark".to_string(),
+                    core_environment_ref: "env.openagents.apple_adapter.helpdesk.core".to_string(),
+                    environment_group_ref: "group.apple_adapter.helpdesk".to_string(),
+                    validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+                    runtime_validation_posture:
+                        ComputeAppleRuntimeValidationPosture::BenchmarkAndRuntimeSmoke,
+                    sample_kinds: vec![
+                        ComputeAppleAdapterSampleKind::SupervisedFineTune,
+                        ComputeAppleAdapterSampleKind::GuidedGenerationWithSchema,
+                        ComputeAppleAdapterSampleKind::ToolCalling,
+                    ],
+                })
+                .expect("metadata"),
+            }),
+        }
+    }
+
     fn training_policy() -> ComputeTrainingPolicy {
         ComputeTrainingPolicy {
             training_policy_ref: "policy://training/math/basic".to_string(),
@@ -2970,6 +3401,41 @@ mod tests {
                 "policy://training/math/basic/rl".to_string(),
             ],
             metadata: json!({"curriculum_policy_ref": "policy://curriculum/math/basic"}),
+        }
+    }
+
+    fn apple_training_policy() -> ComputeTrainingPolicy {
+        ComputeTrainingPolicy {
+            training_policy_ref: "policy://training/apple_adapter/helpdesk".to_string(),
+            version: "2026.03.15".to_string(),
+            owner_id: "openagents".to_string(),
+            created_at_ms: 1_762_000_616_000,
+            updated_at_ms: 1_762_000_617_000,
+            status: ComputeRegistryStatus::Active,
+            environment_refs: vec!["env.openagents.apple_adapter.helpdesk.core".to_string()],
+            checkpoint_family: "apple_adapter".to_string(),
+            validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+            benchmark_package_refs: vec![
+                "benchmark://apple_adapter/helpdesk/reference".to_string(),
+            ],
+            stage_policy_refs: vec!["policy://training/apple_adapter/helpdesk/sft".to_string()],
+            metadata: json!({
+                "apple_adapter": serde_json::to_value(ComputeAppleTrainingPolicyMetadata {
+                    abi_version: COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION.to_string(),
+                    base_model_signature: "apple.foundation.v1".to_string(),
+                    tokenizer_digest: "sha256:apple-tokenizer".to_string(),
+                    package_format_version: "1".to_string(),
+                    environment_ref: "env.openagents.apple_adapter.helpdesk.core".to_string(),
+                    benchmark_package_refs: vec![
+                        "benchmark://apple_adapter/helpdesk/reference".to_string(),
+                    ],
+                    validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+                    draft_model_present: false,
+                    runtime_validation_posture:
+                        ComputeAppleRuntimeValidationPosture::BenchmarkAndRuntimeSmoke,
+                })
+                .expect("metadata"),
+            }),
         }
     }
 
@@ -3032,6 +3498,89 @@ mod tests {
                 }],
             }),
             metadata: json!({"stability_verdict": "continue"}),
+        }
+    }
+
+    fn apple_training_run() -> ComputeTrainingRun {
+        ComputeTrainingRun {
+            training_run_id: "train.apple_adapter.helpdesk.alpha".to_string(),
+            training_policy_ref: "policy://training/apple_adapter/helpdesk".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.apple_adapter.helpdesk.core".to_string(),
+                environment_version: Some("2026.03.15".to_string()),
+                dataset_ref: Some("dataset://apple_adapter/helpdesk/train".to_string()),
+                rubric_ref: Some("rubric://apple_adapter/helpdesk".to_string()),
+                evaluator_policy_ref: Some("policy://eval/apple_adapter/helpdesk".to_string()),
+            },
+            checkpoint_binding: ComputeCheckpointBinding {
+                checkpoint_family: "apple_adapter".to_string(),
+                latest_checkpoint_ref: Some("checkpoint://apple_adapter/base".to_string()),
+                recovery_posture: Some("warm-resume".to_string()),
+            },
+            validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+            benchmark_package_refs: vec![
+                "benchmark://apple_adapter/helpdesk/reference".to_string(),
+            ],
+            product_id: Some("psionic.training.apple_adapter.sft".to_string()),
+            capacity_lot_id: Some("lot.apple_adapter.alpha".to_string()),
+            instrument_id: Some("instrument.apple_adapter.alpha".to_string()),
+            delivery_proof_id: Some("delivery.apple_adapter.alpha".to_string()),
+            model_ref: Some("model://apple.foundation".to_string()),
+            source_ref: Some("artifact://training/apple_adapter/helpdesk".to_string()),
+            rollout_verification_eval_run_ids: vec!["eval.apple_adapter.alpha".to_string()],
+            created_at_ms: 1_762_000_618_000,
+            started_at_ms: Some(1_762_000_619_000),
+            finalized_at_ms: Some(1_762_000_620_000),
+            expected_step_count: Some(32),
+            completed_step_count: Some(32),
+            status: ComputeTrainingRunStatus::Accepted,
+            final_checkpoint_ref: Some(
+                "checkpoint://apple_adapter/train.apple_adapter.helpdesk.alpha/final".to_string(),
+            ),
+            promotion_checkpoint_ref: Some(
+                "checkpoint://apple_adapter/train.apple_adapter.helpdesk.alpha/promotion"
+                    .to_string(),
+            ),
+            summary: Some(ComputeTrainingSummary {
+                completed_step_count: Some(32),
+                processed_token_count: Some(64_000),
+                average_loss: Some(0.31),
+                best_eval_score_bps: Some(9_600),
+                accepted_checkpoint_ref: Some(
+                    "checkpoint://apple_adapter/train.apple_adapter.helpdesk.alpha/promotion"
+                        .to_string(),
+                ),
+                aggregate_metrics: vec![ComputeEvaluationMetric {
+                    metric_id: "apple_adapter.text_match".to_string(),
+                    metric_value: 0.96,
+                    unit: Some("fraction".to_string()),
+                    metadata: json!({"benchmark_package_ref": "benchmark://apple_adapter/helpdesk/reference"}),
+                }],
+                artifacts: vec![ComputeEvaluationArtifact {
+                    artifact_kind: "training_manifest".to_string(),
+                    artifact_ref: "artifact://training/apple_adapter/helpdesk/manifest".to_string(),
+                    digest: Some("sha256:apple-train-manifest".to_string()),
+                    metadata: json!({"schema": "v1"}),
+                }],
+            }),
+            metadata: json!({
+                "apple_adapter": serde_json::to_value(ComputeAppleTrainingRunMetadata {
+                    abi_version: COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION.to_string(),
+                    base_model_signature: "apple.foundation.v1".to_string(),
+                    tokenizer_digest: "sha256:apple-tokenizer".to_string(),
+                    package_format_version: "1".to_string(),
+                    environment_ref: "env.openagents.apple_adapter.helpdesk.core".to_string(),
+                    benchmark_package_refs: vec![
+                        "benchmark://apple_adapter/helpdesk/reference".to_string(),
+                    ],
+                    validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+                    draft_model_present: false,
+                    runtime_validation_posture:
+                        ComputeAppleRuntimeValidationPosture::HeldOutAndRuntimeSmoke,
+                })
+                .expect("metadata"),
+                "stability_verdict": "continue",
+            }),
         }
     }
 
@@ -3213,6 +3762,14 @@ mod tests {
     }
 
     #[test]
+    fn validates_apple_adapter_training_registry_contracts() {
+        validate_compute_benchmark_package(&apple_benchmark_package())
+            .expect("apple benchmark package should validate");
+        validate_compute_training_policy(&apple_training_policy())
+            .expect("apple training policy should validate");
+    }
+
+    #[test]
     fn validates_training_run_and_accepted_outcomes() {
         let training = training_run();
         validate_compute_training_run(&training).expect("training run should validate");
@@ -3273,12 +3830,63 @@ mod tests {
     }
 
     #[test]
+    fn validates_apple_adapter_training_run() {
+        validate_compute_training_run(&apple_training_run())
+            .expect("apple training run should validate");
+    }
+
+    #[test]
     fn rejects_accepted_training_run_without_final_checkpoint() {
         let mut training = training_run();
         training.final_checkpoint_ref = None;
         let err = validate_compute_training_run(&training)
             .expect_err("accepted training run should require final checkpoint");
         assert_eq!(err, "compute_training_final_checkpoint_ref_missing");
+    }
+
+    #[test]
+    fn rejects_apple_benchmark_package_without_required_metrics() {
+        let mut package = apple_benchmark_package();
+        package.required_metric_ids = vec!["apple_adapter.text_match".to_string()];
+        let err = validate_compute_benchmark_package(&package)
+            .expect_err("apple benchmark package should require all Apple metrics");
+        assert_eq!(
+            err,
+            "compute_apple_benchmark_package_required_metrics_missing"
+        );
+    }
+
+    #[test]
+    fn rejects_apple_training_policy_without_typed_metadata() {
+        let mut policy = apple_training_policy();
+        policy.metadata = json!({});
+        let err = validate_compute_training_policy(&policy)
+            .expect_err("apple policy should require typed metadata");
+        assert_eq!(err, "compute_apple_training_policy_metadata_missing");
+    }
+
+    #[test]
+    fn rejects_apple_training_run_with_mismatched_validator_policy_ref() {
+        let mut run = apple_training_run();
+        run.metadata = json!({
+            "apple_adapter": {
+                "abi_version": COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION,
+                "base_model_signature": "apple.foundation.v1",
+                "tokenizer_digest": "sha256:apple-tokenizer",
+                "package_format_version": "1",
+                "environment_ref": "env.openagents.apple_adapter.helpdesk.core",
+                "benchmark_package_refs": ["benchmark://apple_adapter/helpdesk/reference"],
+                "validator_policy_ref": "policy://validator/other",
+                "draft_model_present": false,
+                "runtime_validation_posture": "held_out_and_runtime_smoke"
+            }
+        });
+        let err = validate_compute_training_run(&run)
+            .expect_err("apple run should reject mismatched validator refs");
+        assert_eq!(
+            err,
+            "compute_apple_training_run_validator_policy_ref_mismatch"
+        );
     }
 
     #[test]

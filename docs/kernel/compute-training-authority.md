@@ -56,6 +56,42 @@ All four registries are:
 - readable through list/get surfaces
 - emitted through typed proto contracts and the typed `HttpKernelAuthorityClient`
 
+## Apple Adapter Metadata Discipline
+
+The authority objects remain generic overall, but the kernel now reserves one
+typed metadata extension for the Apple adapter lane:
+
+- `metadata.apple_adapter`
+
+The nested payload is parsed into typed Rust contracts before persistence for:
+
+- `ComputeBenchmarkPackage`
+  - ABI version `compute.apple_adapter_benchmark_package.v1`
+- `ComputeTrainingPolicy`
+  - ABI version `compute.apple_adapter_training_policy.v1`
+- `ComputeTrainingRun`
+  - ABI version `compute.apple_adapter_training_run.v1`
+
+These typed payloads carry the Apple lineage and admissibility anchors that the
+generic registry fields do not model directly:
+
+- base-model signature
+- tokenizer digest
+- `.fmadapter` package-format version
+- canonical environment ref
+- canonical benchmark-package refs
+- validator policy ref
+- draft-model presence
+- Apple runtime-validation posture
+
+For Apple benchmark packages the typed payload also carries:
+
+- benchmark environment group and core-environment refs
+- admitted Apple sample kinds for the package
+
+This keeps the top-level authority objects generic while preventing later Apple
+training receipts from surviving as opaque or nullable JSON blobs.
+
 ## Run And Outcome Objects
 
 The authority now also manages:
@@ -94,6 +130,14 @@ They keep one machine-legible accepted record with:
   against the environment registry
 - training policy registration requires the referenced checkpoint family,
   validator policy, benchmark packages, and environments to exist
+- Apple benchmark packages additionally require:
+  - a known benchmark adapter kind
+  - typed `metadata.apple_adapter`
+  - the Apple environment ref to match the top-level environment binding
+  - the required metric set for the declared Apple sample kinds
+- Apple training policies additionally require typed `metadata.apple_adapter`
+  with environment, benchmark-package, and validator refs that match the
+  top-level policy object
 
 ### Training run creation
 
@@ -104,6 +148,9 @@ They keep one machine-legible accepted record with:
 - benchmark packages must exist and match the resolved environment
 - Nexus resolves and locks `environment_version`
 - only non-terminal initial statuses are accepted on create
+- Apple training runs additionally require typed `metadata.apple_adapter`
+  whose environment ref, benchmark-package refs, and validator policy ref
+  match the top-level run object before authority persistence
 
 ### Training run finalize
 
@@ -182,6 +229,8 @@ The landed regression coverage now includes:
 
 - kernel validation tests for registry, training-run, and accepted-outcome
   contracts in `openagents-kernel-core`
+- Apple-specific kernel validation tests for malformed benchmark-package,
+  training-policy, and training-run metadata in `openagents-kernel-core`
 - Nexus state-machine tests covering eval and training accepted-outcome flows
 - generated-contract HTTP roundtrip coverage through `HttpKernelAuthorityClient`
   for all new registries, training runs, and accepted outcomes
