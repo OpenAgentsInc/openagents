@@ -26,6 +26,7 @@ use openagents_kernel_core::compute::{
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{Money, MoneyAmount};
 use openagents_provider_substrate::ProviderDesiredMode;
+use psionic_apple_fm::{AppleFmAdapterInventoryEntry, AppleFmAdapterSelection};
 use psionic_sandbox::{
     InMemorySandboxJobService, ProviderSandboxBackgroundJobSnapshot, ProviderSandboxEntrypointType,
     ProviderSandboxExecutionControls, ProviderSandboxFileTransferReceipt,
@@ -46,6 +47,9 @@ use crate::app_state::{
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
     SnapshotTimingSample, mission_control_buy_mode_interval_label,
     mission_control_local_runtime_view_model,
+};
+use crate::apple_fm_bridge::{
+    AppleFmBridgeCommand, AppleFmWorkbenchCommand, AppleFmWorkbenchOperation,
 };
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceRuntimeCommand, LocalRuntimeDiagnostics};
@@ -185,6 +189,11 @@ pub struct DesktopControlAppleFmStatus {
     pub ready: bool,
     pub model_available: bool,
     pub ready_model: Option<String>,
+    pub adapter_inventory_supported: bool,
+    pub adapter_attach_supported: bool,
+    pub loaded_adapters: Vec<AppleFmAdapterInventoryEntry>,
+    pub active_session_id: Option<String>,
+    pub active_session_adapter: Option<AppleFmAdapterSelection>,
     pub bridge_status: Option<String>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
@@ -801,6 +810,20 @@ pub enum DesktopControlActionRequest {
     },
     RefreshLocalRuntime,
     RefreshAppleFm,
+    LoadAppleFmAdapter {
+        package_path: String,
+        requested_adapter_id: Option<String>,
+    },
+    UnloadAppleFmAdapter {
+        adapter_id: String,
+    },
+    AttachAppleFmSessionAdapter {
+        session_id: String,
+        adapter_id: String,
+    },
+    DetachAppleFmSessionAdapter {
+        session_id: String,
+    },
     RunAppleFmSmokeTest,
     RefreshGptOss,
     WarmGptOss,
@@ -864,6 +887,10 @@ impl DesktopControlActionRequest {
             Self::SetProviderMode { online: false } => "provider-offline",
             Self::RefreshLocalRuntime => "local-runtime-refresh",
             Self::RefreshAppleFm => "apple-fm-refresh",
+            Self::LoadAppleFmAdapter { .. } => "apple-fm-load-adapter",
+            Self::UnloadAppleFmAdapter { .. } => "apple-fm-unload-adapter",
+            Self::AttachAppleFmSessionAdapter { .. } => "apple-fm-attach-adapter",
+            Self::DetachAppleFmSessionAdapter { .. } => "apple-fm-detach-adapter",
             Self::RunAppleFmSmokeTest => "apple-fm-smoke-test",
             Self::RefreshGptOss => "gpt-oss-refresh",
             Self::WarmGptOss => "gpt-oss-warm",
@@ -1650,7 +1677,6 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         }
         DesktopControlActionRequest::RefreshLocalRuntime
         | DesktopControlActionRequest::RefreshAppleFm
-        | DesktopControlActionRequest::RunAppleFmSmokeTest
         | DesktopControlActionRequest::RefreshGptOss
         | DesktopControlActionRequest::WarmGptOss
         | DesktopControlActionRequest::UnloadGptOss
@@ -1659,6 +1685,33 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::StopBuyMode
         | DesktopControlActionRequest::GetActiveJob
         | DesktopControlActionRequest::SelectNip28MainChannel => {
+            json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::LoadAppleFmAdapter {
+            package_path,
+            requested_adapter_id,
+        } => json!({
+            "command_label": action.label(),
+            "package_path": package_path,
+            "requested_adapter_id": requested_adapter_id,
+        }),
+        DesktopControlActionRequest::UnloadAppleFmAdapter { adapter_id } => json!({
+            "command_label": action.label(),
+            "adapter_id": adapter_id,
+        }),
+        DesktopControlActionRequest::AttachAppleFmSessionAdapter {
+            session_id,
+            adapter_id,
+        } => json!({
+            "command_label": action.label(),
+            "session_id": session_id,
+            "adapter_id": adapter_id,
+        }),
+        DesktopControlActionRequest::DetachAppleFmSessionAdapter { session_id } => json!({
+            "command_label": action.label(),
+            "session_id": session_id,
+        }),
+        DesktopControlActionRequest::RunAppleFmSmokeTest => {
             json!({ "command_label": action.label() })
         }
         DesktopControlActionRequest::GetNip90SentPaymentsReport {
@@ -2000,11 +2053,20 @@ fn gpt_oss_status_summary(status: &DesktopControlGptOssStatus) -> String {
 fn apple_fm_status_summary(status: &DesktopControlAppleFmStatus) -> String {
     if status.ready {
         format!(
-            "apple fm ready model={}",
-            status.ready_model.as_deref().unwrap_or("unknown")
+            "apple fm ready model={} adapters={} attached={}",
+            status.ready_model.as_deref().unwrap_or("unknown"),
+            status.loaded_adapters.len(),
+            status
+                .active_session_adapter
+                .as_ref()
+                .map(|adapter| adapter.adapter_id.as_str())
+                .unwrap_or("-")
         )
     } else if status.reachable {
-        "apple fm reachable; waiting for model readiness".to_string()
+        format!(
+            "apple fm reachable; waiting for model readiness adapters={}",
+            status.loaded_adapters.len()
+        )
     } else {
         status
             .last_error
@@ -2465,6 +2527,28 @@ fn apply_action_request(
             refresh_local_runtime_action(state).into()
         }
         DesktopControlActionRequest::RefreshAppleFm => refresh_apple_fm_action(state).into(),
+        DesktopControlActionRequest::LoadAppleFmAdapter {
+            package_path,
+            requested_adapter_id,
+        } => load_apple_fm_adapter_action(
+            state,
+            package_path.as_str(),
+            requested_adapter_id.as_deref(),
+        )
+        .into(),
+        DesktopControlActionRequest::UnloadAppleFmAdapter { adapter_id } => {
+            unload_apple_fm_adapter_action(state, adapter_id.as_str()).into()
+        }
+        DesktopControlActionRequest::AttachAppleFmSessionAdapter {
+            session_id,
+            adapter_id,
+        } => {
+            attach_apple_fm_session_adapter_action(state, session_id.as_str(), adapter_id.as_str())
+                .into()
+        }
+        DesktopControlActionRequest::DetachAppleFmSessionAdapter { session_id } => {
+            detach_apple_fm_session_adapter_action(state, session_id.as_str()).into()
+        }
         DesktopControlActionRequest::RunAppleFmSmokeTest => {
             run_apple_fm_smoke_test_action(state).into()
         }
@@ -2857,6 +2941,146 @@ fn refresh_apple_fm_action(state: &mut RenderState) -> DesktopControlActionRespo
         );
     }
     mission_control_status_response(state, "Queued Apple FM refresh")
+}
+
+fn queue_apple_fm_workbench_command_response(
+    state: &mut RenderState,
+    command: AppleFmWorkbenchCommand,
+    success_label: &str,
+) -> DesktopControlActionResponse {
+    match state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Workbench(command)) {
+        Ok(()) => {
+            state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Loading;
+            state.apple_fm_workbench.last_error = None;
+            state.apple_fm_workbench.last_action = Some(success_label.to_string());
+            state.mission_control.record_action(success_label);
+            DesktopControlActionResponse::ok(success_label)
+        }
+        Err(error) => {
+            state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Error;
+            state.apple_fm_workbench.last_error = Some(error.clone());
+            state.apple_fm_workbench.last_action =
+                Some("Apple FM desktop control enqueue failed".to_string());
+            state.mission_control.last_action =
+                Some("Apple FM desktop control action failed".to_string());
+            state.mission_control.last_error = Some(error.clone());
+            DesktopControlActionResponse::error(error)
+        }
+    }
+}
+
+fn load_apple_fm_adapter_action(
+    state: &mut RenderState,
+    package_path: &str,
+    requested_adapter_id: Option<&str>,
+) -> DesktopControlActionResponse {
+    let request_id = format!(
+        "desktop-control-apple-fm-{}",
+        state.reserve_runtime_command_seq()
+    );
+    queue_apple_fm_workbench_command_response(
+        state,
+        AppleFmWorkbenchCommand {
+            request_id,
+            operation: AppleFmWorkbenchOperation::LoadAdapter,
+            instructions: None,
+            prompt: None,
+            requested_model: None,
+            session_id: None,
+            adapter_id: requested_adapter_id.map(ToString::to_string),
+            adapter_package_path: Some(package_path.to_string()),
+            options: None,
+            schema_json: None,
+            transcript_json: None,
+            tool_mode: crate::apple_fm_bridge::AppleFmWorkbenchToolMode::None,
+        },
+        "Queued Apple FM adapter load",
+    )
+}
+
+fn unload_apple_fm_adapter_action(
+    state: &mut RenderState,
+    adapter_id: &str,
+) -> DesktopControlActionResponse {
+    let request_id = format!(
+        "desktop-control-apple-fm-{}",
+        state.reserve_runtime_command_seq()
+    );
+    queue_apple_fm_workbench_command_response(
+        state,
+        AppleFmWorkbenchCommand {
+            request_id,
+            operation: AppleFmWorkbenchOperation::UnloadAdapter,
+            instructions: None,
+            prompt: None,
+            requested_model: None,
+            session_id: None,
+            adapter_id: Some(adapter_id.to_string()),
+            adapter_package_path: None,
+            options: None,
+            schema_json: None,
+            transcript_json: None,
+            tool_mode: crate::apple_fm_bridge::AppleFmWorkbenchToolMode::None,
+        },
+        "Queued Apple FM adapter unload",
+    )
+}
+
+fn attach_apple_fm_session_adapter_action(
+    state: &mut RenderState,
+    session_id: &str,
+    adapter_id: &str,
+) -> DesktopControlActionResponse {
+    let request_id = format!(
+        "desktop-control-apple-fm-{}",
+        state.reserve_runtime_command_seq()
+    );
+    queue_apple_fm_workbench_command_response(
+        state,
+        AppleFmWorkbenchCommand {
+            request_id,
+            operation: AppleFmWorkbenchOperation::AttachSessionAdapter,
+            instructions: None,
+            prompt: None,
+            requested_model: None,
+            session_id: Some(session_id.to_string()),
+            adapter_id: Some(adapter_id.to_string()),
+            adapter_package_path: None,
+            options: None,
+            schema_json: None,
+            transcript_json: None,
+            tool_mode: crate::apple_fm_bridge::AppleFmWorkbenchToolMode::None,
+        },
+        "Queued Apple FM session adapter attach",
+    )
+}
+
+fn detach_apple_fm_session_adapter_action(
+    state: &mut RenderState,
+    session_id: &str,
+) -> DesktopControlActionResponse {
+    let request_id = format!(
+        "desktop-control-apple-fm-{}",
+        state.reserve_runtime_command_seq()
+    );
+    queue_apple_fm_workbench_command_response(
+        state,
+        AppleFmWorkbenchCommand {
+            request_id,
+            operation: AppleFmWorkbenchOperation::DetachSessionAdapter,
+            instructions: None,
+            prompt: None,
+            requested_model: None,
+            session_id: Some(session_id.to_string()),
+            adapter_id: None,
+            adapter_package_path: None,
+            options: None,
+            schema_json: None,
+            transcript_json: None,
+            tool_mode: crate::apple_fm_bridge::AppleFmWorkbenchToolMode::None,
+        },
+        "Queued Apple FM session adapter detach",
+    )
 }
 
 fn run_apple_fm_smoke_test_action(state: &mut RenderState) -> DesktopControlActionResponse {
@@ -5372,6 +5596,14 @@ fn snapshot_for_state_with_signature(
             ready: state.provider_runtime.apple_fm.is_ready(),
             model_available: state.provider_runtime.apple_fm.model_available,
             ready_model: state.provider_runtime.apple_fm.ready_model.clone(),
+            adapter_inventory_supported: state
+                .provider_runtime
+                .apple_fm
+                .adapter_inventory_supported,
+            adapter_attach_supported: state.provider_runtime.apple_fm.adapter_attach_supported,
+            loaded_adapters: state.provider_runtime.apple_fm.loaded_adapters.clone(),
+            active_session_id: state.apple_fm_workbench.active_session_id.clone(),
+            active_session_adapter: state.apple_fm_workbench.active_session_adapter.clone(),
             bridge_status: state.provider_runtime.apple_fm.bridge_status.clone(),
             last_action: state.provider_runtime.apple_fm.last_action.clone(),
             last_error: state.provider_runtime.apple_fm.last_error.clone(),
@@ -6226,6 +6458,11 @@ mod tests {
                 ready: true,
                 model_available: true,
                 ready_model: Some("apple-foundation-model".to_string()),
+                adapter_inventory_supported: true,
+                adapter_attach_supported: true,
+                loaded_adapters: Vec::new(),
+                active_session_id: None,
+                active_session_adapter: None,
                 bridge_status: Some("running".to_string()),
                 last_action: Some("Refreshed Apple FM bridge health; model ready.".to_string()),
                 last_error: None,

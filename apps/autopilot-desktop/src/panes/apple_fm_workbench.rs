@@ -11,15 +11,18 @@ use crate::pane_renderer::{
     paint_action_button, paint_secondary_button, paint_wrapped_label_line, split_text_for_display,
 };
 use crate::pane_system::{
+    apple_fm_workbench_adapter_id_input_bounds, apple_fm_workbench_adapter_package_input_bounds,
+    apple_fm_workbench_attach_adapter_button_bounds,
     apple_fm_workbench_create_session_button_bounds,
-    apple_fm_workbench_delete_session_button_bounds, apple_fm_workbench_event_log_bounds,
+    apple_fm_workbench_delete_session_button_bounds,
+    apple_fm_workbench_detach_adapter_button_bounds, apple_fm_workbench_event_log_bounds,
     apple_fm_workbench_export_transcript_button_bounds,
     apple_fm_workbench_inspect_session_button_bounds, apple_fm_workbench_instructions_input_bounds,
-    apple_fm_workbench_layout, apple_fm_workbench_max_tokens_input_bounds,
-    apple_fm_workbench_model_input_bounds, apple_fm_workbench_options_details_bounds,
-    apple_fm_workbench_output_bounds, apple_fm_workbench_probability_threshold_input_bounds,
-    apple_fm_workbench_prompt_input_bounds, apple_fm_workbench_refresh_button_bounds,
-    apple_fm_workbench_reset_session_button_bounds,
+    apple_fm_workbench_layout, apple_fm_workbench_load_adapter_button_bounds,
+    apple_fm_workbench_max_tokens_input_bounds, apple_fm_workbench_model_input_bounds,
+    apple_fm_workbench_options_details_bounds, apple_fm_workbench_output_bounds,
+    apple_fm_workbench_probability_threshold_input_bounds, apple_fm_workbench_prompt_input_bounds,
+    apple_fm_workbench_refresh_button_bounds, apple_fm_workbench_reset_session_button_bounds,
     apple_fm_workbench_restore_transcript_button_bounds, apple_fm_workbench_run_chat_button_bounds,
     apple_fm_workbench_run_session_button_bounds, apple_fm_workbench_run_stream_button_bounds,
     apple_fm_workbench_run_structured_button_bounds, apple_fm_workbench_run_text_button_bounds,
@@ -27,7 +30,8 @@ use crate::pane_system::{
     apple_fm_workbench_seed_input_bounds, apple_fm_workbench_session_input_bounds,
     apple_fm_workbench_start_bridge_button_bounds, apple_fm_workbench_temperature_input_bounds,
     apple_fm_workbench_tool_profile_button_bounds, apple_fm_workbench_top_input_bounds,
-    apple_fm_workbench_transcript_input_bounds, pane_content_bounds,
+    apple_fm_workbench_transcript_input_bounds, apple_fm_workbench_unload_adapter_button_bounds,
+    pane_content_bounds,
 };
 
 const OUTPUT_SECTION_LABEL_GAP: f32 = 14.0;
@@ -47,6 +51,10 @@ pub fn paint(
     let start_bounds = apple_fm_workbench_start_bridge_button_bounds(content_bounds);
     let create_bounds = apple_fm_workbench_create_session_button_bounds(content_bounds);
     let inspect_bounds = apple_fm_workbench_inspect_session_button_bounds(content_bounds);
+    let load_adapter_bounds = apple_fm_workbench_load_adapter_button_bounds(content_bounds);
+    let unload_adapter_bounds = apple_fm_workbench_unload_adapter_button_bounds(content_bounds);
+    let attach_adapter_bounds = apple_fm_workbench_attach_adapter_button_bounds(content_bounds);
+    let detach_adapter_bounds = apple_fm_workbench_detach_adapter_button_bounds(content_bounds);
     let reset_bounds = apple_fm_workbench_reset_session_button_bounds(content_bounds);
     let delete_bounds = apple_fm_workbench_delete_session_button_bounds(content_bounds);
     let run_text_bounds = apple_fm_workbench_run_text_button_bounds(content_bounds);
@@ -64,6 +72,8 @@ pub fn paint(
     let transcript_bounds = apple_fm_workbench_transcript_input_bounds(content_bounds);
     let model_bounds = apple_fm_workbench_model_input_bounds(content_bounds);
     let session_bounds = apple_fm_workbench_session_input_bounds(content_bounds);
+    let adapter_id_bounds = apple_fm_workbench_adapter_id_input_bounds(content_bounds);
+    let adapter_package_bounds = apple_fm_workbench_adapter_package_input_bounds(content_bounds);
     let max_tokens_bounds = apple_fm_workbench_max_tokens_input_bounds(content_bounds);
     let temperature_bounds = apple_fm_workbench_temperature_input_bounds(content_bounds);
     let top_bounds = apple_fm_workbench_top_input_bounds(content_bounds);
@@ -110,6 +120,19 @@ pub fn paint(
         .as_str(),
         28,
     );
+    let adapters_summary = compact_workbench_value(
+        format!(
+            "{} loaded // attached {}",
+            runtime.loaded_adapters.len(),
+            pane_state
+                .active_session_adapter
+                .as_ref()
+                .map(|adapter| adapter.adapter_id.as_str())
+                .unwrap_or("-")
+        )
+        .as_str(),
+        28,
+    );
     let status_gap = 8.0;
     let status_cell_width = ((layout.status_row.size.width - status_gap * 3.0) / 4.0).max(0.0);
     for (index, (label, value, accent)) in [
@@ -121,8 +144,8 @@ pub fn paint(
             workbench_cyan_color(),
         ),
         (
-            "GUARDRAILS",
-            guardrails_summary.as_str(),
+            "ADAPTERS",
+            adapters_summary.as_str(),
             workbench_amber_color(),
         ),
     ]
@@ -211,6 +234,10 @@ pub fn paint(
     paint_action_button(start_bounds, "Start bridge", paint);
     paint_action_button(create_bounds, "Create session", paint);
     paint_action_button(inspect_bounds, "Inspect session", paint);
+    paint_action_button(load_adapter_bounds, "Load adapter", paint);
+    paint_action_button(unload_adapter_bounds, "Unload adapter", paint);
+    paint_action_button(attach_adapter_bounds, "Attach adapter", paint);
+    paint_action_button(detach_adapter_bounds, "Detach adapter", paint);
     paint_action_button(reset_bounds, "Reset session", paint);
     paint_action_button(delete_bounds, "Delete session", paint);
     paint_action_button(run_text_bounds, "Run text", paint);
@@ -246,6 +273,12 @@ pub fn paint(
         .session_id
         .set_max_width(session_bounds.size.width.max(120.0));
     inputs
+        .adapter_id
+        .set_max_width(adapter_id_bounds.size.width.max(120.0));
+    inputs
+        .adapter_package_path
+        .set_max_width(adapter_package_bounds.size.width.max(160.0));
+    inputs
         .max_tokens
         .set_max_width(max_tokens_bounds.size.width.max(72.0));
     inputs
@@ -263,6 +296,10 @@ pub fn paint(
     inputs.transcript_json.paint(transcript_bounds, paint);
     inputs.model.paint(model_bounds, paint);
     inputs.session_id.paint(session_bounds, paint);
+    inputs.adapter_id.paint(adapter_id_bounds, paint);
+    inputs
+        .adapter_package_path
+        .paint(adapter_package_bounds, paint);
     inputs.max_tokens.paint(max_tokens_bounds, paint);
     inputs.temperature.paint(temperature_bounds, paint);
     inputs.top.paint(top_bounds, paint);
@@ -277,6 +314,8 @@ pub fn paint(
     paint_input_label(paint, transcript_bounds, "Transcript JSON");
     paint_input_label(paint, model_bounds, "Requested model");
     paint_input_label(paint, session_bounds, "Session id");
+    paint_input_label(paint, adapter_id_bounds, "Adapter id");
+    paint_input_label(paint, adapter_package_bounds, "Adapter package path");
     paint_input_label(paint, max_tokens_bounds, "Max tokens");
     paint_input_label(paint, temperature_bounds, "Temperature");
     paint_input_label(paint, top_bounds, "Top-k");
@@ -295,12 +334,24 @@ pub fn paint(
         pane_state.last_operation.as_deref().unwrap_or("-"),
         mode_chunk_len,
     );
-    let _ = paint_wrapped_label_line(
+    mode_y = paint_wrapped_label_line(
         paint,
         tool_profile_bounds.origin.x,
         mode_y,
         "Session",
         summary_session.as_str(),
+        mode_chunk_len,
+    );
+    let _ = paint_wrapped_label_line(
+        paint,
+        tool_profile_bounds.origin.x,
+        mode_y,
+        "Attached",
+        pane_state
+            .active_session_adapter
+            .as_ref()
+            .map(|adapter| adapter.adapter_id.as_str())
+            .unwrap_or("-"),
         mode_chunk_len,
     );
     paint.scene.pop_clip();
@@ -324,6 +375,22 @@ pub fn paint(
         options_y,
         "Available",
         join_models(runtime.available_models.as_slice()).as_str(),
+        options_chunk_len,
+    );
+    options_y = paint_wrapped_label_line(
+        paint,
+        options_details_bounds.origin.x,
+        options_y,
+        "Guardrails",
+        guardrails_summary.as_str(),
+        options_chunk_len,
+    );
+    options_y = paint_wrapped_label_line(
+        paint,
+        options_details_bounds.origin.x,
+        options_y,
+        "Adapters",
+        pane_state.adapter_preview.as_str(),
         options_chunk_len,
     );
     options_y = paint_wrapped_label_line(
@@ -413,6 +480,24 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         .event(
             event,
             apple_fm_workbench_session_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_fm_workbench_inputs
+        .adapter_id
+        .event(
+            event,
+            apple_fm_workbench_adapter_id_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_fm_workbench_inputs
+        .adapter_package_path
+        .event(
+            event,
+            apple_fm_workbench_adapter_package_input_bounds(content_bounds),
             &mut state.event_context,
         )
         .is_handled();
@@ -743,6 +828,10 @@ fn paint_output_panel(
                 pane_state.output_preview.as_str(),
                 "No Apple FM workbench response yet.",
             ),
+        ),
+        (
+            "Adapters",
+            preview_or_placeholder(pane_state.adapter_preview.as_str(), "-"),
         ),
         (
             "Structured",

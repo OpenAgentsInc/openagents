@@ -504,6 +504,8 @@ pub struct AppleFmWorkbenchPaneInputs {
     pub prompt: TextInput,
     pub model: TextInput,
     pub session_id: TextInput,
+    pub adapter_id: TextInput,
+    pub adapter_package_path: TextInput,
     pub max_tokens: TextInput,
     pub temperature: TextInput,
     pub top: TextInput,
@@ -524,6 +526,9 @@ impl Default for AppleFmWorkbenchPaneInputs {
                 .placeholder("Prompt to send to Apple FM"),
             model: TextInput::new().placeholder("Optional Apple FM model override"),
             session_id: TextInput::new().placeholder("Bridge session id"),
+            adapter_id: TextInput::new().placeholder("Loaded adapter id"),
+            adapter_package_path: TextInput::new()
+                .placeholder("Path to .fmadapter package or fixture directory"),
             max_tokens: TextInput::new().value("128").placeholder("Max tokens"),
             temperature: TextInput::new().value("0.2").placeholder("Temperature"),
             top: TextInput::new().placeholder("Random sampling top-k"),

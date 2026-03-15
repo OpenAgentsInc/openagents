@@ -53,6 +53,11 @@ pub(super) fn apple_fm_workbench_inputs_focused(state: &crate::app_state::Render
         || state.apple_fm_workbench_inputs.prompt.is_focused()
         || state.apple_fm_workbench_inputs.model.is_focused()
         || state.apple_fm_workbench_inputs.session_id.is_focused()
+        || state.apple_fm_workbench_inputs.adapter_id.is_focused()
+        || state
+            .apple_fm_workbench_inputs
+            .adapter_package_path
+            .is_focused()
         || state.apple_fm_workbench_inputs.max_tokens.is_focused()
         || state.apple_fm_workbench_inputs.temperature.is_focused()
         || state.apple_fm_workbench_inputs.top.is_focused()
@@ -114,6 +119,8 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.apple_fm_workbench_inputs.prompt.blur();
     state.apple_fm_workbench_inputs.model.blur();
     state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.adapter_id.blur();
+    state.apple_fm_workbench_inputs.adapter_package_path.blur();
     state.apple_fm_workbench_inputs.max_tokens.blur();
     state.apple_fm_workbench_inputs.temperature.blur();
     state.apple_fm_workbench_inputs.top.blur();

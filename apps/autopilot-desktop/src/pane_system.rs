@@ -148,6 +148,8 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.apple_fm_workbench_inputs.prompt.blur();
     state.apple_fm_workbench_inputs.model.blur();
     state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.adapter_id.blur();
+    state.apple_fm_workbench_inputs.adapter_package_path.blur();
     state.apple_fm_workbench_inputs.max_tokens.blur();
     state.apple_fm_workbench_inputs.temperature.blur();
     state.apple_fm_workbench_inputs.top.blur();
@@ -185,6 +187,8 @@ fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
     state.apple_fm_workbench_inputs.prompt.blur();
     state.apple_fm_workbench_inputs.model.blur();
     state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.adapter_id.blur();
+    state.apple_fm_workbench_inputs.adapter_package_path.blur();
     state.apple_fm_workbench_inputs.max_tokens.blur();
     state.apple_fm_workbench_inputs.temperature.blur();
     state.apple_fm_workbench_inputs.top.blur();
@@ -403,6 +407,10 @@ pub enum AppleFmWorkbenchPaneAction {
     StartBridge,
     CreateSession,
     InspectSession,
+    LoadAdapter,
+    UnloadAdapter,
+    AttachSessionAdapter,
+    DetachSessionAdapter,
     ResetSession,
     DeleteSession,
     RunText,
@@ -1511,6 +1519,9 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     || apple_fm_workbench_prompt_input_bounds(content_bounds).contains(point)
                     || apple_fm_workbench_model_input_bounds(content_bounds).contains(point)
                     || apple_fm_workbench_session_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_adapter_id_input_bounds(content_bounds).contains(point)
+                    || apple_fm_workbench_adapter_package_input_bounds(content_bounds)
+                        .contains(point)
                     || apple_fm_workbench_max_tokens_input_bounds(content_bounds).contains(point)
                     || apple_fm_workbench_temperature_input_bounds(content_bounds).contains(point)
                     || apple_fm_workbench_top_input_bounds(content_bounds).contains(point)
@@ -2747,7 +2758,7 @@ pub fn apple_fm_workbench_layout(content_bounds: Bounds) -> AppleFmWorkbenchPane
         body_height
     };
 
-    let management_height = 136.0_f32.min(top_body_height);
+    let management_height = 224.0_f32.min(top_body_height);
     let execution_height =
         170.0_f32.min((top_body_height - management_height - panel_gap).max(0.0));
     let mode_height =
@@ -2786,7 +2797,7 @@ pub fn apple_fm_workbench_layout(content_bounds: Bounds) -> AppleFmWorkbenchPane
         payload_height,
     );
 
-    let options_height = 228.0_f32.min(top_body_height);
+    let options_height = 248.0_f32.min(top_body_height);
     let output_height = (top_body_height - options_height - panel_gap).max(0.0);
     let options_panel = Bounds::new(
         right_column.origin.x,
@@ -2906,7 +2917,7 @@ pub fn apple_fm_workbench_refresh_button_bounds(content_bounds: Bounds) -> Bound
         apple_fm_workbench_layout(content_bounds).management_panel,
         0,
         0,
-        3,
+        5,
         2,
     )
 }
@@ -2916,7 +2927,7 @@ pub fn apple_fm_workbench_start_bridge_button_bounds(content_bounds: Bounds) -> 
         apple_fm_workbench_layout(content_bounds).management_panel,
         0,
         1,
-        3,
+        5,
         2,
     )
 }
@@ -2926,7 +2937,7 @@ pub fn apple_fm_workbench_create_session_button_bounds(content_bounds: Bounds) -
         apple_fm_workbench_layout(content_bounds).management_panel,
         1,
         0,
-        3,
+        5,
         2,
     )
 }
@@ -2936,7 +2947,47 @@ pub fn apple_fm_workbench_inspect_session_button_bounds(content_bounds: Bounds) 
         apple_fm_workbench_layout(content_bounds).management_panel,
         1,
         1,
+        5,
+        2,
+    )
+}
+
+pub fn apple_fm_workbench_load_adapter_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_grid_button_bounds(
+        apple_fm_workbench_layout(content_bounds).management_panel,
+        2,
+        0,
+        5,
+        2,
+    )
+}
+
+pub fn apple_fm_workbench_unload_adapter_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_grid_button_bounds(
+        apple_fm_workbench_layout(content_bounds).management_panel,
+        2,
+        1,
+        5,
+        2,
+    )
+}
+
+pub fn apple_fm_workbench_attach_adapter_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_grid_button_bounds(
+        apple_fm_workbench_layout(content_bounds).management_panel,
         3,
+        0,
+        5,
+        2,
+    )
+}
+
+pub fn apple_fm_workbench_detach_adapter_button_bounds(content_bounds: Bounds) -> Bounds {
+    apple_fm_workbench_grid_button_bounds(
+        apple_fm_workbench_layout(content_bounds).management_panel,
+        3,
+        1,
+        5,
         2,
     )
 }
@@ -2944,9 +2995,9 @@ pub fn apple_fm_workbench_inspect_session_button_bounds(content_bounds: Bounds) 
 pub fn apple_fm_workbench_reset_session_button_bounds(content_bounds: Bounds) -> Bounds {
     apple_fm_workbench_grid_button_bounds(
         apple_fm_workbench_layout(content_bounds).management_panel,
-        2,
+        4,
         0,
-        3,
+        5,
         2,
     )
 }
@@ -2954,9 +3005,9 @@ pub fn apple_fm_workbench_reset_session_button_bounds(content_bounds: Bounds) ->
 pub fn apple_fm_workbench_delete_session_button_bounds(content_bounds: Bounds) -> Bounds {
     apple_fm_workbench_grid_button_bounds(
         apple_fm_workbench_layout(content_bounds).management_panel,
-        2,
+        4,
         1,
-        3,
+        5,
         2,
     )
 }
@@ -3119,14 +3170,38 @@ pub fn apple_fm_workbench_session_input_bounds(content_bounds: Bounds) -> Bounds
     )
 }
 
-pub fn apple_fm_workbench_max_tokens_input_bounds(content_bounds: Bounds) -> Bounds {
+pub fn apple_fm_workbench_adapter_id_input_bounds(content_bounds: Bounds) -> Bounds {
     let model = apple_fm_workbench_model_input_bounds(content_bounds);
+    let controls_column = apple_fm_workbench_options_layout(content_bounds).controls_column;
+    let gap = JOB_INBOX_BUTTON_GAP;
+    let adapter_width = ((controls_column.size.width - gap) * 0.42).max(112.0);
+    Bounds::new(
+        controls_column.origin.x,
+        model.max_y() + 18.0,
+        adapter_width.min(controls_column.size.width),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_adapter_package_input_bounds(content_bounds: Bounds) -> Bounds {
+    let adapter_id = apple_fm_workbench_adapter_id_input_bounds(content_bounds);
+    let controls_column = apple_fm_workbench_options_layout(content_bounds).controls_column;
+    Bounds::new(
+        adapter_id.max_x() + JOB_INBOX_BUTTON_GAP,
+        adapter_id.origin.y,
+        (controls_column.max_x() - adapter_id.max_x() - JOB_INBOX_BUTTON_GAP).max(112.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn apple_fm_workbench_max_tokens_input_bounds(content_bounds: Bounds) -> Bounds {
+    let adapter_package = apple_fm_workbench_adapter_package_input_bounds(content_bounds);
     let controls_column = apple_fm_workbench_options_layout(content_bounds).controls_column;
     let gap = JOB_INBOX_BUTTON_GAP;
     let small_width = ((controls_column.size.width - gap * 2.0) / 3.0).max(72.0);
     Bounds::new(
         controls_column.origin.x,
-        model.max_y() + 18.0,
+        adapter_package.max_y() + 18.0,
         small_width,
         JOB_INBOX_BUTTON_HEIGHT,
     )
@@ -5229,6 +5304,26 @@ fn pane_hit_action_for_pane(
                     AppleFmWorkbenchPaneAction::InspectSession,
                 ));
             }
+            if apple_fm_workbench_load_adapter_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::LoadAdapter,
+                ));
+            }
+            if apple_fm_workbench_unload_adapter_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::UnloadAdapter,
+                ));
+            }
+            if apple_fm_workbench_attach_adapter_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::AttachSessionAdapter,
+                ));
+            }
+            if apple_fm_workbench_detach_adapter_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleFmWorkbench(
+                    AppleFmWorkbenchPaneAction::DetachSessionAdapter,
+                ));
+            }
             if apple_fm_workbench_reset_session_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AppleFmWorkbench(
                     AppleFmWorkbenchPaneAction::ResetSession,
@@ -6578,32 +6673,35 @@ mod tests {
         agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
         alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
+        apple_fm_workbench_adapter_id_input_bounds,
+        apple_fm_workbench_adapter_package_input_bounds,
+        apple_fm_workbench_attach_adapter_button_bounds,
         apple_fm_workbench_create_session_button_bounds, apple_fm_workbench_event_log_bounds,
         apple_fm_workbench_inspect_session_button_bounds,
         apple_fm_workbench_instructions_input_bounds, apple_fm_workbench_layout,
-        apple_fm_workbench_model_input_bounds, apple_fm_workbench_options_details_bounds,
-        apple_fm_workbench_output_bounds, apple_fm_workbench_prompt_input_bounds,
-        apple_fm_workbench_refresh_button_bounds,
+        apple_fm_workbench_load_adapter_button_bounds, apple_fm_workbench_model_input_bounds,
+        apple_fm_workbench_options_details_bounds, apple_fm_workbench_output_bounds,
+        apple_fm_workbench_prompt_input_bounds, apple_fm_workbench_refresh_button_bounds,
         apple_fm_workbench_restore_transcript_button_bounds,
         apple_fm_workbench_run_chat_button_bounds, apple_fm_workbench_run_text_button_bounds,
         apple_fm_workbench_sampling_mode_button_bounds, apple_fm_workbench_schema_input_bounds,
         apple_fm_workbench_session_input_bounds, apple_fm_workbench_start_bridge_button_bounds,
         apple_fm_workbench_tool_profile_button_bounds, apple_fm_workbench_transcript_input_bounds,
-        cad_action_uses_dense_row_hot_zone, cad_demo_context_menu_bounds,
-        cad_demo_context_menu_row_bounds, cad_demo_cycle_variant_button_bounds,
-        cad_demo_dimension_panel_bounds, cad_demo_dimension_row_bounds,
-        cad_demo_drawing_add_detail_button_bounds, cad_demo_drawing_clear_details_button_bounds,
-        cad_demo_drawing_dimensions_button_bounds, cad_demo_drawing_direction_button_bounds,
-        cad_demo_drawing_hidden_lines_button_bounds, cad_demo_drawing_mode_button_bounds,
-        cad_demo_drawing_reset_view_button_bounds, cad_demo_gripper_jaw_button_bounds,
-        cad_demo_hidden_line_mode_button_bounds, cad_demo_hotkey_profile_button_bounds,
-        cad_demo_material_button_bounds, cad_demo_projection_mode_button_bounds,
-        cad_demo_reset_button_bounds, cad_demo_reset_camera_button_bounds,
-        cad_demo_section_offset_button_bounds, cad_demo_section_plane_button_bounds,
-        cad_demo_sensor_mode_button_bounds, cad_demo_snap_endpoint_button_bounds,
-        cad_demo_snap_grid_button_bounds, cad_demo_snap_midpoint_button_bounds,
-        cad_demo_snap_origin_button_bounds, cad_demo_timeline_panel_bounds,
-        cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
+        apple_fm_workbench_unload_adapter_button_bounds, cad_action_uses_dense_row_hot_zone,
+        cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+        cad_demo_cycle_variant_button_bounds, cad_demo_dimension_panel_bounds,
+        cad_demo_dimension_row_bounds, cad_demo_drawing_add_detail_button_bounds,
+        cad_demo_drawing_clear_details_button_bounds, cad_demo_drawing_dimensions_button_bounds,
+        cad_demo_drawing_direction_button_bounds, cad_demo_drawing_hidden_lines_button_bounds,
+        cad_demo_drawing_mode_button_bounds, cad_demo_drawing_reset_view_button_bounds,
+        cad_demo_gripper_jaw_button_bounds, cad_demo_hidden_line_mode_button_bounds,
+        cad_demo_hotkey_profile_button_bounds, cad_demo_material_button_bounds,
+        cad_demo_projection_mode_button_bounds, cad_demo_reset_button_bounds,
+        cad_demo_reset_camera_button_bounds, cad_demo_section_offset_button_bounds,
+        cad_demo_section_plane_button_bounds, cad_demo_sensor_mode_button_bounds,
+        cad_demo_snap_endpoint_button_bounds, cad_demo_snap_grid_button_bounds,
+        cad_demo_snap_midpoint_button_bounds, cad_demo_snap_origin_button_bounds,
+        cad_demo_timeline_panel_bounds, cad_demo_timeline_row_bounds, cad_demo_view_cube_bounds,
         cad_demo_view_snap_front_button_bounds, cad_demo_view_snap_iso_button_bounds,
         cad_demo_view_snap_right_button_bounds, cad_demo_view_snap_top_button_bounds,
         cad_demo_viewport_layout_button_bounds, cad_demo_warning_filter_code_button_bounds,
@@ -7028,6 +7126,9 @@ mod tests {
         let start = apple_fm_workbench_start_bridge_button_bounds(content);
         let create = apple_fm_workbench_create_session_button_bounds(content);
         let inspect = apple_fm_workbench_inspect_session_button_bounds(content);
+        let load_adapter = apple_fm_workbench_load_adapter_button_bounds(content);
+        let unload_adapter = apple_fm_workbench_unload_adapter_button_bounds(content);
+        let attach_adapter = apple_fm_workbench_attach_adapter_button_bounds(content);
         let run_text = apple_fm_workbench_run_text_button_bounds(content);
         let run_chat = apple_fm_workbench_run_chat_button_bounds(content);
         let restore = apple_fm_workbench_restore_transcript_button_bounds(content);
@@ -7039,6 +7140,8 @@ mod tests {
         let transcript = apple_fm_workbench_transcript_input_bounds(content);
         let model = apple_fm_workbench_model_input_bounds(content);
         let session = apple_fm_workbench_session_input_bounds(content);
+        let adapter_id = apple_fm_workbench_adapter_id_input_bounds(content);
+        let adapter_package = apple_fm_workbench_adapter_package_input_bounds(content);
         let details = apple_fm_workbench_options_details_bounds(content);
         let output = apple_fm_workbench_output_bounds(content);
         let event_log = apple_fm_workbench_event_log_bounds(content);
@@ -7046,6 +7149,9 @@ mod tests {
         assert!(refresh.max_x() < start.min_x());
         assert!(refresh.max_y() < create.min_y());
         assert!(create.max_x() < inspect.min_x());
+        assert!(inspect.max_y() < load_adapter.min_y());
+        assert!(load_adapter.max_x() < unload_adapter.min_x());
+        assert!(load_adapter.max_y() < attach_adapter.min_y());
         assert!(run_text.max_x() < run_chat.min_x());
         assert!(run_chat.max_y() < restore.min_y());
         assert!(restore.max_y() <= tool_profile.min_y());
@@ -7055,6 +7161,8 @@ mod tests {
         assert!(instructions.max_y() < prompt.min_y());
         assert!(schema.max_y() < transcript.min_y());
         assert!(model.max_x() < session.min_x());
+        assert!(model.max_y() < adapter_id.min_y());
+        assert!(adapter_id.max_x() < adapter_package.min_x());
         assert!(prompt.max_x() <= layout.text_panel.max_x());
         assert!(schema.max_x() <= layout.payload_panel.max_x());
         assert!(session.max_x() <= details.min_x());

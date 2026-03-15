@@ -40,6 +40,9 @@ It can:
   surface through `autopilotctl perf`
 - inspect the active local-runtime truth model (`local_runtime`) and raw GPT-OSS runtime state
 - refresh the active local runtime and wallet state
+- inspect Apple FM adapter inventory and current session attachment truth from the
+  same desktop snapshot the workbench uses
+- load, unload, attach, and detach Apple FM adapters through desktop control
 - refresh, warm, unload, and wait on GPT-OSS directly
 - bring the provider online or offline
 - inspect active-job and buy-mode state
@@ -97,6 +100,8 @@ Useful `autopilotctl` starting points:
 autopilotctl status
 autopilotctl local-runtime status
 autopilotctl local-runtime refresh
+autopilotctl apple-fm status
+autopilotctl apple-fm list
 autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
 autopilotctl wait gpt-oss-ready
@@ -185,9 +190,23 @@ already running and the desktop-control manifest exists.
 Apple-specific bridge flows still exist for the shipped macOS release path:
 
 ```bash
+autopilotctl apple-fm status
 autopilotctl apple-fm refresh --wait
+autopilotctl apple-fm list
+autopilotctl apple-fm load /absolute/path/to/adapter.fmadapter --adapter-id fixture-chat-adapter
+autopilotctl apple-fm attach sess-1 fixture-chat-adapter
+autopilotctl apple-fm detach sess-1
+autopilotctl apple-fm unload fixture-chat-adapter
 autopilotctl apple-fm smoke-test
 ```
+
+`autopilotctl apple-fm status` now includes bridge reachability, model readiness,
+adapter-inventory support, attach support, loaded adapter count, and the current
+active-session adapter if the workbench has one selected. `autopilotctl apple-fm list`
+prints the loaded bridge inventory entries with compatibility and attached-session
+truth. The mutating `load`, `unload`, `attach`, and `detach` verbs queue the same
+Apple FM workbench operations the desktop pane uses, so headless operators and the
+GUI stay replay-safe against one app-owned control surface.
 
 Sandbox lifecycle examples:
 
