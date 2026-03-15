@@ -1,60 +1,128 @@
 # Psionic
 
-Psionic is the Rust-native compute engine program for OpenAgents.
+Psionic is the reusable Rust-native compute execution subtree for OpenAgents.
 
-It is intentionally scoped as a workspace subtree under `crates/psionic/` so the
-engine can evolve without bleeding product-specific behavior into shared crates.
+It owns the machine-facing side of the stack: tensor and graph contracts,
+compiler/runtime boundaries, backend truth, artifact staging, cluster and
+sandbox execution, serving interfaces, adapter packaging, evaluation, research,
+and the early training substrate.
+
+It intentionally lives under `crates/psionic/` so the engine can evolve without
+bleeding product behavior into `apps/*` or authority logic into kernel and
+Nexus surfaces.
 
 ## Doc Authority
 
 - `README.md` is the Psionic entrypoint and map.
 - `docs/ARCHITECTURE.md` is the canonical Psionic-wide system spec.
+- `docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md` is the canonical framework-core
+  completion bar for tensor, compiler, IO, replay, and local multi-device
+  behavior.
+- `docs/INFERENCE_ENGINE.md` is the canonical inference-engine completion doc.
 - `docs/TRAIN_SYSTEM.md` is the canonical training subsystem spec.
 - research audits explain direction and rationale, but they are not the
   authoritative current-state spec.
 
 ## What Psionic is
 
-- A tensor, IR, compiler, and runtime stack built in Rust.
-- A place to land productized inference and embeddings execution.
-- A backend family that can map cleanly into provider capabilities and receipts.
-- A foundation for CPU first, then Metal and AMD backends.
+- The reusable execution substrate beneath OpenAgents provider and compute
+  products.
+- A Rust-native crate family for framework core, backends, transport,
+  clustered execution, serving, adapters, data, eval, training, and research.
+- The source of machine-legible execution truth: manifests, receipts, routing
+  facts, cache facts, proof bundles, topology state, and training/eval
+  lineage.
+- The layer that can turn backend/runtime reality into truthful provider
+  capabilities without owning desktop UX, market procurement, or settlement
+  authority.
 
 ## What Psionic is not
 
-- Not a literal line-by-line port of Tinygrad.
-- Not an app surface or provider UX layer.
+- Not `apps/autopilot-desktop`, Mission Control, wallet/payout logic, or
+  buyer/provider product orchestration.
+- Not kernel/Nexus authority for compute-market truth, settlement, or accepted
+  outcomes.
 - Not a shortcut around `docs/OWNERSHIP.md`.
-- Not a promise that text generation, KV cache, or AMD kernels are already built.
+- Not a claim that every backend, model family, serving topology, or
+  training-class lane is fully productized.
+- Not a hidden Python control plane disguised as Rust crates.
 
 ## Crate Map
 
-- `psionic-core`: foundational tensor, shape, dtype, and device types.
-- `psionic-ir`: canonical graph and execution-plan representation.
-- `psionic-compiler`: lowering and scheduling boundaries over IR.
-- `psionic-runtime`: runtime traits for devices, allocation, execution, and
-  canonical execution-proof bundles for local, clustered, and sandbox lanes,
-  plus activation-fingerprint proof adapters for embeddings-first proof
-  posture.
-- `psionic-sandbox`: bounded sandbox runtime detection, profile realization, and execution receipts.
-- `psionic-net`: peer identity, direct/NAT/relay session establishment, durable trust and candidate history, relay-backed rendezvous, policy-gated HTTP service tunnels, and transport observations.
-- `psionic-datastream`: resumable dataset/checkpoint/policy-weight manifests, chunk transport, freshness-aware broadcast control refs, and delivery receipts.
-- `psionic-data`: versioned dataset manifests, tokenizer digests, split declarations, streamed iteration contracts, and long-context packing policies.
-- `psionic-cluster`: durable ordered-state, admission policy, catch-up, scheduling, and topology substrate over `psionic-net`.
-- `psionic-collectives`: elastic device-mesh, bandwidth-aware local/global sync planning, and benchmark-gated collective policy for training-class lanes.
-- `psionic-environments`: Rust-native environment package ABI, typed workload/difficulty/policy/benchmark package contracts, tool/rubric contracts, and reference runtime sessions for training/eval-class workloads.
-- `psionic-eval`: held-out eval runs, rubric-scored sample/runtime contracts, validator-style benchmark packages, repeat-run aggregation, and local validator simulation.
-- `psionic-train`: training-session truth for async checkpointing, live recovery, elastic membership, run graphs, contributor sets, window lifecycle, rollout-worker protocol, and orchestrator control on top of ordered cluster state and datastream manifests.
-- `psionic-adapters`: LoRA and adapter package identity, packaging manifests, and adapter-serving bindings for hosted products.
-- `psionic-models`: reusable model definitions and metadata.
-- `psionic-serve`: request/response and execution interfaces for served products.
-- `psionic-router`: multi-model routing inventory, capability filters, and worker-path selection for served Psionic fleets.
-- `psionic-provider`: capability, readiness, and receipt-facing types.
-- `psionic-backend-cpu`: CPU reference backend.
-- `psionic-backend-metal`: Metal backend with a first embeddings product path.
-- `psionic-backend-amd-kfd`: AMD KFD discovery/readiness backend.
-- `psionic-backend-amd-userspace`: AMD userspace discovery/readiness backend.
-- `psionic-apple-fm`: Apple Foundation Models bridge contracts, HTTP client, and types for the Swift sidecar.
+### Framework Core
+
+- `psionic-core`: canonical tensor, shape, dtype, and device contract.
+- `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
+  execution-plan types.
+- `psionic-compiler`: lowering, scheduling, replay-stable program identity, and
+  compiler diagnostics.
+- `psionic-runtime`: runtime traits, allocators, compiled-plan execution,
+  local-multi-device truth, and canonical execution-proof bundles.
+- `psionic-catalog`: local blob, artifact, and model-catalog substrate used by
+  model and serving layers.
+
+### Backend And Platform Lanes
+
+- `psionic-backend-cpu`: CPU backend and the current reference execution lane.
+- `psionic-backend-metal`: Metal backend with the first embeddings and local
+  Apple execution path.
+- `psionic-backend-cuda`: CUDA backend architecture and truthful readiness
+  surface.
+- `psionic-backend-amd-kfd`: AMD KFD discovery/readiness substrate.
+- `psionic-backend-amd-userspace`: AMD userspace discovery/readiness substrate.
+- `psionic-apple-fm`: Apple Foundation Models bridge contracts and Rust client
+  for the Swift sidecar.
+
+### Network, Transport, And Execution Control
+
+- `psionic-net`: peer identity, direct/NAT/relay sessions, rendezvous, trust
+  state, and service-tunnel transport seams.
+- `psionic-datastream`: resumable manifests, chunk transport, policy-weight
+  broadcast refs, freshness windows, and delivery receipts.
+- `psionic-cluster`: ordered-state, admission, catch-up, scheduling, and
+  clustered topology truth over `psionic-net`.
+- `psionic-sandbox`: bounded execution profiles, runtime detection,
+  background-job lifecycle, file transfer, and repeated agentic iteration
+  receipts.
+- `psionic-collectives`: elastic device-mesh and benchmark-gated sync planning
+  for training-class collectives.
+
+### Serving And Adapter Surface
+
+- `psionic-models`: reusable model families, metadata, tokenizer hooks, and
+  model-loading seams.
+- `psionic-serve`: served compute contracts for chat, responses, embeddings,
+  scheduling, structured output, tool calling, and adapter-backed execution.
+- `psionic-router`: multi-model routing, worker inventory, policy filters,
+  warm/cache-aware placement, and served-fleet reliability controls.
+- `psionic-provider`: provider-facing capability, readiness, and receipt types
+  derived from Psionic execution truth.
+- `psionic-adapters`: adapter identity, packaging, Apple `.fmadapter`
+  parsing/writing, lineage, and hosted binding semantics.
+
+### Data, Eval, Training, And Research
+
+- `psionic-data`: versioned dataset manifests, tokenizer digests, split
+  declarations, streamed iteration, and packing contracts.
+- `psionic-environments`: environment package ABI, workload/difficulty/policy
+  contracts, tool/rubric hooks, deterministic runtime sessions, and train/eval
+  parity helpers.
+- `psionic-eval`: held-out eval runs, rubric-scored samples, benchmark
+  packages, repeat-run aggregation, local validator simulation, and Apple
+  adapter eval harnesses.
+- `psionic-train`: checkpoint/recovery truth, elastic membership, run graphs,
+  rollout-worker protocol, orchestrator control, fixed-budget training core,
+  Apple training execution, Apple SFT/export, and optional Apple draft-model
+  distillation.
+- `psionic-research`: typed experiment specs, bounded run manifests, result
+  summaries, and promotion records for hillclimb/research loops.
+
+### Support Tree
+
+- `docs/`: canonical specs, acceptance matrices, runbooks, and audits.
+- `fixtures/`: repo-owned fixture corpora such as Apple adapter reference
+  inputs.
+- `scripts/`: Psionic-specific harnesses and validation helpers.
 
 The crate list and layering are canonical for current ownership and dependency
 direction, but they are not a guarantee that every planned subsystem will land
@@ -62,20 +130,33 @@ under exactly these final crate names.
 
 ## Design Principles
 
+- Keep machine-facing execution truth in reusable crates and keep product truth
+  above Psionic.
 - Keep the compiler and runtime visible and inspectable.
 - Keep crate ownership narrow and documented.
-- Preserve a strict boundary between reusable engine crates and OpenAgents provider
-  integration.
+- Preserve a strict boundary between reusable engine crates and OpenAgents
+  provider integration.
+- Prefer explicit capability/refusal surfaces over vague "supported" claims.
+- Make artifacts, manifests, and receipts first-class instead of hidden side
+  effects.
 - Model backend families explicitly; AMD KFD and AMD userspace are separate
   backends, not one hidden toggle.
-- Keep inference and embeddings first-class in architecture from the start.
+- Keep inference, embeddings, adapters, eval, and training-class substrates
+  first-class in architecture from the start.
 
 ## Current Phase
 
 Psionic is in an implemented-substrate, not-yet-complete-engine phase.
 
+That means the repo already has a real execution tree for local serving,
+adapter hosting, bounded sandbox work, early eval/train/research lanes, and a
+narrow Apple adapter training path, but it still does not claim complete
+backend parity or fully generalized distributed training.
+
 Implemented now:
 
+- `psionic-catalog` local blob and artifact-catalog substrate for model and
+  runtime-facing assets.
 - CPU baseline plus a first Metal-backed `psionic.embeddings` lane.
 - generic CPU GGUF decoder execution for GPT-OSS plus representative Llama,
   Qwen, and Mistral families through one Psionic-owned runtime surface.
@@ -135,6 +216,9 @@ Implemented now:
   merge/unmerge residency modes, adapter compatibility/refusal surfaces, and
   real adapter-backed generation instead of metadata-only parsing or silent
   fallback to the base model.
+- Apple Foundation Models bridge contracts plus live adapter inventory,
+  load/unload, attach/detach, and request-level adapter binding through
+  `psionic-apple-fm` and the Swift bridge sidecar.
 - a first Psionic-owned continuous-batching scheduler for CPU text generation,
   with mixed prefill/decode admission, FIFO queue truth, per-request scheduling
   receipts, and generic-server execution headers instead of a hard-coded
@@ -206,6 +290,9 @@ Implemented now:
   contracts, benchmark packages with repeat-run aggregation, and operator-local
   validator simulation in `psionic-eval`, while kernel/Nexus still own
   canonical eval-run authority truth.
+- a first repo-owned Apple training lane in `psionic-train`, including the
+  Apple training execution backend, Apple adapter SFT/export, and optional
+  Apple draft-model distillation.
 - a first integrated `agentic_sft -> rl` reference program in `psionic-train`,
   proving environment packages, dataset and checkpoint lineage, datastream
   policy-weight delivery, sandbox reuse, rollout-worker protocol, validator
@@ -228,10 +315,15 @@ Implemented now:
   verification, artifact trust roots, untrusted-worker admission, poisoning
   controls, and validator-bound security receipts explicit instead of
   hand-waved around the rollout validator.
+- `psionic-research` experiment specs, bounded run manifests, and promotion
+  records for hillclimb-style research loops.
 - broader-stack authority flows for environment packages, checkpoint-family
   policies, validator policies, benchmark packages, training policies, eval
   runs, training runs, accepted outcomes, and synthetic-data jobs now exist
   outside Psionic in kernel or Nexus surfaces.
+- a narrow broader-stack Apple adapter-hosting and Apple-training projection
+  now exists above Psionic in provider-substrate, desktop-control, and
+  compute-market docs, without implying a generalized training market.
 
 Still planned:
 
@@ -254,11 +346,22 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — canonical Psionic-wide
   system spec covering layering, work classes, artifact and receipt model,
   execution lifecycle, failure, and security boundaries.
+- **[docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md](docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md)** —
+  canonical framework-core acceptance split for tensor, compiler, IO, replay,
+  and local multi-device behavior.
+- **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
+  inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training
   subsystem spec covering current substrate, planned architecture, object
   model, receipts, policy surfaces, and the issue-program path to a full
-  Rust-native train stack, now tracked as GitHub issues `#3564` through
-  `#3593`.
+  Rust-native train stack, first tracked as GitHub issues `#3564` through
+  `#3593` and later extended through `#3631`.
+- **[docs/APPLE_ADAPTER_DATASET_SPEC.md](docs/APPLE_ADAPTER_DATASET_SPEC.md)** —
+  canonical Apple adapter dataset contract and fixture baseline.
+- **[docs/APPLE_FMADAPTER_PACKAGE_SPEC.md](docs/APPLE_FMADAPTER_PACKAGE_SPEC.md)** —
+  canonical `.fmadapter` package inventory, metadata, and export contract.
+- **[docs/APPLE_ADAPTER_LINEAGE_SPEC.md](docs/APPLE_ADAPTER_LINEAGE_SPEC.md)** —
+  canonical Apple adapter lineage and authority-facing metadata contract.
 - **[docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md](docs/TRAINING_CORE_FIXED_BUDGET_REFERENCE.md)** —
   canonical reference loop, runbook, and acceptance criteria for the first
   real `psionic-train` fixed-budget training-core path.
