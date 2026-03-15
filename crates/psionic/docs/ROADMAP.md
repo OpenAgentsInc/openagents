@@ -82,6 +82,10 @@ Build Psionic into a full Rust-native compute and ML library with:
 
 - a small, visible, backend-portable framework core
 - PyTorch-credible semantics for most practical AI workloads
+- framework-level distributed training semantics, not only clustered execution
+- first-class precision, quantization, reproducibility, and profiling systems
+- explicit extensibility for operators, kernels, autograd, and backends
+- advanced tensor, dtype, math, and data-pipeline capability families
 - truthful model IO, serving, routing, and runtime behavior
 - explicit backend, topology, replay, and proof surfaces
 - reusable cluster, sandbox, eval, and training substrate
@@ -105,15 +109,21 @@ These are not goals of this roadmap:
 
 - full upstream PyTorch closure
 - eager support for every historical PyTorch serialization artifact
+- every historical distributed mode or backend mode PyTorch has ever exposed
 - silent backend fallbacks that hide capability gaps
 - benchmark wins achieved through lane-specific behavior that bypasses reusable
   library contracts
 - Python-first API polish before Rust-native semantics are credible
 - distributed training breadth before single-host training semantics are honest
+- every legacy artifact or deployment path from the PyTorch ecosystem
+- every domain library in the broader PyTorch ecosystem
 - product-specific routing, wallet, payout, or UX logic inside `crates/psionic/*`
 - host-specific throughput wins treated as equivalent to full-library progress
 - ambiguous claims that imply upstream PyTorch closure when the implementation
   is only `PyTorch-credible` or `PyTorch-compatible` in a bounded sense
+
+This roadmap does target the major framework capability families required to
+make "replacement for most AI workloads" an honest claim.
 
 ## Architectural Direction
 
@@ -155,9 +165,14 @@ Current crates:
 Owns:
 
 - operator breadth
+- advanced tensor, dtype, storage, and math-family semantics
 - fake or meta execution
+- precision, quantization, RNG, and determinism policy
 - module and state-tree semantics
 - optimizer and scheduler breadth
+- data-pipeline, transform, and distributed-training semantics
+- exportable graph and deployment-facing library artifacts
+- extensibility contracts for custom ops, kernels, autograd, and backends
 - serialization and checkpoint compatibility
 - parity harnesses against PyTorch
 
@@ -222,6 +237,7 @@ This means common inference and training workloads can run with:
 - broad tensor and autodiff semantics
 - real module/state behavior
 - real optimizer behavior
+- honest precision, quantization, data, and reproducibility behavior
 - real model IO and checkpoint restore
 
 ### Claim 3: `execution-truthful`
@@ -244,6 +260,13 @@ This means common PyTorch-shaped workloads see credible breadth in:
 - modules and state
 - optimizers
 - checkpoints and conversion paths
+- distributed training semantics
+- precision-policy and quantization systems
+- reproducibility and determinism behavior
+- profiling, observability, and refusal diagnostics
+- extensibility and registration contracts
+- advanced tensor and math families
+- data-pipeline capability
 - fake or symbolic compiler hygiene
 
 This still does **not** mean full upstream PyTorch closure.
@@ -260,10 +283,10 @@ scoped.
 
 | Claim | Required green surfaces | Disqualifiers |
 | --- | --- | --- |
-| `framework-core` | tensor semantics, autodiff breadth floor, compiler replay, deterministic CPU reference, fake/meta path, local multi-device correctness | backend-specific shortcuts, missing replay identity, happy-path-only coverage |
-| `library-usable` | modules, parameters and buffers, state load/save, optimizer and scheduler behavior, common model IO, basic train and infer smoke suites | checkpoint loads only for curated demos, no strict/non-strict load semantics |
+| `framework-core` | tensor and storage semantics, autodiff breadth floor, compiler replay, deterministic CPU reference, fake/meta path, RNG and determinism substrate, local multi-device correctness | backend-specific shortcuts, missing replay identity, happy-path-only coverage |
+| `library-usable` | modules, parameters and buffers, state load/save, optimizer and scheduler behavior, common model IO, precision policy, data ingress, and basic train and infer smoke suites | checkpoint loads only for curated demos, no strict/non-strict load semantics |
 | `execution-truthful` | capability reporting, refusal taxonomy, receipts and manifests, topology truth, cache truth, provider truth | hidden fallbacks, unverifiable runtime claims, lane-local evidence only |
-| `PyTorch-credible` | parity matrices, common checkpoint migration, practical operator and module breadth, fake/symbolic/compiler hygiene | PyTorch-looking shell without tested semantics |
+| `PyTorch-credible` | parity matrices, dense and sharded checkpoint migration, practical operator, module, transform, distributed, quantization, and profiler breadth, fake/symbolic/compiler hygiene | PyTorch-looking shell without tested semantics |
 | `PyTorch-compatible` | explicitly bounded and separately tested interop shells | ambiguous marketing or roadmap language implying upstream closure |
 
 The phrase "drop-in replacement for most AI workloads" only becomes honest when
@@ -274,6 +297,10 @@ For clarity, "drop-in replacement for most AI workloads" still means:
 
 - most common inference and training workloads are semantically credible
 - common checkpoints and model code are portable or convertible
+- distributed, precision, quantization, reproducibility, and data-path behavior
+  are explicit and tested
+- profiler, export, and diagnostic surfaces are good enough to replace opaque
+  lane-local reasoning
 - the framework is broad enough that "drop-in for most workloads" is honest
 
 ## Current Baseline
@@ -325,13 +352,21 @@ The largest open gaps are now more architectural than existential:
 - framework-core breadth is still much thinner than PyTorch or Tinygrad
 - operator and module parity harnesses are still too sparse
 - module/state-tree semantics are still underdeveloped
+- distributed-training semantics are still mostly below the framework line
 - serialization and checkpoint compatibility are still narrower than a
   practical PyTorch replacement needs
+- precision-policy, quantization, and determinism systems are not yet first-class
+- RNG, storage, sparse, nested, masked, and transform semantics are underspecified
 - GGUF quant decode remains incomplete, especially K-family formats
+- data-ingress, profiler, and export/deployment artifact stories are still thin
+- custom-op, backend-extension, and quantizer plugin contracts are not explicit
+- advanced math families like linalg, fft, special, distributions, and complex
+  semantics are not yet roadmap-visible enough
 - backend execution breadth is uneven beyond the current truthful lanes
 - cluster and sandbox truth exist, but the full library-level execution story
   still needs convergence
-- train-class execution is real but still narrow and adapter-first
+- train-class execution is real but still narrow, adapter-first, and not yet
+  equivalent to framework-level distributed training semantics
 
 ## Roadmap Shape
 
@@ -341,7 +376,7 @@ This roadmap is organized into seven epics.
 | --- | --- | --- |
 | Epic 0 | Governance and acceptance | one canonical library roadmap and claim vocabulary |
 | Epic 1 | Framework core completion | serious tinygrad-disciplined tensor/compiler/runtime substrate |
-| Epic 2 | Semantics and compatibility | PyTorch-credible ops, modules, optimizers, and state behavior |
+| Epic 2 | Semantics and compatibility | PyTorch-credible ops, modules, transforms, precision, quantization, data, and state behavior |
 | Epic 3 | Model IO and runtime families | truthful serving, model-family loading, cache, router, and runtime behavior |
 | Epic 4 | Backend truth and performance | explicit, benchmarked, honest backend lanes |
 | Epic 5 | Cluster, sandbox, and execution truth | reusable distributed execution and bounded compute substrate |
@@ -395,6 +430,7 @@ opaque monolith.
 
 - tensor, graph, autodiff, compile, memory, replay, and local multi-device
   categories are green at real breadth
+- storage, RNG, determinism, and extension-registration substrate are explicit
 - the primitive core stays small and inspectable
 - backend bring-up can target explicit narrow contracts instead of a hidden
   giant stack
@@ -419,6 +455,11 @@ opaque monolith.
 | `PLIB-106` | planned | Complete same-type local multi-device behavior beyond implemented-early substrate, including sharding policy and refusal taxonomy. |
 | `PLIB-107` | planned | Promote framework-core acceptance from representative proof to broad contract coverage with fixture-backed replay and failure tests. |
 | `PLIB-108` | planned | Define one cross-library refusal taxonomy covering unsupported ops, unsupported gradients, unsupported layouts, unsupported backend capabilities, serialization incompatibility, sandbox policy denial, and topology mismatch. |
+| `PLIB-109` | planned | Formalize storage identity, alias invariants, view semantics, and complex or advanced dtype rules as core contracts rather than backend accidents. |
+| `PLIB-110` | planned | Add framework-core RNG, seeding, generator-state, and deterministic-algorithm contracts that survive replay, checkpoint, and multi-device execution. |
+| `PLIB-111` | planned | Define stable custom-op schema, kernel registration, and backend dispatch contracts so extensibility does not fork the core. |
+| `PLIB-112` | planned | Add transform-safe graph and functionalization foundations so higher-level program transforms and export contracts can build on explicit IR rules. |
+| `PLIB-113` | planned | Add sparse, nested, masked, and storage-aware meta execution foundations so non-dense families can enter through typed contracts rather than ad hoc exceptions. |
 
 ## Epic 2: Semantics And Compatibility
 
@@ -429,7 +470,12 @@ Build the PyTorch-credible layer above the compact framework core.
 ### Exit Criteria
 
 - the library can support common training and inference code with credible
-  tensor, module, optimizer, and state behavior
+  tensor, module, optimizer, state, precision, quantization, data, and
+  reproducibility behavior
+- distributed-training semantics are explicit above cluster truth rather than
+  implied by execution substrate alone
+- transforms, export surfaces, and extension contracts are real enough for
+  third parties to build on them honestly
 - compatibility breadth is achieved through explicit registries and harnesses
 - the semantics layer does not bloat the core IR and runtime
 
@@ -453,6 +499,18 @@ It is the most important missing middle layer in current Psionic.
 | `PLIB-207` | planned | Add a PyTorch-derived optimizer parity matrix analogous to `optim_db`. |
 | `PLIB-208` | planned | Add symbolic-shape, fake-tensor, and compiler-hygiene parity harnesses informed by modern PyTorch compiler tests. |
 | `PLIB-209` | planned | Make the semantics layer honest about what is `PyTorch-credible` versus what remains `PyTorch-compatible later`. |
+| `PLIB-210` | planned | Add first-class sparse, nested, masked, and storage-aware tensor semantics with explicit capability matrices and refusal behavior. |
+| `PLIB-211` | planned | Add complex-number, low-precision, and advanced dtype semantics with explicit promotion, casting, and backend-capability rules. |
+| `PLIB-212` | planned | Define framework-wide reproducibility semantics covering global and per-device RNG, deterministic modes, and RNG state restore across train and eval. |
+| `PLIB-213` | planned | Add an autocast-style precision-policy system with backend-aware rules, typed refusal surfaces, and numerics diagnostics. |
+| `PLIB-214` | planned | Add gradient scaling plus overflow and underflow handling for train-class mixed precision. |
+| `PLIB-215` | planned | Build quantization as a library capability family: PTQ, QAT, quantization configuration, backend quantization contracts, compiler or export-aware quantization flows, and quantized execution semantics above file-format decode. |
+| `PLIB-216` | planned | Add functionalization and program-transform capability for symbolic rewrites, export-safe graphs, and future `vmap` / `jvp` / `jacobian`-class transforms. |
+| `PLIB-217` | planned | Publish user-facing extension contracts for custom ops, custom kernels, custom autograd, backend plugins, and quantizer plugins. |
+| `PLIB-218` | planned | Add dataset, iterable-streaming, sampler, batch-sampler, and host-device staging abstractions as reusable library capability, not app glue. |
+| `PLIB-219` | planned | Add distributed and sharded data-feed semantics, including sampler partitioning, worker coordination, and replay-safe input ordering. |
+| `PLIB-220` | planned | Add advanced operator-family programs for linalg, fft or signal, distributions, special functions, and attention-family semantics. |
+| `PLIB-221` | planned | Add exportable graph and deployment artifact contracts so the semantics layer can hand off stable graph units independent of raw checkpoints. |
 
 ## Epic 3: Model IO And Runtime Families
 
@@ -488,6 +546,10 @@ layers so Psionic is a truthful reusable runtime for common model classes.
 | `PLIB-307` | planned | Deepen router placement, warm/cold policy, prefix reuse, and cache-aware scheduling truth. |
 | `PLIB-308` | planned | Add model-family and runtime smoke suites that defend the actual reusable runtime contracts, not only one-off lanes. |
 
+`PLIB-301` is necessary for model-family closure, but GGUF quant decode alone is
+not quantization capability parity. PTQ, QAT, backend quant contracts, and
+quantized execution semantics live in Epic 2.
+
 ## Epic 4: Backend Truth And Performance
 
 ### Goal
@@ -500,6 +562,8 @@ small visible core that makes new backend bring-up tractable.
 - each declared backend lane has explicit readiness, capability, risk, and
   performance truth
 - benchmark acceptance exists where throughput claims matter
+- backend capability matrices cover determinism, precision, quantization, and
+  profiler surfaces rather than only "can it run"
 - backend bring-up uses a small visible substrate rather than backend-specific
   hidden forks
 
@@ -521,6 +585,7 @@ small visible core that makes new backend bring-up tractable.
 | `PLIB-405` | planned | Define AMD userspace as an explicitly gated experimental backend with strong risk posture, not a silent alternate path. |
 | `PLIB-406` | planned | Add backend profiler and kernel-evidence surfaces that make execution and performance machine-legible. |
 | `PLIB-407` | planned | Write a backend bring-up kit and acceptance ladder so future accelerators can target the core honestly. |
+| `PLIB-408` | planned | Publish backend capability matrices for determinism, autocast, grad scaling, sparse or nested coverage, quantization, and distributed collectives so precision and train claims stay honest. |
 
 ## Epic 5: Cluster, Sandbox, And Execution Truth
 
@@ -530,10 +595,16 @@ Turn Psionic's existing cluster, sandbox, net, datastream, and provider
 substrate into one coherent execution-truth layer for local and networked
 compute.
 
+This epic is about distributed execution truth, not the full user-visible
+semantics of DDP, FSDP, tensor sharding, or pipeline training. Those training
+semantics land in Epic 6 on top of the execution substrate defined here.
+
 ### Exit Criteria
 
 - cluster identity, topology, placement, and execution truth are reusable and
   honest
+- process-group, collective, remote-execution, and elastic-membership substrate
+  are explicit enough for higher-level training semantics to depend on them
 - sandbox execution remains explicit and bounded
 - provider capability surfaces derive from runtime truth rather than ad hoc
   product glue
@@ -561,7 +632,10 @@ compute.
 | `PLIB-505` | planned | Tighten provider capability derivation so all advertised compute products map back to explicit runtime evidence and refusal conditions. |
 | `PLIB-506` | planned | Clarify kernel/Nexus authority boundaries for execution evidence, accepted outcomes, and later settlement-facing projections. |
 | `PLIB-507` | planned | Add chaos and failure-injection coverage across cluster, artifact, replay, and sandbox paths. |
-| `PLIB-508` | planned | Add one cross-library observability and debug surface covering graph and plan inspection, kernel evidence, cache reasoning, refusal explanation, topology explanation, and train/eval receipt inspection. |
+| `PLIB-508` | planned | Add one cross-library observability and debug surface covering graph, module, and plan inspection, kernel and memory evidence, cache reasoning, refusal and mismatch explanation, topology explanation, and train/eval receipt inspection. |
+| `PLIB-509` | planned | Define reusable process-group and collective semantics, distinct from lane-local cluster membership, so framework-level distributed training has a stable substrate. |
+| `PLIB-510` | planned | Add bounded remote-execution and RPC contracts with explicit provenance, capability, refusal, and receipt semantics. |
+| `PLIB-511` | planned | Add elastic membership and fault-tolerant distributed run-control substrate for restart, rejoin, and topology revision without hiding failures. |
 
 ## Epic 6: Training, Eval, And Research
 
@@ -575,6 +649,8 @@ adapter training, then widen toward broader train-class library closure.
 - decentralized adapter training is honest and end-to-end
 - eval, validator, and accepted-outcome surfaces are reusable
 - training is broader than a single narrow Apple-only lane
+- framework-level distributed training semantics are explicit, testable, and
+  clearly separated from cluster substrate truth
 - research and hillclimb loops build on the same receipts and validator truth
 
 ### Shipped Foundations
@@ -619,6 +695,11 @@ This epic already has an active GitHub issue program:
 | `PLIB-604` | planned | Deepen validator-owned benchmark and accepted-outcome truth so train/eval objects remain reusable outside one product lane. |
 | `PLIB-605` | planned | Build research and hillclimb loops over the same typed train/eval receipts instead of sidecar experiment logic. |
 | `PLIB-606` | planned | Reconcile train-class cluster and collective execution with the broader full-library cluster substrate in Epic 5. |
+| `PLIB-607` | planned | Add framework-level data-parallel semantics, including parameter synchronization, gradient reduction, buffer broadcast, and failure/refusal behavior. |
+| `PLIB-608` | planned | Add parameter, optimizer-state, and tensor-placement or sharding semantics for FSDP or DTensor-class workloads. |
+| `PLIB-609` | planned | Add pipeline-parallel stage, schedule, microbatch, and activation-lifetime semantics as a reusable training capability family. |
+| `PLIB-610` | planned | Add dense and sharded distributed checkpoint semantics, including optimizer-state checkpointing and restart or recovery contracts for train-class runs. |
+| `PLIB-611` | planned | Build elastic and fault-tolerant distributed training semantics on top of Epic 5 membership contracts instead of lane-specific orchestration. |
 
 ## Epic 7: Interop And Adoption
 
@@ -630,9 +711,9 @@ teams with PyTorch-shaped workflows."
 ### Exit Criteria
 
 - practical checkpoint and model migration paths exist
+- dense, sharded, and exported-graph migration paths are named and bounded
 - compatibility claims are explicit and limited
-- at least one Python or Torch-facing interop story exists after the substrate
-  is real
+- supported, convertible, and unsupported capability families are published
 - the project can honestly describe where it is a PyTorch replacement and where
   it is not
 
@@ -642,10 +723,14 @@ teams with PyTorch-shaped workflows."
 | --- | --- | --- |
 | `PLIB-701` | planned | Freeze the library's compatibility contract: `PyTorch-class`, `PyTorch-credible`, and `PyTorch-compatible` must mean different things and be tested differently. |
 | `PLIB-702` | planned | Add safe conversion tools for common checkpoint and artifact migration into Psionic-owned formats. |
-| `PLIB-703` | planned | Add a Python-facing or Torch-facing compatibility shell only after Epics 1 through 3 are materially real. |
+| `PLIB-703` | planned | Add bounded workflow-compatibility adapters around checkpoints, exported graphs, or runtime contracts only after Epics 1 through 3 are materially real. |
 | `PLIB-704` | planned | Build a reference model zoo and migration guide proving common families can run without app-local glue. |
 | `PLIB-705` | planned | Define distribution and packaging for Psionic as a standalone library, not only as an internal repo subtree. |
 | `PLIB-706` | planned | Publish a clear adoption story for teams choosing between Psionic-native, PyTorch-compatible, and mixed-runtime usage. |
+| `PLIB-707` | planned | Add migration tooling and policy for dense and sharded checkpoints, with explicit supported, convertible, and unsupported artifact classes. |
+| `PLIB-708` | planned | Define realistic distributed-state migration and restart story for training workloads instead of implying every PyTorch distributed artifact will import directly. |
+| `PLIB-709` | planned | Add stable exported-graph, package, and deployment artifact contracts so adoption does not depend only on raw checkpoints. |
+| `PLIB-710` | planned | Publish capability-family matrices covering supported, convertible, and unsupported status across ops, distributed, quantization, export, and backend surfaces. |
 
 ### Migration Staircase
 
@@ -653,8 +738,9 @@ The adoption path should stay explicit:
 
 1. Psionic-native internal models and runtimes.
 2. Imported checkpoints through explicit conversion.
-3. Mixed-runtime usage where interoperability is bounded and named.
-4. A bounded Torch-facing or Python-facing shell.
+3. Exported graphs, packaged runtime units, and bounded mixed-runtime usage.
+4. Explicit compatibility shells or adapters only where the capability matrix is
+   already honest.
 5. Only after the earlier steps are honest: "most workloads" adoption claims.
 
 ## Current Execution Order
@@ -668,40 +754,45 @@ This is the recommended dependency order for the next full-library work.
 3. `PLIB-102` operator registry and dispatch layer
 4. `PLIB-103` fake or meta execution
 5. `PLIB-105` compiler, schedule, memory-planning, and plan-cache depth
+6. `PLIB-109` through `PLIB-113` storage, RNG, extensibility, transform, and
+   non-dense core foundations
 
 ### Phase 2: build the missing semantics layer
 
-6. `PLIB-201` module and state-tree system
-7. `PLIB-202` strict and non-strict state loading
-8. `PLIB-203` optimizer and scheduler breadth
-9. `PLIB-204` serialization and checkpoint compatibility
-10. `PLIB-205` through `PLIB-208` parity harness registries
+7. `PLIB-201` through `PLIB-204` module, state, optimizer, and checkpoint
+   semantics
+8. `PLIB-210` through `PLIB-221` tensor-family, dtype, reproducibility,
+   precision, quantization, transform, extension, data, math, and export
+   capabilities
+9. `PLIB-205` through `PLIB-209` parity harnesses and capability-scope truth
 
 ### Phase 3: finish runtime-family truth
 
-11. `PLIB-301` GGUF K-family and remaining quant decode
-12. `PLIB-302` tokenizer and prompt fidelity
-13. `PLIB-303` cache and paged-storage completion
-14. `PLIB-305` through `PLIB-307` serving and router contract convergence
+10. `PLIB-301` GGUF K-family and remaining quant decode
+11. `PLIB-302` tokenizer and prompt fidelity
+12. `PLIB-303` cache and paged-storage completion
+13. `PLIB-305` through `PLIB-307` serving and router contract convergence
 
 ### Phase 4: keep backend truth honest while widening execution breadth
 
+14. `PLIB-401` CPU reference closure
 15. `PLIB-402` Metal lane refresh and closure
 16. `PLIB-403` CUDA lane refresh and closure
 17. `PLIB-404` and `PLIB-405` AMD execution closure
-18. `PLIB-406` backend evidence and benchmark acceptance
+18. `PLIB-406` through `PLIB-408` backend evidence, profiler, and capability
+   matrices
 
 ### Phase 5: reconcile distributed execution truth
 
-19. `PLIB-501` through `PLIB-507`
+19. `PLIB-501` through `PLIB-511`
 
 ### Phase 6: execute the training and eval program
 
-20. `PLIB-601` through `PLIB-606`
+20. `PLIB-601` through `PLIB-611`
 
 ### Phase 7: only then expose broader adoption and compatibility shells
 
-21. `PLIB-701` through `PLIB-706`
+21. `PLIB-701` through `PLIB-710`
 
 ## Program Risks And Dependency Hazards
 
@@ -741,6 +832,18 @@ If inspection, receipts, replay, cache, and refusal explanation remain spread
 across ad hoc surfaces, Psionic will lose the "small, visible core" advantage
 even if the code remains technically modular.
 
+### Risk 8: cluster truth mistaken for distributed training semantics
+
+If Epic 5 is treated as equivalent to DDP, FSDP, tensor sharding, or pipeline
+semantics, the roadmap will overclaim framework capability while only shipping
+execution substrate.
+
+### Risk 9: quant decode mistaken for quantization closure
+
+If `PLIB-301` lands without `PLIB-213` through `PLIB-215`, the project will
+look quantization-aware in demos while still lacking a real quantization
+system.
+
 ## Roadmap Rules
 
 ### 1. Do not treat one host or one benchmark chain as the whole roadmap
@@ -764,11 +867,17 @@ behavior.
 
 This remains non-negotiable under `docs/OWNERSHIP.md`.
 
-### 5. Do not open a Python-compatibility shell before the substrate is real
+### 5. Do not open a compatibility shell before the substrate is real
 
-A PyTorch-looking shell without real semantics is not adoption.
+A compatibility shell without real semantics is not adoption.
 
 It is a demo.
+
+### 6. Do not confuse artifact decode or cluster truth with framework parity
+
+GGUF quant decode is not quantization parity.
+
+Cluster execution truth is not distributed training semantics.
 
 ## Benchmark Honesty Rules
 
