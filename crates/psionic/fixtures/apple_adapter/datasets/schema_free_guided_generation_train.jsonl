@@ -1,0 +1,1 @@
+[{"role":"system","content":"Your job is to generate a title and tags for blog posts."},{"role":"user","content":"Beach day journal entry about sunburn, salt air, and a long walk on the pier."},{"role":"assistant","content":"{\"title\": \"Day at the Beach\", \"tags\": [\"#beachday\", \"#sunburnfunburn\", \"#pierwalk\"]}"}]

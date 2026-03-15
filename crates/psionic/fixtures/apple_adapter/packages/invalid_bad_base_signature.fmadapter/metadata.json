@@ -1,0 +1,13 @@
+{
+  "adapterIdentifier": "fmadapter-invalid_signature-9799725",
+  "author": "OpenAgents fixture",
+  "baseModelSignature": "NOT_A_VALID_SIGNATURE",
+  "creatorDefined": {
+    "draftModelPresent": false,
+    "packageFormatVersion": "openagents.apple-fmadapter.v1"
+  },
+  "description": "Negative fixture with a malformed base model signature.",
+  "license": "Apache-2.0",
+  "loraRank": 32,
+  "speculativeDecodingDraftTokenCount": 5
+}

@@ -1,0 +1,23 @@
+{
+  "adapterIdentifier": "fmadapter-structured_helper_v1-9799725",
+  "author": "OpenAgents fixture",
+  "baseModelSignature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "creatorDefined": {
+    "benchmarkRefs": [
+      "apple_adapter_structured_smoke@2026-03-14"
+    ],
+    "datasetRef": "fixture.apple_adapter.guided_generation_schema@2026-03-14",
+    "draftMilDigest": "sha256:fixture-draft-mil",
+    "draftModelPresent": true,
+    "draftWeightsDigest": "sha256:fixture-draft-weights",
+    "packageFormatVersion": "openagents.apple-fmadapter.v1",
+    "templateDigest": "sha256:3f4f852c8d1823849f29db44fa4f81c2f8791a24f766fdb70a5c854b476eb6c6",
+    "tokenizerDigest": "sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1",
+    "trainingEnvironmentRef": "apple_adapter_structured_sft@2026-03-14",
+    "validatorPolicyRef": "validator.apple_adapter.structured.v1"
+  },
+  "description": "Positive fixture with optional draft payload present.",
+  "license": "Apache-2.0",
+  "loraRank": 32,
+  "speculativeDecodingDraftTokenCount": 6
+}

@@ -1,0 +1,21 @@
+{
+  "adapterIdentifier": "fmadapter-friendly_writer_v1-9799725",
+  "author": "OpenAgents fixture",
+  "baseModelSignature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "creatorDefined": {
+    "benchmarkRefs": [
+      "apple_adapter_smoke@2026-03-14"
+    ],
+    "datasetRef": "fixture.apple_adapter.minimal_sft@2026-03-14",
+    "draftModelPresent": false,
+    "packageFormatVersion": "openagents.apple-fmadapter.v1",
+    "templateDigest": "sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b",
+    "tokenizerDigest": "sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1",
+    "trainingEnvironmentRef": "apple_adapter_sft@2026-03-14",
+    "validatorPolicyRef": "validator.apple_adapter.smoke.v1"
+  },
+  "description": "Inventory-only positive fixture for Apple adapter package parsing.",
+  "license": "Apache-2.0",
+  "loraRank": 32,
+  "speculativeDecodingDraftTokenCount": 5
+}

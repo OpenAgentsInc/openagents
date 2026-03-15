@@ -42,6 +42,14 @@ The train system assumes the execution substrate defined in
 `ARCHITECTURE.md` and does not redefine runtime, cluster, sandbox, or artifact
 transport behavior.
 
+Apple-specific adapter work is still later-family work, but the repo now owns a
+canonical spec-and-fixture baseline for it in:
+
+- `crates/psionic/docs/APPLE_ADAPTER_DATASET_SPEC.md`
+- `crates/psionic/docs/APPLE_FMADAPTER_PACKAGE_SPEC.md`
+- `crates/psionic/docs/APPLE_ADAPTER_LINEAGE_SPEC.md`
+- `crates/psionic/fixtures/apple_adapter/`
+
 ## Doc Authority
 
 - `crates/psionic/docs/TRAIN_SYSTEM.md` is the canonical training subsystem
@@ -51,6 +59,11 @@ transport behavior.
 - `crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md` is the canonical
   framework-core acceptance split; train acceptance must not be used as a
   substitute for framework-core parity claims.
+- `crates/psionic/docs/APPLE_ADAPTER_DATASET_SPEC.md`,
+  `crates/psionic/docs/APPLE_FMADAPTER_PACKAGE_SPEC.md`, and
+  `crates/psionic/docs/APPLE_ADAPTER_LINEAGE_SPEC.md` are the canonical
+  Apple-adapter reference docs for dataset shape, package inventory, and
+  lineage metadata.
 - `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md` is
   research rationale, not the canonical current-state spec.
 - `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "openagents.apple_adapter.lineage.v1",
+  "adapterIdentifier": "fmadapter-friendly_writer_v1-9799725",
+  "baseModelSignature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "tokenizer": {
+    "family": "sentence_piece",
+    "tokenizerDigest": "sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1",
+    "templateDigest": "sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b"
+  },
+  "datasetBindings": [
+    {
+      "datasetRef": "fixture.apple_adapter.minimal_sft",
+      "version": "2026-03-14",
+      "split": "train",
+      "recordEncoding": "jsonl_conversation"
+    }
+  ],
+  "environment": {
+    "environmentRef": "apple_adapter_sft",
+    "version": "2026-03-14",
+    "workloadClass": "sft"
+  },
+  "benchmarks": [
+    {
+      "benchmarkRef": "apple_adapter_smoke",
+      "version": "2026-03-14"
+    }
+  ],
+  "validatorPolicyRef": "validator.apple_adapter.smoke.v1",
+  "package": {
+    "format": "fmadapter",
+    "packageFormatVersion": "openagents.apple-fmadapter.v1",
+    "packageDigest": "sha256:fixture-minimal-chat-adapter",
+    "adapterWeightsDigest": "sha256:fixture-minimal-chat-adapter-weights",
+    "draftModelPresent": false
+  },
+  "creatorDefined": {
+    "promptTemplate": "apple.foundation-model.default.v1",
+    "locale": "en-US"
+  }
+}
