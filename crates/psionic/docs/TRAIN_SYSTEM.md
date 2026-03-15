@@ -1832,6 +1832,26 @@ The canonical gate for that layer is now:
 
 - `scripts/release/check-psionic-apple-architecture-explainer-benchmark.sh`
 
+On 2026-03-15, GitHub issue `#3656` added the experiment-management layer for
+that same first real-run target:
+
+- `psionic-train` now exposes typed Apple adapter experiment manifests,
+  checkpoint candidates, selection records, trend ledgers, and regression
+  reason codes for the `Psionic architecture explainer` program
+- the first reviewed real-run manifest now freezes dataset version, train,
+  held-out, and benchmark split digests, benchmark ref, environment ref,
+  runtime compatibility anchor, LoRA targets, feature widths, and acceptance
+  policy in repo fixtures
+- checkpoint choice is now intentional rather than log-only: accepted
+  candidates sort ahead of rejected ones, then by benchmark quality and stable
+  candidate id
+- later iterations can now surface regression explicitly against the best prior
+  accepted run instead of silently overwriting "the latest good package"
+
+The canonical experiment-program gate for that layer is now:
+
+- `scripts/release/check-psionic-apple-experiment-program.sh`
+
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 
 Status: implemented on 2026-03-14 via GitHub issue `#3569`.

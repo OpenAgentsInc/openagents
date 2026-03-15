@@ -8,6 +8,8 @@ for issue `#3616`.
 - `datasets/`: positive and negative JSONL training-data examples, plus the
   first reviewed real-run corpus splits under
   `datasets/psionic_architecture_explainer/`
+- `experiments/`: frozen experiment manifests and trend ledgers for the
+  first reviewed `Psionic architecture explainer` run iterations
 - `packages/`: positive and negative `.fmadapter` inventory fixtures
 - `lineage/`: positive and negative OpenAgents lineage payloads
 
