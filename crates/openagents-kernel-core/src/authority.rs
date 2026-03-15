@@ -1,6 +1,8 @@
 use crate::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
-    CapacityLotStatus, CapacityNonDeliveryReason, ComputeAcceptedOutcome, ComputeBenchmarkPackage,
+    CapacityLotStatus, CapacityNonDeliveryReason, ComputeAcceptedOutcome,
+    ComputeAdapterContributionDisposition, ComputeAdapterContributionOutcome,
+    ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus, ComputeBenchmarkPackage,
     ComputeCheckpointFamilyPolicy, ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
     ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeIndex,
     ComputeIndexCorrectionReason, ComputeProduct, ComputeProductStatus, ComputeRegistryStatus,
@@ -82,6 +84,10 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: AcceptComputeOutcomeRequest,
     ) -> Result<AcceptComputeOutcomeResponse>;
+    async fn record_compute_adapter_window(
+        &self,
+        req: RecordComputeAdapterWindowRequest,
+    ) -> Result<RecordComputeAdapterWindowResponse>;
     async fn create_compute_synthetic_data_job(
         &self,
         req: CreateComputeSyntheticDataJobRequest,
@@ -207,6 +213,25 @@ pub trait KernelAuthority: Send + Sync {
         status: Option<ComputeTrainingRunStatus>,
     ) -> Result<Vec<ComputeTrainingRun>>;
     async fn get_compute_training_run(&self, training_run_id: &str) -> Result<ComputeTrainingRun>;
+    async fn list_compute_adapter_training_windows(
+        &self,
+        training_run_id: Option<&str>,
+        status: Option<ComputeAdapterWindowStatus>,
+    ) -> Result<Vec<ComputeAdapterTrainingWindow>>;
+    async fn get_compute_adapter_training_window(
+        &self,
+        window_id: &str,
+    ) -> Result<ComputeAdapterTrainingWindow>;
+    async fn list_compute_adapter_contribution_outcomes(
+        &self,
+        training_run_id: Option<&str>,
+        window_id: Option<&str>,
+        disposition: Option<ComputeAdapterContributionDisposition>,
+    ) -> Result<Vec<ComputeAdapterContributionOutcome>>;
+    async fn get_compute_adapter_contribution_outcome(
+        &self,
+        contribution_id: &str,
+    ) -> Result<ComputeAdapterContributionOutcome>;
     async fn list_compute_accepted_outcomes(
         &self,
         outcome_kind: Option<crate::compute::ComputeAcceptedOutcomeKind>,
@@ -649,6 +674,28 @@ pub struct AcceptComputeOutcomeRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AcceptComputeOutcomeResponse {
     pub outcome: ComputeAcceptedOutcome,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecordComputeAdapterWindowRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub window: ComputeAdapterTrainingWindow,
+    #[serde(default)]
+    pub contribution_outcomes: Vec<ComputeAdapterContributionOutcome>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecordComputeAdapterWindowResponse {
+    pub window: ComputeAdapterTrainingWindow,
+    #[serde(default)]
+    pub contribution_outcomes: Vec<ComputeAdapterContributionOutcome>,
     pub receipt: Receipt,
 }
 
@@ -1548,6 +1595,17 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::accept_compute_outcome_response_from_proto(&response)
     }
 
+    async fn record_compute_adapter_window(
+        &self,
+        req: RecordComputeAdapterWindowRequest,
+    ) -> Result<RecordComputeAdapterWindowResponse> {
+        let wire = compute_contracts::record_compute_adapter_window_request_to_proto(&req)?;
+        let response: proto_compute::RecordComputeAdapterWindowResponse = self
+            .post_json("/v1/kernel/compute/training/adapter-windows", &wire)
+            .await?;
+        compute_contracts::record_compute_adapter_window_response_from_proto(&response)
+    }
+
     async fn create_compute_synthetic_data_job(
         &self,
         req: CreateComputeSyntheticDataJobRequest,
@@ -1966,6 +2024,65 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::GetComputeTrainingRunResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::get_compute_training_run_response_from_proto(&response)
+    }
+
+    async fn list_compute_adapter_training_windows(
+        &self,
+        training_run_id: Option<&str>,
+        status: Option<ComputeAdapterWindowStatus>,
+    ) -> Result<Vec<ComputeAdapterTrainingWindow>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/training/adapter-windows",
+            &[
+                ("training_run_id", training_run_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListComputeAdapterTrainingWindowsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_adapter_training_windows_response_from_proto(&response)
+    }
+
+    async fn get_compute_adapter_training_window(
+        &self,
+        window_id: &str,
+    ) -> Result<ComputeAdapterTrainingWindow> {
+        let path = format!("/v1/kernel/compute/training/adapter-windows/{window_id}");
+        let response: proto_compute::GetComputeAdapterTrainingWindowResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_adapter_training_window_response_from_proto(&response)
+    }
+
+    async fn list_compute_adapter_contribution_outcomes(
+        &self,
+        training_run_id: Option<&str>,
+        window_id: Option<&str>,
+        disposition: Option<ComputeAdapterContributionDisposition>,
+    ) -> Result<Vec<ComputeAdapterContributionOutcome>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/training/adapter-contributions",
+            &[
+                ("training_run_id", training_run_id.map(ToOwned::to_owned)),
+                ("window_id", window_id.map(ToOwned::to_owned)),
+                (
+                    "disposition",
+                    disposition.map(|value| value.label().to_string()),
+                ),
+            ],
+        );
+        let response: proto_compute::ListComputeAdapterContributionOutcomesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_adapter_contribution_outcomes_response_from_proto(&response)
+    }
+
+    async fn get_compute_adapter_contribution_outcome(
+        &self,
+        contribution_id: &str,
+    ) -> Result<ComputeAdapterContributionOutcome> {
+        let path = format!("/v1/kernel/compute/training/adapter-contributions/{contribution_id}");
+        let response: proto_compute::GetComputeAdapterContributionOutcomeResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_adapter_contribution_outcome_response_from_proto(&response)
     }
 
     async fn list_compute_accepted_outcomes(

@@ -237,6 +237,131 @@ impl ComputeAcceptedOutcomeKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterWindowStatus {
+    #[default]
+    Planned,
+    Active,
+    Sealed,
+    Scored,
+    Reconciled,
+}
+
+impl ComputeAdapterWindowStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Planned => "planned",
+            Self::Active => "active",
+            Self::Sealed => "sealed",
+            Self::Scored => "scored",
+            Self::Reconciled => "reconciled",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "planned" => Some(Self::Planned),
+            "active" => Some(Self::Active),
+            "sealed" => Some(Self::Sealed),
+            "scored" => Some(Self::Scored),
+            "reconciled" => Some(Self::Reconciled),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterContributionDisposition {
+    Accepted,
+    Quarantined,
+    Rejected,
+    #[default]
+    ReplayRequired,
+}
+
+impl ComputeAdapterContributionDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Quarantined => "quarantined",
+            Self::Rejected => "rejected",
+            Self::ReplayRequired => "replay_required",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "accepted" => Some(Self::Accepted),
+            "quarantined" => Some(Self::Quarantined),
+            "rejected" => Some(Self::Rejected),
+            "replay_required" => Some(Self::ReplayRequired),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterAggregationEligibility {
+    #[default]
+    Eligible,
+    Ineligible,
+}
+
+impl ComputeAdapterAggregationEligibility {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Eligible => "eligible",
+            Self::Ineligible => "ineligible",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterPromotionDisposition {
+    Promoted,
+    Held,
+}
+
+impl ComputeAdapterPromotionDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Promoted => "promoted",
+            Self::Held => "held",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterPromotionHoldReasonCode {
+    InsufficientAcceptedWork,
+    ValidatorWindowNotPromotionReady,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterContributionValidationReasonCode {
+    SecurityRejected,
+    SecurityQuarantined,
+    ReplayRequired,
+    ReplayMismatch,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeAdapterWindowGateReasonCode {
+    HeldOutEvalMissing,
+    HeldOutEvalBelowThreshold,
+    BenchmarkMissing,
+    BenchmarkBelowThreshold,
+    RuntimeSmokeRequired,
+    RuntimeSmokeFailed,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeAppleAdapterSampleKind {
@@ -1113,6 +1238,130 @@ pub struct ComputeAcceptedOutcome {
     pub evaluation_summary: Option<ComputeEvaluationSummary>,
     #[serde(default)]
     pub training_summary: Option<ComputeTrainingSummary>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAdapterPolicyRevision {
+    pub policy_family: String,
+    pub revision_id: String,
+    #[serde(default)]
+    pub revision_number: Option<u64>,
+    pub policy_digest: String,
+    #[serde(default)]
+    pub parent_revision_id: Option<String>,
+    pub produced_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAdapterCheckpointPointer {
+    pub scope_kind: String,
+    pub scope_id: String,
+    pub checkpoint_family: String,
+    pub checkpoint_ref: String,
+    pub manifest_digest: String,
+    pub updated_at_ms: i64,
+    pub pointer_digest: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAdapterDatasetSlice {
+    pub dataset_id: String,
+    pub split_name: String,
+    pub slice_id: String,
+    pub slice_digest: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAdapterTrainingWindow {
+    pub window_id: String,
+    pub training_run_id: String,
+    pub stage_id: String,
+    pub contributor_set_revision_id: String,
+    pub validator_policy_ref: String,
+    pub adapter_target_id: String,
+    pub adapter_family: String,
+    pub base_model_ref: String,
+    pub adapter_format: String,
+    pub source_policy_revision: ComputeAdapterPolicyRevision,
+    pub source_checkpoint_pointer: ComputeAdapterCheckpointPointer,
+    #[serde(default)]
+    pub status: ComputeAdapterWindowStatus,
+    pub total_contributions: u32,
+    pub admitted_contributions: u32,
+    pub accepted_contributions: u32,
+    pub quarantined_contributions: u32,
+    pub rejected_contributions: u32,
+    pub replay_required_contributions: u32,
+    pub replay_checked_contributions: u32,
+    #[serde(default)]
+    pub held_out_average_score_bps: Option<u32>,
+    #[serde(default)]
+    pub benchmark_pass_rate_bps: Option<u32>,
+    #[serde(default)]
+    pub runtime_smoke_passed: Option<bool>,
+    pub promotion_ready: bool,
+    #[serde(default)]
+    pub gate_reason_codes: Vec<ComputeAdapterWindowGateReasonCode>,
+    pub window_summary_digest: String,
+    #[serde(default)]
+    pub promotion_disposition: Option<ComputeAdapterPromotionDisposition>,
+    #[serde(default)]
+    pub hold_reason_codes: Vec<ComputeAdapterPromotionHoldReasonCode>,
+    #[serde(default)]
+    pub aggregated_delta_digest: Option<String>,
+    #[serde(default)]
+    pub output_policy_revision: Option<ComputeAdapterPolicyRevision>,
+    #[serde(default)]
+    pub output_checkpoint_pointer: Option<ComputeAdapterCheckpointPointer>,
+    #[serde(default)]
+    pub accepted_outcome_id: Option<String>,
+    pub recorded_at_ms: i64,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAdapterContributionOutcome {
+    pub contribution_id: String,
+    pub training_run_id: String,
+    pub stage_id: String,
+    pub window_id: String,
+    pub contributor_set_revision_id: String,
+    pub assignment_id: String,
+    pub contributor_node_id: String,
+    pub worker_id: String,
+    pub validator_policy_ref: String,
+    pub adapter_target_id: String,
+    pub adapter_family: String,
+    pub base_model_ref: String,
+    pub adapter_format: String,
+    pub dataset_slice: ComputeAdapterDatasetSlice,
+    pub source_policy_revision: ComputeAdapterPolicyRevision,
+    pub source_checkpoint_pointer: ComputeAdapterCheckpointPointer,
+    pub submission_receipt_digest: String,
+    pub artifact_id: String,
+    pub manifest_digest: String,
+    pub object_digest: String,
+    pub artifact_receipt_digest: String,
+    pub provenance_bundle_digest: String,
+    pub security_receipt_digest: String,
+    #[serde(default)]
+    pub replay_receipt_digest: Option<String>,
+    #[serde(default)]
+    pub validator_disposition: ComputeAdapterContributionDisposition,
+    #[serde(default)]
+    pub validation_reason_codes: Vec<ComputeAdapterContributionValidationReasonCode>,
+    pub validator_receipt_digest: String,
+    #[serde(default)]
+    pub aggregation_eligibility: ComputeAdapterAggregationEligibility,
+    pub accepted_for_aggregation: bool,
+    #[serde(default)]
+    pub aggregation_weight_bps: Option<u32>,
+    #[serde(default)]
+    pub promotion_receipt_digest: Option<String>,
+    pub recorded_at_ms: i64,
     #[serde(default)]
     pub metadata: Value,
 }
@@ -2395,6 +2644,274 @@ pub fn validate_compute_accepted_outcome(outcome: &ComputeAcceptedOutcome) -> Re
             validate_compute_training_summary(outcome.training_summary.as_ref().expect("checked"))?;
         }
     }
+    Ok(())
+}
+
+pub fn validate_compute_adapter_policy_revision(
+    revision: &ComputeAdapterPolicyRevision,
+) -> Result<(), String> {
+    if revision.policy_family.trim().is_empty() {
+        return Err("compute_adapter_policy_family_missing".to_string());
+    }
+    if revision.revision_id.trim().is_empty() {
+        return Err("compute_adapter_policy_revision_id_missing".to_string());
+    }
+    if revision.policy_digest.trim().is_empty() {
+        return Err("compute_adapter_policy_digest_missing".to_string());
+    }
+    if revision
+        .parent_revision_id
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_parent_revision_id_invalid".to_string());
+    }
+    if revision.produced_at_ms <= 0 {
+        return Err("compute_adapter_policy_produced_at_invalid".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_adapter_checkpoint_pointer(
+    pointer: &ComputeAdapterCheckpointPointer,
+) -> Result<(), String> {
+    if pointer.scope_kind.trim().is_empty() {
+        return Err("compute_adapter_checkpoint_scope_kind_missing".to_string());
+    }
+    if pointer.scope_id.trim().is_empty() {
+        return Err("compute_adapter_checkpoint_scope_id_missing".to_string());
+    }
+    if pointer.checkpoint_family.trim().is_empty() {
+        return Err("compute_adapter_checkpoint_family_missing".to_string());
+    }
+    if pointer.checkpoint_ref.trim().is_empty() {
+        return Err("compute_adapter_checkpoint_ref_missing".to_string());
+    }
+    if pointer.manifest_digest.trim().is_empty() {
+        return Err("compute_adapter_checkpoint_manifest_digest_missing".to_string());
+    }
+    if pointer.pointer_digest.trim().is_empty() {
+        return Err("compute_adapter_checkpoint_pointer_digest_missing".to_string());
+    }
+    if pointer.updated_at_ms <= 0 {
+        return Err("compute_adapter_checkpoint_updated_at_invalid".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_adapter_dataset_slice(
+    dataset_slice: &ComputeAdapterDatasetSlice,
+) -> Result<(), String> {
+    if dataset_slice.dataset_id.trim().is_empty() {
+        return Err("compute_adapter_dataset_id_missing".to_string());
+    }
+    if dataset_slice.split_name.trim().is_empty() {
+        return Err("compute_adapter_dataset_split_missing".to_string());
+    }
+    if dataset_slice.slice_id.trim().is_empty() {
+        return Err("compute_adapter_dataset_slice_id_missing".to_string());
+    }
+    if dataset_slice.slice_digest.trim().is_empty() {
+        return Err("compute_adapter_dataset_slice_digest_missing".to_string());
+    }
+    Ok(())
+}
+
+pub fn validate_compute_adapter_training_window(
+    window: &ComputeAdapterTrainingWindow,
+) -> Result<(), String> {
+    if window.window_id.trim().is_empty() {
+        return Err("compute_adapter_window_id_missing".to_string());
+    }
+    if window.training_run_id.trim().is_empty() {
+        return Err("compute_training_run_id_missing".to_string());
+    }
+    if window.stage_id.trim().is_empty() {
+        return Err("compute_adapter_stage_id_missing".to_string());
+    }
+    if window.contributor_set_revision_id.trim().is_empty() {
+        return Err("compute_adapter_contributor_set_revision_id_missing".to_string());
+    }
+    if window.validator_policy_ref.trim().is_empty() {
+        return Err("compute_validator_policy_ref_missing".to_string());
+    }
+    if window.adapter_target_id.trim().is_empty() {
+        return Err("compute_adapter_target_id_missing".to_string());
+    }
+    if window.adapter_family.trim().is_empty() {
+        return Err("compute_adapter_family_missing".to_string());
+    }
+    if window.base_model_ref.trim().is_empty() {
+        return Err("compute_adapter_base_model_ref_missing".to_string());
+    }
+    if window.adapter_format.trim().is_empty() {
+        return Err("compute_adapter_format_missing".to_string());
+    }
+    if window.admitted_contributions > window.total_contributions
+        || window.accepted_contributions > window.admitted_contributions
+        || window.quarantined_contributions > window.admitted_contributions
+        || window.rejected_contributions > window.total_contributions
+        || window.replay_required_contributions > window.total_contributions
+        || window.replay_checked_contributions > window.total_contributions
+    {
+        return Err("compute_adapter_window_contribution_counts_invalid".to_string());
+    }
+    if window
+        .held_out_average_score_bps
+        .is_some_and(|value| value > 10_000)
+        || window
+            .benchmark_pass_rate_bps
+            .is_some_and(|value| value > 10_000)
+    {
+        return Err("compute_adapter_window_score_invalid".to_string());
+    }
+    if window.window_summary_digest.trim().is_empty() {
+        return Err("compute_adapter_window_summary_digest_missing".to_string());
+    }
+    if window.recorded_at_ms <= 0 {
+        return Err("compute_adapter_window_recorded_at_invalid".to_string());
+    }
+    if window
+        .accepted_outcome_id
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_accepted_outcome_id_missing".to_string());
+    }
+    if window.output_policy_revision.is_some() != window.output_checkpoint_pointer.is_some() {
+        return Err("compute_adapter_window_promotion_checkpoint_missing".to_string());
+    }
+    match window.promotion_disposition {
+        Some(ComputeAdapterPromotionDisposition::Promoted) => {
+            if window.output_policy_revision.is_none() {
+                return Err("compute_adapter_window_promotion_checkpoint_missing".to_string());
+            }
+            if !window.hold_reason_codes.is_empty() {
+                return Err("compute_adapter_window_hold_reason_invalid".to_string());
+            }
+        }
+        Some(ComputeAdapterPromotionDisposition::Held) => {
+            if window.output_policy_revision.is_some() {
+                return Err("compute_adapter_window_promotion_disposition_invalid".to_string());
+            }
+            if window.hold_reason_codes.is_empty() {
+                return Err("compute_adapter_window_hold_reason_missing".to_string());
+            }
+        }
+        None => {
+            if window.output_policy_revision.is_some() {
+                return Err("compute_adapter_window_promotion_disposition_missing".to_string());
+            }
+        }
+    }
+    validate_compute_adapter_policy_revision(&window.source_policy_revision)?;
+    validate_compute_adapter_checkpoint_pointer(&window.source_checkpoint_pointer)?;
+    if let Some(output_policy_revision) = window.output_policy_revision.as_ref() {
+        validate_compute_adapter_policy_revision(output_policy_revision)?;
+    }
+    if let Some(output_checkpoint_pointer) = window.output_checkpoint_pointer.as_ref() {
+        validate_compute_adapter_checkpoint_pointer(output_checkpoint_pointer)?;
+    }
+    Ok(())
+}
+
+pub fn validate_compute_adapter_contribution_outcome(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> Result<(), String> {
+    if contribution.contribution_id.trim().is_empty() {
+        return Err("compute_adapter_contribution_id_missing".to_string());
+    }
+    if contribution.training_run_id.trim().is_empty() {
+        return Err("compute_training_run_id_missing".to_string());
+    }
+    if contribution.stage_id.trim().is_empty() {
+        return Err("compute_adapter_stage_id_missing".to_string());
+    }
+    if contribution.window_id.trim().is_empty() {
+        return Err("compute_adapter_window_id_missing".to_string());
+    }
+    if contribution.contributor_set_revision_id.trim().is_empty() {
+        return Err("compute_adapter_contributor_set_revision_id_missing".to_string());
+    }
+    if contribution.assignment_id.trim().is_empty() {
+        return Err("compute_adapter_assignment_id_missing".to_string());
+    }
+    if contribution.contributor_node_id.trim().is_empty() {
+        return Err("compute_adapter_contributor_node_id_missing".to_string());
+    }
+    if contribution.worker_id.trim().is_empty() {
+        return Err("compute_adapter_worker_id_missing".to_string());
+    }
+    if contribution.validator_policy_ref.trim().is_empty() {
+        return Err("compute_validator_policy_ref_missing".to_string());
+    }
+    if contribution.adapter_target_id.trim().is_empty() {
+        return Err("compute_adapter_target_id_missing".to_string());
+    }
+    if contribution.adapter_family.trim().is_empty() {
+        return Err("compute_adapter_family_missing".to_string());
+    }
+    if contribution.base_model_ref.trim().is_empty() {
+        return Err("compute_adapter_base_model_ref_missing".to_string());
+    }
+    if contribution.adapter_format.trim().is_empty() {
+        return Err("compute_adapter_format_missing".to_string());
+    }
+    if contribution.submission_receipt_digest.trim().is_empty() {
+        return Err("compute_adapter_submission_receipt_digest_missing".to_string());
+    }
+    if contribution.artifact_id.trim().is_empty() {
+        return Err("compute_adapter_artifact_id_missing".to_string());
+    }
+    if contribution.manifest_digest.trim().is_empty() {
+        return Err("compute_adapter_manifest_digest_missing".to_string());
+    }
+    if contribution.object_digest.trim().is_empty() {
+        return Err("compute_adapter_object_digest_missing".to_string());
+    }
+    if contribution.artifact_receipt_digest.trim().is_empty() {
+        return Err("compute_adapter_artifact_receipt_digest_missing".to_string());
+    }
+    if contribution.provenance_bundle_digest.trim().is_empty() {
+        return Err("compute_adapter_provenance_bundle_digest_missing".to_string());
+    }
+    if contribution.security_receipt_digest.trim().is_empty() {
+        return Err("compute_adapter_security_receipt_digest_missing".to_string());
+    }
+    if contribution
+        .replay_receipt_digest
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_replay_receipt_digest_invalid".to_string());
+    }
+    if contribution.validator_receipt_digest.trim().is_empty() {
+        return Err("compute_adapter_validator_receipt_digest_missing".to_string());
+    }
+    if contribution
+        .aggregation_weight_bps
+        .is_some_and(|value| value > 10_000)
+    {
+        return Err("compute_adapter_aggregation_weight_invalid".to_string());
+    }
+    if contribution.accepted_for_aggregation
+        && contribution.aggregation_eligibility != ComputeAdapterAggregationEligibility::Eligible
+    {
+        return Err("compute_adapter_contribution_aggregation_state_invalid".to_string());
+    }
+    if contribution
+        .promotion_receipt_digest
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_promotion_receipt_digest_invalid".to_string());
+    }
+    if contribution.recorded_at_ms <= 0 {
+        return Err("compute_adapter_contribution_recorded_at_invalid".to_string());
+    }
+    validate_compute_adapter_dataset_slice(&contribution.dataset_slice)?;
+    validate_compute_adapter_policy_revision(&contribution.source_policy_revision)?;
+    validate_compute_adapter_checkpoint_pointer(&contribution.source_checkpoint_pointer)?;
     Ok(())
 }
 

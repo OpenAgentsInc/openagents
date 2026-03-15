@@ -100,6 +100,16 @@ The authority now also manages:
   - canonical train run id, policy refs, environment binding, checkpoint
     binding, validator posture, benchmark package refs, source linkage, step
     expectations, terminal summaries, and checkpoint promotion refs
+- `ComputeAdapterTrainingWindow`
+  - canonical decentralized-adapter window projection linked to one
+    `ComputeTrainingRun`, including lifecycle state, validator score summary,
+    promotion readiness, promotion lineage, and optional accepted-outcome
+    linkage
+- `ComputeAdapterContributionOutcome`
+  - canonical contribution-level projection linked to one
+    `ComputeAdapterTrainingWindow`, including manifest/object digests, validator
+    disposition, aggregation eligibility, aggregation weight, and preserved
+    submission/artifact/provenance/security/validator receipt digests
 - `ComputeAcceptedOutcome`
   - canonical accepted-outcome id for either:
     - one finalized `ComputeEvaluationRun`
@@ -117,6 +127,16 @@ They keep one machine-legible accepted record with:
 - benchmark package refs
 - accepted-at timestamp
 - canonical evaluation or training summary
+
+The decentralized adapter objects are the durable authority bridge from Psionic
+execution receipts into operator and settlement-facing truth:
+
+- Psionic still owns assignment, upload, security, validator replay, and
+  aggregation execution receipts
+- Kernel and Nexus now persist the window and contribution projections derived
+  from those receipts
+- accepted outcomes remain the only canonical promotion boundary for later
+  market settlement or accepted operator claims
 
 ## Current Apple Operator Path
 
@@ -212,6 +232,37 @@ The important rule is simple:
   held-out eval ref, and runtime-validation eval ref remain available to later
   projections without inventing a second local truth source
 
+### Decentralized adapter windows and contributions
+
+- recording one adapter window requires an existing `ComputeTrainingRun`
+- the window validator policy must match the source training run validator
+  policy
+- each contribution recorded with the window must bind to the same:
+  - training run
+  - stage id
+  - window id
+  - contributor-set revision
+  - adapter target lineage
+  - source policy revision
+  - source checkpoint pointer
+- each contribution projection preserves:
+  - submission receipt digest
+  - artifact receipt digest
+  - provenance bundle digest
+  - security receipt digest
+  - optional replay receipt digest
+  - validator receipt digest
+- each window projection preserves:
+  - lifecycle status (`planned` through `reconciled`)
+  - contribution counts and validator score summary
+  - promotion readiness and gate reasons
+  - promotion disposition and hold reasons
+  - optional promoted policy revision and checkpoint pointer
+  - optional accepted-outcome id once canonical outcome acceptance has happened
+- re-recording the same window id replaces the current contribution projection
+  set for that window, so one authority record can move from provisional window
+  truth to accepted-outcome-linked truth without inventing parallel local state
+
 ## HTTP Authority Surface
 
 Nexus now exposes:
@@ -232,6 +283,11 @@ Nexus now exposes:
 - `GET /v1/kernel/compute/training/runs?training_policy_ref=&environment_ref=&status=`
 - `GET /v1/kernel/compute/training/runs/{training_run_id}`
 - `POST /v1/kernel/compute/training/runs/{training_run_id}/finalize`
+- `POST /v1/kernel/compute/training/adapter-windows`
+- `GET /v1/kernel/compute/training/adapter-windows?training_run_id=&status=`
+- `GET /v1/kernel/compute/training/adapter-windows/{window_id}`
+- `GET /v1/kernel/compute/training/adapter-contributions?training_run_id=&window_id=&disposition=`
+- `GET /v1/kernel/compute/training/adapter-contributions/{contribution_id}`
 - `POST /v1/kernel/compute/outcomes`
 - `GET /v1/kernel/compute/outcomes?outcome_kind=&environment_ref=`
 - `GET /v1/kernel/compute/outcomes/{outcome_id}`
@@ -246,6 +302,7 @@ The canonical new receipt families are:
 - `kernel.compute.training_policy.register.v1`
 - `kernel.compute.training_run.create.v1`
 - `kernel.compute.training_run.finalize.v1`
+- `kernel.compute.adapter_window.record.v1`
 - `kernel.compute.outcome.accept.v1`
 
 These receipts are emitted through normal Nexus mutation handling and survive
@@ -260,6 +317,7 @@ Rust request builders and response parsing for:
 - all four registry registration flows
 - list/get reads for those registries
 - training run create/finalize/list/get
+- adapter window record plus window/contribution list/get
 - accepted-outcome accept/list/get
 
 This replaces ad hoc JSON request construction for the authority-facing
@@ -274,8 +332,10 @@ The landed regression coverage now includes:
 - Apple-specific kernel validation tests for malformed benchmark-package,
   training-policy, and training-run metadata in `openagents-kernel-core`
 - Nexus state-machine tests covering eval and training accepted-outcome flows
+- Nexus state-machine tests covering adapter-window and contribution persistence
 - generated-contract HTTP roundtrip coverage through `HttpKernelAuthorityClient`
-  for all new registries, training runs, and accepted outcomes
+  for all new registries, training runs, adapter windows, contributions, and
+  accepted outcomes
 
 ## Relation To Psionic
 

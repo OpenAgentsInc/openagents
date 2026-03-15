@@ -32,6 +32,59 @@ enum ComputeAcceptedOutcomeKind {
   COMPUTE_ACCEPTED_OUTCOME_KIND_TRAINING_RUN = 2;
 }
 
+enum ComputeAdapterWindowStatus {
+  COMPUTE_ADAPTER_WINDOW_STATUS_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_WINDOW_STATUS_PLANNED = 1;
+  COMPUTE_ADAPTER_WINDOW_STATUS_ACTIVE = 2;
+  COMPUTE_ADAPTER_WINDOW_STATUS_SEALED = 3;
+  COMPUTE_ADAPTER_WINDOW_STATUS_SCORED = 4;
+  COMPUTE_ADAPTER_WINDOW_STATUS_RECONCILED = 5;
+}
+
+enum ComputeAdapterContributionDisposition {
+  COMPUTE_ADAPTER_CONTRIBUTION_DISPOSITION_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_CONTRIBUTION_DISPOSITION_ACCEPTED = 1;
+  COMPUTE_ADAPTER_CONTRIBUTION_DISPOSITION_QUARANTINED = 2;
+  COMPUTE_ADAPTER_CONTRIBUTION_DISPOSITION_REJECTED = 3;
+  COMPUTE_ADAPTER_CONTRIBUTION_DISPOSITION_REPLAY_REQUIRED = 4;
+}
+
+enum ComputeAdapterAggregationEligibility {
+  COMPUTE_ADAPTER_AGGREGATION_ELIGIBILITY_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_AGGREGATION_ELIGIBILITY_ELIGIBLE = 1;
+  COMPUTE_ADAPTER_AGGREGATION_ELIGIBILITY_INELIGIBLE = 2;
+}
+
+enum ComputeAdapterPromotionDisposition {
+  COMPUTE_ADAPTER_PROMOTION_DISPOSITION_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_PROMOTION_DISPOSITION_PROMOTED = 1;
+  COMPUTE_ADAPTER_PROMOTION_DISPOSITION_HELD = 2;
+}
+
+enum ComputeAdapterPromotionHoldReasonCode {
+  COMPUTE_ADAPTER_PROMOTION_HOLD_REASON_CODE_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_PROMOTION_HOLD_REASON_CODE_INSUFFICIENT_ACCEPTED_WORK = 1;
+  COMPUTE_ADAPTER_PROMOTION_HOLD_REASON_CODE_VALIDATOR_WINDOW_NOT_PROMOTION_READY = 2;
+}
+
+enum ComputeAdapterContributionValidationReasonCode {
+  COMPUTE_ADAPTER_CONTRIBUTION_VALIDATION_REASON_CODE_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_CONTRIBUTION_VALIDATION_REASON_CODE_SECURITY_REJECTED = 1;
+  COMPUTE_ADAPTER_CONTRIBUTION_VALIDATION_REASON_CODE_SECURITY_QUARANTINED = 2;
+  COMPUTE_ADAPTER_CONTRIBUTION_VALIDATION_REASON_CODE_REPLAY_REQUIRED = 3;
+  COMPUTE_ADAPTER_CONTRIBUTION_VALIDATION_REASON_CODE_REPLAY_MISMATCH = 4;
+}
+
+enum ComputeAdapterWindowGateReasonCode {
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_UNSPECIFIED = 0;
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_HELD_OUT_EVAL_MISSING = 1;
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_HELD_OUT_EVAL_BELOW_THRESHOLD = 2;
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_BENCHMARK_MISSING = 3;
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_BENCHMARK_BELOW_THRESHOLD = 4;
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_RUNTIME_SMOKE_REQUIRED = 5;
+  COMPUTE_ADAPTER_WINDOW_GATE_REASON_CODE_RUNTIME_SMOKE_FAILED = 6;
+}
+
 message ComputeCheckpointFamilyPolicy {
   string checkpoint_family = 1;
   string version = 2;
@@ -148,6 +201,104 @@ message ComputeAcceptedOutcome {
   string metadata_json = 11;
 }
 
+message ComputeAdapterPolicyRevision {
+  string policy_family = 1;
+  string revision_id = 2;
+  optional uint64 revision_number = 3;
+  string policy_digest = 4;
+  optional string parent_revision_id = 5;
+  int64 produced_at_ms = 6;
+}
+
+message ComputeAdapterCheckpointPointer {
+  string scope_kind = 1;
+  string scope_id = 2;
+  string checkpoint_family = 3;
+  string checkpoint_ref = 4;
+  string manifest_digest = 5;
+  int64 updated_at_ms = 6;
+  string pointer_digest = 7;
+}
+
+message ComputeAdapterDatasetSlice {
+  string dataset_id = 1;
+  string split_name = 2;
+  string slice_id = 3;
+  string slice_digest = 4;
+}
+
+message ComputeAdapterTrainingWindow {
+  string window_id = 1;
+  string training_run_id = 2;
+  string stage_id = 3;
+  string contributor_set_revision_id = 4;
+  string validator_policy_ref = 5;
+  string adapter_target_id = 6;
+  string adapter_family = 7;
+  string base_model_ref = 8;
+  string adapter_format = 9;
+  ComputeAdapterPolicyRevision source_policy_revision = 10;
+  ComputeAdapterCheckpointPointer source_checkpoint_pointer = 11;
+  ComputeAdapterWindowStatus status = 12;
+  uint32 total_contributions = 13;
+  uint32 admitted_contributions = 14;
+  uint32 accepted_contributions = 15;
+  uint32 quarantined_contributions = 16;
+  uint32 rejected_contributions = 17;
+  uint32 replay_required_contributions = 18;
+  uint32 replay_checked_contributions = 19;
+  optional uint32 held_out_average_score_bps = 20;
+  optional uint32 benchmark_pass_rate_bps = 21;
+  optional bool runtime_smoke_passed = 22;
+  bool promotion_ready = 23;
+  repeated ComputeAdapterWindowGateReasonCode gate_reason_codes = 24;
+  string window_summary_digest = 25;
+  optional ComputeAdapterPromotionDisposition promotion_disposition = 26;
+  repeated ComputeAdapterPromotionHoldReasonCode hold_reason_codes = 27;
+  optional string aggregated_delta_digest = 28;
+  optional ComputeAdapterPolicyRevision output_policy_revision = 29;
+  optional ComputeAdapterCheckpointPointer output_checkpoint_pointer = 30;
+  optional string accepted_outcome_id = 31;
+  int64 recorded_at_ms = 32;
+  string metadata_json = 33;
+}
+
+message ComputeAdapterContributionOutcome {
+  string contribution_id = 1;
+  string training_run_id = 2;
+  string stage_id = 3;
+  string window_id = 4;
+  string contributor_set_revision_id = 5;
+  string assignment_id = 6;
+  string contributor_node_id = 7;
+  string worker_id = 8;
+  string validator_policy_ref = 9;
+  string adapter_target_id = 10;
+  string adapter_family = 11;
+  string base_model_ref = 12;
+  string adapter_format = 13;
+  ComputeAdapterDatasetSlice dataset_slice = 14;
+  ComputeAdapterPolicyRevision source_policy_revision = 15;
+  ComputeAdapterCheckpointPointer source_checkpoint_pointer = 16;
+  string submission_receipt_digest = 17;
+  string artifact_id = 18;
+  string manifest_digest = 19;
+  string object_digest = 20;
+  string artifact_receipt_digest = 21;
+  string provenance_bundle_digest = 22;
+  string security_receipt_digest = 23;
+  optional string replay_receipt_digest = 24;
+  ComputeAdapterContributionDisposition validator_disposition = 25;
+  repeated ComputeAdapterContributionValidationReasonCode validation_reason_codes = 26;
+  string validator_receipt_digest = 27;
+  ComputeAdapterAggregationEligibility aggregation_eligibility = 28;
+  bool accepted_for_aggregation = 29;
+  optional uint32 aggregation_weight_bps = 30;
+  optional string promotion_receipt_digest = 31;
+  int64 recorded_at_ms = 32;
+  string metadata_json = 33;
+}
+
 message RegisterComputeCheckpointFamilyPolicyRequest {
   string idempotency_key = 1;
   openagents.common.v1.TraceContext trace = 2;
@@ -252,6 +403,22 @@ message AcceptComputeOutcomeResponse {
   openagents.economy.v1.Receipt receipt = 2;
 }
 
+message RecordComputeAdapterWindowRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeAdapterTrainingWindow window = 4;
+  repeated ComputeAdapterContributionOutcome contribution_outcomes = 5;
+  repeated openagents.common.v1.EvidenceRef evidence = 6;
+  openagents.economy.v1.ReceiptHints hints = 7;
+}
+
+message RecordComputeAdapterWindowResponse {
+  ComputeAdapterTrainingWindow window = 1;
+  repeated ComputeAdapterContributionOutcome contribution_outcomes = 2;
+  openagents.economy.v1.Receipt receipt = 3;
+}
+
 message ListComputeCheckpointFamilyPoliciesRequest {
   ComputeRegistryStatus status = 1;
 }
@@ -340,6 +507,41 @@ message GetComputeTrainingRunRequest {
 
 message GetComputeTrainingRunResponse {
   ComputeTrainingRun training_run = 1;
+}
+
+message ListComputeAdapterTrainingWindowsRequest {
+  optional string training_run_id = 1;
+  ComputeAdapterWindowStatus status = 2;
+}
+
+message ListComputeAdapterTrainingWindowsResponse {
+  repeated ComputeAdapterTrainingWindow windows = 1;
+}
+
+message GetComputeAdapterTrainingWindowRequest {
+  string window_id = 1;
+}
+
+message GetComputeAdapterTrainingWindowResponse {
+  ComputeAdapterTrainingWindow window = 1;
+}
+
+message ListComputeAdapterContributionOutcomesRequest {
+  optional string training_run_id = 1;
+  optional string window_id = 2;
+  ComputeAdapterContributionDisposition disposition = 3;
+}
+
+message ListComputeAdapterContributionOutcomesResponse {
+  repeated ComputeAdapterContributionOutcome contributions = 1;
+}
+
+message GetComputeAdapterContributionOutcomeRequest {
+  string contribution_id = 1;
+}
+
+message GetComputeAdapterContributionOutcomeResponse {
+  ComputeAdapterContributionOutcome contribution = 1;
 }
 
 message ListComputeAcceptedOutcomesRequest {
