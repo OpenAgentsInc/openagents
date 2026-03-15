@@ -479,6 +479,29 @@ Until every row above is true, the honest repo claim remains:
 > backend are real, but decentralized adapter training is still an incomplete
 > program rather than a finished productized system.
 
+On 2026-03-15, GitHub issue `#3648` added the first repo-owned QA and
+reference-program layer for this workload family in
+`crates/psionic/psionic-train/src/adapter_reference_program.rs`.
+
+That layer now makes the following acceptance proof explicit:
+
+- one canonical two-window decentralized adapter reference run with multiple
+  contributors and contributor churn between windows
+- coverage for both the Apple adapter lane and the first non-Apple open
+  adapter backend under the same control-plane path
+- typed latency envelopes for window sealing, replay completion, and policy
+  promotion
+- explicit chaos rejection of stale uploads, manifest corruption, and
+  replay-missing submissions before promotion
+
+The canonical regression harness for that layer is now:
+
+- `scripts/release/check-psionic-decentralized-adapter-reference-program.sh`
+
+This does not close the overall decentralized adapter program by itself.
+Authority projection, app-owned operator surfaces, and broader productization
+rows from the acceptance matrix above still remain separate closure steps.
+
 ## Canonical Train Objects
 
 The full train system needs a formal object model. Today only some of these
