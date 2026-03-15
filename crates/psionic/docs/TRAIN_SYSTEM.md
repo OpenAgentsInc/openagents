@@ -20,7 +20,8 @@
 > `crates/psionic/psionic-sandbox/src/lib.rs`,
 > `apps/autopilot-desktop/src/desktop_control.rs`, and
 > `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
-> train-adjacent issue backlog through `#3631`.
+> train-adjacent issue backlog through `#3635` and the decentralized adapter
+> training issue program starting at `#3636`.
 
 ## Why This Doc Exists
 
@@ -233,6 +234,148 @@ and datastream/checkpoint movement. That substrate is meant to be reused later
 for broader Psionic training lanes, including any future widened Apple path,
 but it is not the current execution reality for the shipped Apple adapter
 operator flow.
+
+## Decentralized Adapter Training Program
+
+Psionic is now explicitly planning decentralized adapter training as a
+first-class train workload family.
+
+That program sits on top of the already-retained train substrate:
+
+- `TrainingRun`
+- `TrainingStage`
+- `TrainingWindow`
+- `PolicyRevision`
+- `RolloutArtifact`
+- `TrainerBatch`
+- `CheckpointPointer`
+- `EvalRun`
+- validator receipts and accepted-outcome authority projection
+
+The new claim this doc freezes is not "the repo already has decentralized
+adapter training."
+
+The new claim is:
+
+> the repo now has one canonical spec for decentralized adapter training, with
+> Apple adapters as the first narrow lane and open adapter backends as the next
+> generalized lane under the same control-plane vocabulary.
+
+### First Lane, Next Lane, And Non-Goals
+
+The first live execution lane remains the narrow single-host Apple adapter path
+documented above.
+
+The first decentralized lane should still begin with adapters, not full-model
+weight updates, because the existing repo truth already has:
+
+- adapter-only update semantics
+- adapter package lineage
+- benchmark and runtime-smoke validation posture
+- accepted-outcome authority plumbing
+- app-owned operator workflows that can expose contribution and review state
+
+The first decentralized lane should therefore mean:
+
+- one windowed multi-party adapter-training program
+- one declared adapter target identity
+- one declared dataset-slice identity per contribution
+- one validator-owned disposition for each submitted contribution
+- one aggregation decision that can produce a new policy revision or no-op
+
+The first implementation has explicit non-goals:
+
+- no world-scale synchronous all-reduce
+- no full-model training claims
+- no app-owned runtime or bridge logic inside Psionic train
+- no generalized market/product claims before authority, validation, and
+  operator truth exist
+- no ad hoc JSON sidecars for contribution-state truth
+
+### Canonical Workload Vocabulary
+
+The decentralized adapter workload family should use the following additional
+typed vocabulary on top of the generic train objects:
+
+| Object | Purpose | Planned Scope |
+| --- | --- | --- |
+| `AdapterTrainingProgram` | Root program identity for one decentralized adapter-training family | one adapter target family, one policy family, one validator posture |
+| `AdapterTrainingWindow` | One bounded contribution interval for one adapter target | contributor set, dataset-slice plan, policy revision in, seal state |
+| `AdapterContributionAssignment` | One worker assignment into one adapter window | worker id, adapter target identity, dataset slice, replay budget |
+| `AdapterContributionArtifact` | One uploaded local adapter delta or equivalent contribution bundle | manifest, delta/checkpoint pointer, local execution summary, provenance |
+| `AdapterContributionReceipt` | One durable control-plane receipt for assignment, execution, upload, and disposition | worker id, window id, policy revision, validator result, aggregation eligibility |
+| `AdapterAggregationReceipt` | One record of how accepted contributions were combined for one sealed window | accepted set, weights, output policy revision, checkpoint pointer |
+| `PolicyPromotionReceipt` | One durable record of whether a sealed window promoted or held policy state | previous revision, next revision, acceptance basis, checkpoint lineage |
+
+Every contribution receipt must bind:
+
+- adapter target identity
+- window id and contributor-set revision
+- policy revision in
+- dataset slice identity
+- local execution summary
+- uploaded artifact identity
+- validator disposition
+- aggregation eligibility decision
+- resulting policy revision or no-promotion decision when the window seals
+
+### Canonical Contribution Dispositions
+
+The validator-owned contribution disposition vocabulary is:
+
+| Disposition | Meaning |
+| --- | --- |
+| `accepted` | the contribution passed required checks and may participate in aggregation |
+| `quarantined` | the contribution is retained for review but is not aggregation-eligible until explicitly released |
+| `rejected` | the contribution failed required checks and is permanently excluded from aggregation |
+| `replay_required` | the contribution cannot be trusted yet and must be regenerated or replayed under a fresh assignment |
+
+These states are machine-legible control-plane truth, not UI-only labels.
+
+### Canonical Window Flow
+
+One decentralized adapter window should follow this explicit control flow:
+
+1. The orchestrator plans one `AdapterTrainingWindow` with a sealed contributor
+   set, dataset-slice plan, adapter target identity, and input policy revision.
+2. Workers receive typed `AdapterContributionAssignment` records rather than
+   free-form task text.
+3. Each worker produces one `AdapterContributionArtifact` plus a local
+   execution summary bound to the declared dataset slice and policy revision.
+4. Datastream and artifact storage record upload completion as typed receipt
+   state.
+5. The validator emits one machine-legible disposition of `accepted`,
+   `quarantined`, `rejected`, or `replay_required`.
+6. The window seals only after the acceptance or replay policy is satisfied.
+7. Aggregation consumes only aggregation-eligible accepted contributions and
+   emits one `AdapterAggregationReceipt`.
+8. Promotion emits one `PolicyPromotionReceipt` that either advances the policy
+   revision or records an explicit no-promotion outcome.
+
+This preserves deterministic replay because assignment, upload, disposition,
+seal, aggregation, and promotion are all typed receipts on one window graph.
+
+### Decentralized Adapter Acceptance Matrix
+
+The repo must not claim decentralized adapter training is implemented until all
+of the following rows are true:
+
+| Claim Boundary | Required Truth |
+| --- | --- |
+| Spec frozen | this doc names decentralized adapter training as a first-class program, defines the object vocabulary above, and preserves the first-lane/non-goal boundary |
+| Window contracts live | `psionic-train` represents adapter windows and contribution receipts as typed Rust objects without ad hoc JSON sidecars |
+| Cluster selection live | contributor selection, membership, assignment, heartbeat, and window seal posture are bound to live `psionic-cluster` truth rather than local-only mocks |
+| Artifact staging live | contribution uploads, manifests, delta/checkpoint pointers, and provenance are persisted through typed datastream/artifact contracts |
+| Validator dispositions live | accepted, quarantined, rejected, and replay-required states are emitted by validator-owned code and preserved for replay or authority projection |
+| Aggregation live | sealed windows can aggregate accepted contributions into a new policy revision or explicit no-promotion result with checkpoint lineage |
+| Authority projection live | kernel/Nexus persist accepted window outcomes and policy-promotion truth as durable authority projections |
+| Operator flow live | desktop and `autopilotctl` expose truthful contributor/operator state for window planning, submission, review, aggregation, and acceptance |
+| Productization live | provider-substrate and compute-market claims are published only after the above control, validator, and authority rows are implemented |
+
+Until every row above is true, the honest repo claim remains:
+
+> single-host Apple adapter training is real, but decentralized adapter
+> training is still a planned program with a frozen system contract.
 
 ## Canonical Train Objects
 
