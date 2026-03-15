@@ -42,6 +42,18 @@ Therefore the ARC subtree must be built around:
 6. trace capture for learning and audit
 7. a clean owner split between ARC semantics and Psionic substrate
 
+## 0.1 Normative Language
+
+The keywords **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY**
+are used as described in RFC 2119.
+
+- MUST / MUST NOT: required for conformance
+- SHOULD / SHOULD NOT: recommended but not strictly required
+- MAY: optional behavior
+
+Coding agents implementing ARC crates MUST treat all normative requirements as
+binding constraints.
+
 ## 1. Architectural fit and boundaries
 
 This spec must obey `docs/OWNERSHIP.md`.
@@ -423,6 +435,28 @@ Every solve attempt must produce a `SolveResult`:
 - `seed_bundle`
 - `solver_manifest`
 
+### 4.5 Determinism requirements
+
+ARC solver and benchmark behavior MUST be deterministic under the tuple:
+
+`(task_id, solver_manifest_digest, seed_bundle_digest, TaskBudget)`
+
+The following components MUST produce deterministic outputs:
+
+- DSL program execution
+- canonicalization and object extraction
+- verifier evaluation
+- arbiter ranking and selection
+- benchmark scoring
+- replay of stored trace bundles
+
+Sources of nondeterminism such as random search ordering, stochastic model
+calls, or parallel scheduling MUST be seeded through the `seed_bundle` and
+recorded in the trace bundle.
+
+Parallel execution MAY reorder internal work, but the final solver outputs MUST
+remain deterministic under replay.
+
 ## 5. Solver-specific ownership
 
 ### 5.1 `arc-solvers` owns the cognitive inner loop
@@ -557,6 +591,8 @@ Symbol binding:
 ### 6.3 Tier B DSL scope after v1 closure
 
 Tier B expands research breadth once Tier A is honest.
+Tier B features MUST NOT be implemented before Tier A fixtures, replay, and
+solver claims are green.
 
 Selectors:
 
@@ -636,6 +672,12 @@ The interpreter must be:
 - traceable per node
 
 No hidden fallback behavior is allowed.
+
+Interpreter safety rules:
+
+- DSL execution MUST enforce explicit grid bounds
+- DSL programs MUST refuse if they produce grids larger than the maximum ARC
+  grid size
 
 ## 7. Solver lanes
 
@@ -781,6 +823,11 @@ Normative rules:
   - static duplicates share the same answer digest and, where present, the same
     program digest
   - interactive duplicates share the same normalized action-plan digest
+- candidate identity MUST treat semantically equivalent programs as identical
+  even if syntactically different, when they produce identical canonical
+  execution traces on all train pairs
+  - implementations MAY approximate this equivalence using canonical program
+    normalization or execution hashing
 - `LaneProposalBatch.status = Refused` means the lane could not legally or
   honestly run because of capability, policy, or minimum-budget constraints
 - `LaneProposalBatch.status = Empty` means the lane ran within budget and found
@@ -789,16 +836,45 @@ Normative rules:
   hypothesis, verifier config digest, and seed bundle
 - every propose, refine, verify, and arbitrate step must emit exactly one
   `BudgetCounterDelta`
+- the sum of all `BudgetCounterDelta` entries in a trace bundle MUST equal the
+  `budget_summary` recorded in `SolveResult`
+- each step MUST check budget availability before performing work
+- any step that would exceed `TaskBudget` MUST refuse before executing
 - budget counters are monotonic; any step that would overdraw a `TaskBudget`
   must refuse or stop before doing out-of-budget work
+- budget counters MUST never decrease or reset within a run
 - `TraceBundleManifest` must be sufficient to replay proposal, verification,
   arbiter, and final-result lineage without notebook-only metadata
+- trace bundles MUST contain sufficient information to reproduce candidate
+  generation order, verification results, arbiter ranking decisions, final
+  answer selection, and budget accounting
+- trace bundles MUST NOT depend on external notebook state
 - attempt 2 is materially distinct only when it changes at least one of
   answer digest, program digest, action-plan digest, or hypothesis kind, and
   is not just a prompt, temperature, or ordering variant over the same
   canonical signature
 
-### 7.2 Lane A: symbolic induction / program search
+### 7.2 Hypothesis lifecycle
+
+A hypothesis progresses through these states:
+
+1. proposed
+2. deduplicated
+3. verified
+4. ranked
+5. accepted or rejected
+
+Transitions:
+
+- proposal to deduplication occurs within `arc-solvers`
+- deduplicated hypotheses are evaluated by the verifier
+- verified hypotheses enter arbiter ranking
+- arbiter selects or rejects candidates
+
+Hypotheses MUST remain immutable after verification except for trace annotation
+metadata.
+
+### 7.3 Lane A: symbolic induction / program search
 
 Required behavior:
 
@@ -819,7 +895,7 @@ Allowed search strategies:
 - branch-and-bound
 - typed enumerative search
 
-### 7.3 Lane B: transductive neural lane
+### 7.4 Lane B: transductive neural lane
 
 Required behavior:
 
@@ -830,7 +906,7 @@ Required behavior:
 - expose calibrated score or uncertainty
 - support exact output shape prediction
 
-### 7.4 Lane C: recursive tiny-model lane
+### 7.5 Lane C: recursive tiny-model lane
 
 Required behavior:
 
@@ -841,7 +917,7 @@ Required behavior:
 - allow optional test-time updates
 - expose intermediate answer snapshots
 
-### 7.5 Lane D: MDL / compression lane
+### 7.6 Lane D: MDL / compression lane
 
 Required behavior:
 
@@ -850,7 +926,7 @@ Required behavior:
 - allow no-pretraining mode
 - provide an independent ranking signal
 
-### 7.6 Lane E: learned search-guide lane
+### 7.7 Lane E: learned search-guide lane
 
 This lane is optional in v1 and required in later stages.
 
@@ -905,6 +981,22 @@ The portfolio arbiter must consider:
 - historical calibration on internal holdout slices
 
 Attempt 2 is allowed only when it is materially distinct from attempt 1.
+
+Two attempts are materially distinct only if they differ in at least one of:
+
+- answer digest
+- program digest
+- action-plan digest
+- hypothesis kind
+- DSL program structure
+
+Changing only the following does NOT qualify as a materially distinct attempt:
+
+- search order
+- prompt wording
+- temperature
+- beam ordering
+- evaluation ordering
 
 ### 8.1 Public-eval hygiene rules
 

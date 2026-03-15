@@ -171,6 +171,17 @@ correct plan is:
 
 ## What Is Relevant To Port
 
+## Port priority summary
+
+| Priority | Repo | Reason |
+| --- | --- | --- |
+| High | `ARCEngine` | deterministic domain logic |
+| High | `ARC-AGI-2` | canonical dataset schema |
+| High | `arc-agi-benchmarking` | scoring truth |
+| Medium | `arc-agi-3-benchmarking` | interactive runner and scorecard flow |
+| Medium | `hierarchical-reasoning-model-analysis` | evaluator and later model-family work |
+| Low | `ARC-AGI-3-Agents` | example code and baselines |
+
 ### Direct port targets
 
 - `ARCEngine`
@@ -197,6 +208,15 @@ correct plan is:
 - `ARC-AGI-Community-Leaderboard`
   - public submission schema only; not worth turning into a Rust crate unless
     OpenAgents later wants a native verifier or importer
+
+## Python non-port rules
+
+The Rust port must not replicate:
+
+- Flask server scaffolding
+- vendor SDK wrappers
+- visualization utilities
+- notebook-specific helpers
 
 ## Proposed `crates/arc/*` Tree
 

@@ -634,8 +634,9 @@ layers so Psionic is a truthful reusable runtime for common model classes.
 | `PLIB-308` | planned | Add model-family and runtime smoke suites that defend the actual reusable runtime contracts, not only one-off lanes. |
 
 `PLIB-301` is necessary for model-family closure, but GGUF quant decode alone is
-not quantization capability parity. PTQ, QAT, backend quant contracts, and
-quantized execution semantics live in Epic 2.
+not quantization capability parity. GGUF quant decode MUST NOT be described as
+quantization support. PTQ, QAT, backend quant contracts, and quantized
+execution semantics live in Epic 2.
 
 ## Epic 4: Backend Truth And Performance
 
@@ -685,6 +686,11 @@ compute.
 This epic is about distributed execution truth, not the full user-visible
 semantics of DDP, FSDP, tensor sharding, or pipeline training. Those training
 semantics land in Epic 6 on top of the execution substrate defined here.
+
+Execution substrate does NOT imply framework-level distributed training.
+
+DDP, FSDP, tensor sharding, and pipeline semantics MUST be implemented
+explicitly above the execution substrate.
 
 ### Exit Criteria
 
@@ -751,6 +757,12 @@ adapter training, then widen toward broader train-class library closure.
 - framework-level distributed training semantics are explicit, testable, and
   clearly separated from cluster substrate truth
 - research and hillclimb loops build on the same receipts and validator truth
+
+Training readiness requires:
+
+- deterministic checkpoint restore
+- optimizer state replay
+- gradient equivalence across runs
 
 ### Shipped Foundations
 
@@ -1008,7 +1020,7 @@ It is a demo.
 
 ### 6. Do not confuse artifact decode or cluster truth with framework parity
 
-GGUF quant decode is not quantization parity.
+GGUF quant decode MUST NOT be described as quantization support.
 
 Cluster execution truth is not distributed training semantics.
 
@@ -1017,6 +1029,11 @@ Cluster execution truth is not distributed training semantics.
 Do not add one-off support because one ecosystem package happens to need it.
 
 New capability families should enter through reusable framework contracts first.
+
+### 8. Unsupported backend semantics must refuse explicitly
+
+Unsupported backend semantics MUST fail as typed refusal rather than silently
+falling back to CPU.
 
 ## Benchmark Honesty Rules
 
