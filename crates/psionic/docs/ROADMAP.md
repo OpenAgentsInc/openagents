@@ -516,7 +516,7 @@ opaque monolith.
 | `PLIB-107` | planned | Promote framework-core acceptance from representative proof to broad contract coverage with fixture-backed replay and failure tests. |
 | `PLIB-108` | planned | Define one cross-library refusal taxonomy covering unsupported ops, unsupported gradients, unsupported layouts, unsupported backend capabilities, serialization incompatibility, sandbox policy denial, and topology mismatch. |
 | `PLIB-109` | planned | Formalize storage identity, alias invariants, view semantics, and complex or advanced dtype rules as core contracts rather than backend accidents. |
-| `PLIB-110` | planned | Add framework-core RNG, seeding, generator-state, and deterministic-algorithm contracts that survive replay, checkpoint, and multi-device execution. |
+| `PLIB-110` | planned | Add framework-core RNG, seeding, generator-state, and deterministic-algorithm contracts that survive replay, checkpoint, multi-device execution, and distributed execution replay. |
 | `PLIB-111` | planned | Define stable custom-op schema, kernel registration, and backend dispatch contracts so extensibility does not fork the core. |
 | `PLIB-112` | planned | Add transform-safe graph and functionalization foundations so higher-level program transforms and export contracts can build on explicit IR rules. |
 | `PLIB-113` | planned | Add sparse, nested, masked, and storage-aware meta execution foundations so non-dense families can enter through typed contracts rather than ad hoc exceptions. |
@@ -573,7 +573,7 @@ It is the most important missing middle layer in current Psionic.
 | --- | --- | --- |
 | `PLIB-210` | planned | Add first-class sparse, nested, masked, and storage-aware tensor semantics with explicit capability matrices and refusal behavior. |
 | `PLIB-211` | planned | Add complex-number, low-precision, and advanced dtype semantics with explicit promotion, casting, and backend-capability rules. |
-| `PLIB-212` | planned | Define framework-wide reproducibility semantics covering global and per-device RNG, deterministic modes, and RNG state restore across train and eval. |
+| `PLIB-212` | planned | Define framework-wide reproducibility semantics covering global and per-device RNG, deterministic modes, and RNG state restore across train, eval, and distributed replay. |
 | `PLIB-213` | planned | Add an autocast-style precision-policy system with backend-aware rules, typed refusal surfaces, and numerics diagnostics. |
 | `PLIB-214` | planned | Add gradient scaling plus overflow and underflow handling for train-class mixed precision. |
 
@@ -649,6 +649,8 @@ small visible core that makes new backend bring-up tractable.
 
 - each declared backend lane has explicit readiness, capability, risk, and
   performance truth
+- each declared backend lane MUST publish capability matrix coverage before
+  readiness claims count
 - benchmark acceptance exists where throughput claims matter
 - backend capability matrices cover determinism, precision, quantization, and
   profiler surfaces rather than only "can it run"

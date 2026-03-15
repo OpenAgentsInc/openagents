@@ -218,6 +218,16 @@ The Rust port must not replicate:
 - visualization utilities
 - notebook-specific helpers
 
+## Not worth porting summary
+
+| Component | Action |
+| --- | --- |
+| Flask server scaffolding | discard |
+| vendor SDK wrappers | discard |
+| visualization tools | discard |
+| notebook-specific helpers | discard |
+| docs-site scaffolding | discard |
+
 ## Proposed `crates/arc/*` Tree
 
 The cleanest layout is a namespace subtree under `crates/arc/`, with
@@ -319,6 +329,9 @@ Rust shape:
 ## 3. `ARC-AGI-2` -> `arc-core` + `arc-datasets` + `arc-benchmark`
 
 This is mostly schema and scorer work.
+
+Before bundling ARC datasets into repo-managed fixtures, packages, or releases,
+verify license compatibility and distribution constraints.
 
 Port directly:
 
