@@ -22,6 +22,7 @@ use thiserror::Error;
 
 mod adapter_cluster;
 mod adapter_window;
+mod adapter_worker_protocol;
 mod apple_adapter;
 mod artifact_storage;
 mod benchmarking;
@@ -46,6 +47,7 @@ mod worker_protocol;
 
 pub use adapter_cluster::*;
 pub use adapter_window::*;
+pub use adapter_worker_protocol::*;
 pub use apple_adapter::*;
 pub use artifact_storage::*;
 pub use benchmarking::*;
