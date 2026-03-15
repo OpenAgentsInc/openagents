@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 axum = "0.8"
+openagents-kernel-core = { path = "../openagents-kernel-core" }
 psionic-sandbox = { path = "../psionic/psionic-sandbox" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde.workspace = true

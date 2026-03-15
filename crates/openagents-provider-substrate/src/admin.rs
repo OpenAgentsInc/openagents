@@ -1337,6 +1337,7 @@ fn backend_storage_key(backend_kind: ProviderBackendKind) -> &'static str {
     match backend_kind {
         ProviderBackendKind::GptOss => "gpt_oss",
         ProviderBackendKind::AppleFoundationModels => "apple_foundation_models",
+        ProviderBackendKind::PsionicTrain => "psionic_train",
     }
 }
 
@@ -1464,6 +1465,7 @@ mod tests {
                 },
                 apple_foundation_models: ProviderBackendHealth::default(),
                 apple_adapter_hosting: Default::default(),
+                adapter_training_contributor: Default::default(),
                 sandbox: ProviderSandboxAvailability {
                     runtimes: vec![ProviderSandboxRuntimeHealth {
                         runtime_kind: ProviderSandboxRuntimeKind::Python,

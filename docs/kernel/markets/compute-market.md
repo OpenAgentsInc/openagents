@@ -422,7 +422,7 @@ Completion thresholds for the most important current partial lanes:
 | Cash-settled hedges and derivatives | `partial`, mostly authority-first | The kernel already models more than the MVP UI shows, but these are not yet a live user-facing exchange product. |
 | Compute indices and corrections | `implemented`, early | Index publication and correction routes exist, but full governance, external feeds, and deeper market-depth operations are still ahead. |
 | Operator control surfaces | `partial` | `autopilotctl`, desktop control, and headless compute are real, but a full compute-market operator plane for cluster, proof, and sandbox operations is still incomplete. |
-| Training-class products | `partial` | Apple adapter training now has a repo-native desktop operator flow, canonical environment/benchmark/policy registration, held-out eval plus runtime-smoke gating, and accepted training outcomes in kernel authority. It is not yet a broad provider-inventory or buyer-procurement family. |
+| Training-class products | `partial` | Apple adapter training still has the deepest live operator path, and the repo now also carries a generic decentralized adapter-training contributor product family in provider-substrate plus kernel product/spec support. Broad buyer procurement and full operator UX are still later. |
 | Adapter-hosting products | `implemented`, narrow | Apple FM adapter hosting is now a real provider inventory family with capability publication and kernel compute-family mapping, but the retained live scope is the Apple FM single-node lane only. |
 
 ## Current Product Truth
@@ -447,8 +447,9 @@ It is important to separate current repo truth from older planning language:
 - the retained MVP and `v0.1` product truth are Apple-FM-first on the historical
   macOS release path
 - the retained operator and provider-substrate truth also includes GPT-OSS
-  inference, GPT-OSS embeddings descriptors, sandbox execution descriptors, and
-  a narrow Apple FM adapter-hosting family
+  inference, GPT-OSS embeddings descriptors, sandbox execution descriptors, a
+  narrow Apple FM adapter-hosting family, and a gated decentralized
+  adapter-training contributor family
 - the retained desktop operator truth now includes repo-native Apple adapter
   training launch, export, evaluation, and acceptance into canonical kernel
   training/eval/outcome records
@@ -462,6 +463,8 @@ The current Apple-specific later-family boundary is:
 
 - `adapter_hosting` is now a real, narrow compute family
 - Apple adapter `training` is now real as operator-plus-authority truth
+- decentralized adapter `training` now has a reusable contributor product
+  family and settlement-hook surface
 - neither of those changes replaces the inference-led MVP earn loop
 
 That distinction matters because the repo no longer needs to pretend these
@@ -482,10 +485,26 @@ What is real today:
 - the acceptance boundary registers canonical environment, benchmark,
   validator-policy, checkpoint-family, training-policy, training-run, eval-run,
   and accepted-outcome records in kernel authority
+- provider-substrate can now advertise a generic
+  `adapter_training.contributor`/`psionic.cluster.training.adapter_contributor.cluster_attached`
+  family when contributor support, authority receipts, validator posture,
+  adapter family/format support, and memory envelope are all declared
+- matching semantics now have a reusable contributor verdict layer over:
+  adapter family
+  adapter format
+  validator policy
+  environment
+  checkpoint family
+  execution backend
+  memory envelope
+- settlement hooks for that contributor family can now derive from canonical
+  authority projections of:
+  accepted contributions
+  accepted sealed windows
 
 What is not real yet:
 
-- a broad provider inventory family for on-demand Apple training jobs
+- a broad buyer-facing procurement UX for decentralized training jobs
 - buyer procurement UX for Apple training capacity
 - a claim that export alone is market truth
 

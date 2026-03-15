@@ -1055,6 +1055,9 @@ fn compute_backend_family_to_proto(value: ComputeBackendFamily) -> i32 {
         ComputeBackendFamily::AppleFoundationModels => {
             proto_compute::ComputeBackendFamily::AppleFoundationModels as i32
         }
+        ComputeBackendFamily::PsionicTrain => {
+            proto_compute::ComputeBackendFamily::PsionicTrain as i32
+        }
     }
 }
 
@@ -1066,6 +1069,7 @@ fn compute_backend_family_from_proto(value: i32) -> Result<ComputeBackendFamily>
         proto_compute::ComputeBackendFamily::AppleFoundationModels => {
             Ok(ComputeBackendFamily::AppleFoundationModels)
         }
+        proto_compute::ComputeBackendFamily::PsionicTrain => Ok(ComputeBackendFamily::PsionicTrain),
         proto_compute::ComputeBackendFamily::Unspecified => {
             Err(anyhow!("compute_proto_backend_family_missing"))
         }

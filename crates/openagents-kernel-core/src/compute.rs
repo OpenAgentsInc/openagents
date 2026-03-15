@@ -736,6 +736,7 @@ pub enum ComputeBackendFamily {
     #[serde(alias = "ollama")]
     GptOss,
     AppleFoundationModels,
+    PsionicTrain,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -1663,6 +1664,8 @@ pub const PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID: &str =
     "psionic.local.inference.apple_foundation_models.single_node";
 pub const PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID: &str =
     "psionic.local.adapter_hosting.apple_foundation_models.single_node";
+pub const PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID: &str =
+    "psionic.cluster.training.adapter_contributor.cluster_attached";
 pub const PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID: &str =
     "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated";
 pub const PSIONIC_REMOTE_SANDBOX_PYTHON_EXEC_PRODUCT_ID: &str =
@@ -1686,6 +1689,10 @@ pub fn canonical_compute_product_id(product_id: &str) -> Option<&'static str> {
         PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID
         | "apple_foundation_models.adapter_hosting" => {
             Some(PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID)
+        }
+        PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID
+        | "adapter_training.contributor" => {
+            Some(PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID)
         }
         PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID | "sandbox.container.exec" => {
             Some(PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID)
@@ -3606,6 +3613,12 @@ pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProd
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::AdapterHosting,
         }),
+        PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID => Some(LaunchComputeProductSpec {
+            product_id: PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
+            backend_family: ComputeBackendFamily::PsionicTrain,
+            execution_kind: ComputeExecutionKind::TrainingJob,
+            compute_family: ComputeFamily::Training,
+        }),
         _ => None,
     }
 }
@@ -3695,6 +3708,25 @@ pub fn validate_launch_compute_product(
                 return Err("compute_product_apple_silicon_requirement_missing".to_string());
             }
         }
+        ComputeBackendFamily::PsionicTrain => {
+            if envelope.validator_requirements.is_none() {
+                return Err("compute_product_validator_requirements_missing".to_string());
+            }
+            if envelope.environment_binding.is_none() {
+                return Err("compute_product_environment_binding_missing".to_string());
+            }
+            if envelope.checkpoint_binding.is_none() {
+                return Err("compute_product_checkpoint_binding_missing".to_string());
+            }
+            if envelope
+                .host_capability
+                .as_ref()
+                .and_then(|capability| capability.memory_gb)
+                .is_none()
+            {
+                return Err("compute_product_host_memory_gb_missing".to_string());
+            }
+        }
     }
 
     Ok(spec)
@@ -3723,7 +3755,8 @@ mod tests {
         ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
         ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
         DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-        GptOssRuntimeCapability, PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
+        GptOssRuntimeCapability, PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
+        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
         launch_compute_product_spec, validate_compute_accepted_outcome,
@@ -4323,6 +4356,10 @@ mod tests {
             Some(PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID)
         );
         assert_eq!(
+            canonical_compute_product_id("adapter_training.contributor"),
+            Some(PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID)
+        );
+        assert_eq!(
             canonical_compute_product_id("gpt_oss.embeddings"),
             Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID)
         );
@@ -4342,6 +4379,65 @@ mod tests {
         );
         assert_eq!(spec.execution_kind, ComputeExecutionKind::LocalInference);
         assert_eq!(spec.compute_family, ComputeFamily::AdapterHosting);
+    }
+
+    #[test]
+    fn launch_spec_supports_adapter_training_contributor_product() {
+        let spec = launch_compute_product_spec("adapter_training.contributor")
+            .expect("adapter training contributor spec");
+        assert_eq!(
+            spec.product_id,
+            PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID
+        );
+        assert_eq!(spec.backend_family, ComputeBackendFamily::PsionicTrain);
+        assert_eq!(spec.execution_kind, ComputeExecutionKind::TrainingJob);
+        assert_eq!(spec.compute_family, ComputeFamily::Training);
+    }
+
+    #[test]
+    fn validates_adapter_training_contributor_launch_product() {
+        let mut product = launch_product(PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID);
+        product.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::PsionicTrain),
+            execution_kind: Some(ComputeExecutionKind::TrainingJob),
+            compute_family: Some(ComputeFamily::Training),
+            topology_kind: Some(ComputeTopologyKind::TrainingElastic),
+            provisioning_kind: Some(ComputeProvisioningKind::ClusterAttached),
+            proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+            validator_requirements: Some(ComputeValidatorRequirements {
+                minimum_validator_count: Some(3),
+                validator_pool_ref: Some("validator-pool.training".to_string()),
+                policy_ref: Some("policy://validator/training".to_string()),
+                challenge_window_ms: Some(60_000),
+            }),
+            artifact_residency: None,
+            environment_binding: Some(ComputeEnvironmentBinding {
+                environment_ref: "env.openagents.math.basic".to_string(),
+                environment_version: Some("2026.03.13".to_string()),
+                dataset_ref: Some("dataset://math/basic".to_string()),
+                rubric_ref: Some("rubric://math/basic".to_string()),
+                evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
+            }),
+            checkpoint_binding: Some(ComputeCheckpointBinding {
+                checkpoint_family: "decoder".to_string(),
+                latest_checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+                recovery_posture: Some("warm-resume".to_string()),
+            }),
+            model_policy: Some("adapter-training".to_string()),
+            model_family: Some("math-basic-explainer".to_string()),
+            host_capability: Some(ComputeHostCapability {
+                accelerator_vendor: Some("apple".to_string()),
+                accelerator_family: Some("m-series".to_string()),
+                memory_gb: Some(32),
+            }),
+            apple_platform: None,
+            gpt_oss_runtime: None,
+            latency_ms_p50: None,
+            throughput_per_minute: None,
+            concurrency_limit: Some(1),
+        });
+        validate_launch_compute_product(&product)
+            .expect("adapter training contributor launch product should validate");
     }
 
     #[test]
