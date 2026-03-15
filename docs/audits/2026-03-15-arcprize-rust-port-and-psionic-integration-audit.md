@@ -205,12 +205,12 @@ directories such as `crates/arc/core` and package names such as `arc-core`:
 
 | Crate | Owns | Main upstream source |
 | --- | --- | --- |
-| `arc-core` | shared ARC schema and value types: tasks, grids, frames, actions, states, operation modes, scorecards, recordings, score-policy IDs, canonicalization, objects, relations, budgets, and solver result envelopes | `ARC-AGI-2`, `ARC-AGI`, `ARC-AGI-3` docs |
+| `arc-core` | shared ARC schema and value types, internally split into schema, analysis, and execution-envelope layers: tasks, grids, frames, actions, states, operation modes, scorecards, recordings, score-policy IDs, canonicalization, objects, relations, budgets, and solver result envelopes | `ARC-AGI-2`, `ARC-AGI`, `ARC-AGI-3` docs |
 | `arc-datasets` | ARC-AGI-2 loaders, ARC augmentation builders, Psionic dataset-manifest export | `ARC-AGI-2`, `hierarchical-reasoning-model-analysis/dataset/*` |
 | `arc-engine` | deterministic local game engine, sprite/camera/level logic, game package loading | `ARCEngine` |
 | `arc-client` | ARC REST client, cookie-affine session handling, local/remote wrappers, compatibility server | `ARC-AGI` |
 | `arc-benchmark` | static exact-match scoring, versioned interactive RHAE scoring, scorecards, recordings, checkpoints, run manifests, and benchmark-policy truth | `arc-agi-benchmarking`, `arc-agi-3-benchmarking` |
-| `arc-solvers` | ARC DSL, hypothesis IR, search/refinement control, verifier, arbiter, agent traits, baseline agents, prompt policies, and Psionic-backed local solver integration | `arc-agi-3-benchmarking`, `ARC-AGI-3-Agents` |
+| `arc-solvers` | ARC DSL, normative solver object model, hypothesis IR, search/refinement control, verifier, arbiter, agent traits, baseline agents, prompt policies, and Psionic-backed local solver integration | `arc-agi-3-benchmarking`, `ARC-AGI-3-Agents` |
 | `arc-ml` | HRM and baseline model definitions, training/eval bridges, ARC-specific metrics over Psionic train/eval | `hierarchical-reasoning-model-analysis` |
 
 That split respects `docs/OWNERSHIP.md`:
@@ -229,6 +229,15 @@ Recommended dependency shape:
   only for remote or compatibility-backed interactive runs
 - `arc-ml` should consume `arc-core` and `arc-datasets`, with solver-facing
   adapters pointing from `arc-solvers` into `arc-ml` to avoid cycles
+
+Inside `arc-core`, keep three visible sublayers even if they begin in one crate:
+
+- schema
+  - tasks, actions, frames, recordings, score-policy IDs
+- analysis
+  - canonicalization, objects, relations, correspondence candidates
+- execution envelopes
+  - budgets, refusals, solve results, trace locators
 
 ## Repo-By-Repo Port Plan
 
@@ -460,6 +469,10 @@ already generic and real:
 These are the missing reusable pieces that should land in Psionic, not in
 `crates/arc/*`.
 
+The interactive-environment primitives in this section must remain
+benchmark-agnostic, action-schema-agnostic, score-policy-agnostic, and
+game-state-taxonomy-agnostic.
+
 ## 1. Structured interactive environment turns
 
 Current `psionic-environments` sessions are still text-turn oriented:
@@ -542,6 +555,15 @@ Recommended Psionic additions:
 - sparse-embedding parameter/update support
 - loop/control-flow support strong enough for ACT-style training graphs
 
+Minimum readiness bar before the ARC subtree claims HRM parity:
+
+- CPU reference fixtures for `gather`, `scatter-add`, `pad`, `argmax`,
+  `BCE-with-logits`, and `softmax cross-entropy`
+- deterministic checkpoint save/load for small models
+- one tiny single-host train/eval parity fixture
+- ACT-style loop semantics in train/eval graphs
+- at least one attention path credible for tiny reference workloads
+
 ## 5. Real collective execution, not only collective planning
 
 The HRM repo uses real distributed operations:
@@ -583,6 +605,26 @@ These are ARC-specific and should stay in `crates/arc/*`:
 - community leaderboard import/export
 
 ## Recommended Port Order
+
+## V1 cut line
+
+The first honest ARC subtree release should stop at:
+
+- `arc-core`
+- `arc-datasets`
+- `arc-engine`
+- `arc-client`
+- `arc-benchmark`
+- `arc-solvers` with one symbolic lane and one non-symbolic lane
+
+It should explicitly exclude:
+
+- `arc-ml` parity claims
+- HRM ports
+- broad distributed ARC training
+- advanced learned search-guide lanes
+- competition submission packaging
+- leaderboard import/export
 
 ## Phase 1: contracts and deterministic domain core
 
@@ -661,6 +703,8 @@ Build:
 Port:
 
 - ARC DSL and interpreter
+- Tier A DSL scope first, not the whole research language surface
+- normative solver object model with candidate identity and deduplication
 - common verifier and arbiter
 - random baseline
 - ADCR baseline
@@ -723,6 +767,16 @@ Minimum required parity harnesses:
 - HRM evaluator parity for `pass@k` aggregation before model porting
 - model-level parity only on tiny deterministic fixtures before any large-scale
   training claims
+
+Evaluation hygiene requirements:
+
+- no per-task manual tuning on public evaluation tasks
+- no acceptance artifact from public evaluation tasks unless labeled as
+  non-regression and non-optimization
+- public evaluation runs do not feed search-guide, repair-model, or calibration
+  datasets
+- internal hidden holdout stays disjoint from synthetic tasks derived from
+  public evaluation tasks
 
 ## Final Recommendation
 

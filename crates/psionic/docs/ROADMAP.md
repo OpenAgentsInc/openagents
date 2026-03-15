@@ -710,6 +710,14 @@ semantics land in Epic 6 on top of the execution substrate defined here.
 
 ### Issues
 
+The interactive-environment contracts in `PLIB-512` through `PLIB-514` must
+remain:
+
+- benchmark-agnostic
+- action-schema-agnostic
+- score-policy-agnostic
+- game-state-taxonomy-agnostic
+
 | ID | Status | Work |
 | --- | --- | --- |
 | `PLIB-501` | planned | Reconcile the existing cluster substrate and lane-specific roadmap into one full-library cluster contract. |
@@ -723,9 +731,9 @@ semantics land in Epic 6 on top of the execution substrate defined here.
 | `PLIB-509` | planned | Define reusable process-group and collective semantics, distinct from lane-local cluster membership, so framework-level distributed training has a stable substrate. |
 | `PLIB-510` | planned | Add bounded remote-execution and RPC contracts with explicit provenance, capability, refusal, and receipt semantics. |
 | `PLIB-511` | planned | Add elastic membership and fault-tolerant distributed run-control substrate for restart, rejoin, and topology revision without hiding failures. |
-| `PLIB-512` | planned | Add structured interactive environment turn contracts with typed observations, actions, resets, terminal transitions, and resume-safe session snapshots for ARC-AGI-3-class and other benchmark environments. |
-| `PLIB-513` | planned | Add episode and trajectory receipt families with per-step observation/action/result hashing and final episode summaries distinct from text-session transcripts. |
-| `PLIB-514` | planned | Add a generic bridge from interactive environment sessions into eval samples, repeated-run aggregation, and benchmark evidence packs. |
+| `PLIB-512` | planned | Add structured interactive environment turn contracts with typed observations, actions, resets, terminal transitions, and resume-safe session snapshots while keeping the substrate benchmark-agnostic, action-schema-agnostic, score-policy-agnostic, and game-state-taxonomy-agnostic. |
+| `PLIB-513` | planned | Add episode and trajectory receipt families with per-step observation/action/result hashing and final episode summaries distinct from text-session transcripts, without embedding benchmark-specific action or score semantics. |
+| `PLIB-514` | planned | Add a generic bridge from interactive environment sessions into eval samples, repeated-run aggregation, and benchmark evidence packs without hard-coding benchmark-specific aggregation or policy logic. |
 | `PLIB-515` | planned | Turn collective semantics into actual train-class collective execution paths with evidence for `all_reduce`, `all_gather`, and related multi-rank behavior that higher-level training lanes can rely on. |
 
 ## Epic 6: Training, Eval, And Research
