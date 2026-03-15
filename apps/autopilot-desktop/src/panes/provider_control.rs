@@ -17,7 +17,7 @@ use crate::pane_renderer::{
 use crate::pane_system::{
     provider_control_inventory_toggle_button_bounds, provider_control_local_fm_test_button_bounds,
     provider_control_local_model_button_bounds, provider_control_scroll_viewport_bounds,
-    provider_control_toggle_button_bounds,
+    provider_control_toggle_button_bounds, provider_control_training_button_bounds,
 };
 use crate::provider_inventory::DesktopControlInventoryStatus;
 use crate::rive_assets::simple_fui_hud_asset;
@@ -103,6 +103,11 @@ pub fn paint_provider_control_pane(
         paint_action_button(
             provider_control_local_fm_test_button_bounds(content_bounds),
             test_label,
+            paint,
+        );
+        paint_action_button(
+            provider_control_training_button_bounds(content_bounds),
+            "OPEN TRAINING",
             paint,
         );
     }

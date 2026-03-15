@@ -1,6 +1,7 @@
 use crate::app_state::{
     ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
+    AppleAdapterTrainingPaneState,
     AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
     BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
     ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
@@ -23,6 +24,7 @@ use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
+use crate::desktop_control::DesktopControlTrainingStatus;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
@@ -58,7 +60,8 @@ use crate::pane_system::{
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
-    agent as agent_pane, apple_fm_workbench as apple_fm_workbench_pane, buy_mode as buy_mode_pane,
+    agent as agent_pane, apple_adapter_training as apple_adapter_training_pane,
+    apple_fm_workbench as apple_fm_workbench_pane, buy_mode as buy_mode_pane,
     buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane, calculator as calculator_pane,
     cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
     earnings_jobs as earnings_jobs_pane, frame_debugger as frame_debugger_pane,
@@ -142,6 +145,8 @@ impl PaneRenderer {
         provider_control_hud_runtime: &mut ProviderControlHudRuntimeState,
         frame_debugger: &FrameDebuggerPaneState,
         apple_fm_workbench: &mut AppleFmWorkbenchPaneState,
+        apple_adapter_training: &mut AppleAdapterTrainingPaneState,
+        training_status: &DesktopControlTrainingStatus,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
         relay_connections: &RelayConnectionsState,
@@ -399,6 +404,14 @@ impl PaneRenderer {
                         &capability_surface,
                         apple_fm_execution,
                         apple_fm_workbench_inputs,
+                        paint,
+                    );
+                }
+                PaneKind::AppleAdapterTraining => {
+                    apple_adapter_training_pane::paint(
+                        content_bounds,
+                        apple_adapter_training,
+                        training_status,
                         paint,
                     );
                 }

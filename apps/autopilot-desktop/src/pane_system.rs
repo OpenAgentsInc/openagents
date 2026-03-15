@@ -11,6 +11,7 @@ use crate::app_state::{
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
+    apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
     chat as chat_pane, local_inference as local_inference_pane,
     relay_connections as relay_connections_pane, rive as rive_pane, wallet as wallet_pane,
@@ -74,6 +75,9 @@ const JOB_INBOX_BUTTON_GAP: f32 = 10.0;
 const JOB_INBOX_ROW_GAP: f32 = 6.0;
 const JOB_INBOX_ROW_HEIGHT: f32 = 30.0;
 const JOB_INBOX_MAX_ROWS: usize = 8;
+const APPLE_ADAPTER_TRAINING_RUN_ROW_HEIGHT: f32 = 44.0;
+const APPLE_ADAPTER_TRAINING_RUN_ROW_GAP: f32 = 8.0;
+const APPLE_ADAPTER_TRAINING_MAX_RUN_ROWS: usize = 9;
 const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
 const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
 const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
@@ -341,6 +345,7 @@ pub enum LogStreamPaneAction {
 pub enum ProviderControlPaneAction {
     TriggerLocalRuntimeAction,
     RunLocalFmSummaryTest,
+    OpenAppleAdapterTraining,
     ToggleInventory(crate::app_state::ProviderInventoryProductToggleTarget),
 }
 
@@ -422,6 +427,12 @@ pub enum AppleFmWorkbenchPaneAction {
     RestoreTranscript,
     CycleToolProfile,
     CycleSamplingMode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleAdapterTrainingPaneAction {
+    CycleStageFilter,
+    SelectRun(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -914,6 +925,7 @@ pub enum PaneHitAction {
     LocalInference(LocalInferencePaneAction),
     RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
+    AppleAdapterTraining(AppleAdapterTrainingPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
     ReciprocalLoop(ReciprocalLoopPaneAction),
@@ -1033,6 +1045,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
         PaneKind::FrameDebugger => pane_size_for_content(1080.0, 600.0),
         PaneKind::AppleFmWorkbench => pane_size_for_content(1160.0, 740.0),
+        PaneKind::AppleAdapterTraining => pane_size_for_content(1220.0, 760.0),
         PaneKind::EarningsScoreboard => pane_size_for_content(960.0, 540.0),
         PaneKind::RelayConnections | PaneKind::NetworkRequests => {
             pane_size_for_content(900.0, 420.0)
@@ -1589,6 +1602,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::RivePreview
             | PaneKind::Presentation
             | PaneKind::FrameDebugger
+            | PaneKind::AppleAdapterTraining
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
             | PaneKind::ReciprocalLoop
@@ -2099,8 +2113,18 @@ pub fn provider_control_local_fm_test_button_bounds(content_bounds: Bounds) -> B
     Bounds::new(
         content_bounds.origin.x + 12.0,
         provider_control_local_model_button_bounds(content_bounds).max_y() + 8.0,
-        (content_bounds.size.width - 24.0).max(0.0),
+        ((content_bounds.size.width - 28.0) * 0.5).max(0.0),
         22.0,
+    )
+}
+
+pub fn provider_control_training_button_bounds(content_bounds: Bounds) -> Bounds {
+    let local_fm_test = provider_control_local_fm_test_button_bounds(content_bounds);
+    Bounds::new(
+        local_fm_test.max_x() + 4.0,
+        local_fm_test.origin.y,
+        (content_bounds.max_x() - 12.0 - (local_fm_test.max_x() + 4.0)).max(0.0),
+        local_fm_test.size.height,
     )
 }
 
@@ -2676,6 +2700,96 @@ pub fn local_inference_top_p_input_bounds(content_bounds: Bounds) -> Bounds {
         92.0,
         top_k.size.height,
     )
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AppleAdapterTrainingPaneLayout {
+    pub status_row: Bounds,
+    pub summary_band: Bounds,
+    pub launch_panel: Bounds,
+    pub runs_panel: Bounds,
+    pub detail_panel: Bounds,
+}
+
+pub fn apple_adapter_training_layout(content_bounds: Bounds) -> AppleAdapterTrainingPaneLayout {
+    let outer_gap = 12.0;
+    let card_height = 52.0;
+    let summary_height = 34.0;
+    let status_row = Bounds::new(
+        content_bounds.origin.x + outer_gap,
+        content_bounds.origin.y + outer_gap,
+        (content_bounds.size.width - outer_gap * 2.0).max(0.0),
+        card_height,
+    );
+    let summary_band = Bounds::new(
+        status_row.origin.x,
+        status_row.max_y() + 10.0,
+        status_row.size.width,
+        summary_height,
+    );
+    let body_y = summary_band.max_y() + 12.0;
+    let body_height = (content_bounds.max_y() - body_y - outer_gap).max(0.0);
+    let column_gap = 10.0;
+    let available_width = status_row.size.width;
+    let launch_width = 300.0f32.min((available_width * 0.3).max(260.0));
+    let runs_width = 320.0f32.min((available_width * 0.32).max(280.0));
+    let detail_width = (available_width - launch_width - runs_width - column_gap * 2.0).max(320.0);
+    let launch_panel = Bounds::new(status_row.origin.x, body_y, launch_width, body_height);
+    let runs_panel = Bounds::new(
+        launch_panel.max_x() + column_gap,
+        body_y,
+        runs_width,
+        body_height,
+    );
+    let detail_panel = Bounds::new(
+        runs_panel.max_x() + column_gap,
+        body_y,
+        detail_width,
+        body_height,
+    );
+
+    AppleAdapterTrainingPaneLayout {
+        status_row,
+        summary_band,
+        launch_panel,
+        runs_panel,
+        detail_panel,
+    }
+}
+
+fn apple_adapter_training_panel_body_bounds(panel: Bounds) -> Bounds {
+    Bounds::new(
+        panel.origin.x + 12.0,
+        panel.origin.y + 28.0,
+        (panel.size.width - 24.0).max(0.0),
+        (panel.size.height - 36.0).max(0.0),
+    )
+}
+
+pub fn apple_adapter_training_launch_panel_body_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).launch_panel)
+}
+
+pub fn apple_adapter_training_filter_button_bounds(content_bounds: Bounds) -> Bounds {
+    let body = apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).runs_panel);
+    Bounds::new(body.origin.x, body.origin.y, body.size.width, 24.0)
+}
+
+pub fn apple_adapter_training_run_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let filter = apple_adapter_training_filter_button_bounds(content_bounds);
+    Bounds::new(
+        filter.origin.x,
+        filter.max_y()
+            + 10.0
+            + row_index as f32
+                * (APPLE_ADAPTER_TRAINING_RUN_ROW_HEIGHT + APPLE_ADAPTER_TRAINING_RUN_ROW_GAP),
+        filter.size.width,
+        APPLE_ADAPTER_TRAINING_RUN_ROW_HEIGHT,
+    )
+}
+
+pub fn apple_adapter_training_detail_panel_body_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).detail_panel)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -5001,6 +5115,16 @@ fn pane_hit_action_for_pane(
                     ProviderControlPaneAction::RunLocalFmSummaryTest,
                 ));
             }
+            if crate::app_state::mission_control_local_runtime_lane(
+                state.desktop_shell_mode,
+                &state.gpt_oss_execution,
+            ) == Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels)
+                && provider_control_training_button_bounds(content_bounds).contains(point)
+            {
+                return Some(PaneHitAction::ProviderControl(
+                    ProviderControlPaneAction::OpenAppleAdapterTraining,
+                ));
+            }
             for (row_index, target) in crate::app_state::ProviderInventoryProductToggleTarget::all()
                 .iter()
                 .enumerate()
@@ -5378,6 +5502,21 @@ fn pane_hit_action_for_pane(
                 return Some(PaneHitAction::AppleFmWorkbench(
                     AppleFmWorkbenchPaneAction::CycleSamplingMode,
                 ));
+            }
+            None
+        }
+        PaneKind::AppleAdapterTraining => {
+            if apple_adapter_training_filter_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleAdapterTraining(
+                    AppleAdapterTrainingPaneAction::CycleStageFilter,
+                ));
+            }
+            for row_index in 0..APPLE_ADAPTER_TRAINING_MAX_RUN_ROWS {
+                if apple_adapter_training_run_row_bounds(content_bounds, row_index).contains(point) {
+                    return Some(PaneHitAction::AppleAdapterTraining(
+                        AppleAdapterTrainingPaneAction::SelectRun(row_index),
+                    ));
+                }
             }
             None
         }
@@ -6396,6 +6535,13 @@ pub fn dispatch_apple_fm_workbench_input_event(
     apple_fm_workbench_pane::dispatch_input_event(state, event)
 }
 
+pub fn dispatch_apple_adapter_training_input_event(
+    state: &mut RenderState,
+    event: &InputEvent,
+) -> bool {
+    apple_adapter_training_pane::dispatch_input_event(state, event)
+}
+
 pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let top_network = state
         .panes
@@ -6671,6 +6817,9 @@ mod tests {
         agent_profile_start_goal_button_bounds, agent_profile_update_goals_button_bounds,
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
         agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
+        apple_adapter_training_detail_panel_body_bounds, apple_adapter_training_filter_button_bounds,
+        apple_adapter_training_launch_panel_body_bounds, apple_adapter_training_layout,
+        apple_adapter_training_run_row_bounds,
         alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
         apple_fm_workbench_adapter_id_input_bounds,
@@ -6747,6 +6896,7 @@ mod tests {
         nostr_reveal_button_bounds, pane_content_bounds, pane_content_bounds_for_presentation,
         provider_control_local_fm_test_button_bounds, provider_control_local_model_button_bounds,
         provider_control_scroll_viewport_bounds, provider_control_toggle_button_bounds,
+        provider_control_training_button_bounds,
         provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
         reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
         relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
@@ -6842,6 +6992,7 @@ mod tests {
         let toggle = provider_control_toggle_button_bounds(content_bounds);
         let local_model = provider_control_local_model_button_bounds(content_bounds);
         let local_fm_test = provider_control_local_fm_test_button_bounds(content_bounds);
+        let training = provider_control_training_button_bounds(content_bounds);
         let last_inventory = provider_inventory_toggle_button_bounds(
             content_bounds,
             crate::app_state::ProviderInventoryProductToggleTarget::all()
@@ -6850,7 +7001,7 @@ mod tests {
         );
         let viewport = provider_control_scroll_viewport_bounds(content_bounds);
 
-        for bounds in [toggle, local_model, local_fm_test, last_inventory, viewport] {
+        for bounds in [toggle, local_model, local_fm_test, training, last_inventory, viewport] {
             assert!(content_bounds.contains(bounds.origin));
             assert!(bounds.max_x() <= content_bounds.max_x());
             assert!(bounds.max_y() <= content_bounds.max_y());
@@ -6858,8 +7009,40 @@ mod tests {
 
         assert!(toggle.max_y() <= local_model.origin.y);
         assert!(local_model.max_y() <= local_fm_test.origin.y);
+        assert!(local_fm_test.max_x() < training.min_x());
         assert!(local_fm_test.max_y() <= viewport.origin.y);
         assert!(last_inventory.max_y() <= viewport.origin.y);
+    }
+
+    #[test]
+    fn apple_adapter_training_minimum_size_is_below_default_but_above_global_floor() {
+        let spec = crate::pane_registry::pane_spec(crate::app_state::PaneKind::AppleAdapterTraining);
+        let min_size = super::pane_minimum_size(crate::app_state::PaneKind::AppleAdapterTraining);
+
+        assert!(min_size.width > super::PANE_MIN_WIDTH);
+        assert!(min_size.height > super::PANE_MIN_HEIGHT);
+        assert!(min_size.width < spec.default_width);
+        assert!(min_size.height < spec.default_height);
+    }
+
+    #[test]
+    fn apple_adapter_training_layout_orders_shell_regions() {
+        let content = Bounds::new(0.0, 0.0, 1240.0, 780.0);
+        let layout = apple_adapter_training_layout(content);
+        let launch = apple_adapter_training_launch_panel_body_bounds(content);
+        let filter = apple_adapter_training_filter_button_bounds(content);
+        let row0 = apple_adapter_training_run_row_bounds(content, 0);
+        let detail = apple_adapter_training_detail_panel_body_bounds(content);
+
+        assert!(layout.status_row.max_y() < layout.summary_band.min_y());
+        assert!(layout.summary_band.max_y() < layout.launch_panel.min_y());
+        assert!(layout.launch_panel.max_x() < layout.runs_panel.min_x());
+        assert!(layout.runs_panel.max_x() < layout.detail_panel.min_x());
+        assert!(filter.max_y() < row0.min_y());
+        assert!(launch.max_x() <= layout.launch_panel.max_x());
+        assert!(detail.max_x() <= layout.detail_panel.max_x());
+        assert!(content.contains(layout.status_row.origin));
+        assert!(content.contains(layout.launch_panel.origin));
     }
 
     #[test]

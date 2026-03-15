@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod apple_adapter_training;
 pub mod apple_fm_workbench;
 pub mod buy_mode;
 pub mod buyer_race_matrix;

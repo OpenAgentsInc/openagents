@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 55] = [
+const PANE_SPECS: [PaneSpec; 56] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -358,6 +358,21 @@ const PANE_SPECS: [PaneSpec; 55] = [
             id: "pane.apple_fm_workbench",
             label: "Apple FM Workbench",
             description: "Open the Apple Foundation Models API workbench and bridge controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::AppleAdapterTraining,
+        title: "Apple Adapter Training",
+        default_width: 1240.0,
+        default_height: 820.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.apple_adapter_training",
+            label: "Apple Adapter Training",
+            description: "Open the Apple adapter training operator pane and run-monitoring shell",
             keybinding: None,
         }),
         hotbar: None,
@@ -1139,6 +1154,18 @@ mod tests {
         assert!(
             provider_spec.startup,
             "provider control pane should auto-open during startup"
+        );
+    }
+
+    #[test]
+    fn apple_adapter_training_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.apple_adapter_training")
+            .expect("apple adapter training command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::AppleAdapterTraining);
+        assert!(spec.singleton, "apple adapter training pane must be singleton");
+        assert!(
+            !spec.startup,
+            "apple adapter training pane should remain opt-in instead of opening at startup"
         );
     }
 
