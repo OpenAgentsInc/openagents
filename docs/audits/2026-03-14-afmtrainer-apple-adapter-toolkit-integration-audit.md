@@ -440,11 +440,52 @@ Those repos should instead function as:
 | Apple FM request/session/adapter contract | `psionic-apple-fm` | Process supervision, pane UX |
 | Apple runtime sidecar behavior | `swift/foundation-bridge` | Economic truth, product workflow |
 | Adapter SFT and draft distillation runtime | `psionic-train` | Hidden Python compatibility shell |
-| Dataset and tokenizer contracts | `psionic-data` and related Psionic crates | App-owned validation-only copies |
+| Dataset, packing, and tokenizer contracts | `psionic-data` plus `psionic-apple-fm` for Apple-specific schema/tool semantics | App-owned validation-only copies |
+| Apple train/eval environment package shape and parity receipts | `psionic-environments` | Ad hoc prompt shaping or benchmark-only copies |
 | Benchmark and eval execution | `psionic-eval` | Canonical accepted-outcome authority |
+| Later Apple adapter-hosting capability derivation and provider publication | `openagents-provider-substrate` plus `psionic-provider` | Desktop-local product IDs or kernel authority |
 | Policies, training runs, outcomes, receipts | `openagents-kernel-core` plus `apps/nexus-control` | Desktop-local truth as authority |
 
 This is the current repo architecture applied consistently to the Apple lane.
+
+## Codebase Reality That Changes The Issue Queue
+
+The suggested issues need to reflect the repo we actually have now, not a blank
+sheet.
+
+- `crates/psionic/psionic-apple-fm` already owns a fairly complete Rust-side
+  bridge contract for health, model listing, chat completions, persistent
+  sessions, streaming, structured generation, tools, and transcript import or
+  export. The Apple issue program is therefore an additive adapter-management
+  extension, not a rewrite of the whole bridge lane.
+- `swift/foundation-bridge` already mirrors that contract in
+  `Types.swift`/`ChatHandler.swift`, but it currently has no adapter inventory,
+  compatibility, attach, detach, or capability-reporting path.
+- `apps/autopilot-desktop` already has `apple_fm_bridge.rs`, the Apple FM
+  workbench pane, `desktop_control` Apple FM status, `autopilotctl apple-fm`
+  status and smoke flows, and authority-projected training status. The operator
+  work is therefore mostly about extending existing surfaces, not inventing a
+  second Apple UI.
+- `crates/psionic/psionic-adapters` already has generic
+  `AdapterArtifactIdentity`, `AdapterPackageManifest`, and
+  `AdapterServingBinding` over `DatastreamSubjectKind::AdapterPackage`, but it
+  does not know about `.fmadapter`, Apple metadata, or Apple draft-model side
+  artifacts.
+- `crates/openagents-kernel-core/src/compute.rs` and
+  `docs/kernel/compute-training-authority.md` already define generic training
+  policy, training run, benchmark package, validator policy, and
+  accepted-outcome authority. The Apple kernel work should extend validation and
+  metadata discipline on top of those objects rather than inventing a parallel
+  authority family.
+- `crates/openagents-kernel-core/src/compute_benchmarks.rs` currently exposes
+  only one benchmark adapter kind, `mmlu_multiple_choice_v1`. Any Apple lane
+  that depends on benchmark import needs explicit new adapter kinds or an
+  equally explicit decision to keep Apple validation entirely inside
+  `psionic-eval`.
+- `crates/openagents-provider-substrate/src/lib.rs` currently derives only
+  `AppleFoundationModelsInference`. Later adapter-hosting claims cannot be
+  honest until the provider substrate and capability publication layers learn an
+  Apple adapter-hosting product family.
 
 ## Revised Integration Sequence
 
@@ -745,17 +786,305 @@ It is the cleaner long-term move.
 
 ## Recommended Issue Sequence
 
-1. `Apple Adapter Spec: document dataset, metadata, and .fmadapter package contracts`
-2. `Psionic Adapters: add explicit Apple FM adapter package identity and manifest support`
-3. `Psionic Apple FM: add adapter attach/list/detach contract`
-4. `foundation-bridge: implement adapter-aware Apple FM sessions and completions`
-5. `Psionic Data: port Apple adapter dataset and schema augmentation rules to Rust`
-6. `Psionic Train: implement Rust-native Apple adapter SFT lane`
-7. `Psionic Train: add optional Rust-native draft-model distillation lane`
-8. `Kernel: define Apple adapter training policy, benchmark, and validator registry surfaces`
-9. `Nexus: publish Apple adapter training runs and accepted outcomes`
-10. `Autopilot Desktop: ship WGPUI Apple adapter training pane and autopilotctl controls`
-11. `Compute Market: only then productize training and later adapter_hosting claims`
+The earlier 11-item queue was directionally right but too thin for the actual
+repo. The concrete issue program should be:
+
+### 1. `Apple Adapter Spec: freeze dataset, metadata, and .fmadapter contracts in repo docs and fixtures`
+
+- Why this is a real repo gap:
+  `psionic-apple-fm`, `psionic-adapters`, and `psionic-train` currently have no
+  canonical in-repo `.fmadapter` spec or Apple adapter fixture corpus to code
+  against.
+- Primary owners:
+  docs plus Psionic conformance tests.
+- Current codebase anchors:
+  `docs/audits/2026-03-14-afmtrainer-apple-adapter-toolkit-integration-audit.md`,
+  `crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md`.
+- Deliverables:
+  explicit Apple dataset schema doc, explicit `.fmadapter` package-layout doc,
+  explicit Apple training/export metadata doc, and checked-in fixture bundles
+  produced from one-time manual reference generation.
+- Acceptance:
+  later Rust implementations can validate against stable fixture and metadata
+  inputs without executing any Python as part of the supported flow.
+- Depends on:
+  none.
+
+### 2. `Psionic Adapters: add explicit Apple FM package family, parser, writer, and lineage support`
+
+- Why this is a real repo gap:
+  `crates/psionic/psionic-adapters/src/lib.rs` only knows generic adapter
+  identity plus generic package manifests; it has no Apple-specific format
+  family, no `.fmadapter` parser/writer, and no draft-model side-artifact
+  handling.
+- Primary owners:
+  `psionic-adapters`.
+- Deliverables:
+  Apple package family enum or sibling manifest type, metadata parser/writer,
+  digesting, compatibility validation, optional draft-artifact linkage, and
+  datastream-backed lineage hooks that still terminate in the existing adapter
+  package subject.
+- Acceptance:
+  a checked-in `.fmadapter` fixture roundtrips through Rust import/export and
+  exposes base-model signature, tokenizer lineage, package version, and draft
+  artifact presence as typed fields.
+- Depends on:
+  `1`.
+
+### 3. `Psionic Apple FM: extend the bridge contract for adapter inventory, compatibility, and attach/detach`
+
+- Why this is a real repo gap:
+  `crates/psionic/psionic-apple-fm/src/contract.rs` currently exposes only
+  health/models/completions/sessions/streaming/structured/tools/transcripts.
+  There is no Rust contract for adapter load/list/attach/detach, compatibility
+  checks, or adapter-aware session state.
+- Primary owners:
+  `psionic-apple-fm`.
+- Deliverables:
+  typed adapter-management request/response contracts, adapter inventory and
+  compatibility models, adapter-aware health/capability reporting, and client
+  support in both blocking and async bridge clients.
+- Acceptance:
+  the Rust lane can express adapter lifecycle and session binding without ad hoc
+  JSON or desktop-local strings.
+- Depends on:
+  `1`, `2`.
+
+### 4. `foundation-bridge: implement adapter-aware Apple FM sessions, requests, and capability reporting`
+
+- Why this is a real repo gap:
+  `swift/foundation-bridge/Sources/foundation-bridge/Types.swift` and
+  `ChatHandler.swift` have no adapter-management or adapter-bound session path.
+- Primary owners:
+  `swift/foundation-bridge`.
+- Deliverables:
+  Swift-side adapter inventory/load/unload/attach behavior, session-level or
+  request-level adapter binding, compatibility failures surfaced through typed
+  errors, and health/model reporting that includes adapter state and any Apple
+  entitlement/runtime gate facts.
+- Acceptance:
+  a Rust client can attach an imported `.fmadapter` to a real Apple FM request,
+  detach it, and observe typed compatibility/refusal errors when the artifact is
+  incompatible.
+- Depends on:
+  `3`.
+
+### 5. `Autopilot Desktop: expose Apple adapter inventory and bridge controls through existing workbench, desktop_control, and autopilotctl`
+
+- Why this is a missing issue:
+  the repo already has `apple_fm_bridge.rs`, `panes/apple_fm_workbench.rs`,
+  `desktop_control.rs`, and `autopilotctl apple-fm`, but none of them can list,
+  load, attach, detach, or inspect adapters.
+- Primary owners:
+  `apps/autopilot-desktop`.
+- Deliverables:
+  Apple workbench adapter controls, bridge-side adapter inventory in
+  desktop-control snapshots, `autopilotctl apple-fm` subcommands for adapter
+  management, and replay-safe operator logs for adapter lifecycle actions.
+- Acceptance:
+  an operator can load a fixture Apple adapter, attach it to a session, inspect
+  inventory/status from both UI and CLI, and detach it again without Python.
+- Depends on:
+  `3`, `4`.
+
+### 6. `Psionic Data: port Apple adapter dataset parsing, tool/schema augmentation, tokenizer capture, and packing rules`
+
+- Why this is a real repo gap:
+  the Apple toolkit’s JSONL/messages/`response_format`/tool semantics do not yet
+  exist as typed Rust dataset contracts, even though `psionic-data` already owns
+  versioned dataset manifests and packing policy.
+- Primary owners:
+  `psionic-data`, with Apple-specific schema helpers in `psionic-apple-fm`
+  where needed.
+- Deliverables:
+  JSONL parser/validator, role-order and multi-turn validation, Apple guided
+  generation schema attachment, tool-contract augmentation, tokenizer digest
+  capture, and deterministic packing rules for Apple adapter workloads.
+- Acceptance:
+  an Apple dataset fixture imports into typed Rust records with explicit refusal
+  paths for malformed roles, missing schemas, or tokenizer drift.
+- Depends on:
+  `1`.
+
+### 7. `Psionic Environments: define Apple adapter train/eval environment package family and parity receipts`
+
+- Why this is a missing issue:
+  `psionic-environments` already owns environment package ABI, tool contracts,
+  rubric hooks, and train/eval parity receipts, but the audit’s earlier queue
+  never assigned the Apple lane to that owner.
+- Primary owners:
+  `psionic-environments`.
+- Deliverables:
+  reusable Apple adapter train/eval/benchmark environment package shapes,
+  package refs for Apple session/runtime requirements, tool/rubric bindings for
+  guided generation and tool-calling tasks, and train/eval parity receipts that
+  prove the same pinned environment is reused across both paths.
+- Acceptance:
+  Apple adapter training and held-out eval can share a versioned environment
+  package instead of duplicating prompt/tool logic across app code and eval
+  harnesses.
+- Depends on:
+  `6`.
+
+### 8. `Psionic Eval: add Apple adapter held-out eval, structured-output, tool-call, and runtime-smoke harnesses`
+
+- Why this is a missing issue:
+  `psionic-eval` is real, but it currently has no Apple-specific harness for
+  exported adapter artifacts, no bridge-smoke validation path, and no benchmark
+  contract for structured generation or tool-calling behavior.
+- Primary owners:
+  `psionic-eval`.
+- Deliverables:
+  Apple adapter eval-run harnesses, structured-conformance checks, tool-call
+  behavior checks, Apple FM runtime smoke receipts over exported packages,
+  benchmark summaries, and reusable artifact/metric families suitable for later
+  authority publication.
+- Acceptance:
+  a trained or imported Apple adapter can be evaluated through Rust-owned
+  held-out and benchmark-style flows, and those flows emit machine-legible eval
+  artifacts instead of “export succeeded” text.
+- Depends on:
+  `4`, `6`, `7`.
+
+### 9. `Kernel Core: add Apple-specific benchmark adapter kinds and validation discipline for training policy/run metadata`
+
+- Why this is a missing issue:
+  `crates/openagents-kernel-core/src/compute.rs` already has generic training
+  policy/run/outcome objects, but `compute_benchmarks.rs` only supports
+  `mmlu_multiple_choice_v1`, and none of the current validation rules know what
+  Apple adapter lineage must be present.
+- Primary owners:
+  `openagents-kernel-core`.
+- Deliverables:
+  Apple benchmark adapter kind(s) where benchmark import is required, validation
+  helpers for Apple adapter benchmark package metadata, and stronger
+  training-policy/training-run metadata rules for base-model signature,
+  tokenizer digest, package-format version, draft-model presence, and Apple
+  runtime validation posture.
+- Acceptance:
+  malformed or incomplete Apple adapter policy/run metadata is rejected by
+  kernel validation instead of surviving only as nullable JSON blobs.
+- Depends on:
+  `1`, `8`.
+
+### 10. `Psionic Train: implement Rust-native Apple adapter SFT lane on top of the existing fixed-budget core`
+
+- Why this is a real repo gap:
+  `psionic-train` now has the fixed-budget training core, optimizer families,
+  distributed-optimizer contracts, and model-IO portability layer, but no
+  Apple-specific adapter-only training path.
+- Primary owners:
+  `psionic-train`, with support from `psionic-ir`/`model_io` as needed.
+- Deliverables:
+  adapter-only parameter selection, base-model freeze semantics, Apple dataset
+  batching, Apple-relevant mixed-precision and activation-checkpoint policy,
+  checkpoint restore/export, train summary metrics, and `.fmadapter` export
+  through the Rust-owned package layer.
+- Acceptance:
+  one small Apple-compatible fixture dataset can train adapter-only weights and
+  emit a valid `.fmadapter` package plus typed training summary without Python.
+- Depends on:
+  `2`, `6`, `7`.
+
+### 11. `Psionic Train: add optional Rust-native Apple draft-model distillation lane`
+
+- Why this is still a separate issue:
+  draft-model distillation is materially different from plain adapter SFT and
+  should not block the first honest Apple adapter lane.
+- Primary owners:
+  `psionic-train`.
+- Deliverables:
+  teacher/draft runtime pairing, distillation objective, dual-model precision
+  policy, draft checkpoint artifact, optional draft payload in the exported
+  Apple package, and latency/acceptance-ratio metrics where relevant.
+- Acceptance:
+  the draft-model path is either real and Rust-owned or still absent; it is not
+  hand-waved as “later maybe” inside the base SFT issue.
+- Depends on:
+  `10`.
+
+### 12. `Nexus: persist, project, and receipt Apple adapter training runs and accepted outcomes through the existing training authority`
+
+- Why this is more than “add an endpoint”:
+  the generic training authority already exists, and `apps/autopilot-desktop`
+  already projects it through `desktop_control` training status. The missing
+  work is the Apple-specific create/finalize/publication discipline on top of
+  those existing surfaces.
+- Primary owners:
+  `apps/nexus-control`, plus the typed authority client path.
+- Deliverables:
+  Apple training-run create/finalize flows over the existing registry objects,
+  preservation of Apple metadata/benchmark refs/validator refs, accepted-outcome
+  publication only after eval plus Apple runtime validation, and read-model
+  projection that desktop-control can already consume.
+- Acceptance:
+  a successful Apple adapter run appears as a canonical `ComputeTrainingRun`
+  and, only after acceptance gates pass, as a `ComputeAcceptedOutcome` that the
+  current desktop-control training snapshot can display.
+- Depends on:
+  `8`, `9`, `10`.
+
+### 13. `Provider Substrate: add Apple adapter-hosting product derivation, capability publication, and settlement linkage`
+
+- Why this is a missing issue:
+  `crates/openagents-provider-substrate/src/lib.rs` currently derives only
+  `AppleFoundationModelsInference`; there is no Apple adapter-hosting product
+  family even though `psionic-provider` already has generic `adapter_serving`
+  receipt linkage.
+- Primary owners:
+  `openagents-provider-substrate` plus `psionic-provider`.
+- Deliverables:
+  explicit Apple adapter-hosting product(s), capability summaries that include
+  adapter/runtime compatibility truth, inventory derivation from adapter-aware
+  Apple FM readiness, and provider receipts that carry the served adapter digest
+  through execution and settlement linkage.
+- Acceptance:
+  the provider can only advertise Apple adapter-hosting supply when compatible
+  adapter artifacts and Apple runtime state are both real, and the resulting
+  execution receipts preserve adapter identity.
+- Depends on:
+  `2`, `4`, `5`, `12`.
+
+### 14. `Autopilot Desktop: ship the Apple adapter training operator workflow on top of existing Apple FM and training status surfaces`
+
+- Why this is broader than a single pane:
+  the repo already has an Apple workbench, training status read models, and
+  local research state in `research_control.rs`, but no integrated Apple
+  adapter operator flow.
+- Primary owners:
+  `apps/autopilot-desktop`.
+- Deliverables:
+  WGPUI setup/training/export/monitoring panes, desktop-control mutations beyond
+  plain `GetTrainingStatus`, `autopilotctl` subcommands for train/export/accept
+  operations, persisted session logs, and, where it makes sense, reuse of the
+  existing research-control frontier/promotion surfaces rather than inventing a
+  second experiment registry in app code.
+- Acceptance:
+  an operator can move from imported dataset to launched Apple adapter training
+  run to exported artifact to accepted outcome using only desktop/CLI surfaces
+  that replay their state after restart.
+- Depends on:
+  `5`, `10`, `12`.
+
+### 15. `Compute Market: only after the above, productize Apple training and adapter-hosting claims`
+
+- Why this must stay last:
+  the market docs already reserve later `training` and `adapter_hosting`
+  families, but the repo cannot honestly advertise them until training runtime,
+  Apple package truth, serving attachment, eval gates, authority receipts, and
+  provider product derivation are all real.
+- Primary owners:
+  kernel-market docs plus the provider/product layers.
+- Deliverables:
+  compute-market doc updates, provider inventory/product exposure, truthful
+  capability envelopes, and any later buyer/provider UX only after the runtime
+  and authority stack is complete enough to defend the claim.
+- Acceptance:
+  OpenAgents can state that Apple-compatible training or Apple adapter-hosting
+  is a real compute-market family without depending on Python, desktop-local
+  truth, or unvalidated export artifacts.
+- Depends on:
+  `12`, `13`, `14`.
 
 ## Bottom Line
 
