@@ -52,6 +52,74 @@ struct SessionModelConfiguration: Codable {
     }
 }
 
+struct AdapterSelection: Codable, Equatable {
+    let adapterID: String
+    let packageDigest: String?
+
+    enum CodingKeys: String, CodingKey {
+        case adapterID = "adapter_id"
+        case packageDigest = "package_digest"
+    }
+}
+
+struct AdapterCompatibility: Codable {
+    let compatible: Bool
+    let reasonCode: String?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case compatible
+        case reasonCode = "reason_code"
+        case message
+    }
+}
+
+struct AdapterInventoryEntry: Codable {
+    let adapter: AdapterSelection
+    let baseModelSignature: String?
+    let packageFormatVersion: String?
+    let draftModelPresent: Bool
+    let compatibility: AdapterCompatibility
+    let attachedSessionIDs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case adapter
+        case baseModelSignature = "base_model_signature"
+        case packageFormatVersion = "package_format_version"
+        case draftModelPresent = "draft_model_present"
+        case compatibility
+        case attachedSessionIDs = "attached_session_ids"
+    }
+}
+
+struct AdaptersResponse: Codable {
+    let adapters: [AdapterInventoryEntry]
+    let attachSupported: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case adapters
+        case attachSupported = "attach_supported"
+    }
+}
+
+struct AdapterLoadRequest: Codable {
+    let packagePath: String
+    let requestedAdapterID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case packagePath = "package_path"
+        case requestedAdapterID = "requested_adapter_id"
+    }
+}
+
+struct AdapterLoadResponse: Codable {
+    let adapter: AdapterInventoryEntry
+}
+
+struct AdapterAttachRequest: Codable {
+    let adapter: AdapterSelection
+}
+
 struct SessionToolMetadata: Codable {
     let name: String
     let description: String?
@@ -89,6 +157,7 @@ struct SessionCreateRequest: Codable {
     let instructions: String?
     let model: SessionModelConfiguration?
     let tools: [ToolDefinition]
+    let adapter: AdapterSelection?
     let toolCallback: ToolCallbackConfiguration?
     let transcriptJSON: String?
     let transcript: Transcript?
@@ -97,6 +166,7 @@ struct SessionCreateRequest: Codable {
         case instructions
         case model
         case tools
+        case adapter
         case toolCallback = "tool_callback"
         case transcriptJSON = "transcript_json"
         case transcript
@@ -108,6 +178,7 @@ struct SessionState: Codable {
     let instructions: String?
     let model: SessionModelConfiguration
     let tools: [SessionToolMetadata]
+    let adapter: AdapterSelection?
     let isResponding: Bool
     let transcriptJSON: String?
 
@@ -116,6 +187,7 @@ struct SessionState: Codable {
         case instructions
         case model
         case tools
+        case adapter
         case isResponding = "is_responding"
         case transcriptJSON = "transcript_json"
     }
@@ -128,6 +200,7 @@ struct SessionCreateResponse: Codable {
 struct SessionRespondRequest: Codable {
     let prompt: String
     let options: GenerationOptionsPayload?
+    let adapter: AdapterSelection?
 }
 
 struct SessionRespondResponse: Codable {
@@ -212,6 +285,7 @@ struct SessionStructuredResponseRequest: Codable {
     let prompt: String
     let schema: JSONValue
     let options: GenerationOptionsPayload?
+    let adapter: AdapterSelection?
 }
 
 struct SessionStructuredResponseResponse: Codable {
@@ -253,6 +327,7 @@ struct ChatCompletionRequest: Codable {
     let temperature: Double?
     let maxTokens: Int?
     let options: GenerationOptionsPayload?
+    let adapter: AdapterSelection?
     let stream: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -261,6 +336,7 @@ struct ChatCompletionRequest: Codable {
         case temperature
         case maxTokens = "max_tokens"
         case options
+        case adapter
         case stream
     }
 }
@@ -414,6 +490,9 @@ struct HealthResponse: Codable {
     let supportedGuardrails: [SystemLanguageModelGuardrails]
     let appleSiliconRequired: Bool
     let appleIntelligenceRequired: Bool
+    let adapterInventorySupported: Bool
+    let adapterAttachSupported: Bool
+    let loadedAdapters: [AdapterInventoryEntry]
 
     enum CodingKeys: String, CodingKey {
         case status
@@ -428,6 +507,9 @@ struct HealthResponse: Codable {
         case supportedGuardrails = "supported_guardrails"
         case appleSiliconRequired = "apple_silicon_required"
         case appleIntelligenceRequired = "apple_intelligence_required"
+        case adapterInventorySupported = "adapter_inventory_supported"
+        case adapterAttachSupported = "adapter_attach_supported"
+        case loadedAdapters = "loaded_adapters"
     }
 }
 
@@ -499,6 +581,8 @@ enum FMError: Error {
     case refusal(FMErrorPayload)
     case invalidGenerationSchema(FMErrorPayload)
     case toolCallFailed(FMErrorPayload)
+    case adapterNotFound(FMErrorPayload)
+    case adapterIncompatible(FMErrorPayload)
     case invalidRequest(FMErrorPayload)
     case serverError(FMErrorPayload)
 
@@ -584,6 +668,18 @@ enum FMError: Error {
             return response(
                 type: "tool_call_failed",
                 code: "tool_call_failed",
+                payload: payload
+            )
+        case .adapterNotFound(let payload):
+            return response(
+                type: "adapter_not_found",
+                code: "adapter_not_found",
+                payload: payload
+            )
+        case .adapterIncompatible(let payload):
+            return response(
+                type: "adapter_incompatible",
+                code: "adapter_incompatible",
                 payload: payload
             )
         case .invalidRequest(let payload):

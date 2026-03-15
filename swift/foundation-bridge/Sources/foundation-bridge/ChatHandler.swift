@@ -64,23 +64,63 @@ final class RemoteTool: Tool {
 }
 
 actor ChatHandler {
+    private struct AdapterPackageMetadata {
+        let adapterIdentifier: String
+        let baseModelSignature: String?
+        let packageFormatVersion: String?
+        let draftModelPresent: Bool
+    }
+
+    private struct LoadedAdapterRecord {
+        let runtimeAdapter: SystemLanguageModel.Adapter
+        let packageURL: URL
+        let selection: AdapterSelection
+        let baseModelSignature: String?
+        let packageFormatVersion: String?
+        let draftModelPresent: Bool
+        var attachedSessionIDs: Set<String>
+
+        func inventoryEntry(
+            reasonCode: String? = nil,
+            message: String? = "Adapter compiled and ready"
+        ) -> AdapterInventoryEntry {
+            AdapterInventoryEntry(
+                adapter: selection,
+                baseModelSignature: baseModelSignature,
+                packageFormatVersion: packageFormatVersion,
+                draftModelPresent: draftModelPresent,
+                compatibility: AdapterCompatibility(
+                    compatible: true,
+                    reasonCode: reasonCode,
+                    message: message
+                ),
+                attachedSessionIDs: attachedSessionIDs.sorted()
+            )
+        }
+    }
+
     private struct SessionRecord {
         let session: LanguageModelSession
         let instructions: String?
         let model: SessionModelConfiguration
         let tools: [SessionToolMetadata]
         let toolDefinitions: [ToolDefinition]
+        let adapterSelection: AdapterSelection?
         let toolCallback: ToolCallbackConfiguration?
         var isResponding: Bool
         var transcriptJSONSnapshot: String?
     }
 
     private var sessions: [String: SessionRecord] = [:]
+    private var loadedAdapters: [String: LoadedAdapterRecord] = [:]
 
     init() {}
 
     private let defaultUseCase: SystemLanguageModelUseCase = .general
     private let defaultGuardrails: SystemLanguageModelGuardrails = .default
+    private let supportedPackageFormatVersions: Set<String> = [
+        "openagents.apple-fmadapter.v1"
+    ]
 
     func supportedUseCases() -> [SystemLanguageModelUseCase] {
         [.general, .contentTagging]
@@ -88,6 +128,167 @@ actor ChatHandler {
 
     func supportedGuardrails() -> [SystemLanguageModelGuardrails] {
         [.default, .permissiveContentTransformations]
+    }
+
+    func listAdapters() -> AdaptersResponse {
+        AdaptersResponse(
+            adapters: adapterInventory(),
+            attachSupported: true
+        )
+    }
+
+    func loadAdapter(request: AdapterLoadRequest) async throws -> AdapterLoadResponse {
+        let packageURL = URL(fileURLWithPath: request.packagePath)
+        let metadata = try validateAdapterPackage(at: packageURL)
+        let adapterID = request.requestedAdapterID ?? metadata.adapterIdentifier
+
+        if let existing = loadedAdapters[adapterID], !existing.attachedSessionIDs.isEmpty {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter '\(adapterID)' is already loaded and attached to active sessions",
+                    failureReason: "adapter_in_use"
+                )
+            )
+        }
+
+        do {
+            let runtimeAdapter = try SystemLanguageModel.Adapter(fileURL: packageURL)
+            try await runtimeAdapter.compile()
+            let record = LoadedAdapterRecord(
+                runtimeAdapter: runtimeAdapter,
+                packageURL: packageURL,
+                selection: AdapterSelection(
+                    adapterID: adapterID,
+                    packageDigest: nil
+                ),
+                baseModelSignature: metadata.baseModelSignature,
+                packageFormatVersion: metadata.packageFormatVersion,
+                draftModelPresent: metadata.draftModelPresent,
+                attachedSessionIDs: []
+            )
+            loadedAdapters[adapterID] = record
+            return AdapterLoadResponse(adapter: record.inventoryEntry())
+        } catch {
+            throw adapterLoadFailure(
+                adapterID: adapterID,
+                packageURL: packageURL,
+                error: error
+            )
+        }
+    }
+
+    func unloadAdapter(adapterID: String) throws {
+        guard let record = loadedAdapters[adapterID] else {
+            throw FMError.adapterNotFound(
+                FMErrorPayload(message: "Unknown Apple FM adapter '\(adapterID)'")
+            )
+        }
+        if !record.attachedSessionIDs.isEmpty {
+            throw FMError.invalidRequest(
+                FMErrorPayload(
+                    message: "Adapter '\(adapterID)' cannot be unloaded while attached to active sessions",
+                    failureReason: "adapter_in_use"
+                )
+            )
+        }
+        _ = loadedAdapters.removeValue(forKey: adapterID)
+    }
+
+    func attachSessionAdapter(
+        sessionID: String,
+        request: AdapterAttachRequest
+    ) throws -> SessionState {
+        guard var record = sessions[sessionID] else {
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
+        }
+        if record.isResponding {
+            throw FMError.concurrentRequests(
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' cannot change adapters while a request is active"
+                )
+            )
+        }
+        if record.adapterSelection == request.adapter {
+            return try sessionState(sessionID: sessionID)
+        }
+        if record.adapterSelection != nil {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' already has an attached adapter; detach it before attaching a different one",
+                    failureReason: "attach_conflict"
+                )
+            )
+        }
+
+        let transcriptJSON = record.transcriptJSONSnapshot
+        let session = try makeSession(
+            instructions: record.instructions,
+            model: record.model,
+            toolDefinitions: record.toolDefinitions,
+            adapterSelection: request.adapter,
+            toolCallback: record.toolCallback,
+            transcriptJSON: transcriptJSON,
+            transcript: nil
+        )
+        record = SessionRecord(
+            session: session,
+            instructions: record.instructions,
+            model: record.model,
+            tools: record.tools,
+            toolDefinitions: record.toolDefinitions,
+            adapterSelection: request.adapter,
+            toolCallback: record.toolCallback,
+            isResponding: false,
+            transcriptJSONSnapshot: transcriptJSON
+        )
+        sessions[sessionID] = record
+        updateAttachmentIndex(sessionID: sessionID, from: nil, to: request.adapter)
+        return try sessionState(sessionID: sessionID)
+    }
+
+    func detachSessionAdapter(sessionID: String) throws -> SessionState {
+        guard var record = sessions[sessionID] else {
+            throw FMError.invalidRequest(
+                FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
+            )
+        }
+        if record.isResponding {
+            throw FMError.concurrentRequests(
+                FMErrorPayload(
+                    message: "Apple FM session '\(sessionID)' cannot change adapters while a request is active"
+                )
+            )
+        }
+        guard let previousAdapter = record.adapterSelection else {
+            return try sessionState(sessionID: sessionID)
+        }
+
+        let transcriptJSON = record.transcriptJSONSnapshot
+        let session = try makeSession(
+            instructions: record.instructions,
+            model: record.model,
+            toolDefinitions: record.toolDefinitions,
+            adapterSelection: nil,
+            toolCallback: record.toolCallback,
+            transcriptJSON: transcriptJSON,
+            transcript: nil
+        )
+        record = SessionRecord(
+            session: session,
+            instructions: record.instructions,
+            model: record.model,
+            tools: record.tools,
+            toolDefinitions: record.toolDefinitions,
+            adapterSelection: nil,
+            toolCallback: record.toolCallback,
+            isResponding: false,
+            transcriptJSONSnapshot: transcriptJSON
+        )
+        sessions[sessionID] = record
+        updateAttachmentIndex(sessionID: sessionID, from: previousAdapter, to: nil)
+        return try sessionState(sessionID: sessionID)
     }
 
     func checkAvailability() -> Bool {
@@ -148,6 +349,7 @@ actor ChatHandler {
             instructions: request.instructions,
             model: model,
             toolDefinitions: request.tools,
+            adapterSelection: request.adapter,
             toolCallback: request.toolCallback,
             transcriptJSON: request.transcriptJSON,
             transcript: request.transcript
@@ -159,10 +361,12 @@ actor ChatHandler {
             model: model,
             tools: request.tools.map(\.metadata),
             toolDefinitions: request.tools,
+            adapterSelection: request.adapter,
             toolCallback: request.toolCallback,
             isResponding: false,
             transcriptJSONSnapshot: transcriptJSONSnapshot
         )
+        updateAttachmentIndex(sessionID: sessionID, from: nil, to: request.adapter)
         return SessionCreateResponse(session: try sessionState(sessionID: sessionID))
     }
 
@@ -183,11 +387,12 @@ actor ChatHandler {
     }
 
     func deleteSession(sessionID: String) throws {
-        guard sessions.removeValue(forKey: sessionID) != nil else {
+        guard let removed = sessions.removeValue(forKey: sessionID) else {
             throw FMError.invalidRequest(
                 FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
             )
         }
+        updateAttachmentIndex(sessionID: sessionID, from: removed.adapterSelection, to: nil)
     }
 
     func resetSession(sessionID: String) throws -> SessionState {
@@ -225,15 +430,20 @@ actor ChatHandler {
         sessions[sessionID] = record
 
         let options = try bridgeGenerationOptions(from: request.options)
+        let executionSession = try sessionForExecution(record: record, requestAdapter: request.adapter)
+        let usesTemporaryOverride = request.adapter != nil && request.adapter != record.adapterSelection
         do {
-            let response: LanguageModelSession.Response<String> = try await record.session.respond(
+            let response: LanguageModelSession.Response<String> = try await executionSession.respond(
                 to: request.prompt,
                 options: options
             )
             let content = response.content
 
-            record.isResponding = false
-            record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
+            record = try successfulRecord(
+                from: record,
+                executedSession: executionSession,
+                temporaryOverride: usesTemporaryOverride
+            )
             sessions[sessionID] = record
 
             return SessionRespondResponse(
@@ -284,8 +494,10 @@ actor ChatHandler {
 
         let options = try bridgeGenerationOptions(from: request.options)
         let schema = try Self.decodeGenerationSchema(from: request.schema)
+        let executionSession = try sessionForExecution(record: record, requestAdapter: request.adapter)
+        let usesTemporaryOverride = request.adapter != nil && request.adapter != record.adapterSelection
         do {
-            let response: LanguageModelSession.Response<GeneratedContent> = try await record.session
+            let response: LanguageModelSession.Response<GeneratedContent> = try await executionSession
                 .respond(
                     to: request.prompt,
                     schema: schema,
@@ -294,8 +506,11 @@ actor ChatHandler {
             let payload = try Self.generatedContentPayload(from: response.content)
             let outputJSON = try payload.contentJSONString()
 
-            record.isResponding = false
-            record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
+            record = try successfulRecord(
+                from: record,
+                executedSession: executionSession,
+                temporaryOverride: usesTemporaryOverride
+            )
             sessions[sessionID] = record
 
             return SessionStructuredResponseResponse(
@@ -348,7 +563,8 @@ actor ChatHandler {
         record.isResponding = true
         sessions[sessionID] = record
 
-        let session = record.session
+        let session = try sessionForExecution(record: record, requestAdapter: request.adapter)
+        let usesTemporaryOverride = request.adapter != nil && request.adapter != record.adapterSelection
         let modelID = record.model.id
         let prompt = request.prompt
 
@@ -374,7 +590,9 @@ actor ChatHandler {
                     let completedEvent = try self.finishSuccessfulStream(
                         sessionID: sessionID,
                         prompt: prompt,
-                        finalOutput: finalOutput
+                        finalOutput: finalOutput,
+                        executedSession: session,
+                        temporaryOverride: usesTemporaryOverride
                     )
                     continuation.yield(completedEvent)
                     continuation.finish()
@@ -436,6 +654,7 @@ actor ChatHandler {
             instructions: nil,
             model: defaultSessionModelConfiguration(),
             toolDefinitions: [],
+            adapterSelection: request.adapter,
             toolCallback: nil,
             transcriptJSON: nil,
             transcript: nil
@@ -490,13 +709,14 @@ actor ChatHandler {
         instructions: String?,
         model: SessionModelConfiguration,
         toolDefinitions: [ToolDefinition],
+        adapterSelection: AdapterSelection?,
         toolCallback: ToolCallbackConfiguration?,
         transcriptJSON: String?,
         transcript: Transcript?
     ) throws -> LanguageModelSession {
-        let foundationModel = SystemLanguageModel(
-            useCase: model.useCase.foundationModelsValue,
-            guardrails: model.guardrails.foundationModelsValue
+        let foundationModel = try resolvedFoundationModel(
+            model: model,
+            adapterSelection: adapterSelection
         )
         let tools = try makeTools(
             definitions: toolDefinitions,
@@ -535,6 +755,7 @@ actor ChatHandler {
             instructions: record.instructions,
             model: record.model,
             tools: record.tools,
+            adapter: record.adapterSelection,
             isResponding: record.isResponding,
             transcriptJSON: record.transcriptJSONSnapshot
         )
@@ -614,12 +835,25 @@ actor ChatHandler {
     }
 
     private func restoredRecord(from record: SessionRecord) throws -> SessionRecord {
+        try restoredRecord(
+            from: record,
+            transcriptJSONSnapshot: record.transcriptJSONSnapshot,
+            adapterSelection: record.adapterSelection
+        )
+    }
+
+    private func restoredRecord(
+        from record: SessionRecord,
+        transcriptJSONSnapshot: String?,
+        adapterSelection: AdapterSelection?
+    ) throws -> SessionRecord {
         let session = try makeSession(
             instructions: record.instructions,
             model: record.model,
             toolDefinitions: record.toolDefinitions,
+            adapterSelection: adapterSelection,
             toolCallback: record.toolCallback,
-            transcriptJSON: record.transcriptJSONSnapshot,
+            transcriptJSON: transcriptJSONSnapshot,
             transcript: nil
         )
         return SessionRecord(
@@ -628,9 +862,54 @@ actor ChatHandler {
             model: record.model,
             tools: record.tools,
             toolDefinitions: record.toolDefinitions,
+            adapterSelection: adapterSelection,
             toolCallback: record.toolCallback,
             isResponding: false,
-            transcriptJSONSnapshot: record.transcriptJSONSnapshot
+            transcriptJSONSnapshot: transcriptJSONSnapshot
+        )
+    }
+
+    private func successfulRecord(
+        from record: SessionRecord,
+        executedSession: LanguageModelSession,
+        temporaryOverride: Bool
+    ) throws -> SessionRecord {
+        let transcriptJSONSnapshot = try transcriptJSONString(for: executedSession)
+        if temporaryOverride {
+            return try restoredRecord(
+                from: record,
+                transcriptJSONSnapshot: transcriptJSONSnapshot,
+                adapterSelection: record.adapterSelection
+            )
+        }
+        return SessionRecord(
+            session: record.session,
+            instructions: record.instructions,
+            model: record.model,
+            tools: record.tools,
+            toolDefinitions: record.toolDefinitions,
+            adapterSelection: record.adapterSelection,
+            toolCallback: record.toolCallback,
+            isResponding: false,
+            transcriptJSONSnapshot: transcriptJSONSnapshot
+        )
+    }
+
+    private func sessionForExecution(
+        record: SessionRecord,
+        requestAdapter: AdapterSelection?
+    ) throws -> LanguageModelSession {
+        guard let requestAdapter, requestAdapter != record.adapterSelection else {
+            return record.session
+        }
+        return try makeSession(
+            instructions: record.instructions,
+            model: record.model,
+            toolDefinitions: record.toolDefinitions,
+            adapterSelection: requestAdapter,
+            toolCallback: record.toolCallback,
+            transcriptJSON: record.transcriptJSONSnapshot,
+            transcript: nil
         )
     }
 
@@ -653,15 +932,20 @@ actor ChatHandler {
     private func finishSuccessfulStream(
         sessionID: String,
         prompt: String,
-        finalOutput: String
+        finalOutput: String,
+        executedSession: LanguageModelSession,
+        temporaryOverride: Bool
     ) throws -> TextStreamEvent {
         guard var record = sessions[sessionID] else {
             throw FMError.invalidRequest(
                 FMErrorPayload(message: "Unknown Apple FM session '\(sessionID)'")
             )
         }
-        record.isResponding = false
-        record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
+        record = try successfulRecord(
+            from: record,
+            executedSession: executedSession,
+            temporaryOverride: temporaryOverride
+        )
         sessions[sessionID] = record
         return TextStreamEvent(
             kind: .completed,
@@ -669,6 +953,279 @@ actor ChatHandler {
             output: finalOutput,
             session: try sessionState(sessionID: sessionID),
             usage: estimatedUsage(prompt: prompt, output: finalOutput)
+        )
+    }
+
+    private func adapterInventory() -> [AdapterInventoryEntry] {
+        loadedAdapters
+            .values
+            .map { $0.inventoryEntry() }
+            .sorted { left, right in
+                left.adapter.adapterID.localizedCaseInsensitiveCompare(right.adapter.adapterID)
+                    == .orderedAscending
+            }
+    }
+
+    private func updateAttachmentIndex(
+        sessionID: String,
+        from previous: AdapterSelection?,
+        to next: AdapterSelection?
+    ) {
+        if let previous {
+            if var record = loadedAdapters[previous.adapterID] {
+                record.attachedSessionIDs.remove(sessionID)
+                loadedAdapters[previous.adapterID] = record
+            }
+        }
+        if let next {
+            if var record = loadedAdapters[next.adapterID] {
+                record.attachedSessionIDs.insert(sessionID)
+                loadedAdapters[next.adapterID] = record
+            }
+        }
+    }
+
+    private func resolvedFoundationModel(
+        model: SessionModelConfiguration,
+        adapterSelection: AdapterSelection?
+    ) throws -> SystemLanguageModel {
+        if let adapterSelection {
+            let adapterRecord = try resolvedLoadedAdapter(selection: adapterSelection)
+            return SystemLanguageModel(
+                adapter: adapterRecord.runtimeAdapter,
+                guardrails: model.guardrails.foundationModelsValue
+            )
+        }
+        return SystemLanguageModel(
+            useCase: model.useCase.foundationModelsValue,
+            guardrails: model.guardrails.foundationModelsValue
+        )
+    }
+
+    private func resolvedLoadedAdapter(selection: AdapterSelection) throws -> LoadedAdapterRecord {
+        guard let record = loadedAdapters[selection.adapterID] else {
+            throw FMError.adapterNotFound(
+                FMErrorPayload(
+                    message: "Unknown Apple FM adapter '\(selection.adapterID)'"
+                )
+            )
+        }
+        if let requestedDigest = selection.packageDigest,
+            let loadedDigest = record.selection.packageDigest,
+            requestedDigest != loadedDigest
+        {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter '\(selection.adapterID)' is loaded with a different package digest",
+                    failureReason: "package_digest_mismatch"
+                )
+            )
+        }
+        return record
+    }
+
+    private func validateAdapterPackage(at packageURL: URL) throws -> AdapterPackageMetadata {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: packageURL.path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter package path '\(packageURL.path)' does not exist or is not a directory",
+                    failureReason: "missing_package_directory"
+                )
+            )
+        }
+        guard packageURL.pathExtension == "fmadapter" else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter package '\(packageURL.lastPathComponent)' must end with .fmadapter",
+                    failureReason: "invalid_package_extension"
+                )
+            )
+        }
+
+        let metadataURL = packageURL.appendingPathComponent("metadata.json")
+        let weightsURL = packageURL.appendingPathComponent("adapter_weights.bin")
+        guard FileManager.default.fileExists(atPath: metadataURL.path) else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter package '\(packageURL.lastPathComponent)' is missing metadata.json",
+                    failureReason: "missing_metadata"
+                )
+            )
+        }
+        guard FileManager.default.fileExists(atPath: weightsURL.path) else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter package '\(packageURL.lastPathComponent)' is missing adapter_weights.bin",
+                    failureReason: "missing_weights"
+                )
+            )
+        }
+
+        let draftMilURL = packageURL.appendingPathComponent("draft.mil")
+        let draftWeightsURL = packageURL.appendingPathComponent("draft_weights.bin")
+        let hasDraftMil = FileManager.default.fileExists(atPath: draftMilURL.path)
+        let hasDraftWeights = FileManager.default.fileExists(atPath: draftWeightsURL.path)
+        guard hasDraftMil == hasDraftWeights else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter package '\(packageURL.lastPathComponent)' carries only part of the draft-model payload",
+                    failureReason: "incomplete_draft_payload"
+                )
+            )
+        }
+
+        let metadataData: Data
+        do {
+            metadataData = try Data(contentsOf: metadataURL)
+        } catch {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Failed to read adapter metadata for '\(packageURL.lastPathComponent)'",
+                    failureReason: "metadata_read_failed",
+                    debugDescription: String(reflecting: error)
+                )
+            )
+        }
+
+        let rawMetadata: [String: Any]
+        do {
+            rawMetadata = try decodedJSONObject(data: metadataData)
+        } catch let error as FMError {
+            throw error
+        } catch {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter metadata for '\(packageURL.lastPathComponent)' is not valid JSON",
+                    failureReason: "invalid_metadata_json",
+                    debugDescription: String(reflecting: error)
+                )
+            )
+        }
+
+        guard let adapterIdentifier = rawMetadata["adapterIdentifier"] as? String,
+            !adapterIdentifier.isEmpty
+        else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter metadata is missing a non-empty adapterIdentifier",
+                    failureReason: "missing_adapter_identifier"
+                )
+            )
+        }
+
+        let baseModelSignature = rawMetadata["baseModelSignature"] as? String
+        if let baseModelSignature,
+            baseModelSignature.range(of: "^[0-9a-f]{40}$", options: .regularExpression) == nil
+        {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter '\(adapterIdentifier)' has an invalid baseModelSignature",
+                    failureReason: "invalid_base_model_signature"
+                )
+            )
+        }
+
+        if let loraRank = rawMetadata["loraRank"] as? Int, loraRank <= 0 {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter '\(adapterIdentifier)' must carry a positive loraRank",
+                    failureReason: "invalid_lora_rank"
+                )
+            )
+        }
+
+        let creatorDefined = rawMetadata["creatorDefined"] as? [String: Any]
+        let packageFormatVersion = creatorDefined?["packageFormatVersion"] as? String
+        if let packageFormatVersion,
+            !supportedPackageFormatVersions.contains(packageFormatVersion)
+        {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter '\(adapterIdentifier)' uses unsupported package format '\(packageFormatVersion)'",
+                    failureReason: "unsupported_package_version"
+                )
+            )
+        }
+
+        let draftModelPresent =
+            (creatorDefined?["draftModelPresent"] as? Bool)
+            ?? (hasDraftMil && hasDraftWeights)
+
+        return AdapterPackageMetadata(
+            adapterIdentifier: adapterIdentifier,
+            baseModelSignature: baseModelSignature,
+            packageFormatVersion: packageFormatVersion,
+            draftModelPresent: draftModelPresent
+        )
+    }
+
+    private func decodedJSONObject(data: Data) throws -> [String: Any] {
+        let value = try JSONSerialization.jsonObject(with: data)
+        guard let object = value as? [String: Any] else {
+            throw FMError.adapterIncompatible(
+                FMErrorPayload(
+                    message: "Adapter metadata must decode to a JSON object",
+                    failureReason: "invalid_metadata_shape"
+                )
+            )
+        }
+        return object
+    }
+
+    private func adapterLoadFailure(
+        adapterID: String,
+        packageURL: URL,
+        error: Error
+    ) -> FMError {
+        if let error = error as? FMError {
+            return error
+        }
+        if let assetError = error as? SystemLanguageModel.Adapter.AssetError {
+            switch assetError {
+            case .invalidAsset(let context):
+                return .adapterIncompatible(
+                    FMErrorPayload(
+                        message: "Adapter '\(adapterID)' is not a valid Foundation Models asset",
+                        failureReason: "invalid_asset",
+                        debugDescription: context.debugDescription
+                    )
+                )
+            case .invalidAdapterName(let context):
+                return .adapterIncompatible(
+                    FMErrorPayload(
+                        message: "Adapter '\(adapterID)' is rejected by Foundation Models because the adapter name is invalid",
+                        failureReason: "invalid_adapter_name",
+                        debugDescription: context.debugDescription
+                    )
+                )
+            case .compatibleAdapterNotFound(let context):
+                return .adapterIncompatible(
+                    FMErrorPayload(
+                        message: "Adapter '\(adapterID)' is not compatible with the active Apple Foundation Models runtime",
+                        failureReason: "compatible_adapter_not_found",
+                        debugDescription: context.debugDescription
+                    )
+                )
+            @unknown default:
+                return .adapterIncompatible(
+                    FMErrorPayload(
+                        message: "Adapter '\(adapterID)' hit an unknown Foundation Models asset error",
+                        failureReason: "unknown_asset_error",
+                        debugDescription: String(reflecting: assetError)
+                    )
+                )
+            }
+        }
+        return .adapterIncompatible(
+            FMErrorPayload(
+                message: "Failed to load adapter '\(adapterID)' from '\(packageURL.path)'",
+                failureReason: "adapter_compile_failed",
+                debugDescription: String(reflecting: error)
+            )
         )
     }
 

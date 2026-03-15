@@ -50,8 +50,8 @@ actor HTTPServer {
         }
 
         listener.start(queue: .main)
-        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
-            RunLoop.main.run()
+        while true {
+            try? await Task.sleep(for: .seconds(3600))
         }
     }
 
@@ -176,6 +176,10 @@ actor HTTPServer {
             return .buffered(buildCORSResponse())
         }
 
+        if request.path == "/v1/adapters" || request.path.hasPrefix("/v1/adapters/") {
+            return await handleAdapters(request)
+        }
+
         if request.path == "/v1/sessions" || request.path.hasPrefix("/v1/sessions/") {
             return await handleSessions(request)
         }
@@ -199,6 +203,7 @@ actor HTTPServer {
 
     private func handleHealth() async -> Data {
         let (available, reason, message) = await chatHandler.getAvailabilityStatus()
+        let adapters = await chatHandler.listAdapters()
         let health = HealthResponse(
             status: available ? "ok" : "degraded",
             modelAvailable: available,
@@ -211,7 +216,10 @@ actor HTTPServer {
             supportedUseCases: await chatHandler.supportedUseCases(),
             supportedGuardrails: await chatHandler.supportedGuardrails(),
             appleSiliconRequired: true,
-            appleIntelligenceRequired: true
+            appleIntelligenceRequired: true,
+            adapterInventorySupported: true,
+            adapterAttachSupported: adapters.attachSupported ?? true,
+            loadedAdapters: adapters.adapters
         )
         return buildJSONResponse(status: 200, body: health)
     }
@@ -237,6 +245,76 @@ actor HTTPServer {
             ]
         )
         return buildJSONResponse(status: 200, body: models)
+    }
+
+    private func handleAdapterInventory() async -> Data {
+        let response = await chatHandler.listAdapters()
+        return buildJSONResponse(status: 200, body: response)
+    }
+
+    private func handleAdapterLoad(body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                    .errorResponse
+            )
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                    .errorResponse
+            )
+        }
+
+        do {
+            let request = try JSONDecoder().decode(AdapterLoadRequest.self, from: bodyData)
+            let response = try await chatHandler.loadAdapter(request: request)
+            return buildJSONResponse(status: 200, body: response)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch let error as DecodingError {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest(
+                    FMErrorPayload(
+                        message: "Invalid JSON: \(error.localizedDescription)",
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
+        }
+    }
+
+    private func handleAdapterUnload(adapterID: String) async -> Data {
+        do {
+            try await chatHandler.unloadAdapter(adapterID: adapterID)
+            return buildJSONResponse(status: 200, body: ["deleted": true])
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
+        }
     }
 
     private func handleSessions(_ request: ParsedRequest) async -> RouteResponse {
@@ -282,6 +360,10 @@ actor HTTPServer {
                 return .buffered(await handleSessionReset(sessionID: sessionID))
             case ("GET", "transcript"):
                 return .buffered(await handleSessionTranscript(sessionID: sessionID))
+            case ("POST", "adapter"):
+                return .buffered(await handleSessionAttachAdapter(sessionID: sessionID, body: request.body))
+            case ("DELETE", "adapter"):
+                return .buffered(await handleSessionDetachAdapter(sessionID: sessionID))
             default:
                 return .buffered(
                     buildErrorResponse(
@@ -314,6 +396,39 @@ actor HTTPServer {
                     )
                 )
             }
+        }
+
+        return .buffered(
+            buildErrorResponse(
+                status: 404,
+                message: "Not found: \(request.method) \(request.path)"
+            )
+        )
+    }
+
+    private func handleAdapters(_ request: ParsedRequest) async -> RouteResponse {
+        switch (request.method, request.path) {
+        case ("GET", "/v1/adapters"):
+            return .buffered(await handleAdapterInventory())
+        case ("POST", "/v1/adapters/load"):
+            return .buffered(await handleAdapterLoad(body: request.body))
+        default:
+            break
+        }
+
+        let components = request.path.split(separator: "/")
+        guard components.count == 3 else {
+            return .buffered(
+                buildErrorResponse(
+                    status: 404,
+                    message: "Not found: \(request.method) \(request.path)"
+                )
+            )
+        }
+
+        let adapterID = String(components[2])
+        if request.method == "DELETE" {
+            return .buffered(await handleAdapterUnload(adapterID: adapterID))
         }
 
         return .buffered(
@@ -431,6 +546,74 @@ actor HTTPServer {
         do {
             let transcript = try await chatHandler.sessionTranscript(sessionID: sessionID)
             return buildJSONResponse(status: 200, body: transcript)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionAttachAdapter(sessionID: String, body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest(FMErrorPayload(message: "Missing request body"))
+                    .errorResponse
+            )
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest(FMErrorPayload(message: "Invalid body encoding"))
+                    .errorResponse
+            )
+        }
+
+        do {
+            let request = try JSONDecoder().decode(AdapterAttachRequest.self, from: bodyData)
+            let session = try await chatHandler.attachSessionAdapter(
+                sessionID: sessionID,
+                request: request
+            )
+            return buildJSONResponse(status: 200, body: session)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch let error as DecodingError {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest(
+                    FMErrorPayload(
+                        message: "Invalid JSON: \(error.localizedDescription)",
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(
+                    FMErrorPayload(
+                        message: error.localizedDescription,
+                        debugDescription: String(reflecting: error)
+                    )
+                ).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionDetachAdapter(sessionID: String) async -> Data {
+        do {
+            let session = try await chatHandler.detachSessionAdapter(sessionID: sessionID)
+            return buildJSONResponse(status: 200, body: session)
         } catch let error as FMError {
             return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
         } catch {
@@ -665,7 +848,7 @@ actor HTTPServer {
             "Content-Type: application/json",
             "Content-Length: \(jsonData.count)",
             "Access-Control-Allow-Origin: *",
-            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS",
             "Access-Control-Allow-Headers: Content-Type",
             "Connection: close",
             "",
@@ -714,6 +897,10 @@ actor HTTPServer {
             return 403
         case .toolCallFailed:
             return 502
+        case .adapterNotFound:
+            return 404
+        case .adapterIncompatible:
+            return 409
         case .serverError:
             return 500
         case .invalidRequest:
@@ -725,7 +912,7 @@ actor HTTPServer {
         let headers = [
             "HTTP/1.1 204 No Content",
             "Access-Control-Allow-Origin: *",
-            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS",
             "Access-Control-Allow-Headers: Content-Type",
             "Content-Length: 0",
             "Connection: close",
@@ -761,7 +948,7 @@ actor HTTPServer {
             "Cache-Control: no-cache",
             "Connection: close",
             "Access-Control-Allow-Origin: *",
-            "Access-Control-Allow-Methods: GET, POST, OPTIONS",
+            "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS",
             "Access-Control-Allow-Headers: Content-Type",
             "",
             ""
