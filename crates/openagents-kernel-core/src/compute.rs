@@ -11,6 +11,8 @@ pub const COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION: &str =
     "compute.apple_adapter_training_policy.v1";
 pub const COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION: &str =
     "compute.apple_adapter_training_run.v1";
+pub const COMPUTE_APPLE_ACCEPTED_TRAINING_OUTCOME_METADATA_ABI_VERSION: &str =
+    "compute.apple_adapter_accepted_training_outcome.v1";
 
 const COMPUTE_APPLE_METADATA_KEY: &str = "apple_adapter";
 
@@ -333,6 +335,30 @@ pub struct ComputeAppleTrainingRunMetadata {
     pub validator_policy_ref: String,
     pub draft_model_present: bool,
     pub runtime_validation_posture: ComputeAppleRuntimeValidationPosture,
+    #[serde(default)]
+    pub package_digest: Option<String>,
+    #[serde(default)]
+    pub held_out_eval_run_id: Option<String>,
+    #[serde(default)]
+    pub runtime_validation_eval_run_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeAppleAcceptedTrainingOutcomeMetadata {
+    pub abi_version: String,
+    pub base_model_signature: String,
+    pub tokenizer_digest: String,
+    pub package_format_version: String,
+    pub environment_ref: String,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    pub validator_policy_ref: String,
+    pub draft_model_present: bool,
+    pub runtime_validation_posture: ComputeAppleRuntimeValidationPosture,
+    pub package_digest: String,
+    pub held_out_eval_run_id: String,
+    #[serde(default)]
+    pub runtime_validation_eval_run_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
@@ -2100,6 +2126,55 @@ fn validate_compute_apple_training_run_metadata(
     if metadata.validator_policy_ref != run.validator_policy_ref {
         return Err("compute_apple_training_run_validator_policy_ref_mismatch".to_string());
     }
+    if metadata
+        .package_digest
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_apple_training_run_package_digest_invalid".to_string());
+    }
+    if metadata
+        .held_out_eval_run_id
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_apple_training_run_held_out_eval_run_id_invalid".to_string());
+    }
+    if metadata
+        .runtime_validation_eval_run_id
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(
+            "compute_apple_training_run_runtime_validation_eval_run_id_invalid".to_string(),
+        );
+    }
+    if run.status == ComputeTrainingRunStatus::Accepted {
+        if metadata
+            .package_digest
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("compute_apple_training_run_package_digest_missing".to_string());
+        }
+        if metadata
+            .held_out_eval_run_id
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("compute_apple_training_run_held_out_eval_run_id_missing".to_string());
+        }
+        if metadata.runtime_validation_posture != ComputeAppleRuntimeValidationPosture::HeldOutOnly
+            && metadata
+                .runtime_validation_eval_run_id
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(
+                "compute_apple_training_run_runtime_validation_eval_run_id_missing".to_string(),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -3129,7 +3204,7 @@ mod tests {
         validate_compute_validator_policy, validate_delivery_proof,
         validate_launch_compute_product,
     };
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     fn launch_product(product_id: &str) -> ComputeProduct {
         ComputeProduct {
@@ -3577,6 +3652,11 @@ mod tests {
                     draft_model_present: false,
                     runtime_validation_posture:
                         ComputeAppleRuntimeValidationPosture::HeldOutAndRuntimeSmoke,
+                    package_digest: Some("sha256:apple-trained-helpdesk".to_string()),
+                    held_out_eval_run_id: Some("eval.apple_adapter.held_out.alpha".to_string()),
+                    runtime_validation_eval_run_id: Some(
+                        "eval.apple_adapter.runtime.alpha".to_string(),
+                    ),
                 })
                 .expect("metadata"),
                 "stability_verdict": "continue",
@@ -3886,6 +3966,27 @@ mod tests {
         assert_eq!(
             err,
             "compute_apple_training_run_validator_policy_ref_mismatch"
+        );
+    }
+
+    #[test]
+    fn rejects_accepted_apple_training_run_without_package_digest() {
+        let mut run = apple_training_run();
+        run.metadata["apple_adapter"]["package_digest"] = Value::Null;
+        let err = validate_compute_training_run(&run)
+            .expect_err("accepted apple run should require package digest");
+        assert_eq!(err, "compute_apple_training_run_package_digest_missing");
+    }
+
+    #[test]
+    fn rejects_accepted_apple_training_run_without_runtime_eval_when_posture_requires_it() {
+        let mut run = apple_training_run();
+        run.metadata["apple_adapter"]["runtime_validation_eval_run_id"] = Value::Null;
+        let err = validate_compute_training_run(&run)
+            .expect_err("accepted apple run should require runtime validation eval");
+        assert_eq!(
+            err,
+            "compute_apple_training_run_runtime_validation_eval_run_id_missing"
         );
     }
 
