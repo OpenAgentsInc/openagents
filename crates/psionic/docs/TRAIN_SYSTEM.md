@@ -20,7 +20,7 @@
 > `crates/psionic/psionic-sandbox/src/lib.rs`,
 > `apps/autopilot-desktop/src/desktop_control.rs`, and
 > `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
-> train-adjacent issue backlog through `#3639` and the decentralized adapter
+> train-adjacent issue backlog through `#3640` and the decentralized adapter
 > training issue program starting at `#3636`.
 
 ## Why This Doc Exists
@@ -299,6 +299,18 @@ revision, source checkpoint pointer, and upload-manifest expectations so late,
 superseded, unauthorized, or mismatched submissions can be refused with
 machine-legible outcomes instead of ad hoc local strings.
 
+The artifact-staging layer is now real as well in
+`crates/psionic/psionic-train/src/adapter_artifact_storage.rs`. That module
+derives adapter-package datastream manifests from contribution payloads,
+enforces manifest-digest and chunk-digest replay safety across resumable upload
+sessions, registers completed contribution artifacts through the generic train
+artifact controller, tracks reviewable/accepted/rejected retention posture, and
+promotes sealed-window adapter state into typed checkpoint manifests plus
+window-scoped checkpoint pointers. The included harness proves interrupted
+uploads can resume from a committed cursor, corrupt chunks are refused without
+advancing state, and the latest promoted checkpoint for a window can be
+restored deterministically.
+
 ### First Lane, Next Lane, And Non-Goals
 
 The first live execution lane remains the narrow single-host Apple adapter path
@@ -496,6 +508,7 @@ shape already includes at least:
 | Decentralized adapter window contracts | `implemented_early` | `psionic-train` now owns typed adapter-window receipts and a runnable window harness covering assignment, execution, upload, validator disposition, aggregation eligibility, seal, aggregation, and reconcile over one adapter-targeted window |
 | Decentralized adapter cluster selection | `implemented_early` | `psionic-train` now owns a cluster-backed adapter coordinator that mirrors live membership and telemetry into contributor eligibility, deterministic ranking, contributor-set revisions, assignment seeds, and churn-safe window replanning |
 | Decentralized adapter worker protocol | `implemented_early` | `psionic-train` now owns typed adapter-worker sessions, heartbeats, claim/ack flows, progress telemetry, superseded-claim retries, and contribution submission receipts bound to policy revision, checkpoint pointer, and upload expectations for one active adapter window |
+| Decentralized adapter artifact staging | `implemented_early` | `psionic-train` now owns resumable adapter contribution uploads, manifest/chunk verification, typed contribution-artifact receipts, disposition-aware retention windows, and promoted window checkpoint manifests plus pointers for deterministic restore |
 
 ## Current Crate Ownership
 
