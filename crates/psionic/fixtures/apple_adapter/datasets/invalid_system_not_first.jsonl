@@ -1,0 +1,1 @@
+[{"role":"user","content":"Summarize mutexes."},{"role":"system","content":"A conversation between a user and a helpful assistant."},{"role":"assistant","content":"A mutex protects shared state."}]

@@ -1,0 +1,1 @@
+[{"role":"user","content":"First user prompt."},{"role":"user","content":"Second consecutive user prompt."},{"role":"assistant","content":"This sample should be rejected because roles repeat consecutively."}]

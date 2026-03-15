@@ -130,6 +130,11 @@ This is codified in **AGENTS.md** (“Apple FM bridge (agent)”) and in the mai
 - **Swift bridge implementation and user-facing build/ship steps**: [swift/foundation-bridge/README.md](../../../swift/foundation-bridge/README.md).
 - **Rust contract and client**: `crates/psionic/psionic-apple-fm` (contract, client, health, sessions, streaming, tools, transcript).
 - **Desktop supervision and UI**: `apps/autopilot-desktop/src/apple_fm_bridge.rs` (discovery, auto-build, spawn, refresh, Mission Control).
+- **Apple adapter reference specs and fixtures**:
+  - `crates/psionic/docs/APPLE_ADAPTER_DATASET_SPEC.md`
+  - `crates/psionic/docs/APPLE_FMADAPTER_PACKAGE_SPEC.md`
+  - `crates/psionic/docs/APPLE_ADAPTER_LINEAGE_SPEC.md`
+  - `crates/psionic/fixtures/apple_adapter/`
 - **Roadmap and API coverage**: [ROADMAP_FM.md](ROADMAP_FM.md), [FM_API_COVERAGE_MATRIX.md](FM_API_COVERAGE_MATRIX.md).
 - **Audit of current bridge vs contract**: `docs/audits/2026-03-10-apple-fm-swift-bridge-audit.md`.
 - **Agent rules and test-bridge-first**: repo root **AGENTS.md** and **README.md**.

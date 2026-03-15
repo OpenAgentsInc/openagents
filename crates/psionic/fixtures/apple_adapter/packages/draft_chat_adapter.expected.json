@@ -1,0 +1,20 @@
+{
+  "fixtureId": "draft_chat_adapter",
+  "packagePath": "draft_chat_adapter.fmadapter",
+  "requiredFiles": [
+    "metadata.json",
+    "adapter_weights.bin",
+    "draft.mil",
+    "draft_weights.bin"
+  ],
+  "draftFilesPresent": true,
+  "adapterIdentifier": "fmadapter-structured_helper_v1-9799725",
+  "baseModelSignature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "loraRank": 32,
+  "fileDigests": {
+    "metadata.json": "caab3a4d7b03671232f905e735a6a6b2ccd0afe51cc4fd07c7ee8842e92b685d",
+    "adapter_weights.bin": "d0519eaaf268befdf91b2b214d82cf2025d08bd4befe9ad29d06119d60484fe4",
+    "draft.mil": "120a69a6d5d53e692bf9ee14a766d151d4523264f1873c21d2081a13cea6a720",
+    "draft_weights.bin": "74e056307a2c028d107fe928d3977cd53d64917557b1e81655561e6873c75c07"
+  }
+}

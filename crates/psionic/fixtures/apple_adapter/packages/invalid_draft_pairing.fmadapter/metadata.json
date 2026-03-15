@@ -1,0 +1,13 @@
+{
+  "adapterIdentifier": "fmadapter-invalid_draft_pairing-9799725",
+  "author": "OpenAgents fixture",
+  "baseModelSignature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "creatorDefined": {
+    "draftModelPresent": true,
+    "packageFormatVersion": "openagents.apple-fmadapter.v1"
+  },
+  "description": "Negative fixture where draft.mil is present without draft_weights.bin.",
+  "license": "Apache-2.0",
+  "loraRank": 32,
+  "speculativeDecodingDraftTokenCount": 6
+}

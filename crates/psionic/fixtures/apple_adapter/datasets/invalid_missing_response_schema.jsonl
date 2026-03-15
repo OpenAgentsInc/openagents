@@ -1,0 +1,1 @@
+[{"role":"user","content":"Return JSON for a date.","response_format":{"type":"json_schema"}},{"role":"assistant","content":"{\"year\": 1976, \"month\": 4, \"day\": 1}"}]
