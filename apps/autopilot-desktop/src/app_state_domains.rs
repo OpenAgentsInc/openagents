@@ -835,6 +835,65 @@ impl AppleFmWorkbenchToolProfile {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AppleAdapterTrainingStageFilter {
+    #[default]
+    All,
+    Active,
+    Exportable,
+    Accepted,
+}
+
+impl AppleAdapterTrainingStageFilter {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::All => "FILTER: ALL",
+            Self::Active => "FILTER: ACTIVE",
+            Self::Exportable => "FILTER: EXPORTABLE",
+            Self::Accepted => "FILTER: ACCEPTED",
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::All => Self::Active,
+            Self::Active => Self::Exportable,
+            Self::Exportable => Self::Accepted,
+            Self::Accepted => Self::All,
+        }
+    }
+}
+
+pub struct AppleAdapterTrainingPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub selected_run_id: Option<String>,
+    pub selected_run_log_scroll_offset_px: f32,
+    pub stage_filter: AppleAdapterTrainingStageFilter,
+    pub pending_export_path: Option<String>,
+    pub accept_confirmation_armed: bool,
+    pub last_handoff_summary: Option<String>,
+    pub log_tail: TerminalPane,
+}
+
+impl Default for AppleAdapterTrainingPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for Apple adapter training snapshot".to_string()),
+            selected_run_id: None,
+            selected_run_log_scroll_offset_px: 0.0,
+            stage_filter: AppleAdapterTrainingStageFilter::All,
+            pending_export_path: None,
+            accept_confirmation_armed: false,
+            last_handoff_summary: None,
+            log_tail: TerminalPane::new().title("\\\\ TRAINING LOG"),
+        }
+    }
+}
+
 pub struct AppleFmWorkbenchPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,

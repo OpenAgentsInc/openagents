@@ -59,6 +59,7 @@ use crate::pane_system::{
     ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
     SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
     cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_active_job_scroll_event,
+    dispatch_apple_adapter_training_input_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_fm_workbench_input_event,
     dispatch_apple_fm_workbench_log_scroll_event, dispatch_buy_mode_payments_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
@@ -3093,6 +3094,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_local_inference_input_event(state, event);
     handled |= dispatch_rive_preview_input_event(state, event);
     handled |= dispatch_apple_fm_workbench_input_event(state, event);
+    handled |= dispatch_apple_adapter_training_input_event(state, event);
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
@@ -3378,6 +3380,9 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
         PaneHitAction::RivePreview(action) => run_rive_preview_action(state, action),
         PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
+        PaneHitAction::AppleAdapterTraining(action) => {
+            run_apple_adapter_training_action(state, action)
+        }
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
         PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),

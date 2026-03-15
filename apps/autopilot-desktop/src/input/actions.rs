@@ -11,7 +11,8 @@ use crate::local_runtime_capabilities::{
     mission_control_preflight_action_label, mission_control_preflight_workbench_action,
 };
 use crate::pane_system::{
-    AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
+    AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction,
+    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
     LocalInferencePaneAction, LogStreamPaneAction, Nip90SentPaymentsPaneAction,
     ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction,
 };
@@ -9276,6 +9277,64 @@ pub(super) fn run_apple_fm_workbench_action(
     }
 }
 
+pub(super) fn run_apple_adapter_training_action(
+    state: &mut crate::app_state::RenderState,
+    action: AppleAdapterTrainingPaneAction,
+) -> bool {
+    match action {
+        AppleAdapterTrainingPaneAction::CycleStageFilter => {
+            state.apple_adapter_training.stage_filter =
+                state.apple_adapter_training.stage_filter.cycle();
+            let training = crate::desktop_control::current_training_status(state);
+            let selected_run_id = training
+                .operator
+                .runs
+                .iter()
+                .filter(|run| {
+                    crate::panes::apple_adapter_training::run_matches_filter(
+                        run,
+                        state.apple_adapter_training.stage_filter,
+                    )
+                })
+                .map(|run| run.run_id.clone())
+                .next();
+            state.apple_adapter_training.selected_run_id = selected_run_id;
+            state.apple_adapter_training.last_action = Some(format!(
+                "Apple adapter training {}",
+                state
+                    .apple_adapter_training
+                    .stage_filter
+                    .label()
+                    .to_ascii_lowercase()
+            ));
+            state.apple_adapter_training.last_error = None;
+            true
+        }
+        AppleAdapterTrainingPaneAction::SelectRun(row_index) => {
+            let training = crate::desktop_control::current_training_status(state);
+            let run_id = training
+                .operator
+                .runs
+                .iter()
+                .filter(|run| {
+                    crate::panes::apple_adapter_training::run_matches_filter(
+                        run,
+                        state.apple_adapter_training.stage_filter,
+                    )
+                })
+                .nth(row_index)
+                .map(|run| run.run_id.clone());
+            if let Some(run_id) = run_id {
+                state.apple_adapter_training.selected_run_id = Some(run_id.clone());
+                state.apple_adapter_training.last_action =
+                    Some(format!("Selected Apple adapter run {run_id}"));
+                state.apple_adapter_training.last_error = None;
+            }
+            true
+        }
+    }
+}
+
 pub(super) fn run_provider_control_action(
     state: &mut crate::app_state::RenderState,
     action: ProviderControlPaneAction,
@@ -9356,6 +9415,13 @@ pub(super) fn run_provider_control_action(
         }
         ProviderControlPaneAction::RunLocalFmSummaryTest => {
             run_mission_control_local_fm_summary_test(state)
+        }
+        ProviderControlPaneAction::OpenAppleAdapterTraining => {
+            focus_or_create_pane_kind(state, crate::app_state::PaneKind::AppleAdapterTraining);
+            state
+                .provider_control
+                .record_action("Opened Apple adapter training");
+            true
         }
         ProviderControlPaneAction::ToggleInventory(target) => {
             run_provider_status_action(state, ProviderStatusPaneAction::ToggleInventory(target))

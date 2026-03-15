@@ -4745,6 +4745,10 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
     }
 }
 
+pub(crate) fn current_training_status(state: &RenderState) -> DesktopControlTrainingStatus {
+    desktop_control_training_status(state)
+}
+
 fn desktop_control_apple_adapter_operator_status() -> DesktopControlAppleAdapterOperatorStatus {
     match crate::apple_adapter_training_control::operator_status() {
         Ok(status) => {

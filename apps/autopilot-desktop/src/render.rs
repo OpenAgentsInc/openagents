@@ -339,6 +339,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             ),
             frame_debugger: crate::app_state::FrameDebuggerPaneState::default(),
             apple_fm_workbench: crate::app_state::AppleFmWorkbenchPaneState::default(),
+            apple_adapter_training: crate::app_state::AppleAdapterTrainingPaneState::default(),
             provider_admin_runtime,
             provider_admin_listen_addr,
             provider_admin_last_error,
@@ -812,6 +813,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
 
     let provider_blockers = state.provider_blockers();
     let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
+    let training_status = crate::desktop_control::current_training_status(state);
     let pane_paint_report;
     {
         let buy_mode_enabled = state.mission_control_buy_mode_enabled();
@@ -1114,6 +1116,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.provider_control_hud_runtime,
             &state.frame_debugger,
             &mut state.apple_fm_workbench,
+            &mut state.apple_adapter_training,
+            &training_status,
             provider_blockers.as_slice(),
             &state.earnings_scoreboard,
             &state.relay_connections,
