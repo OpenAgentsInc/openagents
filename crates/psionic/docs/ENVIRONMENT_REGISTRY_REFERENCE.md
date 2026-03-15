@@ -1,6 +1,6 @@
 # Environment Registry Reference
 
-> Status: canonical `#3578` environment-registry record, updated 2026-03-14
+> Status: canonical `#3578` environment-registry record, updated 2026-03-15
 > after landing the runnable harness in
 > `scripts/release/check-psionic-environment-registry.sh`.
 
@@ -22,6 +22,14 @@ The issue widened `psionic-environments` with:
   aliases, and group members
 - `EnvironmentEvalParityReceipt` proving train and eval reuse the same pinned
   package and digest for shared group members
+
+On 2026-03-15, issue `#3622` added the first repo-owned Apple specialization on
+top of that registry layer:
+
+- a helper that materializes the shared Apple train/eval package, the
+  benchmark-only package, and the mixed-surface group together
+- explicit Apple train/eval parity proof for the shared core member instead of
+  app-local environment wiring
 
 Kernel and Nexus still own canonical registry and package authority truth.
 This issue lands the Psionic-side runtime and resolution contract that local
@@ -68,6 +76,8 @@ The current harness should prove:
 - retiring a package makes future resolutions fail explicitly
 - train and eval resolve the exact same package key and digest for shared
   members
+- the Apple adapter train/eval/benchmark bundle can be built from typed refs
+  and runtime requirements instead of raw metadata blobs
 
 ## Current Limitations
 

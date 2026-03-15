@@ -1,6 +1,6 @@
 # Environment ABI Reference
 
-> Status: canonical `#3566` environment-runtime record, updated 2026-03-14
+> Status: canonical `#3566` environment-runtime record, updated 2026-03-15
 > after landing the runnable harness in
 > `scripts/release/check-psionic-environment-abi.sh`.
 
@@ -17,6 +17,15 @@ The issue landed the `psionic-environments` crate with:
   expected artifact contracts
 - a deterministic in-memory `EnvironmentRuntimeSession`
 - session receipts and final session summaries
+
+On 2026-03-15, issue `#3622` extended that same crate with a repo-owned Apple
+adapter environment bundle:
+
+- a shared train/eval core package plus a benchmark-only package
+- typed Apple runtime/session requirements and stable package refs for session,
+  runtime, tool-bundle, rubric-binding, and structured-output profiles
+- Apple metadata that now participates in `EnvironmentPackageContract` digests
+  instead of sitting in unused extension fields
 
 Kernel and Nexus still own registry and authority truth. This issue only lands
 the reusable Psionic-side ABI and runtime contract.
@@ -38,6 +47,13 @@ The current reference path proves one bounded but real environment session:
 3. run a turn that emits a declared tool call
 4. resolve the tool result and complete the turn with emitted artifacts
 5. finalize the session with rubric outcomes
+
+The Apple adapter extension now proves a second bounded workload:
+
+1. define one shared Apple train/eval package and one benchmark package
+2. attach explicit Apple runtime/session/tool/rubric refs as typed metadata
+3. reuse the same pinned core package across train and eval
+4. keep benchmark-only requirements isolated in a separate package
 
 ## Pass Criteria
 
@@ -61,6 +77,8 @@ The current harness should prove:
   artifacts, and rubric outcomes
 - the train substrate can now reference the canonical package key rather than a
   free-form environment string
+- Apple adapter environment metadata is explicit and digest-bound rather than
+  hidden in desktop-local configuration
 
 ## Current Limitations
 

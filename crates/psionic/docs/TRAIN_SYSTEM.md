@@ -209,7 +209,7 @@ shape already includes at least:
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, and `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
-| Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, and deterministic runtime session state machine, while registry and authority truth remain in kernel/Nexus |
+| Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, deterministic runtime session state machine, and a reusable Apple adapter train/eval/benchmark bundle with typed runtime refs plus train/eval parity receipts, while registry and authority truth remain in kernel/Nexus |
 | Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
@@ -234,8 +234,8 @@ The current train-relevant ownership split in Psionic is:
     replanning, and benchmark-gated collective policy
 - `psionic-environments`
   - environment package ABI, execution entrypoints, tool and rubric hooks,
-    artifact expectations, versioned dataset bindings, and deterministic
-    runtime sessions
+    artifact expectations, versioned dataset bindings, deterministic runtime
+    sessions, and reusable Apple adapter train/eval/benchmark bundle helpers
 - `psionic-eval`
   - held-out eval runs, rubric-scored sample/runtime contracts, benchmark
   packages, repeat-run aggregation, and operator-local validator simulation
@@ -1243,6 +1243,17 @@ The canonical runbook and harness are now:
 Kernel and Nexus still own registry and authority truth. This issue lands the
 Psionic-side runtime and contract layer only.
 
+On 2026-03-15, GitHub issue `#3622` extended the same crate with a reusable
+Apple adapter environment bundle:
+
+- a shared train/eval core package plus a benchmark-only package over the same
+  typed environment ABI
+- explicit Apple session/runtime, tool-bundle, rubric-binding, and
+  structured-output refs carried as package metadata that now affects package
+  digests
+- train/eval group composition that proves the same pinned core package is
+  reused across both surfaces through an explicit parity receipt
+
 ### 4. `Psionic Data: add Rust-native dataset, tokenizer, split, and packing contracts`
 
 Status: implemented on 2026-03-14 via GitHub issue `#3567`.
@@ -1581,6 +1592,12 @@ This issue removes the need for bespoke environment-mix glue in the
 orchestrator for the first train/eval/benchmark package groups. Persistent
 authority sync, package publication, and richer eval-policy productization
 remain later layers.
+
+On 2026-03-15, GitHub issue `#3622` added the first repo-owned Apple adapter
+specialization on top of that registry substrate: one helper now materializes
+the shared Apple core package, benchmark package, mixed-surface group, and the
+train/eval parity receipt together so later train and eval layers do not have
+to rebuild Apple environment wiring from app-local config.
 
 ### 16. `Psionic Sandbox: add RL-throughput primitives for pooled, repeated agentic execution`
 
