@@ -126,7 +126,8 @@ agentic-SFT-plus-RL reference program that exercises:
 - operator-facing typed inspection
 
 It is not sufficient to claim that the full distributed training stack is
-complete. Issues after `#3585` still cover distributed optimizer semantics,
-model IO, replay guarantees, security hardening, artifact lifecycle,
-accounting, chaos, research loops, and the deeper tensor/compiler/runtime work
-needed for a full Rust-native training engine.
+complete. Remaining work after this reference program is mostly around
+production multi-device runtime behavior, replay guarantees, security
+hardening, artifact lifecycle, accounting, chaos, research loops, and the
+deeper tensor/compiler/runtime work needed for a full Rust-native training
+engine.

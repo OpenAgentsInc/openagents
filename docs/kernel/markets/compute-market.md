@@ -70,22 +70,26 @@ foundation under the wider OpenAgents economy.
 
 ## Definitive Repo Verdict
 
-As of `2026-03-13`, the Compute Market is:
+As of `2026-03-14`, the Compute Market is:
 
 - the deepest and most real of the five markets
 - already productized at the seller-side MVP loop
 - already implemented as a meaningful kernel authority slice with durable state,
   receipts, read routes, indices, and delivery proofs
 - already wider than "just local inference" at the type and substrate level
+- now backed by a materially stronger Psionic substrate, including reusable
+  framework-core autodiff and optimizer primitives plus early train/eval/runtime
+  crates for future compute families
 - not yet fully productized end to end as a complete market for ordinary users
 - not yet complete in the Prime-audit sense of cluster, sandbox, proof,
   validator, environment, and operator-grade compute-market truth
 
 The short, honest summary is:
 
-> OpenAgents already has a real compute-provider product and a substantial
-> starter compute-market authority layer. It does not yet have the full
-> end-state compute market.
+> OpenAgents already has a real compute-provider product, a substantial starter
+> compute-market authority layer, and a materially stronger Psionic execution
+> substrate than it had before the March 14 framework-core closures. It does
+> not yet have the full end-state compute market.
 
 ## What The Compute Market Actually Is Here
 
@@ -418,7 +422,7 @@ Completion thresholds for the most important current partial lanes:
 | Cash-settled hedges and derivatives | `partial`, mostly authority-first | The kernel already models more than the MVP UI shows, but these are not yet a live user-facing exchange product. |
 | Compute indices and corrections | `implemented`, early | Index publication and correction routes exist, but full governance, external feeds, and deeper market-depth operations are still ahead. |
 | Operator control surfaces | `partial` | `autopilotctl`, desktop control, and headless compute are real, but a full compute-market operator plane for cluster, proof, and sandbox operations is still incomplete. |
-| Training-class products | `planned` | The market definition reserves space for them, but they are not yet live compute-market products. |
+| Training-class products | `planned` | The market definition reserves space for them, but they are not yet live compute-market products even though Psionic now has early train/eval runtime plus reusable autodiff/optimizer substrate beneath that future lane. |
 | Adapter-hosting products | `planned` | Not productized yet. |
 
 ## Current Product Truth
@@ -947,19 +951,35 @@ benchmark truth.
 ### 5. Psionic execution substrate that already exists
 
 Real code already exists in `crates/psionic/*` for more than single-node
-inference:
+inference, and the March 14 `#3602`/`#3603` closures made that substrate
+meaningfully stronger:
 
 - local inference runtime and serving substrate
 - embeddings tests and model-backed execution paths
 - cluster state, ordered state, scheduling, replicated serving, layer sharding,
   and tensor sharding seed material
 - sandbox runtime detection, bounded execution profiles, sandbox execution
+  receipts, warm reusable pools, staged loop inputs, repeated iteration
   receipts, and sandbox evidence
+- environment package ABI and held-out eval runtime crates with local
+  validator-simulation posture
+- typed training run/orchestrator substrate, rollout artifacts, validator
+  verdicts, and fixed-budget trainer-step execution
+- reusable framework-core autodiff in `psionic-ir`, including explicit
+  `detach`, training/evaluation plus no-grad semantics, symbolic backward
+  plans, and representative dense reference materialization
+- reusable optimizer families and distributed-optimizer contracts in
+  `psionic-train`
 - execution proof bundle types that can carry sandbox context and runtime proof
   evidence
 
 That means the Prime audit is not asking the repo to imagine these categories
 from zero. It is asking the repo to finish productizing and market-linking them.
+
+Those closures do not make training-class compute products live. They do mean
+the future eval-linked, benchmark-linked, and training-linked compute families
+no longer depend on trainer-private gradient logic or an inference-only
+execution story.
 
 ## What Is Only Partial Today
 
@@ -1090,6 +1110,16 @@ In practical terms:
 - if environments and evals are disconnected from the compute products that
   depend on them, the compute market is not complete
 
+The March 14 framework-core closures sharpen that reading further:
+
+- reusable autodiff and optimizer behavior are now real Psionic substrate, not
+  open design notes
+- early train/eval/runtime crates now exist beneath the future compute-family
+  expansion
+- the remaining compute-market gap is therefore productization, settlement,
+  operator truth, and proof linkage, not "there is no Rust-native substrate at
+  all"
+
 That is now the canonical reading.
 
 ## Relationship To The Other Four Markets
@@ -1130,6 +1160,9 @@ Primary supporting docs:
 - [../../plans/compute-market-full-implementation-plan.md](../../plans/compute-market-full-implementation-plan.md)
 - [../../plans/prime-ecosystem-compute-integration-spec.md](../../plans/prime-ecosystem-compute-integration-spec.md)
 - [../../audits/2026-03-13-prime-relation-and-psionic-adaptation-audit.md](../../audits/2026-03-13-prime-relation-and-psionic-adaptation-audit.md)
+- [../../../crates/psionic/docs/ARCHITECTURE.md](../../../crates/psionic/docs/ARCHITECTURE.md)
+- [../../../crates/psionic/docs/TRAIN_SYSTEM.md](../../../crates/psionic/docs/TRAIN_SYSTEM.md)
+- [../../../crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md](../../../crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md)
 
 ## Bottom Line
 
@@ -1141,8 +1174,9 @@ Today, it is best understood as:
 - a real seller-side product
 - a real starter authority market
 - a partially productized commodity market
-- and an incomplete but credible foundation for clustered, sandboxed,
-  proof-bearing, environment-linked machine execution
+- and an incomplete but materially stronger Psionic-backed foundation for
+  clustered, sandboxed, proof-bearing, environment-linked, and later
+  eval/training-linked machine execution
 
 That is why it is both the strongest current market in OpenAgents and still one
 of the biggest remaining build programs in the repo.

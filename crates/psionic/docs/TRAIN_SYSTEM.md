@@ -432,7 +432,7 @@ The adapter subtree already owns:
 This means Psionic already has an artifact vocabulary for one class of training
 outputs beyond full checkpoints.
 
-### 6. Sandbox substrate exists, but not the RL-oriented shape yet
+### 6. Sandbox substrate exists, and the RL-oriented shape is now early rather than absent
 
 `psionic-sandbox` already owns:
 
@@ -441,25 +441,35 @@ outputs beyond full checkpoints.
 - bounded job execution
 - background jobs
 - file transfer
+- warm reusable pools
+- staged loop inputs
+- pool acquisition receipts
+- repeated agentic iteration receipts
 - execution receipts
 
-This is enough to support bounded compiled runners.
+This is enough to support bounded compiled runners plus early RL/post-training
+iteration contracts.
 
-It is not yet the mature RL/post-training sandbox shape described by the
-Intellect papers. It still lacks:
+It is not yet the mature high-throughput RL/post-training sandbox shape. The
+remaining gaps are:
 
-- pooled warm sandboxes
-- fast repeated multi-turn execution loops
-- push-based readiness
-- environment-bound lifecycle contracts
-- explicit RL-throughput surfaces
+- productionized RL throughput and pool tuning
+- broader environment-owned lifecycle and policy integration
+- stronger operator and security hardening for long-running train workloads
 
-### 7. Environment, eval, and synthetic-data authority surfaces now exist outside Psionic
+### 7. Environment, eval, and synthetic-data truth now spans Psionic runtime crates and authority-owned kernel surfaces
 
-The recent issue closures matter because they changed the broader system around
-Psionic even though they did not create new Psionic runtime crates.
+The recent issue closures matter because they changed both Psionic and the
+broader system around it.
 
-The tree now has broader OpenAgents support for:
+The tree now has Psionic-native execution crates for:
+
+- environment package ABI and deterministic runtime sessions in
+  `psionic-environments`
+- held-out eval runs, benchmark packages, repeat-run aggregation, and local
+  validator simulation in `psionic-eval`
+
+The tree also has broader OpenAgents support for:
 
 - environment package descriptors and registry behavior
 - environment refs bound into compute products and delivery proofs
@@ -470,10 +480,12 @@ Those capabilities currently live in kernel/proto and Nexus-control surfaces.
 
 So the accurate reading is:
 
-- the larger platform now has a home for environment, eval, and synthetic-data
-  truth
-- Psionic still does not have the native runtime crates that would execute
-  those workflows inside the compute substrate itself
+- Psionic now has native environment and eval runtime clients inside the
+  compute substrate
+- the larger platform owns the canonical authority truth for environment, eval,
+  and synthetic-data records
+- synthetic-data still remains `partial_outside_psionic` because there is no
+  Psionic-native generation runtime yet
 
 ## What Psionic Can Honestly Claim Today
 
@@ -487,10 +499,22 @@ Today Psionic can honestly claim all of the following:
   receipts
 - collective planning already has benchmark-gated quantization and explicit mesh
   revisions
-- training-related artifact lineage is beginning to exist as first-class data
-  rather than opaque side files
+- fixed-budget trainer-step execution is real, with explicit optimizer-state
+  ownership, residency transitions, and step telemetry
+- reusable autodiff plus explicit detach or no-grad semantics now live in
+  `psionic-ir` rather than trainer-private code
+- reusable SGD, Adam, AdamW, LARS, and LAMB primitives plus distributed-
+  optimizer contracts now live in `psionic-train`
+- rollout artifacts, trainer-batch assembly, policy revisions, and
+  validator-aware verification are first-class typed contracts
+- environment ABI and held-out eval runtime now exist in reusable Psionic
+  crates
+- sandbox execution now supports warm reusable pools and repeated agentic
+  iteration receipts
+- training-related artifact lineage is now materially first-class data rather
+  than opaque side files
 - the broader OpenAgents stack now has authority-layer environment, eval, and
-  synthetic-data flows that Psionic can eventually target as execution clients
+  synthetic-data flows that Psionic can target as execution clients
 
 That is a meaningful base.
 
@@ -498,23 +522,19 @@ That is a meaningful base.
 
 Psionic cannot honestly claim any of the following yet:
 
-- full Rust-native model training
-- full Rust-native RL or post-training
-- trainer-step execution
-- optimizer state ownership
+- full production-scale Rust-native model training across real multi-device
+  runtime kernels
+- full production-scale Rust-native RL or post-training throughput
 - broad autodiff coverage across every future backend-extension and training op
-- rollout artifact recording
-- off-policy accounting
-- environment package execution
-- shared training/eval environment contract
-- training-window state transitions with deterministic assignment as first-class
-  train truth
-- checkpoint pointer and checkpoint-manifest protocol semantics
-- validator-aware rollout verification
-- validator-owned benchmark packages with repeat-run scoring and local
-  validator-simulation parity
-- orchestrator-owned batch assembly and weight propagation
-- productionized RL sandbox throughput
+- true multi-device execution kernels and ZeRO or FSDP transport and partition
+  exchange
+- fully mature checkpoint retention, promotion, and cold-restore governance
+- final kernel-backed accepted-outcome authority for every train artifact and
+  lifecycle
+- full security hardening, chaos coverage, and operator lifecycle for the train
+  stack
+- the broader research-loop or productization program beyond the current
+  reference runs
 
 Those are still planned.
 
@@ -524,10 +544,10 @@ The gap is no longer "there is no train subtree."
 
 The gap is:
 
-> Psionic now has the recovery, checkpoint, data-plane, and collective
-> substrate for training-class execution, but it still lacks the actual
-> Rust-native trainer, orchestrator, environment, eval, rollout, and validator
-> layers that would turn that substrate into a full train system.
+> Psionic now has early trainer, orchestrator, rollout, environment, eval,
+> validator, and reusable framework-core gradient or update substrate, but it
+> still lacks the runtime breadth, hardening, and operator or product layers
+> required for a complete distributed train system.
 
 That gap is the main planning target for the rest of this doc.
 
@@ -1006,8 +1026,8 @@ Psionic should not copy:
 If OpenAgents means "no Python trainer and no Python environment system," then
 the completion bar is high.
 
-An honest all-Rust Psionic train system requires all of these to exist inside
-the Rust subtree:
+An honest all-Rust Psionic train system now exists in early form across all of
+these layers inside the Rust subtree:
 
 - training core
 - optimizer ownership
@@ -1017,11 +1037,12 @@ the Rust subtree:
 - eval runtime
 - compiled runner and crash boundary
 
-The current repo only has the lower-level substrate for that system.
+The completion bar is still high, though.
 
-Psionic cannot honestly claim an all-Rust train system until trainer steps,
-optimizer ownership, rollout artifacts, environment execution, eval runtime,
-and crash-safe runner boundaries all exist inside the Rust subtree.
+Psionic cannot honestly claim a finished all-Rust train system until
+multi-device execution kernels, broader autodiff or operator coverage, mature
+environment execution at scale, hardening, and operator-grade lifecycle
+management all exist inside the Rust subtree.
 
 ## Planned Crate Shape
 
@@ -1701,8 +1722,10 @@ instead of claiming completion from isolated subsystem tests:
   underlying typed receipts, lineage, and summaries
 
 This is the current main integration gate for the early train stack. It does
-not claim that distributed optimizer semantics, model IO, replay guarantees,
-security hardening, artifact lifecycle, or research-loop layers are complete.
+not claim that replay guarantees, security hardening, artifact lifecycle, or
+research-loop layers are complete, and it does not turn the landed
+distributed-optimizer or model-IO contracts into proof that the full
+multi-device runtime is complete.
 
 ### Production Completion And Hardening
 

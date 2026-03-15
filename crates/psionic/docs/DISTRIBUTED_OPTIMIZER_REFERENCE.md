@@ -83,12 +83,13 @@ The current contract is green only if all of the following are true:
 This issue does not claim a complete distributed trainer runtime. It does not
 yet implement:
 
-- real autodiff or backward graphs
-- true multi-device execution kernels
+- broad multi-device execution kernels
 - real ZeRO/FSDP transport and partition exchange
 - model-format import/export
 - full replay guarantees
 
 What it does do is make the distributed optimizer, precision, and
 memory-sharding model explicit enough that later runtime work has a stable
-typed contract to target.
+typed contract to target. The layer now composes with reusable autodiff and
+optimizer substrate beneath it rather than depending on missing trainer-private
+gradient logic.

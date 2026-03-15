@@ -314,33 +314,38 @@ Those are controller responsibilities.
 | --- | --- | --- |
 | Research policy, frontier advancement, workspace state | `apps/autopilot-desktop` | Product workflow |
 | Typed experiment specs and run manifests | new `crates/psionic/*` research crate | Reusable substrate |
-| Training loop, checkpointing, optimizer state | new `crates/psionic/*` training crate | Reusable engine work |
-| Held-out evaluation suites and score contracts | new `crates/psionic/*` eval crate | Reusable truth |
+| Training loop, checkpointing, optimizer state | `psionic-train` plus `psionic-ir` | Reusable engine work |
+| Held-out evaluation suites and score contracts | `psionic-eval` plus `psionic-environments` | Reusable truth |
 | Bounded execution profile and receipts | `psionic-runtime` + `psionic-provider` + provider substrate | Already shaped for this |
 | Artifact identity and promotion | `psionic-catalog` + `psionic-models` + `psionic-serve` | Existing Psionic path |
 | Market advertisement of promoted artifacts | `psionic-provider` | Only after supply policy allows it |
 
 ## Main Gaps
 
-### 1. Psionic is still inference-first today
+### 1. Psionic is still product-inference-first today
 
 The repo now has real inference, embeddings, serving, provider evidence, and
-CUDA/NVIDIA execution, but it does not yet have a Rust-native training stack.
+CUDA/NVIDIA execution, and it now also has an early Rust-native training stack.
 
-That is the main missing piece.
+What it still does not have is a complete research-loop product stack.
 
-### 2. Backward and optimizer substrate are not in Psionic yet
+### 2. Autodiff and optimizer substrate now exist, but the research loop is still incomplete
 
-To make the research loop real in Rust, Psionic needs training primitives, not just
-serve-time kernels.
+To make the research loop real in Rust, Psionic needed training primitives, not
+just serve-time kernels. Those primitives are now real:
 
-At minimum:
+- reusable reverse-mode autodiff and explicit detach or no-grad semantics in
+  `psionic-ir`
+- reusable optimizer families in `psionic-train`
+- fixed-budget trainer scheduling and checkpoint-aware step execution
+- model IO, dataset contracts, and held-out eval crates
 
-- backward/autodiff or an equivalent explicit training graph
-- optimizer updates
-- checkpoint serialization
-- training dataset iteration
-- fixed-budget trainer scheduling
+What is still missing for the broader research loop is:
+
+- broader autodiff or operator coverage across future backend extensions
+- production multi-device or distributed trainer execution
+- research-run orchestration, keep or discard policy, and promotion flow
+- long-run hardening around checkpoint, eval, and artifact promotion
 
 ### 3. Adapter policy is still conservative
 
