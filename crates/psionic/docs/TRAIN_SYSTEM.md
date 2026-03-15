@@ -20,7 +20,7 @@
 > `crates/psionic/psionic-sandbox/src/lib.rs`,
 > `apps/autopilot-desktop/src/desktop_control.rs`, and
 > `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
-> train-adjacent issue backlog through `#3642` and the decentralized adapter
+> train-adjacent issue backlog through `#3643` and the decentralized adapter
 > training issue program starting at `#3636`.
 
 ## Why This Doc Exists
@@ -334,6 +334,18 @@ held-out eval, benchmark aggregate summaries, and runtime-smoke eval runs, and
 Apple-format windows can require runtime smoke before promotion-ready status is
 true.
 
+The first real aggregation-and-promotion path is now implemented in
+`crates/psionic/psionic-train/src/adapter_aggregation.rs`. The crate now owns a
+deterministic first rule for accepted adapter contributions,
+`weighted_manifest_digest_merge_v1`, which preserves accepted artifact,
+validator, security, provenance, and aggregation-weight lineage; emits a typed
+promotion receipt; and either promotes a new `PolicyRevision` plus
+`CheckpointPointer` or records an explicit held outcome when accepted work or
+validator posture is insufficient. `AdapterTrainingClusterCoordinator` can now
+consume that receipt, update its current input revision and checkpoint pointer,
+reconcile the finished window, and plan the next window directly from the
+promoted revision without local manual patching.
+
 ### First Lane, Next Lane, And Non-Goals
 
 The first live execution lane remains the narrow single-host Apple adapter path
@@ -534,6 +546,7 @@ shape already includes at least:
 | Decentralized adapter artifact staging | `implemented_early` | `psionic-train` now owns resumable adapter contribution uploads, manifest/chunk verification, typed contribution-artifact receipts, disposition-aware retention windows, and promoted window checkpoint manifests plus pointers for deterministic restore |
 | Decentralized adapter provenance security | `implemented_early` | `psionic-train` now owns signed manifest envelopes, worker/session/auth-subject binding, independently verifiable accepted provenance bundles, and typed reject or quarantine receipts for signature mismatch, reassignment, or stale-session cases |
 | Decentralized adapter validator and window scoring | `implemented_early` | `psionic-train` now owns sampled replay verification, typed validator dispositions, window sealing summaries over admitted/accepted/quarantined/rejected/replay-required work, and candidate held-out/benchmark/runtime-smoke gating for promotion readiness |
+| Decentralized adapter aggregation and promotion | `implemented_early` | `psionic-train` now owns a deterministic accepted-delta aggregation rule, typed promotion receipts with artifact/validator/security/provenance lineage, hold-vs-promote gating, and coordinator-side adoption of the promoted revision plus checkpoint pointer for the next window |
 
 ## Current Crate Ownership
 
