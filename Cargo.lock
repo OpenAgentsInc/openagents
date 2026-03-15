@@ -5542,6 +5542,7 @@ name = "openagents-provider-substrate"
 version = "0.1.1"
 dependencies = [
  "axum 0.8.8",
+ "openagents-kernel-core",
  "psionic-sandbox",
  "reqwest",
  "rusqlite",

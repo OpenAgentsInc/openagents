@@ -13,6 +13,10 @@ pub use admin::*;
 pub use sandbox::*;
 pub use sandbox_execution::*;
 
+use openagents_kernel_core::compute::{
+    ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
+    ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -21,6 +25,7 @@ pub enum ProviderBackendKind {
     #[serde(alias = "ollama")]
     GptOss,
     AppleFoundationModels,
+    PsionicTrain,
 }
 
 impl ProviderBackendKind {
@@ -28,6 +33,7 @@ impl ProviderBackendKind {
         match self {
             Self::GptOss => "local GPT-OSS runtime",
             Self::AppleFoundationModels => "Apple Foundation Models bridge",
+            Self::PsionicTrain => "Psionic train contributor runtime",
         }
     }
 }
@@ -214,6 +220,334 @@ impl ProviderAppleAdapterHostingAvailability {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAdapterTrainingExecutionBackend {
+    AppleFoundationModels,
+    OpenAdapterBackend,
+}
+
+impl ProviderAdapterTrainingExecutionBackend {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AppleFoundationModels => "apple_foundation_models",
+            Self::OpenAdapterBackend => "open_adapter_backend",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAdapterTrainingSettlementTrigger {
+    AcceptedContribution,
+    AcceptedSealedWindow,
+}
+
+impl ProviderAdapterTrainingSettlementTrigger {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AcceptedContribution => "accepted_contribution",
+            Self::AcceptedSealedWindow => "accepted_sealed_window",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderAdapterTrainingContributorAvailability {
+    #[serde(default)]
+    pub contributor_supported: bool,
+    #[serde(default)]
+    pub coordinator_match_supported: bool,
+    #[serde(default)]
+    pub authority_receipt_supported: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub execution_backends: Vec<ProviderAdapterTrainingExecutionBackend>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adapter_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adapter_formats: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validator_policy_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoint_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environment_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_memory_gb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_memory_gb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_trigger: Option<ProviderAdapterTrainingSettlementTrigger>,
+}
+
+impl ProviderAdapterTrainingContributorAvailability {
+    pub fn has_authoritative_state(&self) -> bool {
+        self.contributor_supported
+            || self.coordinator_match_supported
+            || self.authority_receipt_supported
+            || !self.execution_backends.is_empty()
+            || !self.adapter_families.is_empty()
+            || !self.adapter_formats.is_empty()
+            || !self.validator_policy_refs.is_empty()
+            || !self.checkpoint_families.is_empty()
+            || !self.environment_refs.is_empty()
+            || self.minimum_memory_gb.is_some()
+            || self.available_memory_gb.is_some()
+            || self.settlement_trigger.is_some()
+    }
+
+    pub fn product_backend_ready(&self) -> bool {
+        self.contributor_supported
+            && self.coordinator_match_supported
+            && self.authority_receipt_supported
+            && !self.execution_backends.is_empty()
+            && !self.adapter_families.is_empty()
+            && !self.adapter_formats.is_empty()
+            && !self.validator_policy_refs.is_empty()
+            && self
+                .available_memory_gb
+                .zip(self.minimum_memory_gb)
+                .is_none_or(|(available, minimum)| available >= minimum)
+    }
+
+    pub fn capability_summary(&self) -> String {
+        let execution_backends = if self.execution_backends.is_empty() {
+            "none".to_string()
+        } else {
+            self.execution_backends
+                .iter()
+                .map(|backend| backend.label())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        let adapter_families = if self.adapter_families.is_empty() {
+            "none".to_string()
+        } else {
+            self.adapter_families.join(",")
+        };
+        let adapter_formats = if self.adapter_formats.is_empty() {
+            "none".to_string()
+        } else {
+            self.adapter_formats.join(",")
+        };
+        let validator_policy_refs = if self.validator_policy_refs.is_empty() {
+            "none".to_string()
+        } else {
+            self.validator_policy_refs.join(",")
+        };
+        let memory_summary = self
+            .available_memory_gb
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        let minimum_memory = self
+            .minimum_memory_gb
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        let settlement_trigger = self
+            .settlement_trigger
+            .map(ProviderAdapterTrainingSettlementTrigger::label)
+            .unwrap_or("none");
+        format!(
+            "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported={} coordinator_match_supported={} authority_receipt_supported={} execution_backends={execution_backends} adapter_families={adapter_families} adapter_formats={adapter_formats} validator_policy_refs={validator_policy_refs} available_memory_gb={memory_summary} minimum_memory_gb={minimum_memory} settlement_trigger={settlement_trigger}",
+            self.contributor_supported,
+            self.coordinator_match_supported,
+            self.authority_receipt_supported,
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderAdapterTrainingMatchRequest {
+    pub training_run_id: String,
+    pub adapter_family: String,
+    pub adapter_format: String,
+    pub validator_policy_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_memory_gb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_backend: Option<ProviderAdapterTrainingExecutionBackend>,
+    pub settlement_trigger: ProviderAdapterTrainingSettlementTrigger,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAdapterTrainingMatchReasonCode {
+    ContributorUnavailable,
+    CoordinatorMatchUnavailable,
+    AuthorityReceiptsUnavailable,
+    ExecutionBackendUnsupported,
+    AdapterFamilyUnsupported,
+    AdapterFormatUnsupported,
+    ValidatorPolicyUnsupported,
+    EnvironmentUnsupported,
+    CheckpointFamilyUnsupported,
+    MemoryInsufficient,
+    SettlementTriggerUnsupported,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderAdapterTrainingMatchVerdict {
+    #[serde(default)]
+    pub eligible: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reason_codes: Vec<ProviderAdapterTrainingMatchReasonCode>,
+}
+
+pub fn match_adapter_training_contributor(
+    availability: &ProviderAdapterTrainingContributorAvailability,
+    request: &ProviderAdapterTrainingMatchRequest,
+) -> ProviderAdapterTrainingMatchVerdict {
+    let mut reason_codes = Vec::new();
+    if !availability.contributor_supported {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::ContributorUnavailable);
+    }
+    if !availability.coordinator_match_supported {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::CoordinatorMatchUnavailable);
+    }
+    if !availability.authority_receipt_supported {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::AuthorityReceiptsUnavailable);
+    }
+    if request.execution_backend.is_some_and(|backend| {
+        !availability
+            .execution_backends
+            .iter()
+            .any(|value| *value == backend)
+    }) {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::ExecutionBackendUnsupported);
+    }
+    if !availability
+        .adapter_families
+        .iter()
+        .any(|value| value == &request.adapter_family)
+    {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::AdapterFamilyUnsupported);
+    }
+    if !availability
+        .adapter_formats
+        .iter()
+        .any(|value| value == &request.adapter_format)
+    {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::AdapterFormatUnsupported);
+    }
+    if !availability
+        .validator_policy_refs
+        .iter()
+        .any(|value| value == &request.validator_policy_ref)
+    {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::ValidatorPolicyUnsupported);
+    }
+    if request
+        .environment_ref
+        .as_ref()
+        .is_some_and(|environment_ref| {
+            !availability.environment_refs.is_empty()
+                && !availability
+                    .environment_refs
+                    .iter()
+                    .any(|value| value == environment_ref)
+        })
+    {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::EnvironmentUnsupported);
+    }
+    if request
+        .checkpoint_family
+        .as_ref()
+        .is_some_and(|checkpoint_family| {
+            !availability.checkpoint_families.is_empty()
+                && !availability
+                    .checkpoint_families
+                    .iter()
+                    .any(|value| value == checkpoint_family)
+        })
+    {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::CheckpointFamilyUnsupported);
+    }
+    if request.minimum_memory_gb.is_some_and(|minimum_memory| {
+        availability
+            .available_memory_gb
+            .is_some_and(|available_memory| available_memory < minimum_memory)
+    }) {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::MemoryInsufficient);
+    }
+    if availability.settlement_trigger != Some(request.settlement_trigger) {
+        reason_codes.push(ProviderAdapterTrainingMatchReasonCode::SettlementTriggerUnsupported);
+    }
+    ProviderAdapterTrainingMatchVerdict {
+        eligible: reason_codes.is_empty(),
+        reason_codes,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderAdapterTrainingSettlementHook {
+    pub training_run_id: String,
+    pub window_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_outcome_id: Option<String>,
+    pub trigger: ProviderAdapterTrainingSettlementTrigger,
+    pub validator_policy_ref: String,
+    pub window_summary_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validator_receipt_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_receipt_digest: Option<String>,
+}
+
+pub fn settlement_hook_from_authority(
+    window: &ComputeAdapterTrainingWindow,
+    contribution: Option<&ComputeAdapterContributionOutcome>,
+    trigger: ProviderAdapterTrainingSettlementTrigger,
+) -> Option<ProviderAdapterTrainingSettlementHook> {
+    match trigger {
+        ProviderAdapterTrainingSettlementTrigger::AcceptedContribution => {
+            let contribution = contribution?;
+            if contribution.window_id != window.window_id
+                || contribution.training_run_id != window.training_run_id
+                || contribution.validator_disposition
+                    != ComputeAdapterContributionDisposition::Accepted
+                || contribution.aggregation_eligibility
+                    != ComputeAdapterAggregationEligibility::Eligible
+                || !contribution.accepted_for_aggregation
+            {
+                return None;
+            }
+            Some(ProviderAdapterTrainingSettlementHook {
+                training_run_id: contribution.training_run_id.clone(),
+                window_id: contribution.window_id.clone(),
+                contribution_id: Some(contribution.contribution_id.clone()),
+                accepted_outcome_id: window.accepted_outcome_id.clone(),
+                trigger,
+                validator_policy_ref: contribution.validator_policy_ref.clone(),
+                window_summary_digest: window.window_summary_digest.clone(),
+                validator_receipt_digest: Some(contribution.validator_receipt_digest.clone()),
+                promotion_receipt_digest: contribution.promotion_receipt_digest.clone(),
+            })
+        }
+        ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow => {
+            if window.accepted_outcome_id.is_none() {
+                return None;
+            }
+            Some(ProviderAdapterTrainingSettlementHook {
+                training_run_id: window.training_run_id.clone(),
+                window_id: window.window_id.clone(),
+                contribution_id: None,
+                accepted_outcome_id: window.accepted_outcome_id.clone(),
+                trigger,
+                validator_policy_ref: window.validator_policy_ref.clone(),
+                window_summary_digest: window.window_summary_digest.clone(),
+                validator_receipt_digest: None,
+                promotion_receipt_digest: None,
+            })
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAvailability {
     #[serde(alias = "ollama")]
@@ -221,6 +555,8 @@ pub struct ProviderAvailability {
     pub apple_foundation_models: ProviderBackendHealth,
     #[serde(default)]
     pub apple_adapter_hosting: ProviderAppleAdapterHostingAvailability,
+    #[serde(default)]
+    pub adapter_training_contributor: ProviderAdapterTrainingContributorAvailability,
     pub sandbox: ProviderSandboxAvailability,
 }
 
@@ -249,6 +585,9 @@ impl ProviderAvailability {
                 self.apple_foundation_models.reachable
                     || self.apple_adapter_hosting.has_authoritative_state()
             }
+            ProviderComputeProduct::AdapterTrainingContributor => {
+                self.adapter_training_contributor.has_authoritative_state()
+            }
             ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::SandboxContainerExec => self
                 .sandbox
@@ -275,6 +614,9 @@ impl ProviderAvailability {
             ProviderComputeProduct::AppleFoundationModelsAdapterHosting => self
                 .apple_adapter_hosting
                 .product_backend_ready(&self.apple_foundation_models),
+            ProviderComputeProduct::AdapterTrainingContributor => {
+                self.adapter_training_contributor.product_backend_ready()
+            }
             ProviderComputeProduct::SandboxContainerExec => self
                 .sandbox
                 .backend_ready_for_class(ProviderSandboxExecutionClass::ContainerExec),
@@ -311,7 +653,8 @@ impl ProviderAvailability {
             ProviderComputeProduct::GptOssInference
             | ProviderComputeProduct::GptOssEmbeddings
             | ProviderComputeProduct::AppleFoundationModelsInference
-            | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
+            | ProviderComputeProduct::AppleFoundationModelsAdapterHosting
+            | ProviderComputeProduct::AdapterTrainingContributor => {
                 product.capability_summary(self)
             }
         }
@@ -325,6 +668,7 @@ pub enum ProviderComputeProduct {
     GptOssEmbeddings,
     AppleFoundationModelsInference,
     AppleFoundationModelsAdapterHosting,
+    AdapterTrainingContributor,
     SandboxContainerExec,
     SandboxPythonExec,
     SandboxNodeExec,
@@ -340,11 +684,12 @@ pub struct ProviderProductDescriptor {
 }
 
 impl ProviderComputeProduct {
-    pub const fn all() -> [Self; 7] {
+    pub const fn all() -> [Self; 8] {
         [
             Self::GptOssInference,
             Self::AppleFoundationModelsInference,
             Self::AppleFoundationModelsAdapterHosting,
+            Self::AdapterTrainingContributor,
             Self::SandboxContainerExec,
             Self::SandboxPythonExec,
             Self::SandboxNodeExec,
@@ -361,6 +706,9 @@ impl ProviderComputeProduct {
             }
             Self::AppleFoundationModelsAdapterHosting => {
                 "psionic.local.adapter_hosting.apple_foundation_models.single_node"
+            }
+            Self::AdapterTrainingContributor => {
+                "psionic.cluster.training.adapter_contributor.cluster_attached"
             }
             Self::SandboxContainerExec => {
                 "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
@@ -383,6 +731,7 @@ impl ProviderComputeProduct {
             Self::GptOssEmbeddings => "GPT-OSS embeddings",
             Self::AppleFoundationModelsInference => "Apple FM inference",
             Self::AppleFoundationModelsAdapterHosting => "Apple FM adapter hosting",
+            Self::AdapterTrainingContributor => "Adapter training contributor",
             Self::SandboxContainerExec => "Sandbox container exec",
             Self::SandboxPythonExec => "Sandbox python exec",
             Self::SandboxNodeExec => "Sandbox node exec",
@@ -396,6 +745,7 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 Some(ProviderBackendKind::AppleFoundationModels)
             }
+            Self::AdapterTrainingContributor => Some(ProviderBackendKind::PsionicTrain),
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -409,6 +759,7 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 "apple_foundation_models"
             }
+            Self::AdapterTrainingContributor => "psionic_train",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -420,6 +771,7 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference | Self::AppleFoundationModelsInference => "inference",
             Self::AppleFoundationModelsAdapterHosting => "adapter_hosting",
+            Self::AdapterTrainingContributor => "training",
             Self::GptOssEmbeddings => "embeddings",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
@@ -437,7 +789,8 @@ impl ProviderComputeProduct {
             Self::GptOssInference
             | Self::GptOssEmbeddings
             | Self::AppleFoundationModelsInference
-            | Self::AppleFoundationModelsAdapterHosting => None,
+            | Self::AppleFoundationModelsAdapterHosting
+            | Self::AdapterTrainingContributor => None,
         }
     }
 
@@ -452,6 +805,9 @@ impl ProviderComputeProduct {
             }
             Self::AppleFoundationModelsAdapterHosting => {
                 "backend=apple_foundation_models execution=local_inference family=adapter_hosting apple_silicon=true apple_intelligence=true"
+            }
+            Self::AdapterTrainingContributor => {
+                "backend=psionic_train execution=training family=adapter_training_contributor"
             }
             Self::SandboxContainerExec => {
                 "backend=sandbox execution=sandbox.container.exec family=sandbox_execution"
@@ -510,6 +866,9 @@ impl ProviderComputeProduct {
                     adapter_state.compatible_adapter_count(),
                 )
             }
+            Self::AdapterTrainingContributor => availability
+                .adapter_training_contributor
+                .capability_summary(),
             Self::SandboxContainerExec => availability
                 .sandbox
                 .capability_summary_for_class(ProviderSandboxExecutionClass::ContainerExec)
@@ -536,6 +895,9 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsAdapterHosting => {
                 "spot session / Apple gated adapter best effort"
             }
+            Self::AdapterTrainingContributor => {
+                "window assignment / accepted contribution or accepted sealed window"
+            }
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -554,6 +916,9 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsAdapterHosting => {
                 "forward physical / Apple gated adapter window"
             }
+            Self::AdapterTrainingContributor => {
+                "forward physical / contributor window with authority receipts"
+            }
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -567,6 +932,7 @@ impl ProviderComputeProduct {
             Self::GptOssEmbeddings => 8,
             Self::AppleFoundationModelsInference => 34,
             Self::AppleFoundationModelsAdapterHosting => 55,
+            Self::AdapterTrainingContributor => 89,
             Self::SandboxContainerExec => 55,
             Self::SandboxPythonExec => 34,
             Self::SandboxNodeExec => 34,
@@ -590,6 +956,8 @@ impl ProviderComputeProduct {
             | "apple_foundation_models.adapter_hosting" => {
                 Some(Self::AppleFoundationModelsAdapterHosting)
             }
+            "psionic.cluster.training.adapter_contributor.cluster_attached"
+            | "adapter_training.contributor" => Some(Self::AdapterTrainingContributor),
             "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
             | "sandbox.container.exec" => Some(Self::SandboxContainerExec),
             "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
@@ -650,6 +1018,8 @@ pub struct ProviderInventoryControls {
     pub apple_fm_inference_enabled: bool,
     #[serde(default)]
     pub apple_fm_adapter_hosting_enabled: bool,
+    #[serde(default)]
+    pub adapter_training_contributor_enabled: bool,
     pub sandbox_container_exec_enabled: bool,
     pub sandbox_python_exec_enabled: bool,
     pub sandbox_node_exec_enabled: bool,
@@ -663,6 +1033,7 @@ impl Default for ProviderInventoryControls {
             gpt_oss_embeddings_enabled: false,
             apple_fm_inference_enabled: true,
             apple_fm_adapter_hosting_enabled: true,
+            adapter_training_contributor_enabled: false,
             sandbox_container_exec_enabled: false,
             sandbox_python_exec_enabled: false,
             sandbox_node_exec_enabled: false,
@@ -681,6 +1052,9 @@ impl ProviderInventoryControls {
             }
             ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                 self.apple_fm_adapter_hosting_enabled
+            }
+            ProviderComputeProduct::AdapterTrainingContributor => {
+                self.adapter_training_contributor_enabled
             }
             ProviderComputeProduct::SandboxContainerExec => self.sandbox_container_exec_enabled,
             ProviderComputeProduct::SandboxPythonExec => self.sandbox_python_exec_enabled,
@@ -702,6 +1076,9 @@ impl ProviderInventoryControls {
             }
             ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                 &mut self.apple_fm_adapter_hosting_enabled
+            }
+            ProviderComputeProduct::AdapterTrainingContributor => {
+                &mut self.adapter_training_contributor_enabled
             }
             ProviderComputeProduct::SandboxContainerExec => {
                 &mut self.sandbox_container_exec_enabled
@@ -822,13 +1199,22 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        ProviderAppleAdapterHostingAvailability, ProviderAppleAdapterHostingEntry,
-        ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderComputeProduct,
-        ProviderFailureClass, ProviderIngressMode, ProviderInventoryControls,
-        ProviderLifecycleInput, ProviderLifecycleTransition, ProviderMode,
-        ProviderSandboxAvailability, ProviderSandboxDetectionConfig, ProviderSandboxExecutionClass,
-        ProviderSandboxProfileSpec, derive_provider_lifecycle, derive_provider_products,
-        describe_provider_product_id, detect_sandbox_supply,
+        ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
+        ProviderAdapterTrainingMatchReasonCode, ProviderAdapterTrainingMatchRequest,
+        ProviderAdapterTrainingSettlementTrigger, ProviderAppleAdapterHostingAvailability,
+        ProviderAppleAdapterHostingEntry, ProviderAvailability, ProviderBackendHealth,
+        ProviderBackendKind, ProviderComputeProduct, ProviderFailureClass, ProviderIngressMode,
+        ProviderInventoryControls, ProviderLifecycleInput, ProviderLifecycleTransition,
+        ProviderMode, ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
+        ProviderSandboxExecutionClass, ProviderSandboxProfileSpec, derive_provider_lifecycle,
+        derive_provider_products, describe_provider_product_id, detect_sandbox_supply,
+        match_adapter_training_contributor, settlement_hook_from_authority,
+    };
+    use openagents_kernel_core::compute::{
+        ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
+        ComputeAdapterContributionOutcome, ComputeAdapterDatasetSlice,
+        ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
+        ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus,
     };
 
     fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -857,12 +1243,147 @@ mod tests {
         }
     }
 
+    fn ready_adapter_training_contributor() -> ProviderAdapterTrainingContributorAvailability {
+        ProviderAdapterTrainingContributorAvailability {
+            contributor_supported: true,
+            coordinator_match_supported: true,
+            authority_receipt_supported: true,
+            execution_backends: vec![
+                ProviderAdapterTrainingExecutionBackend::AppleFoundationModels,
+            ],
+            adapter_families: vec!["apple.foundation_models".to_string()],
+            adapter_formats: vec!["apple.fmadapter".to_string()],
+            validator_policy_refs: vec!["policy://validator/apple_adapter/helpdesk".to_string()],
+            checkpoint_families: vec!["apple_adapter".to_string()],
+            environment_refs: vec!["env.openagents.apple_adapter.helpdesk.core".to_string()],
+            minimum_memory_gb: Some(24),
+            available_memory_gb: Some(32),
+            settlement_trigger: Some(
+                ProviderAdapterTrainingSettlementTrigger::AcceptedContribution,
+            ),
+        }
+    }
+
+    fn authority_window() -> ComputeAdapterTrainingWindow {
+        ComputeAdapterTrainingWindow {
+            window_id: "adapter.window.alpha".to_string(),
+            training_run_id: "train.apple_adapter.helpdesk.alpha".to_string(),
+            stage_id: "sft".to_string(),
+            contributor_set_revision_id: "contributors.rev.1".to_string(),
+            validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+            adapter_target_id: "adapter.target.helpdesk".to_string(),
+            adapter_family: "apple.foundation_models".to_string(),
+            base_model_ref: "model://apple.foundation".to_string(),
+            adapter_format: "apple.fmadapter".to_string(),
+            source_policy_revision: ComputeAdapterPolicyRevision {
+                policy_family: "policy://training/apple_adapter/helpdesk".to_string(),
+                revision_id: "policy-rev-7".to_string(),
+                revision_number: Some(7),
+                policy_digest: "sha256:policy-7".to_string(),
+                parent_revision_id: Some("policy-rev-6".to_string()),
+                produced_at_ms: 1_762_000_000_000,
+            },
+            source_checkpoint_pointer:
+                openagents_kernel_core::compute::ComputeAdapterCheckpointPointer {
+                    scope_kind: "training_run".to_string(),
+                    scope_id: "train.apple_adapter.helpdesk.alpha".to_string(),
+                    checkpoint_family: "apple_adapter".to_string(),
+                    checkpoint_ref: "checkpoint://apple_adapter/base".to_string(),
+                    manifest_digest: "sha256:manifest-7".to_string(),
+                    updated_at_ms: 1_762_000_000_010,
+                    pointer_digest: "sha256:pointer-7".to_string(),
+                },
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: 1,
+            admitted_contributions: 1,
+            accepted_contributions: 1,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 1,
+            held_out_average_score_bps: Some(9_500),
+            benchmark_pass_rate_bps: Some(9_400),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: true,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:window-summary".to_string(),
+            promotion_disposition: Some(ComputeAdapterPromotionDisposition::Promoted),
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: Some("sha256:aggregate".to_string()),
+            output_policy_revision: None,
+            output_checkpoint_pointer: None,
+            accepted_outcome_id: Some("accepted.training.apple.alpha".to_string()),
+            recorded_at_ms: 1_762_000_000_020,
+            metadata: serde_json::Value::Null,
+        }
+    }
+
+    fn authority_contribution() -> ComputeAdapterContributionOutcome {
+        ComputeAdapterContributionOutcome {
+            contribution_id: "contrib.alpha".to_string(),
+            training_run_id: "train.apple_adapter.helpdesk.alpha".to_string(),
+            stage_id: "sft".to_string(),
+            window_id: "adapter.window.alpha".to_string(),
+            contributor_set_revision_id: "contributors.rev.1".to_string(),
+            assignment_id: "assignment.alpha".to_string(),
+            contributor_node_id: "node.alpha".to_string(),
+            worker_id: "worker.alpha".to_string(),
+            validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+            adapter_target_id: "adapter.target.helpdesk".to_string(),
+            adapter_family: "apple.foundation_models".to_string(),
+            base_model_ref: "model://apple.foundation".to_string(),
+            adapter_format: "apple.fmadapter".to_string(),
+            dataset_slice: ComputeAdapterDatasetSlice {
+                dataset_id: "dataset://apple_adapter/helpdesk/train".to_string(),
+                split_name: "train".to_string(),
+                slice_id: "slice.alpha".to_string(),
+                slice_digest: "sha256:slice-alpha".to_string(),
+            },
+            source_policy_revision: ComputeAdapterPolicyRevision {
+                policy_family: "policy://training/apple_adapter/helpdesk".to_string(),
+                revision_id: "policy-rev-7".to_string(),
+                revision_number: Some(7),
+                policy_digest: "sha256:policy-7".to_string(),
+                parent_revision_id: Some("policy-rev-6".to_string()),
+                produced_at_ms: 1_762_000_000_000,
+            },
+            source_checkpoint_pointer:
+                openagents_kernel_core::compute::ComputeAdapterCheckpointPointer {
+                    scope_kind: "training_run".to_string(),
+                    scope_id: "train.apple_adapter.helpdesk.alpha".to_string(),
+                    checkpoint_family: "apple_adapter".to_string(),
+                    checkpoint_ref: "checkpoint://apple_adapter/base".to_string(),
+                    manifest_digest: "sha256:manifest-7".to_string(),
+                    updated_at_ms: 1_762_000_000_010,
+                    pointer_digest: "sha256:pointer-7".to_string(),
+                },
+            submission_receipt_digest: "sha256:submission".to_string(),
+            artifact_id: "artifact.alpha".to_string(),
+            manifest_digest: "sha256:manifest-alpha".to_string(),
+            object_digest: "sha256:object-alpha".to_string(),
+            artifact_receipt_digest: "sha256:artifact-receipt".to_string(),
+            provenance_bundle_digest: "sha256:provenance".to_string(),
+            security_receipt_digest: "sha256:security".to_string(),
+            replay_receipt_digest: Some("sha256:replay".to_string()),
+            validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+            validation_reason_codes: Vec::new(),
+            validator_receipt_digest: "sha256:validator".to_string(),
+            aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+            accepted_for_aggregation: true,
+            aggregation_weight_bps: Some(10_000),
+            promotion_receipt_digest: Some("sha256:promotion".to_string()),
+            recorded_at_ms: 1_762_000_000_020,
+            metadata: serde_json::Value::Null,
+        }
+    }
+
     #[test]
     fn apple_backend_wins_when_both_backends_are_ready() {
         let availability = ProviderAvailability {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ready_health(None, "apple-foundation-model", None),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
 
@@ -954,6 +1475,7 @@ mod tests {
                 latency_ms_p50: None,
             },
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
@@ -1054,6 +1576,26 @@ mod tests {
                 .map(|descriptor| descriptor.product_id.as_str()),
             Some("psionic.local.adapter_hosting.apple_foundation_models.single_node")
         );
+
+        let adapter_training = describe_provider_product_id("adapter_training.contributor");
+        assert_eq!(
+            adapter_training
+                .as_ref()
+                .map(|descriptor| descriptor.compute_family.as_str()),
+            Some("training")
+        );
+        assert_eq!(
+            adapter_training
+                .as_ref()
+                .map(|descriptor| descriptor.backend_family.as_str()),
+            Some("psionic_train")
+        );
+        assert_eq!(
+            adapter_training
+                .as_ref()
+                .map(|descriptor| descriptor.product_id.as_str()),
+            Some("psionic.cluster.training.adapter_contributor.cluster_attached")
+        );
     }
 
     #[test]
@@ -1063,6 +1605,7 @@ mod tests {
             gpt_oss: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: detect_sandbox_supply(&ProviderSandboxDetectionConfig {
                 path_entries: Vec::new(),
                 declared_profiles: vec![ProviderSandboxProfileSpec {
@@ -1144,6 +1687,7 @@ mod tests {
                     },
                 ],
             },
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
@@ -1185,6 +1729,7 @@ mod tests {
                     ..ProviderAppleAdapterHostingEntry::default()
                 }],
             },
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
@@ -1203,6 +1748,114 @@ mod tests {
                 .capability_summary
                 .contains("compatible_adapters=0")
         );
+    }
+
+    #[test]
+    fn adapter_training_contributor_product_derives_from_availability() {
+        let availability = ProviderAvailability {
+            gpt_oss: ProviderBackendHealth::default(),
+            apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ready_adapter_training_contributor(),
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+        let mut controls = ProviderInventoryControls::default();
+        controls.adapter_training_contributor_enabled = true;
+
+        let products = derive_provider_products(&availability, &controls);
+        let contributor = products
+            .iter()
+            .find(|product| product.product == ProviderComputeProduct::AdapterTrainingContributor)
+            .expect("adapter training contributor product");
+
+        assert!(contributor.backend_ready);
+        assert!(contributor.eligible);
+        assert!(
+            contributor
+                .capability_summary
+                .contains("execution_backends=apple_foundation_models")
+        );
+        assert!(
+            contributor
+                .capability_summary
+                .contains("settlement_trigger=accepted_contribution")
+        );
+    }
+
+    #[test]
+    fn adapter_training_match_verdict_reports_missing_capabilities() {
+        let availability = ProviderAdapterTrainingContributorAvailability {
+            contributor_supported: true,
+            coordinator_match_supported: false,
+            authority_receipt_supported: true,
+            execution_backends: vec![
+                ProviderAdapterTrainingExecutionBackend::AppleFoundationModels,
+            ],
+            adapter_families: vec!["apple.foundation_models".to_string()],
+            adapter_formats: vec!["apple.fmadapter".to_string()],
+            validator_policy_refs: vec!["policy://validator/apple_adapter/helpdesk".to_string()],
+            checkpoint_families: vec!["apple_adapter".to_string()],
+            environment_refs: vec!["env.openagents.apple_adapter.helpdesk.core".to_string()],
+            minimum_memory_gb: Some(24),
+            available_memory_gb: Some(16),
+            settlement_trigger: Some(
+                ProviderAdapterTrainingSettlementTrigger::AcceptedContribution,
+            ),
+        };
+        let verdict = match_adapter_training_contributor(
+            &availability,
+            &ProviderAdapterTrainingMatchRequest {
+                training_run_id: "train.apple_adapter.helpdesk.alpha".to_string(),
+                adapter_family: "apple.foundation_models".to_string(),
+                adapter_format: "apple.fmadapter".to_string(),
+                validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+                environment_ref: Some("env.openagents.apple_adapter.helpdesk.core".to_string()),
+                checkpoint_family: Some("apple_adapter".to_string()),
+                minimum_memory_gb: Some(24),
+                execution_backend: Some(
+                    ProviderAdapterTrainingExecutionBackend::AppleFoundationModels,
+                ),
+                settlement_trigger: ProviderAdapterTrainingSettlementTrigger::AcceptedContribution,
+            },
+        );
+        assert!(!verdict.eligible);
+        assert_eq!(
+            verdict.reason_codes,
+            vec![
+                ProviderAdapterTrainingMatchReasonCode::CoordinatorMatchUnavailable,
+                ProviderAdapterTrainingMatchReasonCode::MemoryInsufficient,
+            ]
+        );
+    }
+
+    #[test]
+    fn settlement_hook_derives_from_authority_window_and_contribution() {
+        let contribution_hook = settlement_hook_from_authority(
+            &authority_window(),
+            Some(&authority_contribution()),
+            ProviderAdapterTrainingSettlementTrigger::AcceptedContribution,
+        )
+        .expect("accepted contribution settlement hook");
+        assert_eq!(
+            contribution_hook.contribution_id.as_deref(),
+            Some("contrib.alpha")
+        );
+        assert_eq!(
+            contribution_hook.validator_receipt_digest.as_deref(),
+            Some("sha256:validator")
+        );
+
+        let window_hook = settlement_hook_from_authority(
+            &authority_window(),
+            None,
+            ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
+        )
+        .expect("accepted sealed window settlement hook");
+        assert_eq!(
+            window_hook.accepted_outcome_id.as_deref(),
+            Some("accepted.training.apple.alpha")
+        );
+        assert!(window_hook.contribution_id.is_none());
     }
 
     #[test]
@@ -1253,6 +1906,7 @@ mod tests {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
@@ -1272,6 +1926,7 @@ mod tests {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
             apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
+            adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
