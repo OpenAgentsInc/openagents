@@ -1,14 +1,28 @@
-use wgpui::{Bounds, Hsla, PaintContext, Point, Quad, theme};
+use std::collections::BTreeSet;
+use std::path::Path;
 
-use crate::app_state::{AppleAdapterTrainingPaneState, PaneLoadState};
-use crate::desktop_control::{
-    DesktopControlAppleAdapterOperatorRunStatus, DesktopControlTrainingStatus,
+use wgpui::{Bounds, Component, Hsla, InputEvent, PaintContext, Point, Quad, theme};
+
+use crate::app_state::{
+    AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, PaneLoadState, RenderState,
 };
-use crate::pane_renderer::{paint_secondary_button, split_text_for_display};
+use crate::desktop_control::{
+    DesktopControlActionResponse, DesktopControlAppleAdapterOperatorRunStatus,
+    DesktopControlTrainingStatus,
+};
+use crate::pane_renderer::{
+    paint_action_button, paint_secondary_button, split_text_for_display,
+};
 use crate::pane_system::{
+    apple_adapter_training_author_input_bounds, apple_adapter_training_base_url_input_bounds,
+    apple_adapter_training_description_input_bounds,
     apple_adapter_training_detail_panel_body_bounds, apple_adapter_training_filter_button_bounds,
-    apple_adapter_training_launch_panel_body_bounds, apple_adapter_training_layout,
-    apple_adapter_training_run_row_bounds,
+    apple_adapter_training_held_out_dataset_input_bounds,
+    apple_adapter_training_launch_button_bounds, apple_adapter_training_layout,
+    apple_adapter_training_license_input_bounds,
+    apple_adapter_training_package_name_input_bounds,
+    apple_adapter_training_preflight_summary_bounds, apple_adapter_training_run_row_bounds,
+    apple_adapter_training_train_dataset_input_bounds,
 };
 
 const TRAINING_CARD_GAP: f32 = 8.0;
@@ -20,6 +34,7 @@ pub fn paint(
     content_bounds: Bounds,
     pane_state: &mut AppleAdapterTrainingPaneState,
     training_status: &DesktopControlTrainingStatus,
+    inputs: &mut AppleAdapterTrainingPaneInputs,
     paint: &mut PaintContext,
 ) {
     sync_pane_state(pane_state, training_status);
@@ -59,7 +74,7 @@ pub fn paint(
 
     paint_panel_shell(
         layout.launch_panel,
-        "PREFLIGHT SURFACE",
+        "PREFLIGHT & LAUNCH",
         training_blue(),
         paint,
     );
@@ -73,9 +88,10 @@ pub fn paint(
     );
 
     paint_preflight_panel(
-        apple_adapter_training_launch_panel_body_bounds(content_bounds),
+        content_bounds,
         pane_state,
         training_status,
+        inputs,
         paint,
     );
     paint_runs_panel(content_bounds, pane_state, training_status, paint);
@@ -88,11 +104,83 @@ pub fn paint(
     );
 }
 
-pub fn dispatch_input_event(
-    _state: &mut crate::app_state::RenderState,
-    _event: &wgpui::InputEvent,
-) -> bool {
-    false
+pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_pane = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == crate::app_state::PaneKind::AppleAdapterTraining)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_pane else {
+        return false;
+    };
+
+    let content_bounds = crate::pane_system::pane_content_bounds(bounds);
+    let mut handled = false;
+    handled |= state
+        .apple_adapter_training_inputs
+        .train_dataset_path
+        .event(
+            event,
+            apple_adapter_training_train_dataset_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_adapter_training_inputs
+        .held_out_dataset_path
+        .event(
+            event,
+            apple_adapter_training_held_out_dataset_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_adapter_training_inputs
+        .package_name
+        .event(
+            event,
+            apple_adapter_training_package_name_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_adapter_training_inputs
+        .author
+        .event(
+            event,
+            apple_adapter_training_author_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_adapter_training_inputs
+        .description
+        .event(
+            event,
+            apple_adapter_training_description_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_adapter_training_inputs
+        .license
+        .event(
+            event,
+            apple_adapter_training_license_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .apple_adapter_training_inputs
+        .apple_fm_base_url
+        .event(
+            event,
+            apple_adapter_training_base_url_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled
 }
 
 fn sync_pane_state(
@@ -207,11 +295,13 @@ fn training_summary_text(
 }
 
 fn paint_preflight_panel(
-    bounds: Bounds,
+    content_bounds: Bounds,
     pane_state: &AppleAdapterTrainingPaneState,
     training_status: &DesktopControlTrainingStatus,
+    inputs: &mut AppleAdapterTrainingPaneInputs,
     paint: &mut PaintContext,
 ) {
+    let summary_bounds = apple_adapter_training_preflight_summary_bounds(content_bounds);
     let lines = [
         format!("Training available: {}", truth_label(training_status.available)),
         format!("Projection source: {}", training_status.source),
@@ -231,13 +321,13 @@ fn paint_preflight_panel(
             join_labels(training_status.checkpoint_refs.iter().map(String::as_str))
         ),
     ];
-    let chunk_len = section_chunk_len(bounds);
-    let mut y = bounds.origin.y + 6.0;
+    let chunk_len = section_chunk_len(summary_bounds);
+    let mut y = summary_bounds.origin.y + 6.0;
     for line in lines {
         for wrapped in split_text_for_display(line.as_str(), chunk_len) {
             paint.scene.draw_text(paint.text.layout_mono(
                 wrapped.as_str(),
-                Point::new(bounds.origin.x, y),
+                Point::new(summary_bounds.origin.x, y),
                 10.0,
                 if wrapped.starts_with("Training available: false")
                     || wrapped.starts_with("Operator available: false")
@@ -260,13 +350,59 @@ fn paint_preflight_panel(
         for wrapped in split_text_for_display(format!("Last error: {error}").as_str(), chunk_len) {
             paint.scene.draw_text(paint.text.layout_mono(
                 wrapped.as_str(),
-                Point::new(bounds.origin.x, y),
+                Point::new(summary_bounds.origin.x, y),
                 10.0,
                 training_red(),
             ));
             y += 16.0;
         }
     }
+
+    let train_bounds = apple_adapter_training_train_dataset_input_bounds(content_bounds);
+    let held_out_bounds = apple_adapter_training_held_out_dataset_input_bounds(content_bounds);
+    let package_bounds = apple_adapter_training_package_name_input_bounds(content_bounds);
+    let author_bounds = apple_adapter_training_author_input_bounds(content_bounds);
+    let description_bounds = apple_adapter_training_description_input_bounds(content_bounds);
+    let license_bounds = apple_adapter_training_license_input_bounds(content_bounds);
+    let base_url_bounds = apple_adapter_training_base_url_input_bounds(content_bounds);
+    let launch_bounds = apple_adapter_training_launch_button_bounds(content_bounds);
+
+    inputs
+        .train_dataset_path
+        .set_max_width(train_bounds.size.width.max(200.0));
+    inputs
+        .held_out_dataset_path
+        .set_max_width(held_out_bounds.size.width.max(200.0));
+    inputs
+        .package_name
+        .set_max_width(package_bounds.size.width.max(200.0));
+    inputs.author.set_max_width(author_bounds.size.width.max(160.0));
+    inputs
+        .description
+        .set_max_width(description_bounds.size.width.max(200.0));
+    inputs
+        .license
+        .set_max_width(license_bounds.size.width.max(160.0));
+    inputs
+        .apple_fm_base_url
+        .set_max_width(base_url_bounds.size.width.max(200.0));
+
+    inputs.train_dataset_path.paint(train_bounds, paint);
+    inputs.held_out_dataset_path.paint(held_out_bounds, paint);
+    inputs.package_name.paint(package_bounds, paint);
+    inputs.author.paint(author_bounds, paint);
+    inputs.description.paint(description_bounds, paint);
+    inputs.license.paint(license_bounds, paint);
+    inputs.apple_fm_base_url.paint(base_url_bounds, paint);
+    paint_action_button(launch_bounds, "Launch Apple adapter run", paint);
+
+    paint_input_label(paint, train_bounds, "Train dataset path");
+    paint_input_label(paint, held_out_bounds, "Held-out dataset path");
+    paint_input_label(paint, package_bounds, "Package name");
+    paint_input_label(paint, author_bounds, "Author");
+    paint_input_label(paint, description_bounds, "Description");
+    paint_input_label(paint, license_bounds, "License");
+    paint_input_label(paint, base_url_bounds, "Apple FM base URL");
 }
 
 fn paint_runs_panel(
@@ -378,6 +514,15 @@ fn paint_detail_panel(
             y += 16.0;
         }
     }
+}
+
+fn paint_input_label(paint: &mut PaintContext, bounds: Bounds, label: &str) {
+    paint.scene.draw_text(paint.text.layout(
+        label,
+        Point::new(bounds.origin.x, bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_status_card(
@@ -566,6 +711,102 @@ pub(crate) fn run_matches_filter(
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AppleAdapterTrainingLaunchForm {
+    pub train_dataset_path: String,
+    pub held_out_dataset_path: String,
+    pub package_name: String,
+    pub author: String,
+    pub description: String,
+    pub license: String,
+    pub apple_fm_base_url: String,
+}
+
+pub(crate) fn validate_launch_form(
+    inputs: &AppleAdapterTrainingPaneInputs,
+) -> Result<AppleAdapterTrainingLaunchForm, String> {
+    let train_dataset_path = trim_required(inputs.train_dataset_path.get_value(), "train dataset path")?;
+    let held_out_dataset_path =
+        trim_required(inputs.held_out_dataset_path.get_value(), "held-out dataset path")?;
+    let package_name = trim_required(inputs.package_name.get_value(), "package name")?;
+    let apple_fm_base_url =
+        trim_required(inputs.apple_fm_base_url.get_value(), "Apple FM base URL")?;
+
+    if !Path::new(train_dataset_path.as_str()).exists() {
+        return Err(format!(
+            "Train dataset path does not exist: {}",
+            train_dataset_path
+        ));
+    }
+    if !Path::new(held_out_dataset_path.as_str()).exists() {
+        return Err(format!(
+            "Held-out dataset path does not exist: {}",
+            held_out_dataset_path
+        ));
+    }
+
+    Ok(AppleAdapterTrainingLaunchForm {
+        train_dataset_path,
+        held_out_dataset_path,
+        package_name,
+        author: inputs.author.get_value().trim().to_string(),
+        description: inputs.description.get_value().trim().to_string(),
+        license: inputs.license.get_value().trim().to_string(),
+        apple_fm_base_url,
+    })
+}
+
+pub(crate) fn apply_launch_response(
+    pane_state: &mut AppleAdapterTrainingPaneState,
+    previous_run_ids: &BTreeSet<String>,
+    response: &DesktopControlActionResponse,
+    training_status: &DesktopControlTrainingStatus,
+    package_name: &str,
+) {
+    if response.success {
+        pane_state.selected_run_id = pick_new_or_matching_run_id(
+            previous_run_ids,
+            training_status,
+            package_name,
+        );
+        pane_state.last_action = Some(response.message.clone());
+        pane_state.last_error = None;
+    } else {
+        pane_state.last_error = Some(response.message.clone());
+        pane_state.last_action = Some("Apple adapter training launch failed".to_string());
+    }
+}
+
+fn pick_new_or_matching_run_id(
+    previous_run_ids: &BTreeSet<String>,
+    training_status: &DesktopControlTrainingStatus,
+    package_name: &str,
+) -> Option<String> {
+    training_status
+        .operator
+        .runs
+        .iter()
+        .find(|run| !previous_run_ids.contains(run.run_id.as_str()))
+        .or_else(|| {
+            training_status
+                .operator
+                .runs
+                .iter()
+                .find(|run| run.package_name == package_name)
+        })
+        .map(|run| run.run_id.clone())
+        .or_else(|| training_status.operator.runs.first().map(|run| run.run_id.clone()))
+}
+
+fn trim_required(value: &str, label: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err(format!("Missing {label}"))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
 fn selected_run<'a>(
     training_status: &'a DesktopControlTrainingStatus,
     selected_run_id: Option<&str>,
@@ -649,16 +890,18 @@ fn training_red() -> Hsla {
 
 #[cfg(test)]
 mod tests {
-    use super::paint;
-    use crate::app_state::AppleAdapterTrainingPaneState;
+    use super::{apply_launch_response, paint, validate_launch_form};
+    use crate::app_state::{AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState};
     use crate::desktop_control::{
-        DesktopControlAppleAdapterOperatorRunStatus, DesktopControlTrainingStatus,
+        DesktopControlActionResponse, DesktopControlAppleAdapterOperatorRunStatus,
+        DesktopControlTrainingStatus,
     };
     use wgpui::{Bounds, PaintContext, Scene, TextSystem};
 
     #[test]
     fn apple_adapter_training_pane_paints_shell_and_runs() {
         let mut pane_state = AppleAdapterTrainingPaneState::default();
+        let mut inputs = AppleAdapterTrainingPaneInputs::default();
         let training = DesktopControlTrainingStatus {
             available: true,
             source: "kernel_projection".to_string(),
@@ -698,9 +941,87 @@ mod tests {
             Bounds::new(0.0, 0.0, 1240.0, 780.0),
             &mut pane_state,
             &training,
+            &mut inputs,
             &mut paint_context,
         );
 
         assert_eq!(pane_state.selected_run_id.as_deref(), Some("apple-run-1"));
+    }
+
+    #[test]
+    fn validate_launch_form_requires_existing_paths_and_name() {
+        let mut inputs = AppleAdapterTrainingPaneInputs::default();
+        assert!(validate_launch_form(&inputs).is_err());
+
+        let train_path = std::env::temp_dir().join("apple-train.jsonl");
+        let held_out_path = std::env::temp_dir().join("apple-held-out.jsonl");
+        std::fs::write(&train_path, "{}\n").expect("write train fixture");
+        std::fs::write(&held_out_path, "{}\n").expect("write held-out fixture");
+
+        inputs
+            .train_dataset_path
+            .set_value(train_path.display().to_string());
+        inputs
+            .held_out_dataset_path
+            .set_value(held_out_path.display().to_string());
+        inputs.package_name.set_value("weather-helper".to_string());
+
+        let form = validate_launch_form(&inputs).expect("launch form should validate");
+        assert_eq!(form.package_name, "weather-helper");
+        assert!(form.apple_fm_base_url.contains("11435"));
+
+        let _ = std::fs::remove_file(train_path);
+        let _ = std::fs::remove_file(held_out_path);
+    }
+
+    #[test]
+    fn apply_launch_response_selects_new_run_after_success() {
+        let mut pane_state = AppleAdapterTrainingPaneState::default();
+        let previous_run_ids = std::iter::once("apple-run-1".to_string()).collect();
+        let training = DesktopControlTrainingStatus {
+            operator: crate::desktop_control::DesktopControlAppleAdapterOperatorStatus {
+                available: true,
+                workflow_state: "running".to_string(),
+                run_count: 2,
+                active_run_count: 1,
+                runs: vec![
+                    DesktopControlAppleAdapterOperatorRunStatus {
+                        run_id: "apple-run-2".to_string(),
+                        package_name: "weather-helper".to_string(),
+                        launch_state: "running".to_string(),
+                        ..DesktopControlAppleAdapterOperatorRunStatus::default()
+                    },
+                    DesktopControlAppleAdapterOperatorRunStatus {
+                        run_id: "apple-run-1".to_string(),
+                        package_name: "older".to_string(),
+                        launch_state: "completed".to_string(),
+                        ..DesktopControlAppleAdapterOperatorRunStatus::default()
+                    },
+                ],
+                ..crate::desktop_control::DesktopControlAppleAdapterOperatorStatus::default()
+            },
+            ..DesktopControlTrainingStatus::default()
+        };
+
+        apply_launch_response(
+            &mut pane_state,
+            &previous_run_ids,
+            &DesktopControlActionResponse {
+                success: true,
+                message: "Completed Apple adapter operator launch for apple-run-2".to_string(),
+                payload: None,
+                snapshot_revision: None,
+                state_signature: None,
+            },
+            &training,
+            "weather-helper",
+        );
+
+        assert_eq!(pane_state.selected_run_id.as_deref(), Some("apple-run-2"));
+        assert_eq!(
+            pane_state.last_action.as_deref(),
+            Some("Completed Apple adapter operator launch for apple-run-2")
+        );
+        assert!(pane_state.last_error.is_none());
     }
 }

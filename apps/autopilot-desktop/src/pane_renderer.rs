@@ -1,7 +1,7 @@
 use crate::app_state::{
     ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
-    AppleAdapterTrainingPaneState,
+    AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState,
     AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
     BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
     ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
@@ -182,6 +182,7 @@ impl PaneRenderer {
         network_requests_inputs: &mut NetworkRequestsPaneInputs,
         local_inference_inputs: &mut LocalInferencePaneInputs,
         apple_fm_workbench_inputs: &mut AppleFmWorkbenchPaneInputs,
+        apple_adapter_training_inputs: &mut AppleAdapterTrainingPaneInputs,
         settings_inputs: &mut SettingsPaneInputs,
         credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
@@ -412,6 +413,7 @@ impl PaneRenderer {
                         content_bounds,
                         apple_adapter_training,
                         training_status,
+                        apple_adapter_training_inputs,
                         paint,
                     );
                 }

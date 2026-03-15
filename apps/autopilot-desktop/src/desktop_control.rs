@@ -4749,6 +4749,13 @@ pub(crate) fn current_training_status(state: &RenderState) -> DesktopControlTrai
     desktop_control_training_status(state)
 }
 
+pub(crate) fn run_inline_action_request(
+    state: &mut RenderState,
+    action: DesktopControlActionRequest,
+) -> DesktopControlActionResponse {
+    apply_action_request(state, &action)
+}
+
 fn desktop_control_apple_adapter_operator_status() -> DesktopControlAppleAdapterOperatorStatus {
     match crate::apple_adapter_training_control::operator_status() {
         Ok(status) => {
