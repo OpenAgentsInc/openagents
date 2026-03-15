@@ -282,6 +282,8 @@ crate:
   refuse explicitly with typed reasons.
 - public evaluation splits must not be used as iterative tuning feedback in the
   same development loop.
+- solver runs MUST reproduce identical result envelopes under identical task,
+  solver manifest, seed bundle, and budget inputs.
 - every solver and benchmark claim must be replayable from fixtures, seeds,
   budgets, manifests, and trace artifacts.
 
@@ -362,6 +364,16 @@ This means ARC model work is honest rather than aspirational:
 | `solver-real` | DSL/interpreter, verifier, trace bundles, budget accounting, symbolic and non-symbolic lanes, hidden holdout reporting | prompt-only demos, no replay, no attempt policy, no verifier |
 | `interactive-real` | agent trait, game runner, local/remote parity, scorecard truth, action-budget policy, replayable trajectories | ad hoc game loops, no deterministic parity, opaque action/refusal semantics |
 | `research-credible` | evaluator parity, small-model train/eval loops, checkpoint truth, bounded HRM gates, cross-reference to Psionic readiness | large-scale training anecdotes without fixture parity, ARC-specific substrate hidden inside Psionic |
+
+## Claim Artifact Expectations
+
+| Claim | Minimum artifact family |
+| --- | --- |
+| `contracts-real` | schema fixtures and deterministic serialization fixtures |
+| `benchmark-real` | exact-match and RHAE score parity harnesses plus replay fixtures |
+| `solver-real` | trace-bundle corpus, determinism fixtures, and hidden-holdout reports |
+| `interactive-real` | replayable trajectory pack plus local-vs-remote parity fixtures |
+| `research-credible` | checkpoint artifacts, train/eval logs, and bounded parity summaries |
 
 ## Acceptance Artifact Rule
 
@@ -621,6 +633,7 @@ Solver architecture rule:
 - prompt-only agents MUST NOT be treated as architectural lanes
 - prompt policies MAY exist only as baseline agents
 - final solver claims MUST rely on DSL, verifier, and arbiter infrastructure
+- DSL Tier A is the only required DSL scope for v1 solver claims
 
 ### Exit Criteria
 
@@ -745,6 +758,9 @@ on Python-only workflows.
 ## Current Execution Order
 
 This is the recommended dependency order for the ARC subtree.
+
+Epic 3 MUST NOT start until exact-match and RHAE benchmark parity fixtures are
+green.
 
 ### Phase 1: lock governance and shared contracts
 
