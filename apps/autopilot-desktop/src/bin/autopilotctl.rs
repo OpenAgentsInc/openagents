@@ -30,6 +30,7 @@ use serde_json::{Value, json};
 
 const DEFAULT_EVENTS_LIMIT: usize = 64;
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 20_000;
+const DEFAULT_APPLE_FM_BASE_URL: &str = "http://127.0.0.1:11435";
 
 #[derive(Parser, Debug)]
 #[command(name = "autopilotctl")]
@@ -252,6 +253,26 @@ enum ChallengeCommand {
 #[derive(Subcommand, Debug)]
 enum TrainingCommand {
     Status,
+    Launch {
+        train_dataset_path: PathBuf,
+        held_out_dataset_path: PathBuf,
+        package_name: String,
+        #[arg(long, default_value = "")]
+        author: String,
+        #[arg(long, default_value = "")]
+        description: String,
+        #[arg(long, default_value = "")]
+        license: String,
+        #[arg(long, default_value = DEFAULT_APPLE_FM_BASE_URL)]
+        apple_fm_base_url: String,
+    },
+    Export {
+        run_id: String,
+        export_path: PathBuf,
+    },
+    Accept {
+        run_id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -546,6 +567,33 @@ impl TrainingCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
             Self::Status => DesktopControlActionRequest::GetTrainingStatus,
+            Self::Launch {
+                train_dataset_path,
+                held_out_dataset_path,
+                package_name,
+                author,
+                description,
+                license,
+                apple_fm_base_url,
+            } => DesktopControlActionRequest::LaunchAppleAdapterTraining {
+                train_dataset_path: train_dataset_path.display().to_string(),
+                held_out_dataset_path: held_out_dataset_path.display().to_string(),
+                package_name: package_name.clone(),
+                author: author.clone(),
+                description: description.clone(),
+                license: license.clone(),
+                apple_fm_base_url: apple_fm_base_url.clone(),
+            },
+            Self::Export {
+                run_id,
+                export_path,
+            } => DesktopControlActionRequest::ExportAppleAdapterTraining {
+                run_id: run_id.clone(),
+                export_path: export_path.display().to_string(),
+            },
+            Self::Accept { run_id } => DesktopControlActionRequest::AcceptAppleAdapterTraining {
+                run_id: run_id.clone(),
+            },
         }
     }
 }
@@ -923,6 +971,9 @@ fn main() -> Result<()> {
             if json_output {
                 print_json(payload)?;
             } else {
+                if !matches!(command, TrainingCommand::Status) {
+                    println!("{}", response.message);
+                }
                 print_training_text(payload);
             }
         }
@@ -2377,7 +2428,7 @@ fn buyer_procurement_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<Stri
 
 fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     let mut lines = vec![format!(
-        "training: available={} source={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={}",
+        "training: available={} source={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} operator={} operator_runs={}/{}",
         snapshot.training.available,
         snapshot.training.source,
         snapshot.training.control_plane_state,
@@ -2411,8 +2462,36 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             .training
             .contributor_reselection_timing
             .as_deref()
-            .unwrap_or("-")
+            .unwrap_or("-"),
+        snapshot.training.operator.workflow_state,
+        snapshot.training.operator.active_run_count,
+        snapshot.training.operator.run_count
     )];
+    lines.push(format!(
+        "training operator: available={} state={} storage={} accepted_runs={} exported_runs={} last_action={} last_error={}",
+        snapshot.training.operator.available,
+        snapshot.training.operator.workflow_state,
+        snapshot
+            .training
+            .operator
+            .storage_path
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.training.operator.accepted_run_count,
+        snapshot.training.operator.exported_run_count,
+        snapshot
+            .training
+            .operator
+            .last_action
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .training
+            .operator
+            .last_error
+            .as_deref()
+            .unwrap_or("-")
+    ));
     for run in snapshot.training.runs.iter().take(3) {
         lines.push(format!(
             "training run: id={} status={} control={} artifact={} policy={} env={}@{} checkpoint_family={} steps={}/{} eval_runs={} benchmarks={} best_eval_bps={} final_checkpoint={} promotion_checkpoint={} accepted_outcome={}",
@@ -2444,6 +2523,30 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             participant.priority_label,
             participant.deweight_reason.as_deref().unwrap_or("-"),
             participant.exclusion_reason.as_deref().unwrap_or("-")
+        ));
+    }
+    for run in snapshot.training.operator.runs.iter().take(4) {
+        lines.push(format!(
+            "training operator run: id={} package={} launch={} eval={} export={} accept={} steps={}/{} avg_loss={} held_out_bps={} runtime_smoke={} exported_path={} accepted_outcome={} training_run={}",
+            run.run_id,
+            run.package_name,
+            run.launch_state,
+            run.evaluation_state,
+            run.export_state,
+            run.acceptance_state,
+            run.completed_step_count.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
+            run.expected_step_count.map(|value| value.to_string()).unwrap_or_else(|| "-".to_string()),
+            run.average_loss_label.as_deref().unwrap_or("-"),
+            run.held_out_average_score_bps
+                .or(run.held_out_pass_rate_bps)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.runtime_smoke_passed
+                .map(|value| if value { "passed" } else { "failed" })
+                .unwrap_or("-"),
+            run.exported_package_path.as_deref().unwrap_or("-"),
+            run.authority.accepted_outcome_id.as_deref().unwrap_or("-"),
+            run.authority.training_run_id.as_deref().unwrap_or("-")
         ));
     }
     if let Some(error) = snapshot.training.last_error.as_deref() {
@@ -3053,7 +3156,7 @@ fn print_challenge_text(payload: &Value) {
 
 fn print_training_text(payload: &Value) {
     println!(
-        "training: available={} source={} last_sync={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} last_error={}",
+        "training: available={} source={} last_sync={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} operator={} operator_runs={}/{} last_error={}",
         payload
             .get("available")
             .and_then(Value::as_bool)
@@ -3151,7 +3254,60 @@ fn print_training_text(payload: &Value) {
             .and_then(Value::as_str)
             .unwrap_or("-"),
         payload
+            .get("operator")
+            .and_then(|value| value.get("workflow_state"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("active_run_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("run_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
             .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    println!(
+        "training operator: available={} state={} storage={} accepted_runs={} exported_runs={} last_action={} last_error={}",
+        payload
+            .get("operator")
+            .and_then(|value| value.get("available"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("workflow_state"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("storage_path"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("accepted_run_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("exported_run_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("last_action"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("operator")
+            .and_then(|value| value.get("last_error"))
             .and_then(Value::as_str)
             .unwrap_or("-")
     );
@@ -3248,6 +3404,64 @@ fn print_training_text(payload: &Value) {
                 .unwrap_or("-"),
             participant
                 .get("exclusion_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+    for run in payload
+        .get("operator")
+        .and_then(|value| value.get("runs"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "training operator run: id={} package={} launch={} eval={} export={} accept={} steps={}/{} avg_loss={} held_out_bps={} runtime_smoke={} exported_path={} accepted_outcome={} training_run={}",
+            run.get("run_id").and_then(Value::as_str).unwrap_or("-"),
+            run.get("package_name")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("launch_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("evaluation_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("export_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("acceptance_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("completed_step_count")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("expected_step_count")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("average_loss_label")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("held_out_average_score_bps")
+                .or_else(|| run.get("held_out_pass_rate_bps"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("runtime_smoke_passed")
+                .and_then(Value::as_bool)
+                .map(|value| if value { "passed" } else { "failed" })
+                .unwrap_or("-"),
+            run.get("exported_package_path")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("authority")
+                .and_then(|value| value.get("accepted_outcome_id"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("authority")
+                .and_then(|value| value.get("training_run_id"))
                 .and_then(Value::as_str)
                 .unwrap_or("-")
         );
@@ -4321,6 +4535,47 @@ mod tests {
             DesktopControlActionRequest::GetTrainingStatus
         );
         assert_eq!(
+            TrainingCommand::Launch {
+                train_dataset_path: PathBuf::from("/tmp/train.jsonl"),
+                held_out_dataset_path: PathBuf::from("/tmp/held-out.jsonl"),
+                package_name: "weather-helper".to_string(),
+                author: "OpenAgents".to_string(),
+                description: "Operator launch".to_string(),
+                license: "Apache-2.0".to_string(),
+                apple_fm_base_url: "http://127.0.0.1:11435".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::LaunchAppleAdapterTraining {
+                train_dataset_path: "/tmp/train.jsonl".to_string(),
+                held_out_dataset_path: "/tmp/held-out.jsonl".to_string(),
+                package_name: "weather-helper".to_string(),
+                author: "OpenAgents".to_string(),
+                description: "Operator launch".to_string(),
+                license: "Apache-2.0".to_string(),
+                apple_fm_base_url: "http://127.0.0.1:11435".to_string(),
+            }
+        );
+        assert_eq!(
+            TrainingCommand::Export {
+                run_id: "weather-helper-1".to_string(),
+                export_path: PathBuf::from("/tmp/weather-helper.fmadapter"),
+            }
+            .action_request(),
+            DesktopControlActionRequest::ExportAppleAdapterTraining {
+                run_id: "weather-helper-1".to_string(),
+                export_path: "/tmp/weather-helper.fmadapter".to_string(),
+            }
+        );
+        assert_eq!(
+            TrainingCommand::Accept {
+                run_id: "weather-helper-1".to_string(),
+            }
+            .action_request(),
+            DesktopControlActionRequest::AcceptAppleAdapterTraining {
+                run_id: "weather-helper-1".to_string(),
+            }
+        );
+        assert_eq!(
             ResearchCommand::Status.action_request(),
             DesktopControlActionRequest::GetResearchStatus
         );
@@ -4567,6 +4822,11 @@ mod tests {
         snapshot.training.sandbox_ready_profile_count = 1;
         snapshot.training.sandbox_active_job_count = 1;
         snapshot.training.contributor_set_revision = Some("contributors-7".to_string());
+        snapshot.training.operator.available = true;
+        snapshot.training.operator.workflow_state = "running".to_string();
+        snapshot.training.operator.run_count = 1;
+        snapshot.training.operator.active_run_count = 1;
+        snapshot.training.operator.exported_run_count = 0;
         snapshot.training.runs.push(
             autopilot_desktop::desktop_control::DesktopControlTrainingRunStatus {
                 training_run_id: "train-1".to_string(),
@@ -4599,6 +4859,46 @@ mod tests {
                 exclusion_reason: None,
             },
         );
+        snapshot.training.operator.runs.push(
+            autopilot_desktop::desktop_control::DesktopControlAppleAdapterOperatorRunStatus {
+                run_id: "apple-run-1".to_string(),
+                package_name: "weather-helper".to_string(),
+                author: "OpenAgents".to_string(),
+                description: "Operator run".to_string(),
+                license: "Apache-2.0".to_string(),
+                train_dataset_path: "/tmp/train.jsonl".to_string(),
+                held_out_dataset_path: "/tmp/held-out.jsonl".to_string(),
+                created_at_epoch_ms: 1,
+                updated_at_epoch_ms: 2,
+                launched_at_epoch_ms: Some(2),
+                evaluated_at_epoch_ms: Some(3),
+                exported_at_epoch_ms: None,
+                accepted_at_epoch_ms: None,
+                launch_state: "completed".to_string(),
+                export_state: "pending".to_string(),
+                evaluation_state: "completed".to_string(),
+                acceptance_state: "pending".to_string(),
+                run_directory: "/tmp/apple-run-1".to_string(),
+                staged_package_path: Some(
+                    "/tmp/apple-run-1/staged/weather-helper.fmadapter".to_string()
+                ),
+                exported_package_path: None,
+                completed_step_count: Some(21),
+                expected_step_count: Some(64),
+                average_loss_label: Some("0.125000".to_string()),
+                held_out_pass_rate_bps: Some(9_000),
+                held_out_average_score_bps: Some(9_200),
+                runtime_smoke_passed: Some(true),
+                runtime_smoke_digest: Some("sha256:smoke".to_string()),
+                package_digest: Some("sha256:package".to_string()),
+                adapter_identifier: Some("weather-helper".to_string()),
+                authority:
+                    autopilot_desktop::desktop_control::DesktopControlAppleAdapterOperatorAuthorityStatus::default(),
+                last_action: Some("Completed repo-native Apple adapter launch".to_string()),
+                last_error: None,
+                log_lines: vec!["launch complete".to_string()],
+            },
+        );
 
         let lines = training_status_lines(&snapshot);
 
@@ -4615,12 +4915,22 @@ mod tests {
         assert!(
             lines
                 .iter()
+                .any(|line| line.contains("operator=running operator_runs=1/1"))
+        );
+        assert!(
+            lines
+                .iter()
                 .any(|line| line.contains("training run: id=train-1"))
         );
         assert!(
             lines
                 .iter()
                 .any(|line| line.contains("training participant: id=node-a"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training operator run: id=apple-run-1"))
         );
     }
 
