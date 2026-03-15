@@ -30,6 +30,12 @@ OpenAgents should capture all of the following for Apple adapter artifacts.
 - stable base-model identifier when one exists
 - stable base-model revision when one exists
 
+For the current repo-owned Apple lane, `baseModelSignature` is no longer a
+hard-coded desktop constant. It is derived from the live Apple runtime profile
+the bridge exposes today: model id, use-case, and guardrail posture. That is
+the compatibility anchor the operator path now carries through training,
+export, runtime smoke, and kernel acceptance.
+
 ### Tokenizer and prompt shaping
 
 - tokenizer family
@@ -37,6 +43,17 @@ OpenAgents should capture all of the following for Apple adapter artifacts.
 - special-token digest when relevant
 - template or prompt-shaping digest
 - locale-sensitive default-instruction posture when relevant
+
+For the current repo-owned Apple lane, those values come from one repo-owned
+compatibility preprocessing profile, not from ad hoc placeholders:
+
+- tokenizer digest is derived from the current runtime profile plus the
+  captured locale/default-instruction posture
+- template or prompt-shaping digest is derived from the same profile plus the
+  repo-owned Apple transcript-shaping rules
+- token counts for packing are derived from that transcript-aware preprocessing
+  path, including prior assistant turns, tool definitions, and response-schema
+  attachments, rather than from character-count estimates
 
 ### Dataset and environment provenance
 
@@ -108,6 +125,10 @@ identity to answer:
 - which tokenizer and prompt template shaped it?
 - which exact package digest was accepted or served?
 - was a draft-model payload involved?
+
+The current runtime-smoke acceptance path now also checks the expected
+base-model, tokenizer, and template digests against the exported package before
+the app publishes acceptance.
 
 ## Fixture Corpus
 

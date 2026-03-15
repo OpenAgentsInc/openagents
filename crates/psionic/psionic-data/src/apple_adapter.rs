@@ -8,13 +8,188 @@ use thiserror::Error;
 
 use crate::{
     DatasetContractError, DatasetPackingPlan, DatasetPackingPolicy, DatasetRecordEncoding,
-    DatasetSequenceDescriptor, TokenizerDigest,
+    DatasetSequenceDescriptor, TokenizerDigest, TokenizerFamily,
 };
 
 /// Stable ABI version for Apple-adapter dataset contracts in `psionic-data`.
 pub const APPLE_ADAPTER_DATASET_ABI_VERSION: &str = "psionic.apple_adapter_dataset.v1";
+/// Canonical default instruction for datasets that rely on Apple's implicit helper prompt.
+pub const APPLE_ADAPTER_DEFAULT_INSTRUCTION: &str =
+    "A conversation between a user and a helpful assistant.";
 
 const APPLE_ADAPTER_PACKING_SHARD_KEY: &str = "apple_adapter_dataset";
+const APPLE_ADAPTER_COMPAT_TOKENIZER_VERSION: &str = "openagents.apple.compat_tokenizer.v1";
+const APPLE_ADAPTER_PROMPT_SHAPING_VERSION: &str = "openagents.apple.prompt_shaping.v1";
+const APPLE_ADAPTER_SPECIAL_TOKENS_VERSION: &str = "openagents.apple.special_tokens.v1";
+
+/// Repo-owned runtime profile used to derive Apple adapter compatibility anchors.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppleAdapterRuntimeCompatibilityProfile {
+    /// Stable runtime model identifier.
+    pub model_id: String,
+    /// Stable runtime use-case label.
+    pub use_case: String,
+    /// Stable runtime guardrail label.
+    pub guardrails: String,
+    /// Optional locale carried into prompt shaping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+    /// Optional dataset-wide default instruction used when samples omit a system turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_instruction: Option<String>,
+    /// Optional bridge version recorded for operator receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_version: Option<String>,
+    /// Optional bridge platform recorded for operator receipts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_platform: Option<String>,
+}
+
+impl AppleAdapterRuntimeCompatibilityProfile {
+    /// Creates a runtime compatibility profile from the live Apple runtime configuration.
+    #[must_use]
+    pub fn new(
+        model_id: impl Into<String>,
+        use_case: impl Into<String>,
+        guardrails: impl Into<String>,
+    ) -> Self {
+        Self {
+            model_id: model_id.into(),
+            use_case: use_case.into(),
+            guardrails: guardrails.into(),
+            locale: None,
+            default_instruction: None,
+            bridge_version: None,
+            bridge_platform: None,
+        }
+    }
+
+    /// Attaches a locale tag used by the repo-owned prompt shaper.
+    #[must_use]
+    pub fn with_locale(mut self, locale: impl Into<String>) -> Self {
+        self.locale = Some(locale.into());
+        self
+    }
+
+    /// Attaches a default instruction for datasets that need one.
+    #[must_use]
+    pub fn with_default_instruction(mut self, default_instruction: impl Into<String>) -> Self {
+        self.default_instruction = Some(default_instruction.into());
+        self
+    }
+
+    /// Attaches the bridge version that produced this profile.
+    #[must_use]
+    pub fn with_bridge_version(mut self, bridge_version: impl Into<String>) -> Self {
+        self.bridge_version = Some(bridge_version.into());
+        self
+    }
+
+    /// Attaches the bridge platform that produced this profile.
+    #[must_use]
+    pub fn with_bridge_platform(mut self, bridge_platform: impl Into<String>) -> Self {
+        self.bridge_platform = Some(bridge_platform.into());
+        self
+    }
+
+    /// Returns the stable base-model compatibility anchor for this runtime configuration.
+    #[must_use]
+    pub fn base_model_signature(&self) -> String {
+        truncated_hex_digest(
+            b"psionic_apple_adapter_base_model_signature|",
+            &[
+                self.model_id.as_str(),
+                self.use_case.as_str(),
+                self.guardrails.as_str(),
+            ],
+            40,
+        )
+    }
+
+    /// Returns the stable prompt-shaping digest for this runtime profile.
+    #[must_use]
+    pub fn prompt_shaping_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"psionic_apple_adapter_prompt_shaping|");
+        hasher.update(APPLE_ADAPTER_PROMPT_SHAPING_VERSION.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.base_model_signature().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.model_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.use_case.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.guardrails.as_bytes());
+        if let Some(locale) = &self.locale {
+            hasher.update(b"|locale|");
+            hasher.update(locale.as_bytes());
+        }
+        if let Some(default_instruction) = &self.default_instruction {
+            hasher.update(b"|default_instruction|");
+            hasher.update(default_instruction.as_bytes());
+        }
+        hasher.update(b"|roles|system,user,assistant|attachments|tools,response_format");
+        hex::encode(hasher.finalize())
+    }
+
+    /// Returns the stable tokenizer digest for this runtime profile.
+    #[must_use]
+    pub fn tokenizer_digest(&self) -> TokenizerDigest {
+        let mut hasher = Sha256::new();
+        hasher.update(b"psionic_apple_adapter_tokenizer|");
+        hasher.update(APPLE_ADAPTER_COMPAT_TOKENIZER_VERSION.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.base_model_signature().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.model_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.use_case.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.guardrails.as_bytes());
+        if let Some(locale) = &self.locale {
+            hasher.update(b"|locale|");
+            hasher.update(locale.as_bytes());
+        }
+        if let Some(default_instruction) = &self.default_instruction {
+            hasher.update(b"|default_instruction|");
+            hasher.update(default_instruction.as_bytes());
+        }
+        TokenizerDigest::new(
+            TokenizerFamily::Custom,
+            hex::encode(hasher.finalize()),
+            65_536,
+        )
+        .with_special_tokens_digest(stable_hex_digest(
+            b"psionic_apple_adapter_special_tokens|",
+            &[
+                APPLE_ADAPTER_SPECIAL_TOKENS_VERSION,
+                "role_boundary",
+                "system",
+                "user",
+                "assistant",
+                "tools",
+                "response_schema",
+                "locale",
+                "default_instruction",
+            ],
+        ))
+        .with_template_digest(self.prompt_shaping_digest())
+    }
+
+    /// Builds dataset metadata derived from this runtime profile.
+    #[must_use]
+    pub fn dataset_metadata(&self) -> AppleAdapterDatasetMetadata {
+        let mut metadata =
+            AppleAdapterDatasetMetadata::new(self.tokenizer_digest(), self.prompt_shaping_digest());
+        if let Some(default_instruction) = &self.default_instruction {
+            metadata = metadata.with_default_instruction(default_instruction.clone());
+        }
+        if let Some(locale) = &self.locale {
+            metadata = metadata.with_locale(locale.clone());
+        }
+        metadata
+    }
+}
 
 /// Typed Apple adapter message roles admitted by the repo-owned dataset spec.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -435,6 +610,43 @@ impl AppleAdapterDatasetContract {
             ));
         }
         policy.plan(sequences.as_slice()).map_err(Into::into)
+    }
+
+    /// Derives deterministic token captures from the repo-owned Apple preprocessing path.
+    pub fn derive_token_captures(
+        &self,
+    ) -> Result<Vec<AppleAdapterSampleTokenCapture>, AppleAdapterDatasetError> {
+        self.validate()?;
+        Ok(self
+            .samples
+            .iter()
+            .map(|sample| {
+                let final_assistant_index = sample.messages.len().saturating_sub(1);
+                let prompt_tokens = count_dataset_context_tokens(&self.metadata).saturating_add(
+                    sample.messages[..final_assistant_index]
+                        .iter()
+                        .map(count_message_tokens)
+                        .sum(),
+                );
+                let completion_tokens =
+                    count_message_tokens(&sample.messages[final_assistant_index]);
+                let mut capture = AppleAdapterSampleTokenCapture::new(
+                    sample.sample_id.clone(),
+                    self.metadata.tokenizer.tokenizer_digest.clone(),
+                    self.metadata.prompt_shaping_digest.clone(),
+                    prompt_tokens,
+                    completion_tokens,
+                );
+                if !sample.tools.is_empty() {
+                    capture = capture.with_tool_tokens(count_tool_tokens(sample.tools.as_slice()));
+                }
+                if let Some(response_format) = sample.response_format.as_ref() {
+                    capture = capture
+                        .with_response_schema_tokens(count_response_schema_tokens(response_format));
+                }
+                capture
+            })
+            .collect())
     }
 }
 
@@ -1302,6 +1514,71 @@ fn derive_sample_kind(
     }
 }
 
+fn count_dataset_context_tokens(metadata: &AppleAdapterDatasetMetadata) -> u32 {
+    let mut token_count = 0_u32;
+    if let Some(default_instruction) = &metadata.default_instruction {
+        token_count = token_count
+            .saturating_add(context_marker_tokens("default_instruction"))
+            .saturating_add(lexical_token_count(default_instruction));
+    }
+    if let Some(locale) = &metadata.locale {
+        token_count = token_count
+            .saturating_add(context_marker_tokens("locale"))
+            .saturating_add(lexical_token_count(locale));
+    }
+    token_count
+}
+
+fn count_message_tokens(message: &AppleAdapterMessage) -> u32 {
+    context_marker_tokens(message.role.label())
+        .saturating_add(lexical_token_count(message.content.as_str()))
+}
+
+fn count_tool_tokens(tools: &[AppleAdapterToolDefinition]) -> u32 {
+    context_marker_tokens("tools")
+        .saturating_add(lexical_token_count(canonical_json(tools).as_str()))
+}
+
+fn count_response_schema_tokens(response_format: &AppleAdapterResponseFormat) -> u32 {
+    context_marker_tokens("response_schema").saturating_add(lexical_token_count(
+        canonical_json(response_format).as_str(),
+    ))
+}
+
+fn context_marker_tokens(label: &str) -> u32 {
+    1_u32.saturating_add(lexical_token_count(label))
+}
+
+fn lexical_token_count(input: &str) -> u32 {
+    let mut token_count = 0_u32;
+    let mut in_word = false;
+    for ch in input.chars() {
+        if ch.is_whitespace() {
+            if in_word {
+                token_count = token_count.saturating_add(1);
+                in_word = false;
+            }
+            continue;
+        }
+
+        let is_word_character = ch.is_alphanumeric() || ch == '_';
+        if is_word_character {
+            in_word = true;
+            continue;
+        }
+
+        if in_word {
+            token_count = token_count.saturating_add(1);
+            in_word = false;
+        }
+        token_count = token_count.saturating_add(1);
+    }
+    if in_word {
+        token_count = token_count.saturating_add(1);
+    }
+    token_count
+}
+
 fn stable_sample_digest(
     sample_kind: AppleAdapterSampleKind,
     messages: &[AppleAdapterMessage],
@@ -1332,6 +1609,22 @@ fn stable_sample_digest(
         hasher.update(canonical_json(structured_assistant_output).as_bytes());
     }
     hex::encode(hasher.finalize())
+}
+
+fn stable_hex_digest(prefix: &[u8], segments: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(prefix);
+    for segment in segments {
+        hasher.update(segment.as_bytes());
+        hasher.update(b"|");
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn truncated_hex_digest(prefix: &[u8], segments: &[&str], hex_chars: usize) -> String {
+    let digest = stable_hex_digest(prefix, segments);
+    let truncate_at = hex_chars.min(digest.len());
+    digest[..truncate_at].to_string()
 }
 
 fn canonical_json<T>(value: T) -> String
@@ -1567,16 +1860,14 @@ mod tests {
     fn apple_adapter_packing_refuses_tokenizer_and_prompt_shaping_drift() {
         let dataset = import_fixture("guided");
         let policy = DatasetPackingPolicy::new(DatasetPackingMode::BatchByTokenBudget, 128, 128, 4);
-        let drifted_tokenizer = vec![
-            AppleAdapterSampleTokenCapture::new(
-                dataset.samples[0].sample_id.clone(),
-                "other-tokenizer",
-                dataset.metadata.prompt_shaping_digest.clone(),
-                30,
-                14,
-            )
-            .with_response_schema_tokens(22),
-        ];
+        let drifted_tokenizer = vec![AppleAdapterSampleTokenCapture::new(
+            dataset.samples[0].sample_id.clone(),
+            "other-tokenizer",
+            dataset.metadata.prompt_shaping_digest.clone(),
+            30,
+            14,
+        )
+        .with_response_schema_tokens(22)];
         let tokenizer_err = dataset
             .plan_packing(drifted_tokenizer.as_slice(), &policy)
             .expect_err("tokenizer drift should fail");
@@ -1585,16 +1876,14 @@ mod tests {
             AppleAdapterDatasetError::TokenizerDrift { .. }
         ));
 
-        let drifted_prompt = vec![
-            AppleAdapterSampleTokenCapture::new(
-                dataset.samples[0].sample_id.clone(),
-                dataset.metadata.tokenizer.tokenizer_digest.clone(),
-                "other-prompt-shaping",
-                30,
-                14,
-            )
-            .with_response_schema_tokens(22),
-        ];
+        let drifted_prompt = vec![AppleAdapterSampleTokenCapture::new(
+            dataset.samples[0].sample_id.clone(),
+            dataset.metadata.tokenizer.tokenizer_digest.clone(),
+            "other-prompt-shaping",
+            30,
+            14,
+        )
+        .with_response_schema_tokens(22)];
         let prompt_err = dataset
             .plan_packing(drifted_prompt.as_slice(), &policy)
             .expect_err("prompt-shaping drift should fail");
@@ -1638,5 +1927,106 @@ mod tests {
             schema_err,
             AppleAdapterDatasetError::MissingResponseSchemaTokenCapture { .. }
         ));
+    }
+
+    #[test]
+    fn runtime_profile_derives_stable_lineage_metadata() {
+        let profile = AppleAdapterRuntimeCompatibilityProfile::new(
+            "apple-foundation-model",
+            "general",
+            "default",
+        )
+        .with_locale("en-US")
+        .with_default_instruction(APPLE_ADAPTER_DEFAULT_INSTRUCTION)
+        .with_bridge_version("1.0.0")
+        .with_bridge_platform("macOS");
+        let metadata = profile.dataset_metadata();
+
+        assert_eq!(profile.base_model_signature().len(), 40);
+        assert_eq!(metadata.tokenizer.family, TokenizerFamily::Custom);
+        assert_eq!(
+            metadata.tokenizer.template_digest.as_deref(),
+            Some(metadata.prompt_shaping_digest.as_str())
+        );
+        assert_eq!(
+            metadata.default_instruction.as_deref(),
+            Some(APPLE_ADAPTER_DEFAULT_INSTRUCTION)
+        );
+        assert_eq!(metadata.locale.as_deref(), Some("en-US"));
+
+        let changed_locale = profile.clone().with_locale("fr-FR");
+        assert_eq!(
+            profile.base_model_signature(),
+            changed_locale.base_model_signature()
+        );
+        assert_ne!(
+            metadata.prompt_shaping_digest,
+            changed_locale.prompt_shaping_digest()
+        );
+        assert_ne!(
+            metadata.tokenizer.tokenizer_digest,
+            changed_locale.tokenizer_digest().tokenizer_digest
+        );
+    }
+
+    #[test]
+    fn derived_token_captures_follow_repo_owned_preprocessing_path() {
+        let multi_turn = AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"user","content":"Explain what a mutex does."},{"role":"assistant","content":"A mutex guards shared state."},{"role":"user","content":"Now say it in one sentence."},{"role":"assistant","content":"A mutex lets only one thread access shared state at a time."}]"#,
+            AppleAdapterRuntimeCompatibilityProfile::new(
+                "apple-foundation-model",
+                "general",
+                "default",
+            )
+            .with_locale("en-US")
+            .with_default_instruction(APPLE_ADAPTER_DEFAULT_INSTRUCTION)
+            .dataset_metadata(),
+        )
+        .expect("dataset should import");
+        let captures = multi_turn
+            .derive_token_captures()
+            .expect("token captures should derive");
+        assert_eq!(captures.len(), 1);
+        assert_eq!(
+            captures[0].prompt_tokens,
+            count_dataset_context_tokens(&multi_turn.metadata)
+                + count_message_tokens(&multi_turn.samples[0].messages[0])
+                + count_message_tokens(&multi_turn.samples[0].messages[1])
+                + count_message_tokens(&multi_turn.samples[0].messages[2])
+        );
+        assert_eq!(
+            captures[0].completion_tokens,
+            count_message_tokens(&multi_turn.samples[0].messages[3])
+        );
+
+        let combined = AppleAdapterDatasetContract::from_jsonl_str(
+            &format!(
+                "{}\n{}\n{}",
+                include_str!("../../fixtures/apple_adapter/datasets/minimal_sft_train.jsonl")
+                    .trim(),
+                include_str!(
+                    "../../fixtures/apple_adapter/datasets/guided_generation_with_schema_train.jsonl"
+                )
+                .trim(),
+                include_str!("../../fixtures/apple_adapter/datasets/tool_calling_train.jsonl")
+                    .trim()
+            ),
+            AppleAdapterRuntimeCompatibilityProfile::new(
+                "apple-foundation-model",
+                "general",
+                "default",
+            )
+            .with_locale("en-US")
+            .with_default_instruction(APPLE_ADAPTER_DEFAULT_INSTRUCTION)
+            .dataset_metadata(),
+        )
+        .expect("combined dataset should import");
+        let combined_captures = combined
+            .derive_token_captures()
+            .expect("combined captures should derive");
+        assert_eq!(combined_captures.len(), 3);
+        assert_eq!(combined_captures[0].tool_tokens, 0);
+        assert!(combined_captures[1].response_schema_tokens > 0);
+        assert!(combined_captures[2].tool_tokens > 0);
     }
 }
