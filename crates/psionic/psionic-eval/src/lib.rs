@@ -6,6 +6,8 @@
     allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)
 )]
 
+mod apple_adapter;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use psionic_data::DatasetKey;
@@ -18,6 +20,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+pub use apple_adapter::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "held-out eval, benchmark packages, and rubric runtime for Psionic";

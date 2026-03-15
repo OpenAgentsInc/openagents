@@ -210,7 +210,7 @@ shape already includes at least:
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, deterministic runtime session state machine, and a reusable Apple adapter train/eval/benchmark bundle with typed runtime refs plus train/eval parity receipts, while registry and authority truth remain in kernel/Nexus |
-| Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, and local validator simulation, while kernel/Nexus still own canonical eval-run authority truth |
+| Eval runtime | `implemented_early` | `psionic-eval` now owns held-out eval runs, rubric-scored sample/runtime contracts, benchmark packages, repeat-run aggregation, local validator simulation, and Apple adapter held-out plus benchmark harnesses with structured-output, tool-call, and runtime-smoke receipts, while kernel/Nexus still own canonical eval-run authority truth |
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
 | Validator-aware RL verification | `implemented_early` | `psionic-train` now owns rollout-verification bundles, replay or duplicate detection, sampled benchmark checks, and typed validator verdicts; broader service productization is still later |
@@ -238,7 +238,8 @@ The current train-relevant ownership split in Psionic is:
     sessions, and reusable Apple adapter train/eval/benchmark bundle helpers
 - `psionic-eval`
   - held-out eval runs, rubric-scored sample/runtime contracts, benchmark
-  packages, repeat-run aggregation, and operator-local validator simulation
+  packages, repeat-run aggregation, operator-local validator simulation, and
+  Apple adapter held-out/benchmark/runtime-smoke harnesses
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
     elastic-membership posture, typed run graphs, contributor-set revisions,
@@ -1313,6 +1314,17 @@ The canonical runbook and harness are now:
 
 Kernel and Nexus still own canonical eval-run authority truth. This issue lands
 the reusable Psionic-side runtime and benchmark-contract layer only.
+
+On 2026-03-15, GitHub issue `#3623` extended that same crate with repo-owned
+Apple adapter eval harnesses:
+
+- held-out and benchmark scoring over imported Apple dataset fixtures plus
+  observed candidate outputs
+- explicit structured-output conformance and tool-call coverage checks
+- bridge-backed runtime-smoke receipts that prove a `.fmadapter` package parses,
+  loads, attaches, and runs against the Apple lane
+- typed failure separation between dataset/config problems, package
+  incompatibility, and bridge/runtime refusal
 
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 

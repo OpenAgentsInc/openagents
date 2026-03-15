@@ -1,6 +1,6 @@
 # Eval Runtime Reference
 
-> Status: canonical `#3568` eval-runtime record, updated 2026-03-14 after
+> Status: canonical `#3568` eval-runtime record, updated 2026-03-15 after
 > landing the runnable harness in
 > `scripts/release/check-psionic-eval-runtime.sh`.
 
@@ -21,6 +21,15 @@ The issue landed the `psionic-eval` crate with:
   validator simulation over the same packaged benchmark
 - typed verification facts for timer integrity, token accounting, final-state
   capture, and declared execution strategy
+
+On 2026-03-15, issue `#3623` extended the same crate with a repo-owned Apple
+adapter eval lane:
+
+- held-out and benchmark harnesses over imported Apple dataset fixtures
+- explicit structured-output and tool-call conformance scoring
+- bridge-backed runtime-smoke receipts over `.fmadapter` packages
+- typed failure separation between dataset/config errors, package
+  incompatibility, and bridge/runtime refusal
 
 Kernel and Nexus still own canonical eval-run authority truth. This issue lands
 the reusable Psionic-side runtime and benchmark-contract layer only.
@@ -44,6 +53,17 @@ The current reference path proves one bounded but real eval workload:
 5. record repeated benchmark rounds and aggregate them robustly
 6. run the same benchmark package through operator-local validator simulation
 
+The Apple adapter extension now proves a second bounded workload:
+
+1. import Apple adapter dataset fixtures into typed Rust records
+2. score held-out samples against observed text, structured output, and tool
+   traces
+3. derive benchmark packages and aggregate benchmark rounds from the same
+   Apple-specific case set
+4. run runtime smoke that locally parses a `.fmadapter`, loads it into the
+   Apple bridge, attaches it to a session, and records machine-legible smoke
+   metrics
+
 ## Pass Criteria
 
 The eval layer is green only if all of the following are true:
@@ -66,6 +86,8 @@ The current harness should prove:
 - benchmark packages support repeat-run aggregation over one shared contract
 - validator policy can require timer, token, final-state, or
   execution-strategy facts and refuse missing evidence
+- Apple adapter eval can stay inside repo-owned Rust harnesses instead of shell
+  scripts or app-local bridge glue
 
 ## Current Limitations
 
