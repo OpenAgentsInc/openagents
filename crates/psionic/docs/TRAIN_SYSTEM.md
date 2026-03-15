@@ -261,6 +261,22 @@ The new claim is:
 > Apple adapters as the first narrow lane and open adapter backends as the next
 > generalized lane under the same control-plane vocabulary.
 
+That widening step is now no longer only planned. `psionic-train` also owns a
+first bounded non-Apple execution backend in
+`crates/psionic/psionic-train/src/open_adapter.rs`. The implemented reference
+target is intentionally narrow and explicit:
+
+- admissible model family: `gpt_oss.decoder_lm_head_lora`
+- adapter format: `safetensors`
+- first concrete backend label: `open_adapter_backend.cuda.gpt_oss_lm_head`
+- supervision shape: repo-owned hidden-state plus target-token batches
+- export proof: the produced artifact roundtrips through
+  `psionic-adapters::LmHeadLoraAdapterArtifact`
+
+That is enough to make the decentralized adapter architecture honestly
+non-Apple-only while still staying well short of a generalized full-model or
+multi-node open-backend trainer claim.
+
 That contract layer is no longer only planned. `psionic-train` now owns a
 typed adapter-window state machine in
 `crates/psionic/psionic-train/src/adapter_window.rs` that can represent one
@@ -459,8 +475,9 @@ of the following rows are true:
 
 Until every row above is true, the honest repo claim remains:
 
-> single-host Apple adapter training is real, but decentralized adapter
-> training is still a planned program with a frozen system contract.
+> single-host Apple adapter training and one bounded non-Apple open adapter
+> backend are real, but decentralized adapter training is still an incomplete
+> program rather than a finished productized system.
 
 ## Canonical Train Objects
 
@@ -532,7 +549,7 @@ shape already includes at least:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, long-context packing policies, and Apple adapter JSONL import or validation with typed tool-schema augmentation plus tokenizer/prompt-shaping packing lineage |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage, and first Apple `.fmadapter` reader/writer plus file-inventory validation |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
-| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it, the repo-owned Apple adapter execution backend now turns packed Apple dataset batches into adapter-only gradient batches for that loop, the first higher-level Apple SFT lane closes the path through typed training summary plus `.fmadapter` export, and an explicitly separate optional Apple draft-model distillation lane now emits paired draft payloads plus latency or acceptance metadata; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
+| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it, the repo-owned Apple adapter execution backend now turns packed Apple dataset batches into adapter-only gradient batches for that loop, the first higher-level Apple SFT lane closes the path through typed training summary plus `.fmadapter` export, and an explicitly separate optional Apple draft-model distillation lane now emits paired draft payloads plus latency or acceptance metadata; the crate also now owns a first non-Apple open adapter backend for `gpt_oss.decoder_lm_head_lora`, producing loadable LM-head LoRA `safetensors` artifacts from bounded hidden-state supervision under the same fixed-budget core; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, deterministic runtime session state machine, and a reusable Apple adapter train/eval/benchmark bundle with typed runtime refs plus train/eval parity receipts, while registry and authority truth remain in kernel/Nexus |
