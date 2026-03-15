@@ -9,8 +9,13 @@ use psionic_core::QuantizationMode;
 use psionic_datastream::{DatastreamManifest, DatastreamManifestRef, DatastreamSubjectKind};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -34,6 +39,8 @@ pub enum AdapterArtifactFormat {
     Safetensors,
     /// Tar archive packaging multiple adapter blobs.
     TarArchive,
+    /// Apple Foundation Models `.fmadapter` directory package.
+    AppleFmPackage,
 }
 
 /// High-level target family for the adapter.
@@ -199,6 +206,33 @@ impl AdapterPackageTensor {
     }
 }
 
+/// Generic file inventory entry inside an adapter package.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdapterPackageFile {
+    /// Stable package-relative file path.
+    pub relative_path: String,
+    /// Byte length of the file payload.
+    pub byte_length: u64,
+    /// Stable digest of the file payload.
+    pub sha256: String,
+}
+
+impl AdapterPackageFile {
+    /// Creates one file-inventory entry.
+    #[must_use]
+    pub fn new(
+        relative_path: impl Into<String>,
+        byte_length: u64,
+        sha256: impl Into<String>,
+    ) -> Self {
+        Self {
+            relative_path: relative_path.into(),
+            byte_length,
+            sha256: sha256.into(),
+        }
+    }
+}
+
 /// Packaged adapter or LoRA bundle tied to one adapter-package datastream.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterPackageManifest {
@@ -215,6 +249,9 @@ pub struct AdapterPackageManifest {
     /// Optional tensor declarations.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tensors: Vec<AdapterPackageTensor>,
+    /// Optional file inventory when the package format is file-based.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<AdapterPackageFile>,
 }
 
 impl AdapterPackageManifest {
@@ -239,6 +276,7 @@ impl AdapterPackageManifest {
             &datastream,
             tensor_count,
             &[],
+            &[],
         );
         Ok(Self {
             manifest_id,
@@ -247,6 +285,7 @@ impl AdapterPackageManifest {
             datastream,
             tensor_count,
             tensors: Vec::new(),
+            files: Vec::new(),
         })
     }
 
@@ -260,8 +299,386 @@ impl AdapterPackageManifest {
             &self.datastream,
             self.tensor_count,
             &self.tensors,
+            &self.files,
         );
         self
+    }
+
+    /// Appends one generic file-inventory entry and refreshes the package digest.
+    #[must_use]
+    pub fn with_file(mut self, file: AdapterPackageFile) -> Self {
+        self.files.push(file);
+        self.package_digest = stable_package_digest(
+            self.manifest_id.clone(),
+            self.adapter.stable_digest(),
+            &self.datastream,
+            self.tensor_count,
+            &self.tensors,
+            &self.files,
+        );
+        self
+    }
+}
+
+/// Stable suffix for Apple Foundation Models adapter packages.
+pub const APPLE_FM_ADAPTER_PACKAGE_EXTENSION: &str = "fmadapter";
+/// Metadata file written inside one `.fmadapter` package.
+pub const APPLE_FM_ADAPTER_METADATA_FILE: &str = "metadata.json";
+/// Required adapter-weights payload inside one `.fmadapter` package.
+pub const APPLE_FM_ADAPTER_WEIGHTS_FILE: &str = "adapter_weights.bin";
+/// Optional draft-model graph payload inside one `.fmadapter` package.
+pub const APPLE_FM_ADAPTER_DRAFT_MIL_FILE: &str = "draft.mil";
+/// Optional draft-model weights payload inside one `.fmadapter` package.
+pub const APPLE_FM_ADAPTER_DRAFT_WEIGHTS_FILE: &str = "draft_weights.bin";
+
+/// Apple Foundation Models adapter metadata frozen from the reference exporter.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppleFmAdapterPackageMetadata {
+    /// Stable adapter identifier exposed to operators and compatibility checks.
+    pub adapter_identifier: String,
+    /// Optional author label.
+    #[serde(default)]
+    pub author: String,
+    /// Stable base-model signature the package targets.
+    pub base_model_signature: String,
+    /// Developer-defined or OpenAgents-defined extension fields.
+    #[serde(default)]
+    pub creator_defined: BTreeMap<String, Value>,
+    /// Optional description.
+    #[serde(default)]
+    pub description: String,
+    /// Optional license label.
+    #[serde(default)]
+    pub license: String,
+    /// Low-rank adapter rank.
+    pub lora_rank: u32,
+    /// Optional speculative-decoding token count carried by the exporter.
+    #[serde(default)]
+    pub speculative_decoding_draft_token_count: u32,
+}
+
+impl AppleFmAdapterPackageMetadata {
+    /// Validates the visible metadata contract.
+    pub fn validate(&self) -> Result<(), AppleFmAdapterPackageError> {
+        if !self.adapter_identifier.starts_with("fmadapter-") {
+            return Err(AppleFmAdapterPackageError::InvalidAdapterIdentifier(
+                self.adapter_identifier.clone(),
+            ));
+        }
+        if self.base_model_signature.len() != 40
+            || !self
+                .base_model_signature
+                .as_bytes()
+                .iter()
+                .all(u8::is_ascii_hexdigit)
+            || self
+                .base_model_signature
+                .chars()
+                .any(|character| character.is_ascii_uppercase())
+        {
+            return Err(AppleFmAdapterPackageError::InvalidBaseModelSignature(
+                self.base_model_signature.clone(),
+            ));
+        }
+        if self.lora_rank == 0 {
+            return Err(AppleFmAdapterPackageError::InvalidLoraRank);
+        }
+        Ok(())
+    }
+
+    fn canonical_json_bytes(&self) -> Result<Vec<u8>, AppleFmAdapterPackageError> {
+        serde_json::to_vec_pretty(self).map_err(|error| {
+            AppleFmAdapterPackageError::SerializeMetadata {
+                message: error.to_string(),
+            }
+        })
+    }
+}
+
+/// Typed lineage fields OpenAgents extracts from `creatorDefined`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmAdapterLineage {
+    /// Optional benchmark refs declared in the package.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub benchmark_refs: Vec<String>,
+    /// Optional dataset ref recorded by the exporter or wrapper.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dataset_ref: Option<String>,
+    /// Optional draft-metadata digest recorded in metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draft_mil_digest: Option<String>,
+    /// Whether metadata claims a draft-model payload is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draft_model_present: Option<bool>,
+    /// Optional draft-weights digest recorded in metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draft_weights_digest: Option<String>,
+    /// Optional package-format version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_format_version: Option<String>,
+    /// Optional template digest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_digest: Option<String>,
+    /// Optional tokenizer digest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Optional environment ref.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub training_environment_ref: Option<String>,
+    /// Optional validator policy ref.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validator_policy_ref: Option<String>,
+    /// Remaining creator-defined fields not normalized yet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, Value>,
+}
+
+impl AppleFmAdapterLineage {
+    fn from_creator_defined(
+        creator_defined: &BTreeMap<String, Value>,
+    ) -> Result<Self, AppleFmAdapterPackageError> {
+        let mut extra = creator_defined.clone();
+        Ok(Self {
+            benchmark_refs: take_string_vec_field(&mut extra, "benchmarkRefs")?,
+            dataset_ref: take_string_field(&mut extra, "datasetRef")?,
+            draft_mil_digest: take_string_field(&mut extra, "draftMilDigest")?,
+            draft_model_present: take_bool_field(&mut extra, "draftModelPresent")?,
+            draft_weights_digest: take_string_field(&mut extra, "draftWeightsDigest")?,
+            package_format_version: take_string_field(&mut extra, "packageFormatVersion")?,
+            template_digest: take_string_field(&mut extra, "templateDigest")?,
+            tokenizer_digest: take_string_field(&mut extra, "tokenizerDigest")?,
+            training_environment_ref: take_string_field(&mut extra, "trainingEnvironmentRef")?,
+            validator_policy_ref: take_string_field(&mut extra, "validatorPolicyRef")?,
+            extra,
+        })
+    }
+}
+
+/// Fully parsed Apple Foundation Models package with raw payload bytes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppleFmAdapterPackage {
+    /// Stable package directory name including the `.fmadapter` suffix.
+    pub package_name: String,
+    /// Stable metadata object.
+    pub metadata: AppleFmAdapterPackageMetadata,
+    /// Typed lineage extracted from `creatorDefined`.
+    pub lineage: AppleFmAdapterLineage,
+    /// Stable package digest derived from inventory and file digests.
+    pub package_digest: String,
+    /// Ordered file inventory for the package.
+    pub inventory: Vec<AdapterPackageFile>,
+    metadata_bytes: Vec<u8>,
+    adapter_weights_bytes: Vec<u8>,
+    draft_mil_bytes: Option<Vec<u8>>,
+    draft_weights_bytes: Option<Vec<u8>>,
+}
+
+impl AppleFmAdapterPackage {
+    /// Builds one Apple package from explicit metadata and payload bytes.
+    pub fn new(
+        package_name: impl Into<String>,
+        metadata: AppleFmAdapterPackageMetadata,
+        adapter_weights_bytes: Vec<u8>,
+        draft_mil_bytes: Option<Vec<u8>>,
+        draft_weights_bytes: Option<Vec<u8>>,
+    ) -> Result<Self, AppleFmAdapterPackageError> {
+        let package_name = package_name.into();
+        if !is_apple_fm_package_name(package_name.as_str()) {
+            return Err(AppleFmAdapterPackageError::InvalidPackageRoot { path: package_name });
+        }
+        metadata.validate()?;
+        validate_draft_payload_pair(
+            &package_name,
+            draft_mil_bytes.is_some(),
+            draft_weights_bytes.is_some(),
+        )?;
+        let lineage = AppleFmAdapterLineage::from_creator_defined(&metadata.creator_defined)?;
+        if let Some(draft_present) = lineage.draft_model_present {
+            let payload_present = draft_mil_bytes.is_some() && draft_weights_bytes.is_some();
+            if draft_present != payload_present {
+                return Err(AppleFmAdapterPackageError::DraftPresenceMismatch {
+                    path: package_name,
+                    metadata_flag: draft_present,
+                    payload_present,
+                });
+            }
+        }
+        let metadata_bytes = metadata.canonical_json_bytes()?;
+        let mut inventory = vec![
+            inventory_entry(APPLE_FM_ADAPTER_METADATA_FILE, metadata_bytes.as_slice()),
+            inventory_entry(
+                APPLE_FM_ADAPTER_WEIGHTS_FILE,
+                adapter_weights_bytes.as_slice(),
+            ),
+        ];
+        if let Some(bytes) = draft_mil_bytes.as_deref() {
+            inventory.push(inventory_entry(APPLE_FM_ADAPTER_DRAFT_MIL_FILE, bytes));
+        }
+        if let Some(bytes) = draft_weights_bytes.as_deref() {
+            inventory.push(inventory_entry(APPLE_FM_ADAPTER_DRAFT_WEIGHTS_FILE, bytes));
+        }
+        inventory.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        let package_digest = stable_apple_fm_package_digest(package_name.as_str(), &inventory);
+        Ok(Self {
+            package_name,
+            metadata,
+            lineage,
+            package_digest,
+            inventory,
+            metadata_bytes,
+            adapter_weights_bytes,
+            draft_mil_bytes,
+            draft_weights_bytes,
+        })
+    }
+
+    /// Reads and validates one Apple package from disk.
+    pub fn read_from_directory(path: impl AsRef<Path>) -> Result<Self, AppleFmAdapterPackageError> {
+        let path = path.as_ref();
+        let package_name = path
+            .file_name()
+            .and_then(|component| component.to_str())
+            .ok_or_else(|| AppleFmAdapterPackageError::InvalidPackageRoot {
+                path: path.display().to_string(),
+            })?;
+        if !path.is_dir() || !is_apple_fm_package_name(package_name) {
+            return Err(AppleFmAdapterPackageError::InvalidPackageRoot {
+                path: path.display().to_string(),
+            });
+        }
+        let metadata_bytes = read_required_package_file(path, APPLE_FM_ADAPTER_METADATA_FILE)?;
+        let metadata: AppleFmAdapterPackageMetadata = serde_json::from_slice(&metadata_bytes)
+            .map_err(|error| AppleFmAdapterPackageError::InvalidMetadataJson {
+                path: path
+                    .join(APPLE_FM_ADAPTER_METADATA_FILE)
+                    .display()
+                    .to_string(),
+                message: error.to_string(),
+            })?;
+        let adapter_weights_bytes =
+            read_required_package_file(path, APPLE_FM_ADAPTER_WEIGHTS_FILE)?;
+        let draft_mil_path = path.join(APPLE_FM_ADAPTER_DRAFT_MIL_FILE);
+        let draft_weights_path = path.join(APPLE_FM_ADAPTER_DRAFT_WEIGHTS_FILE);
+        let draft_mil_bytes = read_optional_package_file(&draft_mil_path)?;
+        let draft_weights_bytes = read_optional_package_file(&draft_weights_path)?;
+        let mut package = Self::new(
+            package_name.to_string(),
+            metadata,
+            adapter_weights_bytes,
+            draft_mil_bytes,
+            draft_weights_bytes,
+        )?;
+        package.metadata_bytes = metadata_bytes;
+        package.inventory = build_apple_fm_inventory(
+            package.metadata_bytes.as_slice(),
+            package.adapter_weights_bytes.as_slice(),
+            package.draft_mil_bytes.as_deref(),
+            package.draft_weights_bytes.as_deref(),
+        );
+        package.package_digest =
+            stable_apple_fm_package_digest(package.package_name.as_str(), &package.inventory);
+        Ok(package)
+    }
+
+    /// Writes the package back to disk using the preserved payload bytes.
+    pub fn write_to_directory(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<(), AppleFmAdapterPackageError> {
+        let path = path.as_ref();
+        let package_name = path
+            .file_name()
+            .and_then(|component| component.to_str())
+            .ok_or_else(|| AppleFmAdapterPackageError::InvalidPackageRoot {
+                path: path.display().to_string(),
+            })?;
+        if !is_apple_fm_package_name(package_name) {
+            return Err(AppleFmAdapterPackageError::InvalidPackageRoot {
+                path: path.display().to_string(),
+            });
+        }
+        fs::create_dir_all(path).map_err(|error| AppleFmAdapterPackageError::CreateDirectory {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
+        write_package_file(
+            path.join(APPLE_FM_ADAPTER_METADATA_FILE),
+            self.metadata_bytes.as_slice(),
+        )?;
+        write_package_file(
+            path.join(APPLE_FM_ADAPTER_WEIGHTS_FILE),
+            self.adapter_weights_bytes.as_slice(),
+        )?;
+        if let Some(bytes) = &self.draft_mil_bytes {
+            write_package_file(path.join(APPLE_FM_ADAPTER_DRAFT_MIL_FILE), bytes.as_slice())?;
+        }
+        if let Some(bytes) = &self.draft_weights_bytes {
+            write_package_file(
+                path.join(APPLE_FM_ADAPTER_DRAFT_WEIGHTS_FILE),
+                bytes.as_slice(),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Returns whether the package includes the optional draft payload.
+    #[must_use]
+    pub fn has_draft_payload(&self) -> bool {
+        self.draft_mil_bytes.is_some() && self.draft_weights_bytes.is_some()
+    }
+
+    /// Returns the stable digest for one package-relative file when present.
+    #[must_use]
+    pub fn file_digest(&self, relative_path: &str) -> Option<&str> {
+        self.inventory
+            .iter()
+            .find(|entry| entry.relative_path == relative_path)
+            .map(|entry| entry.sha256.as_str())
+    }
+
+    /// Converts the Apple package into the generic adapter identity surface.
+    #[must_use]
+    pub fn to_adapter_identity(
+        &self,
+        base_model_id: impl Into<String>,
+        base_served_artifact_digest: impl Into<String>,
+        parameter_count: u64,
+    ) -> AdapterArtifactIdentity {
+        AdapterArtifactIdentity::new(
+            self.metadata.adapter_identifier.clone(),
+            self.package_digest.clone(),
+            AdapterArtifactKind::Lora,
+            AdapterArtifactFormat::AppleFmPackage,
+            base_model_id,
+            self.metadata.base_model_signature.clone(),
+            base_served_artifact_digest,
+            self.package_digest.clone(),
+            QuantizationMode::None,
+            AdapterTargetFamily::DecoderComposite,
+            parameter_count,
+        )
+    }
+
+    /// Binds the Apple package to the existing datastream-backed manifest family.
+    pub fn to_manifest(
+        &self,
+        manifest_id: impl Into<String>,
+        datastream: &DatastreamManifest,
+        base_model_id: impl Into<String>,
+        base_served_artifact_digest: impl Into<String>,
+        parameter_count: u64,
+    ) -> Result<AdapterPackageManifest, AdapterPackageError> {
+        let mut manifest = AdapterPackageManifest::from_datastream(
+            manifest_id,
+            self.to_adapter_identity(base_model_id, base_served_artifact_digest, parameter_count),
+            datastream,
+            self.inventory.len(),
+        )?;
+        for file in &self.inventory {
+            manifest = manifest.with_file(file.clone());
+        }
+        Ok(manifest)
     }
 }
 
@@ -479,6 +896,104 @@ pub enum AdapterPackageError {
     },
 }
 
+/// Errors returned while reading or writing Apple Foundation Models packages.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum AppleFmAdapterPackageError {
+    /// The supplied path does not point at a `.fmadapter` directory.
+    #[error("invalid Apple FM package root `{path}`")]
+    InvalidPackageRoot {
+        /// Visible path that failed validation.
+        path: String,
+    },
+    /// One required file was missing.
+    #[error("missing Apple FM package file `{relative_path}` under `{path}`")]
+    MissingFile {
+        /// Package root path.
+        path: String,
+        /// Missing package-relative file.
+        relative_path: String,
+    },
+    /// One package file could not be read.
+    #[error("failed to read Apple FM package file `{path}`: {message}")]
+    ReadFile {
+        /// Full local file path.
+        path: String,
+        /// Plain-text failure reason.
+        message: String,
+    },
+    /// The metadata payload could not be parsed as JSON.
+    #[error("invalid Apple FM metadata JSON `{path}`: {message}")]
+    InvalidMetadataJson {
+        /// Full local metadata path.
+        path: String,
+        /// Parser failure.
+        message: String,
+    },
+    /// One recognized creator-defined field used the wrong type.
+    #[error("invalid Apple FM creatorDefined field `{field}`: {message}")]
+    InvalidCreatorDefinedField {
+        /// Offending field name.
+        field: String,
+        /// Plain-text reason.
+        message: String,
+    },
+    /// The base-model signature was malformed.
+    #[error("invalid Apple FM base model signature `{0}`")]
+    InvalidBaseModelSignature(String),
+    /// The adapter identifier was malformed.
+    #[error("invalid Apple FM adapter identifier `{0}`")]
+    InvalidAdapterIdentifier(String),
+    /// The LoRA rank was invalid.
+    #[error("invalid Apple FM LoRA rank: must be positive")]
+    InvalidLoraRank,
+    /// The optional draft payload was present only partially.
+    #[error(
+        "Apple FM package `{path}` has incomplete draft payload: draft.mil={draft_mil_present} draft_weights.bin={draft_weights_present}"
+    )]
+    IncompleteDraftPayload {
+        /// Package root path.
+        path: String,
+        /// Whether `draft.mil` was present.
+        draft_mil_present: bool,
+        /// Whether `draft_weights.bin` was present.
+        draft_weights_present: bool,
+    },
+    /// Metadata claimed draft presence that did not match inventory.
+    #[error(
+        "Apple FM package `{path}` metadata draftModelPresent={metadata_flag} does not match payload presence={payload_present}"
+    )]
+    DraftPresenceMismatch {
+        /// Package root path.
+        path: String,
+        /// `draftModelPresent` value declared in metadata.
+        metadata_flag: bool,
+        /// Whether both draft payload files were present.
+        payload_present: bool,
+    },
+    /// Metadata serialization failed while writing a new package.
+    #[error("failed to serialize Apple FM metadata: {message}")]
+    SerializeMetadata {
+        /// Plain-text failure reason.
+        message: String,
+    },
+    /// Package directory creation failed while writing.
+    #[error("failed to create Apple FM package directory `{path}`: {message}")]
+    CreateDirectory {
+        /// Directory path.
+        path: String,
+        /// Plain-text failure reason.
+        message: String,
+    },
+    /// Package file write failed.
+    #[error("failed to write Apple FM package file `{path}`: {message}")]
+    WriteFile {
+        /// Full file path.
+        path: String,
+        /// Plain-text failure reason.
+        message: String,
+    },
+}
+
 /// Errors returned while loading an LM-head LoRA adapter artifact.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum LmHeadLoraLoadError {
@@ -556,6 +1071,7 @@ fn stable_package_digest(
     datastream: &DatastreamManifestRef,
     tensor_count: usize,
     tensors: &[AdapterPackageTensor],
+    files: &[AdapterPackageFile],
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"psionic_adapter_package|");
@@ -577,6 +1093,29 @@ fn stable_package_digest(
         hasher.update(tensor.byte_length.to_string().as_bytes());
         hasher.update(b"|");
         hasher.update(tensor.sha256.as_bytes());
+    }
+    for file in files {
+        hasher.update(b"|file|");
+        hasher.update(file.relative_path.as_bytes());
+        hasher.update(b"|");
+        hasher.update(file.byte_length.to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(file.sha256.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_apple_fm_package_digest(package_name: &str, inventory: &[AdapterPackageFile]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_apple_fm_package|");
+    hasher.update(package_name.as_bytes());
+    for file in inventory {
+        hasher.update(b"|file|");
+        hasher.update(file.relative_path.as_bytes());
+        hasher.update(b"|");
+        hasher.update(file.byte_length.to_string().as_bytes());
+        hasher.update(b"|");
+        hasher.update(file.sha256.as_bytes());
     }
     hex::encode(hasher.finalize())
 }
@@ -669,6 +1208,7 @@ fn adapter_format_label(format: AdapterArtifactFormat) -> &'static [u8] {
     match format {
         AdapterArtifactFormat::Safetensors => b"safetensors",
         AdapterArtifactFormat::TarArchive => b"tar_archive",
+        AdapterArtifactFormat::AppleFmPackage => b"apple_fm_package",
     }
 }
 
@@ -698,18 +1238,172 @@ fn quantization_label(mode: QuantizationMode) -> &'static [u8] {
     }
 }
 
+fn inventory_entry(relative_path: &str, bytes: &[u8]) -> AdapterPackageFile {
+    AdapterPackageFile::new(relative_path, bytes.len() as u64, sha256_hex(bytes))
+}
+
+fn build_apple_fm_inventory(
+    metadata_bytes: &[u8],
+    adapter_weights_bytes: &[u8],
+    draft_mil_bytes: Option<&[u8]>,
+    draft_weights_bytes: Option<&[u8]>,
+) -> Vec<AdapterPackageFile> {
+    let mut inventory = vec![
+        inventory_entry(APPLE_FM_ADAPTER_METADATA_FILE, metadata_bytes),
+        inventory_entry(APPLE_FM_ADAPTER_WEIGHTS_FILE, adapter_weights_bytes),
+    ];
+    if let Some(bytes) = draft_mil_bytes {
+        inventory.push(inventory_entry(APPLE_FM_ADAPTER_DRAFT_MIL_FILE, bytes));
+    }
+    if let Some(bytes) = draft_weights_bytes {
+        inventory.push(inventory_entry(APPLE_FM_ADAPTER_DRAFT_WEIGHTS_FILE, bytes));
+    }
+    inventory.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    inventory
+}
+
+fn is_apple_fm_package_name(package_name: &str) -> bool {
+    Path::new(package_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        == Some(APPLE_FM_ADAPTER_PACKAGE_EXTENSION)
+}
+
+fn validate_draft_payload_pair(
+    package_path: &str,
+    draft_mil_present: bool,
+    draft_weights_present: bool,
+) -> Result<(), AppleFmAdapterPackageError> {
+    if draft_mil_present == draft_weights_present {
+        return Ok(());
+    }
+    Err(AppleFmAdapterPackageError::IncompleteDraftPayload {
+        path: package_path.to_string(),
+        draft_mil_present,
+        draft_weights_present,
+    })
+}
+
+fn read_required_package_file(
+    package_root: &Path,
+    relative_path: &str,
+) -> Result<Vec<u8>, AppleFmAdapterPackageError> {
+    let path = package_root.join(relative_path);
+    if !path.is_file() {
+        return Err(AppleFmAdapterPackageError::MissingFile {
+            path: package_root.display().to_string(),
+            relative_path: relative_path.to_string(),
+        });
+    }
+    read_package_file(&path)
+}
+
+fn read_optional_package_file(path: &Path) -> Result<Option<Vec<u8>>, AppleFmAdapterPackageError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(read_package_file(path)?))
+}
+
+fn read_package_file(path: &Path) -> Result<Vec<u8>, AppleFmAdapterPackageError> {
+    fs::read(path).map_err(|error| AppleFmAdapterPackageError::ReadFile {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })
+}
+
+fn write_package_file(path: PathBuf, bytes: &[u8]) -> Result<(), AppleFmAdapterPackageError> {
+    fs::write(&path, bytes).map_err(|error| AppleFmAdapterPackageError::WriteFile {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
+fn take_string_field(
+    map: &mut BTreeMap<String, Value>,
+    field: &str,
+) -> Result<Option<String>, AppleFmAdapterPackageError> {
+    match map.remove(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value)),
+        Some(other) => Err(AppleFmAdapterPackageError::InvalidCreatorDefinedField {
+            field: field.to_string(),
+            message: format!("expected string, found {other}"),
+        }),
+    }
+}
+
+fn take_bool_field(
+    map: &mut BTreeMap<String, Value>,
+    field: &str,
+) -> Result<Option<bool>, AppleFmAdapterPackageError> {
+    match map.remove(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(value)),
+        Some(other) => Err(AppleFmAdapterPackageError::InvalidCreatorDefinedField {
+            field: field.to_string(),
+            message: format!("expected bool, found {other}"),
+        }),
+    }
+}
+
+fn take_string_vec_field(
+    map: &mut BTreeMap<String, Value>,
+    field: &str,
+) -> Result<Vec<String>, AppleFmAdapterPackageError> {
+    match map.remove(field) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(values)) => values
+            .into_iter()
+            .map(|value| match value {
+                Value::String(value) => Ok(value),
+                other => Err(AppleFmAdapterPackageError::InvalidCreatorDefinedField {
+                    field: field.to_string(),
+                    message: format!("expected array of strings, found {other}"),
+                }),
+            })
+            .collect(),
+        Some(other) => Err(AppleFmAdapterPackageError::InvalidCreatorDefinedField {
+            field: field.to_string(),
+            message: format!("expected array of strings, found {other}"),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{collections::BTreeMap, path::PathBuf};
+
     use psionic_core::QuantizationMode;
     use psionic_datastream::{DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind};
     use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
+    use serde::Deserialize;
     use tempfile::tempdir;
 
     use super::{
         AdapterArtifactFormat, AdapterArtifactIdentity, AdapterArtifactKind, AdapterPackageError,
         AdapterPackageManifest, AdapterPackageTensor, AdapterResidencyMode, AdapterServingBinding,
-        AdapterTargetFamily, LmHeadLoraAdapterArtifact,
+        AdapterTargetFamily, AppleFmAdapterPackage, AppleFmAdapterPackageError,
+        LmHeadLoraAdapterArtifact,
     };
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PackageExpectation {
+        adapter_identifier: String,
+        base_model_signature: String,
+        draft_files_present: bool,
+        file_digests: BTreeMap<String, String>,
+        package_path: String,
+        required_files: Vec<String>,
+        lora_rank: u32,
+    }
 
     fn sample_adapter() -> AdapterArtifactIdentity {
         AdapterArtifactIdentity::new(
@@ -820,6 +1514,118 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn apple_fm_package_reads_positive_fixture() -> Result<(), Box<dyn std::error::Error>> {
+        let package = AppleFmAdapterPackage::read_from_directory(
+            apple_fixture_root().join("packages/minimal_chat_adapter.fmadapter"),
+        )?;
+        let expected = read_expectation("packages/minimal_chat_adapter.expected.json")?;
+
+        assert_eq!(package.package_name, expected.package_path);
+        assert_eq!(
+            package.metadata.adapter_identifier,
+            expected.adapter_identifier
+        );
+        assert_eq!(
+            package.metadata.base_model_signature,
+            expected.base_model_signature
+        );
+        assert_eq!(package.metadata.lora_rank, expected.lora_rank);
+        assert_eq!(package.has_draft_payload(), expected.draft_files_present);
+        for relative_path in &expected.required_files {
+            assert_eq!(
+                package.file_digest(relative_path.as_str()),
+                expected.file_digests.get(relative_path).map(String::as_str)
+            );
+        }
+        assert_eq!(
+            package.lineage.package_format_version.as_deref(),
+            Some("openagents.apple-fmadapter.v1")
+        );
+        assert_eq!(
+            package.lineage.training_environment_ref.as_deref(),
+            Some("apple_adapter_sft@2026-03-14")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_fm_package_roundtrips_and_binds_to_manifest() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let package = AppleFmAdapterPackage::read_from_directory(
+            apple_fixture_root().join("packages/draft_chat_adapter.fmadapter"),
+        )?;
+        let temp = tempdir()?;
+        let out = temp.path().join("draft_chat_adapter.fmadapter");
+        package.write_to_directory(&out)?;
+        let reread = AppleFmAdapterPackage::read_from_directory(&out)?;
+
+        assert_eq!(package, reread);
+        assert!(reread.has_draft_payload());
+
+        let datastream = DatastreamManifest::from_bytes(
+            "apple-adapter-stream",
+            DatastreamSubjectKind::AdapterPackage,
+            b"apple-adapter-package",
+            4,
+            DatastreamEncoding::TarArchive,
+        );
+        let manifest = reread.to_manifest(
+            "apple-adapter-manifest",
+            &datastream,
+            "apple-foundation-model",
+            "served-artifact-digest",
+            0,
+        )?;
+
+        assert_eq!(
+            manifest.adapter.format,
+            AdapterArtifactFormat::AppleFmPackage
+        );
+        assert_eq!(manifest.files.len(), 4);
+        assert_eq!(
+            manifest.adapter.base_model_revision,
+            "9799725ff8e851184037110b422d891ad3b92ec1"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_fm_package_rejects_bad_signature_fixture() {
+        let result = AppleFmAdapterPackage::read_from_directory(
+            apple_fixture_root().join("packages/invalid_bad_base_signature.fmadapter"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(AppleFmAdapterPackageError::InvalidBaseModelSignature(_))
+        ));
+    }
+
+    #[test]
+    fn apple_fm_package_rejects_missing_metadata_fixture() {
+        let result = AppleFmAdapterPackage::read_from_directory(
+            apple_fixture_root().join("packages/invalid_missing_metadata.fmadapter"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(AppleFmAdapterPackageError::MissingFile { .. })
+        ));
+    }
+
+    #[test]
+    fn apple_fm_package_rejects_incomplete_draft_fixture() {
+        let result = AppleFmAdapterPackage::read_from_directory(
+            apple_fixture_root().join("packages/invalid_draft_pairing.fmadapter"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(AppleFmAdapterPackageError::IncompleteDraftPayload { .. })
+        ));
+    }
+
     fn write_lora_safetensors(
         path: &std::path::Path,
         lora_a: &[f32],
@@ -845,5 +1651,16 @@ mod tests {
             .iter()
             .flat_map(|value| value.to_le_bytes())
             .collect()
+    }
+
+    fn apple_fixture_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/apple_adapter")
+    }
+
+    fn read_expectation(
+        relative_path: &str,
+    ) -> Result<PackageExpectation, Box<dyn std::error::Error>> {
+        let bytes = std::fs::read(apple_fixture_root().join(relative_path))?;
+        Ok(serde_json::from_slice(&bytes)?)
     }
 }
