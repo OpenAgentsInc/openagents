@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
+psionic-adapters = { path = "../psionic-adapters" }
 psionic-cluster = { path = "../psionic-cluster" }
 psionic-collectives = { path = "../psionic-collectives" }
 psionic-core = { path = "../psionic-core" }

@@ -1,10 +1,13 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::Path};
 
+use psionic_adapters::{
+    AppleFmAdapterPackage, AppleFmAdapterPackageError, AppleFmAdapterPackageMetadata,
+};
 use psionic_core::{DType, Device, Shape, TensorSpec};
 use psionic_data::{
     AppleAdapterDatasetContract, AppleAdapterMessage, AppleAdapterMessageRole,
     AppleAdapterSampleKind, AppleAdapterSampleTokenCapture, DatasetPackingPlan,
-    DatasetPackingPolicy,
+    DatasetPackingPolicy, TokenizerDigest,
 };
 use psionic_environments::{
     AppleAdapterEnvironmentBundle, AppleAdapterEnvironmentError, EnvironmentWorkloadClass,
@@ -14,10 +17,14 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    FixedBudgetTrainingRun, TrainingCoreError, TrainingGradientBatch, TrainingLoopBudget,
-    TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy, TrainingParameterClass,
-    TrainingParameterGroupState, TrainingStepInput, TrainingTensorBuffer,
+    FixedBudgetTrainingRun, ModelAdapterDelta, ModelIoArtifactReceipt, PortableModelBundle,
+    PortableTokenizerAssetFormat, PortableTokenizerBinding, TrainingCoreError,
+    TrainingGradientBatch, TrainingLoopBudget, TrainingOptimizerConfig,
+    TrainingOptimizerResidencyPolicy, TrainingParameterClass, TrainingParameterGroupState,
+    TrainingRunSummary, TrainingStepInput, TrainingStepReceipt, TrainingTensorBuffer,
 };
+
+const OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION: &str = "openagents.apple-fmadapter.v1";
 
 /// Precision posture for the first repo-owned Apple reference backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -605,6 +612,384 @@ struct ForwardRecord {
     loss: f32,
 }
 
+/// Higher-level SFT/export request layered on top of the repo-owned Apple backend.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterSftRunRequest {
+    /// Stable dataset ref carried into export lineage.
+    pub dataset_ref: String,
+    /// Stable benchmark refs carried into export lineage.
+    #[serde(default)]
+    pub benchmark_refs: Vec<String>,
+    /// Stable validator policy ref carried into export lineage.
+    pub validator_policy_ref: String,
+    /// Stable package name or package stem for the final `.fmadapter`.
+    pub package_name: String,
+    /// Optional author label surfaced in package metadata.
+    #[serde(default)]
+    pub author: String,
+    /// Optional description surfaced in package metadata.
+    #[serde(default)]
+    pub description: String,
+    /// Optional license surfaced in package metadata.
+    #[serde(default)]
+    pub license: String,
+    /// Logical training start timestamp for the first step.
+    pub started_at_ms: u64,
+    /// Duration applied to each produced step receipt.
+    pub step_duration_ms: u64,
+}
+
+impl AppleAdapterSftRunRequest {
+    fn validate(&self) -> Result<(), AppleAdapterSftError> {
+        if self.dataset_ref.trim().is_empty() {
+            return Err(AppleAdapterSftError::MissingDatasetRef);
+        }
+        if self.validator_policy_ref.trim().is_empty() {
+            return Err(AppleAdapterSftError::MissingValidatorPolicyRef);
+        }
+        if self.package_name.trim().is_empty() {
+            return Err(AppleAdapterSftError::MissingPackageName);
+        }
+        if self.step_duration_ms == 0 {
+            return Err(AppleAdapterSftError::InvalidStepDuration);
+        }
+        for benchmark_ref in &self.benchmark_refs {
+            if benchmark_ref.trim().is_empty() {
+                return Err(AppleAdapterSftError::InvalidBenchmarkRef);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Typed training summary emitted by the higher-level Apple SFT lane.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterSftTrainingSummary {
+    /// Fixed-budget training summary.
+    pub run_summary: TrainingRunSummary,
+    /// Repo-owned Apple execution provenance.
+    pub execution_provenance: AppleAdapterExecutionProvenance,
+    /// Stable dataset ref carried into export lineage.
+    pub dataset_ref: String,
+    /// Stable validator policy ref carried into export lineage.
+    pub validator_policy_ref: String,
+    /// Stable benchmark refs carried into export lineage.
+    #[serde(default)]
+    pub benchmark_refs: Vec<String>,
+    /// Stable base-model signature the adapter targets.
+    pub base_model_signature: String,
+    /// Stable initial adapter state-dict digest.
+    pub initial_state_dict_digest: String,
+    /// Stable final adapter state-dict digest.
+    pub final_state_dict_digest: String,
+    /// Stable final package digest.
+    pub package_digest: String,
+    /// Stable final adapter identifier.
+    pub adapter_identifier: String,
+}
+
+/// Full higher-level Apple SFT outcome including export artifacts.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppleAdapterSftRunOutcome {
+    /// Step receipts emitted by the fixed-budget core.
+    pub step_receipts: Vec<TrainingStepReceipt>,
+    /// Gradient-production records emitted by the repo-owned Apple backend.
+    pub gradient_records: Vec<AppleAdapterGradientBatchRecord>,
+    /// Summary and reproducibility metadata.
+    pub summary: AppleAdapterSftTrainingSummary,
+    /// Initial adapter-only portable bundle receipt.
+    pub initial_bundle_receipt: ModelIoArtifactReceipt,
+    /// Final adapter-only portable bundle receipt.
+    pub final_bundle_receipt: ModelIoArtifactReceipt,
+    /// Typed adapter delta derived between the initial and final bundles.
+    pub adapter_delta: ModelAdapterDelta,
+    /// Final Apple package held in memory.
+    pub adapter_package: AppleFmAdapterPackage,
+}
+
+impl AppleAdapterSftRunOutcome {
+    /// Writes the final `.fmadapter` directory to disk.
+    pub fn write_package_to_directory(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<(), AppleAdapterSftError> {
+        self.adapter_package.write_to_directory(path)?;
+        Ok(())
+    }
+}
+
+/// Runs the first honest Rust-native Apple adapter SFT lane and returns a valid `.fmadapter`.
+pub fn run_apple_adapter_sft_export(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
+    environment: &AppleAdapterEnvironmentBundle,
+    request: &AppleAdapterSftRunRequest,
+) -> Result<AppleAdapterSftRunOutcome, AppleAdapterSftError> {
+    request.validate()?;
+    let mut run = backend.initialize_run()?;
+    let initial_groups = backend.snapshot_training_groups(&run)?;
+    let mut step_receipts = Vec::new();
+    let mut gradient_records = Vec::new();
+    for step_index in 0..backend.config().budget.max_steps {
+        let batch_index = step_index as usize % backend.batches().len().max(1);
+        let started_at_ms =
+            request.started_at_ms + step_index.saturating_mul(request.step_duration_ms);
+        let finished_at_ms = started_at_ms + request.step_duration_ms;
+        let (step_input, gradient_record) =
+            backend.produce_step_input(&run, batch_index, started_at_ms, finished_at_ms)?;
+        gradient_records.push(gradient_record);
+        step_receipts.push(run.apply_step(step_input)?);
+    }
+    let run_summary = run.summary();
+    let final_groups = backend.snapshot_training_groups(&run)?;
+
+    let tokenizer_binding = tokenizer_binding(dataset.metadata.tokenizer.clone(), environment);
+    let initial_bundle = PortableModelBundle::from_training_groups(
+        "apple_adapter_reference",
+        backend.config().model.base_model_signature.clone(),
+        backend.config().checkpoint_family.clone(),
+        Some(format!("checkpoint://{}/initial", backend.config().run_id)),
+        initial_groups.as_slice(),
+        tokenizer_binding.clone(),
+        dataset
+            .metadata
+            .tokenizer
+            .template_digest
+            .clone()
+            .or_else(|| Some(backend.config().model.prompt_shaping_digest.clone())),
+    )?;
+    let final_bundle = PortableModelBundle::from_training_groups(
+        "apple_adapter_reference",
+        backend.config().model.base_model_signature.clone(),
+        backend.config().checkpoint_family.clone(),
+        Some(format!("checkpoint://{}/final", backend.config().run_id)),
+        final_groups.as_slice(),
+        tokenizer_binding,
+        dataset
+            .metadata
+            .tokenizer
+            .template_digest
+            .clone()
+            .or_else(|| Some(backend.config().model.prompt_shaping_digest.clone())),
+    )?;
+    let (initial_bundle_bytes, initial_bundle_receipt) = initial_bundle.export_safetensors()?;
+    let (final_bundle_bytes, final_bundle_receipt) = final_bundle.export_safetensors()?;
+    let adapter_identifier = stable_adapter_identifier(
+        request.package_name.as_str(),
+        final_bundle_receipt.artifact_digest.as_str(),
+    );
+    let adapter_delta = crate::PortableModelStateDict::derive_adapter_delta(
+        &initial_bundle.state_dict,
+        &final_bundle.state_dict,
+        adapter_identifier.clone(),
+    )?;
+    let package_name =
+        normalized_package_name(request.package_name.as_str(), adapter_identifier.as_str());
+    let package = AppleFmAdapterPackage::new(
+        package_name,
+        export_metadata(
+            backend,
+            dataset.metadata.tokenizer.clone(),
+            environment,
+            request,
+            adapter_identifier.as_str(),
+            &initial_bundle_receipt,
+            &final_bundle_receipt,
+        ),
+        final_bundle_bytes,
+        None,
+        None,
+    )?;
+    let summary = AppleAdapterSftTrainingSummary {
+        run_summary,
+        execution_provenance: backend.provenance().clone(),
+        dataset_ref: request.dataset_ref.clone(),
+        validator_policy_ref: request.validator_policy_ref.clone(),
+        benchmark_refs: request.benchmark_refs.clone(),
+        base_model_signature: backend.config().model.base_model_signature.clone(),
+        initial_state_dict_digest: initial_bundle_receipt.state_dict_digest.clone(),
+        final_state_dict_digest: final_bundle_receipt.state_dict_digest.clone(),
+        package_digest: package.package_digest.clone(),
+        adapter_identifier: adapter_identifier.clone(),
+    };
+
+    let _ = initial_bundle_bytes;
+    Ok(AppleAdapterSftRunOutcome {
+        step_receipts,
+        gradient_records,
+        summary,
+        initial_bundle_receipt,
+        final_bundle_receipt,
+        adapter_delta,
+        adapter_package: package,
+    })
+}
+
+fn tokenizer_binding(
+    tokenizer_digest: TokenizerDigest,
+    environment: &AppleAdapterEnvironmentBundle,
+) -> PortableTokenizerBinding {
+    PortableTokenizerBinding::new(
+        tokenizer_digest,
+        PortableTokenizerAssetFormat::PsionicDigest,
+        environment.core_package.key.version.clone(),
+    )
+}
+
+fn export_metadata(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    tokenizer_digest: TokenizerDigest,
+    environment: &AppleAdapterEnvironmentBundle,
+    request: &AppleAdapterSftRunRequest,
+    adapter_identifier: &str,
+    initial_bundle_receipt: &ModelIoArtifactReceipt,
+    final_bundle_receipt: &ModelIoArtifactReceipt,
+) -> AppleFmAdapterPackageMetadata {
+    let mut creator_defined = BTreeMap::new();
+    creator_defined.insert(
+        String::from("packageFormatVersion"),
+        serde_json::Value::String(String::from(
+            OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION,
+        )),
+    );
+    creator_defined.insert(
+        String::from("tokenizerDigest"),
+        serde_json::Value::String(tokenizer_digest.tokenizer_digest.clone()),
+    );
+    creator_defined.insert(
+        String::from("templateDigest"),
+        serde_json::Value::String(
+            tokenizer_digest
+                .template_digest
+                .clone()
+                .unwrap_or_else(|| backend.config().model.prompt_shaping_digest.clone()),
+        ),
+    );
+    creator_defined.insert(
+        String::from("trainingEnvironmentRef"),
+        serde_json::Value::String(environment.core_package.key.environment_ref.clone()),
+    );
+    creator_defined.insert(
+        String::from("datasetRef"),
+        serde_json::Value::String(request.dataset_ref.clone()),
+    );
+    creator_defined.insert(
+        String::from("benchmarkRefs"),
+        serde_json::to_value(&request.benchmark_refs).unwrap_or_else(|_| serde_json::json!([])),
+    );
+    creator_defined.insert(
+        String::from("validatorPolicyRef"),
+        serde_json::Value::String(request.validator_policy_ref.clone()),
+    );
+    creator_defined.insert(
+        String::from("draftModelPresent"),
+        serde_json::Value::Bool(false),
+    );
+    creator_defined.insert(
+        String::from("initialStateDictDigest"),
+        serde_json::Value::String(initial_bundle_receipt.state_dict_digest.clone()),
+    );
+    creator_defined.insert(
+        String::from("finalStateDictDigest"),
+        serde_json::Value::String(final_bundle_receipt.state_dict_digest.clone()),
+    );
+    creator_defined.insert(
+        String::from("packingPolicyDigest"),
+        serde_json::Value::String(backend.provenance().packing_policy_digest.clone()),
+    );
+    creator_defined.insert(
+        String::from("precisionPolicy"),
+        serde_json::Value::String(
+            serde_json::to_string(&backend.provenance().precision_policy)
+                .unwrap_or_else(|_| String::from("\"f32_reference\""))
+                .trim_matches('"')
+                .to_string(),
+        ),
+    );
+    creator_defined.insert(
+        String::from("activationCheckpointPolicy"),
+        serde_json::Value::String(
+            serde_json::to_string(&backend.provenance().activation_checkpoint_policy)
+                .unwrap_or_else(|_| String::from("\"disabled\""))
+                .trim_matches('"')
+                .to_string(),
+        ),
+    );
+    creator_defined.insert(
+        String::from("adapterArtifactDigest"),
+        serde_json::Value::String(final_bundle_receipt.artifact_digest.clone()),
+    );
+
+    AppleFmAdapterPackageMetadata {
+        adapter_identifier: String::from(adapter_identifier),
+        author: request.author.clone(),
+        base_model_signature: backend.config().model.base_model_signature.clone(),
+        creator_defined,
+        description: request.description.clone(),
+        license: request.license.clone(),
+        lora_rank: backend
+            .config()
+            .model
+            .targets
+            .iter()
+            .map(|target| target.lora_rank as u32)
+            .max()
+            .unwrap_or(1),
+        speculative_decoding_draft_token_count: 0,
+    }
+}
+
+fn stable_adapter_identifier(package_name: &str, artifact_digest: &str) -> String {
+    let stem = package_name.trim_end_matches(".fmadapter");
+    let slug = stem
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let digest = Sha256::digest(artifact_digest.as_bytes());
+    format!("fmadapter-{slug}-{}", hex::encode(digest)[..8].to_string())
+}
+
+fn normalized_package_name(package_name: &str, adapter_identifier: &str) -> String {
+    if package_name.trim().ends_with(".fmadapter") {
+        package_name.trim().to_string()
+    } else if package_name.trim().is_empty() {
+        format!("{adapter_identifier}.fmadapter")
+    } else {
+        format!("{}.fmadapter", package_name.trim())
+    }
+}
+
+/// Error surfaced by the higher-level Apple SFT/export lane.
+#[derive(Debug, Error)]
+pub enum AppleAdapterSftError {
+    #[error("Apple adapter SFT export request is missing `dataset_ref`")]
+    MissingDatasetRef,
+    #[error("Apple adapter SFT export request is missing `validator_policy_ref`")]
+    MissingValidatorPolicyRef,
+    #[error("Apple adapter SFT export request is missing `package_name`")]
+    MissingPackageName,
+    #[error("Apple adapter SFT export request requires `step_duration_ms > 0`")]
+    InvalidStepDuration,
+    #[error("Apple adapter SFT export request contains an empty benchmark ref")]
+    InvalidBenchmarkRef,
+    #[error(transparent)]
+    Execution(#[from] AppleAdapterTrainingExecutionError),
+    #[error(transparent)]
+    TrainingCore(#[from] TrainingCoreError),
+    #[error(transparent)]
+    ModelIo(#[from] crate::ModelIoError),
+    #[error(transparent)]
+    Package(#[from] AppleFmAdapterPackageError),
+}
+
 /// Error surfaced by the repo-owned Apple backend.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum AppleAdapterTrainingExecutionError {
@@ -996,6 +1381,7 @@ fn canonical_json<T: Serialize>(value: &T) -> String {
 
 #[cfg(test)]
 mod tests {
+    use psionic_adapters::AppleFmAdapterPackage;
     use psionic_data::{
         AppleAdapterDatasetMetadata, AppleAdapterSampleTokenCapture, DatasetKey,
         DatasetPackingMode, OverlongSequencePosture, TokenizerDigest, TokenizerFamily,
@@ -1007,6 +1393,7 @@ mod tests {
         EnvironmentRubricHook, EnvironmentRubricScoreKind, EnvironmentToolContract,
         EnvironmentToolInterface,
     };
+    use tempfile::tempdir;
 
     use super::*;
 
@@ -1260,5 +1647,56 @@ mod tests {
             err,
             AppleAdapterTrainingExecutionError::TokenizerDigestMismatch { .. }
         ));
+    }
+
+    #[test]
+    fn apple_adapter_sft_lane_trains_and_exports_valid_fmadapter_package()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = dataset();
+        let environment = environment_bundle();
+        let backend = AppleAdapterTrainingExecutionBackend::new(
+            config(),
+            &dataset,
+            captures(&dataset).as_slice(),
+            &environment,
+        )?;
+        let request = AppleAdapterSftRunRequest {
+            dataset_ref: String::from("fixture.apple_adapter.minimal_sft"),
+            benchmark_refs: vec![String::from("apple_adapter_smoke@2026-03-15")],
+            validator_policy_ref: String::from("validator.apple_adapter.smoke.v1"),
+            package_name: String::from("trained_helpdesk_adapter"),
+            author: String::from("openagents"),
+            description: String::from("Repo-owned Apple adapter SFT test"),
+            license: String::from("internal-test"),
+            started_at_ms: 2_000,
+            step_duration_ms: 40,
+        };
+        let outcome = run_apple_adapter_sft_export(&backend, &dataset, &environment, &request)?;
+        assert_eq!(outcome.step_receipts.len(), 2);
+        assert_eq!(outcome.summary.dataset_ref, request.dataset_ref);
+        assert!(!outcome.adapter_delta.tensors.is_empty());
+
+        let temp = tempdir()?;
+        let package_path = temp.path().join("trained_helpdesk_adapter.fmadapter");
+        outcome.write_package_to_directory(&package_path)?;
+        let reread = AppleFmAdapterPackage::read_from_directory(&package_path)?;
+        assert_eq!(
+            reread.metadata.base_model_signature,
+            backend.config().model.base_model_signature
+        );
+        assert_eq!(
+            reread.lineage.dataset_ref.as_deref(),
+            Some(request.dataset_ref.as_str())
+        );
+        assert_eq!(
+            reread.lineage.validator_policy_ref.as_deref(),
+            Some(request.validator_policy_ref.as_str())
+        );
+        assert_eq!(
+            reread.lineage.package_format_version.as_deref(),
+            Some(OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION)
+        );
+        assert_eq!(reread.package_digest, outcome.summary.package_digest);
+        Ok(())
     }
 }
