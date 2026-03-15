@@ -38,12 +38,12 @@ anchors the corpus to:
 - held-out rows must stay stable-digest disjoint from `train`
 - every row must carry reviewed task-family and source-provenance tags in the
   corpus manifest
-- the current version is positive-path only; negative/refusal rows are added in
-  the follow-on issue
+- explicit negative, correction, and refusal rows must remain present in
+  `train`, `held_out`, and `benchmark`
 
 ## Dataset Identity
 
 - dataset ref:
   `dataset://openagents/apple_adapter/psionic_architecture_explainer`
 - version:
-  `2026.03.15.1`
+  `2026.03.15.2`

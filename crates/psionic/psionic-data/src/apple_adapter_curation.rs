@@ -510,4 +510,34 @@ mod tests {
             AppleAdapterCuratedCorpusError::StableDigestLeakage { .. }
         ));
     }
+
+    #[test]
+    fn architecture_explainer_corpus_contains_negative_and_refusal_coverage() {
+        let manifest = manifest();
+        let negative_samples = manifest
+            .samples
+            .iter()
+            .filter(|sample| {
+                sample.task_family == AppleAdapterCorpusTaskFamily::NegativeRefusalCorrection
+            })
+            .collect::<Vec<_>>();
+        let covered_splits = negative_samples
+            .iter()
+            .map(|sample| sample.split)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            covered_splits,
+            BTreeSet::from([
+                AppleAdapterCuratedSplit::Train,
+                AppleAdapterCuratedSplit::HeldOut,
+                AppleAdapterCuratedSplit::Benchmark,
+            ])
+        );
+        assert!(negative_samples.iter().any(|sample| {
+            sample.expected_behavior == AppleAdapterCorpusExpectedBehavior::Correction
+        }));
+        assert!(negative_samples.iter().any(|sample| {
+            sample.expected_behavior == AppleAdapterCorpusExpectedBehavior::Refusal
+        }));
+    }
 }

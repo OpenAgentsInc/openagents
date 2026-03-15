@@ -1748,6 +1748,23 @@ explainer` target:
 This is still a first reviewed positive-path corpus, not yet the full
 truthfulness or refusal slice for the first real run.
 
+On 2026-03-15, GitHub issue `#3652` extended that same corpus with explicit
+negative, correction, and retrieval-style refusal rows across `train`,
+`held_out`, and `benchmark`:
+
+- Apple-lane overclaim correction for single-host versus distributed-training
+  claims
+- bridge-versus-training-engine correction so the runtime sidecar is not
+  confused with the Rust-owned training path
+- ownership-boundary correction for pane-facing UX versus reusable Psionic or
+  provider-substrate code
+- retrieval-style refusal when the answer depends on current run artifacts,
+  current Apple runtime state, or other stale-able evidence
+
+That means the first reviewed real-run corpus no longer teaches only happy-path
+architecture answers; it now explicitly teaches the adapter when to correct,
+refuse, or avoid overclaiming.
+
 ### 5. `Psionic Eval: create the Rust-native eval and rubric runtime`
 
 Status: implemented on 2026-03-14 via GitHub issue `#3568`.

@@ -3,7 +3,7 @@
   "target_title": "Psionic architecture explainer",
   "dataset": {
     "dataset_ref": "dataset://openagents/apple_adapter/psionic_architecture_explainer",
-    "version": "2026.03.15.1"
+    "version": "2026.03.15.2"
   },
   "target_scope": "Teach stable Psionic architecture, ownership boundaries, truthful implemented-vs-planned answers, and operator workflow explanations. Use retrieval for volatile repo state instead of weight memorization.",
   "source_inventory": [
@@ -54,6 +54,18 @@
       "path": "crates/openagents-provider-substrate/src/lib.rs",
       "source_kind": "stable_code_surface",
       "summary": "Reusable provider-domain substrate and launch-product derivation surface."
+    },
+    {
+      "source_id": "repo_agent_contract",
+      "path": "AGENTS.md",
+      "source_kind": "canonical_doc",
+      "summary": "Repo-local agent contract, MVP pruning, and archived Backroom code guardrails."
+    },
+    {
+      "source_id": "prereq_audit",
+      "path": "docs/audits/2026-03-15-psionic-apple-adapter-training-prerequisites-audit.md",
+      "source_kind": "audit",
+      "summary": "Reviewed rationale for anti-overclaim behavior and retrieval-first handling of stale evidence."
     }
   ],
   "samples": [
@@ -106,6 +118,30 @@
       "source_ids": ["ownership", "provider_substrate_code"]
     },
     {
+      "split": "train",
+      "sample_id": "sample-000007",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["repo_agent_contract", "mvp"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000008",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["ownership"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000009",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system", "headless_compute"]
+    },
+    {
       "split": "held_out",
       "sample_id": "sample-000001",
       "task_family": "operator_workflow_explanation",
@@ -134,6 +170,22 @@
       "sample_id": "sample-000004",
       "task_family": "structured_summary_conformance",
       "expected_behavior": "structured_answer",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["mvp", "train_system"]
+    },
+    {
+      "split": "held_out",
+      "sample_id": "sample-000005",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "refusal",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system", "prereq_audit"]
+    },
+    {
+      "split": "held_out",
+      "sample_id": "sample-000006",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
       "review_status": "maintainer_reviewed",
       "source_ids": ["mvp", "train_system"]
     },
@@ -168,6 +220,30 @@
       "expected_behavior": "tool_lookup_routing",
       "review_status": "maintainer_reviewed",
       "source_ids": ["ownership", "apple_training_control"]
+    },
+    {
+      "split": "benchmark",
+      "sample_id": "sample-000005",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system"]
+    },
+    {
+      "split": "benchmark",
+      "sample_id": "sample-000006",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system", "headless_compute"]
+    },
+    {
+      "split": "benchmark",
+      "sample_id": "sample-000007",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "refusal",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["headless_compute", "prereq_audit"]
     }
   ]
 }
