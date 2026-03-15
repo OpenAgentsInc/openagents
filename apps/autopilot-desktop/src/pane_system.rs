@@ -78,6 +78,9 @@ const JOB_INBOX_MAX_ROWS: usize = 8;
 const APPLE_ADAPTER_TRAINING_RUN_ROW_HEIGHT: f32 = 44.0;
 const APPLE_ADAPTER_TRAINING_RUN_ROW_GAP: f32 = 8.0;
 const APPLE_ADAPTER_TRAINING_MAX_RUN_ROWS: usize = 9;
+const APPLE_ADAPTER_TRAINING_INPUT_HEIGHT: f32 = 26.0;
+const APPLE_ADAPTER_TRAINING_INPUT_GAP: f32 = 8.0;
+const APPLE_ADAPTER_TRAINING_PREFLIGHT_HEIGHT: f32 = 120.0;
 const RELAY_CONNECTIONS_ROW_HEIGHT: f32 = 30.0;
 const RELAY_CONNECTIONS_ROW_GAP: f32 = 6.0;
 const RELAY_CONNECTIONS_MAX_ROWS: usize = 8;
@@ -241,6 +244,52 @@ fn focus_apple_fm_workbench_prompt_for_pane_open(state: &mut RenderState) {
     state.job_history_inputs.search_job_id.blur();
     state.chat_inputs.composer.blur();
     state.apple_fm_workbench_inputs.instructions.focus();
+}
+
+fn focus_apple_adapter_training_input_for_pane_open(state: &mut RenderState) {
+    state.spark_inputs.invoice_amount.blur();
+    state.spark_inputs.send_request.blur();
+    state.spark_inputs.send_amount.blur();
+    state.pay_invoice_inputs.payment_request.blur();
+    state.pay_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.description.blur();
+    state.create_invoice_inputs.expiry_seconds.blur();
+    state.relay_connections_inputs.relay_url.blur();
+    state.network_requests_inputs.compute_family.blur();
+    state.network_requests_inputs.preferred_backend.blur();
+    state.network_requests_inputs.capability_constraints.blur();
+    state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.delivery_start_minutes.blur();
+    state.network_requests_inputs.window_minutes.blur();
+    state.network_requests_inputs.max_price_sats.blur();
+    state.local_inference_inputs.prompt.blur();
+    state.local_inference_inputs.requested_model.blur();
+    state.local_inference_inputs.max_tokens.blur();
+    state.local_inference_inputs.temperature.blur();
+    state.local_inference_inputs.top_k.blur();
+    state.local_inference_inputs.top_p.blur();
+    state.apple_fm_workbench_inputs.instructions.blur();
+    state.apple_fm_workbench_inputs.prompt.blur();
+    state.apple_fm_workbench_inputs.model.blur();
+    state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.adapter_id.blur();
+    state.apple_fm_workbench_inputs.adapter_package_path.blur();
+    state.apple_fm_workbench_inputs.max_tokens.blur();
+    state.apple_fm_workbench_inputs.temperature.blur();
+    state.apple_fm_workbench_inputs.top.blur();
+    state.apple_fm_workbench_inputs.probability_threshold.blur();
+    state.apple_fm_workbench_inputs.seed.blur();
+    state.apple_fm_workbench_inputs.schema_json.blur();
+    state.apple_fm_workbench_inputs.transcript_json.blur();
+    state.settings_inputs.relay_url.blur();
+    state.settings_inputs.wallet_default_send_sats.blur();
+    state.settings_inputs.provider_max_queue_depth.blur();
+    state.credentials_inputs.variable_name.blur();
+    state.credentials_inputs.variable_value.blur();
+    state.job_history_inputs.search_job_id.blur();
+    state.chat_inputs.composer.blur();
+    state.apple_adapter_training_inputs.train_dataset_path.focus();
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -433,6 +482,7 @@ pub enum AppleFmWorkbenchPaneAction {
 pub enum AppleAdapterTrainingPaneAction {
     CycleStageFilter,
     SelectRun(usize),
+    LaunchRun,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1152,6 +1202,8 @@ impl PaneController {
             focus_local_inference_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleFmWorkbench {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
+        } else if kind == PaneKind::AppleAdapterTraining {
+            focus_apple_adapter_training_input_for_pane_open(state);
         }
         id
     }
@@ -1547,6 +1599,24 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::AppleAdapterTraining => {
+                if apple_adapter_training_train_dataset_input_bounds(content_bounds)
+                    .contains(point)
+                    || apple_adapter_training_held_out_dataset_input_bounds(content_bounds)
+                        .contains(point)
+                    || apple_adapter_training_package_name_input_bounds(content_bounds)
+                        .contains(point)
+                    || apple_adapter_training_author_input_bounds(content_bounds).contains(point)
+                    || apple_adapter_training_description_input_bounds(content_bounds)
+                        .contains(point)
+                    || apple_adapter_training_license_input_bounds(content_bounds)
+                        .contains(point)
+                    || apple_adapter_training_base_url_input_bounds(content_bounds)
+                        .contains(point)
+                {
+                    return CursorIcon::Text;
+                }
+            }
             PaneKind::Settings => {
                 if settings_relay_input_bounds(content_bounds).contains(point)
                     || settings_wallet_default_input_bounds(content_bounds).contains(point)
@@ -1602,7 +1672,6 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::RivePreview
             | PaneKind::Presentation
             | PaneKind::FrameDebugger
-            | PaneKind::AppleAdapterTraining
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
             | PaneKind::ReciprocalLoop
@@ -2768,6 +2837,67 @@ fn apple_adapter_training_panel_body_bounds(panel: Bounds) -> Bounds {
 
 pub fn apple_adapter_training_launch_panel_body_bounds(content_bounds: Bounds) -> Bounds {
     apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).launch_panel)
+}
+
+pub fn apple_adapter_training_preflight_summary_bounds(content_bounds: Bounds) -> Bounds {
+    let body = apple_adapter_training_launch_panel_body_bounds(content_bounds);
+    Bounds::new(
+        body.origin.x,
+        body.origin.y,
+        body.size.width,
+        APPLE_ADAPTER_TRAINING_PREFLIGHT_HEIGHT.min(body.size.height.max(0.0)),
+    )
+}
+
+fn apple_adapter_training_launch_input_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let preflight = apple_adapter_training_preflight_summary_bounds(content_bounds);
+    Bounds::new(
+        preflight.origin.x,
+        preflight.max_y()
+            + 12.0
+            + row_index as f32
+                * (APPLE_ADAPTER_TRAINING_INPUT_HEIGHT + APPLE_ADAPTER_TRAINING_INPUT_GAP),
+        preflight.size.width,
+        APPLE_ADAPTER_TRAINING_INPUT_HEIGHT,
+    )
+}
+
+pub fn apple_adapter_training_train_dataset_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 0)
+}
+
+pub fn apple_adapter_training_held_out_dataset_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 1)
+}
+
+pub fn apple_adapter_training_package_name_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 2)
+}
+
+pub fn apple_adapter_training_author_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 3)
+}
+
+pub fn apple_adapter_training_description_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 4)
+}
+
+pub fn apple_adapter_training_license_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 5)
+}
+
+pub fn apple_adapter_training_base_url_input_bounds(content_bounds: Bounds) -> Bounds {
+    apple_adapter_training_launch_input_bounds(content_bounds, 6)
+}
+
+pub fn apple_adapter_training_launch_button_bounds(content_bounds: Bounds) -> Bounds {
+    let base_url = apple_adapter_training_base_url_input_bounds(content_bounds);
+    Bounds::new(
+        base_url.origin.x,
+        base_url.max_y() + 12.0,
+        base_url.size.width,
+        28.0,
+    )
 }
 
 pub fn apple_adapter_training_filter_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -5506,6 +5636,11 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::AppleAdapterTraining => {
+            if apple_adapter_training_launch_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleAdapterTraining(
+                    AppleAdapterTrainingPaneAction::LaunchRun,
+                ));
+            }
             if apple_adapter_training_filter_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AppleAdapterTraining(
                     AppleAdapterTrainingPaneAction::CycleStageFilter,

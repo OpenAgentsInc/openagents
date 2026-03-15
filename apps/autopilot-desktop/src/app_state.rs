@@ -549,6 +549,33 @@ impl Default for AppleFmWorkbenchPaneInputs {
     }
 }
 
+pub struct AppleAdapterTrainingPaneInputs {
+    pub train_dataset_path: TextInput,
+    pub held_out_dataset_path: TextInput,
+    pub package_name: TextInput,
+    pub author: TextInput,
+    pub description: TextInput,
+    pub license: TextInput,
+    pub apple_fm_base_url: TextInput,
+}
+
+impl Default for AppleAdapterTrainingPaneInputs {
+    fn default() -> Self {
+        Self {
+            train_dataset_path: TextInput::new().placeholder("Path to training dataset JSONL"),
+            held_out_dataset_path: TextInput::new()
+                .placeholder("Path to held-out evaluation dataset JSONL"),
+            package_name: TextInput::new().placeholder("Adapter package name"),
+            author: TextInput::new().placeholder("Author"),
+            description: TextInput::new().placeholder("Short package description"),
+            license: TextInput::new().placeholder("License"),
+            apple_fm_base_url: TextInput::new()
+                .value("http://127.0.0.1:11435")
+                .placeholder("Apple FM bridge base URL"),
+        }
+    }
+}
+
 pub struct SettingsPaneInputs {
     pub relay_url: TextInput,
     pub wallet_default_send_sats: TextInput,
@@ -10225,6 +10252,7 @@ pub struct RenderState {
     pub network_requests_inputs: NetworkRequestsPaneInputs,
     pub local_inference_inputs: LocalInferencePaneInputs,
     pub apple_fm_workbench_inputs: AppleFmWorkbenchPaneInputs,
+    pub apple_adapter_training_inputs: AppleAdapterTrainingPaneInputs,
     pub settings_inputs: SettingsPaneInputs,
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,

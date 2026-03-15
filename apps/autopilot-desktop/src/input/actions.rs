@@ -9332,6 +9332,46 @@ pub(super) fn run_apple_adapter_training_action(
             }
             true
         }
+        AppleAdapterTrainingPaneAction::LaunchRun => {
+            let form = match crate::panes::apple_adapter_training::validate_launch_form(
+                &state.apple_adapter_training_inputs,
+            ) {
+                Ok(form) => form,
+                Err(error) => {
+                    state.apple_adapter_training.last_error = Some(error);
+                    state.apple_adapter_training.last_action =
+                        Some("Apple adapter training launch blocked".to_string());
+                    return true;
+                }
+            };
+            let previous_run_ids = crate::desktop_control::current_training_status(state)
+                .operator
+                .runs
+                .iter()
+                .map(|run| run.run_id.clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            let response = crate::desktop_control::run_inline_action_request(
+                state,
+                crate::desktop_control::DesktopControlActionRequest::LaunchAppleAdapterTraining {
+                    train_dataset_path: form.train_dataset_path.clone(),
+                    held_out_dataset_path: form.held_out_dataset_path.clone(),
+                    package_name: form.package_name.clone(),
+                    author: form.author.clone(),
+                    description: form.description.clone(),
+                    license: form.license.clone(),
+                    apple_fm_base_url: form.apple_fm_base_url.clone(),
+                },
+            );
+            let current_training = crate::desktop_control::current_training_status(state);
+            crate::panes::apple_adapter_training::apply_launch_response(
+                &mut state.apple_adapter_training,
+                &previous_run_ids,
+                &response,
+                &current_training,
+                form.package_name.as_str(),
+            );
+            true
+        }
     }
 }
 
@@ -9418,6 +9458,7 @@ pub(super) fn run_provider_control_action(
         }
         ProviderControlPaneAction::OpenAppleAdapterTraining => {
             focus_or_create_pane_kind(state, crate::app_state::PaneKind::AppleAdapterTraining);
+            state.apple_adapter_training_inputs.train_dataset_path.focus();
             state
                 .provider_control
                 .record_action("Opened Apple adapter training");

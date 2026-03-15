@@ -283,6 +283,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             network_requests_inputs: crate::app_state::NetworkRequestsPaneInputs::default(),
             local_inference_inputs: crate::app_state::LocalInferencePaneInputs::default(),
             apple_fm_workbench_inputs: crate::app_state::AppleFmWorkbenchPaneInputs::default(),
+            apple_adapter_training_inputs:
+                crate::app_state::AppleAdapterTrainingPaneInputs::default(),
             settings_inputs,
             credentials_inputs,
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
@@ -1153,6 +1155,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.network_requests_inputs,
             &mut state.local_inference_inputs,
             &mut state.apple_fm_workbench_inputs,
+            &mut state.apple_adapter_training_inputs,
             &mut state.settings_inputs,
             &mut state.credentials_inputs,
             &mut state.job_history_inputs,
