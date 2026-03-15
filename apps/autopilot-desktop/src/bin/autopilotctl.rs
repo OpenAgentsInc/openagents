@@ -296,11 +296,28 @@ enum GptOssCommand {
 
 #[derive(Subcommand, Debug)]
 enum AppleFmCommand {
+    Status,
+    List,
     Refresh {
         #[arg(long)]
         wait: bool,
         #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
         timeout_ms: u64,
+    },
+    Load {
+        package_path: PathBuf,
+        #[arg(long)]
+        adapter_id: Option<String>,
+    },
+    Unload {
+        adapter_id: String,
+    },
+    Attach {
+        session_id: String,
+        adapter_id: String,
+    },
+    Detach {
+        session_id: String,
     },
     SmokeTest,
 }
@@ -563,10 +580,35 @@ impl GptOssCommand {
 }
 
 impl AppleFmCommand {
-    fn action_request(&self) -> DesktopControlActionRequest {
+    fn action_request(&self) -> Option<DesktopControlActionRequest> {
         match self {
-            Self::Refresh { .. } => DesktopControlActionRequest::RefreshAppleFm,
-            Self::SmokeTest => DesktopControlActionRequest::RunAppleFmSmokeTest,
+            Self::Status | Self::List => None,
+            Self::Refresh { .. } => Some(DesktopControlActionRequest::RefreshAppleFm),
+            Self::Load {
+                package_path,
+                adapter_id,
+            } => Some(DesktopControlActionRequest::LoadAppleFmAdapter {
+                package_path: package_path.display().to_string(),
+                requested_adapter_id: adapter_id.clone(),
+            }),
+            Self::Unload { adapter_id } => {
+                Some(DesktopControlActionRequest::UnloadAppleFmAdapter {
+                    adapter_id: adapter_id.clone(),
+                })
+            }
+            Self::Attach {
+                session_id,
+                adapter_id,
+            } => Some(DesktopControlActionRequest::AttachAppleFmSessionAdapter {
+                session_id: session_id.clone(),
+                adapter_id: adapter_id.clone(),
+            }),
+            Self::Detach { session_id } => {
+                Some(DesktopControlActionRequest::DetachAppleFmSessionAdapter {
+                    session_id: session_id.clone(),
+                })
+            }
+            Self::SmokeTest => Some(DesktopControlActionRequest::RunAppleFmSmokeTest),
         }
     }
 }
@@ -1019,8 +1061,27 @@ fn main() -> Result<()> {
             }
         },
         Command::AppleFm { command } => match command {
+            AppleFmCommand::Status => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.apple_fm)?;
+                } else {
+                    print_apple_fm_text(&snapshot);
+                }
+            }
+            AppleFmCommand::List => {
+                let snapshot = client.snapshot()?;
+                if json_output {
+                    print_json(&snapshot.apple_fm.loaded_adapters)?;
+                } else {
+                    print_apple_fm_adapter_list_text(&snapshot);
+                }
+            }
             AppleFmCommand::Refresh { wait, timeout_ms } => {
-                let response = client.action(&command.action_request())?;
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("apple fm refresh did not produce a control action"))?;
+                let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 let waited = if wait {
                     Some(client.wait_for_condition(WaitCondition::AppleFmReady, timeout_ms)?)
@@ -1029,8 +1090,22 @@ fn main() -> Result<()> {
                 };
                 print_action(json_output, &response, waited.as_ref())?;
             }
+            AppleFmCommand::Load { .. }
+            | AppleFmCommand::Unload { .. }
+            | AppleFmCommand::Attach { .. }
+            | AppleFmCommand::Detach { .. } => {
+                let action = command.action_request().ok_or_else(|| {
+                    anyhow!("apple fm adapter command did not produce a control action")
+                })?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                print_action(json_output, &response, None)?;
+            }
             AppleFmCommand::SmokeTest => {
-                let response = client.action(&command.action_request())?;
+                let action = command.action_request().ok_or_else(|| {
+                    anyhow!("apple fm smoke test did not produce a control action")
+                })?;
+                let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 print_action(json_output, &response, None)?;
             }
@@ -1968,10 +2043,17 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.local_runtime.load_label
     );
     println!(
-        "apple fm: ready={} reachable={} model={}",
+        "apple fm: ready={} reachable={} model={} adapters={} attached={}",
         snapshot.apple_fm.ready,
         snapshot.apple_fm.reachable,
-        snapshot.apple_fm.ready_model.as_deref().unwrap_or("-")
+        snapshot.apple_fm.ready_model.as_deref().unwrap_or("-"),
+        snapshot.apple_fm.loaded_adapters.len(),
+        snapshot
+            .apple_fm
+            .active_session_adapter
+            .as_ref()
+            .map(|adapter| adapter.adapter_id.as_str())
+            .unwrap_or("-")
     );
     println!(
         "gpt-oss: detected={} backend={} ready={} busy={} loaded={} artifact_present={} model={}",
@@ -3416,6 +3498,68 @@ fn print_gpt_oss_text(snapshot: &DesktopControlSnapshot) {
     }
 }
 
+fn print_apple_fm_text(snapshot: &DesktopControlSnapshot) {
+    println!(
+        "apple fm: ready={} reachable={} model_available={} model={} bridge_status={} inventory_supported={} attach_supported={} loaded_adapters={}",
+        snapshot.apple_fm.ready,
+        snapshot.apple_fm.reachable,
+        snapshot.apple_fm.model_available,
+        snapshot.apple_fm.ready_model.as_deref().unwrap_or("-"),
+        snapshot.apple_fm.bridge_status.as_deref().unwrap_or("-"),
+        snapshot.apple_fm.adapter_inventory_supported,
+        snapshot.apple_fm.adapter_attach_supported,
+        snapshot.apple_fm.loaded_adapters.len()
+    );
+    println!(
+        "active_session={} active_adapter={}",
+        snapshot
+            .apple_fm
+            .active_session_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .apple_fm
+            .active_session_adapter
+            .as_ref()
+            .map(|adapter| adapter.adapter_id.as_str())
+            .unwrap_or("-")
+    );
+    if let Some(action) = snapshot.apple_fm.last_action.as_deref() {
+        println!("last_action: {action}");
+    }
+    if let Some(error) = snapshot.apple_fm.last_error.as_deref() {
+        println!("last_error: {error}");
+    }
+    print_apple_fm_adapter_list_text(snapshot);
+}
+
+fn print_apple_fm_adapter_list_text(snapshot: &DesktopControlSnapshot) {
+    if snapshot.apple_fm.loaded_adapters.is_empty() {
+        println!("loaded adapters: none");
+        return;
+    }
+    println!("loaded adapters:");
+    for adapter in &snapshot.apple_fm.loaded_adapters {
+        println!(
+            "- id={} digest={} compatible={} reason={} attached_sessions={}",
+            adapter.adapter.adapter_id,
+            adapter.adapter.package_digest.as_deref().unwrap_or("-"),
+            adapter.compatibility.compatible,
+            adapter
+                .compatibility
+                .message
+                .as_deref()
+                .or(adapter.compatibility.reason_code.as_deref())
+                .unwrap_or("-"),
+            if adapter.attached_session_ids.is_empty() {
+                "-".to_string()
+            } else {
+                adapter.attached_session_ids.join(",")
+            }
+        );
+    }
+}
+
 fn print_buy_mode_text(snapshot: &DesktopControlSnapshot) {
     println!(
         "buy mode: enabled={} approved_budget={} sats cadence={} next_dispatch={}",
@@ -4084,11 +4228,53 @@ mod tests {
                 timeout_ms: 1_000,
             }
             .action_request(),
-            DesktopControlActionRequest::RefreshAppleFm
+            Some(DesktopControlActionRequest::RefreshAppleFm)
+        );
+        assert_eq!(AppleFmCommand::Status.action_request(), None);
+        assert_eq!(AppleFmCommand::List.action_request(), None);
+        assert_eq!(
+            AppleFmCommand::Load {
+                package_path: PathBuf::from("/tmp/mock.fmadapter"),
+                adapter_id: Some("fixture-chat-adapter".to_string()),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::LoadAppleFmAdapter {
+                package_path: "/tmp/mock.fmadapter".to_string(),
+                requested_adapter_id: Some("fixture-chat-adapter".to_string()),
+            })
+        );
+        assert_eq!(
+            AppleFmCommand::Unload {
+                adapter_id: "fixture-chat-adapter".to_string(),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::UnloadAppleFmAdapter {
+                adapter_id: "fixture-chat-adapter".to_string(),
+            })
+        );
+        assert_eq!(
+            AppleFmCommand::Attach {
+                session_id: "sess-1".to_string(),
+                adapter_id: "fixture-chat-adapter".to_string(),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::AttachAppleFmSessionAdapter {
+                session_id: "sess-1".to_string(),
+                adapter_id: "fixture-chat-adapter".to_string(),
+            })
+        );
+        assert_eq!(
+            AppleFmCommand::Detach {
+                session_id: "sess-1".to_string(),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::DetachAppleFmSessionAdapter {
+                session_id: "sess-1".to_string(),
+            })
         );
         assert_eq!(
             AppleFmCommand::SmokeTest.action_request(),
-            DesktopControlActionRequest::RunAppleFmSmokeTest
+            Some(DesktopControlActionRequest::RunAppleFmSmokeTest)
         );
         assert_eq!(
             WalletCommand::Refresh.action_request(),

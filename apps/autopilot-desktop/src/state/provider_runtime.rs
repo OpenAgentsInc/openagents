@@ -15,7 +15,7 @@ pub use openagents_provider_substrate::{
     ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
 };
 use psionic_apple_fm::{
-    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+    AppleFmAdapterInventoryEntry, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
     AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
 };
 
@@ -71,6 +71,9 @@ pub struct ProviderAppleFmRuntimeState {
     pub supported_guardrails: Vec<AppleFmSystemLanguageModelGuardrails>,
     pub ready_model: Option<String>,
     pub available_models: Vec<String>,
+    pub adapter_inventory_supported: bool,
+    pub adapter_attach_supported: bool,
+    pub loaded_adapters: Vec<AppleFmAdapterInventoryEntry>,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub last_request_id: Option<String>,

@@ -1,4 +1,5 @@
 use super::*;
+use psionic_apple_fm::{AppleFmAdapterInventoryEntry, AppleFmAdapterSelection};
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
@@ -842,11 +843,16 @@ pub struct AppleFmWorkbenchPaneState {
     pub last_request_id: Option<String>,
     pub last_operation: Option<String>,
     pub active_session_id: Option<String>,
+    pub active_session_adapter: Option<AppleFmAdapterSelection>,
     pub last_model: Option<String>,
+    pub adapter_inventory_supported: bool,
+    pub adapter_attach_supported: bool,
+    pub loaded_adapters: Vec<AppleFmAdapterInventoryEntry>,
     pub sampling_mode: AppleFmWorkbenchSamplingMode,
     pub tool_profile: AppleFmWorkbenchToolProfile,
     pub output_preview: String,
     pub output_chars: usize,
+    pub adapter_preview: String,
     pub session_preview: String,
     pub structured_preview: String,
     pub usage_preview: String,
@@ -863,11 +869,16 @@ impl Default for AppleFmWorkbenchPaneState {
             last_request_id: None,
             last_operation: None,
             active_session_id: None,
+            active_session_adapter: None,
             last_model: None,
+            adapter_inventory_supported: false,
+            adapter_attach_supported: false,
+            loaded_adapters: Vec::new(),
             sampling_mode: AppleFmWorkbenchSamplingMode::Auto,
             tool_profile: AppleFmWorkbenchToolProfile::None,
             output_preview: String::new(),
             output_chars: 0,
+            adapter_preview: String::new(),
             session_preview: String::new(),
             structured_preview: String::new(),
             usage_preview: String::new(),

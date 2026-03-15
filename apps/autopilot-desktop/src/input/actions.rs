@@ -9206,6 +9206,20 @@ pub(super) fn run_apple_fm_workbench_action(
         AppleFmWorkbenchPaneAction::InspectSession => {
             queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::InspectSession)
         }
+        AppleFmWorkbenchPaneAction::LoadAdapter => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::LoadAdapter)
+        }
+        AppleFmWorkbenchPaneAction::UnloadAdapter => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::UnloadAdapter)
+        }
+        AppleFmWorkbenchPaneAction::AttachSessionAdapter => queue_apple_fm_workbench_operation(
+            state,
+            AppleFmWorkbenchOperation::AttachSessionAdapter,
+        ),
+        AppleFmWorkbenchPaneAction::DetachSessionAdapter => queue_apple_fm_workbench_operation(
+            state,
+            AppleFmWorkbenchOperation::DetachSessionAdapter,
+        ),
         AppleFmWorkbenchPaneAction::ResetSession => {
             queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::ResetSession)
         }
@@ -9848,6 +9862,13 @@ fn queue_apple_fm_workbench_operation(
         prompt: normalize_optional_text(state.apple_fm_workbench_inputs.prompt.get_value()),
         requested_model: normalize_optional_text(state.apple_fm_workbench_inputs.model.get_value()),
         session_id,
+        adapter_id: normalize_optional_text(state.apple_fm_workbench_inputs.adapter_id.get_value()),
+        adapter_package_path: normalize_optional_text(
+            state
+                .apple_fm_workbench_inputs
+                .adapter_package_path
+                .get_value(),
+        ),
         options,
         schema_json: normalize_optional_text(
             state.apple_fm_workbench_inputs.schema_json.get_value(),

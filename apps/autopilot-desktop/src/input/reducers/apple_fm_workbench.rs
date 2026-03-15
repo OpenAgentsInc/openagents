@@ -3,6 +3,7 @@ use crate::apple_fm_bridge::{
     AppleFmBridgeUpdate, AppleFmMissionControlSummaryUpdate, AppleFmWorkbenchLogLevel,
     AppleFmWorkbenchOperation, AppleFmWorkbenchUpdate,
 };
+use psionic_apple_fm::AppleFmAdapterInventoryEntry;
 use wgpui::components::sections::{TerminalLine, TerminalStream};
 
 const PREVIEW_LIMIT: usize = 1600;
@@ -18,6 +19,12 @@ pub(super) fn apply_bridge_update(state: &mut RenderState, update: &AppleFmBridg
                 .ready_model
                 .clone()
                 .or_else(|| state.apple_fm_workbench.last_model.clone());
+            state.apple_fm_workbench.adapter_inventory_supported =
+                snapshot.adapter_inventory_supported;
+            state.apple_fm_workbench.adapter_attach_supported = snapshot.adapter_attach_supported;
+            state.apple_fm_workbench.loaded_adapters = snapshot.loaded_adapters.clone();
+            state.apple_fm_workbench.adapter_preview =
+                adapter_inventory_preview(snapshot.loaded_adapters.as_slice());
             state.apple_fm_workbench.last_action = snapshot
                 .last_action
                 .clone()
@@ -83,9 +90,17 @@ fn apply_workbench_update(state: &mut RenderState, update: &AppleFmWorkbenchUpda
             state.apple_fm_workbench.last_action = Some(completed.summary.clone());
             state.apple_fm_workbench.last_model = completed.model.clone();
             state.apple_fm_workbench.active_session_id = completed.session_id.clone();
+            state.apple_fm_workbench.active_session_adapter = completed.session_adapter.clone();
             state.apple_fm_workbench.output_chars = completed.response_text.chars().count();
             state.apple_fm_workbench.output_preview =
                 truncate_preview(completed.response_text.as_str());
+            state.apple_fm_workbench.adapter_preview = completed
+                .adapter_json
+                .as_deref()
+                .map(truncate_preview)
+                .unwrap_or_else(|| {
+                    adapter_inventory_preview(state.apple_fm_workbench.loaded_adapters.as_slice())
+                });
             state.apple_fm_workbench.session_preview = completed
                 .session_json
                 .as_deref()
@@ -116,6 +131,7 @@ fn apply_workbench_update(state: &mut RenderState, update: &AppleFmWorkbenchUpda
                         .apple_fm_workbench_inputs
                         .transcript_json
                         .set_value(String::new());
+                    state.apple_fm_workbench.active_session_adapter = None;
                 }
                 (_, Some(session_id), _) => {
                     state
@@ -130,6 +146,20 @@ fn apply_workbench_update(state: &mut RenderState, update: &AppleFmWorkbenchUpda
                     .apple_fm_workbench_inputs
                     .transcript_json
                     .set_value(transcript_json.clone());
+            }
+            if let Some(session_adapter) = completed.session_adapter.as_ref() {
+                state
+                    .apple_fm_workbench_inputs
+                    .adapter_id
+                    .set_value(session_adapter.adapter_id.clone());
+            } else if completed.operation.as_str()
+                == AppleFmWorkbenchOperation::DetachSessionAdapter.label()
+                || completed.operation.as_str() == AppleFmWorkbenchOperation::DeleteSession.label()
+            {
+                state
+                    .apple_fm_workbench_inputs
+                    .adapter_id
+                    .set_value(String::new());
             }
 
             state
@@ -157,6 +187,24 @@ fn apply_workbench_update(state: &mut RenderState, update: &AppleFmWorkbenchUpda
                 ));
         }
     }
+}
+
+fn adapter_inventory_preview(adapters: &[AppleFmAdapterInventoryEntry]) -> String {
+    if adapters.is_empty() {
+        return "No adapters loaded.".to_string();
+    }
+    adapters
+        .iter()
+        .map(|adapter| {
+            format!(
+                "{} compatible={} attached_sessions={}",
+                adapter.adapter.adapter_id,
+                adapter.compatibility.compatible,
+                adapter.attached_session_ids.len()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn apply_mission_control_summary_update(

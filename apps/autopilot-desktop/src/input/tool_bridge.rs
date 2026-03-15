@@ -2504,6 +2504,18 @@ fn pane_action_to_hit_action(
             "inspect_session" => Ok(PaneHitAction::AppleFmWorkbench(
                 crate::pane_system::AppleFmWorkbenchPaneAction::InspectSession,
             )),
+            "load_adapter" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::LoadAdapter,
+            )),
+            "unload_adapter" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::UnloadAdapter,
+            )),
+            "attach_adapter" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::AttachSessionAdapter,
+            )),
+            "detach_adapter" => Ok(PaneHitAction::AppleFmWorkbench(
+                crate::pane_system::AppleFmWorkbenchPaneAction::DetachSessionAdapter,
+            )),
             "reset_session" => Ok(PaneHitAction::AppleFmWorkbench(
                 crate::pane_system::AppleFmWorkbenchPaneAction::ResetSession,
             )),

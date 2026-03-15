@@ -314,6 +314,7 @@ impl CpuBackend {
                 input.clone()
             }
             ExecutionOp::Constant { data } => CpuBuffer::from_tensor_data(step.spec.clone(), data)?,
+            ExecutionOp::Detach => self.input(step, values, 0)?.clone(),
             ExecutionOp::Add => {
                 let (left, right) = self.binary_inputs(step, values)?;
                 let output = left

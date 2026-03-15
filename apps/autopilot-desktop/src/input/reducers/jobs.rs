@@ -735,6 +735,12 @@ fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
     state.provider_runtime.apple_fm.ready_model = state.apple_fm_execution.ready_model.clone();
     state.provider_runtime.apple_fm.available_models =
         state.apple_fm_execution.available_models.clone();
+    state.provider_runtime.apple_fm.adapter_inventory_supported =
+        state.apple_fm_execution.adapter_inventory_supported;
+    state.provider_runtime.apple_fm.adapter_attach_supported =
+        state.apple_fm_execution.adapter_attach_supported;
+    state.provider_runtime.apple_fm.loaded_adapters =
+        state.apple_fm_execution.loaded_adapters.clone();
     state.provider_runtime.apple_fm.last_error = state.apple_fm_execution.last_error.clone();
     state.provider_runtime.apple_fm.last_action = state.apple_fm_execution.last_action.clone();
     state.provider_runtime.apple_fm.last_request_id =
@@ -3081,6 +3087,9 @@ mod tests {
             supported_guardrails: vec![],
             ready_model: Some("apple-foundation-model".to_string()),
             available_models: vec!["apple-foundation-model".to_string()],
+            adapter_inventory_supported: true,
+            adapter_attach_supported: true,
+            loaded_adapters: Vec::new(),
             last_error: None,
             last_action: Some("Apple FM ready".to_string()),
             last_request_id: None,
