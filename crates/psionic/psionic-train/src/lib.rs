@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod apple_adapter;
 mod artifact_storage;
 mod benchmarking;
 mod checkpoint_recovery;
@@ -41,6 +42,7 @@ mod stability;
 mod stage_program;
 mod worker_protocol;
 
+pub use apple_adapter::*;
 pub use artifact_storage::*;
 pub use benchmarking::*;
 pub use checkpoint_recovery::*;
