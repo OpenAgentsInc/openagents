@@ -6571,6 +6571,8 @@ name = "psionic-eval"
 version = "0.1.1"
 dependencies = [
  "hex",
+ "psionic-adapters",
+ "psionic-apple-fm",
  "psionic-data",
  "psionic-datastream",
  "psionic-environments",
