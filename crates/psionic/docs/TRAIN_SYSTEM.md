@@ -206,7 +206,7 @@ shape already includes at least:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, long-context packing policies, and Apple adapter JSONL import or validation with typed tool-schema augmentation plus tokenizer/prompt-shaping packing lineage |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage, and first Apple `.fmadapter` reader/writer plus file-inventory validation |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
-| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, and `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
+| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it, and the first repo-owned Apple adapter execution backend now turns packed Apple dataset batches into adapter-only gradient batches for that loop; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, deterministic runtime session state machine, and a reusable Apple adapter train/eval/benchmark bundle with typed runtime refs plus train/eval parity receipts, while registry and authority truth remain in kernel/Nexus |
@@ -243,8 +243,9 @@ The current train-relevant ownership split in Psionic is:
 - `psionic-train`
   - training-session truth for checkpointing, live recovery,
     elastic-membership posture, typed run graphs, contributor-set revisions,
-    window lifecycle, the fixed-budget training-core reference loop,
-    orchestrator state, and RL-facing rollout or batch contracts
+    window lifecycle, the fixed-budget training-core reference loop, the
+    repo-owned Apple adapter reference execution backend, orchestrator state,
+    and RL-facing rollout or batch contracts
 - `psionic-adapters`
   - adapter package identity, Apple `.fmadapter` parsing or writing, file
     inventory validation, and hosted binding lineage
@@ -1203,6 +1204,23 @@ The current step path is intentionally an explicit-gradient reference loop over
 Autodiff and optimizer behavior now live in reusable lower Psionic layers,
 while broader operator-family coverage and higher-order training behavior still
 remain future work.
+
+On 2026-03-15, GitHub issue `#3631` added the missing repo-owned Apple
+training execution backend inside `psionic-train`:
+
+- validation over the repo-owned Apple dataset tokenizer and prompt-shaping
+  lineage plus the SFT-capable Apple environment bundle
+- deterministic Apple sample batching on top of the packed dataset contract
+- adapter-only parameter selection with frozen-base semantics
+- repo-owned forward/loss and low-rank gradient production that feeds
+  `TrainingGradientBatch` and `FixedBudgetTrainingRun`
+- explicit training-posture declaration for the currently supported `f32`
+  reference precision path and disabled activation checkpointing
+
+This lands the learning computation itself for the first Apple lane. It does
+not yet claim the higher-level Apple SFT orchestration, checkpoint/export
+summary layer, or `.fmadapter` packaging closure that still belongs to
+GitHub issue `#3625`.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
