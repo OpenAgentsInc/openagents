@@ -229,6 +229,30 @@ Dependency rules:
   crates, with solver-facing adapters pointing from `arc-solvers` into
   `arc-ml`
 
+Inside `arc-core`, keep three internal layers visible even if they begin in one
+crate:
+
+- schema
+  - tasks, frames, actions, recordings, scorecards, score-policy IDs
+- analysis
+  - canonicalization, objects, relations, correspondence candidates
+- execution envelopes
+  - budgets, refusals, solve results, trace locators
+
+### Cross-Crate Concern Matrix
+
+| Concern | Owner |
+| --- | --- |
+| state transition correctness | `arc-engine` |
+| local replay and deterministic checkpoint application | `arc-engine` |
+| transport, session, cookies, and backoff | `arc-client` |
+| local compatibility serving and REST schema conformance | `arc-client` |
+| scorecard lifecycle policy | `arc-benchmark` |
+| competition-mode scoring restrictions | `arc-benchmark` |
+| replay acceptance and benchmark result truth | `arc-benchmark` |
+| verifier logic, candidate identity, deduplication, and attempt policy | `arc-solvers` |
+| ARC-specific losses, metrics, and evaluator glue | `arc-ml` |
+
 ## Reference Truth Rules
 
 - `arc-benchmark` is the canonical scorer and episode/result truth surface.
@@ -244,6 +268,20 @@ Dependency rules:
   same development loop.
 - every solver and benchmark claim must be replayable from fixtures, seeds,
   budgets, manifests, and trace artifacts.
+
+## Public-Eval Hygiene Rules
+
+These rules are non-negotiable:
+
+- no per-task manual solver tuning on public evaluation tasks
+- no roadmap acceptance artifact may be generated from public evaluation tasks
+  unless it is labeled explicitly as non-regression and non-optimization
+- public evaluation runs must not feed search-guide, repair-model, or
+  calibration training datasets
+- internal hidden holdout must stay disjoint from synthetic tasks derived from
+  public evaluation tasks
+- public evaluation visibility may be used only for bounded compatibility or
+  non-regression checks, not for optimization loops
 
 ## Success Bar
 
@@ -334,6 +372,38 @@ ARC capability matrices should classify coverage explicitly:
 Tiering is required to stop every interesting ARC idea from pretending to be a
 Phase 1 blocker.
 
+## V1 Subtree Closure
+
+ARC v1 means the smallest honest Rust-native subtree that unlocks
+`contracts-real`, `benchmark-real`, and `solver-real`, with bounded baseline
+interactive parity.
+
+Included in v1:
+
+- `arc-core`, `arc-datasets`, `arc-engine`, `arc-client`, `arc-benchmark`, and
+  `arc-solvers`
+- exact-match static scoring plus versioned interactive benchmark truth
+- scorecard lifecycle, recording, checkpoint, replay, and local-vs-remote
+  parity fixtures
+- one symbolic lane and one non-symbolic lane with common verifier, typed
+  candidate identity, deduplication, budget accounting, attempt policy, and
+  trace bundles
+- baseline interactive agent surfaces needed for local/remote parity and typed
+  action-budget truth
+- non-Python smoke suites for the above
+
+Explicitly excluded from v1:
+
+- `arc-ml` parity claims
+- HRM ports
+- broad distributed ARC model training
+- advanced learned search-guide lanes
+- competition submission packaging
+- leaderboard import/export
+
+The v1 cut line ends before `ARC-403`, `ARC-405`, `ARC-406`, and all of Epic 5.
+Those may begin only after the v1 closure artifacts are green.
+
 ## Current Baseline
 
 The current baseline is intentionally thin.
@@ -381,6 +451,23 @@ The ARC subtree depends on specific reusable Psionic work.
 ARC should reference these IDs directly instead of re-inventing equivalent
 substrate locally.
 
+### HRM Minimum Readiness Bar
+
+`ARC-506` remains blocked until the following are green:
+
+- `PLIB-612`
+  - CPU reference fixtures for `gather`, `scatter-add`, `pad`, `argmax`,
+    `BCE-with-logits`, and `softmax cross-entropy`
+- `PLIB-613`
+  - deterministic checkpoint save/load for small models
+  - one tiny single-host train/eval parity fixture over `psionic-train` and
+    `psionic-eval`
+- `PLIB-614`
+  - ACT-style loop semantics in train/eval graphs
+  - at least one attention path credible for tiny reference workloads
+- `PLIB-509` and `PLIB-515`
+  - only when the claimed workload exercises multi-rank collective behavior
+
 ## Roadmap Shape
 
 This roadmap is organized into seven epics.
@@ -421,7 +508,7 @@ benchmark truth rather than on isolated solver demos.
 | `ARC-002` | planned | Freeze the ARC claim vocabulary: `contracts-real`, `benchmark-real`, `solver-real`, `interactive-real`, and `research-credible`. |
 | `ARC-003` | planned | Add one compact index linking `crates/arc/spec.md`, this roadmap, the audit, and future acceptance matrices. |
 | `ARC-004` | planned | Freeze the supported upstream benchmark and protocol versions this subtree targets first. |
-| `ARC-005` | planned | Publish the public-eval hygiene rule as an explicit harness and operator policy, not only as prose. |
+| `ARC-005` | planned | Publish the public-eval hygiene rule as explicit harness, artifact-labeling, and operator policy, not only as prose. |
 
 ## Epic 1: Contracts And Dataset Core
 
@@ -527,8 +614,8 @@ verifier-first truth.
 
 | ID | Status | Work |
 | --- | --- | --- |
-| `ARC-301` | planned | Create `crates/arc/solvers` and define the typed ARC DSL plus pure interpreter. |
-| `ARC-302` | planned | Add typed refusal taxonomy, budget accounting, and solve-attempt envelopes. |
+| `ARC-301` | planned | Create `crates/arc/solvers` and define the typed ARC DSL with Tier A scope first plus a pure interpreter. |
+| `ARC-302` | planned | Add the normative solver object model: typed refusal taxonomy, candidate identity and deduplication, budget accounting, solve-attempt envelopes, and second-attempt distinctness rules. |
 | `ARC-303` | planned | Build the common verifier and falsifier, including augmentation stability and holdout-on-train checks. |
 | `ARC-304` | planned | Add trace-bundle writing and replay fixtures for proposal, verification, refinement, and arbiter decisions. |
 
@@ -546,7 +633,7 @@ verifier-first truth.
 
 | ID | Status | Work |
 | --- | --- | --- |
-| `ARC-310` | planned | Build internal hidden holdout, synthetic regression, and concept-slice reporting so solver progress does not depend on public-eval leakage. |
+| `ARC-310` | planned | Build internal hidden holdout, synthetic regression, concept-slice reporting, and explicit public-eval hygiene enforcement so solver progress cannot depend on public-eval leakage. |
 
 ## Epic 4: Interactive ARC-AGI-3 Agents
 
@@ -599,7 +686,7 @@ without pretending Psionic is already broad enough for full HRM parity.
 | `ARC-503` | planned | Add ARC-specific losses, metrics, and calibration summaries above Psionic train/eval substrate. |
 | `ARC-504` | planned | Add search-guide learning and trace-derived dataset generation for solver guidance models. |
 | `ARC-505` | planned | Port recursive tiny-model training/eval flows with explicit intermediate-step traces. |
-| `ARC-506` | planned | Port HRM configs and model definitions only after `PLIB-612`, `PLIB-613`, and `PLIB-614` are materially real. |
+| `ARC-506` | planned | Port HRM configs and model definitions only after the explicit HRM readiness bar tied to `PLIB-612`, `PLIB-613`, and `PLIB-614` is green. |
 | `ARC-507` | planned | Add bounded distributed model execution only after `PLIB-509` and `PLIB-515` make collectives and evidence honest. |
 | `ARC-508` | planned | Keep all HRM or transformer parity claims behind tiny deterministic fixtures, checkpoint truth, and replayable eval artifacts before any large-scale reproduction attempt. |
 
@@ -756,6 +843,9 @@ Respect them.
 Use synthetic tasks, train-derived dev slices, internal holdout, and replay
 regression sets.
 
+No per-task manual tuning, dataset creation, or acceptance optimization may use
+public evaluation runs.
+
 ### 6. New reusable primitives enter Psionic first
 
 If a missing primitive would help multiple interactive benchmarks or training
@@ -776,6 +866,8 @@ programs, add it to Psionic instead of burying it in ARC.
   semantics
 - interactive claims must declare score-policy version, operation mode, and
   whether competition-mode restrictions were active
+- public-eval-based evidence must declare itself as non-regression and
+  non-optimization or it does not count as roadmap progress
 - unsupported tasks, actions, models, or runtime capabilities must refuse
   explicitly, not degrade silently into incomparable alternate behavior
 - benchmark evidence must remain attributable to the library path being claimed,

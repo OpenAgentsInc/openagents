@@ -238,6 +238,19 @@ That includes:
 - solve-result envelopes
 - trace locators and digest references
 
+`arc-core` may begin as one crate, but its internal boundary is still
+normative:
+
+- schema layer
+  - tasks, grids, actions, frames, scorecards, recordings, score-policy IDs,
+    operation modes, and recording-envelope identifiers
+- analysis layer
+  - canonicalization, objects, relation graphs, correspondence candidates, and
+    task-level feature bundles
+- execution-envelope layer
+  - budgets, refusal taxonomy, solve results, trace locators, and other
+    replay-safe envelopes shared across benchmark and solver code
+
 #### Fundamental task types
 
 ```rust
@@ -448,6 +461,25 @@ Every solve attempt must produce a `SolveResult`:
 - evaluator wrappers
 - training/eval adapters onto Psionic
 
+### 5.4 Cross-crate concern matrix
+
+The owner split below is normative for agent implementations:
+
+| Concern | Owner |
+| --- | --- |
+| state transition correctness | `arc-engine` |
+| local replay and deterministic checkpoint application | `arc-engine` |
+| transport, sessions, cookies, retry, and backoff | `arc-client` |
+| local compatibility serving and REST schema conformance | `arc-client` |
+| scorecard lifecycle policy | `arc-benchmark` |
+| competition-mode scoring restrictions | `arc-benchmark` |
+| replay acceptance and benchmark result truth | `arc-benchmark` |
+| hypothesis generation, verifier logic, and attempt policy | `arc-solvers` |
+| ARC-specific losses, metrics, and evaluator glue | `arc-ml` |
+
+If a behavior touches more than one crate, the first owner above remains the
+policy authority and the others consume typed contracts from it.
+
 ## 6. ARC DSL / program IR
 
 The solver must define an explicit ARC program IR.
@@ -465,10 +497,13 @@ The IR must be:
 - expressive enough for common ARC transformations
 - stable under tracing and replay
 
-It must not use Python as the canonical IR.
-Python may exist only as an experimental export or debug backend.
+It must not use Python as the canonical IR or fallback executor.
+Upstream Python remains reference material only, not a planned ARC runtime.
 
-### 6.2 Required IR capability families
+### 6.2 Tier A DSL scope for v1
+
+Tier A is the only required DSL surface for the first honest solver claim.
+Do not widen the language before Tier A fixtures and replay are green.
 
 Selectors:
 
@@ -477,7 +512,6 @@ Selectors:
 - select by size, count, holes, or connectivity
 - select by relation
 - select extreme objects
-- select by contextual predicate
 
 Constructors:
 
@@ -496,20 +530,15 @@ Object transforms:
 - rotate
 - recolor
 - scale by integer factor
-- fill holes
 - extract outline or interior
-- merge or split
-- order by relation and place
 
 Structural ops:
 
 - connected components
 - flood fill
 - count
-- grouping or partition
 - frame or border detection
 - symmetry detection
-- correspondence inference
 
 Control flow:
 
@@ -519,16 +548,54 @@ Control flow:
 - reduce/fold
 - ordered composition
 - bounded loop over object list
+
+Symbol binding:
+
+- bind simple task-local symbols from demonstrations
+- use bound symbols in downstream transforms
+
+### 6.3 Tier B DSL scope after v1 closure
+
+Tier B expands research breadth once Tier A is honest.
+
+Selectors:
+
+- select by contextual predicate
+
+Object transforms:
+
+- fill holes
+- merge or split
+- order by relation and place
+
+Structural ops:
+
+- grouping or partition
+- correspondence inference
+
+Control flow:
+
 - recurrence over ordered placements
 - contextual gating
 
 Symbol binding:
 
-- define a task-local symbol meaning from demonstrations
+- define richer task-local symbol meanings from demonstrations
 - bind symbol/value lookup tables
-- use symbol semantics in downstream transforms
 
-### 6.3 IR shape
+### 6.4 Tier C DSL scope
+
+Tier C is explicitly out of v1 and should stay experimental until Tier A and B
+replay evidence is stable.
+
+Examples:
+
+- induced symbol tables with broad contextual rebinding
+- higher-order macros or learned macro expansion
+- learned primitives that are not reducible to typed Tier A or Tier B ops
+- open-ended recurrence beyond explicitly bounded search limits
+
+### 6.5 IR shape
 
 ```rust
 pub enum ArcExpr {
@@ -557,7 +624,7 @@ pub struct ArcProgram {
 }
 ```
 
-### 6.4 Interpreter properties
+### 6.6 Interpreter properties
 
 The interpreter must be:
 
@@ -595,7 +662,143 @@ pub trait SolverLane {
 }
 ```
 
-### 7.1 Lane A: symbolic induction / program search
+### 7.1 Normative solver object model
+
+The solver object model below is normative.
+Local crates must not invent alternate proposal or verification shapes.
+
+```rust
+pub struct HypothesisId(pub String);
+
+pub enum HypothesisKind {
+    Program,
+    DirectGrid,
+    Repair,
+    InteractivePlan,
+    CompressionModel,
+    Refusal,
+}
+
+pub struct CandidateIdentity {
+    pub canonical_signature: String,
+    pub answer_digest: Option<String>,
+    pub program_digest: Option<String>,
+    pub action_plan_digest: Option<String>,
+}
+
+pub struct Hypothesis {
+    pub id: HypothesisId,
+    pub kind: HypothesisKind,
+    pub lane_id: SolverLaneId,
+    pub attempt_index: u8,
+    pub candidate_identity: CandidateIdentity,
+    pub program: Option<ArcProgram>,
+    pub static_answer: Option<ArcGrid>,
+    pub interactive_plan: Option<Vec<ArcAction>>,
+    pub local_score: f32,
+    pub trace_locator: TraceLocator,
+    pub budget_delta: BudgetCounterDelta,
+}
+
+pub struct LaneProposal {
+    pub hypothesis: Hypothesis,
+    pub local_rank: u32,
+    pub rationale_digest: String,
+}
+
+pub enum LaneBatchStatus {
+    Proposed,
+    Empty,
+    Refused,
+}
+
+pub struct LaneProposalBatch {
+    pub lane_id: SolverLaneId,
+    pub phase: ProposalPhase,
+    pub status: LaneBatchStatus,
+    pub proposals: Vec<LaneProposal>,
+    pub refusal: Option<RefusalEnvelope>,
+    pub trace_locator: TraceLocator,
+    pub budget_delta: BudgetCounterDelta,
+}
+
+pub struct VerificationReport {
+    pub hypothesis_id: HypothesisId,
+    pub verifier_config_digest: String,
+    pub exact_fit: bool,
+    pub pair_results: Vec<PairVerificationResult>,
+    pub falsification_checks: Vec<FalsificationCheckResult>,
+    pub simplicity_score: f32,
+    pub stability_score: f32,
+    pub spuriousness_risk: f32,
+    pub accepted: bool,
+    pub trace_locator: TraceLocator,
+    pub budget_delta: BudgetCounterDelta,
+}
+
+pub struct ArbiterDecision {
+    pub task_id: String,
+    pub attempt_index: u8,
+    pub selected_hypothesis: Option<HypothesisId>,
+    pub ranked_hypotheses: Vec<HypothesisId>,
+    pub second_attempt_allowed: bool,
+    pub refusal: Option<RefusalEnvelope>,
+    pub decision_reason: String,
+    pub trace_locator: TraceLocator,
+    pub budget_delta: BudgetCounterDelta,
+}
+
+pub struct TraceBundleManifest {
+    pub bundle_id: String,
+    pub task_id: String,
+    pub seed_bundle_digest: String,
+    pub solver_manifest_digest: String,
+    pub lane_batches: Vec<TraceLocator>,
+    pub verification_reports: Vec<TraceLocator>,
+    pub arbiter_decision: TraceLocator,
+    pub budget_ledger_digest: String,
+    pub final_result_digest: String,
+}
+
+pub struct BudgetCounterDelta {
+    pub wall_ms: u64,
+    pub candidates_generated: u32,
+    pub verifier_evals: u32,
+    pub train_pair_execs: u32,
+    pub refinement_steps: u32,
+    pub model_forward_calls: u32,
+    pub ttt_updates: u32,
+    pub peak_memory_mb: u32,
+}
+```
+
+Normative rules:
+
+- `HypothesisId` must be stable within one run from lane identity, attempt
+  index, and canonical candidate identity.
+- candidate deduplication is keyed by
+  `CandidateIdentity.canonical_signature`
+  - static duplicates share the same answer digest and, where present, the same
+    program digest
+  - interactive duplicates share the same normalized action-plan digest
+- `LaneProposalBatch.status = Refused` means the lane could not legally or
+  honestly run because of capability, policy, or minimum-budget constraints
+- `LaneProposalBatch.status = Empty` means the lane ran within budget and found
+  no admissible distinct proposal
+- `VerificationReport` must be deterministic for the same canonical task,
+  hypothesis, verifier config digest, and seed bundle
+- every propose, refine, verify, and arbitrate step must emit exactly one
+  `BudgetCounterDelta`
+- budget counters are monotonic; any step that would overdraw a `TaskBudget`
+  must refuse or stop before doing out-of-budget work
+- `TraceBundleManifest` must be sufficient to replay proposal, verification,
+  arbiter, and final-result lineage without notebook-only metadata
+- attempt 2 is materially distinct only when it changes at least one of
+  answer digest, program digest, action-plan digest, or hypothesis kind, and
+  is not just a prompt, temperature, or ordering variant over the same
+  canonical signature
+
+### 7.2 Lane A: symbolic induction / program search
 
 Required behavior:
 
@@ -616,7 +819,7 @@ Allowed search strategies:
 - branch-and-bound
 - typed enumerative search
 
-### 7.2 Lane B: transductive neural lane
+### 7.3 Lane B: transductive neural lane
 
 Required behavior:
 
@@ -627,7 +830,7 @@ Required behavior:
 - expose calibrated score or uncertainty
 - support exact output shape prediction
 
-### 7.3 Lane C: recursive tiny-model lane
+### 7.4 Lane C: recursive tiny-model lane
 
 Required behavior:
 
@@ -638,7 +841,7 @@ Required behavior:
 - allow optional test-time updates
 - expose intermediate answer snapshots
 
-### 7.4 Lane D: MDL / compression lane
+### 7.5 Lane D: MDL / compression lane
 
 Required behavior:
 
@@ -647,7 +850,7 @@ Required behavior:
 - allow no-pretraining mode
 - provide an independent ranking signal
 
-### 7.5 Lane E: learned search-guide lane
+### 7.6 Lane E: learned search-guide lane
 
 This lane is optional in v1 and required in later stages.
 
@@ -702,6 +905,18 @@ The portfolio arbiter must consider:
 - historical calibration on internal holdout slices
 
 Attempt 2 is allowed only when it is materially distinct from attempt 1.
+
+### 8.1 Public-eval hygiene rules
+
+The solver program must enforce these rules:
+
+- no per-task manual solver tuning on public evaluation tasks
+- no acceptance artifact generated from public evaluation tasks unless it is
+  labeled explicitly as non-regression and non-optimization evidence
+- public evaluation runs must not feed search-guide, repair-model, or
+  calibration training datasets
+- internal hidden holdout must stay disjoint from synthetic tasks derived from
+  public evaluation tasks
 
 ## 9. ARC-AGI-3 seam
 
@@ -818,6 +1033,8 @@ Use `psionic-environments` only for reusable interactive-environment session
 and evidence primitives once those are strong enough for structured turn data.
 
 ARC must not force ARC-specific action vocabulary into Psionic.
+Those Psionic contracts must remain benchmark-agnostic, action-schema-agnostic,
+score-policy-agnostic, and game-state-taxonomy-agnostic.
 
 ### 10.5 `arc-ml` -> train/runtime/collectives
 
@@ -839,6 +1056,9 @@ Do not force full train-system breadth before ARC-specific lanes exist.
 ## 11. Missing Psionic primitives
 
 These gaps belong in Psionic, not in `crates/arc/*`.
+
+Every interactive-environment primitive below must stay benchmark-agnostic,
+action-schema-agnostic, score-policy-agnostic, and game-state-taxonomy-agnostic.
 
 ### 11.1 Structured interactive environment turns
 
@@ -903,6 +1123,24 @@ Recommended Psionic additions:
 - stronger train-state save/load for arbitrary ARC models
 - stable model-state manifests for promoted ARC checkpoints
 - small-model local training harnesses without app-owned glue
+
+### 11.7 Minimum HRM readiness bar
+
+`arc-ml` must not begin HRM-class parity work until the following are green:
+
+- `PLIB-612`
+  - CPU reference fixtures for `gather`, `scatter-add`, `pad`, `argmax`,
+    `BCE-with-logits`, and `softmax cross-entropy`
+- `PLIB-613`
+  - deterministic checkpoint save/load for small models
+  - one tiny single-host train/eval parity fixture over `psionic-train` and
+    `psionic-eval`
+- `PLIB-614`
+  - ACT-style loop semantics in train/eval graphs
+  - at least one attention path credible for tiny reference workloads
+- `PLIB-509` and `PLIB-515`
+  - only when the claimed HRM workload actually exercises multi-rank
+    collectives
 
 ## 12. Port order and milestones
 
