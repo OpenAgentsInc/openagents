@@ -116,6 +116,9 @@ pub struct AdapterWorkerIdentity {
     pub trust_class: AdapterWorkerTrustClass,
     /// Stable auth subject or operator-visible identity string.
     pub auth_subject: String,
+    /// Hex-encoded Ed25519 verifying key for signed adapter submissions.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub submission_signing_public_key_hex: String,
 }
 
 impl AdapterWorkerIdentity {
@@ -132,7 +135,18 @@ impl AdapterWorkerIdentity {
             session_id: session_id.into(),
             trust_class,
             auth_subject: auth_subject.into(),
+            submission_signing_public_key_hex: String::new(),
         }
+    }
+
+    /// Attaches the worker's submission-signing verifying key.
+    #[must_use]
+    pub fn with_submission_signing_public_key_hex(
+        mut self,
+        submission_signing_public_key_hex: impl Into<String>,
+    ) -> Self {
+        self.submission_signing_public_key_hex = submission_signing_public_key_hex.into();
+        self
     }
 }
 
