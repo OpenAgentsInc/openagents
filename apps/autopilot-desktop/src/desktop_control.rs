@@ -48,6 +48,9 @@ use crate::app_state::{
     SnapshotTimingSample, mission_control_buy_mode_interval_label,
     mission_control_local_runtime_view_model,
 };
+use crate::apple_adapter_training_control::{
+    AppleAdapterOperatorLaunchRequest, AppleAdapterOperatorStageState,
+};
 use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmWorkbenchCommand, AppleFmWorkbenchOperation,
 };
@@ -427,6 +430,71 @@ pub struct DesktopControlTrainingParticipantStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAppleAdapterOperatorAuthorityStatus {
+    pub core_environment_ref: Option<String>,
+    pub benchmark_environment_ref: Option<String>,
+    pub benchmark_package_ref: Option<String>,
+    pub validator_policy_ref: Option<String>,
+    pub training_policy_ref: Option<String>,
+    pub training_run_id: Option<String>,
+    pub held_out_eval_run_id: Option<String>,
+    pub runtime_validation_eval_run_id: Option<String>,
+    pub accepted_outcome_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAppleAdapterOperatorRunStatus {
+    pub run_id: String,
+    pub package_name: String,
+    pub author: String,
+    pub description: String,
+    pub license: String,
+    pub train_dataset_path: String,
+    pub held_out_dataset_path: String,
+    pub created_at_epoch_ms: u64,
+    pub updated_at_epoch_ms: u64,
+    pub launched_at_epoch_ms: Option<u64>,
+    pub evaluated_at_epoch_ms: Option<u64>,
+    pub exported_at_epoch_ms: Option<u64>,
+    pub accepted_at_epoch_ms: Option<u64>,
+    pub launch_state: String,
+    pub export_state: String,
+    pub evaluation_state: String,
+    pub acceptance_state: String,
+    pub run_directory: String,
+    pub staged_package_path: Option<String>,
+    pub exported_package_path: Option<String>,
+    pub completed_step_count: Option<u64>,
+    pub expected_step_count: Option<u64>,
+    pub average_loss_label: Option<String>,
+    pub held_out_pass_rate_bps: Option<u32>,
+    pub held_out_average_score_bps: Option<u32>,
+    pub runtime_smoke_passed: Option<bool>,
+    pub runtime_smoke_digest: Option<String>,
+    pub package_digest: Option<String>,
+    pub adapter_identifier: Option<String>,
+    pub authority: DesktopControlAppleAdapterOperatorAuthorityStatus,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    pub log_lines: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAppleAdapterOperatorStatus {
+    pub available: bool,
+    pub workflow_state: String,
+    pub schema_version: Option<u16>,
+    pub storage_path: Option<String>,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    pub run_count: usize,
+    pub active_run_count: usize,
+    pub accepted_run_count: usize,
+    pub exported_run_count: usize,
+    pub runs: Vec<DesktopControlAppleAdapterOperatorRunStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlTrainingStatus {
     pub available: bool,
     pub source: String,
@@ -453,6 +521,7 @@ pub struct DesktopControlTrainingStatus {
     pub sandbox_active_job_count: usize,
     pub runs: Vec<DesktopControlTrainingRunStatus>,
     pub participants: Vec<DesktopControlTrainingParticipantStatus>,
+    pub operator: DesktopControlAppleAdapterOperatorStatus,
     pub last_error: Option<String>,
 }
 
@@ -790,6 +859,22 @@ pub enum DesktopControlActionRequest {
     GetResearchStatus,
     ResetResearchState,
     GetTrainingStatus,
+    LaunchAppleAdapterTraining {
+        train_dataset_path: String,
+        held_out_dataset_path: String,
+        package_name: String,
+        author: String,
+        description: String,
+        license: String,
+        apple_fm_base_url: String,
+    },
+    ExportAppleAdapterTraining {
+        run_id: String,
+        export_path: String,
+    },
+    AcceptAppleAdapterTraining {
+        run_id: String,
+    },
     GetProofStatus,
     GetChallengeStatus,
     ListPanes,
@@ -876,6 +961,9 @@ impl DesktopControlActionRequest {
             Self::GetResearchStatus => "research-status",
             Self::ResetResearchState => "research-reset",
             Self::GetTrainingStatus => "training-status",
+            Self::LaunchAppleAdapterTraining { .. } => "training-launch-apple-adapter",
+            Self::ExportAppleAdapterTraining { .. } => "training-export-apple-adapter",
+            Self::AcceptAppleAdapterTraining { .. } => "training-accept-apple-adapter",
             Self::GetProofStatus => "proof-status",
             Self::GetChallengeStatus => "challenge-status",
             Self::ListPanes => "pane-list",
@@ -1602,6 +1690,36 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetChallengeStatus => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::LaunchAppleAdapterTraining {
+            train_dataset_path,
+            held_out_dataset_path,
+            package_name,
+            author,
+            description,
+            license,
+            apple_fm_base_url,
+        } => json!({
+            "command_label": action.label(),
+            "train_dataset_path": train_dataset_path,
+            "held_out_dataset_path": held_out_dataset_path,
+            "package_name": package_name,
+            "author": author,
+            "description_length": description.trim().len(),
+            "license": license,
+            "apple_fm_base_url": apple_fm_base_url,
+        }),
+        DesktopControlActionRequest::ExportAppleAdapterTraining {
+            run_id,
+            export_path,
+        } => json!({
+            "command_label": action.label(),
+            "run_id": run_id,
+            "export_path": export_path,
+        }),
+        DesktopControlActionRequest::AcceptAppleAdapterTraining { run_id } => json!({
+            "command_label": action.label(),
+            "run_id": run_id,
+        }),
         DesktopControlActionRequest::CreateSandboxJob {
             profile_id,
             job_id,
@@ -1997,7 +2115,7 @@ fn sandbox_status_summary(status: &DesktopControlSandboxStatus) -> String {
 
 fn training_status_summary(status: &DesktopControlTrainingStatus) -> String {
     format!(
-        "training available={} source={} control={} artifact={} runs={} active_runs={} accepted_outcomes={} participants={}/{} validator={}/{}/{}",
+        "training available={} source={} control={} artifact={} runs={} active_runs={} accepted_outcomes={} participants={}/{} validator={}/{}/{} operator={} operator_runs={}/{}",
         status.available,
         status.source,
         status.control_plane_state,
@@ -2009,7 +2127,10 @@ fn training_status_summary(status: &DesktopControlTrainingStatus) -> String {
         status.admitted_participant_count,
         status.validator_verified_count,
         status.validator_rejected_count,
-        status.validator_timed_out_count
+        status.validator_timed_out_count,
+        status.operator.workflow_state,
+        status.operator.active_run_count,
+        status.operator.run_count
     )
 }
 
@@ -2448,6 +2569,33 @@ fn apply_action_request(
         DesktopControlActionRequest::GetResearchStatus => research_payload_response().into(),
         DesktopControlActionRequest::ResetResearchState => reset_research_action().into(),
         DesktopControlActionRequest::GetTrainingStatus => training_payload_response(state).into(),
+        DesktopControlActionRequest::LaunchAppleAdapterTraining {
+            train_dataset_path,
+            held_out_dataset_path,
+            package_name,
+            author,
+            description,
+            license,
+            apple_fm_base_url,
+        } => launch_apple_adapter_training_action(
+            state,
+            train_dataset_path.as_str(),
+            held_out_dataset_path.as_str(),
+            package_name.as_str(),
+            author.as_str(),
+            description.as_str(),
+            license.as_str(),
+            apple_fm_base_url.as_str(),
+        )
+        .into(),
+        DesktopControlActionRequest::ExportAppleAdapterTraining {
+            run_id,
+            export_path,
+        } => export_apple_adapter_training_action(state, run_id.as_str(), export_path.as_str())
+            .into(),
+        DesktopControlActionRequest::AcceptAppleAdapterTraining { run_id } => {
+            accept_apple_adapter_training_action(state, run_id.as_str()).into()
+        }
         DesktopControlActionRequest::CreateSandboxJob {
             profile_id,
             job_id,
@@ -3565,6 +3713,89 @@ fn training_payload_response(state: &mut RenderState) -> DesktopControlActionRes
     }
 }
 
+fn launch_apple_adapter_training_action(
+    state: &mut RenderState,
+    train_dataset_path: &str,
+    held_out_dataset_path: &str,
+    package_name: &str,
+    author: &str,
+    description: &str,
+    license: &str,
+    apple_fm_base_url: &str,
+) -> DesktopControlActionResponse {
+    match crate::apple_adapter_training_control::launch_run(AppleAdapterOperatorLaunchRequest {
+        train_dataset_path: train_dataset_path.to_string(),
+        held_out_dataset_path: held_out_dataset_path.to_string(),
+        package_name: package_name.to_string(),
+        author: author.to_string(),
+        description: description.to_string(),
+        license: license.to_string(),
+        apple_fm_base_url: apple_fm_base_url.to_string(),
+    }) {
+        Ok(run) => training_action_payload_response(
+            state,
+            false,
+            format!("Completed Apple adapter operator launch for {}", run.run_id),
+        ),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn export_apple_adapter_training_action(
+    state: &mut RenderState,
+    run_id: &str,
+    export_path: &str,
+) -> DesktopControlActionResponse {
+    match crate::apple_adapter_training_control::export_run(
+        run_id,
+        PathBuf::from(export_path).as_path(),
+    ) {
+        Ok(run) => training_action_payload_response(
+            state,
+            false,
+            format!("Exported Apple adapter operator package for {}", run.run_id),
+        ),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn accept_apple_adapter_training_action(
+    state: &mut RenderState,
+    run_id: &str,
+) -> DesktopControlActionResponse {
+    let authority_client = match crate::kernel_control::remote_authority_client_for_state(state) {
+        Ok(client) => client,
+        Err(error) => return DesktopControlActionResponse::error(error),
+    };
+    match crate::apple_adapter_training_control::accept_run(run_id, &authority_client) {
+        Ok(run) => training_action_payload_response(
+            state,
+            true,
+            format!(
+                "Accepted Apple adapter operator run {} into kernel authority",
+                run.run_id
+            ),
+        ),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn training_action_payload_response(
+    state: &mut RenderState,
+    refresh_authority: bool,
+    message: impl Into<String>,
+) -> DesktopControlActionResponse {
+    if refresh_authority {
+        refresh_compute_history_cache_if_due(state, true);
+    }
+    match serde_json::to_value(desktop_control_training_status(state)) {
+        Ok(payload) => DesktopControlActionResponse::ok_with_payload(message, payload),
+        Err(error) => DesktopControlActionResponse::error(format!(
+            "Failed to encode training control state: {error}"
+        )),
+    }
+}
+
 fn challenge_payload_response(state: &mut RenderState) -> DesktopControlActionResponse {
     refresh_compute_history_cache_if_due(state, true);
     match serde_json::to_value(desktop_control_challenge_status(state)) {
@@ -4211,6 +4442,7 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
     let source = authority_history_source_label(state);
     let cluster = desktop_control_cluster_status();
     let sandbox = desktop_control_sandbox_status(state);
+    let operator = desktop_control_apple_adapter_operator_status();
     let available = cache.last_refreshed_at_epoch_ms.is_some();
     let control_plane_state = if cache.last_refreshed_at_epoch_ms.is_none() {
         if cache.last_error.is_some() {
@@ -4508,7 +4740,157 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
         sandbox_active_job_count: sandbox.active_job_count,
         runs,
         participants,
+        operator,
         last_error: cache.last_error.clone(),
+    }
+}
+
+fn desktop_control_apple_adapter_operator_status() -> DesktopControlAppleAdapterOperatorStatus {
+    match crate::apple_adapter_training_control::operator_status() {
+        Ok(status) => {
+            let runs = status
+                .runs
+                .iter()
+                .map(map_operator_run_status)
+                .collect::<Vec<_>>();
+            let active_run_count = status
+                .runs
+                .iter()
+                .filter(|run| operator_run_is_active(run))
+                .count();
+            let accepted_run_count = status
+                .runs
+                .iter()
+                .filter(|run| run.acceptance_state == AppleAdapterOperatorStageState::Completed)
+                .count();
+            let exported_run_count = status
+                .runs
+                .iter()
+                .filter(|run| run.export_state == AppleAdapterOperatorStageState::Completed)
+                .count();
+            let workflow_state = if active_run_count > 0 {
+                "running".to_string()
+            } else if status.last_error.is_some() {
+                "error".to_string()
+            } else if accepted_run_count > 0 {
+                "accepted_history".to_string()
+            } else if status.runs.is_empty() {
+                "idle".to_string()
+            } else {
+                "history".to_string()
+            };
+            DesktopControlAppleAdapterOperatorStatus {
+                available: true,
+                workflow_state,
+                schema_version: Some(status.schema_version),
+                storage_path: Some(status.storage_path),
+                last_action: status.last_action,
+                last_error: status.last_error,
+                run_count: runs.len(),
+                active_run_count,
+                accepted_run_count,
+                exported_run_count,
+                runs,
+            }
+        }
+        Err(error) => DesktopControlAppleAdapterOperatorStatus {
+            available: false,
+            workflow_state: "error".to_string(),
+            schema_version: None,
+            storage_path: None,
+            last_action: None,
+            last_error: Some(error),
+            run_count: 0,
+            active_run_count: 0,
+            accepted_run_count: 0,
+            exported_run_count: 0,
+            runs: Vec::new(),
+        },
+    }
+}
+
+fn map_operator_run_status(
+    run: &crate::apple_adapter_training_control::AppleAdapterOperatorRunStatus,
+) -> DesktopControlAppleAdapterOperatorRunStatus {
+    let local_summary = run.local_summary.as_ref();
+    DesktopControlAppleAdapterOperatorRunStatus {
+        run_id: run.run_id.clone(),
+        package_name: run.package_name.clone(),
+        author: run.author.clone(),
+        description: run.description.clone(),
+        license: run.license.clone(),
+        train_dataset_path: run.train_dataset_path.clone(),
+        held_out_dataset_path: run.held_out_dataset_path.clone(),
+        created_at_epoch_ms: run.created_at_epoch_ms,
+        updated_at_epoch_ms: run.updated_at_epoch_ms,
+        launched_at_epoch_ms: run.launched_at_epoch_ms,
+        evaluated_at_epoch_ms: run.evaluated_at_epoch_ms,
+        exported_at_epoch_ms: run.exported_at_epoch_ms,
+        accepted_at_epoch_ms: run.accepted_at_epoch_ms,
+        launch_state: apple_adapter_operator_stage_label(run.launch_state).to_string(),
+        export_state: apple_adapter_operator_stage_label(run.export_state).to_string(),
+        evaluation_state: apple_adapter_operator_stage_label(run.evaluation_state).to_string(),
+        acceptance_state: apple_adapter_operator_stage_label(run.acceptance_state).to_string(),
+        run_directory: run.run_directory.clone(),
+        staged_package_path: run.staged_package_path.clone(),
+        exported_package_path: run.exported_package_path.clone(),
+        completed_step_count: local_summary.map(|summary| summary.completed_steps),
+        expected_step_count: local_summary.map(|summary| summary.expected_steps),
+        average_loss_label: local_summary
+            .and_then(|summary| summary.average_loss)
+            .map(|loss| format!("{loss:.6}")),
+        held_out_pass_rate_bps: local_summary.and_then(|summary| summary.held_out_pass_rate_bps),
+        held_out_average_score_bps: local_summary
+            .and_then(|summary| summary.held_out_average_score_bps),
+        runtime_smoke_passed: local_summary.and_then(|summary| summary.runtime_smoke_passed),
+        runtime_smoke_digest: local_summary
+            .and_then(|summary| summary.runtime_smoke_digest.clone()),
+        package_digest: local_summary.and_then(|summary| summary.package_digest.clone()),
+        adapter_identifier: local_summary.and_then(|summary| summary.adapter_identifier.clone()),
+        authority: DesktopControlAppleAdapterOperatorAuthorityStatus {
+            core_environment_ref: run.authority_refs.core_environment_ref.clone(),
+            benchmark_environment_ref: run.authority_refs.benchmark_environment_ref.clone(),
+            benchmark_package_ref: run.authority_refs.benchmark_package_ref.clone(),
+            validator_policy_ref: run.authority_refs.validator_policy_ref.clone(),
+            training_policy_ref: run.authority_refs.training_policy_ref.clone(),
+            training_run_id: run.authority_refs.training_run_id.clone(),
+            held_out_eval_run_id: run.authority_refs.held_out_eval_run_id.clone(),
+            runtime_validation_eval_run_id: run
+                .authority_refs
+                .runtime_validation_eval_run_id
+                .clone(),
+            accepted_outcome_id: run.authority_refs.accepted_outcome_id.clone(),
+        },
+        last_action: run.last_action.clone(),
+        last_error: run.last_error.clone(),
+        log_lines: run.log_lines.clone(),
+    }
+}
+
+fn operator_run_is_active(
+    run: &crate::apple_adapter_training_control::AppleAdapterOperatorRunStatus,
+) -> bool {
+    matches!(
+        (
+            run.launch_state,
+            run.export_state,
+            run.evaluation_state,
+            run.acceptance_state,
+        ),
+        (AppleAdapterOperatorStageState::Running, _, _, _)
+            | (_, AppleAdapterOperatorStageState::Running, _, _)
+            | (_, _, AppleAdapterOperatorStageState::Running, _)
+            | (_, _, _, AppleAdapterOperatorStageState::Running)
+    )
+}
+
+fn apple_adapter_operator_stage_label(value: AppleAdapterOperatorStageState) -> &'static str {
+    match value {
+        AppleAdapterOperatorStageState::Pending => "pending",
+        AppleAdapterOperatorStageState::Running => "running",
+        AppleAdapterOperatorStageState::Completed => "completed",
+        AppleAdapterOperatorStageState::Failed => "failed",
+        AppleAdapterOperatorStageState::Interrupted => "interrupted",
     }
 }
 
@@ -6311,25 +6693,25 @@ fn run_desktop_control_runtime_loop(
 mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
-        DesktopControlAppleFmStatus, DesktopControlBuyModeStatus,
-        DesktopControlBuyModeTargetSelectionStatus, DesktopControlBuyerProcurementOrderStatus,
-        DesktopControlBuyerProcurementQuoteStatus, DesktopControlBuyerProcurementStatus,
-        DesktopControlChallengeStatus, DesktopControlClusterStatus, DesktopControlEventBatch,
-        DesktopControlEventDraft, DesktopControlGptOssStatus,
-        DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
-        DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
-        DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
-        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
-        DesktopControlSessionStatus, DesktopControlSnapshot,
-        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
-        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
-        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
-        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
-        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
-        command_received_event, desktop_control_challenge_history_status,
-        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
-        validate_control_bind_addr,
+        DesktopControlAppleAdapterOperatorStatus, DesktopControlAppleFmStatus,
+        DesktopControlBuyModeStatus, DesktopControlBuyModeTargetSelectionStatus,
+        DesktopControlBuyerProcurementOrderStatus, DesktopControlBuyerProcurementQuoteStatus,
+        DesktopControlBuyerProcurementStatus, DesktopControlChallengeStatus,
+        DesktopControlClusterStatus, DesktopControlEventBatch, DesktopControlEventDraft,
+        DesktopControlGptOssStatus, DesktopControlInventoryProjectionStatus,
+        DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
+        DesktopControlLocalRuntimeStatus, DesktopControlMissionControlStatus,
+        DesktopControlNip90SentPaymentsReport, DesktopControlProofStatus,
+        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
+        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
+        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
+        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
+        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
+        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
+        build_nip90_sent_payments_report_payload, build_settlement_history,
+        challenges_by_delivery_proof, command_outcome_event, command_received_event,
+        desktop_control_challenge_history_status, desktop_control_proof_history_status,
+        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -6701,6 +7083,7 @@ mod tests {
                         exclusion_reason: None,
                     },
                 ],
+                operator: DesktopControlAppleAdapterOperatorStatus::default(),
                 last_error: None,
             },
             proofs: DesktopControlProofStatus {

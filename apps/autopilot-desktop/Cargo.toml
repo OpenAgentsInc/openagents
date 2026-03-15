@@ -47,11 +47,15 @@ anyhow = { workspace = true }
 axum = "0.8"
 autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
 codex-client = { path = "../../crates/codex-client" }
+psionic-data = { path = "../../crates/psionic/psionic-data" }
+psionic-environments = { path = "../../crates/psionic/psionic-environments" }
+psionic-eval = { path = "../../crates/psionic/psionic-eval" }
 psionic-apple-fm = { path = "../../crates/psionic/psionic-apple-fm" }
 psionic-research = { path = "../../crates/psionic/psionic-research" }
 psionic-runtime = { path = "../../crates/psionic/psionic-runtime" }
 psionic-sandbox = { path = "../../crates/psionic/psionic-sandbox" }
 psionic-serve = { path = "../../crates/psionic/psionic-serve" }
+psionic-train = { path = "../../crates/psionic/psionic-train" }
 openagents-cad = { path = "../../crates/cad" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
