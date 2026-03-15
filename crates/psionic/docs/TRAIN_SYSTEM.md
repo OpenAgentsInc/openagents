@@ -7,14 +7,20 @@
 > `crates/psionic/README.md`,
 > `crates/psionic/docs/ARCHITECTURE.md`,
 > `crates/psionic/docs/AUTORESEARCH_INTEGRATION_PLAN.md`,
+> `docs/kernel/compute-training-authority.md`,
+> `docs/headless-compute.md`,
 > `crates/psionic/psionic-runtime/src/lib.rs`,
 > `crates/psionic/psionic-datastream/src/lib.rs`,
 > `crates/psionic/psionic-collectives/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`,
+> `crates/psionic/psionic-environments/src/lib.rs`,
+> `crates/psionic/psionic-eval/src/lib.rs`,
 > `crates/psionic/psionic-adapters/src/lib.rs`,
 > `crates/psionic/psionic-data/src/lib.rs`, and
-> `crates/psionic/psionic-sandbox/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3621`.
+> `crates/psionic/psionic-sandbox/src/lib.rs`,
+> `apps/autopilot-desktop/src/desktop_control.rs`, and
+> `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
+> train-adjacent issue backlog through `#3631`.
 
 ## Why This Doc Exists
 
@@ -43,13 +49,21 @@ The train system assumes the execution substrate defined in
 `ARCHITECTURE.md` and does not redefine runtime, cluster, sandbox, or artifact
 transport behavior.
 
-Apple-specific adapter work is still later-family work, but the repo now owns a
-canonical spec-and-fixture baseline for it in:
+Apple-specific adapter work is no longer only later-family planning. The repo
+now owns a canonical spec-and-fixture baseline for it in:
 
 - `crates/psionic/docs/APPLE_ADAPTER_DATASET_SPEC.md`
 - `crates/psionic/docs/APPLE_FMADAPTER_PACKAGE_SPEC.md`
 - `crates/psionic/docs/APPLE_ADAPTER_LINEAGE_SPEC.md`
 - `crates/psionic/fixtures/apple_adapter/`
+
+and now also has:
+
+- a repo-owned Apple training execution backend in `psionic-train`
+- a first Rust-native Apple adapter SFT/export lane
+- an optional Apple draft-model distillation lane
+- an app-owned desktop-control and `autopilotctl` operator path that can
+  launch, export, and accept one Apple training run into kernel authority
 
 ## Doc Authority
 
@@ -259,7 +273,9 @@ The broader OpenAgents tree now also has train-adjacent authority surfaces
 outside Psionic for:
 
 - environment package descriptors and registry behavior
-- compute evaluation-run lifecycle
+- compute evaluation-run, training-run, and accepted-outcome lifecycle
+- narrow Apple adapter-hosting and Apple-training provider/market projection
+  surfaces
 - synthetic-data job and verification lifecycle
 
 This is already a meaningful substrate split. The missing work is higher in the
@@ -476,7 +492,7 @@ remaining gaps are:
 - broader environment-owned lifecycle and policy integration
 - stronger operator and security hardening for long-running train workloads
 
-### 7. Environment, eval, and synthetic-data truth now spans Psionic runtime crates and authority-owned kernel surfaces
+### 7. Environment, eval, training-authority, and synthetic-data truth now spans Psionic runtime crates and authority-owned kernel surfaces
 
 The recent issue closures matter because they changed both Psionic and the
 broader system around it.
@@ -487,22 +503,29 @@ The tree now has Psionic-native execution crates for:
   `psionic-environments`
 - held-out eval runs, benchmark packages, repeat-run aggregation, and local
   validator simulation in `psionic-eval`
+- one repo-owned Apple adapter training execution lane in `psionic-train`
 
 The tree also has broader OpenAgents support for:
 
 - environment package descriptors and registry behavior
 - environment refs bound into compute products and delivery proofs
 - evaluation-run creation, sample ingestion, and finalize flows
+- training-policy registration, training-run create/finalize flows, and
+  accepted-outcome publication
+- narrow Apple adapter-hosting capability publication plus matching
+  compute-market truth surfaces
 - synthetic-data job creation, append, finalize, and verification flows
 
 Those capabilities currently live in kernel/proto and Nexus-control surfaces.
 
 So the accurate reading is:
 
-- Psionic now has native environment and eval runtime clients inside the
-  compute substrate
+- Psionic now has native environment and eval runtime clients plus one
+  repo-owned Apple training lane inside the compute substrate
 - the larger platform owns the canonical authority truth for environment, eval,
-  and synthetic-data records
+  training-run, and accepted-outcome records
+- provider and market surfaces now expose one narrow Apple training and
+  adapter-hosting projection on top of that authority truth
 - synthetic-data still remains `partial_outside_psionic` because there is no
   Psionic-native generation runtime yet
 
@@ -532,8 +555,18 @@ Today Psionic can honestly claim all of the following:
   iteration receipts
 - training-related artifact lineage is now materially first-class data rather
   than opaque side files
-- the broader OpenAgents stack now has authority-layer environment, eval, and
-  synthetic-data flows that Psionic can target as execution clients
+- the first repo-owned Apple adapter SFT lane is real in `psionic-train`, and
+  the optional Apple draft-model distillation lane is now separate typed
+  behavior instead of being implied by one generic training path
+- the broader OpenAgents stack now has authority-layer environment, eval,
+  training-run, and accepted-outcome flows that Psionic can target as
+  execution clients
+- the desktop app now has a truthful Apple training operator flow on top of the
+  Psionic substrate, including explicit launch, eval, export, and
+  accepted-outcome publication boundaries
+- the broader stack also projects one narrow Apple adapter-hosting and
+  Apple-training truth path into provider and compute-market surfaces, without
+  pretending that broader train procurement is complete
 
 That is a meaningful base.
 
@@ -548,10 +581,12 @@ Psionic cannot honestly claim any of the following yet:
 - true multi-device execution kernels and ZeRO or FSDP transport and partition
   exchange
 - fully mature checkpoint retention, promotion, and cold-restore governance
-- final kernel-backed accepted-outcome authority for every train artifact and
-  lifecycle
+- broad kernel-backed accepted-outcome authority for every train artifact and
+  lifecycle beyond the current Apple adapter path
 - full security hardening, chaos coverage, and operator lifecycle for the train
   stack
+- a broad provider-market training family or buyer-facing procurement surface
+  on top of the current Apple reference lanes
 - the broader research-loop or productization program beyond the current
   reference runs
 
@@ -1105,7 +1140,7 @@ crate names.
 | Eval runtime | present in `psionic-eval` | shared online/offline eval and rubric runtime, benchmark packages, and local validator simulation |
 | Sandbox throughput | bounded one-shot substrate exists | RL-throughput warm pools and repeated environment loops |
 | Validators for RL | rollout-verification bundles and sampled adjudication contracts present | broader service productization, batch-level adjudication, and authority integration |
-| Operator surfaces | absent in Psionic-local train form | inspection, diagnostics, and receipts across all train subsystems |
+| Operator surfaces | app-owned desktop-control and `autopilotctl` surfaces now exist on top of Psionic, but Psionic still does not own its own operator crate or full train operator plane | inspection, diagnostics, and receipts across all train subsystems |
 
 ## Path To Completion
 
@@ -1123,33 +1158,37 @@ Already in tree:
 - adapter lineage substrate
 - bounded sandbox execution substrate
 
-### Wave 1: core all-Rust train platform
+### Wave 1: implemented early all-Rust train platform
+
+Now in tree:
+
+- fixed-budget training core with reusable autodiff and optimizer layers under
+  it
+- rollout artifacts, policy-lineage contracts, worker protocol, and
+  validator-ready verification bundles
+- environment ABI plus environment registry helpers
+- data, tokenizer, split, and packing contracts
+- held-out eval runtime plus Apple held-out, benchmark, and runtime-smoke
+  harnesses
+- run graph, checkpoint lineage, orchestrator state machine, off-policy
+  budgeting, and scheduling/economics contracts
+- RL-throughput sandbox primitives
+- repo-owned Apple training execution backend, Apple SFT/export lane, and
+  optional Apple draft-model distillation lane
+
+### Wave 2: remaining productization and scaling
 
 Needed next:
 
-- actual training core
-- rollout artifacts
-- environment ABI
-- data layer
-- eval runtime
-- run graph and participant lifecycle
-- richer checkpoint and datastream policy
-- orchestrator state machine
-- worker protocol and validator flows
-- RL-throughput sandbox
-
-### Wave 2: full productization of train execution
-
-Needed after core:
-
-- distributed optimizer and memory-sharding discipline
-- interoperability with model and tokenizer formats
-- reproducibility guarantees
-- security and provenance hardening
-- artifact retention and cold restore policy
-- scheduling, priority, and cost attribution
-- chaos and failure testing
-- benchmark acceptance thresholds
+- true multi-device execution kernels and distributed optimizer integration
+- memory-sharding, partition exchange, and broader collective or optimizer
+  integration at scale
+- broader model, tokenizer, and artifact-format interoperability
+- stronger security, provenance, and authority integration beyond the current
+  Apple accepted-outcome path
+- mature artifact retention, promotion, and cold-restore governance
+- broader operator lifecycle and market/product surfaces beyond the current
+  app-owned Apple reference workflow
 
 ### Later scope
 
@@ -1166,7 +1205,9 @@ environment-first Intellect-style train stack.
 The issue program below is written from the current repository state, not from
 the older "there is no `psionic-train` crate" assumption.
 
-This program is now instantiated on GitHub as issues `#3564` through `#3593`.
+This program first landed as issues `#3564` through `#3593` and was later
+extended by the framework-core follow-ons `#3602` and `#3603`, plus the
+Apple-lane closures `#3616` through `#3631`.
 
 ### Core Platform Build-Out
 
@@ -1243,8 +1284,9 @@ Apple draft-model distillation lane on top of that SFT path:
 - portable draft checkpoint export plus paired `draft.mil` or
   `draft_weights.bin` payload emission inside `.fmadapter`
 
-Authority publication, desktop workflow, provider truth, and market claims
-remain later issues.
+Authority publication and desktop workflow are now real through the later
+Apple-lane issue closures. Broader provider-market training truth and generic
+market claims beyond the current Apple reference path remain later work.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
@@ -1737,8 +1779,9 @@ The canonical runbook and harness are now:
 - `crates/psionic/docs/TRAIN_STABILITY_REFERENCE.md`
 - `scripts/release/check-psionic-train-stability.sh`
 
-This issue makes halt/quarantine policy machine-legible. Operator product
-surfaces and authority publication remain later layers.
+This issue makes halt/quarantine policy machine-legible. Broader operator
+product surfaces beyond the current app-owned Apple workflow remain later
+layers.
 
 ### 20. `Kernel and Nexus: add training and eval receipt families, policy registries, and read models`
 
@@ -1768,9 +1811,21 @@ and `apps/nexus-control` for:
 - training-run create/finalize/list/get
 - accepted eval or training outcomes
 
+On 2026-03-15, GitHub issue `#3624` extended the same authority surface with
+Apple-specific benchmark adapter kinds plus typed training-policy and
+training-run metadata validation, so Apple packages and runs now have to carry
+consistent benchmark, validator, and environment bindings before Nexus accepts
+them.
+
+On 2026-03-15, GitHub issue `#3627` then extended Nexus with the first
+canonical Apple training-run and accepted-outcome projection path, including
+held-out eval gating, optional runtime-smoke gating, and persistence of typed
+Apple package lineage on both the finalized training run and accepted outcome.
+
 ### 21. `Desktop and autopilotctl: expose training operator surfaces and diagnostics`
 
-Implemented on Saturday, March 14, 2026.
+Implemented on Sunday, March 15, 2026 via GitHub issue `#3629`, after the
+earlier Apple adapter inventory/control plumbing from issue `#3620`.
 
 The app-owned desktop-control surface and `autopilotctl` now expose a typed
 training operator view. The current projection is intentionally truthful about
@@ -1785,12 +1840,23 @@ controller:
   contributor-set revision hints, contributor reselection timing, stale-rollout
   discard counts, duplicate quarantine or deweight counts, validator verdict
   totals, sandbox pool readiness, and visible run-level diagnostics
+- the same surface now carries an app-owned Apple operator sub-view with
+  explicit `launch`, `evaluation`, `export`, and `acceptance` stage state plus
+  persisted run logs and authority refs
+- `autopilotctl training launch`, `training export`, and `training accept`
+  drive the same desktop-control mutations instead of relying on ad hoc scripts
 - `autopilotctl training status` prints the same app-owned projection directly,
   while `autopilotctl status` includes a condensed training summary
 
 This does not claim a live Psionic train orchestrator is embedded in the
 desktop app yet. It does make the currently available training truth
 inspectable without reconstructing it from logs or ad hoc scripts.
+
+On 2026-03-15, GitHub issue `#3628` projected the same accepted Apple adapter
+truth into `openagents-provider-substrate` as a narrow provider-hosted
+adapter-family capability, and GitHub issue `#3630` updated the compute-market
+docs to match that narrow truth boundary. Those surfaces sit above Psionic and
+do not yet imply a broad training procurement product.
 
 ### 22. `Reference Program: run one end-to-end agentic SFT plus RL pilot on the full stack`
 
@@ -2071,18 +2137,23 @@ The current Psionic tree already contains real train-substrate work:
 - collective planning
 - checkpoint and recovery session state
 - early training-output lineage through adapters
+- reusable environment, eval, validator, and orchestrator crates
+- one real repo-owned Apple training lane with app-owned operator and accepted-
+  outcome integration around it
 
 That means the train system is no longer hypothetical.
 
-But the current tree still stops short of a full all-Rust training system.
+But the current tree still stops short of a scaled, generalized, fully hardened
+all-Rust training system.
 
-The missing center of gravity is:
+The missing center of gravity is now:
 
-- the training core
-- the orchestrator
-- the rollout artifact model
-- the environment and eval runtime
-- the validator-aware RL loop
-- the production operating discipline around all of the above
+- multi-device execution kernels and distributed optimizer execution at scale
+- broader format interoperability and retention/promotion governance
+- stronger provenance, security, and authority integration beyond the current
+  Apple path
+- broader operator and product surfaces beyond the current Apple reference
+  workflow
 
-That is the path Psionic still has to build.
+That is the path Psionic still has to build from its now-real early train
+system.
