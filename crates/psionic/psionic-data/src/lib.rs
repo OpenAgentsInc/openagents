@@ -7,6 +7,7 @@
 )]
 
 mod apple_adapter;
+mod apple_adapter_curation;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,6 +18,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use apple_adapter::*;
+pub use apple_adapter_curation::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str =
