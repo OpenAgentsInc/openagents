@@ -13,6 +13,10 @@ This doc freezes the package inventory and metadata shape we intend to support
 in Rust so `psionic-adapters`, `psionic-train`, the Apple bridge lane, and
 later authority surfaces can all depend on one in-repo contract.
 
+`psionic-adapters` now implements the first Rust-native reader, writer,
+inventory validator, lineage extractor, and generic manifest bridge for this
+package family.
+
 ## Authority
 
 - This doc is the canonical repo-owned `.fmadapter` package-layout spec.
@@ -144,6 +148,5 @@ without checking in heavyweight Apple-exported binaries.
 
 ## Non-Goals
 
-- This doc does not claim the Rust parser or writer already exists.
 - This doc does not claim draft-model distillation is implemented.
 - This doc does not let product docs market adapter hosting or training yet.

@@ -203,7 +203,7 @@ shape already includes at least:
 | Collectives | `implemented_early` | elastic mesh observation, bandwidth-aware local/global sync planning, transport-feedback replanning, and benchmark-gated quantized collective policy |
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
-| Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage |
+| Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage, and first Apple `.fmadapter` reader/writer plus file-inventory validation |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, and `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
@@ -243,7 +243,8 @@ The current train-relevant ownership split in Psionic is:
     window lifecycle, the fixed-budget training-core reference loop,
     orchestrator state, and RL-facing rollout or batch contracts
 - `psionic-adapters`
-  - adapter package identity and hosted binding lineage
+  - adapter package identity, Apple `.fmadapter` parsing or writing, file
+    inventory validation, and hosted binding lineage
 - `psionic-sandbox`
   - bounded sandbox execution substrate and background-job lifecycle
 - `psionic-cluster`
