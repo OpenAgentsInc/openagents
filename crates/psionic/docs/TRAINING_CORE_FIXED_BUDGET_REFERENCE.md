@@ -21,9 +21,10 @@ The issue landed a typed fixed-budget training loop with:
 - visible inner-step, window, and cadence scheduling
 - checkpoint-anchored restore lineage from `TrainingSessionState`
 
-The current step path uses explicit gradient batches. That is honest for the
-current repo state: the later tensor, autodiff, and broader optimizer issues
-still remain open.
+The current step path still uses explicit gradient batches. That remains a good
+fit for a bounded reference harness, but it no longer means the gradient or
+optimizer story is trainer-private: `psionic-ir::autodiff` and
+`psionic-train::optimizer` now own reusable substrate underneath this loop.
 
 ## Canonical Runner
 
@@ -80,13 +81,13 @@ The current harness should prove:
 
 This issue intentionally does not claim:
 
-- a finished autodiff engine
-- distributed optimizer or memory-sharding completeness
+- broad autodiff coverage across every future backend-extension and training op
+- distributed optimizer or memory-sharding runtime completeness
 - rollout artifacts, orchestrator control, or RL freshness policy
 - full environment or eval runtime integration
 - production benchmarking or hardening
 
 The current step path is an explicit-gradient reference path over `f32`
 payloads. That is enough to make trainer-step truth, optimizer ownership,
-residency policy, telemetry, and checkpoint restore real without pretending
-later train-system issues are already solved.
+residency policy, telemetry, and checkpoint restore real without pretending the
+broader train-system issues are already solved.
