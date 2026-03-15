@@ -1,6 +1,6 @@
 # Psionic Train System
 
-> Status: updated 2026-03-14 after reviewing `docs/MVP.md`,
+> Status: updated 2026-03-15 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`,
 > `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md`,
 > `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`,
@@ -11,9 +11,10 @@
 > `crates/psionic/psionic-datastream/src/lib.rs`,
 > `crates/psionic/psionic-collectives/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`,
-> `crates/psionic/psionic-adapters/src/lib.rs`, and
+> `crates/psionic/psionic-adapters/src/lib.rs`,
+> `crates/psionic/psionic-data/src/lib.rs`, and
 > `crates/psionic/psionic-sandbox/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3609`.
+> recently closed issue backlog through `#3621`.
 
 ## Why This Doc Exists
 
@@ -202,7 +203,7 @@ shape already includes at least:
 | Datastream | `implemented_early` | resumable manifests, checkpoint or dataset bindings, policy-weight control refs, freshness windows, and delivery receipts |
 | Collectives | `implemented_early` | elastic mesh observation, bandwidth-aware local/global sync planning, transport-feedback replanning, and benchmark-gated quantized collective policy |
 | Train session state | `implemented_early` | membership observation, async checkpoint state, durability transitions, live-recovery planning |
-| Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, and long-context packing policies |
+| Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, long-context packing policies, and Apple adapter JSONL import or validation with typed tool-schema augmentation plus tokenizer/prompt-shaping packing lineage |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage, and first Apple `.fmadapter` reader/writer plus file-inventory validation |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
 | Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, and `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
@@ -226,7 +227,8 @@ The current train-relevant ownership split in Psionic is:
     adapter packages
 - `psionic-data`
   - versioned dataset manifests, tokenizer digests, split declarations,
-    streamed iteration contracts, and long-context packing rules
+    streamed iteration contracts, long-context packing rules, and Apple
+    adapter dataset import or validation with typed schema/tool augmentation
 - `psionic-collectives`
   - elastic mesh observation, local/global sync planning, transport-feedback
     replanning, and benchmark-gated collective policy
@@ -1264,6 +1266,18 @@ This issue keeps byte movement in `psionic-datastream` but makes data lineage,
 iteration, and packing policy first-class typed Psionic contracts. The
 environment ABI now binds versioned dataset keys from this layer instead of
 free-form dataset refs.
+
+On 2026-03-15, GitHub issue `#3621` extended that same crate with the first
+repo-owned Apple adapter dataset path:
+
+- UTF-8 JSONL import into typed Apple message, tool, and guided-generation
+  records
+- fixture-backed validation of message ordering, tool definitions, and
+  `response_format` schema requirements
+- explicit tokenizer and prompt-shaping lineage metadata for later train/eval
+  reuse
+- deterministic Apple sample packing over explicit prompt/completion/tool/schema
+  token captures, with typed refusal on tokenizer or prompt-shaping drift
 
 ### 5. `Psionic Eval: create the Rust-native eval and rubric runtime`
 

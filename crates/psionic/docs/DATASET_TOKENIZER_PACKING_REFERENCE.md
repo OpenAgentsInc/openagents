@@ -1,6 +1,6 @@
 # Dataset, Tokenizer, and Packing Reference
 
-> Status: canonical `#3567` data-contract record, updated 2026-03-14 after
+> Status: canonical `#3567` data-contract record, updated 2026-03-15 after
 > landing the runnable harness in
 > `scripts/release/check-psionic-data-contracts.sh`.
 
@@ -19,6 +19,18 @@ The issue landed the `psionic-data` crate with:
   optional epoch-shuffled shard order
 - sequence-packing and batch-packing policies for long-context or token-budget
   workloads
+
+On 2026-03-15, issue `#3621` extended the same crate with a repo-owned Apple
+adapter dataset lane:
+
+- JSONL import into typed Apple message, tool, response-schema, and sample
+  records
+- fixture-backed validation for Apple role ordering, tool-definition shape, and
+  `response_format` schema completeness
+- dataset-level tokenizer and prompt-shaping lineage metadata for later
+  train/eval parity checks
+- deterministic packing over explicit prompt/completion/tool/schema token
+  captures, with typed refusal on tokenizer or prompt-shaping drift
 
 The environment ABI now binds versioned dataset keys from this crate instead of
 free-form dataset refs, but kernel and Nexus still own any future dataset
@@ -42,6 +54,13 @@ The current reference path proves one bounded but real data-contract workload:
 4. plan a resume-safe streamed iteration window
 5. plan long-context packing or token-budget batches over sequence descriptors
 
+The Apple adapter extension now proves a second bounded workload:
+
+1. import Apple training fixtures into typed Rust records
+2. preserve tool and schema attachments at the data-contract layer
+3. bind tokenizer and prompt-shaping lineage at dataset scope
+4. plan deterministic packing only when token captures match that lineage
+
 ## Pass Criteria
 
 The data layer is green only if all of the following are true:
@@ -63,6 +82,10 @@ The current harness should prove:
 - `DatasetPackingPolicy` can both pack short sequences into long-context rows
   and batch rows under a token budget
 - `psionic-environments` can now bind versioned datasets through `DatasetKey`
+- Apple adapter fixtures import into typed records with explicit refusal paths
+  for malformed roles, missing schemas, and invalid tools
+- Apple adapter packing refuses tokenizer drift and prompt-shaping drift instead
+  of silently reusing stale token counts
 
 ## Current Limitations
 
