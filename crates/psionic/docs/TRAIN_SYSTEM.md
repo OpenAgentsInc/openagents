@@ -1852,6 +1852,25 @@ The canonical experiment-program gate for that layer is now:
 
 - `scripts/release/check-psionic-apple-experiment-program.sh`
 
+On 2026-03-15, GitHub issue `#3657` tightened the Apple runtime-validation
+layer around that same run:
+
+- runtime-smoke receipts now carry the bridge-reported compatibility snapshot
+  used during validation, including the current base-model family anchor,
+  bridge version/platform, availability state, and adapter inventory or attach
+  capability posture
+- bridge-backed runtime validation now fails with explicit reasons when the
+  Apple runtime is unavailable, when adapter inventory or attach support is
+  missing, or when the bridge rejects the package
+- `autopilotctl training accept ...` now reruns a drift check against the live
+  Apple bridge before publishing authority truth, so runtime or Background
+  Assets drift is surfaced explicitly instead of being hidden behind a stale
+  earlier smoke receipt
+
+The canonical runtime-validation gate for that layer is now:
+
+- `scripts/release/check-psionic-apple-runtime-validation.sh`
+
 ### 6. `Psionic Train: define canonical run graph, topology revisions, and participant lifecycle`
 
 Status: implemented on 2026-03-14 via GitHub issue `#3569`.

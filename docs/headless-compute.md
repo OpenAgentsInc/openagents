@@ -179,12 +179,16 @@ workflow rather than a status-only surface:
 
 - `autopilotctl training launch ...` imports train and held-out datasets, runs
   repo-native Apple adapter SFT, stages the `.fmadapter`, and records local
-  held-out plus runtime-smoke results
+  held-out plus runtime-smoke results, including the bridge-reported runtime
+  compatibility state used during validation
 - `autopilotctl training export ...` materializes the staged package at an
   explicit export path without treating export as accepted market truth
 - `autopilotctl training accept ...` is the authority boundary: it registers
   environment, benchmark, validator, checkpoint-family, training-policy,
-  eval-run, training-run, and accepted-outcome records through kernel authority
+  eval-run, training-run, and accepted-outcome records through kernel
+  authority, but only after rerunning a bridge-backed Apple runtime drift
+  check against the exported package so runtime or Background Assets changes
+  are surfaced explicitly before publication
 
 The status payload now renders the Apple operator stages separately so launched,
 evaluated, exported, and accepted states stay distinct across restart or replay.

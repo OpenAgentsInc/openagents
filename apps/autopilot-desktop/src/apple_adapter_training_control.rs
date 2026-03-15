@@ -52,8 +52,8 @@ use psionic_environments::{
 };
 use psionic_eval::{
     AppleAdapterEvalHarness, AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCall,
-    AppleAdapterRuntimeSmokeReceipt, AppleAdapterRuntimeSmokeRequest, EvalArtifact, EvalMetric,
-    EvalRunState,
+    AppleAdapterRuntimeDriftReport, AppleAdapterRuntimeSmokeReceipt,
+    AppleAdapterRuntimeSmokeRequest, EvalArtifact, EvalMetric, EvalRunState,
 };
 use psionic_train::{
     run_apple_adapter_sft_export, AppleAdapterActivationCheckpointPolicy,
@@ -80,6 +80,10 @@ const APPLE_TRAINING_RUNTIME_SMOKE_PROMPT: &str =
     "Explain what a mutex does in one short sentence.";
 
 static APPLE_TRAINING_CONTROLLER: OnceLock<Mutex<AppleAdapterTrainingController>> = OnceLock::new();
+
+fn default_apple_fm_base_url() -> String {
+    "http://127.0.0.1:11435".to_string()
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -144,6 +148,8 @@ pub struct AppleAdapterOperatorRunStatus {
     pub updated_at_epoch_ms: u64,
     pub train_dataset_path: String,
     pub held_out_dataset_path: String,
+    #[serde(default = "default_apple_fm_base_url")]
+    pub apple_fm_base_url: String,
     pub package_name: String,
     pub author: String,
     pub description: String,
@@ -276,6 +282,7 @@ impl AppleAdapterTrainingController {
             updated_at_epoch_ms: now,
             train_dataset_path: request.train_dataset_path.clone(),
             held_out_dataset_path: request.held_out_dataset_path.clone(),
+            apple_fm_base_url: request.apple_fm_base_url.clone(),
             package_name: request.package_name.clone(),
             author: request.author.clone(),
             description: request.description.clone(),
@@ -794,6 +801,41 @@ fn accept_run_impl(
         .clone()
         .ok_or_else(|| format!("Run `{run_id}` is missing runtime smoke receipt"))?;
     let kernel_refs = kernel_refs_for_run(run_id);
+    let runtime_profile = runtime_profile_from_summary(&local_summary);
+    let train_dataset = load_dataset(Path::new(run.train_dataset_path.as_str()), &runtime_profile)
+        .map_err(|error| format!("Failed to reload train dataset for `{run_id}`: {error}"))?;
+    let held_out_dataset = load_dataset(
+        Path::new(run.held_out_dataset_path.as_str()),
+        &runtime_profile,
+    )
+    .map_err(|error| format!("Failed to reload held-out dataset for `{run_id}`: {error}"))?;
+    let environment = build_environment_bundle(run_id, &train_dataset, &held_out_dataset)
+        .map_err(|error| format!("Failed to rebuild Apple environment for `{run_id}`: {error}"))?;
+    let runtime_drift = run_local_runtime_drift_check(
+        run.apple_fm_base_url.as_str(),
+        Path::new(exported_package_path.as_str()),
+        &environment,
+        &runtime_profile,
+        &runtime_smoke,
+    )
+    .map_err(|error| {
+        format!("Failed to rerun Apple runtime drift check for `{run_id}`: {error}")
+    })?;
+    if runtime_drift.drifted {
+        let reason_codes = runtime_drift
+            .reason_codes
+            .iter()
+            .map(|code| format!("{code:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let detail = runtime_drift
+            .detail
+            .as_deref()
+            .unwrap_or("runtime drift detected after the earlier smoke receipt");
+        return Err(format!(
+            "Run `{run_id}` failed Apple runtime drift revalidation before acceptance: [{reason_codes}] {detail}"
+        ));
+    }
 
     ensure_registry(authority_client, &run, &kernel_refs)?;
     let created_at_ms = i64::try_from(run.created_at_epoch_ms).unwrap_or(i64::MAX);
@@ -1163,6 +1205,7 @@ fn build_runtime_eval_requests(
         metadata: json!({
             "adapter_id": smoke.adapter_id,
             "package_digest": smoke.package_digest,
+            "runtime_state": &smoke.runtime_state,
         }),
     };
     let sample = ComputeEvaluationSample {
@@ -1249,6 +1292,7 @@ fn build_runtime_eval_requests(
                     "mode": "runtime_smoke",
                     "benchmark_package_refs": [refs.benchmark_package_ref.clone()],
                     "operator_run_id": run.run_id,
+                    "runtime_state": &smoke.runtime_state,
                 }),
             },
             evidence: Vec::new(),
@@ -1268,6 +1312,7 @@ fn build_runtime_eval_requests(
                 metadata: json!({
                     "package_digest": smoke.package_digest,
                     "adapter_id": smoke.adapter_id,
+                    "runtime_state": &smoke.runtime_state,
                 }),
             }],
             metadata: json!({ "mode": "runtime_smoke" }),
@@ -2411,33 +2456,53 @@ fn run_local_runtime_smoke(
         format!("Failed to build Apple FM bridge client for {apple_fm_base_url}")
     })?;
     let harness = AppleAdapterEvalHarness::new(environment.clone())?;
+    let request = build_runtime_smoke_request(package_path, runtime_profile);
     harness
-        .run_runtime_smoke(
-            &client,
-            &AppleAdapterRuntimeSmokeRequest {
-                package_path: package_path.display().to_string(),
-                requested_adapter_id: Some("operator-runtime-smoke".to_string()),
-                instructions: Some(
-                    "You are running the OpenAgents Apple adapter runtime smoke test.".to_string(),
-                ),
-                text_prompt: APPLE_TRAINING_RUNTIME_SMOKE_PROMPT.to_string(),
-                expected_text_substring: None,
-                expected_base_model_signature: Some(runtime_profile.base_model_signature()),
-                expected_tokenizer_digest: Some(
-                    runtime_profile
-                        .dataset_metadata()
-                        .tokenizer
-                        .tokenizer_digest
-                        .clone(),
-                ),
-                expected_prompt_shaping_digest: Some(runtime_profile.prompt_shaping_digest()),
-                structured_prompt: None,
-                structured_schema: None,
-                expected_structured_output: None,
-                options: None,
-            },
-        )
+        .run_runtime_smoke(&client, &request)
         .map_err(Into::into)
+}
+
+fn run_local_runtime_drift_check(
+    apple_fm_base_url: &str,
+    package_path: &Path,
+    environment: &AppleAdapterEnvironmentBundle,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
+    previous_receipt: &AppleAdapterRuntimeSmokeReceipt,
+) -> Result<AppleAdapterRuntimeDriftReport> {
+    let client = AppleFmBridgeClient::new(apple_fm_base_url).with_context(|| {
+        format!("Failed to build Apple FM bridge client for {apple_fm_base_url}")
+    })?;
+    let harness = AppleAdapterEvalHarness::new(environment.clone())?;
+    let request = build_runtime_smoke_request(package_path, runtime_profile);
+    Ok(harness.detect_runtime_drift(&client, &request, previous_receipt))
+}
+
+fn build_runtime_smoke_request(
+    package_path: &Path,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
+) -> AppleAdapterRuntimeSmokeRequest {
+    AppleAdapterRuntimeSmokeRequest {
+        package_path: package_path.display().to_string(),
+        requested_adapter_id: Some("operator-runtime-smoke".to_string()),
+        instructions: Some(
+            "You are running the OpenAgents Apple adapter runtime smoke test.".to_string(),
+        ),
+        text_prompt: APPLE_TRAINING_RUNTIME_SMOKE_PROMPT.to_string(),
+        expected_text_substring: None,
+        expected_base_model_signature: Some(runtime_profile.base_model_signature()),
+        expected_tokenizer_digest: Some(
+            runtime_profile
+                .dataset_metadata()
+                .tokenizer
+                .tokenizer_digest
+                .clone(),
+        ),
+        expected_prompt_shaping_digest: Some(runtime_profile.prompt_shaping_digest()),
+        structured_prompt: None,
+        structured_schema: None,
+        expected_structured_output: None,
+        options: None,
+    }
 }
 
 fn build_local_summary(
