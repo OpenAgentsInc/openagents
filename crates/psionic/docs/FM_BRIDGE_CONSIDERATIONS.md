@@ -39,7 +39,51 @@ So: Swift talks to Apple; Rust talks to the bridge over HTTP; the desktop app ow
 - **`psionic-apple-fm`**: transport-neutral types and HTTP client. No process management, no UI.
 - **`apple_fm_bridge.rs`**: discovers binary, optionally runs `build.sh`, spawns bridge, polls health, pushes snapshots to the app, drives Mission Control “Start / Refresh Apple FM” and “Test Local FM.”
 
-## 3. Contract (URL, endpoints, readiness)
+## 3. What This Bridge Does And Does Not Mean For Training
+
+The Apple FM bridge is an inference/runtime integration surface. It is not the
+repo's training engine.
+
+What the bridge does own today:
+
+- health and model readiness
+- session lifecycle
+- structured generation and tool use
+- streaming
+- adapter inventory
+- loading/unloading exported `.fmadapter` packages
+- attaching/detaching adapters to sessions
+- request-level adapter overrides for runtime smoke or local usage
+
+What the bridge does **not** own:
+
+- LoRA/adapter gradient production
+- optimizer updates
+- dataset packing or held-out eval
+- training-run authority publication
+- distributed or cluster training control
+
+The current Apple adapter training path lives elsewhere in the repo:
+
+- `psionic-train` owns the repo-native Apple adapter execution backend and the
+  fixed-budget SFT/export lane
+- `psionic-data`, `psionic-environments`, and `psionic-eval` own the dataset,
+  environment, and held-out/runtime-smoke contracts that surround that lane
+- `apps/autopilot-desktop` owns the operator flow exposed through
+  `autopilotctl training launch|export|accept`
+
+That means the honest integration story is:
+
+1. the repo trains a LoRA-style Apple adapter patch in Rust
+2. the repo exports a valid `.fmadapter`
+3. the bridge loads and attaches that exported package for live Apple runtime
+   usage
+
+So yes, the Apple FM integration now reaches real adapter training and local
+usage, but the bridge participates as the runtime consumer and runtime-smoke
+validator, not as the trainer.
+
+## 4. Contract (URL, endpoints, readiness)
 
 - **Default base URL**: `http://127.0.0.1:11435`. Override with **`OPENAGENTS_APPLE_FM_BASE_URL`**.
 - **Key endpoints** (see `psionic_apple_fm::contract` and `swift/foundation-bridge/README.md`):
@@ -69,7 +113,7 @@ So: Swift talks to Apple; Rust talks to the bridge over HTTP; the desktop app ow
 
 If the bridge process is running but Apple Intelligence is off (or the system model is unavailable for another reason), the app sees “reachable but not ready” and should tell the user to enable Apple Intelligence (see user requirements below).
 
-## 4. Binary discovery (where the app looks for the bridge)
+## 5. Binary discovery (where the app looks for the bridge)
 
 The desktop app looks for the **`foundation-bridge`** binary in this order:
 
@@ -85,7 +129,7 @@ The desktop app looks for the **`foundation-bridge`** binary in this order:
 
 If none of these yield an existing binary, the app may try to **auto-build** once (see below). If the app is **running from an .app bundle** (path contains `.app/Contents/`), it does **not** tell the user to build; it tells them the app was not packaged with the bridge and to reinstall or get a complete build.
 
-## 5. Build and run (developers and CI)
+## 6. Build and run (developers and CI)
 
 - **Build** (from repo root):
   `cd swift/foundation-bridge && ./build.sh`
@@ -101,7 +145,7 @@ If none of these yield an existing binary, the app may try to **auto-build** onc
   `curl -s http://127.0.0.1:11435/health`
   You should get a JSON object with system model availability. Before working on autopilot or Mission Control, **test the bridge first** (build → run → curl health), then start the desktop app. See **AGENTS.md** and the main **README.md** “Agent Install Instructions” for the canonical “test bridge first” workflow.
 
-## 6. Shipping the app (no build on user machines)
+## 7. Shipping the app (no build on user machines)
 
 To ship so **users never need to build the bridge or install Xcode**:
 
@@ -117,7 +161,7 @@ If you do **not** bundle the binary:
 - **From source** (e.g. `cargo run`): the app may run **`./build.sh`** once; if that fails (e.g. no Swift), the user sees instructions to install Xcode or run `xcode-select --install` and restart the app.
 - **From a shipped .app**: the app detects it is in a bundle and shows a **“bridge missing from this app”** message instead of “run build.sh,” so users don’t get incorrect build instructions.
 
-## 7. User requirements (what “not ready” can mean)
+## 8. User requirements (what “not ready” can mean)
 
 For the **system model** to be available (and thus for “Go Online” to unblock on the Apple FM lane):
 
@@ -132,7 +176,7 @@ Other “not ready” cases:
 - **Bridge not running** → the app can auto-start it (when binary is found) or the user can use “Start Apple FM” in Mission Control.
 - **Health check failed / timeout** → bridge may have crashed or not be listening; check logs and binary.
 
-## 8. Agent and developer workflow (test bridge first)
+## 9. Agent and developer workflow (test bridge first)
 
 When working on autopilot, Mission Control, or Apple FM:
 
@@ -143,7 +187,7 @@ When working on autopilot, Mission Control, or Apple FM:
 
 This is codified in **AGENTS.md** (“Apple FM bridge (agent)”) and in the main **README.md** “Agent Install Instructions” paste prompt. The bridge is the dependency; testing it first avoids confusing “health check failed” or “not ready” errors that are really “bridge wasn’t running.”
 
-## 9. References
+## 10. References
 
 - **Swift bridge implementation and user-facing build/ship steps**: [swift/foundation-bridge/README.md](../../../swift/foundation-bridge/README.md).
 - **Rust contract and client**: `crates/psionic/psionic-apple-fm` (contract, client, health, sessions, streaming, tools, transcript).

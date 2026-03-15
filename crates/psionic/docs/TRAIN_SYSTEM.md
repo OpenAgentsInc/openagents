@@ -138,7 +138,8 @@ It does not yet implement the full distributed trainer-orchestrator-RL runtime.
 
 ## What Psionic Train Is Not
 
-- It is not a promise that full model training already works in the repo today.
+- It is not a promise that full general model training already works in the
+  repo today beyond the current narrow Apple adapter lane.
 - It is not a Python trainer hidden behind Rust wrappers.
 - It is not an app-owned workflow inside `apps/*`.
 - It is not just "cluster execution, but for training."
@@ -149,6 +150,89 @@ The honest description today is:
 > Psionic already owns real training-class truth surfaces plus a bounded
 > training-core reference loop, but it does not yet own the full distributed
 > train system.
+
+## Apple Adapter Reality
+
+The Apple Foundation Models lane now has an honest training answer, and that
+answer needs to stay precise.
+
+Yes, the repo can now train LoRA-style Apple adapter patches and export valid
+`.fmadapter` packages.
+
+That does **not** mean:
+
+- the Swift bridge is doing the training
+- Apple exposes a repo-controlled Foundation Models training API
+- the current Apple lane is already a generalized distributed trainer
+
+The current path is:
+
+1. `psionic-data` imports Apple adapter JSONL into the repo-owned dataset
+   contract, preserving tokenizer, prompt-shaping, tool/schema augmentation,
+   and long-context packing lineage.
+2. `psionic-environments` binds that dataset to the Apple adapter
+   train/eval/benchmark environment package family so the train, held-out eval,
+   and runtime-smoke lanes all point at one versioned environment truth.
+3. `psionic-train` uses the repo-owned `AppleAdapterTrainingExecutionBackend`
+   to turn packed samples into deterministic feature batches, freeze the base
+   model, and train only the low-rank adapter parameter groups through the
+   fixed-budget trainer core.
+4. `run_apple_adapter_sft_export(...)` emits typed step receipts, gradient
+   batch records, initial/final adapter-only bundle snapshots, adapter delta,
+   summary metadata, and a valid `.fmadapter` package through
+   `psionic-adapters`.
+5. `psionic-eval` runs the held-out and benchmark-style adapter harnesses, and
+   the bridge-backed runtime-smoke path proves the exported package can be
+   loaded and exercised against the live Apple FM runtime.
+6. `autopilotctl training launch ...`, `autopilotctl training export ...`, and
+   `autopilotctl training accept ...` provide the shipped app-owned operator
+   flow, while `autopilotctl apple-fm load ...` and `autopilotctl apple-fm
+   attach ...` exercise the resulting package through the retained bridge.
+
+The shipped Apple reference lane is intentionally narrow:
+
+- base-model weights stay frozen
+- only adapter parameter groups are updated
+- the current precision posture is `f32_reference`
+- the current activation-checkpoint posture is `disabled`
+- the higher-level optional follow-on is draft-model distillation, not a second
+  generic full-model trainer
+
+That is why the right current claim is "repo-native Apple adapter training is
+real" rather than "Psionic now has complete distributed Apple FM training."
+
+### Relationship To Cluster And Distributed Training Substrate
+
+The Apple lane already reuses real Psionic train substrate outside the narrow
+execution backend itself:
+
+- fixed-budget trainer-step execution
+- reusable autodiff and optimizer layers
+- dataset/tokenizer/packing contracts
+- environment package bindings
+- held-out eval and runtime-smoke harnesses
+- training summaries, receipts, and accepted-outcome authority publication
+- run-graph, orchestrator, and validator vocabulary used elsewhere in
+  `psionic-train`
+
+But the Apple lane does **not** yet consume the broader distributed-training
+substrate as a live execution path:
+
+- no real `psionic-cluster` multi-node Apple training run is claimed
+- no collective-backed gradient exchange or sharded optimizer execution is used
+  by the shipped Apple backend
+- no production multi-device training kernel or memory-sharded Apple trainer is
+  claimed
+- no broader cluster scheduler is yet dispatching Apple training windows across
+  multiple machines
+
+What exists today is the reusable contract layer for those future steps:
+`psionic-runtime` multi-device topology truth, `psionic-collectives`
+collective planning, distributed-optimizer object models, orchestrator state,
+and datastream/checkpoint movement. That substrate is meant to be reused later
+for broader Psionic training lanes, including any future widened Apple path,
+but it is not the current execution reality for the shipped Apple adapter
+operator flow.
 
 ## Canonical Train Objects
 
