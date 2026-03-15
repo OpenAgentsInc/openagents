@@ -96,6 +96,8 @@ pub enum TrainingContributorSuspensionReason {
     DuplicateContribution,
     /// Reliability or quality penalty.
     ReliabilityPenalty,
+    /// Node is currently missing adapter-training prerequisites.
+    CapabilityPrerequisiteMissing,
     /// Spam or abuse suspicion.
     SpamSuspected,
     /// Operator-driven hold.
