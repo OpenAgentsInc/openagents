@@ -147,10 +147,80 @@ impl ProviderBackendHealth {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderAppleAdapterHostingEntry {
+    pub adapter_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_model_signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_format_version: Option<String>,
+    #[serde(default)]
+    pub draft_model_present: bool,
+    #[serde(default)]
+    pub compatible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_reason_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_message: Option<String>,
+    #[serde(default)]
+    pub attached_session_count: usize,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderAppleAdapterHostingAvailability {
+    #[serde(default)]
+    pub inventory_supported: bool,
+    #[serde(default)]
+    pub attach_supported: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adapters: Vec<ProviderAppleAdapterHostingEntry>,
+}
+
+impl ProviderAppleAdapterHostingAvailability {
+    pub fn has_authoritative_state(&self) -> bool {
+        self.inventory_supported || self.attach_supported || !self.adapters.is_empty()
+    }
+
+    pub fn loaded_adapter_count(&self) -> usize {
+        self.adapters.len()
+    }
+
+    pub fn compatible_adapter_count(&self) -> usize {
+        self.adapters
+            .iter()
+            .filter(|entry| entry.compatible)
+            .count()
+    }
+
+    pub fn compatible_package_digests(&self) -> Vec<String> {
+        let mut digests = self
+            .adapters
+            .iter()
+            .filter(|entry| entry.compatible)
+            .filter_map(|entry| entry.package_digest.clone())
+            .filter(|digest| !digest.trim().is_empty())
+            .collect::<Vec<_>>();
+        digests.sort();
+        digests.dedup();
+        digests
+    }
+
+    pub fn product_backend_ready(&self, backend: &ProviderBackendHealth) -> bool {
+        backend.is_ready()
+            && self.inventory_supported
+            && self.attach_supported
+            && self.compatible_adapter_count() > 0
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAvailability {
     #[serde(alias = "ollama")]
     pub gpt_oss: ProviderBackendHealth,
     pub apple_foundation_models: ProviderBackendHealth,
+    #[serde(default)]
+    pub apple_adapter_hosting: ProviderAppleAdapterHostingAvailability,
     pub sandbox: ProviderSandboxAvailability,
 }
 
@@ -175,6 +245,10 @@ impl ProviderAvailability {
         match product {
             ProviderComputeProduct::GptOssInference
             | ProviderComputeProduct::AppleFoundationModelsInference => true,
+            ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
+                self.apple_foundation_models.reachable
+                    || self.apple_adapter_hosting.has_authoritative_state()
+            }
             ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::SandboxContainerExec => self
                 .sandbox
@@ -198,6 +272,9 @@ impl ProviderAvailability {
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_foundation_models.is_ready()
             }
+            ProviderComputeProduct::AppleFoundationModelsAdapterHosting => self
+                .apple_adapter_hosting
+                .product_backend_ready(&self.apple_foundation_models),
             ProviderComputeProduct::SandboxContainerExec => self
                 .sandbox
                 .backend_ready_for_class(ProviderSandboxExecutionClass::ContainerExec),
@@ -233,7 +310,8 @@ impl ProviderAvailability {
                 .unwrap_or_else(|| product.capability_summary_base().to_string()),
             ProviderComputeProduct::GptOssInference
             | ProviderComputeProduct::GptOssEmbeddings
-            | ProviderComputeProduct::AppleFoundationModelsInference => {
+            | ProviderComputeProduct::AppleFoundationModelsInference
+            | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                 product.capability_summary(self)
             }
         }
@@ -246,6 +324,7 @@ pub enum ProviderComputeProduct {
     GptOssInference,
     GptOssEmbeddings,
     AppleFoundationModelsInference,
+    AppleFoundationModelsAdapterHosting,
     SandboxContainerExec,
     SandboxPythonExec,
     SandboxNodeExec,
@@ -261,10 +340,11 @@ pub struct ProviderProductDescriptor {
 }
 
 impl ProviderComputeProduct {
-    pub const fn all() -> [Self; 6] {
+    pub const fn all() -> [Self; 7] {
         [
             Self::GptOssInference,
             Self::AppleFoundationModelsInference,
+            Self::AppleFoundationModelsAdapterHosting,
             Self::SandboxContainerExec,
             Self::SandboxPythonExec,
             Self::SandboxNodeExec,
@@ -278,6 +358,9 @@ impl ProviderComputeProduct {
             Self::GptOssEmbeddings => "psionic.local.embeddings.gpt_oss.single_node",
             Self::AppleFoundationModelsInference => {
                 "psionic.local.inference.apple_foundation_models.single_node"
+            }
+            Self::AppleFoundationModelsAdapterHosting => {
+                "psionic.local.adapter_hosting.apple_foundation_models.single_node"
             }
             Self::SandboxContainerExec => {
                 "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
@@ -299,6 +382,7 @@ impl ProviderComputeProduct {
             Self::GptOssInference => "GPT-OSS inference",
             Self::GptOssEmbeddings => "GPT-OSS embeddings",
             Self::AppleFoundationModelsInference => "Apple FM inference",
+            Self::AppleFoundationModelsAdapterHosting => "Apple FM adapter hosting",
             Self::SandboxContainerExec => "Sandbox container exec",
             Self::SandboxPythonExec => "Sandbox python exec",
             Self::SandboxNodeExec => "Sandbox node exec",
@@ -309,7 +393,7 @@ impl ProviderComputeProduct {
     pub const fn backend_kind(self) -> Option<ProviderBackendKind> {
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => Some(ProviderBackendKind::GptOss),
-            Self::AppleFoundationModelsInference => {
+            Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
                 Some(ProviderBackendKind::AppleFoundationModels)
             }
             Self::SandboxContainerExec
@@ -322,7 +406,9 @@ impl ProviderComputeProduct {
     pub const fn backend_label(self) -> &'static str {
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => "gpt_oss",
-            Self::AppleFoundationModelsInference => "apple_foundation_models",
+            Self::AppleFoundationModelsInference | Self::AppleFoundationModelsAdapterHosting => {
+                "apple_foundation_models"
+            }
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -333,6 +419,7 @@ impl ProviderComputeProduct {
     pub const fn compute_family_label(self) -> &'static str {
         match self {
             Self::GptOssInference | Self::AppleFoundationModelsInference => "inference",
+            Self::AppleFoundationModelsAdapterHosting => "adapter_hosting",
             Self::GptOssEmbeddings => "embeddings",
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
@@ -349,7 +436,8 @@ impl ProviderComputeProduct {
             Self::SandboxPosixExec => Some(ProviderSandboxExecutionClass::PosixExec),
             Self::GptOssInference
             | Self::GptOssEmbeddings
-            | Self::AppleFoundationModelsInference => None,
+            | Self::AppleFoundationModelsInference
+            | Self::AppleFoundationModelsAdapterHosting => None,
         }
     }
 
@@ -361,6 +449,9 @@ impl ProviderComputeProduct {
             }
             Self::AppleFoundationModelsInference => {
                 "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
+            }
+            Self::AppleFoundationModelsAdapterHosting => {
+                "backend=apple_foundation_models execution=local_inference family=adapter_hosting apple_silicon=true apple_intelligence=true"
             }
             Self::SandboxContainerExec => {
                 "backend=sandbox execution=sandbox.container.exec family=sandbox_execution"
@@ -399,6 +490,26 @@ impl ProviderComputeProduct {
                     health.availability_message.as_deref().unwrap_or("ready");
                 format!("{base_summary} model={ready_model} platform_gate={availability_message}")
             }
+            Self::AppleFoundationModelsAdapterHosting => {
+                let health = &availability.apple_foundation_models;
+                let ready_model = health.ready_model.as_deref().unwrap_or("none");
+                let availability_message =
+                    health.availability_message.as_deref().unwrap_or("ready");
+                let adapter_state = &availability.apple_adapter_hosting;
+                let compatible_digests = adapter_state.compatible_package_digests();
+                let compatible_digest_summary = if compatible_digests.is_empty() {
+                    "none".to_string()
+                } else {
+                    compatible_digests.join(",")
+                };
+                format!(
+                    "{base_summary} model={ready_model} platform_gate={availability_message} inventory_supported={} attach_supported={} loaded_adapters={} compatible_adapters={} compatible_adapter_digests={compatible_digest_summary}",
+                    adapter_state.inventory_supported,
+                    adapter_state.attach_supported,
+                    adapter_state.loaded_adapter_count(),
+                    adapter_state.compatible_adapter_count(),
+                )
+            }
             Self::SandboxContainerExec => availability
                 .sandbox
                 .capability_summary_for_class(ProviderSandboxExecutionClass::ContainerExec)
@@ -422,6 +533,9 @@ impl ProviderComputeProduct {
         match self {
             Self::GptOssInference | Self::GptOssEmbeddings => "spot session / local best effort",
             Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
+            Self::AppleFoundationModelsAdapterHosting => {
+                "spot session / Apple gated adapter best effort"
+            }
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -437,6 +551,9 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsInference => {
                 "forward physical / Apple gated committed window"
             }
+            Self::AppleFoundationModelsAdapterHosting => {
+                "forward physical / Apple gated adapter window"
+            }
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -449,6 +566,7 @@ impl ProviderComputeProduct {
             Self::GptOssInference => 21,
             Self::GptOssEmbeddings => 8,
             Self::AppleFoundationModelsInference => 34,
+            Self::AppleFoundationModelsAdapterHosting => 55,
             Self::SandboxContainerExec => 55,
             Self::SandboxPythonExec => 34,
             Self::SandboxNodeExec => 34,
@@ -467,6 +585,10 @@ impl ProviderComputeProduct {
             "psionic.local.inference.apple_foundation_models.single_node"
             | "apple_foundation_models.text_generation" => {
                 Some(Self::AppleFoundationModelsInference)
+            }
+            "psionic.local.adapter_hosting.apple_foundation_models.single_node"
+            | "apple_foundation_models.adapter_hosting" => {
+                Some(Self::AppleFoundationModelsAdapterHosting)
             }
             "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated"
             | "sandbox.container.exec" => Some(Self::SandboxContainerExec),
@@ -526,6 +648,8 @@ pub struct ProviderInventoryControls {
     #[serde(alias = "ollama_embeddings_enabled")]
     pub gpt_oss_embeddings_enabled: bool,
     pub apple_fm_inference_enabled: bool,
+    #[serde(default)]
+    pub apple_fm_adapter_hosting_enabled: bool,
     pub sandbox_container_exec_enabled: bool,
     pub sandbox_python_exec_enabled: bool,
     pub sandbox_node_exec_enabled: bool,
@@ -538,6 +662,7 @@ impl Default for ProviderInventoryControls {
             gpt_oss_inference_enabled: true,
             gpt_oss_embeddings_enabled: false,
             apple_fm_inference_enabled: true,
+            apple_fm_adapter_hosting_enabled: true,
             sandbox_container_exec_enabled: false,
             sandbox_python_exec_enabled: false,
             sandbox_node_exec_enabled: false,
@@ -553,6 +678,9 @@ impl ProviderInventoryControls {
             ProviderComputeProduct::GptOssEmbeddings => false,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_fm_inference_enabled
+            }
+            ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
+                self.apple_fm_adapter_hosting_enabled
             }
             ProviderComputeProduct::SandboxContainerExec => self.sandbox_container_exec_enabled,
             ProviderComputeProduct::SandboxPythonExec => self.sandbox_python_exec_enabled,
@@ -571,6 +699,9 @@ impl ProviderInventoryControls {
             ProviderComputeProduct::GptOssInference => &mut self.gpt_oss_inference_enabled,
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 &mut self.apple_fm_inference_enabled
+            }
+            ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
+                &mut self.apple_fm_adapter_hosting_enabled
             }
             ProviderComputeProduct::SandboxContainerExec => {
                 &mut self.sandbox_container_exec_enabled
@@ -691,6 +822,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
+        ProviderAppleAdapterHostingAvailability, ProviderAppleAdapterHostingEntry,
         ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderComputeProduct,
         ProviderFailureClass, ProviderIngressMode, ProviderInventoryControls,
         ProviderLifecycleInput, ProviderLifecycleTransition, ProviderMode,
@@ -730,6 +862,7 @@ mod tests {
         let availability = ProviderAvailability {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ready_health(None, "apple-foundation-model", None),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
 
@@ -753,6 +886,9 @@ mod tests {
                 "psionic.local.inference.apple_foundation_models.single_node"
             )
         );
+        assert!(controls.is_product_advertised(
+            "psionic.local.adapter_hosting.apple_foundation_models.single_node"
+        ));
         assert!(!controls.is_product_advertised(
             "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated"
         ));
@@ -817,14 +953,16 @@ mod tests {
                 availability_message: Some("apple_intelligence_disabled".to_string()),
                 latency_ms_p50: None,
             },
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
             derive_provider_products(&availability, &ProviderInventoryControls::default());
 
-        assert_eq!(products.len(), 2);
+        assert_eq!(products.len(), 3);
         assert!(products[0].eligible);
         assert!(!products[1].eligible);
+        assert!(!products[2].eligible);
         assert!(
             products[0]
                 .capability_summary
@@ -834,6 +972,11 @@ mod tests {
             products[1]
                 .capability_summary
                 .contains("platform_gate=apple_intelligence_disabled")
+        );
+        assert!(
+            products[2]
+                .capability_summary
+                .contains("compatible_adapters=0")
         );
     }
 
@@ -890,6 +1033,27 @@ mod tests {
                 .map(|descriptor| descriptor.product_id.as_str()),
             Some("psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated")
         );
+
+        let adapter_hosting =
+            describe_provider_product_id("apple_foundation_models.adapter_hosting");
+        assert_eq!(
+            adapter_hosting
+                .as_ref()
+                .map(|descriptor| descriptor.compute_family.as_str()),
+            Some("adapter_hosting")
+        );
+        assert_eq!(
+            adapter_hosting
+                .as_ref()
+                .map(|descriptor| descriptor.backend_family.as_str()),
+            Some("apple_foundation_models")
+        );
+        assert_eq!(
+            adapter_hosting
+                .as_ref()
+                .map(|descriptor| descriptor.product_id.as_str()),
+            Some("psionic.local.adapter_hosting.apple_foundation_models.single_node")
+        );
     }
 
     #[test]
@@ -898,6 +1062,7 @@ mod tests {
         let availability = ProviderAvailability {
             gpt_oss: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             sandbox: detect_sandbox_supply(&ProviderSandboxDetectionConfig {
                 path_entries: Vec::new(),
                 declared_profiles: vec![ProviderSandboxProfileSpec {
@@ -953,6 +1118,94 @@ mod tests {
     }
 
     #[test]
+    fn apple_adapter_hosting_requires_runtime_inventory_and_compatible_adapter() {
+        let availability = ProviderAvailability {
+            gpt_oss: ProviderBackendHealth::default(),
+            apple_foundation_models: ready_health(None, "apple-foundation-model", Some(38)),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability {
+                inventory_supported: true,
+                attach_supported: true,
+                adapters: vec![
+                    ProviderAppleAdapterHostingEntry {
+                        adapter_id: "helpdesk".to_string(),
+                        package_digest: Some("sha256:helpdesk".to_string()),
+                        compatible: true,
+                        compatibility_message: Some(
+                            "compatible with the current Apple FM runtime".to_string(),
+                        ),
+                        ..ProviderAppleAdapterHostingEntry::default()
+                    },
+                    ProviderAppleAdapterHostingEntry {
+                        adapter_id: "legacy".to_string(),
+                        package_digest: Some("sha256:legacy".to_string()),
+                        compatible: false,
+                        compatibility_reason_code: Some("base_model_mismatch".to_string()),
+                        ..ProviderAppleAdapterHostingEntry::default()
+                    },
+                ],
+            },
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+        let products =
+            derive_provider_products(&availability, &ProviderInventoryControls::default());
+        let adapter_hosting = products
+            .iter()
+            .find(|product| {
+                product.product == ProviderComputeProduct::AppleFoundationModelsAdapterHosting
+            })
+            .expect("adapter hosting product");
+
+        assert!(adapter_hosting.backend_ready);
+        assert!(adapter_hosting.eligible);
+        assert!(
+            adapter_hosting
+                .capability_summary
+                .contains("compatible_adapters=1")
+        );
+        assert!(
+            adapter_hosting
+                .capability_summary
+                .contains("compatible_adapter_digests=sha256:helpdesk")
+        );
+    }
+
+    #[test]
+    fn apple_adapter_hosting_stays_blocked_without_compatible_loaded_adapter() {
+        let availability = ProviderAvailability {
+            gpt_oss: ProviderBackendHealth::default(),
+            apple_foundation_models: ready_health(None, "apple-foundation-model", Some(38)),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability {
+                inventory_supported: true,
+                attach_supported: true,
+                adapters: vec![ProviderAppleAdapterHostingEntry {
+                    adapter_id: "legacy".to_string(),
+                    package_digest: Some("sha256:legacy".to_string()),
+                    compatible: false,
+                    compatibility_reason_code: Some("base_model_mismatch".to_string()),
+                    ..ProviderAppleAdapterHostingEntry::default()
+                }],
+            },
+            sandbox: ProviderSandboxAvailability::default(),
+        };
+        let products =
+            derive_provider_products(&availability, &ProviderInventoryControls::default());
+        let adapter_hosting = products
+            .iter()
+            .find(|product| {
+                product.product == ProviderComputeProduct::AppleFoundationModelsAdapterHosting
+            })
+            .expect("adapter hosting product");
+
+        assert!(!adapter_hosting.backend_ready);
+        assert!(!adapter_hosting.eligible);
+        assert!(
+            adapter_hosting
+                .capability_summary
+                .contains("compatible_adapters=0")
+        );
+    }
+
+    #[test]
     fn lifecycle_degrades_on_relay_error() {
         let availability = ProviderAvailability::default();
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
@@ -999,6 +1252,7 @@ mod tests {
         let availability = ProviderAvailability {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
@@ -1017,6 +1271,7 @@ mod tests {
         let availability = ProviderAvailability {
             gpt_oss: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
+            apple_adapter_hosting: ProviderAppleAdapterHostingAvailability::default(),
             sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {

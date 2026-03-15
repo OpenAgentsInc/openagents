@@ -33,10 +33,18 @@ pub struct LocalInferenceExecutionMetrics {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalInferenceServedAdapter {
+    pub adapter_id: String,
+    pub package_digest: Option<String>,
+    pub package_format_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalInferenceExecutionProvenance {
     pub backend: String,
     pub requested_model: Option<String>,
     pub served_model: String,
+    pub served_adapter: Option<LocalInferenceServedAdapter>,
     pub normalized_prompt_digest: String,
     pub normalized_options_json: String,
     pub normalized_options_digest: String,
@@ -54,6 +62,11 @@ impl LocalInferenceExecutionProvenance {
             "backend": self.backend,
             "requested_model": self.requested_model,
             "served_model": self.served_model,
+            "served_adapter": self.served_adapter.as_ref().map(|adapter| json!({
+                "adapter_id": adapter.adapter_id,
+                "package_digest": adapter.package_digest,
+                "package_format_version": adapter.package_format_version,
+            })),
             "normalized_prompt_digest": self.normalized_prompt_digest,
             "normalized_options": self.normalized_options_value(),
             "normalized_options_digest": self.normalized_options_digest,
@@ -607,6 +620,7 @@ impl PsionicRuntimeAdapter {
             backend: String::from("psionic"),
             requested_model: job.requested_model.clone(),
             served_model: response.model_id.clone(),
+            served_adapter: None,
             normalized_prompt_digest,
             normalized_options_json,
             normalized_options_digest,
@@ -1388,6 +1402,7 @@ impl GptOssRuntimeWorker {
             backend: String::from("gpt_oss"),
             requested_model: job.requested_model.clone(),
             served_model: response.model_id.clone(),
+            served_adapter: None,
             normalized_prompt_digest,
             normalized_options_json,
             normalized_options_digest,

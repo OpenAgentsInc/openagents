@@ -1,5 +1,5 @@
 use crate::local_inference_runtime::{
-    LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
+    LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance, LocalInferenceServedAdapter,
 };
 use futures_util::StreamExt;
 use openagents_kernel_core::ids::sha256_prefixed_text;
@@ -132,6 +132,7 @@ pub struct AppleFmGenerateJob {
     pub request_id: String,
     pub prompt: String,
     pub requested_model: Option<String>,
+    pub adapter_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -826,12 +827,27 @@ impl AppleFmBridgeState {
             .clone()
             .or_else(|| self.snapshot.ready_model.clone())
             .unwrap_or_else(|| self.snapshot.system_model.id.clone());
+        let served_adapter = served_adapter_from_inventory_entry(
+            job.adapter_id.as_deref(),
+            self.snapshot.loaded_adapters.as_slice(),
+        );
+        let adapter_selection = served_adapter
+            .as_ref()
+            .map(|adapter| AppleFmAdapterSelection {
+                adapter_id: adapter.adapter_id.clone(),
+                package_digest: adapter.package_digest.clone(),
+            });
+        let adapter_label = served_adapter
+            .as_ref()
+            .map(|adapter| adapter.adapter_id.as_str())
+            .unwrap_or("none");
 
         tracing::info!(
             target: "autopilot_desktop::provider",
-            "Apple FM bridge dispatching request_id={} model={} prompt_chars={}",
+            "Apple FM bridge dispatching request_id={} model={} adapter={} prompt_chars={}",
             job.request_id,
             model,
+            adapter_label,
             job.prompt.chars().count()
         );
 
@@ -841,21 +857,28 @@ impl AppleFmBridgeState {
         }));
 
         let start = Instant::now();
-        match client.completion_from_prompt(
-            job.prompt.clone(),
-            Some(model.clone()),
-            Some(1024),
-            None,
-        ) {
+        match client.generate_text(&AppleFmTextGenerationRequest {
+            model: Some(model.clone()),
+            prompt: job.prompt.clone(),
+            options: Some(AppleFmGenerationOptions {
+                sampling: None,
+                temperature: None,
+                maximum_response_tokens: Some(1024),
+            }),
+            adapter: adapter_selection.clone(),
+        }) {
             Ok(result) => {
                 let total_duration_ns =
                     Some(start.elapsed().as_nanos().min(u64::MAX as u128) as u64);
                 let metrics = LocalInferenceExecutionMetrics {
                     total_duration_ns,
                     load_duration_ns: None,
-                    prompt_eval_count: result.prompt_tokens,
+                    prompt_eval_count: result.usage.as_ref().and_then(|usage| usage.prompt_tokens),
                     prompt_eval_duration_ns: None,
-                    eval_count: result.completion_tokens,
+                    eval_count: result
+                        .usage
+                        .as_ref()
+                        .and_then(|usage| usage.completion_tokens),
                     eval_duration_ns: None,
                 };
                 let normalized_options_json = "{}".to_string();
@@ -863,6 +886,7 @@ impl AppleFmBridgeState {
                     backend: "apple_foundation_models".to_string(),
                     requested_model: job.requested_model.clone(),
                     served_model: result.model.clone(),
+                    served_adapter: served_adapter.clone(),
                     normalized_prompt_digest: sha256_prefixed_text(job.prompt.as_str()),
                     normalized_options_json: normalized_options_json.clone(),
                     normalized_options_digest: sha256_prefixed_text(
@@ -871,8 +895,11 @@ impl AppleFmBridgeState {
                     base_url: self.config.base_url.trim_end_matches('/').to_string(),
                     total_duration_ns: metrics.total_duration_ns,
                     load_duration_ns: None,
-                    prompt_token_count: result.prompt_tokens,
-                    generated_token_count: result.completion_tokens,
+                    prompt_token_count: result.usage.as_ref().and_then(|usage| usage.prompt_tokens),
+                    generated_token_count: result
+                        .usage
+                        .as_ref()
+                        .and_then(|usage| usage.completion_tokens),
                     warm_start: None,
                 };
                 self.snapshot.reachable = true;
@@ -889,9 +916,10 @@ impl AppleFmBridgeState {
                 self.publish_snapshot(update_tx);
                 tracing::info!(
                     target: "autopilot_desktop::provider",
-                    "Apple FM bridge completed request_id={} model={} output_chars={} total_duration_ms={}",
+                    "Apple FM bridge completed request_id={} model={} adapter={} output_chars={} total_duration_ms={}",
                     job.request_id,
                     result.model,
+                    adapter_label,
                     result.output.chars().count(),
                     start.elapsed().as_millis()
                 );
@@ -1857,14 +1885,39 @@ fn normalized_optional_text(value: Option<&str>) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn adapter_inventory_entry_for_id<'a>(
+    adapter_id: Option<&str>,
+    loaded_adapters: &'a [AppleFmAdapterInventoryEntry],
+) -> Option<&'a AppleFmAdapterInventoryEntry> {
+    let adapter_id = normalized_optional_text(adapter_id)?;
+    loaded_adapters
+        .iter()
+        .find(|entry| entry.adapter.adapter_id == adapter_id)
+}
+
+fn served_adapter_from_inventory_entry(
+    adapter_id: Option<&str>,
+    loaded_adapters: &[AppleFmAdapterInventoryEntry],
+) -> Option<LocalInferenceServedAdapter> {
+    let adapter_id = normalized_optional_text(adapter_id)?;
+    let package_digest = adapter_inventory_entry_for_id(Some(adapter_id.as_str()), loaded_adapters)
+        .and_then(|entry| entry.adapter.package_digest.clone());
+    let package_format_version =
+        adapter_inventory_entry_for_id(Some(adapter_id.as_str()), loaded_adapters)
+            .and_then(|entry| entry.package_format_version.clone());
+    Some(LocalInferenceServedAdapter {
+        adapter_id,
+        package_digest,
+        package_format_version,
+    })
+}
+
 fn resolved_adapter_selection(
     command: &AppleFmWorkbenchCommand,
     loaded_adapters: &[AppleFmAdapterInventoryEntry],
 ) -> Option<AppleFmAdapterSelection> {
     let adapter_id = normalized_optional_text(command.adapter_id.as_deref())?;
-    let package_digest = loaded_adapters
-        .iter()
-        .find(|entry| entry.adapter.adapter_id == adapter_id)
+    let package_digest = adapter_inventory_entry_for_id(Some(adapter_id.as_str()), loaded_adapters)
         .and_then(|entry| entry.adapter.package_digest.clone());
     Some(AppleFmAdapterSelection {
         adapter_id,
@@ -2845,6 +2898,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
                 request_id: "req-apple-001".to_string(),
                 prompt: "Write a short poem".to_string(),
                 requested_model: Some("apple-foundation-model".to_string()),
+                adapter_id: None,
             }))
             .expect("queue apple fm generation");
 
@@ -3481,6 +3535,74 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             .expect("queue delete workbench command");
         let (deleted, _) = wait_for_workbench_completion(&mut worker, delete_request_id.as_str());
         assert_eq!(deleted.summary, "deleted session sess-1");
+
+        server_handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn worker_generate_provenance_preserves_loaded_adapter_identity() {
+        let (base_url, _, server_handle) = spawn_mock_bridge();
+        let mut worker = AppleFmBridgeWorker::spawn_with_config(AppleFmBridgeConfig {
+            base_url,
+            auto_start: false,
+        });
+
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: "wb-load-adapter-provider".to_string(),
+                operation: AppleFmWorkbenchOperation::LoadAdapter,
+                instructions: None,
+                prompt: None,
+                requested_model: None,
+                session_id: None,
+                adapter_id: Some("fixture-chat-adapter".to_string()),
+                adapter_package_path: Some("/tmp/mock-fixture-chat-adapter.fmadapter".to_string()),
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue load adapter");
+        let _ = wait_for_workbench_completion(&mut worker, "wb-load-adapter-provider");
+
+        worker
+            .enqueue(AppleFmBridgeCommand::Generate(super::AppleFmGenerateJob {
+                request_id: "req-apple-adapter-001".to_string(),
+                prompt: "Summarize the mutex helper adapter".to_string(),
+                requested_model: Some("apple-foundation-model".to_string()),
+                adapter_id: Some("fixture-chat-adapter".to_string()),
+            }))
+            .expect("queue apple fm generation with adapter");
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut completed = None;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let AppleFmBridgeUpdate::Completed(value) = update {
+                    completed = Some(value);
+                    break;
+                }
+            }
+            if completed.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        let completed = completed.expect("adapter-backed generation should complete");
+        let served_adapter = completed
+            .provenance
+            .served_adapter
+            .expect("served adapter should be recorded");
+        assert_eq!(served_adapter.adapter_id, "fixture-chat-adapter");
+        assert_eq!(
+            served_adapter.package_digest.as_deref(),
+            Some("sha256:fixture-chat-adapter")
+        );
+        assert_eq!(
+            served_adapter.package_format_version.as_deref(),
+            Some("fmadapter.v1")
+        );
 
         server_handle.join().expect("mock bridge thread");
     }

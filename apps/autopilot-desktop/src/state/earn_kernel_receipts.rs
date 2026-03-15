@@ -7219,6 +7219,19 @@ fn append_gpt_oss_execution_provenance_evidence(
         format!("oa://autopilot/jobs/{normalized_job_id}/execution/options"),
         provenance.normalized_options_digest.clone(),
     ));
+    if let Some(adapter) = provenance.served_adapter.as_ref() {
+        evidence.push(EvidenceRef::new(
+            "attestation:adapter_version",
+            format!(
+                "oa://attestations/adapter/{}",
+                normalize_key(adapter.adapter_id.as_str())
+            ),
+            adapter
+                .package_digest
+                .clone()
+                .unwrap_or_else(|| digest_for_text(adapter.adapter_id.as_str())),
+        ));
+    }
     if let Some(warm_start) = provenance.warm_start {
         let state = if warm_start { "warm" } else { "cold" };
         evidence.push(EvidenceRef::new(
@@ -7247,6 +7260,24 @@ fn gpt_oss_execution_receipt_tags(
         "execution.model.served".to_string(),
         provenance.served_model.clone(),
     );
+    if let Some(adapter) = provenance.served_adapter.as_ref() {
+        tags.insert(
+            "execution.adapter.id".to_string(),
+            adapter.adapter_id.clone(),
+        );
+        if let Some(package_digest) = adapter.package_digest.as_deref() {
+            tags.insert(
+                "execution.adapter.package_digest".to_string(),
+                package_digest.to_string(),
+            );
+        }
+        if let Some(package_format_version) = adapter.package_format_version.as_deref() {
+            tags.insert(
+                "execution.adapter.package_format_version".to_string(),
+                package_format_version.to_string(),
+            );
+        }
+    }
     tags.insert(
         "execution.prompt_digest".to_string(),
         provenance.normalized_prompt_digest.clone(),
@@ -10622,6 +10653,7 @@ mod tests {
             backend: "gpt_oss".to_string(),
             requested_model: Some("llama3.2:latest".to_string()),
             served_model: "llama3.2:latest".to_string(),
+            served_adapter: None,
             normalized_prompt_digest: "sha256:prompt".to_string(),
             normalized_options_json: "{\"num_predict\":64,\"top_k\":16}".to_string(),
             normalized_options_digest: "sha256:options".to_string(),
@@ -10632,6 +10664,40 @@ mod tests {
             generated_token_count: Some(7),
             warm_start: Some(true),
         }
+    }
+
+    #[test]
+    fn execution_receipt_tags_and_evidence_preserve_served_adapter_identity() {
+        let mut provenance = fixture_gpt_oss_provenance();
+        provenance.served_adapter = Some(
+            crate::local_inference_runtime::LocalInferenceServedAdapter {
+                adapter_id: "helpdesk".to_string(),
+                package_digest: Some("sha256:helpdesk".to_string()),
+                package_format_version: Some("fmadapter.v1".to_string()),
+            },
+        );
+
+        let tags = gpt_oss_execution_receipt_tags(Some(&provenance));
+        assert_eq!(
+            tags.get("execution.adapter.id").map(String::as_str),
+            Some("helpdesk")
+        );
+        assert_eq!(
+            tags.get("execution.adapter.package_digest")
+                .map(String::as_str),
+            Some("sha256:helpdesk")
+        );
+        assert_eq!(
+            tags.get("execution.adapter.package_format_version")
+                .map(String::as_str),
+            Some("fmadapter.v1")
+        );
+
+        let mut evidence = Vec::new();
+        append_gpt_oss_execution_provenance_evidence(&mut evidence, "job-req-123", &provenance);
+        assert!(evidence.iter().any(|row| {
+            row.kind == "attestation:adapter_version" && row.digest == "sha256:helpdesk"
+        }));
     }
 
     fn fixture_ingress_request() -> JobInboxNetworkRequest {

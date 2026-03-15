@@ -9,9 +9,10 @@ use std::time::{Duration, Instant};
 
 use crate::local_inference_runtime::LocalInferenceExecutionMetrics;
 pub use openagents_provider_substrate::{
-    ProviderAdvertisedProduct, ProviderAvailability, ProviderBackendHealth, ProviderBackendKind,
-    ProviderBlocker, ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
-    ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
+    ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
+    ProviderAppleAdapterHostingEntry, ProviderAvailability, ProviderBackendHealth,
+    ProviderBackendKind, ProviderBlocker, ProviderComputeProduct, ProviderFailureClass,
+    ProviderInventoryControls, ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
     ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
 };
 use psionic_apple_fm::{
@@ -146,6 +147,28 @@ impl ProviderAppleFmRuntimeState {
                 .map(|duration_ns| duration_ns / 1_000_000),
         }
     }
+
+    pub fn substrate_adapter_hosting(&self) -> ProviderAppleAdapterHostingAvailability {
+        ProviderAppleAdapterHostingAvailability {
+            inventory_supported: self.adapter_inventory_supported,
+            attach_supported: self.adapter_attach_supported,
+            adapters: self
+                .loaded_adapters
+                .iter()
+                .map(|entry| ProviderAppleAdapterHostingEntry {
+                    adapter_id: entry.adapter.adapter_id.clone(),
+                    package_digest: entry.adapter.package_digest.clone(),
+                    base_model_signature: entry.base_model_signature.clone(),
+                    package_format_version: entry.package_format_version.clone(),
+                    draft_model_present: entry.draft_model_present,
+                    compatible: entry.compatibility.compatible,
+                    compatibility_reason_code: entry.compatibility.reason_code.clone(),
+                    compatibility_message: entry.compatibility.message.clone(),
+                    attached_session_count: entry.attached_session_ids.len(),
+                })
+                .collect(),
+        }
+    }
 }
 
 fn is_positive_apple_fm_availability_message(message: &str) -> bool {
@@ -247,6 +270,7 @@ impl ProviderRuntimeState {
         ProviderAvailability {
             gpt_oss: self.gpt_oss.substrate_health(),
             apple_foundation_models: self.apple_fm.substrate_health(),
+            apple_adapter_hosting: self.apple_fm.substrate_adapter_hosting(),
             sandbox: self.sandbox.clone(),
         }
     }
@@ -376,6 +400,56 @@ mod tests {
         assert_eq!(
             runtime.active_inference_backend(),
             Some(LocalInferenceBackend::AppleFoundationModels)
+        );
+    }
+
+    #[test]
+    fn apple_runtime_projects_adapter_inventory_into_substrate_availability() {
+        let mut runtime = ProviderRuntimeState::default();
+        runtime.apple_fm.reachable = true;
+        runtime.apple_fm.model_available = true;
+        runtime.apple_fm.ready_model = Some("apple-foundation-model".to_string());
+        runtime.apple_fm.adapter_inventory_supported = true;
+        runtime.apple_fm.adapter_attach_supported = true;
+        runtime
+            .apple_fm
+            .loaded_adapters
+            .push(psionic_apple_fm::AppleFmAdapterInventoryEntry {
+                adapter: psionic_apple_fm::AppleFmAdapterSelection {
+                    adapter_id: "helpdesk".to_string(),
+                    package_digest: Some("sha256:helpdesk".to_string()),
+                },
+                base_model_signature: Some("apple.fm.base".to_string()),
+                package_format_version: Some("fmadapter.v1".to_string()),
+                draft_model_present: true,
+                compatibility: psionic_apple_fm::AppleFmAdapterCompatibility {
+                    compatible: true,
+                    reason_code: None,
+                    message: Some("compatible with the current Apple FM runtime".to_string()),
+                },
+                attached_session_ids: vec!["sess-1".to_string(), "sess-2".to_string()],
+            });
+
+        let availability = runtime.availability();
+
+        assert!(availability.apple_adapter_hosting.inventory_supported);
+        assert!(availability.apple_adapter_hosting.attach_supported);
+        assert_eq!(availability.apple_adapter_hosting.loaded_adapter_count(), 1);
+        assert_eq!(
+            availability
+                .apple_adapter_hosting
+                .compatible_adapter_count(),
+            1
+        );
+        assert_eq!(
+            availability.apple_adapter_hosting.adapters[0]
+                .package_digest
+                .as_deref(),
+            Some("sha256:helpdesk")
+        );
+        assert_eq!(
+            availability.apple_adapter_hosting.adapters[0].attached_session_count,
+            2
         );
     }
 

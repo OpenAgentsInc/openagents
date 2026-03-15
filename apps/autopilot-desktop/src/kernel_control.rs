@@ -22,8 +22,8 @@ use openagents_kernel_core::compute::{
     ComputeHostCapability, ComputeProduct, ComputeProductStatus, ComputeProofPosture,
     ComputeProvisioningKind, ComputeSettlementMode, ComputeTopologyKind, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, GptOssRuntimeCapability,
-    PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
-    canonical_compute_product_id,
+    PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID, PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
+    PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
@@ -1176,6 +1176,25 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
     {
         bindings.push(binding);
     }
+    if state.provider_runtime.product_enabled(
+        ProviderInventoryProductToggleTarget::AppleFoundationModelsAdapterHosting.product_id(),
+    ) && state
+        .provider_runtime
+        .derived_inventory_products()
+        .into_iter()
+        .find(|product| {
+            product.product
+                == ProviderInventoryProductToggleTarget::AppleFoundationModelsAdapterHosting
+        })
+        .is_some_and(|product| product.backend_ready)
+    {
+        bindings.push(LaunchComputeBinding {
+            product_id: PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
+            backend_family: ComputeBackendFamily::AppleFoundationModels,
+            compute_family: ComputeFamily::AdapterHosting,
+            model_policy: "psionic.local.adapter_hosting.apple_foundation_models.single_node.launch",
+        });
+    }
     if state.provider_runtime.gpt_oss.is_ready()
         && state
             .provider_runtime
@@ -1671,6 +1690,30 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
     }
 }
 
+fn apple_adapter_hosting_metadata(state: &RenderState) -> Value {
+    let compatible_package_digests = state
+        .provider_runtime
+        .apple_fm
+        .loaded_adapters
+        .iter()
+        .filter(|entry| entry.compatibility.compatible)
+        .filter_map(|entry| entry.adapter.package_digest.clone())
+        .collect::<Vec<_>>();
+    json!({
+        "inventory_supported": state.provider_runtime.apple_fm.adapter_inventory_supported,
+        "attach_supported": state.provider_runtime.apple_fm.adapter_attach_supported,
+        "loaded_adapter_count": state.provider_runtime.apple_fm.loaded_adapters.len(),
+        "compatible_adapter_count": state
+            .provider_runtime
+            .apple_fm
+            .loaded_adapters
+            .iter()
+            .filter(|entry| entry.compatibility.compatible)
+            .count(),
+        "compatible_adapter_package_digests": compatible_package_digests,
+    })
+}
+
 fn build_online_capacity_lot_request(
     state: &RenderState,
     binding: LaunchComputeBinding,
@@ -1737,6 +1780,8 @@ fn build_online_capacity_lot_request(
                 "source_badge": "desktop.go_online",
                 "terms_label": terms_label_for_product_id(binding.product_id),
                 "price_floor_sats": price_floor_sats_for_product_id(binding.product_id),
+                "apple_adapter_hosting": (binding.compute_family == ComputeFamily::AdapterHosting)
+                    .then(|| apple_adapter_hosting_metadata(state)),
             }),
         },
         evidence: provider_inventory_evidence_refs(state),
@@ -1813,6 +1858,8 @@ fn build_forward_capacity_lot_request(
                 "terms_label": forward_terms_label_for_product_id(binding.product_id),
                 "price_floor_sats": floor_sats,
                 "remedy_profile": forward_remedy_profile_for_product_id(binding.product_id),
+                "apple_adapter_hosting": (binding.compute_family == ComputeFamily::AdapterHosting)
+                    .then(|| apple_adapter_hosting_metadata(state)),
                 "bond_posture": {
                     "provider_bond_required": true,
                     "bond_mode": "performance_bond"
@@ -1899,9 +1946,20 @@ fn build_delivery_proof_request(
     let evaluation = evaluate_delivery_proof(job, binding, &delivery_context);
     let attestation_digest = job.execution_provenance.as_ref().map(|provenance| {
         let digest_input = format!(
-            "{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}",
             provenance.backend,
             provenance.served_model,
+            provenance
+                .served_adapter
+                .as_ref()
+                .and_then(|adapter| adapter.package_digest.clone())
+                .unwrap_or_else(|| {
+                    provenance
+                        .served_adapter
+                        .as_ref()
+                        .map(|adapter| adapter.adapter_id.clone())
+                        .unwrap_or_default()
+                }),
             provenance.normalized_prompt_digest,
             provenance.normalized_options_digest
         );
@@ -1956,6 +2014,15 @@ fn build_delivery_proof_request(
                     .execution_provenance
                     .as_ref()
                     .map(|provenance| provenance.served_model.clone()),
+                "served_adapter": job
+                    .execution_provenance
+                    .as_ref()
+                    .and_then(|provenance| provenance.served_adapter.as_ref())
+                    .map(|adapter| json!({
+                        "adapter_id": adapter.adapter_id,
+                        "package_digest": adapter.package_digest,
+                        "package_format_version": adapter.package_format_version,
+                    })),
                 "requested_model": job.requested_model.clone(),
                 "execution_output_digest": execution_output_digest,
                 "prompt_token_count": job
@@ -2855,6 +2922,20 @@ fn submission_evidence_refs(
             format!("oa://autopilot/jobs/{}/execution/options", job.job_id),
             provenance.normalized_options_digest.clone(),
         ));
+        if let Some(adapter) = provenance.served_adapter.as_ref() {
+            evidence.push(EvidenceRef::new(
+                "attestation:adapter_version",
+                format!(
+                    "oa://autopilot/jobs/{}/execution/adapter/{}",
+                    job.job_id,
+                    canonical_kernel_id_component(adapter.adapter_id.as_str()),
+                ),
+                adapter
+                    .package_digest
+                    .clone()
+                    .unwrap_or_else(|| sha256_prefixed_text(adapter.adapter_id.as_str())),
+            ));
+        }
     }
     evidence
 }
@@ -2942,6 +3023,12 @@ fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBindi
             LocalInferenceBackend::AppleFoundationModels,
             "text_generation",
         ),
+        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID => Some(LaunchComputeBinding {
+            product_id: PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
+            backend_family: ComputeBackendFamily::AppleFoundationModels,
+            compute_family: ComputeFamily::AdapterHosting,
+            model_policy: "psionic.local.adapter_hosting.apple_foundation_models.single_node.launch",
+        }),
         _ => None,
     }
 }
@@ -3257,6 +3344,9 @@ fn inferred_compute_family(
                 | ProviderComputeProduct::AppleFoundationModelsInference => {
                     ComputeFamily::Inference
                 }
+                ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
+                    ComputeFamily::AdapterHosting
+                }
                 ProviderComputeProduct::GptOssEmbeddings => ComputeFamily::Embeddings,
                 ProviderComputeProduct::SandboxContainerExec
                 | ProviderComputeProduct::SandboxPythonExec
@@ -3276,7 +3366,8 @@ fn inferred_backend_family(
             match product {
                 ProviderComputeProduct::GptOssInference
                 | ProviderComputeProduct::GptOssEmbeddings => Some(ComputeBackendFamily::GptOss),
-                ProviderComputeProduct::AppleFoundationModelsInference => {
+                ProviderComputeProduct::AppleFoundationModelsInference
+                | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     Some(ComputeBackendFamily::AppleFoundationModels)
                 }
                 ProviderComputeProduct::SandboxContainerExec
@@ -3298,7 +3389,8 @@ fn inferred_execution_kind(
             .map(|product| match product {
                 ProviderComputeProduct::GptOssInference
                 | ProviderComputeProduct::GptOssEmbeddings
-                | ProviderComputeProduct::AppleFoundationModelsInference => {
+                | ProviderComputeProduct::AppleFoundationModelsInference
+                | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     ComputeExecutionKind::LocalInference
                 }
                 ProviderComputeProduct::SandboxContainerExec
@@ -3676,7 +3768,8 @@ fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
         | "psionic.remote_sandbox.sandbox_execution.posix_exec.sandbox_isolated" => {
             "forward_physical.sandbox.v1"
         }
-        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => "forward_physical.apple_fm.v1",
+        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID
+        | PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID => "forward_physical.apple_fm.v1",
         _ => "forward_physical.inference.v1",
     }
 }
@@ -3876,6 +3969,7 @@ mod tests {
                     backend: "gpt_oss".to_string(),
                     requested_model: Some("llama3.2:latest".to_string()),
                     served_model: "llama3.2:latest".to_string(),
+                    served_adapter: None,
                     normalized_prompt_digest: "sha256:prompt".to_string(),
                     normalized_options_json: "{\"num_predict\":64}".to_string(),
                     normalized_options_digest: "sha256:options".to_string(),
@@ -4181,6 +4275,16 @@ mod tests {
             "psionic.local.inference.apple_foundation_models.single_node"
         );
         assert_eq!(apple_inference.compute_family, ComputeFamily::Inference);
+
+        let apple_adapter = compute_binding_for_product_id(
+            "psionic.local.adapter_hosting.apple_foundation_models.single_node",
+        )
+        .expect("apple adapter hosting binding");
+        assert_eq!(
+            apple_adapter.product_id,
+            "psionic.local.adapter_hosting.apple_foundation_models.single_node"
+        );
+        assert_eq!(apple_adapter.compute_family, ComputeFamily::AdapterHosting);
 
         assert!(
             compute_binding_for_backend_and_capability(LocalInferenceBackend::GptOss, "gpu.h100")

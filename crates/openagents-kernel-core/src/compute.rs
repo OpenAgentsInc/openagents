@@ -1412,6 +1412,8 @@ pub const PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID: &str =
     "psionic.local.embeddings.gpt_oss.single_node";
 pub const PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID: &str =
     "psionic.local.inference.apple_foundation_models.single_node";
+pub const PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID: &str =
+    "psionic.local.adapter_hosting.apple_foundation_models.single_node";
 pub const PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID: &str =
     "psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated";
 pub const PSIONIC_REMOTE_SANDBOX_PYTHON_EXEC_PRODUCT_ID: &str =
@@ -1431,6 +1433,10 @@ pub fn canonical_compute_product_id(product_id: &str) -> Option<&'static str> {
         | "gpt_oss.embeddings" => Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID),
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID | "apple_foundation_models.text_generation" => {
             Some(PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID)
+        }
+        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID
+        | "apple_foundation_models.adapter_hosting" => {
+            Some(PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID)
         }
         PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID | "sandbox.container.exec" => {
             Some(PSIONIC_REMOTE_SANDBOX_CONTAINER_EXEC_PRODUCT_ID)
@@ -3077,6 +3083,12 @@ pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProd
             execution_kind: ComputeExecutionKind::LocalInference,
             compute_family: ComputeFamily::Inference,
         }),
+        PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID => Some(LaunchComputeProductSpec {
+            product_id: PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
+            backend_family: ComputeBackendFamily::AppleFoundationModels,
+            execution_kind: ComputeExecutionKind::LocalInference,
+            compute_family: ComputeFamily::AdapterHosting,
+        }),
         _ => None,
     }
 }
@@ -3194,9 +3206,10 @@ mod tests {
         ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
         ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
         DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-        GptOssRuntimeCapability, PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID,
-        PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID,
-        canonical_compute_product_id, validate_compute_accepted_outcome,
+        GptOssRuntimeCapability, PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID,
+        PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
+        PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
+        launch_compute_product_spec, validate_compute_accepted_outcome,
         validate_compute_benchmark_package, validate_compute_capability_envelope,
         validate_compute_checkpoint_family_policy, validate_compute_environment_package,
         validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
@@ -3789,9 +3802,29 @@ mod tests {
             Some(PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID)
         );
         assert_eq!(
+            canonical_compute_product_id("apple_foundation_models.adapter_hosting"),
+            Some(PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID)
+        );
+        assert_eq!(
             canonical_compute_product_id("gpt_oss.embeddings"),
             Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID)
         );
+    }
+
+    #[test]
+    fn launch_spec_supports_apple_adapter_hosting_product() {
+        let spec = launch_compute_product_spec("apple_foundation_models.adapter_hosting")
+            .expect("apple adapter hosting spec");
+        assert_eq!(
+            spec.product_id,
+            PSIONIC_LOCAL_APPLE_FM_ADAPTER_HOSTING_PRODUCT_ID
+        );
+        assert_eq!(
+            spec.backend_family,
+            ComputeBackendFamily::AppleFoundationModels
+        );
+        assert_eq!(spec.execution_kind, ComputeExecutionKind::LocalInference);
+        assert_eq!(spec.compute_family, ComputeFamily::AdapterHosting);
     }
 
     #[test]

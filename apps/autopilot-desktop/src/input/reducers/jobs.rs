@@ -1484,12 +1484,14 @@ fn queue_provider_apple_fm_execution_start(state: &mut RenderState) -> Result<()
         .ok_or_else(|| "Active job is missing normalized prompt input".to_string())?;
     let prompt_chars = prompt.chars().count();
     let requested_model = job.requested_model.clone();
+    let requested_adapter_id = requested_apple_fm_adapter_id(job.execution_params.as_slice());
     let requested_model_label = requested_model.as_deref().unwrap_or("default").to_string();
     let ttl_seconds = job.ttl_seconds;
     state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Generate(AppleFmGenerateJob {
         request_id: request_id.clone(),
         prompt,
         requested_model,
+        adapter_id: requested_adapter_id,
     }))?;
     state.active_job.execution_backend_request_id = Some(request_id.clone());
     state.active_job.execution_deadline_epoch_seconds =
@@ -1505,6 +1507,20 @@ fn queue_provider_apple_fm_execution_start(state: &mut RenderState) -> Result<()
         prompt_chars
     );
     Ok(())
+}
+
+fn requested_apple_fm_adapter_id(
+    params: &[crate::state::job_inbox::JobExecutionParam],
+) -> Option<String> {
+    params.iter().find_map(|param| {
+        matches!(
+            param.key.trim(),
+            "adapter_id" | "apple_adapter_id" | "apple_fm_adapter_id"
+        )
+        .then(|| param.value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+    })
 }
 
 fn queue_provider_execution_turn_start(
