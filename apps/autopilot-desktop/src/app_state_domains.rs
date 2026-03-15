@@ -1219,6 +1219,10 @@ pub struct DesktopControlComputeHistoryState {
     pub structured_capacity_instruments:
         Vec<openagents_kernel_core::compute::StructuredCapacityInstrument>,
     pub training_runs: Vec<openagents_kernel_core::compute::ComputeTrainingRun>,
+    pub adapter_training_windows:
+        Vec<openagents_kernel_core::compute::ComputeAdapterTrainingWindow>,
+    pub adapter_contribution_outcomes:
+        Vec<openagents_kernel_core::compute::ComputeAdapterContributionOutcome>,
     pub accepted_outcomes: Vec<openagents_kernel_core::compute::ComputeAcceptedOutcome>,
     pub validator_challenges:
         Vec<openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot>,
@@ -1235,11 +1239,13 @@ impl Default for DesktopControlComputeHistoryState {
             capacity_instruments: Vec::new(),
             structured_capacity_instruments: Vec::new(),
             training_runs: Vec::new(),
+            adapter_training_windows: Vec::new(),
+            adapter_contribution_outcomes: Vec::new(),
             accepted_outcomes: Vec::new(),
             validator_challenges: Vec::new(),
             last_refreshed_at_epoch_ms: None,
             last_error: None,
-            last_action: Some("Kernel proof and settlement history idle".to_string()),
+            last_action: Some("Kernel proof, training, and settlement history idle".to_string()),
         }
     }
 }

@@ -939,6 +939,7 @@ fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90Co
             provider_compute_capability_from_apple_fm(state)
         }
         Some(LocalInferenceBackend::GptOss) => provider_compute_capability_from_gpt_oss(state),
+        Some(LocalInferenceBackend::PsionicTrain) => provider_compute_capability_from_apple_fm(state),
         None if state.provider_runtime.gpt_oss.reachable
             || state.provider_runtime.gpt_oss.last_error.is_some()
             || state.provider_runtime.gpt_oss.configured_model.is_some() =>
@@ -1400,6 +1401,7 @@ fn provider_execution_backend_for_active_job(
             LocalInferenceBackend::AppleFoundationModels => {
                 Some(ProviderExecutionBackend::AppleFoundationModels)
             }
+            LocalInferenceBackend::PsionicTrain => None,
         };
     }
     Some(provider_execution_backend_for_kind(request_kind))
@@ -2709,6 +2711,7 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
                     return Some(reason);
                 }
             }
+            Some(LocalInferenceBackend::PsionicTrain) => {}
             None => {}
         }
     }

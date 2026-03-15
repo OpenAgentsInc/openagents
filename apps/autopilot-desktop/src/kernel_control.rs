@@ -1622,6 +1622,7 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
             None,
             "apple_foundation_models",
         ),
+        ComputeBackendFamily::PsionicTrain => (None, None, "psionic_train"),
     };
     CreateComputeProductRequest {
         idempotency_key: format!("desktop.compute_product:{}", binding.product_id),
@@ -2304,6 +2305,7 @@ fn observed_capability_envelope_for_delivery(
                 minimum_macos_version: Some("26.0".to_string()),
             }),
             ComputeBackendFamily::GptOss => None,
+            ComputeBackendFamily::PsionicTrain => None,
         },
         gpt_oss_runtime: match observed_backend_family {
             ComputeBackendFamily::GptOss => Some(GptOssRuntimeCapability {
@@ -2312,6 +2314,7 @@ fn observed_capability_envelope_for_delivery(
                 quantization: None,
             }),
             ComputeBackendFamily::AppleFoundationModels => None,
+            ComputeBackendFamily::PsionicTrain => None,
         },
         latency_ms_p50: latency_from_provenance(provenance),
         throughput_per_minute: throughput_from_provenance(provenance, inferred_output_quantity),
@@ -2331,6 +2334,10 @@ fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
         (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Embeddings) => {
             "meter.apple_fm.embeddings.unsupported"
         }
+        (ComputeBackendFamily::PsionicTrain, ComputeFamily::Training) => {
+            "meter.psionic_train.training.v1"
+        }
+        (ComputeBackendFamily::PsionicTrain, _) => "meter.psionic_train.unsupported",
         (_, ComputeFamily::SandboxExecution)
         | (_, ComputeFamily::Evaluation)
         | (_, ComputeFamily::Training)
@@ -2432,6 +2439,7 @@ fn backend_family_from_runtime_label(value: &str) -> Option<ComputeBackendFamily
     match value.trim() {
         "gpt_oss" | "psionic" | "ollama" => Some(ComputeBackendFamily::GptOss),
         "apple_foundation_models" => Some(ComputeBackendFamily::AppleFoundationModels),
+        "psionic_train" => Some(ComputeBackendFamily::PsionicTrain),
         _ => None,
     }
 }
@@ -2443,6 +2451,7 @@ fn context_metrics_for_binding(
     match binding.backend_family {
         ComputeBackendFamily::GptOss => context.gpt_oss_metrics.as_ref(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_metrics.as_ref(),
+        ComputeBackendFamily::PsionicTrain => None,
     }
 }
 
@@ -2453,6 +2462,7 @@ fn ready_model_from_delivery_context(
     match binding.backend_family {
         ComputeBackendFamily::GptOss => context.gpt_oss_ready_model.clone(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_ready_model.clone(),
+        ComputeBackendFamily::PsionicTrain => None,
     }
 }
 
@@ -3054,6 +3064,7 @@ fn selected_launch_compute_binding_for_request(
                         state.provider_runtime.apple_fm.is_ready()
                     }
                     LocalInferenceBackend::GptOss => state.provider_runtime.gpt_oss.is_ready(),
+                    LocalInferenceBackend::PsionicTrain => false,
                 };
                 if !backend_ready {
                     return None;
@@ -3347,6 +3358,7 @@ fn inferred_compute_family(
                 ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     ComputeFamily::AdapterHosting
                 }
+                ProviderComputeProduct::AdapterTrainingContributor => ComputeFamily::Training,
                 ProviderComputeProduct::GptOssEmbeddings => ComputeFamily::Embeddings,
                 ProviderComputeProduct::SandboxContainerExec
                 | ProviderComputeProduct::SandboxPythonExec
@@ -3370,6 +3382,9 @@ fn inferred_backend_family(
                 | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     Some(ComputeBackendFamily::AppleFoundationModels)
                 }
+                ProviderComputeProduct::AdapterTrainingContributor => {
+                    Some(ComputeBackendFamily::PsionicTrain)
+                }
                 ProviderComputeProduct::SandboxContainerExec
                 | ProviderComputeProduct::SandboxPythonExec
                 | ProviderComputeProduct::SandboxNodeExec
@@ -3392,6 +3407,9 @@ fn inferred_execution_kind(
                 | ProviderComputeProduct::AppleFoundationModelsInference
                 | ProviderComputeProduct::AppleFoundationModelsAdapterHosting => {
                     ComputeExecutionKind::LocalInference
+                }
+                ProviderComputeProduct::AdapterTrainingContributor => {
+                    ComputeExecutionKind::TrainingJob
                 }
                 ProviderComputeProduct::SandboxContainerExec
                 | ProviderComputeProduct::SandboxPythonExec
@@ -3722,6 +3740,7 @@ fn backend_family_label(
     match backend_family {
         Some(ComputeBackendFamily::GptOss) => "gpt_oss",
         Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+        Some(ComputeBackendFamily::PsionicTrain) => "psionic_train",
         None if matches!(compute_family, ComputeFamily::SandboxExecution)
             || matches!(execution_kind, ComputeExecutionKind::SandboxExecution) =>
         {
@@ -3780,6 +3799,7 @@ fn ready_model_for_binding(state: &RenderState, binding: LaunchComputeBinding) -
         ComputeBackendFamily::AppleFoundationModels => {
             state.provider_runtime.apple_fm.ready_model.clone()
         }
+        ComputeBackendFamily::PsionicTrain => None,
     }
 }
 
@@ -3792,6 +3812,7 @@ fn configured_model_for_binding(
         ComputeBackendFamily::AppleFoundationModels => {
             state.provider_runtime.apple_fm.ready_model.clone()
         }
+        ComputeBackendFamily::PsionicTrain => None,
     }
 }
 

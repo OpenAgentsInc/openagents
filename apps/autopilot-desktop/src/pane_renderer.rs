@@ -1,19 +1,19 @@
 use crate::app_state::{
     ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
-    AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState,
-    AppleFmWorkbenchPaneInputs, AppleFmWorkbenchPaneState, AutopilotChatState,
-    BuyModePaymentsPaneState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
-    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
-    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
-    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
-    CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
-    EarningsScoreboardState, FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState,
-    JobInboxState, JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
-    LogStreamPaneState, MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs,
-    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
-    PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
-    ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
+    AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, AppleFmWorkbenchPaneInputs,
+    AppleFmWorkbenchPaneState, AutopilotChatState, BuyModePaymentsPaneState, CadDemoPaneState,
+    CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs, CodexAccountPaneState,
+    CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
+    CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs,
+    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
+    EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
+    LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
+    MissionControlLocalRuntimeLane, NetworkRequestsPaneInputs, NetworkRequestsState,
+    Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState, PanePaintTimingSample,
+    PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState,
+    ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
     ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
     SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
@@ -22,9 +22,9 @@ use crate::app_state::{
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::format_sats_amount;
+use crate::desktop_control::DesktopControlTrainingStatus;
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::local_runtime_capabilities::local_runtime_capability_surface_for_lane;
-use crate::desktop_control::DesktopControlTrainingStatus;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     active_job_copy_button_bounds, active_job_scroll_viewport_bounds,
@@ -2627,6 +2627,9 @@ fn paint_provider_status_pane(
                     .ready_model
                     .as_deref()
                     .or(provider_runtime.gpt_oss.configured_model.as_deref()),
+                crate::state::provider_runtime::LocalInferenceBackend::PsionicTrain => {
+                    Some("psionic_train")
+                }
             })
             .unwrap_or("none"),
     );
@@ -3356,6 +3359,7 @@ fn paint_network_requests_pane(
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
                                 None => "unknown",
                             },
@@ -3504,6 +3508,7 @@ fn paint_network_requests_pane(
                             match order.backend_family {
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::GptOss) => "gpt_oss",
                                 Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+                                Some(openagents_kernel_core::compute::ComputeBackendFamily::PsionicTrain) => "psionic_train",
                                 None if matches!(order.compute_family, openagents_kernel_core::compute::ComputeFamily::SandboxExecution) => "sandbox",
                                 None => "unknown",
                             },

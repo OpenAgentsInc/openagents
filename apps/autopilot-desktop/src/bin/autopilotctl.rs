@@ -2428,7 +2428,7 @@ fn buyer_procurement_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<Stri
 
 fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     let mut lines = vec![format!(
-        "training: available={} source={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} operator={} operator_runs={}/{}",
+        "training: available={} source={} control={} artifact={} runs={} active_runs={} accepted_runs={} windows={}/{} promotion_ready_windows={} contributions={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} contributor_state={} operator={} operator_runs={}/{}",
         snapshot.training.available,
         snapshot.training.source,
         snapshot.training.control_plane_state,
@@ -2436,6 +2436,10 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
         snapshot.training.run_count,
         snapshot.training.active_run_count,
         snapshot.training.accepted_run_count,
+        snapshot.training.active_adapter_window_count,
+        snapshot.training.adapter_window_count,
+        snapshot.training.promotion_ready_window_count,
+        snapshot.training.contribution_count,
         snapshot.training.accepted_outcome_count,
         if snapshot.training.environment_versions.is_empty() {
             "-".to_string()
@@ -2463,10 +2467,85 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             .contributor_reselection_timing
             .as_deref()
             .unwrap_or("-"),
+        snapshot.training.contributor.assignment_state,
         snapshot.training.operator.workflow_state,
         snapshot.training.operator.active_run_count,
         snapshot.training.operator.run_count
     )];
+    lines.push(format!(
+        "training contributor: available={} node={} enabled={} backend_ready={} contributor_supported={} coordinator_match={} authority_receipts={} match_eligible={} local_assignments={}/{} uploaded={} dispositions={}/{}/{}/{} settlement_ready={} trigger={} backends={} families={} formats={} validator_policies={} latest_window={} latest_assignment={} latest_payout={} detail={}",
+        snapshot.training.contributor.available,
+        snapshot
+            .training
+            .contributor
+            .local_node_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.training.contributor.product_enabled,
+        snapshot.training.contributor.backend_ready,
+        snapshot.training.contributor.contributor_supported,
+        snapshot.training.contributor.coordinator_match_supported,
+        snapshot.training.contributor.authority_receipt_supported,
+        snapshot.training.contributor.match_eligible,
+        snapshot.training.contributor.local_active_assignment_count,
+        snapshot.training.contributor.local_assignment_count,
+        snapshot.training.contributor.local_uploaded_count,
+        snapshot.training.contributor.local_accepted_count,
+        snapshot.training.contributor.local_quarantined_count,
+        snapshot.training.contributor.local_rejected_count,
+        snapshot.training.contributor.local_replay_required_count,
+        snapshot.training.contributor.local_settlement_ready_count,
+        snapshot
+            .training
+            .contributor
+            .settlement_trigger
+            .as_deref()
+            .unwrap_or("-"),
+        if snapshot.training.contributor.execution_backends.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.training.contributor.execution_backends.join(",")
+        },
+        if snapshot.training.contributor.adapter_families.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.training.contributor.adapter_families.join(",")
+        },
+        if snapshot.training.contributor.adapter_formats.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.training.contributor.adapter_formats.join(",")
+        },
+        if snapshot.training.contributor.validator_policy_refs.is_empty() {
+            "-".to_string()
+        } else {
+            snapshot.training.contributor.validator_policy_refs.join(",")
+        },
+        snapshot
+            .training
+            .contributor
+            .latest_window_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .training
+            .contributor
+            .latest_assignment_id
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .training
+            .contributor
+            .latest_payout_state
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot
+            .training
+            .contributor
+            .readiness_detail
+            .as_deref()
+            .unwrap_or("-")
+    ));
     lines.push(format!(
         "training operator: available={} state={} storage={} accepted_runs={} exported_runs={} last_action={} last_error={}",
         snapshot.training.operator.available,
@@ -2523,6 +2602,74 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             participant.priority_label,
             participant.deweight_reason.as_deref().unwrap_or("-"),
             participant.exclusion_reason.as_deref().unwrap_or("-")
+        ));
+    }
+    for window in snapshot.training.windows.iter().take(4) {
+        lines.push(format!(
+            "training window: id={} run={} stage={} status={} revision={} counts={}/{}/{}/{}/{}/{} uploaded={} held_out_bps={} benchmark_bps={} runtime_smoke={} promotion_ready={} promotion={} accepted_outcome={} gates={} holds={}",
+            window.window_id,
+            window.training_run_id,
+            window.stage_id,
+            window.status,
+            window.contributor_set_revision_id,
+            window.total_contributions,
+            window.admitted_contributions,
+            window.accepted_contributions,
+            window.quarantined_contributions,
+            window.rejected_contributions,
+            window.replay_required_contributions,
+            window.uploaded_contributions,
+            window
+                .held_out_average_score_bps
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            window
+                .benchmark_pass_rate_bps
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            window
+                .runtime_smoke_passed
+                .map(|value| if value { "passed" } else { "failed" })
+                .unwrap_or("-"),
+            window.promotion_ready,
+            window.promotion_disposition.as_deref().unwrap_or("-"),
+            window.accepted_outcome_id.as_deref().unwrap_or("-"),
+            if window.gate_reason_codes.is_empty() {
+                "-".to_string()
+            } else {
+                window.gate_reason_codes.join(",")
+            },
+            if window.hold_reason_codes.is_empty() {
+                "-".to_string()
+            } else {
+                window.hold_reason_codes.join(",")
+            }
+        ));
+    }
+    for contribution in snapshot.training.contributions.iter().take(6) {
+        lines.push(format!(
+            "training contribution: id={} run={} window={} assignment={} node={} worker={} disposition={} reasons={} aggregation={} accepted_for_aggregation={} weight_bps={} upload={} payout={} trigger={}",
+            contribution.contribution_id,
+            contribution.training_run_id,
+            contribution.window_id,
+            contribution.assignment_id,
+            contribution.contributor_node_id,
+            contribution.worker_id,
+            contribution.validator_disposition,
+            if contribution.validation_reason_codes.is_empty() {
+                "-".to_string()
+            } else {
+                contribution.validation_reason_codes.join(",")
+            },
+            contribution.aggregation_eligibility,
+            contribution.accepted_for_aggregation,
+            contribution
+                .aggregation_weight_bps
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            contribution.upload_state,
+            contribution.payout_state,
+            contribution.settlement_trigger.as_deref().unwrap_or("-")
         ));
     }
     for run in snapshot.training.operator.runs.iter().take(4) {
@@ -3156,7 +3303,7 @@ fn print_challenge_text(payload: &Value) {
 
 fn print_training_text(payload: &Value) {
     println!(
-        "training: available={} source={} last_sync={} control={} artifact={} runs={} active_runs={} accepted_runs={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} operator={} operator_runs={}/{} last_error={}",
+        "training: available={} source={} last_sync={} control={} artifact={} runs={} active_runs={} accepted_runs={} windows={}/{} promotion_ready_windows={} contributions={} accepted_outcomes={} env_versions={} checkpoints={} participants={}/{} stale_rollout_discards={} duplicate_quarantine={} duplicate_deweights={} validator={}/{}/{} sandbox_ready_profiles={} sandbox_active_jobs={} contributor_revision={} reselection={} contributor_state={} operator={} operator_runs={}/{} last_error={}",
         payload
             .get("available")
             .and_then(Value::as_bool)
@@ -3185,6 +3332,22 @@ fn print_training_text(payload: &Value) {
             .unwrap_or(0),
         payload
             .get("accepted_run_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("active_adapter_window_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("adapter_window_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("promotion_ready_window_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contribution_count")
             .and_then(Value::as_u64)
             .unwrap_or(0),
         payload
@@ -3254,6 +3417,11 @@ fn print_training_text(payload: &Value) {
             .and_then(Value::as_str)
             .unwrap_or("-"),
         payload
+            .get("contributor")
+            .and_then(|value| value.get("assignment_state"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
             .get("operator")
             .and_then(|value| value.get("workflow_state"))
             .and_then(Value::as_str)
@@ -3270,6 +3438,158 @@ fn print_training_text(payload: &Value) {
             .unwrap_or(0),
         payload
             .get("last_error")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    );
+    println!(
+        "training contributor: available={} node={} enabled={} backend_ready={} contributor_supported={} coordinator_match={} authority_receipts={} match_eligible={} local_assignments={}/{} uploaded={} dispositions={}/{}/{}/{} settlement_ready={} trigger={} backends={} families={} formats={} validator_policies={} latest_window={} latest_assignment={} latest_payout={} detail={}",
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("available"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_node_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("product_enabled"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("backend_ready"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("contributor_supported"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("coordinator_match_supported"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("authority_receipt_supported"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("match_eligible"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_active_assignment_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_assignment_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_uploaded_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_accepted_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_quarantined_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_rejected_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_replay_required_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("local_settlement_ready_count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("settlement_trigger"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("execution_backends"))
+            .and_then(Value::as_array)
+            .map(|items| items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("adapter_families"))
+            .and_then(Value::as_array)
+            .map(|items| items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("adapter_formats"))
+            .and_then(Value::as_array)
+            .map(|items| items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("validator_policy_refs"))
+            .and_then(Value::as_array)
+            .map(|items| items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string()),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("latest_window_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("latest_assignment_id"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("latest_payout_state"))
+            .and_then(Value::as_str)
+            .unwrap_or("-"),
+        payload
+            .get("contributor")
+            .and_then(|value| value.get("readiness_detail"))
             .and_then(Value::as_str)
             .unwrap_or("-")
     );
@@ -3404,6 +3724,175 @@ fn print_training_text(payload: &Value) {
                 .unwrap_or("-"),
             participant
                 .get("exclusion_reason")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+    }
+    for window in payload
+        .get("windows")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "training window: id={} run={} stage={} status={} revision={} counts={}/{}/{}/{}/{}/{} uploaded={} held_out_bps={} benchmark_bps={} runtime_smoke={} promotion_ready={} promotion={} accepted_outcome={} gates={} holds={}",
+            window.get("window_id").and_then(Value::as_str).unwrap_or("-"),
+            window
+                .get("training_run_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            window.get("stage_id").and_then(Value::as_str).unwrap_or("-"),
+            window.get("status").and_then(Value::as_str).unwrap_or("-"),
+            window
+                .get("contributor_set_revision_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            window
+                .get("total_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("admitted_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("accepted_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("quarantined_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("rejected_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("replay_required_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("uploaded_contributions")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            window
+                .get("held_out_average_score_bps")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            window
+                .get("benchmark_pass_rate_bps")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            window
+                .get("runtime_smoke_passed")
+                .and_then(Value::as_bool)
+                .map(|value| if value { "passed" } else { "failed" })
+                .unwrap_or("-"),
+            window
+                .get("promotion_ready")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            window
+                .get("promotion_disposition")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            window
+                .get("accepted_outcome_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            window
+                .get("gate_reason_codes")
+                .and_then(Value::as_array)
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string()),
+            window
+                .get("hold_reason_codes")
+                .and_then(Value::as_array)
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string())
+        );
+    }
+    for contribution in payload
+        .get("contributions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        println!(
+            "training contribution: id={} run={} window={} assignment={} node={} worker={} disposition={} reasons={} aggregation={} accepted_for_aggregation={} weight_bps={} upload={} payout={} trigger={}",
+            contribution
+                .get("contribution_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("training_run_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("window_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("assignment_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("contributor_node_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("worker_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("validator_disposition")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("validation_reason_codes")
+                .and_then(Value::as_array)
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "-".to_string()),
+            contribution
+                .get("aggregation_eligibility")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("accepted_for_aggregation")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            contribution
+                .get("aggregation_weight_bps")
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            contribution
+                .get("upload_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("payout_state")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            contribution
+                .get("settlement_trigger")
                 .and_then(Value::as_str)
                 .unwrap_or("-")
         );
@@ -4822,6 +5311,37 @@ mod tests {
         snapshot.training.sandbox_ready_profile_count = 1;
         snapshot.training.sandbox_active_job_count = 1;
         snapshot.training.contributor_set_revision = Some("contributors-7".to_string());
+        snapshot.training.adapter_window_count = 1;
+        snapshot.training.active_adapter_window_count = 1;
+        snapshot.training.promotion_ready_window_count = 0;
+        snapshot.training.contribution_count = 1;
+        snapshot.training.contributor.available = true;
+        snapshot.training.contributor.local_node_id = Some("device:test".to_string());
+        snapshot.training.contributor.product_enabled = true;
+        snapshot.training.contributor.backend_ready = true;
+        snapshot.training.contributor.contributor_supported = true;
+        snapshot.training.contributor.coordinator_match_supported = true;
+        snapshot.training.contributor.authority_receipt_supported = true;
+        snapshot.training.contributor.match_eligible = true;
+        snapshot.training.contributor.assignment_state = "awaiting_assignment".to_string();
+        snapshot.training.contributor.local_assignment_count = 1;
+        snapshot.training.contributor.local_active_assignment_count = 1;
+        snapshot.training.contributor.local_uploaded_count = 1;
+        snapshot.training.contributor.settlement_trigger =
+            Some("accepted_contribution".to_string());
+        snapshot.training.contributor.execution_backends =
+            vec!["apple_foundation_models".to_string()];
+        snapshot.training.contributor.adapter_families = vec!["apple_adapter".to_string()];
+        snapshot.training.contributor.adapter_formats =
+            vec!["openagents.apple-fmadapter.v1".to_string()];
+        snapshot.training.contributor.validator_policy_refs =
+            vec!["policy://validator/apple_adapter/helpdesk".to_string()];
+        snapshot.training.contributor.latest_window_id = Some("window-1".to_string());
+        snapshot.training.contributor.latest_assignment_id = Some("assignment-1".to_string());
+        snapshot.training.contributor.latest_payout_state =
+            Some("accepted_pending_settlement".to_string());
+        snapshot.training.contributor.readiness_detail =
+            Some("Contributor prerequisites satisfy the latest decentralized adapter window".to_string());
         snapshot.training.operator.available = true;
         snapshot.training.operator.workflow_state = "running".to_string();
         snapshot.training.operator.run_count = 1;
@@ -4857,6 +5377,46 @@ mod tests {
                 priority_label: "selected".to_string(),
                 deweight_reason: None,
                 exclusion_reason: None,
+            },
+        );
+        snapshot.training.windows.push(
+            autopilot_desktop::desktop_control::DesktopControlAdapterTrainingWindowStatus {
+                window_id: "window-1".to_string(),
+                training_run_id: "train-1".to_string(),
+                stage_id: "stage-a".to_string(),
+                status: "active".to_string(),
+                contributor_set_revision_id: "contributors-7".to_string(),
+                total_contributions: 3,
+                admitted_contributions: 2,
+                accepted_contributions: 1,
+                quarantined_contributions: 1,
+                rejected_contributions: 0,
+                replay_required_contributions: 1,
+                uploaded_contributions: 2,
+                held_out_average_score_bps: Some(9_100),
+                benchmark_pass_rate_bps: Some(8_900),
+                runtime_smoke_passed: Some(true),
+                promotion_ready: false,
+                gate_reason_codes: vec!["runtime_smoke_required".to_string()],
+                ..autopilot_desktop::desktop_control::DesktopControlAdapterTrainingWindowStatus::default()
+            },
+        );
+        snapshot.training.contributions.push(
+            autopilot_desktop::desktop_control::DesktopControlAdapterContributionStatus {
+                contribution_id: "contrib-1".to_string(),
+                training_run_id: "train-1".to_string(),
+                stage_id: "stage-a".to_string(),
+                window_id: "window-1".to_string(),
+                assignment_id: "assignment-1".to_string(),
+                contributor_node_id: "device:test".to_string(),
+                worker_id: "device:test".to_string(),
+                validator_disposition: "accepted".to_string(),
+                aggregation_eligibility: "eligible".to_string(),
+                accepted_for_aggregation: true,
+                upload_state: "validated".to_string(),
+                payout_state: "accepted_pending_settlement".to_string(),
+                settlement_trigger: Some("accepted_contribution".to_string()),
+                ..autopilot_desktop::desktop_control::DesktopControlAdapterContributionStatus::default()
             },
         );
         snapshot.training.operator.runs.push(
@@ -4920,12 +5480,32 @@ mod tests {
         assert!(
             lines
                 .iter()
+                .any(|line| line.contains("contributor_state=awaiting_assignment"))
+        );
+        assert!(
+            lines
+                .iter()
                 .any(|line| line.contains("training run: id=train-1"))
         );
         assert!(
             lines
                 .iter()
                 .any(|line| line.contains("training participant: id=node-a"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training contributor: available=true node=device:test"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training window: id=window-1 run=train-1"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training contribution: id=contrib-1 run=train-1"))
         );
         assert!(
             lines
