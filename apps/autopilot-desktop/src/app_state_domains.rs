@@ -874,6 +874,7 @@ pub struct AppleAdapterTrainingPaneState {
     pub pending_export_path: Option<String>,
     pub accept_confirmation_armed: bool,
     pub last_handoff_summary: Option<String>,
+    pub log_tail_run_id: Option<String>,
     pub log_tail: TerminalPane,
 }
 
@@ -889,6 +890,7 @@ impl Default for AppleAdapterTrainingPaneState {
             pending_export_path: None,
             accept_confirmation_armed: false,
             last_handoff_summary: None,
+            log_tail_run_id: None,
             log_tail: TerminalPane::new().title("\\\\ TRAINING LOG"),
         }
     }

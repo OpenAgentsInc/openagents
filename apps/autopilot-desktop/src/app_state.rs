@@ -557,6 +557,7 @@ pub struct AppleAdapterTrainingPaneInputs {
     pub description: TextInput,
     pub license: TextInput,
     pub apple_fm_base_url: TextInput,
+    pub export_path: TextInput,
 }
 
 impl Default for AppleAdapterTrainingPaneInputs {
@@ -572,6 +573,7 @@ impl Default for AppleAdapterTrainingPaneInputs {
             apple_fm_base_url: TextInput::new()
                 .value("http://127.0.0.1:11435")
                 .placeholder("Apple FM bridge base URL"),
+            export_path: TextInput::new().placeholder("Path to exported .fmadapter package"),
         }
     }
 }

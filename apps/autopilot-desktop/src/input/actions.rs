@@ -11,10 +11,10 @@ use crate::local_runtime_capabilities::{
     mission_control_preflight_action_label, mission_control_preflight_workbench_action,
 };
 use crate::pane_system::{
-    AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction,
-    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT,
-    LocalInferencePaneAction, LogStreamPaneAction, Nip90SentPaymentsPaneAction,
-    ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction,
+    AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction,
+    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction, LogStreamPaneAction,
+    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
+    SparkReplayPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9329,6 +9329,13 @@ pub(super) fn run_apple_adapter_training_action(
                 state.apple_adapter_training.last_action =
                     Some(format!("Selected Apple adapter run {run_id}"));
                 state.apple_adapter_training.last_error = None;
+                state.apple_adapter_training.pending_export_path = None;
+                state.apple_adapter_training.accept_confirmation_armed = false;
+                state.apple_adapter_training.log_tail_run_id = None;
+                state.apple_adapter_training.log_tail.clear();
+                state
+                    .apple_adapter_training
+                    .selected_run_log_scroll_offset_px = 0.0;
             }
             true
         }
@@ -9369,6 +9376,99 @@ pub(super) fn run_apple_adapter_training_action(
                 &response,
                 &current_training,
                 form.package_name.as_str(),
+            );
+            true
+        }
+        AppleAdapterTrainingPaneAction::ExportRun => {
+            let training = crate::desktop_control::current_training_status(state);
+            let (export_path, request) =
+                match crate::panes::apple_adapter_training::build_export_request(
+                    &state.apple_adapter_training,
+                    &state.apple_adapter_training_inputs,
+                    &training,
+                ) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        state.apple_adapter_training.last_error = Some(error);
+                        state.apple_adapter_training.last_action =
+                            Some("Apple adapter export blocked".to_string());
+                        return true;
+                    }
+                };
+            let response = crate::desktop_control::run_inline_action_request(state, request);
+            crate::panes::apple_adapter_training::apply_run_action_response(
+                &mut state.apple_adapter_training,
+                &response,
+                Some(export_path.clone()),
+                true,
+            );
+            if response.success {
+                state
+                    .apple_adapter_training_inputs
+                    .export_path
+                    .set_value(export_path);
+            }
+            true
+        }
+        AppleAdapterTrainingPaneAction::ArmAcceptRun => {
+            let training = crate::desktop_control::current_training_status(state);
+            let selected_run = state
+                .apple_adapter_training
+                .selected_run_id
+                .as_deref()
+                .and_then(|run_id| {
+                    training
+                        .operator
+                        .runs
+                        .iter()
+                        .find(|run| run.run_id == run_id)
+                });
+            let Some(selected_run) = selected_run else {
+                state.apple_adapter_training.last_error =
+                    Some("Select an Apple adapter run first".to_string());
+                state.apple_adapter_training.last_action =
+                    Some("Apple adapter acceptance blocked".to_string());
+                return true;
+            };
+            let gate = crate::panes::apple_adapter_training::acceptance_gate_reason(selected_run);
+            if let Some(error) = gate {
+                state.apple_adapter_training.last_error = Some(error);
+                state.apple_adapter_training.last_action =
+                    Some("Apple adapter acceptance blocked".to_string());
+                state.apple_adapter_training.accept_confirmation_armed = false;
+                return true;
+            }
+            state.apple_adapter_training.accept_confirmation_armed =
+                !state.apple_adapter_training.accept_confirmation_armed;
+            state.apple_adapter_training.last_action =
+                Some(if state.apple_adapter_training.accept_confirmation_armed {
+                    "Apple adapter acceptance armed".to_string()
+                } else {
+                    "Apple adapter acceptance confirmation cleared".to_string()
+                });
+            state.apple_adapter_training.last_error = None;
+            true
+        }
+        AppleAdapterTrainingPaneAction::AcceptRun => {
+            let training = crate::desktop_control::current_training_status(state);
+            let request = match crate::panes::apple_adapter_training::build_accept_request(
+                &state.apple_adapter_training,
+                &training,
+            ) {
+                Ok(request) => request,
+                Err(error) => {
+                    state.apple_adapter_training.last_error = Some(error);
+                    state.apple_adapter_training.last_action =
+                        Some("Apple adapter acceptance blocked".to_string());
+                    return true;
+                }
+            };
+            let response = crate::desktop_control::run_inline_action_request(state, request);
+            crate::panes::apple_adapter_training::apply_run_action_response(
+                &mut state.apple_adapter_training,
+                &response,
+                None,
+                true,
             );
             true
         }
@@ -9458,7 +9558,10 @@ pub(super) fn run_provider_control_action(
         }
         ProviderControlPaneAction::OpenAppleAdapterTraining => {
             focus_or_create_pane_kind(state, crate::app_state::PaneKind::AppleAdapterTraining);
-            state.apple_adapter_training_inputs.train_dataset_path.focus();
+            state
+                .apple_adapter_training_inputs
+                .train_dataset_path
+                .focus();
             state
                 .provider_control
                 .record_action("Opened Apple adapter training");

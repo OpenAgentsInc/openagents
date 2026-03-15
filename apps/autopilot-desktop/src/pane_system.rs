@@ -289,7 +289,10 @@ fn focus_apple_adapter_training_input_for_pane_open(state: &mut RenderState) {
     state.credentials_inputs.variable_value.blur();
     state.job_history_inputs.search_job_id.blur();
     state.chat_inputs.composer.blur();
-    state.apple_adapter_training_inputs.train_dataset_path.focus();
+    state
+        .apple_adapter_training_inputs
+        .train_dataset_path
+        .focus();
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -483,6 +486,9 @@ pub enum AppleAdapterTrainingPaneAction {
     CycleStageFilter,
     SelectRun(usize),
     LaunchRun,
+    ExportRun,
+    ArmAcceptRun,
+    AcceptRun,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1600,8 +1606,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 }
             }
             PaneKind::AppleAdapterTraining => {
-                if apple_adapter_training_train_dataset_input_bounds(content_bounds)
-                    .contains(point)
+                if apple_adapter_training_train_dataset_input_bounds(content_bounds).contains(point)
                     || apple_adapter_training_held_out_dataset_input_bounds(content_bounds)
                         .contains(point)
                     || apple_adapter_training_package_name_input_bounds(content_bounds)
@@ -1609,9 +1614,9 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     || apple_adapter_training_author_input_bounds(content_bounds).contains(point)
                     || apple_adapter_training_description_input_bounds(content_bounds)
                         .contains(point)
-                    || apple_adapter_training_license_input_bounds(content_bounds)
-                        .contains(point)
-                    || apple_adapter_training_base_url_input_bounds(content_bounds)
+                    || apple_adapter_training_license_input_bounds(content_bounds).contains(point)
+                    || apple_adapter_training_base_url_input_bounds(content_bounds).contains(point)
+                    || apple_adapter_training_export_path_input_bounds(content_bounds)
                         .contains(point)
                 {
                     return CursorIcon::Text;
@@ -2836,7 +2841,9 @@ fn apple_adapter_training_panel_body_bounds(panel: Bounds) -> Bounds {
 }
 
 pub fn apple_adapter_training_launch_panel_body_bounds(content_bounds: Bounds) -> Bounds {
-    apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).launch_panel)
+    apple_adapter_training_panel_body_bounds(
+        apple_adapter_training_layout(content_bounds).launch_panel,
+    )
 }
 
 pub fn apple_adapter_training_preflight_summary_bounds(content_bounds: Bounds) -> Bounds {
@@ -2901,7 +2908,9 @@ pub fn apple_adapter_training_launch_button_bounds(content_bounds: Bounds) -> Bo
 }
 
 pub fn apple_adapter_training_filter_button_bounds(content_bounds: Bounds) -> Bounds {
-    let body = apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).runs_panel);
+    let body = apple_adapter_training_panel_body_bounds(
+        apple_adapter_training_layout(content_bounds).runs_panel,
+    );
     Bounds::new(body.origin.x, body.origin.y, body.size.width, 24.0)
 }
 
@@ -2919,7 +2928,64 @@ pub fn apple_adapter_training_run_row_bounds(content_bounds: Bounds, row_index: 
 }
 
 pub fn apple_adapter_training_detail_panel_body_bounds(content_bounds: Bounds) -> Bounds {
-    apple_adapter_training_panel_body_bounds(apple_adapter_training_layout(content_bounds).detail_panel)
+    apple_adapter_training_panel_body_bounds(
+        apple_adapter_training_layout(content_bounds).detail_panel,
+    )
+}
+
+pub fn apple_adapter_training_export_path_input_bounds(content_bounds: Bounds) -> Bounds {
+    let detail = apple_adapter_training_detail_panel_body_bounds(content_bounds);
+    let log = apple_adapter_training_log_tail_bounds(content_bounds);
+    Bounds::new(
+        detail.origin.x,
+        (log.origin.y - 76.0).max(detail.origin.y + 28.0),
+        detail.size.width,
+        APPLE_ADAPTER_TRAINING_INPUT_HEIGHT,
+    )
+}
+
+pub fn apple_adapter_training_export_button_bounds(content_bounds: Bounds) -> Bounds {
+    let detail = apple_adapter_training_detail_panel_body_bounds(content_bounds);
+    let export_input = apple_adapter_training_export_path_input_bounds(content_bounds);
+    let button_width = ((detail.size.width - 16.0) / 3.0).max(88.0);
+    Bounds::new(
+        export_input.origin.x,
+        export_input.max_y() + 10.0,
+        button_width,
+        28.0,
+    )
+}
+
+pub fn apple_adapter_training_arm_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let export_button = apple_adapter_training_export_button_bounds(content_bounds);
+    Bounds::new(
+        export_button.max_x() + 8.0,
+        export_button.origin.y,
+        export_button.size.width,
+        export_button.size.height,
+    )
+}
+
+pub fn apple_adapter_training_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let arm = apple_adapter_training_arm_accept_button_bounds(content_bounds);
+    let detail = apple_adapter_training_detail_panel_body_bounds(content_bounds);
+    Bounds::new(
+        arm.max_x() + 8.0,
+        arm.origin.y,
+        (detail.max_x() - arm.max_x() - 8.0).max(88.0),
+        arm.size.height,
+    )
+}
+
+pub fn apple_adapter_training_log_tail_bounds(content_bounds: Bounds) -> Bounds {
+    let detail = apple_adapter_training_detail_panel_body_bounds(content_bounds);
+    let height = (detail.size.height * 0.34).clamp(132.0, 240.0);
+    Bounds::new(
+        detail.origin.x,
+        detail.max_y() - height,
+        detail.size.width,
+        height,
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -5641,13 +5707,29 @@ fn pane_hit_action_for_pane(
                     AppleAdapterTrainingPaneAction::LaunchRun,
                 ));
             }
+            if apple_adapter_training_export_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleAdapterTraining(
+                    AppleAdapterTrainingPaneAction::ExportRun,
+                ));
+            }
+            if apple_adapter_training_arm_accept_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleAdapterTraining(
+                    AppleAdapterTrainingPaneAction::ArmAcceptRun,
+                ));
+            }
+            if apple_adapter_training_accept_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::AppleAdapterTraining(
+                    AppleAdapterTrainingPaneAction::AcceptRun,
+                ));
+            }
             if apple_adapter_training_filter_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::AppleAdapterTraining(
                     AppleAdapterTrainingPaneAction::CycleStageFilter,
                 ));
             }
             for row_index in 0..APPLE_ADAPTER_TRAINING_MAX_RUN_ROWS {
-                if apple_adapter_training_run_row_bounds(content_bounds, row_index).contains(point) {
+                if apple_adapter_training_run_row_bounds(content_bounds, row_index).contains(point)
+                {
                     return Some(PaneHitAction::AppleAdapterTraining(
                         AppleAdapterTrainingPaneAction::SelectRun(row_index),
                     ));
@@ -6952,12 +7034,12 @@ mod tests {
         agent_profile_start_goal_button_bounds, agent_profile_update_goals_button_bounds,
         agent_schedule_apply_button_bounds, agent_schedule_inspect_button_bounds,
         agent_schedule_manual_tick_button_bounds, agent_schedule_toggle_os_scheduler_button_bounds,
-        apple_adapter_training_detail_panel_body_bounds, apple_adapter_training_filter_button_bounds,
-        apple_adapter_training_launch_panel_body_bounds, apple_adapter_training_layout,
-        apple_adapter_training_run_row_bounds,
         alerts_recovery_ack_button_bounds, alerts_recovery_recover_button_bounds,
         alerts_recovery_resolve_button_bounds, alerts_recovery_row_bounds,
-        apple_fm_workbench_adapter_id_input_bounds,
+        apple_adapter_training_detail_panel_body_bounds,
+        apple_adapter_training_filter_button_bounds,
+        apple_adapter_training_launch_panel_body_bounds, apple_adapter_training_layout,
+        apple_adapter_training_run_row_bounds, apple_fm_workbench_adapter_id_input_bounds,
         apple_fm_workbench_adapter_package_input_bounds,
         apple_fm_workbench_attach_adapter_button_bounds,
         apple_fm_workbench_create_session_button_bounds, apple_fm_workbench_event_log_bounds,
@@ -7031,13 +7113,13 @@ mod tests {
         nostr_reveal_button_bounds, pane_content_bounds, pane_content_bounds_for_presentation,
         provider_control_local_fm_test_button_bounds, provider_control_local_model_button_bounds,
         provider_control_scroll_viewport_bounds, provider_control_toggle_button_bounds,
-        provider_control_training_button_bounds,
-        provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
-        reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
-        relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
-        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+        provider_control_training_button_bounds, provider_inventory_toggle_button_bounds,
+        reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+        reciprocal_loop_stop_button_bounds, relay_connections_add_button_bounds,
+        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+        relay_connections_row_bounds, relay_connections_url_input_bounds,
+        settings_provider_queue_input_bounds, settings_relay_input_bounds,
+        settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -7136,7 +7218,14 @@ mod tests {
         );
         let viewport = provider_control_scroll_viewport_bounds(content_bounds);
 
-        for bounds in [toggle, local_model, local_fm_test, training, last_inventory, viewport] {
+        for bounds in [
+            toggle,
+            local_model,
+            local_fm_test,
+            training,
+            last_inventory,
+            viewport,
+        ] {
             assert!(content_bounds.contains(bounds.origin));
             assert!(bounds.max_x() <= content_bounds.max_x());
             assert!(bounds.max_y() <= content_bounds.max_y());
@@ -7151,7 +7240,8 @@ mod tests {
 
     #[test]
     fn apple_adapter_training_minimum_size_is_below_default_but_above_global_floor() {
-        let spec = crate::pane_registry::pane_spec(crate::app_state::PaneKind::AppleAdapterTraining);
+        let spec =
+            crate::pane_registry::pane_spec(crate::app_state::PaneKind::AppleAdapterTraining);
         let min_size = super::pane_minimum_size(crate::app_state::PaneKind::AppleAdapterTraining);
 
         assert!(min_size.width > super::PANE_MIN_WIDTH);
