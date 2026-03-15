@@ -115,6 +115,9 @@ autopilotctl tunnels status
 autopilotctl cluster status
 autopilotctl sandbox status
 autopilotctl training status
+autopilotctl training launch /tmp/train.jsonl /tmp/held-out.jsonl weather-helper --author "OpenAgents" --description "Repo-native Apple adapter operator run" --license Apache-2.0
+autopilotctl training export weather-helper-1760000000000 /tmp/weather-helper.fmadapter
+autopilotctl training accept weather-helper-1760000000000
 autopilotctl proof status
 autopilotctl challenge status
 autopilotctl logs --tail 50
@@ -156,6 +159,21 @@ artifact-plane staging and includes run counts, accepted outcomes, environment
 versions, checkpoint refs, stale-rollout and duplicate-handling counters,
 validator verdict totals, sandbox pool readiness, and the currently visible
 training runs or participants when those surfaces are available.
+
+For the Apple adapter lane, the training command group is now an operator
+workflow rather than a status-only surface:
+
+- `autopilotctl training launch ...` imports train and held-out datasets, runs
+  repo-native Apple adapter SFT, stages the `.fmadapter`, and records local
+  held-out plus runtime-smoke results
+- `autopilotctl training export ...` materializes the staged package at an
+  explicit export path without treating export as accepted market truth
+- `autopilotctl training accept ...` is the authority boundary: it registers
+  environment, benchmark, validator, checkpoint-family, training-policy,
+  eval-run, training-run, and accepted-outcome records through kernel authority
+
+The status payload now renders the Apple operator stages separately so launched,
+evaluated, exported, and accepted states stay distinct across restart or replay.
 
 `autopilotctl proof status` now drills into recent delivery proofs instead of
 stopping at a count. The payload includes proof posture, topology and
