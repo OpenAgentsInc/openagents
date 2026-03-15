@@ -20,7 +20,7 @@
 > `crates/psionic/psionic-sandbox/src/lib.rs`,
 > `apps/autopilot-desktop/src/desktop_control.rs`, and
 > `apps/autopilot-desktop/src/bin/autopilotctl.rs`, plus the recently closed
-> train-adjacent issue backlog through `#3635` and the decentralized adapter
+> train-adjacent issue backlog through `#3637` and the decentralized adapter
 > training issue program starting at `#3636`.
 
 ## Why This Doc Exists
@@ -261,6 +261,25 @@ The new claim is:
 > Apple adapters as the first narrow lane and open adapter backends as the next
 > generalized lane under the same control-plane vocabulary.
 
+That contract layer is no longer only planned. `psionic-train` now owns a
+typed adapter-window state machine in
+`crates/psionic/psionic-train/src/adapter_window.rs` that can represent one
+window end to end with typed receipts for:
+
+- assignment
+- local execution summary
+- upload completion
+- validator disposition
+- aggregation eligibility
+- sealed-window aggregation or promotion
+
+Those receipts bind adapter target identity, dataset-slice identity, source
+policy revision, and source checkpoint pointer without ad hoc JSON sidecars,
+and the crate now carries a runnable harness that proves the window lifecycle
+from planning through reconciliation. What remains open after this step is the
+live cluster, artifact, validator, authority, operator, and product projection
+work in the later issue set.
+
 ### First Lane, Next Lane, And Non-Goals
 
 The first live execution lane remains the narrow single-host Apple adapter path
@@ -455,6 +474,7 @@ shape already includes at least:
 | Synthetic-data flows | `partial_outside_psionic` | synthetic-data job creation, append, finalize, and verification flows exist in kernel/Nexus, but no Psionic-native generation runtime exists yet |
 | Rollout artifacts | `implemented_early` | `psionic-train` now has checkpoint-aware policy revisions, proof-bearing rollout artifacts, rollout-admission receipts, bounded stale-rollout pruning, and deterministic trainer-batch assembly with policy-lineage digests |
 | Validator-aware RL verification | `implemented_early` | `psionic-train` now owns rollout-verification bundles, replay or duplicate detection, sampled benchmark checks, and typed validator verdicts; broader service productization is still later |
+| Decentralized adapter window contracts | `implemented_early` | `psionic-train` now owns typed adapter-window receipts and a runnable window harness covering assignment, execution, upload, validator disposition, aggregation eligibility, seal, aggregation, and reconcile over one adapter-targeted window |
 
 ## Current Crate Ownership
 
