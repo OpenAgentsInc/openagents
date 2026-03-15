@@ -153,6 +153,49 @@ adapter hosting, bounded sandbox work, early eval/train/research lanes, and a
 narrow Apple adapter training path, but it still does not claim complete
 backend parity or fully generalized distributed training.
 
+### Apple Foundation Models Status
+
+The Apple Foundation Models lane now has two distinct pieces that need to be
+described separately:
+
+- the Swift bridge plus `psionic-apple-fm` runtime surface
+- the repo-owned Apple adapter training/export path in `psionic-train`
+
+The bridge side is real and usable today for inference-time integration. The
+Swift sidecar exposes health, model availability, sessions, structured output,
+tool use, streaming, adapter inventory, adapter load/unload, and
+session/request-level adapter binding. That is the path the desktop app and
+`autopilotctl apple-fm ...` use to talk to Apple's runtime.
+
+The training side is also real now, but it is not "the bridge trains models"
+and it is not a claim that Apple exposes a repo-controlled training API. The
+current repo-owned training path imports Apple adapter JSONL data through
+`psionic-data`, binds it to the Apple train/eval environment package family in
+`psionic-environments`, runs a fixed-budget adapter-only SFT loop in
+`psionic-train`, exports a valid `.fmadapter` through `psionic-adapters`, and
+can then load that package back into the bridge for local runtime smoke.
+
+In concrete terms, yes: the repo can now train LoRA-style Apple adapter
+patches today. The honest current scope is:
+
+- frozen-base, adapter-only training over explicit low-rank parameter groups
+- `f32` reference precision only
+- activation checkpointing disabled in the shipped Apple reference lane
+- held-out eval plus bridge-backed runtime-smoke validation before acceptance
+- app-owned operator flow through `autopilotctl training launch`,
+  `autopilotctl training export`, `autopilotctl training accept`, and
+  `autopilotctl apple-fm load|attach`
+
+What this does not mean is "full distributed Apple training is done." The
+current Apple lane reuses the repo's data, environment, eval, optimizer,
+autodiff, run-summary, and authority substrate, but it does not yet execute
+through real `psionic-cluster` multi-node training, collective-backed
+parameter exchange, sharded optimizer state, or production multi-device
+training kernels. Those cluster/distributed-training contracts already exist as
+Psionic substrate and are intended to be reused later for broader training
+lanes, but the current Apple adapter path is still a narrow single-host
+reference execution lane.
+
 Implemented now:
 
 - `psionic-catalog` local blob and artifact-catalog substrate for model and

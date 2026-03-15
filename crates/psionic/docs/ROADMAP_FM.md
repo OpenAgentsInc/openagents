@@ -1,6 +1,6 @@
 # Psionic Apple Foundation Models Roadmap
 
-> Status: updated 2026-03-10 after re-reading `docs/MVP.md` and
+> Status: updated 2026-03-15 after re-reading `docs/MVP.md` and
 > `docs/OWNERSHIP.md`, after re-reading the retained Apple FM audit in
 > `docs/audits/2026-03-10-apple-fm-swift-bridge-audit.md`, and after
 > inspecting `~/code/python-apple-fm-sdk` across its exported API, user docs,
@@ -8,7 +8,8 @@
 > plan in `apps/autopilot-desktop/src/pane_renderer.rs`,
 > `apps/autopilot-desktop/src/input/actions.rs`,
 > `apps/autopilot-desktop/src/app_state.rs`, and
-> `docs/plans/mission-control-pane.md`.
+> `docs/plans/mission-control-pane.md`, plus
+> `docs/headless-compute.md` and `crates/psionic/docs/TRAIN_SYSTEM.md`.
 >
 > This is the live roadmap for the Apple Foundation Models lane. For the MVP,
 > `Mac = Apple Foundation Models via our Swift bridge`, `NVIDIA = Psionic
@@ -111,18 +112,20 @@ What the retained tree has today:
   `apps/autopilot-desktop/src/apple_fm_bridge.rs`
 - provider/backend readiness truth and Apple FM inventory plumbing in the
   desktop
+- reusable Rust Apple FM contracts for sessions, streaming, structured output,
+  tools, and adapter inventory/attach/detach in `psionic-apple-fm`
+- a repo-owned Apple adapter training/export lane in `psionic-train`, with an
+  app-owned `autopilotctl training launch|export|accept` operator workflow
 - a useful audit of the current state in
   `docs/audits/2026-03-10-apple-fm-swift-bridge-audit.md`
 
 What the retained tree does not have today:
 
-- typed error mapping
-- Apple FM as the default Mac local inference lane
-- a Mission Control pane that speaks Apple FM truth on macOS instead of
-  hard-coded GPT-OSS 20B load semantics
-- desktop chat/workbench cutover onto the same Apple FM runtime truth the
-  provider path already consumes
+- complete app-wide chat/workbench cutover onto the same Apple FM runtime truth
+  the provider path already consumes
 - exact or richer typed usage truth beyond today's explicitly estimated counts
+- full semantic closure of the remaining Python-SDK-equivalent Apple FM surface
+- generalized distributed or cluster-backed Apple adapter training
 
 The Python SDK makes the gap unmistakable: Apple FM is not just "one endpoint
 that returns a string." It is a full sessioned API with streaming, transcript
@@ -133,20 +136,26 @@ guardrail configuration, and a real error taxonomy.
 
 `main` already includes the following retained Apple FM baseline:
 
-- `swift/foundation-bridge/` exposes:
-  - `GET /health`
-  - `GET /v1/models`
-  - `POST /v1/chat/completions`
+- `swift/foundation-bridge/` exposes health, model listing, one-shot chat,
+  explicit session lifecycle, streaming, structured generation, tool use, and
+  adapter inventory/load/unload/attach/detach
 - `apps/autopilot-desktop/src/apple_fm_bridge.rs` supervises that bridge as a
   localhost sidecar
 - desktop provider/runtime plumbing can already route eligible text-generation
   work through Apple FM when the bridge is healthy
 - the Apple FM status is already surfaced in provider state and desktop UI
+- exported Apple adapter packages can be loaded back into the bridge and
+  attached to sessions for local runtime smoke or operator usage
+- the repo now owns a narrow Apple adapter training path: Rust-native
+  adapter-only SFT/export plus optional draft-model distillation, with held-out
+  eval, runtime smoke, and authority acceptance around it
 - the audit at `docs/audits/2026-03-10-apple-fm-swift-bridge-audit.md`
   documents the real shipped gaps
 
-That is a legitimate base to build on, but it is still only an initial bridge,
-not a Psionic-owned SDK or a complete Apple FM runtime lane.
+That is a legitimate base to build on, but it is still not the same thing as a
+complete Apple FM platform. The current Apple adapter training lane is real,
+yet still narrow and single-host; it does not imply generalized distributed
+Apple training or a complete training market.
 
 ## Shipped On Main
 
@@ -298,6 +307,9 @@ Remaining caveats after `FM-10`:
 - the OpenAI-compatible `/v1/chat/completions` path remains a one-shot
   compatibility wrapper; the roadmap-authoritative Apple FM interface remains
   the session-first surface
+- the later Apple adapter training/operator closures prove a real exported
+  `.fmadapter` path, but they do not replace the remaining SDK/runtime roadmap
+  work or imply full distributed Apple training
 
 ## Mission Control Reality On Main
 
