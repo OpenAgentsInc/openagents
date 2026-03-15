@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use openagents_kernel_core::authority::{
     AcceptComputeOutcomeRequest, CreateComputeEvaluationRunRequest,
     CreateComputeTrainingRunRequest, FinalizeComputeEvaluationRunRequest,
@@ -14,33 +14,34 @@ use openagents_kernel_core::authority::{
     RegisterComputeValidatorPolicyRequest,
 };
 use openagents_kernel_core::compute::{
+    ComputeAcceptedOutcome, ComputeAppleAdapterSampleKind, ComputeAppleBenchmarkPackageMetadata,
+    ComputeAppleRuntimeValidationPosture, ComputeAppleTrainingPolicyMetadata,
+    ComputeAppleTrainingRunMetadata, ComputeBenchmarkPackage, ComputeCheckpointBinding,
+    ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
+    ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+    ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
+    ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
+    ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeEvaluationSampleStatus,
+    ComputeEvaluationSummary, ComputeProofPosture, ComputeRegistryStatus, ComputeTrainingPolicy,
+    ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorPolicy,
     COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION,
     COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION,
-    COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION, ComputeAcceptedOutcome,
-    ComputeAppleAdapterSampleKind, ComputeAppleBenchmarkPackageMetadata,
-    ComputeAppleRuntimeValidationPosture, ComputeAppleTrainingPolicyMetadata,
-    ComputeBenchmarkPackage, ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy,
-    ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
-    ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
-    ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact,
-    ComputeEvaluationMetric, ComputeEvaluationRun, ComputeEvaluationRunStatus,
-    ComputeEvaluationSample, ComputeEvaluationSampleStatus, ComputeEvaluationSummary,
-    ComputeProofPosture, ComputeRegistryStatus, ComputeTrainingPolicy, ComputeTrainingRun,
-    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorPolicy,
+    COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION,
 };
 use openagents_kernel_core::compute_benchmarks::ComputeBenchmarkAdapterKind;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext};
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
-    AppleFmGeneratedContent, AppleFmGenerationSchema, AppleFmSessionCreateRequest,
-    AppleFmSessionRespondRequest, AppleFmSessionStructuredGenerationRequest, AppleFmTool,
-    AppleFmToolCallError, AppleFmToolDefinition,
+    AppleFmGeneratedContent, AppleFmGenerationSchema, AppleFmHealthResponse,
+    AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
+    AppleFmSessionStructuredGenerationRequest, AppleFmTool, AppleFmToolCallError,
+    AppleFmToolDefinition, DEFAULT_APPLE_FM_MODEL_ID,
 };
 use psionic_data::{
-    AppleAdapterDatasetContract, AppleAdapterDatasetMetadata, AppleAdapterMessageRole,
-    AppleAdapterSampleKind, AppleAdapterSampleTokenCapture, DatasetKey, DatasetPackingMode,
-    DatasetPackingPolicy, OverlongSequencePosture, TokenizerDigest, TokenizerFamily,
+    AppleAdapterDatasetContract, AppleAdapterMessageRole, AppleAdapterRuntimeCompatibilityProfile,
+    AppleAdapterSampleKind, DatasetKey, DatasetPackingMode, DatasetPackingPolicy,
+    OverlongSequencePosture, APPLE_ADAPTER_DEFAULT_INSTRUCTION,
 };
 use psionic_environments::{
     AppleAdapterEnvironmentBundle, AppleAdapterEnvironmentPackageRefs,
@@ -55,22 +56,19 @@ use psionic_eval::{
     EvalRunState,
 };
 use psionic_train::{
-    AppleAdapterActivationCheckpointPolicy, AppleAdapterExecutionConfig,
-    AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel, AppleAdapterSftRunOutcome,
-    AppleAdapterSftRunRequest, AppleAdapterTrainableTarget, AppleAdapterTrainingExecutionBackend,
-    TrainingLoopBudget, TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
-    run_apple_adapter_sft_export,
+    run_apple_adapter_sft_export, AppleAdapterActivationCheckpointPolicy,
+    AppleAdapterExecutionConfig, AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel,
+    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterTrainableTarget,
+    AppleAdapterTrainingExecutionBackend, TrainingLoopBudget, TrainingOptimizerConfig,
+    TrainingOptimizerResidencyPolicy,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 const APPLE_TRAINING_SCHEMA_VERSION: u16 = 1;
 const APPLE_TRAINING_STATE_FILENAME: &str = "apple-adapter-training.json";
 const APPLE_TRAINING_ROOT_DIR: &str = "apple-adapter-training";
 const APPLE_TRAINING_LOG_LIMIT: usize = 64;
-const APPLE_TRAINING_BASE_MODEL_SIGNATURE: &str = "9799725ff8e851184037110b422d891ad3b92ec1";
-const APPLE_TRAINING_TOKENIZER_DIGEST: &str = "sha256:apple-tokenizer";
-const APPLE_TRAINING_PROMPT_SHAPING_DIGEST: &str = "sha256:apple-prompt-shaping";
 const APPLE_TRAINING_PACKAGE_FORMAT_VERSION: &str = "openagents.apple-fmadapter.v1";
 const APPLE_TRAINING_OWNER_ID: &str = "openagents.autopilot_desktop";
 const APPLE_TRAINING_CHECKPOINT_FAMILY: &str = "apple_adapter";
@@ -115,6 +113,14 @@ pub struct AppleAdapterOperatorLocalSummary {
     pub adapter_identifier: Option<String>,
     pub base_model_signature: String,
     pub tokenizer_digest: String,
+    pub prompt_shaping_digest: String,
+    pub runtime_model_id: String,
+    pub runtime_use_case: String,
+    pub runtime_guardrails: String,
+    pub locale: Option<String>,
+    pub default_instruction: Option<String>,
+    pub bridge_version: Option<String>,
+    pub bridge_platform: Option<String>,
     pub package_format_version: String,
 }
 
@@ -463,13 +469,36 @@ fn execute_launch_pipeline(
     fs::create_dir_all(staging_root.as_path())
         .map_err(|error| format!("Failed to create staging directory: {error}"))?;
 
-    let train_dataset = load_dataset(Path::new(request.train_dataset_path.as_str()), true)
+    let runtime_profile = derive_runtime_compatibility_profile(request.apple_fm_base_url.as_str())
         .map_err(|error| error.to_string())?;
-    let held_out_dataset = load_dataset(Path::new(request.held_out_dataset_path.as_str()), false)
-        .map_err(|error| error.to_string())?;
+    with_controller(|controller| {
+        controller.push_log(
+            run_id,
+            format!(
+                "launch: derived Apple runtime lineage model={} use_case={} guardrails={} base_signature={}",
+                runtime_profile.model_id,
+                runtime_profile.use_case,
+                runtime_profile.guardrails,
+                runtime_profile.base_model_signature(),
+            ),
+            "Derived Apple runtime compatibility lineage",
+        )
+    })?;
+
+    let train_dataset = load_dataset(
+        Path::new(request.train_dataset_path.as_str()),
+        &runtime_profile,
+    )
+    .map_err(|error| error.to_string())?;
+    let held_out_dataset = load_dataset(
+        Path::new(request.held_out_dataset_path.as_str()),
+        &runtime_profile,
+    )
+    .map_err(|error| error.to_string())?;
     if held_out_dataset.samples.is_empty() {
         return Err("Held-out Apple adapter dataset must contain at least one sample".to_string());
     }
+    let runtime_profile = runtime_profile_with_dataset_defaults(&runtime_profile, &train_dataset);
 
     with_controller(|controller| {
         controller.push_log(
@@ -485,8 +514,14 @@ fn execute_launch_pipeline(
 
     let environment = build_environment_bundle(run_id, &train_dataset, &held_out_dataset)
         .map_err(|error| error.to_string())?;
-    let captures = derive_captures(&train_dataset);
-    let config = build_execution_config(run_id, &train_dataset);
+    let captures = train_dataset
+        .derive_token_captures()
+        .map_err(|error| error.to_string())?;
+    let config = build_execution_config(
+        run_id,
+        &train_dataset,
+        runtime_profile.base_model_signature(),
+    );
     let backend = AppleAdapterTrainingExecutionBackend::new(
         config,
         &train_dataset,
@@ -564,10 +599,12 @@ fn execute_launch_pipeline(
         request.apple_fm_base_url.as_str(),
         staged_package_path.as_path(),
         &environment,
+        &runtime_profile,
     )
     .map_err(|error| format!("Apple adapter runtime smoke failed: {error}"))?;
 
-    let local_summary = build_local_summary(&outcome, &held_out_eval, &runtime_smoke);
+    let local_summary =
+        build_local_summary(&outcome, &held_out_eval, &runtime_smoke, &runtime_profile);
     with_controller(|controller| {
         let run = controller.run_mut(run_id)?;
         run.evaluation_state = AppleAdapterOperatorStageState::Completed;
@@ -845,13 +882,19 @@ fn ensure_registry(
     run: &AppleAdapterOperatorRunStatus,
     refs: &AppleAdapterKernelRefs,
 ) -> Result<(), String> {
+    let summary = run.local_summary.as_ref().ok_or_else(|| {
+        format!(
+            "Run `{}` is missing Apple adapter lineage summary",
+            run.run_id
+        )
+    })?;
     let created_at_ms = i64::try_from(run.created_at_epoch_ms).unwrap_or(i64::MAX);
     let core_package = build_compute_environment_package(run, refs, true, created_at_ms)?;
     let benchmark_package_env = build_compute_environment_package(run, refs, false, created_at_ms)?;
     let validator_policy = build_validator_policy(refs, created_at_ms);
     let checkpoint_policy = build_checkpoint_policy(created_at_ms);
-    let benchmark_package = build_compute_benchmark_package(run, refs, created_at_ms)?;
-    let training_policy = build_compute_training_policy(refs, created_at_ms);
+    let benchmark_package = build_compute_benchmark_package(run, refs, summary, created_at_ms)?;
+    let training_policy = build_compute_training_policy(refs, summary, created_at_ms);
 
     crate::kernel_control::run_kernel_call(authority_client.register_compute_environment_package(
         RegisterComputeEnvironmentPackageRequest {
@@ -1325,20 +1368,13 @@ fn build_training_run_requests(
         promotion_checkpoint_ref: None,
         summary: None,
         metadata: json!({
-            "apple_adapter": {
-                "abi_version": COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION,
-                "base_model_signature": summary.base_model_signature,
-                "tokenizer_digest": summary.tokenizer_digest,
-                "package_format_version": summary.package_format_version,
-                "environment_ref": refs.core_environment_ref,
-                "benchmark_package_refs": [refs.benchmark_package_ref],
-                "validator_policy_ref": refs.validator_policy_ref,
-                "draft_model_present": false,
-                "runtime_validation_posture": APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE.label(),
-                "package_digest": null,
-                "held_out_eval_run_id": null,
-                "runtime_validation_eval_run_id": null
-            },
+            "apple_adapter": apple_training_run_metadata_value(
+                summary,
+                refs,
+                None,
+                None,
+                None,
+            ),
             "operator_run_id": run.run_id,
             "exported_package_path": exported_package_path,
         }),
@@ -1363,20 +1399,13 @@ fn build_training_run_requests(
             promotion_checkpoint_ref: Some(promotion_checkpoint_ref),
             summary: Some(training_summary),
             metadata: json!({
-                "apple_adapter": {
-                    "abi_version": COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION,
-                    "base_model_signature": summary.base_model_signature,
-                    "tokenizer_digest": summary.tokenizer_digest,
-                    "package_format_version": summary.package_format_version,
-                    "environment_ref": refs.core_environment_ref,
-                    "benchmark_package_refs": [refs.benchmark_package_ref],
-                    "validator_policy_ref": refs.validator_policy_ref,
-                    "draft_model_present": false,
-                    "runtime_validation_posture": APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE.label(),
-                    "package_digest": summary.package_digest,
-                    "held_out_eval_run_id": refs.held_out_eval_run_id,
-                    "runtime_validation_eval_run_id": refs.runtime_eval_run_id
-                },
+                "apple_adapter": apple_training_run_metadata_value(
+                    summary,
+                    refs,
+                    summary.package_digest.clone(),
+                    Some(refs.held_out_eval_run_id.clone()),
+                    Some(refs.runtime_eval_run_id.clone()),
+                ),
                 "operator_run_id": run.run_id,
                 "exported_package_path": exported_package_path,
             }),
@@ -1391,6 +1420,10 @@ fn build_accept_outcome_request(
     refs: &AppleAdapterKernelRefs,
     accepted_at_ms: i64,
 ) -> Result<AcceptComputeOutcomeRequest, String> {
+    let summary = run
+        .local_summary
+        .as_ref()
+        .ok_or_else(|| format!("Run `{}` is missing a local summary", run.run_id))?;
     Ok(AcceptComputeOutcomeRequest {
         idempotency_key: format!("{}.training.accept", run.run_id),
         trace: TraceContext::default(),
@@ -1456,20 +1489,13 @@ fn build_accept_outcome_request(
                 )),
                 summary: Some(compute_training_summary_from_local(run)?),
                 metadata: json!({
-                    "apple_adapter": {
-                        "abi_version": COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION,
-                        "base_model_signature": run.local_summary.as_ref().map(|item| item.base_model_signature.clone()).unwrap_or_else(|| APPLE_TRAINING_BASE_MODEL_SIGNATURE.to_string()),
-                        "tokenizer_digest": run.local_summary.as_ref().map(|item| item.tokenizer_digest.clone()).unwrap_or_else(|| APPLE_TRAINING_TOKENIZER_DIGEST.to_string()),
-                        "package_format_version": run.local_summary.as_ref().map(|item| item.package_format_version.clone()).unwrap_or_else(|| APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string()),
-                        "environment_ref": refs.core_environment_ref,
-                        "benchmark_package_refs": [refs.benchmark_package_ref],
-                        "validator_policy_ref": refs.validator_policy_ref,
-                        "draft_model_present": false,
-                        "runtime_validation_posture": APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE.label(),
-                        "package_digest": run.local_summary.as_ref().and_then(|item| item.package_digest.clone()),
-                        "held_out_eval_run_id": refs.held_out_eval_run_id,
-                        "runtime_validation_eval_run_id": refs.runtime_eval_run_id
-                    },
+                    "apple_adapter": apple_training_run_metadata_value(
+                        summary,
+                        refs,
+                        summary.package_digest.clone(),
+                        Some(refs.held_out_eval_run_id.clone()),
+                        Some(refs.runtime_eval_run_id.clone()),
+                    ),
                 }),
             },
             json!({ "operator_run_id": run.run_id }),
@@ -1680,9 +1706,121 @@ fn build_checkpoint_policy(created_at_ms: i64) -> ComputeCheckpointFamilyPolicy 
     }
 }
 
+fn apple_benchmark_metadata_value(
+    summary: &AppleAdapterOperatorLocalSummary,
+    refs: &AppleAdapterKernelRefs,
+    sample_kinds: Vec<ComputeAppleAdapterSampleKind>,
+) -> Value {
+    let mut value = serde_json::to_value(ComputeAppleBenchmarkPackageMetadata {
+        abi_version: COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION.to_string(),
+        base_model_signature: summary.base_model_signature.clone(),
+        tokenizer_digest: summary.tokenizer_digest.clone(),
+        package_format_version: summary.package_format_version.clone(),
+        environment_ref: refs.benchmark_environment_ref.clone(),
+        core_environment_ref: refs.core_environment_ref.clone(),
+        environment_group_ref: format!("group.apple_adapter.operator.{}", refs.run_slug),
+        validator_policy_ref: refs.validator_policy_ref.clone(),
+        runtime_validation_posture: APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE,
+        sample_kinds,
+    })
+    .unwrap_or(Value::Null);
+    extend_apple_lineage_metadata(&mut value, summary);
+    value
+}
+
+fn apple_training_policy_metadata_value(
+    summary: &AppleAdapterOperatorLocalSummary,
+    refs: &AppleAdapterKernelRefs,
+) -> Value {
+    let mut value = serde_json::to_value(ComputeAppleTrainingPolicyMetadata {
+        abi_version: COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION.to_string(),
+        base_model_signature: summary.base_model_signature.clone(),
+        tokenizer_digest: summary.tokenizer_digest.clone(),
+        package_format_version: summary.package_format_version.clone(),
+        environment_ref: refs.core_environment_ref.clone(),
+        benchmark_package_refs: vec![refs.benchmark_package_ref.clone()],
+        validator_policy_ref: refs.validator_policy_ref.clone(),
+        draft_model_present: false,
+        runtime_validation_posture: APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE,
+    })
+    .unwrap_or(Value::Null);
+    extend_apple_lineage_metadata(&mut value, summary);
+    value
+}
+
+fn apple_training_run_metadata_value(
+    summary: &AppleAdapterOperatorLocalSummary,
+    refs: &AppleAdapterKernelRefs,
+    package_digest: Option<String>,
+    held_out_eval_run_id: Option<String>,
+    runtime_validation_eval_run_id: Option<String>,
+) -> Value {
+    let mut value = serde_json::to_value(ComputeAppleTrainingRunMetadata {
+        abi_version: COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION.to_string(),
+        base_model_signature: summary.base_model_signature.clone(),
+        tokenizer_digest: summary.tokenizer_digest.clone(),
+        package_format_version: summary.package_format_version.clone(),
+        environment_ref: refs.core_environment_ref.clone(),
+        benchmark_package_refs: vec![refs.benchmark_package_ref.clone()],
+        validator_policy_ref: refs.validator_policy_ref.clone(),
+        draft_model_present: false,
+        runtime_validation_posture: APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE,
+        package_digest,
+        held_out_eval_run_id,
+        runtime_validation_eval_run_id,
+    })
+    .unwrap_or(Value::Null);
+    extend_apple_lineage_metadata(&mut value, summary);
+    value
+}
+
+fn extend_apple_lineage_metadata(value: &mut Value, summary: &AppleAdapterOperatorLocalSummary) {
+    let Value::Object(object) = value else {
+        return;
+    };
+    object.insert(
+        "prompt_shaping_digest".to_string(),
+        Value::String(summary.prompt_shaping_digest.clone()),
+    );
+    object.insert(
+        "runtime_model_id".to_string(),
+        Value::String(summary.runtime_model_id.clone()),
+    );
+    object.insert(
+        "runtime_use_case".to_string(),
+        Value::String(summary.runtime_use_case.clone()),
+    );
+    object.insert(
+        "runtime_guardrails".to_string(),
+        Value::String(summary.runtime_guardrails.clone()),
+    );
+    if let Some(locale) = &summary.locale {
+        object.insert("locale".to_string(), Value::String(locale.clone()));
+    }
+    if let Some(default_instruction) = &summary.default_instruction {
+        object.insert(
+            "default_instruction".to_string(),
+            Value::String(default_instruction.clone()),
+        );
+    }
+    if let Some(bridge_version) = &summary.bridge_version {
+        object.insert(
+            "bridge_version".to_string(),
+            Value::String(bridge_version.clone()),
+        );
+    }
+    if let Some(bridge_platform) = &summary.bridge_platform {
+        object.insert(
+            "bridge_platform".to_string(),
+            Value::String(bridge_platform.clone()),
+        );
+    }
+}
+
 fn build_compute_benchmark_package(
     run: &AppleAdapterOperatorRunStatus,
     refs: &AppleAdapterKernelRefs,
+    summary: &AppleAdapterOperatorLocalSummary,
     created_at_ms: i64,
 ) -> Result<ComputeBenchmarkPackage, String> {
     let sample_kinds = benchmark_sample_kinds(run)?;
@@ -1730,24 +1868,14 @@ fn build_compute_benchmark_package(
             refs.run_slug
         )],
         metadata: json!({
-            "apple_adapter": ComputeAppleBenchmarkPackageMetadata {
-                abi_version: COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION.to_string(),
-                base_model_signature: APPLE_TRAINING_BASE_MODEL_SIGNATURE.to_string(),
-                tokenizer_digest: APPLE_TRAINING_TOKENIZER_DIGEST.to_string(),
-                package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
-                environment_ref: refs.benchmark_environment_ref.clone(),
-                core_environment_ref: refs.core_environment_ref.clone(),
-                environment_group_ref: format!("group.apple_adapter.operator.{}", refs.run_slug),
-                validator_policy_ref: refs.validator_policy_ref.clone(),
-                runtime_validation_posture: APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE,
-                sample_kinds,
-            }
+            "apple_adapter": apple_benchmark_metadata_value(summary, refs, sample_kinds)
         }),
     })
 }
 
 fn build_compute_training_policy(
     refs: &AppleAdapterKernelRefs,
+    summary: &AppleAdapterOperatorLocalSummary,
     created_at_ms: i64,
 ) -> ComputeTrainingPolicy {
     ComputeTrainingPolicy {
@@ -1766,17 +1894,7 @@ fn build_compute_training_policy(
             refs.run_slug
         )],
         metadata: json!({
-            "apple_adapter": ComputeAppleTrainingPolicyMetadata {
-                abi_version: COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION.to_string(),
-                base_model_signature: APPLE_TRAINING_BASE_MODEL_SIGNATURE.to_string(),
-                tokenizer_digest: APPLE_TRAINING_TOKENIZER_DIGEST.to_string(),
-                package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
-                environment_ref: refs.core_environment_ref.clone(),
-                benchmark_package_refs: vec![refs.benchmark_package_ref.clone()],
-                validator_policy_ref: refs.validator_policy_ref.clone(),
-                draft_model_present: false,
-                runtime_validation_posture: APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE,
-            }
+            "apple_adapter": apple_training_policy_metadata_value(summary, refs)
         }),
     }
 }
@@ -1831,9 +1949,18 @@ fn accepted_outcome_id_for_run(run_id: &str) -> String {
 fn benchmark_sample_kinds(
     run: &AppleAdapterOperatorRunStatus,
 ) -> Result<Vec<ComputeAppleAdapterSampleKind>, String> {
+    let summary = run.local_summary.as_ref().ok_or_else(|| {
+        format!(
+            "Run `{}` is missing Apple adapter lineage summary",
+            run.run_id
+        )
+    })?;
     let held_out_path = PathBuf::from(run.held_out_dataset_path.as_str());
-    let held_out_dataset =
-        load_dataset(held_out_path.as_path(), false).map_err(|error| error.to_string())?;
+    let held_out_dataset = load_dataset(
+        held_out_path.as_path(),
+        &runtime_profile_from_summary(summary),
+    )
+    .map_err(|error| error.to_string())?;
     let mut kinds = Vec::new();
     for sample in &held_out_dataset.samples {
         let kind = match sample.sample_kind {
@@ -1993,6 +2120,7 @@ fn build_environment_bundle(
 fn build_execution_config(
     run_id: &str,
     dataset: &AppleAdapterDatasetContract,
+    base_model_signature: String,
 ) -> AppleAdapterExecutionConfig {
     AppleAdapterExecutionConfig {
         run_id: format!("apple-train-{}", slugify(run_id)),
@@ -2010,7 +2138,7 @@ fn build_execution_config(
         precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
         activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
         model: AppleAdapterReferenceModel {
-            base_model_signature: APPLE_TRAINING_BASE_MODEL_SIGNATURE.to_string(),
+            base_model_signature,
             tokenizer_digest: dataset.metadata.tokenizer.tokenizer_digest.clone(),
             prompt_shaping_digest: dataset.metadata.prompt_shaping_digest.clone(),
             input_width: 12,
@@ -2037,59 +2165,112 @@ fn build_execution_config(
     }
 }
 
-fn derive_captures(dataset: &AppleAdapterDatasetContract) -> Vec<AppleAdapterSampleTokenCapture> {
-    dataset
-        .samples
-        .iter()
-        .map(|sample| {
-            let prompt_chars = sample
-                .messages
-                .iter()
-                .filter(|message| message.role != AppleAdapterMessageRole::Assistant)
-                .map(|message| message.content.len())
-                .sum::<usize>();
-            let completion_chars = sample
-                .messages
-                .iter()
-                .find(|message| message.role == AppleAdapterMessageRole::Assistant)
-                .map(|message| message.content.len())
-                .unwrap_or_default();
-            let mut capture = AppleAdapterSampleTokenCapture::new(
-                sample.sample_id.clone(),
-                dataset.metadata.tokenizer.tokenizer_digest.clone(),
-                dataset.metadata.prompt_shaping_digest.clone(),
-                estimate_token_count(prompt_chars),
-                estimate_token_count(completion_chars),
-            );
-            if !sample.tools.is_empty() {
-                let tool_chars = sample
-                    .tools
-                    .iter()
-                    .map(|tool| {
-                        tool.function.name.len()
-                            + tool
-                                .function
-                                .description
-                                .as_deref()
-                                .unwrap_or_default()
-                                .len()
-                            + serde_json::to_string(&tool.function.arguments)
-                                .map(|value| value.len())
-                                .unwrap_or(0)
-                    })
-                    .sum::<usize>();
-                capture = capture.with_tool_tokens(estimate_token_count(tool_chars));
-            }
-            if let Some(schema) = sample.response_format.as_ref() {
-                let schema_chars = serde_json::to_string(&schema.json_schema.schema)
-                    .map(|value| value.len())
-                    .unwrap_or(0)
-                    + schema.json_schema.name.len();
-                capture = capture.with_response_schema_tokens(estimate_token_count(schema_chars));
-            }
-            capture
-        })
-        .collect()
+fn derive_runtime_compatibility_profile(
+    apple_fm_base_url: &str,
+) -> Result<AppleAdapterRuntimeCompatibilityProfile> {
+    let client = AppleFmBridgeClient::new(apple_fm_base_url).with_context(|| {
+        format!("Failed to build Apple FM bridge client for {apple_fm_base_url}")
+    })?;
+    let health = client.health().with_context(|| {
+        format!("Failed to fetch Apple FM bridge health from {apple_fm_base_url}")
+    })?;
+    if !health.model_available {
+        let detail = health
+            .availability_message
+            .clone()
+            .unwrap_or_else(|| "Apple Foundation Models runtime is not ready".to_string());
+        bail!("{detail}");
+    }
+    Ok(runtime_profile_from_health(&health))
+}
+
+fn runtime_profile_from_health(
+    health: &AppleFmHealthResponse,
+) -> AppleAdapterRuntimeCompatibilityProfile {
+    let mut profile = AppleAdapterRuntimeCompatibilityProfile::new(
+        DEFAULT_APPLE_FM_MODEL_ID,
+        health.default_use_case.label(),
+        health.default_guardrails.label(),
+    );
+    if let Some(locale) = operator_locale_tag() {
+        profile = profile.with_locale(locale);
+    }
+    if let Some(version) = health
+        .version
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        profile = profile.with_bridge_version(version.to_string());
+    }
+    if let Some(platform) = health
+        .platform
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        profile = profile.with_bridge_platform(platform.to_string());
+    }
+    profile
+}
+
+fn runtime_profile_from_summary(
+    summary: &AppleAdapterOperatorLocalSummary,
+) -> AppleAdapterRuntimeCompatibilityProfile {
+    let mut profile = AppleAdapterRuntimeCompatibilityProfile::new(
+        summary.runtime_model_id.clone(),
+        summary.runtime_use_case.clone(),
+        summary.runtime_guardrails.clone(),
+    );
+    if let Some(locale) = &summary.locale {
+        profile = profile.with_locale(locale.clone());
+    }
+    if let Some(default_instruction) = &summary.default_instruction {
+        profile = profile.with_default_instruction(default_instruction.clone());
+    }
+    if let Some(bridge_version) = &summary.bridge_version {
+        profile = profile.with_bridge_version(bridge_version.clone());
+    }
+    if let Some(bridge_platform) = &summary.bridge_platform {
+        profile = profile.with_bridge_platform(bridge_platform.clone());
+    }
+    profile
+}
+
+fn runtime_profile_with_dataset_defaults(
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
+    dataset: &AppleAdapterDatasetContract,
+) -> AppleAdapterRuntimeCompatibilityProfile {
+    let mut profile = runtime_profile.clone();
+    if profile.default_instruction.is_none() {
+        if let Some(default_instruction) = &dataset.metadata.default_instruction {
+            profile = profile.with_default_instruction(default_instruction.clone());
+        }
+    }
+    profile
+}
+
+fn operator_locale_tag() -> Option<String> {
+    [
+        std::env::var("LC_ALL").ok(),
+        std::env::var("LC_MESSAGES").ok(),
+        std::env::var("LANG").ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|value| normalize_locale_tag(value.as_str()))
+    .find(|value| !value.is_empty())
+}
+
+fn normalize_locale_tag(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let without_encoding = trimmed.split('.').next().unwrap_or(trimmed);
+    let without_modifier = without_encoding
+        .split('@')
+        .next()
+        .unwrap_or(without_encoding);
+    without_modifier.replace('_', "-")
 }
 
 fn run_local_held_out_eval(
@@ -2224,6 +2405,7 @@ fn run_local_runtime_smoke(
     apple_fm_base_url: &str,
     package_path: &Path,
     environment: &AppleAdapterEnvironmentBundle,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
 ) -> Result<AppleAdapterRuntimeSmokeReceipt> {
     let client = AppleFmBridgeClient::new(apple_fm_base_url).with_context(|| {
         format!("Failed to build Apple FM bridge client for {apple_fm_base_url}")
@@ -2240,6 +2422,15 @@ fn run_local_runtime_smoke(
                 ),
                 text_prompt: APPLE_TRAINING_RUNTIME_SMOKE_PROMPT.to_string(),
                 expected_text_substring: None,
+                expected_base_model_signature: Some(runtime_profile.base_model_signature()),
+                expected_tokenizer_digest: Some(
+                    runtime_profile
+                        .dataset_metadata()
+                        .tokenizer
+                        .tokenizer_digest
+                        .clone(),
+                ),
+                expected_prompt_shaping_digest: Some(runtime_profile.prompt_shaping_digest()),
                 structured_prompt: None,
                 structured_schema: None,
                 expected_structured_output: None,
@@ -2253,6 +2444,7 @@ fn build_local_summary(
     outcome: &AppleAdapterSftRunOutcome,
     held_out_eval: &EvalRunState,
     runtime_smoke: &AppleAdapterRuntimeSmokeReceipt,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
 ) -> AppleAdapterOperatorLocalSummary {
     let processed_token_count = Some(
         outcome
@@ -2291,7 +2483,26 @@ fn build_local_summary(
         package_digest: Some(outcome.summary.package_digest.clone()),
         adapter_identifier: Some(outcome.summary.adapter_identifier.clone()),
         base_model_signature: outcome.summary.base_model_signature.clone(),
-        tokenizer_digest: outcome.summary.execution_provenance.dataset_digest.clone(),
+        tokenizer_digest: outcome
+            .final_bundle
+            .tokenizer
+            .digest
+            .tokenizer_digest
+            .clone(),
+        prompt_shaping_digest: outcome
+            .final_bundle
+            .tokenizer
+            .digest
+            .template_digest
+            .clone()
+            .unwrap_or_else(|| runtime_profile.prompt_shaping_digest()),
+        runtime_model_id: runtime_profile.model_id.clone(),
+        runtime_use_case: runtime_profile.use_case.clone(),
+        runtime_guardrails: runtime_profile.guardrails.clone(),
+        locale: runtime_profile.locale.clone(),
+        default_instruction: runtime_profile.default_instruction.clone(),
+        bridge_version: runtime_profile.bridge_version.clone(),
+        bridge_platform: runtime_profile.bridge_platform.clone(),
         package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
     }
 }
@@ -2369,25 +2580,31 @@ fn compute_eval_artifacts(artifacts: &[EvalArtifact]) -> Vec<ComputeEvaluationAr
         .collect()
 }
 
-fn load_dataset(path: &Path, train: bool) -> Result<AppleAdapterDatasetContract> {
+fn load_dataset(
+    path: &Path,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
+) -> Result<AppleAdapterDatasetContract> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("Failed to read Apple adapter dataset {}", path.display()))?;
-    let metadata = AppleAdapterDatasetMetadata::new(
-        TokenizerDigest::new(
-            TokenizerFamily::Custom,
-            APPLE_TRAINING_TOKENIZER_DIGEST,
-            32_000,
-        ),
-        APPLE_TRAINING_PROMPT_SHAPING_DIGEST,
+    let mut dataset = AppleAdapterDatasetContract::from_jsonl_str(
+        raw.as_str(),
+        runtime_profile.dataset_metadata(),
     )
-    .with_default_instruction(if train {
-        "You are training one Apple Foundation Models adapter."
-    } else {
-        "You are evaluating one Apple Foundation Models adapter."
-    })
-    .with_locale("en-US");
-    AppleAdapterDatasetContract::from_jsonl_str(raw.as_str(), metadata)
-        .with_context(|| format!("Failed to import Apple adapter dataset {}", path.display()))
+    .with_context(|| format!("Failed to import Apple adapter dataset {}", path.display()))?;
+    if dataset.samples.iter().any(|sample| {
+        sample
+            .messages
+            .first()
+            .map(|message| message.role != AppleAdapterMessageRole::System)
+            .unwrap_or(true)
+    }) {
+        dataset.metadata = runtime_profile
+            .clone()
+            .with_default_instruction(APPLE_ADAPTER_DEFAULT_INSTRUCTION)
+            .dataset_metadata();
+        dataset.validate()?;
+    }
+    Ok(dataset)
 }
 
 fn dataset_ref_for_path(path: &str, split: &str) -> String {
@@ -2472,10 +2689,6 @@ fn copy_directory(source: &Path, target: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn estimate_token_count(char_count: usize) -> u32 {
-    u32::try_from((char_count / 4).max(1)).unwrap_or(u32::MAX)
 }
 
 fn slugify(value: &str) -> String {

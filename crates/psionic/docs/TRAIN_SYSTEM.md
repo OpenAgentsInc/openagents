@@ -170,7 +170,11 @@ The current path is:
 
 1. `psionic-data` imports Apple adapter JSONL into the repo-owned dataset
    contract, preserving tokenizer, prompt-shaping, tool/schema augmentation,
-   and long-context packing lineage.
+   and long-context packing lineage. The app now derives that lineage from the
+   live Apple FM bridge health profile plus dataset-aware default-instruction
+   and locale posture instead of reusing hard-coded placeholder digests, and
+   `psionic-data` now derives prompt/completion/tool/schema token captures from
+   the full structured transcript path rather than from character counts.
 2. `psionic-environments` binds that dataset to the Apple adapter
    train/eval/benchmark environment package family so the train, held-out eval,
    and runtime-smoke lanes all point at one versioned environment truth.
@@ -184,7 +188,9 @@ The current path is:
    `psionic-adapters`.
 5. `psionic-eval` runs the held-out and benchmark-style adapter harnesses, and
    the bridge-backed runtime-smoke path proves the exported package can be
-   loaded and exercised against the live Apple FM runtime.
+   loaded and exercised against the live Apple FM runtime. That smoke path now
+   checks the exported package's base-model, tokenizer, and template lineage
+   against the expected runtime compatibility profile before acceptance.
 6. `autopilotctl training launch ...`, `autopilotctl training export ...`, and
    `autopilotctl training accept ...` provide the shipped app-owned operator
    flow, while `autopilotctl apple-fm load ...` and `autopilotctl apple-fm
@@ -196,6 +202,8 @@ The shipped Apple reference lane is intentionally narrow:
 - only adapter parameter groups are updated
 - the current precision posture is `f32_reference`
 - the current activation-checkpoint posture is `disabled`
+- tokenizer and packing truth now come from a repo-owned Apple-compatible
+  transcript preprocessor, not an Apple-exact tokenizer oracle
 - the higher-level optional follow-on is draft-model distillation, not a second
   generic full-model trainer
 

@@ -121,6 +121,15 @@ pub struct AppleAdapterRuntimeSmokeRequest {
     /// Expected substring for the text smoke check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_text_substring: Option<String>,
+    /// Expected base-model compatibility signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_base_model_signature: Option<String>,
+    /// Expected tokenizer digest recorded in package lineage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_tokenizer_digest: Option<String>,
+    /// Expected prompt-shaping or template digest recorded in package lineage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_prompt_shaping_digest: Option<String>,
     /// Optional prompt used for the structured smoke check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structured_prompt: Option<String>,
@@ -145,6 +154,9 @@ impl AppleAdapterRuntimeSmokeRequest {
             instructions: None,
             text_prompt: text_prompt.into(),
             expected_text_substring: None,
+            expected_base_model_signature: None,
+            expected_tokenizer_digest: None,
+            expected_prompt_shaping_digest: None,
             structured_prompt: None,
             structured_schema: None,
             expected_structured_output: None,
@@ -160,6 +172,15 @@ pub struct AppleAdapterRuntimeSmokeReceipt {
     pub package_digest: String,
     /// Adapter id used during the smoke run.
     pub adapter_id: String,
+    /// Base-model signature observed during smoke validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_model_signature: Option<String>,
+    /// Tokenizer digest observed from the package lineage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Prompt-shaping digest observed from the package lineage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_shaping_digest: Option<String>,
     /// Session id used for the smoke run.
     pub session_id: String,
     /// Whether session attach was confirmed.
@@ -434,6 +455,32 @@ impl AppleAdapterEvalHarness {
         let package =
             AppleFmAdapterPackage::read_from_directory(Path::new(request.package_path.as_str()))
                 .map_err(AppleAdapterEvalError::AdapterPackage)?;
+        if let Some(expected_base_model_signature) = &request.expected_base_model_signature {
+            if package.metadata.base_model_signature != *expected_base_model_signature {
+                return Err(AppleAdapterEvalError::RuntimeBaseModelSignatureDrift {
+                    expected: expected_base_model_signature.clone(),
+                    actual: package.metadata.base_model_signature.clone(),
+                });
+            }
+        }
+        if let Some(expected_tokenizer_digest) = &request.expected_tokenizer_digest {
+            let actual = package.lineage.tokenizer_digest.clone().unwrap_or_default();
+            if actual != *expected_tokenizer_digest {
+                return Err(AppleAdapterEvalError::RuntimeTokenizerDigestDrift {
+                    expected: expected_tokenizer_digest.clone(),
+                    actual,
+                });
+            }
+        }
+        if let Some(expected_prompt_shaping_digest) = &request.expected_prompt_shaping_digest {
+            let actual = package.lineage.template_digest.clone().unwrap_or_default();
+            if actual != *expected_prompt_shaping_digest {
+                return Err(AppleAdapterEvalError::RuntimePromptShapingDigestDrift {
+                    expected: expected_prompt_shaping_digest.clone(),
+                    actual,
+                });
+            }
+        }
         let load_request = AppleFmAdapterLoadRequest {
             package_path: request.package_path.clone(),
             requested_adapter_id: request.requested_adapter_id.clone(),
@@ -445,6 +492,14 @@ impl AppleAdapterEvalHarness {
                 reason_code: loaded_adapter.compatibility.reason_code.clone(),
                 message: loaded_adapter.compatibility.message.clone(),
             });
+        }
+        if let Some(loaded_base_model_signature) = loaded_adapter.base_model_signature.as_deref() {
+            if loaded_base_model_signature != package.metadata.base_model_signature {
+                return Err(AppleAdapterEvalError::RuntimeBaseModelSignatureDrift {
+                    expected: package.metadata.base_model_signature.clone(),
+                    actual: loaded_base_model_signature.to_string(),
+                });
+            }
         }
 
         let session = runtime.create_session(&AppleFmSessionCreateRequest {
@@ -477,13 +532,11 @@ impl AppleAdapterEvalHarness {
             },
         )?;
 
-        let mut metrics = vec![
-            EvalMetric::new(
-                "apple_adapter.runtime_smoke.attach_confirmed",
-                if attach_confirmed { 1.0 } else { 0.0 },
-            )
-            .with_unit("fraction"),
-        ];
+        let mut metrics = vec![EvalMetric::new(
+            "apple_adapter.runtime_smoke.attach_confirmed",
+            if attach_confirmed { 1.0 } else { 0.0 },
+        )
+        .with_unit("fraction")];
         if let Some(expected_text_substring) = &request.expected_text_substring {
             metrics.push(
                 EvalMetric::new(
@@ -547,6 +600,9 @@ impl AppleAdapterEvalHarness {
             serde_json::to_vec(&serde_json::json!({
                 "package_digest": package.package_digest,
                 "adapter_id": loaded_adapter.adapter.adapter_id,
+                "base_model_signature": package.metadata.base_model_signature,
+                "tokenizer_digest": package.lineage.tokenizer_digest,
+                "prompt_shaping_digest": package.lineage.template_digest,
                 "session_id": session_id,
                 "attach_confirmed": attach_confirmed,
                 "text_output": text_response.output,
@@ -568,6 +624,9 @@ impl AppleAdapterEvalHarness {
         Ok(AppleAdapterRuntimeSmokeReceipt {
             package_digest: package.package_digest,
             adapter_id: loaded_adapter.adapter.adapter_id,
+            base_model_signature: Some(package.metadata.base_model_signature),
+            tokenizer_digest: package.lineage.tokenizer_digest,
+            prompt_shaping_digest: package.lineage.template_digest,
             session_id,
             attach_confirmed,
             text_output: text_response.output,
@@ -715,6 +774,36 @@ pub enum AppleAdapterEvalError {
         /// Optional detail.
         message: Option<String>,
     },
+    /// The package or runtime disagreed on the targeted base-model compatibility anchor.
+    #[error(
+        "Apple adapter runtime expected base-model signature `{expected}` but observed `{actual}`"
+    )]
+    RuntimeBaseModelSignatureDrift {
+        /// Expected base-model signature.
+        expected: String,
+        /// Observed base-model signature.
+        actual: String,
+    },
+    /// The package lineage did not match the expected tokenizer digest.
+    #[error(
+        "Apple adapter runtime expected tokenizer digest `{expected}` but observed `{actual}`"
+    )]
+    RuntimeTokenizerDigestDrift {
+        /// Expected tokenizer digest.
+        expected: String,
+        /// Observed tokenizer digest.
+        actual: String,
+    },
+    /// The package lineage did not match the expected prompt-shaping digest.
+    #[error(
+        "Apple adapter runtime expected prompt-shaping digest `{expected}` but observed `{actual}`"
+    )]
+    RuntimePromptShapingDigestDrift {
+        /// Expected prompt-shaping digest.
+        expected: String,
+        /// Observed prompt-shaping digest.
+        actual: String,
+    },
     /// Runtime bridge returned a typed refusal or guardrail failure.
     #[error("Apple adapter runtime {operation} returned `{code}`: {message}")]
     RuntimeRefusal {
@@ -765,13 +854,11 @@ fn score_sample(
         .unwrap_or_default();
     let text_match =
         normalized_text(expected_text) == normalized_text(observed.output_text.as_str());
-    let mut metrics = vec![
-        EvalMetric::new(
-            "apple_adapter.text_match",
-            if text_match { 1.0 } else { 0.0 },
-        )
-        .with_unit("fraction"),
-    ];
+    let mut metrics = vec![EvalMetric::new(
+        "apple_adapter.text_match",
+        if text_match { 1.0 } else { 0.0 },
+    )
+    .with_unit("fraction")];
 
     if sample.structured_assistant_output.is_some() {
         let Some(structured_output) = observed.structured_output.as_ref() else {
@@ -1041,7 +1128,9 @@ mod tests {
                         .unwrap_or_else(|| String::from("loaded-apple-adapter")),
                     package_digest: Some(String::from("pkg-digest")),
                 },
-                base_model_signature: Some(String::from("base.apple.v1")),
+                base_model_signature: Some(String::from(
+                    "9799725ff8e851184037110b422d891ad3b92ec1",
+                )),
                 package_format_version: Some(String::from("openagents.apple-fmadapter.v1")),
                 draft_model_present: false,
                 compatibility: AppleFmAdapterCompatibility {
@@ -1281,8 +1370,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_eval_harness_emits_finalized_runs_and_benchmark_packages()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_eval_harness_emits_finalized_runs_and_benchmark_packages(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let bundle = environment_bundle();
         let harness = AppleAdapterEvalHarness::new(bundle)?;
         let dataset = dataset_contract();
@@ -1373,8 +1462,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_runtime_smoke_produces_machine_legible_receipt()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_runtime_smoke_produces_machine_legible_receipt(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
         let runtime = FakeRuntime {
             structured_value: Some(
@@ -1390,6 +1479,15 @@ mod tests {
             instructions: Some(String::from("Answer tersely.")),
             text_prompt: String::from("What does a mutex do?"),
             expected_text_substring: Some(String::from("mutex")),
+            expected_base_model_signature: Some(String::from(
+                "9799725ff8e851184037110b422d891ad3b92ec1",
+            )),
+            expected_tokenizer_digest: Some(String::from(
+                "sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1",
+            )),
+            expected_prompt_shaping_digest: Some(String::from(
+                "sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b",
+            )),
             structured_prompt: Some(String::from("What date was Apple founded?")),
             structured_schema: Some(serde_json::json!({
                 "type": "object",
@@ -1418,7 +1516,51 @@ mod tests {
         assert!(receipt.passed);
         assert_eq!(receipt.metrics.len(), 3);
         assert_eq!(receipt.adapter_id, "smoke-adapter");
+        assert_eq!(
+            receipt.base_model_signature.as_deref(),
+            Some("9799725ff8e851184037110b422d891ad3b92ec1")
+        );
+        assert_eq!(
+            receipt.tokenizer_digest.as_deref(),
+            Some("sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1")
+        );
+        assert_eq!(
+            receipt.prompt_shaping_digest.as_deref(),
+            Some("sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b")
+        );
         assert!(!receipt.smoke_digest.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_runtime_smoke_refuses_lineage_drift() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
+        let runtime = FakeRuntime::default();
+        let request = AppleAdapterRuntimeSmokeRequest {
+            package_path: format!(
+                "{}/../fixtures/apple_adapter/packages/minimal_chat_adapter.fmadapter",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            requested_adapter_id: Some(String::from("smoke-adapter")),
+            instructions: None,
+            text_prompt: String::from("What does a mutex do?"),
+            expected_text_substring: None,
+            expected_base_model_signature: Some(String::from("wrong-base-signature")),
+            expected_tokenizer_digest: None,
+            expected_prompt_shaping_digest: None,
+            structured_prompt: None,
+            structured_schema: None,
+            expected_structured_output: None,
+            options: None,
+        };
+        let error = harness
+            .run_runtime_smoke(&runtime, &request)
+            .expect_err("lineage drift should fail");
+        assert!(matches!(
+            error,
+            AppleAdapterEvalError::RuntimeBaseModelSignatureDrift { .. }
+        ));
         Ok(())
     }
 }

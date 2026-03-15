@@ -59,7 +59,8 @@ The Apple adapter extension now proves a second bounded workload:
 1. import Apple training fixtures into typed Rust records
 2. preserve tool and schema attachments at the data-contract layer
 3. bind tokenizer and prompt-shaping lineage at dataset scope
-4. plan deterministic packing only when token captures match that lineage
+4. derive token captures from the repo-owned Apple transcript-preprocessing path
+5. plan deterministic packing only when token captures match that lineage
 
 ## Pass Criteria
 
@@ -84,6 +85,9 @@ The current harness should prove:
 - `psionic-environments` can now bind versioned datasets through `DatasetKey`
 - Apple adapter fixtures import into typed records with explicit refusal paths
   for malformed roles, missing schemas, and invalid tools
+- Apple adapter token captures are derived from full transcript context,
+  tool/schema attachments, and locale/default-instruction metadata instead of
+  character-count estimates
 - Apple adapter packing refuses tokenizer drift and prompt-shaping drift instead
   of silently reusing stale token counts
 
