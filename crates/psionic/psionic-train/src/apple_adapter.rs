@@ -602,14 +602,34 @@ impl AppleAdapterTrainingExecutionBackend {
             .map(|(prediction_value, target_value)| prediction_value - target_value)
             .collect::<Vec<_>>();
         let loss = 0.5 * residual.iter().map(|value| value * value).sum::<f32>();
-        Ok(ForwardRecord { residual, loss })
+        Ok(ForwardRecord {
+            prediction,
+            residual,
+            loss,
+        })
     }
 }
 
 #[derive(Clone, Debug)]
 struct ForwardRecord {
+    prediction: Vec<f32>,
     residual: Vec<f32>,
     loss: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct AppleAdapterSftExecutionArtifacts {
+    run: FixedBudgetTrainingRun,
+    step_receipts: Vec<TrainingStepReceipt>,
+    gradient_records: Vec<AppleAdapterGradientBatchRecord>,
+    initial_bundle: PortableModelBundle,
+    final_bundle: PortableModelBundle,
+    initial_bundle_receipt: ModelIoArtifactReceipt,
+    final_bundle_receipt: ModelIoArtifactReceipt,
+    initial_bundle_bytes: Vec<u8>,
+    final_bundle_bytes: Vec<u8>,
+    adapter_delta: ModelAdapterDelta,
+    adapter_identifier: String,
 }
 
 /// Higher-level SFT/export request layered on top of the repo-owned Apple backend.
@@ -697,6 +717,10 @@ pub struct AppleAdapterSftRunOutcome {
     pub gradient_records: Vec<AppleAdapterGradientBatchRecord>,
     /// Summary and reproducibility metadata.
     pub summary: AppleAdapterSftTrainingSummary,
+    /// Initial adapter-only portable bundle snapshot.
+    pub initial_bundle: PortableModelBundle,
+    /// Final adapter-only portable bundle snapshot.
+    pub final_bundle: PortableModelBundle,
     /// Initial adapter-only portable bundle receipt.
     pub initial_bundle_receipt: ModelIoArtifactReceipt,
     /// Final adapter-only portable bundle receipt.
@@ -718,6 +742,162 @@ impl AppleAdapterSftRunOutcome {
     }
 }
 
+/// Distillation request kept explicitly separate from the base SFT lane.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterDraftDistillationRequest {
+    /// Stable draft-model identifier carried through export lineage.
+    pub draft_model_id: String,
+    /// Hidden width for the distilled draft network.
+    pub hidden_width: usize,
+    /// Optimizer config reused by the fixed-budget core.
+    pub optimizer: TrainingOptimizerConfig,
+    /// Residency policy reused by the fixed-budget core.
+    pub optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    /// Precision posture for the distilled draft path.
+    pub draft_precision_policy: AppleAdapterPrecisionPolicy,
+    /// Soft-target temperature applied to teacher logits.
+    pub teacher_temperature: f32,
+    /// Soft-target temperature applied to student logits.
+    pub student_temperature: f32,
+    /// Similarity threshold used for speculative acceptance accounting.
+    pub acceptance_cosine_threshold: f32,
+    /// Draft token count surfaced in the Apple package metadata.
+    pub draft_token_count: u32,
+    /// Logical training start timestamp for the first draft step.
+    pub started_at_ms: u64,
+    /// Duration applied to each produced draft step receipt.
+    pub step_duration_ms: u64,
+}
+
+impl AppleAdapterDraftDistillationRequest {
+    fn validate(&self) -> Result<(), AppleAdapterDraftDistillationError> {
+        if self.draft_model_id.trim().is_empty() {
+            return Err(AppleAdapterDraftDistillationError::MissingDraftModelId);
+        }
+        if self.hidden_width == 0 {
+            return Err(AppleAdapterDraftDistillationError::InvalidDraftHiddenWidth);
+        }
+        if !self.teacher_temperature.is_finite() || self.teacher_temperature <= 0.0 {
+            return Err(AppleAdapterDraftDistillationError::InvalidTeacherTemperature);
+        }
+        if !self.student_temperature.is_finite() || self.student_temperature <= 0.0 {
+            return Err(AppleAdapterDraftDistillationError::InvalidStudentTemperature);
+        }
+        if !self.acceptance_cosine_threshold.is_finite()
+            || !(0.0..=1.0).contains(&self.acceptance_cosine_threshold)
+        {
+            return Err(AppleAdapterDraftDistillationError::InvalidAcceptanceCosineThreshold);
+        }
+        if self.draft_token_count == 0 {
+            return Err(AppleAdapterDraftDistillationError::InvalidDraftTokenCount);
+        }
+        if self.step_duration_ms == 0 {
+            return Err(AppleAdapterDraftDistillationError::InvalidStepDuration);
+        }
+        match self.draft_precision_policy {
+            AppleAdapterPrecisionPolicy::F32Reference => Ok(()),
+            unsupported => Err(
+                AppleAdapterDraftDistillationError::UnsupportedDraftPrecisionPolicy(unsupported),
+            ),
+        }
+    }
+}
+
+/// Explicit teacher/student runtime pairing for the draft lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppleAdapterDraftRuntimePairing {
+    /// Stable teacher base-model signature.
+    pub teacher_base_model_signature: String,
+    /// Stable teacher adapter identifier.
+    pub teacher_adapter_identifier: String,
+    /// Precision posture used by the teacher adapter lane.
+    pub teacher_precision_policy: AppleAdapterPrecisionPolicy,
+    /// Stable draft-model identifier.
+    pub draft_model_id: String,
+    /// Precision posture used by the draft lane.
+    pub draft_precision_policy: AppleAdapterPrecisionPolicy,
+}
+
+/// One machine-legible batch record from the draft distillation lane.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterDraftDistillationBatchRecord {
+    /// Stable batch identifier.
+    pub batch_id: String,
+    /// Stable digest of the packed batch that sourced the computation.
+    pub batch_digest: String,
+    /// Machine-legible gradient batch for the fixed-budget trainer core.
+    pub training_batch: TrainingGradientBatch,
+    /// Mean distillation loss over the packed batch.
+    pub mean_distillation_loss: f32,
+    /// Gradient norms keyed by parameter-group identifier.
+    pub gradient_norms_l2: BTreeMap<String, f32>,
+    /// Fraction of samples meeting the acceptance threshold.
+    pub acceptance_ratio: f32,
+    /// Mean estimated teacher latency over the packed batch.
+    pub mean_teacher_latency_ms: u64,
+    /// Mean estimated draft latency over the packed batch.
+    pub mean_draft_latency_ms: u64,
+    /// Stable digest over the batch distillation record.
+    pub execution_digest: String,
+}
+
+/// Summary emitted by the optional draft distillation lane.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterDraftDistillationSummary {
+    /// Teacher/draft runtime pairing used by the run.
+    pub runtime_pairing: AppleAdapterDraftRuntimePairing,
+    /// Fixed-budget training summary for the draft lane.
+    pub run_summary: TrainingRunSummary,
+    /// Mean distillation loss observed across batches.
+    pub mean_distillation_loss: f32,
+    /// Mean acceptance ratio observed across batches.
+    pub acceptance_ratio: f32,
+    /// Mean estimated teacher latency.
+    pub mean_teacher_latency_ms: u64,
+    /// Mean estimated draft latency.
+    pub mean_draft_latency_ms: u64,
+    /// Stable digest over the exported draft graph payload.
+    pub draft_mil_digest: String,
+    /// Stable artifact digest over the exported draft weights.
+    pub draft_weights_artifact_digest: String,
+    /// Stable state-dict digest over the exported draft weights.
+    pub draft_weights_state_dict_digest: String,
+    /// Stable final package digest that includes the draft payload.
+    pub package_digest: String,
+}
+
+/// Full result of the optional draft distillation follow-on lane.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppleAdapterDraftDistillationOutcome {
+    /// Base SFT outcome that produced the teacher adapter.
+    pub sft_outcome: AppleAdapterSftRunOutcome,
+    /// Step receipts emitted by the fixed-budget core for the draft lane.
+    pub draft_step_receipts: Vec<TrainingStepReceipt>,
+    /// Distillation batch records emitted by the repo-owned draft lane.
+    pub draft_batch_records: Vec<AppleAdapterDraftDistillationBatchRecord>,
+    /// Summary and reproducibility metadata for the draft lane.
+    pub draft_summary: AppleAdapterDraftDistillationSummary,
+    /// Exported portable draft-model bundle.
+    pub draft_bundle: PortableModelBundle,
+    /// Receipt for the exported draft weights.
+    pub draft_bundle_receipt: ModelIoArtifactReceipt,
+    /// Deterministic graph payload written to `draft.mil`.
+    pub draft_mil_bytes: Vec<u8>,
+    /// Final Apple package including the optional draft payload.
+    pub adapter_package: AppleFmAdapterPackage,
+}
+
+impl AppleAdapterDraftDistillationOutcome {
+    /// Writes the final `.fmadapter` directory to disk.
+    pub fn write_package_to_directory(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<(), AppleAdapterDraftDistillationError> {
+        self.adapter_package.write_to_directory(path)?;
+        Ok(())
+    }
+}
+
 /// Runs the first honest Rust-native Apple adapter SFT lane and returns a valid `.fmadapter`.
 pub fn run_apple_adapter_sft_export(
     backend: &AppleAdapterTrainingExecutionBackend,
@@ -725,6 +905,128 @@ pub fn run_apple_adapter_sft_export(
     environment: &AppleAdapterEnvironmentBundle,
     request: &AppleAdapterSftRunRequest,
 ) -> Result<AppleAdapterSftRunOutcome, AppleAdapterSftError> {
+    let artifacts = execute_apple_adapter_sft_artifacts(backend, dataset, environment, request)?;
+    build_apple_adapter_sft_outcome(backend, dataset, environment, request, artifacts)
+}
+
+/// Runs the optional draft-model distillation follow-on lane and emits a package with draft payloads.
+pub fn run_apple_adapter_draft_distillation_export(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
+    environment: &AppleAdapterEnvironmentBundle,
+    sft_request: &AppleAdapterSftRunRequest,
+    draft_request: &AppleAdapterDraftDistillationRequest,
+) -> Result<AppleAdapterDraftDistillationOutcome, AppleAdapterDraftDistillationError> {
+    draft_request.validate()?;
+    let sft_artifacts =
+        execute_apple_adapter_sft_artifacts(backend, dataset, environment, sft_request)?;
+    let sft_outcome = build_apple_adapter_sft_outcome(
+        backend,
+        dataset,
+        environment,
+        sft_request,
+        sft_artifacts.clone(),
+    )?;
+    let draft_artifacts = run_apple_adapter_draft_export_artifacts(
+        backend,
+        dataset,
+        environment,
+        draft_request,
+        &sft_artifacts,
+    )?;
+    let adapter_package = build_apple_adapter_package(
+        backend,
+        dataset,
+        environment,
+        sft_request,
+        &sft_artifacts,
+        Some(&draft_artifacts),
+    )?;
+    let draft_summary = AppleAdapterDraftDistillationSummary {
+        runtime_pairing: draft_artifacts.runtime_pairing.clone(),
+        run_summary: draft_artifacts.run.summary(),
+        mean_distillation_loss: mean_f32(
+            draft_artifacts
+                .batch_records
+                .iter()
+                .map(|record| record.mean_distillation_loss)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
+        acceptance_ratio: mean_f32(
+            draft_artifacts
+                .batch_records
+                .iter()
+                .map(|record| record.acceptance_ratio)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
+        mean_teacher_latency_ms: mean_u64(
+            draft_artifacts
+                .batch_records
+                .iter()
+                .map(|record| record.mean_teacher_latency_ms)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
+        mean_draft_latency_ms: mean_u64(
+            draft_artifacts
+                .batch_records
+                .iter()
+                .map(|record| record.mean_draft_latency_ms)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
+        draft_mil_digest: hex::encode(Sha256::digest(draft_artifacts.draft_mil_bytes.as_slice())),
+        draft_weights_artifact_digest: draft_artifacts.draft_bundle_receipt.artifact_digest.clone(),
+        draft_weights_state_dict_digest: draft_artifacts
+            .draft_bundle_receipt
+            .state_dict_digest
+            .clone(),
+        package_digest: adapter_package.package_digest.clone(),
+    };
+    Ok(AppleAdapterDraftDistillationOutcome {
+        sft_outcome,
+        draft_step_receipts: draft_artifacts.step_receipts,
+        draft_batch_records: draft_artifacts.batch_records,
+        draft_summary,
+        draft_bundle: draft_artifacts.draft_bundle,
+        draft_bundle_receipt: draft_artifacts.draft_bundle_receipt,
+        draft_mil_bytes: draft_artifacts.draft_mil_bytes,
+        adapter_package,
+    })
+}
+
+fn tokenizer_binding(
+    tokenizer_digest: TokenizerDigest,
+    environment: &AppleAdapterEnvironmentBundle,
+) -> PortableTokenizerBinding {
+    PortableTokenizerBinding::new(
+        tokenizer_digest,
+        PortableTokenizerAssetFormat::PsionicDigest,
+        environment.core_package.key.version.clone(),
+    )
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct AppleAdapterDraftExportArtifacts {
+    run: FixedBudgetTrainingRun,
+    step_receipts: Vec<TrainingStepReceipt>,
+    batch_records: Vec<AppleAdapterDraftDistillationBatchRecord>,
+    draft_bundle: PortableModelBundle,
+    draft_bundle_receipt: ModelIoArtifactReceipt,
+    draft_weights_bytes: Vec<u8>,
+    draft_mil_bytes: Vec<u8>,
+    runtime_pairing: AppleAdapterDraftRuntimePairing,
+    draft_request: AppleAdapterDraftDistillationRequest,
+}
+
+fn execute_apple_adapter_sft_artifacts(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
+    environment: &AppleAdapterEnvironmentBundle,
+    request: &AppleAdapterSftRunRequest,
+) -> Result<AppleAdapterSftExecutionArtifacts, AppleAdapterSftError> {
     request.validate()?;
     let mut run = backend.initialize_run()?;
     let initial_groups = backend.snapshot_training_groups(&run)?;
@@ -740,9 +1042,7 @@ pub fn run_apple_adapter_sft_export(
         gradient_records.push(gradient_record);
         step_receipts.push(run.apply_step(step_input)?);
     }
-    let run_summary = run.summary();
     let final_groups = backend.snapshot_training_groups(&run)?;
-
     let tokenizer_binding = tokenizer_binding(dataset.metadata.tokenizer.clone(), environment);
     let initial_bundle = PortableModelBundle::from_training_groups(
         "apple_adapter_reference",
@@ -783,56 +1083,83 @@ pub fn run_apple_adapter_sft_export(
         &final_bundle.state_dict,
         adapter_identifier.clone(),
     )?;
-    let package_name =
-        normalized_package_name(request.package_name.as_str(), adapter_identifier.as_str());
-    let package = AppleFmAdapterPackage::new(
-        package_name,
-        export_metadata(
-            backend,
-            dataset.metadata.tokenizer.clone(),
-            environment,
-            request,
-            adapter_identifier.as_str(),
-            &initial_bundle_receipt,
-            &final_bundle_receipt,
-        ),
+    Ok(AppleAdapterSftExecutionArtifacts {
+        run,
+        step_receipts,
+        gradient_records,
+        initial_bundle,
+        final_bundle,
+        initial_bundle_receipt,
+        final_bundle_receipt,
+        initial_bundle_bytes,
         final_bundle_bytes,
-        None,
-        None,
-    )?;
+        adapter_delta,
+        adapter_identifier,
+    })
+}
+
+fn build_apple_adapter_sft_outcome(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
+    environment: &AppleAdapterEnvironmentBundle,
+    request: &AppleAdapterSftRunRequest,
+    artifacts: AppleAdapterSftExecutionArtifacts,
+) -> Result<AppleAdapterSftRunOutcome, AppleAdapterSftError> {
+    let package =
+        build_apple_adapter_package(backend, dataset, environment, request, &artifacts, None)?;
     let summary = AppleAdapterSftTrainingSummary {
-        run_summary,
+        run_summary: artifacts.run.summary(),
         execution_provenance: backend.provenance().clone(),
         dataset_ref: request.dataset_ref.clone(),
         validator_policy_ref: request.validator_policy_ref.clone(),
         benchmark_refs: request.benchmark_refs.clone(),
         base_model_signature: backend.config().model.base_model_signature.clone(),
-        initial_state_dict_digest: initial_bundle_receipt.state_dict_digest.clone(),
-        final_state_dict_digest: final_bundle_receipt.state_dict_digest.clone(),
+        initial_state_dict_digest: artifacts.initial_bundle_receipt.state_dict_digest.clone(),
+        final_state_dict_digest: artifacts.final_bundle_receipt.state_dict_digest.clone(),
         package_digest: package.package_digest.clone(),
-        adapter_identifier: adapter_identifier.clone(),
+        adapter_identifier: artifacts.adapter_identifier.clone(),
     };
-
-    let _ = initial_bundle_bytes;
     Ok(AppleAdapterSftRunOutcome {
-        step_receipts,
-        gradient_records,
+        step_receipts: artifacts.step_receipts,
+        gradient_records: artifacts.gradient_records,
         summary,
-        initial_bundle_receipt,
-        final_bundle_receipt,
-        adapter_delta,
+        initial_bundle: artifacts.initial_bundle,
+        final_bundle: artifacts.final_bundle,
+        initial_bundle_receipt: artifacts.initial_bundle_receipt,
+        final_bundle_receipt: artifacts.final_bundle_receipt,
+        adapter_delta: artifacts.adapter_delta,
         adapter_package: package,
     })
 }
 
-fn tokenizer_binding(
-    tokenizer_digest: TokenizerDigest,
+fn build_apple_adapter_package(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
     environment: &AppleAdapterEnvironmentBundle,
-) -> PortableTokenizerBinding {
-    PortableTokenizerBinding::new(
-        tokenizer_digest,
-        PortableTokenizerAssetFormat::PsionicDigest,
-        environment.core_package.key.version.clone(),
+    request: &AppleAdapterSftRunRequest,
+    sft_artifacts: &AppleAdapterSftExecutionArtifacts,
+    draft_artifacts: Option<&AppleAdapterDraftExportArtifacts>,
+) -> Result<AppleFmAdapterPackage, AppleFmAdapterPackageError> {
+    let package_name = normalized_package_name(
+        request.package_name.as_str(),
+        sft_artifacts.adapter_identifier.as_str(),
+    );
+    let metadata = export_metadata(
+        backend,
+        dataset.metadata.tokenizer.clone(),
+        environment,
+        request,
+        sft_artifacts.adapter_identifier.as_str(),
+        &sft_artifacts.initial_bundle_receipt,
+        &sft_artifacts.final_bundle_receipt,
+        draft_artifacts,
+    );
+    AppleFmAdapterPackage::new(
+        package_name,
+        metadata,
+        sft_artifacts.final_bundle_bytes.clone(),
+        draft_artifacts.map(|artifacts| artifacts.draft_mil_bytes.clone()),
+        draft_artifacts.map(|artifacts| artifacts.draft_weights_bytes.clone()),
     )
 }
 
@@ -844,6 +1171,7 @@ fn export_metadata(
     adapter_identifier: &str,
     initial_bundle_receipt: &ModelIoArtifactReceipt,
     final_bundle_receipt: &ModelIoArtifactReceipt,
+    draft_artifacts: Option<&AppleAdapterDraftExportArtifacts>,
 ) -> AppleFmAdapterPackageMetadata {
     let mut creator_defined = BTreeMap::new();
     creator_defined.insert(
@@ -883,7 +1211,7 @@ fn export_metadata(
     );
     creator_defined.insert(
         String::from("draftModelPresent"),
-        serde_json::Value::Bool(false),
+        serde_json::Value::Bool(draft_artifacts.is_some()),
     );
     creator_defined.insert(
         String::from("initialStateDictDigest"),
@@ -919,6 +1247,55 @@ fn export_metadata(
         String::from("adapterArtifactDigest"),
         serde_json::Value::String(final_bundle_receipt.artifact_digest.clone()),
     );
+    if let Some(draft_artifacts) = draft_artifacts {
+        creator_defined.insert(
+            String::from("draftModelId"),
+            serde_json::Value::String(draft_artifacts.draft_request.draft_model_id.clone()),
+        );
+        creator_defined.insert(
+            String::from("draftMilDigest"),
+            serde_json::Value::String(hex::encode(Sha256::digest(
+                draft_artifacts.draft_mil_bytes.as_slice(),
+            ))),
+        );
+        creator_defined.insert(
+            String::from("draftWeightsDigest"),
+            serde_json::Value::String(draft_artifacts.draft_bundle_receipt.artifact_digest.clone()),
+        );
+        creator_defined.insert(
+            String::from("draftAcceptanceRatio"),
+            serde_json::Value::from(mean_f32(
+                draft_artifacts
+                    .batch_records
+                    .iter()
+                    .map(|record| record.acceptance_ratio)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )),
+        );
+        creator_defined.insert(
+            String::from("meanTeacherLatencyMs"),
+            serde_json::Value::from(mean_u64(
+                draft_artifacts
+                    .batch_records
+                    .iter()
+                    .map(|record| record.mean_teacher_latency_ms)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )),
+        );
+        creator_defined.insert(
+            String::from("meanDraftLatencyMs"),
+            serde_json::Value::from(mean_u64(
+                draft_artifacts
+                    .batch_records
+                    .iter()
+                    .map(|record| record.mean_draft_latency_ms)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )),
+        );
+    }
 
     AppleFmAdapterPackageMetadata {
         adapter_identifier: String::from(adapter_identifier),
@@ -935,8 +1312,542 @@ fn export_metadata(
             .map(|target| target.lora_rank as u32)
             .max()
             .unwrap_or(1),
-        speculative_decoding_draft_token_count: 0,
+        speculative_decoding_draft_token_count: draft_artifacts
+            .map(|artifacts| artifacts.draft_request.draft_token_count)
+            .unwrap_or(0),
     }
+}
+
+fn run_apple_adapter_draft_export_artifacts(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
+    environment: &AppleAdapterEnvironmentBundle,
+    request: &AppleAdapterDraftDistillationRequest,
+    sft_artifacts: &AppleAdapterSftExecutionArtifacts,
+) -> Result<AppleAdapterDraftExportArtifacts, AppleAdapterDraftDistillationError> {
+    request.validate()?;
+    let hidden_group_id = draft_hidden_group_id(request);
+    let output_group_id = draft_output_group_id(request);
+    let mut run = FixedBudgetTrainingRun::new(
+        draft_run_id(backend, request),
+        draft_checkpoint_family(backend, request),
+        backend.config().budget,
+        vec![
+            TrainingParameterGroupState::new(
+                hidden_group_id.clone(),
+                TrainingParameterClass::Matrix,
+                TrainingTensorBuffer::from_f32(
+                    hidden_group_id.clone(),
+                    draft_hidden_spec(request.hidden_width, backend.config().model.input_width),
+                    seeded_matrix(
+                        format!(
+                            "{}|{}|draft_hidden",
+                            sft_artifacts.adapter_identifier, request.draft_model_id
+                        )
+                        .as_str(),
+                        request.hidden_width,
+                        backend.config().model.input_width,
+                        0.03,
+                    ),
+                )?,
+                request.optimizer.clone(),
+                request.optimizer_residency_policy,
+            )?,
+            TrainingParameterGroupState::new(
+                output_group_id.clone(),
+                TrainingParameterClass::Matrix,
+                TrainingTensorBuffer::from_f32(
+                    output_group_id.clone(),
+                    draft_output_spec(backend.config().model.output_width, request.hidden_width),
+                    seeded_matrix(
+                        format!(
+                            "{}|{}|draft_output",
+                            sft_artifacts.adapter_identifier, request.draft_model_id
+                        )
+                        .as_str(),
+                        backend.config().model.output_width,
+                        request.hidden_width,
+                        0.02,
+                    ),
+                )?,
+                request.optimizer.clone(),
+                request.optimizer_residency_policy,
+            )?,
+        ],
+    )?;
+    let mut step_receipts = Vec::new();
+    let mut batch_records = Vec::new();
+    for step_index in 0..backend.config().budget.max_steps {
+        let batch_index = step_index as usize % backend.batches().len().max(1);
+        let started_at_ms =
+            request.started_at_ms + step_index.saturating_mul(request.step_duration_ms);
+        let finished_at_ms = started_at_ms + request.step_duration_ms;
+        let (step_input, batch_record) = produce_draft_step_input(
+            backend,
+            request,
+            sft_artifacts,
+            &run,
+            batch_index,
+            started_at_ms,
+            finished_at_ms,
+        )?;
+        batch_records.push(batch_record);
+        step_receipts.push(run.apply_step(step_input)?);
+    }
+    let draft_bundle = PortableModelBundle::from_training_groups(
+        "apple_adapter_draft_reference",
+        request.draft_model_id.clone(),
+        draft_checkpoint_family(backend, request),
+        Some(format!(
+            "checkpoint://{}/draft/final",
+            backend.config().run_id
+        )),
+        &[
+            draft_training_group(&run, hidden_group_id.as_str())?.clone(),
+            draft_training_group(&run, output_group_id.as_str())?.clone(),
+        ],
+        tokenizer_binding(dataset.metadata.tokenizer.clone(), environment),
+        dataset
+            .metadata
+            .tokenizer
+            .template_digest
+            .clone()
+            .or_else(|| Some(backend.config().model.prompt_shaping_digest.clone())),
+    )?;
+    let (draft_weights_bytes, draft_bundle_receipt) = draft_bundle.export_safetensors()?;
+    let runtime_pairing = AppleAdapterDraftRuntimePairing {
+        teacher_base_model_signature: backend.config().model.base_model_signature.clone(),
+        teacher_adapter_identifier: sft_artifacts.adapter_identifier.clone(),
+        teacher_precision_policy: backend.provenance().precision_policy,
+        draft_model_id: request.draft_model_id.clone(),
+        draft_precision_policy: request.draft_precision_policy,
+    };
+    let draft_mil_bytes =
+        draft_mil_bytes(backend, request, &runtime_pairing, &draft_bundle_receipt);
+    Ok(AppleAdapterDraftExportArtifacts {
+        run,
+        step_receipts,
+        batch_records,
+        draft_bundle,
+        draft_bundle_receipt,
+        draft_weights_bytes,
+        draft_mil_bytes,
+        runtime_pairing,
+        draft_request: request.clone(),
+    })
+}
+
+fn produce_draft_step_input(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    request: &AppleAdapterDraftDistillationRequest,
+    sft_artifacts: &AppleAdapterSftExecutionArtifacts,
+    draft_run: &FixedBudgetTrainingRun,
+    batch_index: usize,
+    started_at_ms: u64,
+    finished_at_ms: u64,
+) -> Result<
+    (TrainingStepInput, AppleAdapterDraftDistillationBatchRecord),
+    AppleAdapterDraftDistillationError,
+> {
+    let batch = backend
+        .batches()
+        .get(batch_index)
+        .ok_or(AppleAdapterDraftDistillationError::UnknownBatchIndex { batch_index })?;
+    let hidden_group_id = draft_hidden_group_id(request);
+    let output_group_id = draft_output_group_id(request);
+    let hidden_group = draft_training_group(draft_run, hidden_group_id.as_str())?;
+    let output_group = draft_training_group(draft_run, output_group_id.as_str())?;
+    let hidden_values = draft_dense_values(hidden_group, hidden_group_id.as_str())?;
+    let output_values = draft_dense_values(output_group, output_group_id.as_str())?;
+    let mut grad_hidden = vec![0.0_f32; hidden_values.len()];
+    let mut grad_output = vec![0.0_f32; output_values.len()];
+    let mut mean_distillation_loss = 0.0_f32;
+    let mut accepted = 0_u64;
+    let mut total_teacher_latency_ms = 0_u64;
+    let mut total_draft_latency_ms = 0_u64;
+    for record in &batch.records {
+        let teacher_forward = backend.forward_sample(record, &sft_artifacts.run)?;
+        let teacher_distribution = softmax_with_temperature(
+            teacher_forward.prediction.as_slice(),
+            request.teacher_temperature,
+        );
+        let draft_forward = draft_forward_sample(
+            request,
+            backend.config().model.output_width,
+            hidden_values,
+            output_values,
+            record.prompt_features.as_slice(),
+            teacher_distribution.as_slice(),
+        );
+        accumulate_draft_gradients(
+            grad_hidden.as_mut_slice(),
+            grad_output.as_mut_slice(),
+            output_values,
+            record.prompt_features.as_slice(),
+            draft_forward.hidden.as_slice(),
+            draft_forward.logits_gradient.as_slice(),
+        );
+        mean_distillation_loss += draft_forward.loss;
+        if cosine_similarity(
+            draft_forward.student_distribution.as_slice(),
+            teacher_distribution.as_slice(),
+        ) >= request.acceptance_cosine_threshold
+        {
+            accepted = accepted.saturating_add(1);
+        }
+        total_teacher_latency_ms =
+            total_teacher_latency_ms.saturating_add(estimated_teacher_latency_ms(backend, record));
+        total_draft_latency_ms = total_draft_latency_ms
+            .saturating_add(estimated_draft_latency_ms(backend, request, record));
+    }
+    let scale = 1.0_f32 / batch.records.len().max(1) as f32;
+    for value in &mut grad_hidden {
+        *value *= scale;
+    }
+    for value in &mut grad_output {
+        *value *= scale;
+    }
+    mean_distillation_loss *= scale;
+    let mut gradients = BTreeMap::new();
+    let mut gradient_norms_l2 = BTreeMap::new();
+    gradient_norms_l2.insert(hidden_group_id.clone(), l2_norm(grad_hidden.as_slice()));
+    gradient_norms_l2.insert(output_group_id.clone(), l2_norm(grad_output.as_slice()));
+    gradients.insert(
+        hidden_group_id.clone(),
+        TrainingTensorBuffer::from_f32(
+            hidden_group_id.clone(),
+            hidden_group.parameter.spec.clone(),
+            grad_hidden,
+        )?,
+    );
+    gradients.insert(
+        output_group_id.clone(),
+        TrainingTensorBuffer::from_f32(
+            output_group_id.clone(),
+            output_group.parameter.spec.clone(),
+            grad_output,
+        )?,
+    );
+    let training_batch = TrainingGradientBatch::new(
+        format!("{}-draft-gradient", batch.batch_id),
+        mean_distillation_loss,
+        batch.records.len() as u32,
+        gradients,
+    );
+    let acceptance_ratio = accepted as f32 / batch.records.len().max(1) as f32;
+    let mean_teacher_latency_ms = total_teacher_latency_ms / batch.records.len().max(1) as u64;
+    let mean_draft_latency_ms = total_draft_latency_ms / batch.records.len().max(1) as u64;
+    let execution_digest = stable_draft_execution_digest(
+        batch.batch_id.as_str(),
+        batch.batch_digest.as_str(),
+        &gradient_norms_l2,
+        mean_distillation_loss,
+        acceptance_ratio,
+        mean_teacher_latency_ms,
+        mean_draft_latency_ms,
+    );
+    Ok((
+        TrainingStepInput::new(training_batch.clone(), started_at_ms, finished_at_ms),
+        AppleAdapterDraftDistillationBatchRecord {
+            batch_id: batch.batch_id.clone(),
+            batch_digest: batch.batch_digest.clone(),
+            training_batch,
+            mean_distillation_loss,
+            gradient_norms_l2,
+            acceptance_ratio,
+            mean_teacher_latency_ms,
+            mean_draft_latency_ms,
+            execution_digest,
+        },
+    ))
+}
+
+#[derive(Clone, Debug)]
+struct DraftForwardRecord {
+    hidden: Vec<f32>,
+    student_distribution: Vec<f32>,
+    logits_gradient: Vec<f32>,
+    loss: f32,
+}
+
+fn draft_forward_sample(
+    request: &AppleAdapterDraftDistillationRequest,
+    output_width: usize,
+    hidden_values: &[f32],
+    output_values: &[f32],
+    prompt_features: &[f32],
+    teacher_distribution: &[f32],
+) -> DraftForwardRecord {
+    let hidden_pre = mat_vec(
+        hidden_values,
+        request.hidden_width,
+        prompt_features.len(),
+        prompt_features,
+    );
+    let hidden = hidden_pre
+        .into_iter()
+        .map(|value| value.tanh())
+        .collect::<Vec<_>>();
+    let logits = mat_vec(
+        output_values,
+        output_width,
+        request.hidden_width,
+        hidden.as_slice(),
+    );
+    let student_distribution =
+        softmax_with_temperature(logits.as_slice(), request.student_temperature);
+    let loss = soft_cross_entropy(teacher_distribution, student_distribution.as_slice());
+    let logits_gradient = student_distribution
+        .iter()
+        .zip(teacher_distribution)
+        .map(|(student, teacher)| {
+            (student - teacher) / request.student_temperature.max(f32::EPSILON)
+        })
+        .collect::<Vec<_>>();
+    DraftForwardRecord {
+        hidden,
+        student_distribution,
+        logits_gradient,
+        loss,
+    }
+}
+
+fn accumulate_draft_gradients(
+    grad_hidden: &mut [f32],
+    grad_output: &mut [f32],
+    output_values: &[f32],
+    prompt_features: &[f32],
+    hidden: &[f32],
+    logits_gradient: &[f32],
+) {
+    let hidden_width = hidden.len();
+    let input_width = prompt_features.len();
+    for output_index in 0..logits_gradient.len() {
+        for hidden_index in 0..hidden_width {
+            grad_output[output_index * hidden_width + hidden_index] +=
+                logits_gradient[output_index] * hidden[hidden_index];
+        }
+    }
+    let mut hidden_gradient = vec![0.0_f32; hidden_width];
+    for hidden_index in 0..hidden_width {
+        for output_index in 0..logits_gradient.len() {
+            hidden_gradient[hidden_index] += output_values
+                [output_index * hidden_width + hidden_index]
+                * logits_gradient[output_index];
+        }
+        hidden_gradient[hidden_index] *= 1.0_f32 - hidden[hidden_index] * hidden[hidden_index];
+    }
+    for hidden_index in 0..hidden_width {
+        for input_index in 0..input_width {
+            grad_hidden[hidden_index * input_width + input_index] +=
+                hidden_gradient[hidden_index] * prompt_features[input_index];
+        }
+    }
+}
+
+fn draft_training_group<'a>(
+    run: &'a FixedBudgetTrainingRun,
+    group_id: &str,
+) -> Result<&'a TrainingParameterGroupState, AppleAdapterDraftDistillationError> {
+    run.parameter_group(group_id).ok_or_else(|| {
+        AppleAdapterDraftDistillationError::MissingDraftParameterGroup {
+            group_id: String::from(group_id),
+        }
+    })
+}
+
+fn draft_dense_values<'a>(
+    group: &'a TrainingParameterGroupState,
+    group_id: &str,
+) -> Result<&'a [f32], AppleAdapterDraftDistillationError> {
+    match &group.parameter.data {
+        psionic_core::TensorData::F32(values) => Ok(values.as_slice()),
+        psionic_core::TensorData::QuantizedBlocks(_) => {
+            Err(AppleAdapterDraftDistillationError::NonDenseDraftGroup {
+                group_id: String::from(group_id),
+            })
+        }
+    }
+}
+
+fn draft_hidden_group_id(request: &AppleAdapterDraftDistillationRequest) -> String {
+    format!("{}.draft.hidden_projection", request.draft_model_id)
+}
+
+fn draft_output_group_id(request: &AppleAdapterDraftDistillationRequest) -> String {
+    format!("{}.draft.output_projection", request.draft_model_id)
+}
+
+fn draft_run_id(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    request: &AppleAdapterDraftDistillationRequest,
+) -> String {
+    format!(
+        "{}::draft::{}",
+        backend.config().run_id,
+        request.draft_model_id
+    )
+}
+
+fn draft_checkpoint_family(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    request: &AppleAdapterDraftDistillationRequest,
+) -> String {
+    format!(
+        "{}.draft.{}",
+        backend.config().checkpoint_family,
+        request.draft_model_id
+    )
+}
+
+fn draft_hidden_spec(hidden_width: usize, input_width: usize) -> TensorSpec {
+    TensorSpec::new(
+        Shape::new(vec![hidden_width, input_width]),
+        DType::F32,
+        Device::cpu(),
+    )
+}
+
+fn draft_output_spec(output_width: usize, hidden_width: usize) -> TensorSpec {
+    TensorSpec::new(
+        Shape::new(vec![output_width, hidden_width]),
+        DType::F32,
+        Device::cpu(),
+    )
+}
+
+fn softmax_with_temperature(logits: &[f32], temperature: f32) -> Vec<f32> {
+    let scaled = logits
+        .iter()
+        .map(|value| *value / temperature.max(f32::EPSILON))
+        .collect::<Vec<_>>();
+    let max = scaled.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let exp = scaled
+        .iter()
+        .map(|value| (*value - max).exp())
+        .collect::<Vec<_>>();
+    let sum = exp.iter().sum::<f32>().max(f32::EPSILON);
+    exp.into_iter().map(|value| value / sum).collect()
+}
+
+fn soft_cross_entropy(target: &[f32], prediction: &[f32]) -> f32 {
+    target
+        .iter()
+        .zip(prediction)
+        .map(|(expected, actual)| -expected * actual.max(f32::EPSILON).ln())
+        .sum()
+}
+
+fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
+    let numerator = left.iter().zip(right).map(|(l, r)| l * r).sum::<f32>();
+    let denominator = (l2_norm(left) * l2_norm(right)).max(f32::EPSILON);
+    numerator / denominator
+}
+
+fn estimated_teacher_latency_ms(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    record: &AppleAdapterBatchFeatureRecord,
+) -> u64 {
+    ceil_div_u64(
+        u64::from(record.prompt_tokens.max(1))
+            .saturating_mul(backend.config().model.targets.len() as u64)
+            .saturating_mul(backend.config().model.output_width as u64),
+        32,
+    )
+    .max(1)
+}
+
+fn estimated_draft_latency_ms(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    request: &AppleAdapterDraftDistillationRequest,
+    record: &AppleAdapterBatchFeatureRecord,
+) -> u64 {
+    ceil_div_u64(
+        u64::from(record.prompt_tokens.max(1))
+            .saturating_mul(request.hidden_width as u64)
+            .saturating_mul(backend.config().model.output_width as u64),
+        96,
+    )
+    .max(1)
+}
+
+fn stable_draft_execution_digest(
+    batch_id: &str,
+    batch_digest: &str,
+    gradient_norms_l2: &BTreeMap<String, f32>,
+    mean_distillation_loss: f32,
+    acceptance_ratio: f32,
+    mean_teacher_latency_ms: u64,
+    mean_draft_latency_ms: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_apple_adapter_draft_execution|");
+    hasher.update(batch_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(batch_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(mean_distillation_loss.to_bits().to_le_bytes());
+    hasher.update(b"|");
+    hasher.update(acceptance_ratio.to_bits().to_le_bytes());
+    hasher.update(b"|");
+    hasher.update(mean_teacher_latency_ms.to_le_bytes());
+    hasher.update(b"|");
+    hasher.update(mean_draft_latency_ms.to_le_bytes());
+    for (group_id, norm) in gradient_norms_l2 {
+        hasher.update(b"|group|");
+        hasher.update(group_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(norm.to_bits().to_le_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn draft_mil_bytes(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    request: &AppleAdapterDraftDistillationRequest,
+    runtime_pairing: &AppleAdapterDraftRuntimePairing,
+    draft_bundle_receipt: &ModelIoArtifactReceipt,
+) -> Vec<u8> {
+    format!(
+        "// openagents.apple.reference_draft_mil.v1\nteacher_base_model_signature={}\nteacher_adapter_identifier={}\nteacher_precision_policy={:?}\ndraft_model_id={}\ndraft_precision_policy={:?}\ninput_width={}\nhidden_width={}\noutput_width={}\ndraft_token_count={}\nteacher_temperature={:.4}\nstudent_temperature={:.4}\nstate_dict_digest={}\nartifact_digest={}\n",
+        runtime_pairing.teacher_base_model_signature,
+        runtime_pairing.teacher_adapter_identifier,
+        runtime_pairing.teacher_precision_policy,
+        runtime_pairing.draft_model_id,
+        runtime_pairing.draft_precision_policy,
+        backend.config().model.input_width,
+        request.hidden_width,
+        backend.config().model.output_width,
+        request.draft_token_count,
+        request.teacher_temperature,
+        request.student_temperature,
+        draft_bundle_receipt.state_dict_digest,
+        draft_bundle_receipt.artifact_digest,
+    )
+    .into_bytes()
+}
+
+fn mean_f32(values: &[f32]) -> f32 {
+    if values.is_empty() {
+        0.0
+    } else {
+        values.iter().sum::<f32>() / values.len() as f32
+    }
+}
+
+fn mean_u64(values: &[u64]) -> u64 {
+    if values.is_empty() {
+        0
+    } else {
+        values.iter().sum::<u64>() / values.len() as u64
+    }
+}
+
+fn ceil_div_u64(numerator: u64, denominator: u64) -> u64 {
+    if denominator == 0 {
+        return 0;
+    }
+    numerator.saturating_add(denominator - 1) / denominator
 }
 
 fn stable_adapter_identifier(package_name: &str, artifact_digest: &str) -> String {
@@ -980,6 +1891,43 @@ pub enum AppleAdapterSftError {
     InvalidStepDuration,
     #[error("Apple adapter SFT export request contains an empty benchmark ref")]
     InvalidBenchmarkRef,
+    #[error(transparent)]
+    Execution(#[from] AppleAdapterTrainingExecutionError),
+    #[error(transparent)]
+    TrainingCore(#[from] TrainingCoreError),
+    #[error(transparent)]
+    ModelIo(#[from] crate::ModelIoError),
+    #[error(transparent)]
+    Package(#[from] AppleFmAdapterPackageError),
+}
+
+/// Error surfaced by the optional draft distillation lane.
+#[derive(Debug, Error)]
+pub enum AppleAdapterDraftDistillationError {
+    #[error("Apple draft distillation request is missing `draft_model_id`")]
+    MissingDraftModelId,
+    #[error("Apple draft distillation request requires `hidden_width > 0`")]
+    InvalidDraftHiddenWidth,
+    #[error("Apple draft distillation request requires `teacher_temperature > 0`")]
+    InvalidTeacherTemperature,
+    #[error("Apple draft distillation request requires `student_temperature > 0`")]
+    InvalidStudentTemperature,
+    #[error("Apple draft distillation request requires `acceptance_cosine_threshold` in `[0, 1]`")]
+    InvalidAcceptanceCosineThreshold,
+    #[error("Apple draft distillation request requires `draft_token_count > 0`")]
+    InvalidDraftTokenCount,
+    #[error("Apple draft distillation request requires `step_duration_ms > 0`")]
+    InvalidStepDuration,
+    #[error("Apple draft distillation does not yet support precision policy `{0:?}`")]
+    UnsupportedDraftPrecisionPolicy(AppleAdapterPrecisionPolicy),
+    #[error("Apple draft distillation requested unknown batch index `{batch_index}`")]
+    UnknownBatchIndex { batch_index: usize },
+    #[error("Apple draft distillation is missing parameter group `{group_id}`")]
+    MissingDraftParameterGroup { group_id: String },
+    #[error("Apple draft parameter group `{group_id}` must use dense `f32` values")]
+    NonDenseDraftGroup { group_id: String },
+    #[error(transparent)]
+    Sft(#[from] AppleAdapterSftError),
     #[error(transparent)]
     Execution(#[from] AppleAdapterTrainingExecutionError),
     #[error(transparent)]
@@ -1697,6 +2645,74 @@ mod tests {
             Some(OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION)
         );
         assert_eq!(reread.package_digest, outcome.summary.package_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_draft_lane_exports_valid_fmadapter_with_draft_payload()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = dataset();
+        let environment = environment_bundle();
+        let backend = AppleAdapterTrainingExecutionBackend::new(
+            config(),
+            &dataset,
+            captures(&dataset).as_slice(),
+            &environment,
+        )?;
+        let sft_request = AppleAdapterSftRunRequest {
+            dataset_ref: String::from("fixture.apple_adapter.minimal_sft"),
+            benchmark_refs: vec![String::from("apple_adapter_smoke@2026-03-15")],
+            validator_policy_ref: String::from("validator.apple_adapter.smoke.v1"),
+            package_name: String::from("trained_helpdesk_adapter"),
+            author: String::from("openagents"),
+            description: String::from("Repo-owned Apple adapter SFT + draft test"),
+            license: String::from("internal-test"),
+            started_at_ms: 3_000,
+            step_duration_ms: 40,
+        };
+        let draft_request = AppleAdapterDraftDistillationRequest {
+            draft_model_id: String::from("helpdesk_draft_v1"),
+            hidden_width: 6,
+            optimizer: TrainingOptimizerConfig::adamw(0.03, 0.9, 0.99, 1e-8)
+                .with_gradient_clip_norm(1.0),
+            optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
+            draft_precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
+            teacher_temperature: 1.25,
+            student_temperature: 1.0,
+            acceptance_cosine_threshold: 0.9,
+            draft_token_count: 8,
+            started_at_ms: 3_100,
+            step_duration_ms: 30,
+        };
+        let outcome = run_apple_adapter_draft_distillation_export(
+            &backend,
+            &dataset,
+            &environment,
+            &sft_request,
+            &draft_request,
+        )?;
+        assert_eq!(outcome.sft_outcome.step_receipts.len(), 2);
+        assert_eq!(outcome.draft_step_receipts.len(), 2);
+        assert!(outcome.adapter_package.has_draft_payload());
+        assert!(outcome.draft_summary.acceptance_ratio > 0.0);
+        assert!(
+            outcome.draft_summary.mean_teacher_latency_ms
+                >= outcome.draft_summary.mean_draft_latency_ms
+        );
+
+        let temp = tempdir()?;
+        let package_path = temp.path().join("trained_helpdesk_adapter.fmadapter");
+        outcome.write_package_to_directory(&package_path)?;
+        let reread = AppleFmAdapterPackage::read_from_directory(&package_path)?;
+        assert!(reread.has_draft_payload());
+        assert_eq!(reread.lineage.draft_model_present, Some(true));
+        assert!(reread.lineage.draft_mil_digest.is_some());
+        assert!(reread.lineage.draft_weights_digest.is_some());
+        assert_eq!(
+            reread.metadata.speculative_decoding_draft_token_count,
+            draft_request.draft_token_count
+        );
+        assert_eq!(reread.package_digest, outcome.draft_summary.package_digest);
         Ok(())
     }
 }

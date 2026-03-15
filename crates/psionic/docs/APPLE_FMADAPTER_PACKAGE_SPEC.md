@@ -148,5 +148,7 @@ without checking in heavyweight Apple-exported binaries.
 
 ## Non-Goals
 
-- This doc does not claim draft-model distillation is implemented.
+- This doc is not the execution authority for the draft-model lane; the
+  repo-owned reference distillation path now lives in
+  `crates/psionic/psionic-train/src/apple_adapter.rs`.
 - This doc does not let product docs market adapter hosting or training yet.

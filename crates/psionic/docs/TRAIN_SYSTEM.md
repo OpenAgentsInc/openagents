@@ -206,7 +206,7 @@ shape already includes at least:
 | Data contracts | `implemented_early` | `psionic-data` now owns versioned dataset manifests, tokenizer digests, split declarations, resumable iteration cursors, long-context packing policies, and Apple adapter JSONL import or validation with typed tool-schema augmentation plus tokenizer/prompt-shaping packing lineage |
 | Adapters | `implemented_early` | adapter identity, package manifests, hosted adapter binding lineage, and first Apple `.fmadapter` reader/writer plus file-inventory validation |
 | Sandbox for RL/train workloads | `implemented_early` | bounded execution, background jobs, warm reusable pools, staged loop inputs, pool acquisition receipts, and repeated agentic iteration receipts now exist in `psionic-sandbox` |
-| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it, the repo-owned Apple adapter execution backend now turns packed Apple dataset batches into adapter-only gradient batches for that loop, and the first higher-level Apple SFT lane now closes the path through typed training summary plus `.fmadapter` export; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
+| Training core | `implemented_early` | `psionic-train` now has a typed fixed-budget trainer-step loop, `psionic-ir` now provides reusable reverse-mode autodiff plus explicit detach/training-mode gradient semantics beneath it, the repo-owned Apple adapter execution backend now turns packed Apple dataset batches into adapter-only gradient batches for that loop, the first higher-level Apple SFT lane closes the path through typed training summary plus `.fmadapter` export, and an explicitly separate optional Apple draft-model distillation lane now emits paired draft payloads plus latency or acceptance metadata; optimizer state/residency, step telemetry, and checkpoint restore lineage remain explicit over gradient batches |
 | Training run graph | `implemented_early` | `psionic-train` now owns typed runs, contributor-set revisions, topology revisions, persistent participant ranking, heartbeats, departures, and window transitions |
 | Orchestrator | `implemented_early` | `psionic-train` now owns typed window-control, assignment posture, rollout-assignment refs, rollout-admission receipts, bounded off-policy freshness budgets, rollout-worker heartbeats, claims, upload receipts, and trainer-batch assembly requests over the run graph |
 | Environment ABI | `implemented_early` | `psionic-environments` now owns the package ABI, versioned key, workload/policy/difficulty/benchmark package shape, tool/rubric contracts, deterministic runtime session state machine, and a reusable Apple adapter train/eval/benchmark bundle with typed runtime refs plus train/eval parity receipts, while registry and authority truth remain in kernel/Nexus |
@@ -245,8 +245,8 @@ The current train-relevant ownership split in Psionic is:
     elastic-membership posture, typed run graphs, contributor-set revisions,
     window lifecycle, the fixed-budget training-core reference loop, the
     repo-owned Apple adapter reference execution backend, the higher-level
-    Apple SFT/export lane, orchestrator state, and RL-facing rollout or batch
-    contracts
+    Apple SFT/export lane, the optional Apple draft-model distillation lane,
+    orchestrator state, and RL-facing rollout or batch contracts
 - `psionic-adapters`
   - adapter package identity, Apple `.fmadapter` parsing or writing, file
     inventory validation, and hosted binding lineage
@@ -1231,8 +1231,20 @@ on top of that backend:
 - valid `.fmadapter` export through `psionic-adapters`
 
 That means the first honest Rust-native Apple adapter SFT path is now real in
-repo code. Draft-model distillation, authority publication, desktop workflow,
-provider truth, and market claims remain later issues.
+repo code.
+
+On 2026-03-15, GitHub issue `#3626` added the explicitly separate optional
+Apple draft-model distillation lane on top of that SFT path:
+
+- fixed-budget teacher/student distillation over the repo-owned Apple batches
+- explicit teacher/draft runtime pairing and dual-precision posture capture
+- deterministic latency and speculative-acceptance accounting in typed batch
+  records and summary output
+- portable draft checkpoint export plus paired `draft.mil` or
+  `draft_weights.bin` payload emission inside `.fmadapter`
+
+Authority publication, desktop workflow, provider truth, and market claims
+remain later issues.
 
 ### 2. `Psionic RL: define rollout artifacts, trainer batches, and policy-lineage contracts`
 
