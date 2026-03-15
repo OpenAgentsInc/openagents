@@ -9410,6 +9410,27 @@ pub(super) fn run_apple_adapter_training_action(
             }
             true
         }
+        AppleAdapterTrainingPaneAction::OpenWorkbench => {
+            let training = crate::desktop_control::current_training_status(state);
+            let handoff = match crate::panes::apple_adapter_training::build_workbench_handoff(
+                &state.apple_adapter_training,
+                &training,
+            ) {
+                Ok(handoff) => handoff,
+                Err(error) => {
+                    state.apple_adapter_training.last_error = Some(error);
+                    state.apple_adapter_training.last_action =
+                        Some("Apple FM workbench handoff blocked".to_string());
+                    return true;
+                }
+            };
+            apply_apple_adapter_training_workbench_handoff(state, &handoff);
+            state.apple_adapter_training.last_handoff_summary = Some(handoff.summary.clone());
+            state.apple_adapter_training.last_action =
+                Some(format!("Opened Apple FM workbench for {}", handoff.run_id));
+            state.apple_adapter_training.last_error = None;
+            true
+        }
         AppleAdapterTrainingPaneAction::ArmAcceptRun => {
             let training = crate::desktop_control::current_training_status(state);
             let selected_run = state
@@ -9473,6 +9494,50 @@ pub(super) fn run_apple_adapter_training_action(
             true
         }
     }
+}
+
+fn apply_apple_adapter_training_workbench_handoff(
+    state: &mut crate::app_state::RenderState,
+    handoff: &crate::panes::apple_adapter_training::AppleAdapterTrainingWorkbenchHandoff,
+) {
+    crate::pane_system::PaneController::create_for_kind(
+        state,
+        crate::app_state::PaneKind::AppleFmWorkbench,
+    );
+    crate::panes::apple_adapter_training::apply_workbench_handoff(
+        &mut state.apple_fm_workbench,
+        &mut state.apple_fm_workbench_inputs,
+        handoff,
+    );
+    state.apple_fm_workbench.last_action =
+        Some(format!("Training handoff ready for {}", handoff.run_id));
+    state.apple_fm_workbench.last_error = None;
+    if state
+        .apple_fm_workbench_inputs
+        .session_id
+        .get_value()
+        .trim()
+        .is_empty()
+        && let Some(session_id) = state.apple_fm_workbench.active_session_id.as_deref()
+    {
+        state
+            .apple_fm_workbench_inputs
+            .session_id
+            .set_value(session_id.to_string());
+    }
+    state.apple_fm_workbench_inputs.instructions.blur();
+    state.apple_fm_workbench_inputs.prompt.blur();
+    state.apple_fm_workbench_inputs.model.blur();
+    state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.adapter_id.blur();
+    state.apple_fm_workbench_inputs.max_tokens.blur();
+    state.apple_fm_workbench_inputs.temperature.blur();
+    state.apple_fm_workbench_inputs.top.blur();
+    state.apple_fm_workbench_inputs.probability_threshold.blur();
+    state.apple_fm_workbench_inputs.seed.blur();
+    state.apple_fm_workbench_inputs.schema_json.blur();
+    state.apple_fm_workbench_inputs.transcript_json.blur();
+    state.apple_fm_workbench_inputs.adapter_package_path.focus();
 }
 
 pub(super) fn run_provider_control_action(

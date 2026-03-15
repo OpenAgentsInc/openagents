@@ -409,6 +409,16 @@ pub fn paint(
         pane_state.last_request_id.as_deref().unwrap_or("-"),
         options_chunk_len,
     );
+    if let Some(handoff) = pane_state.handoff_summary.as_deref() {
+        let _ = paint_wrapped_label_line(
+            paint,
+            options_details_bounds.origin.x,
+            options_y + 14.0,
+            "Handoff",
+            handoff,
+            options_chunk_len,
+        );
+    }
     paint.scene.pop_clip();
 
     paint_output_panel(output_bounds, pane_state, paint);
@@ -741,8 +751,13 @@ fn workbench_summary_text(
                 .map(|value| format!("LAST {}", compact_workbench_value(value, 24)))
         })
         .unwrap_or_else(|| "REQUEST idle".to_string());
+    let handoff = pane_state
+        .handoff_source_run_id
+        .as_deref()
+        .map(|value| format!("HANDOFF {}", compact_workbench_value(value, 18)))
+        .unwrap_or_else(|| "HANDOFF none".to_string());
     format!(
-        "{} // CAP {} // {headline} // OP {} // SESSION {} // {request}",
+        "{} // CAP {} // {headline} // OP {} // SESSION {} // {handoff} // {request}",
         capability_surface.workbench_label.to_ascii_uppercase(),
         compact_workbench_value(capability_summary.as_str(), 36),
         compact_workbench_value(operation, 18),

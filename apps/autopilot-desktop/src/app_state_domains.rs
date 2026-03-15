@@ -917,6 +917,10 @@ pub struct AppleFmWorkbenchPaneState {
     pub session_preview: String,
     pub structured_preview: String,
     pub usage_preview: String,
+    pub handoff_source_run_id: Option<String>,
+    pub handoff_adapter_identifier: Option<String>,
+    pub handoff_package_path: Option<String>,
+    pub handoff_summary: Option<String>,
     pub event_log: TerminalPane,
 }
 
@@ -943,6 +947,10 @@ impl Default for AppleFmWorkbenchPaneState {
             session_preview: String::new(),
             structured_preview: String::new(),
             usage_preview: String::new(),
+            handoff_source_run_id: None,
+            handoff_adapter_identifier: None,
+            handoff_package_path: None,
+            handoff_summary: None,
             event_log: TerminalPane::new().title("\\\\ EVENTS"),
         }
     }
