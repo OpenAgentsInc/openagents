@@ -79,6 +79,21 @@ That rule is especially important for:
 - train-class collectives and checkpoint IO
 - gather/scatter/loss/attention/sparse operators needed by ARC models
 
+## ARC v1 Target
+
+ARC v1 means the smallest subtree that satisfies:
+
+- `contracts-real`
+- `benchmark-real`
+- `solver-real`
+
+ARC v1 explicitly excludes:
+
+- ARC-ML model parity
+- HRM-class models
+- distributed training
+- advanced learned search lanes
+
 ## Objective
 
 Build `crates/arc/*` into a Rust-native ARC subtree with:
@@ -256,6 +271,7 @@ crate:
 ## Reference Truth Rules
 
 - `arc-benchmark` is the canonical scorer and episode/result truth surface.
+- `arc-benchmark` is the only crate allowed to compute benchmark scores.
 - exact-match and RHAE claims only count if computed by typed benchmark code,
   not by ad hoc notebook logic.
 - `arc-engine` local deterministic execution is the reference for interactive
@@ -600,12 +616,23 @@ solver or model progress.
 Build the first serious ARC-AGI-1/2 solver in Rust as a portfolio system with
 verifier-first truth.
 
+Solver architecture rule:
+
+- prompt-only agents MUST NOT be treated as architectural lanes
+- prompt policies MAY exist only as baseline agents
+- final solver claims MUST rely on DSL, verifier, and arbiter infrastructure
+
 ### Exit Criteria
 
 - the DSL and interpreter are real
 - verifier and falsifier logic gate final answers
 - at least one symbolic lane and one non-symbolic lane are real
 - traces, budgets, and attempt policy are explicit
+- solved sets are reported against internal hidden holdout with full trace
+  bundles
+- solver development accumulates a trace corpus for successful solves, verifier
+  rejections, spurious fits, and repair attempts
+- search implementations enforce bounded candidate growth under `TaskBudget`
 - portfolio performance on internal holdout beats the best single lane
 
 ### Issues
@@ -760,8 +787,8 @@ schema and result types.
 
 ### Risk 2: solver excitement outrunning benchmark truth
 
-If Epic 3 starts before Epic 2 is honest, progress claims will rely on ad hoc
-scoring and unverifiable traces.
+If Epic 3 begins before exact-match and RHAE scoring parity are fixture-backed,
+progress claims will rely on ad hoc scoring and unverifiable traces.
 
 ### Risk 3: prompt baselines masquerading as architecture
 
@@ -831,6 +858,8 @@ backed, it does not count as subtree progress.
 Prompt baselines are allowed.
 
 They are not the center of the roadmap.
+
+Prompt-only agents MUST NOT count as architectural lanes.
 
 ### 4. Do not start HRM-class model work before Psionic is ready
 
