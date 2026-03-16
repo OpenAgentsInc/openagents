@@ -1209,16 +1209,22 @@ fn score_sample(
         );
     }
 
-    if !text_match && runtime_failure_reasons.is_empty() && failure_reasons.is_empty() {
-        failure_reasons.push(String::from("model_output_mismatch:text"));
-    }
-
     if !sample.tools.is_empty() {
         let observed_tools = observed
             .observed_tool_calls
             .iter()
             .map(|tool| (tool.tool_name.as_str(), tool.succeeded))
             .collect::<BTreeMap<_, _>>();
+        let observed_tool_names = observed
+            .observed_tool_calls
+            .iter()
+            .map(|tool| tool.tool_name.as_str())
+            .collect::<BTreeSet<_>>();
+        let required_tool_names = sample
+            .tools
+            .iter()
+            .map(|tool| tool.function.name.as_str())
+            .collect::<BTreeSet<_>>();
         let harness_failures =
             metadata_failure_codes_by_tool(observed, "apple_adapter.harness_failures");
         let model_request_failures =
@@ -1236,19 +1242,22 @@ fn score_sample(
                     } else if let Some(code) =
                         model_request_failures.get(tool.function.name.as_str())
                     {
-                        failure_reasons.push(format!(
-                            "model_behavior:tool_failed:{}:{}",
-                            tool.function.name, code
+                        failure_reasons.push(model_request_failure_reason(
+                            tool.function.name.as_str(),
+                            code.as_str(),
                         ));
                     } else {
-                        failure_reasons
-                            .push(format!("model_behavior:tool_failed:{}", tool.function.name));
+                        failure_reasons.push(format!(
+                            "model_behavior:true_execution_failure:{}",
+                            tool.function.name
+                        ));
                     }
                 }
                 None => {
-                    failure_reasons.push(format!(
-                        "model_behavior:tool_missing:{}",
-                        tool.function.name
+                    failure_reasons.push(missing_tool_reason(
+                        tool.function.name.as_str(),
+                        &required_tool_names,
+                        &observed_tool_names,
                     ));
                 }
             }
@@ -1267,6 +1276,10 @@ fn score_sample(
                     .collect::<Vec<_>>(),
             })),
         );
+    }
+
+    if !text_match && runtime_failure_reasons.is_empty() && failure_reasons.is_empty() {
+        failure_reasons.push(String::from("model_output_mismatch:text"));
     }
 
     let score_bps = average_metric_score_bps(metrics.as_slice());
@@ -1430,6 +1443,47 @@ fn metadata_failure_codes_by_tool(
             Some((tool_name.to_string(), code.to_string()))
         })
         .collect()
+}
+
+fn model_request_failure_reason(tool_name: &str, code: &str) -> String {
+    match code {
+        "path_kind_mismatch" => {
+            format!("model_behavior:wrong_tool_chosen:{tool_name}:{code}")
+        }
+        "path_not_found"
+        | "path_not_file"
+        | "absolute_path_disallowed"
+        | "path_traversal_disallowed"
+        | "glob_disallowed" => {
+            format!("model_behavior:invalid_path_proposed:{tool_name}:{code}")
+        }
+        "invalid_arguments" => {
+            format!("model_behavior:invalid_tool_arguments:{tool_name}:{code}")
+        }
+        _ => format!("model_behavior:tool_failed:{tool_name}:{code}"),
+    }
+}
+
+fn missing_tool_reason(
+    required_tool_name: &str,
+    required_tool_names: &BTreeSet<&str>,
+    observed_tool_names: &BTreeSet<&str>,
+) -> String {
+    if observed_tool_names.is_empty() {
+        return format!("model_behavior:tool_not_chosen:{required_tool_name}");
+    }
+    let unexpected_tools = observed_tool_names
+        .iter()
+        .copied()
+        .filter(|tool_name| !required_tool_names.contains(tool_name))
+        .collect::<Vec<_>>();
+    if unexpected_tools.is_empty() {
+        return format!("model_behavior:tool_not_chosen:{required_tool_name}");
+    }
+    format!(
+        "model_behavior:wrong_tool_chosen:expected_{required_tool_name}:observed_{}",
+        unexpected_tools.join("+")
+    )
 }
 
 fn stable_runtime_smoke_digest(
@@ -1845,6 +1899,21 @@ mod tests {
         .expect("dataset should import")
     }
 
+    fn benchmark_tool_contract_dataset() -> AppleAdapterDatasetContract {
+        AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"system","content":"Use the provided lookup tools before answering pane-facing training UX questions.","tools":[{"type":"function","function":{"name":"lookup_doc","description":"Inspect a canonical repo document by path.","arguments":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}}},{"type":"function","function":{"name":"lookup_code","description":"Inspect a stable code surface by path.","arguments":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}}}]},{"role":"user","content":"I need to answer whether pane-facing training UX belongs in `apps/autopilot-desktop` or `crates/psionic/*`. What should you inspect first?"},{"role":"assistant","content":"Use `lookup_doc` on `docs/OWNERSHIP.md` and `lookup_code` on `apps/autopilot-desktop/src/apple_adapter_training_control.rs` before answering."}]"#,
+            AppleAdapterDatasetMetadata::new(
+                TokenizerDigest::new(
+                    TokenizerFamily::SentencePiece,
+                    "apple-tokenizer-digest-v1",
+                    32_768,
+                ),
+                "apple-prompt-digest-v1",
+            ),
+        )
+        .expect("benchmark tool dataset should import")
+    }
+
     fn benchmark_verification(sample_id: &str) -> EvalVerificationFacts {
         EvalVerificationFacts {
             timer_integrity: Some(EvalTimerIntegrityFacts {
@@ -2094,7 +2163,89 @@ mod tests {
         assert_eq!(tool.status, EvalSampleStatus::Failed);
         assert_eq!(
             tool.error_reason.as_deref(),
-            Some("model_behavior:tool_missing:lookup_stock")
+            Some("model_behavior:tool_not_chosen:lookup_stock")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_eval_harness_classifies_invalid_tool_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
+        let dataset = benchmark_tool_contract_dataset();
+        let mut observed = AppleAdapterObservedSampleOutput::from_text(
+            dataset.samples[0].sample_id.clone(),
+            String::from("Use the repo lookup tools on concrete files."),
+        )
+        .with_tool_calls(vec![AppleAdapterObservedToolCall {
+            tool_name: String::from("lookup_doc"),
+            succeeded: false,
+            arguments: Some(serde_json::json!({"path": "apps/autopilot-desktop"})),
+        }]);
+        observed.metadata.insert(
+            String::from("apple_adapter.model_request_failures"),
+            serde_json::json!([{
+                "tool_name": "lookup_doc",
+                "failure_code": "path_not_file",
+            }]),
+        );
+
+        let held_out = harness.run_held_out_eval(
+            "eval.apple.tool_invalid_path",
+            &dataset,
+            vec![observed],
+            1,
+            2,
+        )?;
+        let sample = held_out.samples.first().expect("benchmark sample");
+        assert_eq!(sample.status, EvalSampleStatus::Failed);
+        assert_eq!(
+            sample.error_reason.as_deref(),
+            Some(
+                "model_behavior:invalid_path_proposed:lookup_doc:path_not_file; model_behavior:tool_not_chosen:lookup_code",
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_eval_harness_classifies_wrong_tool_choice()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
+        let dataset = benchmark_tool_contract_dataset();
+        let mut observed = AppleAdapterObservedSampleOutput::from_text(
+            dataset.samples[0].sample_id.clone(),
+            String::from("Use the lookup tools on ownership and training surfaces."),
+        )
+        .with_tool_calls(vec![AppleAdapterObservedToolCall {
+            tool_name: String::from("lookup_doc"),
+            succeeded: false,
+            arguments: Some(serde_json::json!({
+                "path": "apps/autopilot-desktop/src/apple_adapter_training_control.rs"
+            })),
+        }]);
+        observed.metadata.insert(
+            String::from("apple_adapter.model_request_failures"),
+            serde_json::json!([{
+                "tool_name": "lookup_doc",
+                "failure_code": "path_kind_mismatch",
+            }]),
+        );
+
+        let held_out = harness.run_held_out_eval(
+            "eval.apple.tool_wrong_kind",
+            &dataset,
+            vec![observed],
+            1,
+            2,
+        )?;
+        let sample = held_out.samples.first().expect("benchmark sample");
+        assert_eq!(sample.status, EvalSampleStatus::Failed);
+        assert_eq!(
+            sample.error_reason.as_deref(),
+            Some(
+                "model_behavior:wrong_tool_chosen:lookup_doc:path_kind_mismatch; model_behavior:tool_not_chosen:lookup_code",
+            )
         );
         Ok(())
     }

@@ -2200,6 +2200,35 @@ being vulnerable to harness-format noise:
   - if the model emits the wrong JSON values, it still fails as a model error
   - if the bridge or schema path is the problem, the receipt now says so
 
+On 2026-03-16, GitHub issue `#3897` fixed the Apple repo-lookup tool contract
+so tool benchmark rows are no longer suppressed by avoidable harness aborts:
+
+- repo lookup tools now expose a tighter path contract directly in their schema
+  surface:
+  - repo-relative concrete file paths only
+  - no directories
+  - no globs
+  - no absolute paths
+  - no `..` traversal
+- model-request mistakes on the lookup tools are now recoverable tool results
+  instead of hard tool exceptions that abort the whole Apple FM turn:
+  - directory requests
+  - glob requests
+  - wrong lookup-kind requests
+  - other invalid-path proposals
+- recoverable repo-lookup responses now carry retry guidance, suggested tool
+  family, and suggested repo-relative paths, and the same details are persisted
+  in per-sample repo-lookup metadata
+- the eval harness now distinguishes the benchmark categories the issue required:
+  - `model_behavior:tool_not_chosen:*`
+  - `model_behavior:wrong_tool_chosen:*`
+  - `model_behavior:invalid_path_proposed:*`
+  - `harness_failure:*`
+  - `model_behavior:true_execution_failure:*`
+- this keeps the tool benchmark honest:
+  - avoidable path-policy mistakes no longer look like a generic runtime crash
+  - truly missing or wrong tool behavior still remains visible as model failure
+
 On 2026-03-15, GitHub issue `#3657` tightened the Apple runtime-validation
 layer around that same run:
 
