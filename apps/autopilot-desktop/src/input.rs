@@ -54,17 +54,19 @@ use crate::pane_system::{
     ActivityFeedPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction, CastControlPaneAction,
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
-    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction,
-    PaneController, PaneHitAction, PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED,
-    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
-    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_active_job_scroll_event,
+    EarningsScoreboardPaneAction, MissionControlPaneAction, NetworkRequestsPaneAction,
+    Nip90SentPaymentsPaneAction, PaneController, PaneHitAction, PaneInput,
+    ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
+    RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+    clamp_all_panes_to_window, dispatch_active_job_scroll_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_adapter_training_input_event,
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
     dispatch_local_inference_input_event, dispatch_log_stream_scroll_event,
+    dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
     dispatch_provider_control_scroll_event, dispatch_relay_connections_input_event,
     dispatch_rive_preview_input_event, dispatch_settings_input_event, dispatch_spark_input_event,
@@ -2790,6 +2792,9 @@ fn dispatch_mouse_scroll(
         } else {
             handled |= dispatch_log_stream_scroll_event(state, point, event);
             if !handled {
+                handled |= dispatch_mission_control_log_scroll_event(state, point, event);
+            }
+            if !handled {
                 handled |= dispatch_provider_control_scroll_event(state, point, *dy);
             }
             if !handled {
@@ -3087,6 +3092,7 @@ fn finish_chat_transcript_selection_drag(
 
 fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &InputEvent) -> bool {
     let mut handled = dispatch_spark_input_event(state, event);
+    handled |= dispatch_mission_control_input_event(state, event);
     handled |= dispatch_pay_invoice_input_event(state, event);
     handled |= dispatch_create_invoice_input_event(state, event);
     handled |= dispatch_relay_connections_input_event(state, event);
@@ -3241,6 +3247,7 @@ fn dispatch_keyboard_submit_actions(
 ) -> bool {
     handle_chat_keyboard_input(state, logical_key)
         || handle_spark_wallet_keyboard_input(state, logical_key)
+        || handle_mission_control_keyboard_input(state, logical_key)
         || handle_pay_invoice_keyboard_input(state, logical_key)
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
@@ -3361,6 +3368,7 @@ pub(super) fn run_pane_hit_action(
             },
             "provider toggle",
         ),
+        PaneHitAction::MissionControl(action) => run_mission_control_action(state, action),
         PaneHitAction::ProviderControl(action) => run_provider_control_action(state, action),
         PaneHitAction::LogStream(action) => run_log_stream_action(state, action),
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
@@ -3758,6 +3766,33 @@ fn handle_spark_wallet_keyboard_input(
             }
             if s.spark_inputs.send_request.is_focused() || s.spark_inputs.send_amount.is_focused() {
                 let _ = run_spark_action(s, SparkPaneAction::SendPayment);
+                return true;
+            }
+            false
+        },
+    )
+}
+
+fn handle_mission_control_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        mission_control_inputs_focused,
+        dispatch_mission_control_input_event,
+        |s| {
+            if s.mission_control.load_funds_amount_sats.is_focused() {
+                let _ = run_mission_control_action(
+                    s,
+                    MissionControlPaneAction::CreateLightningReceiveTarget,
+                );
+                return true;
+            }
+            if s.mission_control.send_invoice.is_focused() {
+                let _ =
+                    run_mission_control_action(s, MissionControlPaneAction::SendLightningPayment);
                 return true;
             }
             false

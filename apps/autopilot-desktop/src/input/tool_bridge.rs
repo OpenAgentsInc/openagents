@@ -38,11 +38,11 @@ use crate::pane_system::{
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
     EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
-    LocalInferencePaneAction, NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction,
-    PaneController, PaneHitAction, ProviderControlPaneAction, ReciprocalLoopPaneAction,
-    RelayConnectionsPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
-    SkillTrustRevocationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    TrajectoryAuditPaneAction,
+    LocalInferencePaneAction, MissionControlPaneAction, NetworkRequestsPaneAction,
+    Nip90SentPaymentsPaneAction, PaneController, PaneHitAction, ProviderControlPaneAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -2290,7 +2290,21 @@ fn pane_action_to_hit_action(
             _ => unsupported(),
         },
         PaneKind::Calculator => unsupported(),
-        PaneKind::GoOnline | PaneKind::ProviderControl => match action {
+        PaneKind::GoOnline => match action {
+            "toggle" | "set_online" | "set_offline" => Ok(PaneHitAction::GoOnlineToggle),
+            "buy_mode_test_job" | "buy_test_job" | "submit_buy_mode_request" => Ok(
+                PaneHitAction::MissionControl(MissionControlPaneAction::ToggleBuyModeLoop),
+            ),
+            "open_local_model" | "open_workbench" | "warm_model" | "download_model"
+            | "local_runtime" => Ok(PaneHitAction::MissionControl(
+                MissionControlPaneAction::OpenLocalModelWorkbench,
+            )),
+            "test_local_fm" | "run_local_fm_test" | "summarize_local_fm" => Ok(
+                PaneHitAction::MissionControl(MissionControlPaneAction::RunLocalFmSummaryTest),
+            ),
+            _ => unsupported(),
+        },
+        PaneKind::ProviderControl => match action {
             "toggle" | "set_online" | "set_offline" => Ok(PaneHitAction::GoOnlineToggle),
             "buy_mode_test_job" | "buy_test_job" | "submit_buy_mode_request" => {
                 Ok(PaneHitAction::BuyModePayments(
@@ -6123,13 +6137,12 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "fm_workbench",
             "foundation_models",
         ],
+        PaneKind::GoOnline => &["mission_control", "go_online"],
         PaneKind::ProviderControl => &[
             "provider_control",
             "provider",
             "provider_runtime",
             "runtime_control",
-            "mission_control",
-            "go_online",
         ],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
@@ -6289,8 +6302,8 @@ mod tests {
         Nip90SentPaymentsWindowPreset, PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, Nip90SentPaymentsPaneAction, PaneHitAction, ProviderControlPaneAction,
-        RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, MissionControlPaneAction, Nip90SentPaymentsPaneAction, PaneHitAction,
+        ProviderControlPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -6571,11 +6584,11 @@ mod tests {
         );
         assert_eq!(
             resolve_pane_kind_for_runtime("mission_control"),
-            Some(PaneKind::ProviderControl)
+            Some(PaneKind::GoOnline)
         );
         assert_eq!(
             resolve_pane_kind_for_runtime("go_online"),
-            Some(PaneKind::ProviderControl)
+            Some(PaneKind::GoOnline)
         );
         assert_eq!(
             resolve_pane_kind_for_runtime("sent_payments"),
@@ -6609,6 +6622,16 @@ mod tests {
         assert_eq!(
             pane_action_to_hit_action(PaneKind::AutopilotChat, "send", None).expect("chat send"),
             PaneHitAction::ChatSend
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::GoOnline, "open_local_model", None)
+                .expect("mission control local model"),
+            PaneHitAction::MissionControl(MissionControlPaneAction::OpenLocalModelWorkbench)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::GoOnline, "test_local_fm", None)
+                .expect("mission control local fm test"),
+            PaneHitAction::MissionControl(MissionControlPaneAction::RunLocalFmSummaryTest)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::ProviderControl, "open_local_model", None)

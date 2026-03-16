@@ -13,8 +13,8 @@ use crate::local_runtime_capabilities::{
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction,
     CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction, LogStreamPaneAction,
-    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
-    SparkReplayPaneAction,
+    MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -9540,6 +9540,246 @@ fn apply_apple_adapter_training_workbench_handoff(
     state.apple_fm_workbench_inputs.adapter_package_path.focus();
 }
 
+pub(super) fn run_mission_control_action(
+    state: &mut crate::app_state::RenderState,
+    action: MissionControlPaneAction,
+) -> bool {
+    match action {
+        MissionControlPaneAction::RefreshWallet => {
+            state.mission_control.mark_wallet_refresh_icon_clicked();
+            queue_spark_command(state, SparkWalletCommand::Reload);
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state.mission_control.record_action("Queued wallet refresh");
+            }
+            true
+        }
+        MissionControlPaneAction::CreateLightningReceiveTarget => {
+            let amount_sats = match parse_positive_amount_str(
+                state.mission_control.load_funds_amount_sats.get_value(),
+                "Lightning receive amount",
+            ) {
+                Ok(amount_sats) => amount_sats,
+                Err(error) => {
+                    state.spark_wallet.last_error = Some(error.clone());
+                    state.mission_control.record_error(error);
+                    return true;
+                }
+            };
+
+            queue_spark_command(
+                state,
+                SparkWalletCommand::CreateBolt11Invoice {
+                    amount_sats,
+                    description: Some("Mission Control load funds".to_string()),
+                    expiry_seconds: Some(3600),
+                },
+            );
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state.mission_control.record_action(format!(
+                    "Queued Lightning receive target for {}",
+                    format_sats_amount(amount_sats)
+                ));
+            }
+            true
+        }
+        MissionControlPaneAction::CopyLightningReceiveTarget => {
+            let now_epoch_seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs());
+            let notice = match state.spark_wallet.last_invoice_state(now_epoch_seconds) {
+                crate::spark_wallet::SparkInvoiceState::Empty => {
+                    "No Lightning receive target available. Generate one first.".to_string()
+                }
+                crate::spark_wallet::SparkInvoiceState::Expired => {
+                    "Lightning receive target expired. Generate a new one.".to_string()
+                }
+                crate::spark_wallet::SparkInvoiceState::Ready => {
+                    match state.spark_wallet.last_invoice.as_deref() {
+                        Some(invoice) if !invoice.trim().is_empty() => {
+                            match copy_to_clipboard(invoice) {
+                                Ok(()) => {
+                                    "Copied Lightning receive target to clipboard".to_string()
+                                }
+                                Err(error) => {
+                                    format!("Failed to copy Lightning receive target: {error}")
+                                }
+                            }
+                        }
+                        _ => {
+                            "No Lightning receive target available. Generate one first.".to_string()
+                        }
+                    }
+                }
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
+        MissionControlPaneAction::CopyLogStream => {
+            state.log_stream.mark_copy_button_clicked();
+            let output = state
+                .log_stream
+                .terminal
+                .recent_lines(2000)
+                .iter()
+                .map(|line| line.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let notice = if output.trim().is_empty() {
+                "Mission Control log stream is empty".to_string()
+            } else {
+                match copy_to_clipboard(&output) {
+                    Ok(()) => "Copied Mission Control log stream to clipboard".to_string(),
+                    Err(error) => format!("Failed to copy Mission Control log stream: {error}"),
+                }
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
+        MissionControlPaneAction::SendLightningPayment => {
+            let command = match build_pay_invoice_command(
+                PayInvoicePaneAction::SendPayment,
+                state.mission_control.send_invoice.get_value(),
+                state.mission_control.load_funds_amount_sats.get_value(),
+            ) {
+                Ok(command) => command,
+                Err(error) => {
+                    state.spark_wallet.last_error = Some(error.clone());
+                    state.mission_control.record_error(error);
+                    return true;
+                }
+            };
+
+            queue_spark_command(state, command);
+            if let Some(error) = state.spark_wallet.last_error.clone() {
+                state.mission_control.record_error(error);
+            } else {
+                state
+                    .mission_control
+                    .record_action("Queued Lightning withdrawal");
+                state.mission_control.send_invoice.set_value(String::new());
+            }
+            true
+        }
+        MissionControlPaneAction::CopySeedPhrase => {
+            let notice = match state.nostr_identity.as_ref() {
+                Some(identity) if !identity.mnemonic.trim().is_empty() => {
+                    match copy_to_clipboard(&identity.mnemonic) {
+                        Ok(()) => "Copied 12-word wallet seed to clipboard. Treat it like cash."
+                            .to_string(),
+                        Err(error) => format!("Failed to copy wallet seed: {error}"),
+                    }
+                }
+                _ => "No wallet seed loaded yet.".to_string(),
+            };
+
+            if notice.starts_with("Copied") {
+                state.mission_control.record_action(notice);
+            } else {
+                state.mission_control.record_error(notice);
+            }
+            true
+        }
+        MissionControlPaneAction::OpenLocalModelWorkbench => {
+            let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            );
+            let surface = active_local_runtime_capability_surface(
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+            );
+            match runtime_view.primary_action {
+                crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench => {
+                    open_local_runtime_workbench(state, &surface)
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm
+                | crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm
+                | crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss
+                | crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss
+                | crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                    let Some(action) = mission_control_local_runtime_workbench_action(
+                        &surface,
+                        runtime_view.primary_action,
+                    ) else {
+                        state.mission_control.last_action =
+                            Some("Local runtime action unavailable".to_string());
+                        state.mission_control.last_error = Some(
+                            "Mission Control could not map the active local runtime action."
+                                .to_string(),
+                        );
+                        return true;
+                    };
+                    let success_label = match runtime_view.primary_action {
+                        crate::app_state::MissionControlLocalRuntimeAction::StartAppleFm => {
+                            "Queued Apple FM bridge start"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::RefreshAppleFm => {
+                            "Queued Apple FM bridge refresh"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::RefreshGptOss => {
+                            "Queued GPT-OSS runtime refresh"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::WarmGptOss => {
+                            "Queued GPT-OSS model warm"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::UnloadGptOss => {
+                            "Queued GPT-OSS model unload"
+                        }
+                        crate::app_state::MissionControlLocalRuntimeAction::OpenAppleFmWorkbench
+                        | crate::app_state::MissionControlLocalRuntimeAction::OpenGptOssWorkbench
+                        | crate::app_state::MissionControlLocalRuntimeAction::None => unreachable!(),
+                    };
+                    run_mission_control_local_runtime_workbench_action(state, action, success_label)
+                }
+                crate::app_state::MissionControlLocalRuntimeAction::None => {
+                    state.mission_control.last_action =
+                        Some("No supported local runtime".to_string());
+                    state.mission_control.last_error = Some(if runtime_view.lane.is_some() {
+                        "Mission Control local runtime action is currently unavailable.".to_string()
+                    } else {
+                        "Mission Control has no supported local runtime. Apple Foundation Models or GPT-OSS must be detected before the compute lane can go online."
+                            .to_string()
+                    });
+                    true
+                }
+            }
+        }
+        MissionControlPaneAction::RunLocalFmSummaryTest => {
+            run_mission_control_local_fm_summary_test(state)
+        }
+        MissionControlPaneAction::ToggleBuyModeLoop => {
+            run_buy_mode_payments_action(state, BuyModePaymentsPaneAction::ToggleLoop)
+        }
+        MissionControlPaneAction::OpenBuyModePayments => {
+            crate::pane_system::PaneController::create_for_kind(
+                state,
+                crate::app_state::PaneKind::BuyModePayments,
+            );
+            state
+                .mission_control
+                .record_action("Opened Buy Mode payment history");
+            true
+        }
+    }
+}
+
 pub(super) fn run_provider_control_action(
     state: &mut crate::app_state::RenderState,
     action: ProviderControlPaneAction,
@@ -9914,6 +10154,9 @@ fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::Rende
         state
             .provider_control
             .record_error("Local FM test is only available on Apple Foundation Models");
+        state
+            .mission_control
+            .record_error("Local FM test is only available on Apple Foundation Models");
         return true;
     }
 
@@ -9921,12 +10164,18 @@ fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::Rende
         state
             .provider_control
             .record_action("Local FM summary test already streaming");
+        state
+            .mission_control
+            .record_action("Local FM summary test already streaming");
         return true;
     }
 
     if !state.provider_runtime.apple_fm.is_ready() {
         state
             .provider_control
+            .record_error("Local FM test requires Apple Foundation Models to be ready");
+        state
+            .mission_control
             .record_error("Local FM test requires Apple Foundation Models to be ready");
         return true;
     }
@@ -9950,12 +10199,18 @@ fn run_mission_control_local_fm_summary_test(state: &mut crate::app_state::Rende
             state
                 .provider_control
                 .begin_local_fm_summary(request_id, "latest Mission Control results");
+            state
+                .mission_control
+                .record_action("Streaming local FM summary for latest Mission Control results");
             state.provider_runtime.last_result =
                 Some("Queued local Apple Foundation Models summary test".to_string());
         }
         Err(error) => {
             state
                 .provider_control
+                .record_error(format!("Failed to queue local FM summary test: {error}"));
+            state
+                .mission_control
                 .record_error(format!("Failed to queue local FM summary test: {error}"));
         }
     }

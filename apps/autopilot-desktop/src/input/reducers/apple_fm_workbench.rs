@@ -225,6 +225,10 @@ fn apply_mission_control_summary_update(
                 "Local FM summary test running [{}]",
                 started.request_id
             ));
+            state.mission_control.record_action(format!(
+                "Local FM summary test running [{}]",
+                started.request_id
+            ));
         }
         AppleFmMissionControlSummaryUpdate::Delta(delta) => {
             if state
@@ -279,6 +283,9 @@ fn apply_mission_control_summary_update(
             state
                 .provider_control
                 .record_action(completed.summary.clone());
+            state
+                .mission_control
+                .record_action(completed.summary.clone());
             state.provider_runtime.last_result = Some(completed.summary.clone());
         }
         AppleFmMissionControlSummaryUpdate::Failed(failed) => {
@@ -290,6 +297,7 @@ fn apply_mission_control_summary_update(
                 format!("Local FM summary failed // {}", failed.error),
             );
             state.provider_control.record_error(failed.error.clone());
+            state.mission_control.record_error(failed.error.clone());
         }
     }
 }

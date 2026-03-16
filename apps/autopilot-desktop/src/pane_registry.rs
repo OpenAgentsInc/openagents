@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 56] = [
+const PANE_SPECS: [PaneSpec; 57] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -238,12 +238,27 @@ const PANE_SPECS: [PaneSpec; 56] = [
         hotbar: None,
     },
     PaneSpec {
+        kind: PaneKind::GoOnline,
+        title: "MISSION CONTROL",
+        default_width: 1040.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: true,
+        command: Some(PaneCommandSpec {
+            id: "pane.mission_control",
+            label: "Mission Control",
+            description: "Open the earn-first control panel for wallet, jobs, and provider state",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
         kind: PaneKind::ProviderControl,
         title: "Provider Control",
         default_width: 760.0,
         default_height: 520.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.provider_control",
             label: "Provider Control",
@@ -383,7 +398,7 @@ const PANE_SPECS: [PaneSpec; 56] = [
         default_width: 980.0,
         default_height: 560.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.earnings_scoreboard",
             label: "Earnings & Jobs",
@@ -1143,7 +1158,22 @@ mod tests {
     }
 
     #[test]
-    fn provider_control_command_maps_to_singleton_startup_pane() {
+    fn mission_control_command_maps_to_singleton_startup_pane() {
+        let mission_control_spec = pane_spec_by_command_id("pane.mission_control")
+            .expect("mission control command should resolve to a pane spec");
+        assert_eq!(mission_control_spec.kind, PaneKind::GoOnline);
+        assert!(
+            mission_control_spec.singleton,
+            "mission control pane must be singleton"
+        );
+        assert!(
+            mission_control_spec.startup,
+            "mission control pane should auto-open during startup"
+        );
+    }
+
+    #[test]
+    fn provider_control_command_maps_to_singleton_non_startup_pane() {
         let provider_spec = pane_spec_by_command_id("pane.provider_control")
             .expect("provider control command should resolve to a pane spec");
         assert_eq!(provider_spec.kind, PaneKind::ProviderControl);
@@ -1152,8 +1182,8 @@ mod tests {
             "provider control pane must be singleton"
         );
         assert!(
-            provider_spec.startup,
-            "provider control pane should auto-open during startup"
+            !provider_spec.startup,
+            "provider control pane should stay opt-in instead of auto-opening at startup"
         );
     }
 
