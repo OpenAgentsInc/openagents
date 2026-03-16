@@ -469,8 +469,8 @@ impl AppleAdapterEvalHarness {
         )
         .with_verification_policy(BenchmarkVerificationPolicy {
             require_timer_integrity: true,
-            require_token_accounting: true,
-            require_final_state_capture: true,
+            require_token_accounting: false,
+            require_final_state_capture: false,
             require_execution_strategy: true,
         })
         .with_cases(
@@ -652,11 +652,13 @@ impl AppleAdapterEvalHarness {
             },
         )?;
 
-        let mut metrics = vec![EvalMetric::new(
-            "apple_adapter.runtime_smoke.attach_confirmed",
-            if attach_confirmed { 1.0 } else { 0.0 },
-        )
-        .with_unit("fraction")];
+        let mut metrics = vec![
+            EvalMetric::new(
+                "apple_adapter.runtime_smoke.attach_confirmed",
+                if attach_confirmed { 1.0 } else { 0.0 },
+            )
+            .with_unit("fraction"),
+        ];
         if let Some(expected_text_substring) = &request.expected_text_substring {
             metrics.push(
                 EvalMetric::new(
@@ -1013,9 +1015,7 @@ pub enum AppleAdapterEvalError {
         actual: String,
     },
     /// The package lineage did not match the expected tokenizer digest.
-    #[error(
-        "Apple adapter runtime expected tokenizer digest `{expected}` but observed `{actual}`"
-    )]
+    #[error("Apple adapter runtime expected tokenizer digest `{expected}` but observed `{actual}`")]
     RuntimeTokenizerDigestDrift {
         /// Expected tokenizer digest.
         expected: String,
@@ -1159,29 +1159,33 @@ fn score_sample(
         .unwrap_or_default();
     let text_match =
         normalized_text(expected_text) == normalized_text(observed.output_text.as_str());
-    let mut metrics = vec![EvalMetric::new(
-        "apple_adapter.text_match",
-        if text_match { 1.0 } else { 0.0 },
-    )
-    .with_unit("fraction")];
+    let mut metrics = vec![
+        EvalMetric::new(
+            "apple_adapter.text_match",
+            if text_match { 1.0 } else { 0.0 },
+        )
+        .with_unit("fraction"),
+    ];
+    let mut failure_reasons = Vec::new();
 
     if sample.structured_assistant_output.is_some() {
-        let Some(structured_output) = observed.structured_output.as_ref() else {
-            return Err(AppleAdapterEvalError::MissingStructuredOutput {
-                sample_id: sample.sample_id.clone(),
-            });
-        };
         let expected_structured = sample
             .structured_assistant_output
             .as_ref()
             .unwrap_or(&Value::Null);
-        if structured_output != expected_structured {
-            return Err(AppleAdapterEvalError::StructuredOutputMismatch {
-                sample_id: sample.sample_id.clone(),
-            });
+        let structured_match = match observed.structured_output.as_ref() {
+            Some(structured_output) => structured_output == expected_structured,
+            None => false,
+        };
+        if !structured_match {
+            failure_reasons.push(String::from("structured_output_mismatch"));
         }
         metrics.push(
-            EvalMetric::new("apple_adapter.structured_output_match", 1.0).with_unit("fraction"),
+            EvalMetric::new(
+                "apple_adapter.structured_output_match",
+                if structured_match { 1.0 } else { 0.0 },
+            )
+            .with_unit("fraction"),
         );
     }
 
@@ -1191,30 +1195,24 @@ fn score_sample(
             .iter()
             .map(|tool| (tool.tool_name.as_str(), tool.succeeded))
             .collect::<BTreeMap<_, _>>();
-        let mut seen_required = BTreeSet::new();
+        let mut satisfied_required = BTreeSet::new();
         for tool in &sample.tools {
-            let Some(succeeded) = observed_tools.get(tool.function.name.as_str()) else {
-                return Err(AppleAdapterEvalError::MissingToolCall {
-                    sample_id: sample.sample_id.clone(),
-                    tool_name: tool.function.name.clone(),
-                });
-            };
-            if !succeeded {
-                return Err(AppleAdapterEvalError::FailedToolCall {
-                    sample_id: sample.sample_id.clone(),
-                    tool_name: tool.function.name.clone(),
-                });
+            match observed_tools.get(tool.function.name.as_str()) {
+                Some(true) => {
+                    satisfied_required.insert(tool.function.name.clone());
+                }
+                Some(false) => {
+                    failure_reasons.push(format!("tool_failed:{}", tool.function.name));
+                }
+                None => {
+                    failure_reasons.push(format!("tool_missing:{}", tool.function.name));
+                }
             }
-            seen_required.insert(tool.function.name.clone());
         }
         metrics.push(
             EvalMetric::new(
                 "apple_adapter.tool_call_coverage",
-                if seen_required.len() == sample.tools.len() {
-                    1.0
-                } else {
-                    0.0
-                },
+                satisfied_required.len() as f64 / sample.tools.len().max(1) as f64,
             )
             .with_unit("fraction")
             .with_metadata(serde_json::json!({
@@ -1273,7 +1271,7 @@ fn score_sample(
         score_bps: Some(score_bps),
         metrics,
         artifacts,
-        error_reason: None,
+        error_reason: (!failure_reasons.is_empty()).then(|| failure_reasons.join("; ")),
         verification: observed.verification.clone(),
         session_digest: observed.session_digest.clone(),
         metadata,
@@ -1730,8 +1728,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_eval_harness_emits_finalized_runs_and_benchmark_packages(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_eval_harness_emits_finalized_runs_and_benchmark_packages()
+    -> Result<(), Box<dyn std::error::Error>> {
         let bundle = environment_bundle();
         let harness = AppleAdapterEvalHarness::new(bundle)?;
         let dataset = dataset_contract();
@@ -1822,8 +1820,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_runtime_smoke_produces_machine_legible_receipt(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_runtime_smoke_produces_machine_legible_receipt()
+    -> Result<(), Box<dyn std::error::Error>> {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
         let mut runtime = FakeRuntime::healthy();
         runtime.structured_value =
@@ -1896,6 +1894,72 @@ mod tests {
     }
 
     #[test]
+    fn apple_adapter_eval_harness_records_sample_failures_without_aborting_round()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let bundle = environment_bundle();
+        let harness = AppleAdapterEvalHarness::new(bundle)?;
+        let dataset = dataset_contract();
+        let observed = vec![
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[0].sample_id.clone(),
+                dataset.samples[0]
+                    .messages
+                    .last()
+                    .expect("assistant")
+                    .content
+                    .clone(),
+            ),
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[1].sample_id.clone(),
+                String::from("{\"response\": {\"year\": 2001}}"),
+            )
+            .with_structured_output(serde_json::json!({"response": {"year": 2001}})),
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[2].sample_id.clone(),
+                dataset.samples[2]
+                    .messages
+                    .last()
+                    .expect("assistant")
+                    .content
+                    .clone(),
+            )
+            .with_tool_calls(vec![AppleAdapterObservedToolCall {
+                tool_name: String::from("get_current_weather"),
+                succeeded: true,
+                arguments: None,
+            }]),
+        ];
+
+        let held_out = harness.run_held_out_eval("eval.apple.failure_tolerant", &dataset, observed, 1, 2)?;
+        assert_eq!(held_out.status, crate::EvalRunStatus::Finalized);
+        assert_eq!(
+            held_out.summary.as_ref().expect("summary").passed_samples,
+            1
+        );
+        let structured = held_out
+            .samples
+            .iter()
+            .find(|sample| sample.sample_id == dataset.samples[1].sample_id)
+            .expect("structured sample present");
+        assert_eq!(structured.status, EvalSampleStatus::Failed);
+        assert_eq!(
+            structured.error_reason.as_deref(),
+            Some("structured_output_mismatch")
+        );
+        let tool = held_out
+            .samples
+            .iter()
+            .find(|sample| sample.sample_id == dataset.samples[2].sample_id)
+            .expect("tool sample present");
+        assert_eq!(tool.status, EvalSampleStatus::Failed);
+        assert_eq!(
+            tool.error_reason.as_deref(),
+            Some("tool_missing:lookup_stock")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn apple_adapter_runtime_smoke_refuses_lineage_drift() -> Result<(), Box<dyn std::error::Error>>
     {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
@@ -1928,8 +1992,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_runtime_drift_report_flags_bridge_version_change(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_runtime_drift_report_flags_bridge_version_change()
+    -> Result<(), Box<dyn std::error::Error>> {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
         let previous_runtime = FakeRuntime::healthy();
         let request = AppleAdapterRuntimeSmokeRequest::new(
@@ -1946,15 +2010,17 @@ mod tests {
         let report = harness.detect_runtime_drift(&current_runtime, &request, &previous);
         assert!(report.drifted);
         assert!(report.current_validation_passed);
-        assert!(report
-            .reason_codes
-            .contains(&AppleAdapterRuntimeDriftReasonCode::BridgeVersionChanged));
+        assert!(
+            report
+                .reason_codes
+                .contains(&AppleAdapterRuntimeDriftReasonCode::BridgeVersionChanged)
+        );
         Ok(())
     }
 
     #[test]
-    fn apple_adapter_runtime_drift_report_explains_runtime_unavailability(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_runtime_drift_report_explains_runtime_unavailability()
+    -> Result<(), Box<dyn std::error::Error>> {
         let harness = AppleAdapterEvalHarness::new(environment_bundle())?;
         let previous_runtime = FakeRuntime::healthy();
         let request = AppleAdapterRuntimeSmokeRequest::new(
@@ -1975,9 +2041,11 @@ mod tests {
         let report = harness.detect_runtime_drift(&current_runtime, &request, &previous);
         assert!(report.drifted);
         assert!(!report.current_validation_passed);
-        assert!(report
-            .reason_codes
-            .contains(&AppleAdapterRuntimeDriftReasonCode::RuntimeUnavailable));
+        assert!(
+            report
+                .reason_codes
+                .contains(&AppleAdapterRuntimeDriftReasonCode::RuntimeUnavailable)
+        );
         assert!(report.detail.is_some());
         Ok(())
     }

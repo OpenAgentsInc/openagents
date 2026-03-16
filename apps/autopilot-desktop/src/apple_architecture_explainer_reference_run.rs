@@ -1,21 +1,25 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use openagents_kernel_core::authority::HttpKernelAuthorityClient;
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
     AppleFmGenerationSchema, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
     AppleFmSessionStructuredGenerationRequest, AppleFmTool, AppleFmToolDefinition,
+    DEFAULT_APPLE_FM_MODEL_ID,
 };
 use psionic_data::{
     AppleAdapterCuratedCorpusManifest, AppleAdapterDatasetContract, AppleAdapterMessageRole,
+    AppleAdapterRuntimeCompatibilityProfile,
 };
 use psionic_eval::{
     AppleAdapterBaseVsAdapterBenchmarkReport, AppleAdapterEvalHarness,
     AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCall,
+    EvalExecutionStrategyFacts, EvalTimerIntegrityFacts, EvalVerificationFacts,
     architecture_explainer_benchmark_key, build_curated_benchmark_package,
     run_curated_base_vs_adapter_benchmark,
 };
@@ -138,6 +142,7 @@ pub struct ArchitectureExplainerFirstRunReport {
     pub benchmark_report: AppleAdapterBaseVsAdapterBenchmarkReport,
     pub weak_case_ids: Vec<String>,
     pub disposition: ArchitectureExplainerRunDisposition,
+    pub launch_error: Option<String>,
     pub acceptance_error: Option<String>,
     pub authority_base_url: Option<String>,
 }
@@ -167,15 +172,31 @@ pub fn run_architecture_explainer_reference_cycle(
         expected_base_model_signature: Some(manifest.base_model_signature.clone()),
     };
 
-    let launched_run = launch_run(launch_request.clone()).map_err(|error| anyhow!(error))?;
+    let prior_run_ids = operator_status()
+        .map_err(|error| anyhow!(error))?
+        .runs
+        .into_iter()
+        .map(|run| run.run_id)
+        .collect::<BTreeSet<_>>();
+    let (launched_run, launch_error) = match launch_run(launch_request.clone()) {
+        Ok(run) => (run, None),
+        Err(error) => (
+            locate_failed_reference_run(&launch_request, &prior_run_ids)
+                .with_context(|| format!("operator launch failed before report generation: {error}"))?,
+            Some(error),
+        ),
+    };
     let run_id = launched_run.run_id.clone();
     let exported_run = export_run(run_id.as_str(), config.export_path.as_path())
         .map_err(|error| anyhow!(error))?;
-    let local_summary = exported_run
-        .local_summary
-        .clone()
-        .ok_or_else(|| anyhow!("operator run `{run_id}` is missing local summary"))?;
-    let runtime_profile = runtime_profile_from_summary(&local_summary);
+    let runtime_profile = if let Some(local_summary) = exported_run.local_summary.as_ref() {
+        runtime_profile_from_summary(local_summary)
+    } else {
+        derive_reference_runtime_profile(
+            config.apple_fm_base_url.as_str(),
+            launch_request.expected_base_model_signature.as_deref(),
+        )?
+    };
     let train_dataset = load_dataset(config.train_dataset_path.as_path(), &runtime_profile)
         .context("failed to reload train dataset for benchmark environment")?;
     let benchmark_runtime_profile = runtime_profile_with_dataset_defaults(
@@ -265,6 +286,7 @@ pub fn run_architecture_explainer_reference_cycle(
         benchmark_report,
         weak_case_ids,
         disposition,
+        launch_error,
         acceptance_error,
         authority_base_url: config.control_base_url.clone(),
     };
@@ -296,6 +318,69 @@ fn authority_client(
     build_remote_authority_client(base_url, bearer.as_str())
         .map(Some)
         .map_err(|error| anyhow!(error))
+}
+
+fn locate_failed_reference_run(
+    launch_request: &AppleAdapterOperatorLaunchRequest,
+    prior_run_ids: &BTreeSet<String>,
+) -> Result<AppleAdapterOperatorRunStatus> {
+    operator_status()
+        .map_err(|error| anyhow!(error))?
+        .runs
+        .into_iter()
+        .find(|run| {
+            !prior_run_ids.contains(run.run_id.as_str())
+                && run.package_name == launch_request.package_name
+                && run.train_dataset_path == launch_request.train_dataset_path
+                && run.held_out_dataset_path == launch_request.held_out_dataset_path
+        })
+        .ok_or_else(|| anyhow!("failed to recover operator run after launch failure"))
+}
+
+fn derive_reference_runtime_profile(
+    apple_fm_base_url: &str,
+    expected_base_model_signature: Option<&str>,
+) -> Result<AppleAdapterRuntimeCompatibilityProfile> {
+    let client = AppleFmBridgeClient::new(apple_fm_base_url)
+        .with_context(|| format!("failed to build Apple FM bridge client for {apple_fm_base_url}"))?;
+    let health = client
+        .health()
+        .with_context(|| format!("failed to fetch Apple FM bridge health from {apple_fm_base_url}"))?;
+    if !health.model_available {
+        let detail = health
+            .availability_message
+            .clone()
+            .unwrap_or_else(|| String::from("Apple Foundation Models runtime is not ready"));
+        bail!("{detail}");
+    }
+    let mut profile = AppleAdapterRuntimeCompatibilityProfile::new(
+        DEFAULT_APPLE_FM_MODEL_ID,
+        health.default_use_case.label(),
+        health.default_guardrails.label(),
+    );
+    if let Some(signature) = expected_base_model_signature
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        profile = profile.with_base_model_signature(signature.to_string());
+    }
+    if let Some(version) = health
+        .version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        profile = profile.with_bridge_version(version.to_string());
+    }
+    if let Some(platform) = health
+        .platform
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        profile = profile.with_bridge_platform(platform.to_string());
+    }
+    Ok(profile)
 }
 
 fn mint_authority_session(base_url: &str) -> Result<ArchitectureExplainerAuthoritySessionResponse> {
@@ -349,123 +434,155 @@ fn collect_live_runtime_outputs(
 
     let mut observed_outputs = Vec::with_capacity(dataset.samples.len());
     for sample in &dataset.samples {
-        let instructions = sample
-            .messages
-            .iter()
-            .find(|message| message.role == AppleAdapterMessageRole::System)
-            .map(|message| message.content.clone());
-        let prompt = sample
-            .messages
-            .iter()
-            .find(|message| message.role == AppleAdapterMessageRole::User)
-            .map(|message| message.content.clone())
-            .ok_or_else(|| {
-                anyhow!(
-                    "benchmark sample `{}` is missing a user prompt",
-                    sample.sample_id
-                )
-            })?;
-        let tool_recorder = Arc::new(Mutex::new(Vec::<AppleAdapterObservedToolCall>::new()));
-        let tools = sample
-            .tools
-            .iter()
-            .map(|tool| {
-                Ok(Arc::new(ArchitectureExplainerRecordingTool {
-                    definition: AppleFmToolDefinition::new(
-                        tool.function.name.clone(),
-                        tool.function.description.clone(),
-                        AppleFmGenerationSchema::new(tool.function.arguments.clone())?,
-                    ),
-                    recorder: tool_recorder.clone(),
-                }) as Arc<dyn AppleFmTool>)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let session = client
-            .create_session_with_tools(
-                &AppleFmSessionCreateRequest {
-                    instructions,
-                    model: None,
-                    tools: Vec::new(),
-                    adapter: None,
-                    tool_callback: None,
-                    transcript_json: None,
-                    transcript: None,
-                },
-                tools,
-            )
-            .context("failed to create Apple FM benchmark session")?;
-        if let Some(adapter) = loaded_adapter.as_ref() {
-            client
-                .attach_session_adapter(
-                    session.id.as_str(),
-                    &AppleFmAdapterAttachRequest {
-                        adapter: adapter.adapter.clone(),
+        let sample_started = Instant::now();
+        let sample_result = (|| -> Result<AppleAdapterObservedSampleOutput> {
+            let instructions = sample
+                .messages
+                .iter()
+                .find(|message| message.role == AppleAdapterMessageRole::System)
+                .map(|message| message.content.clone());
+            let prompt = sample
+                .messages
+                .iter()
+                .find(|message| message.role == AppleAdapterMessageRole::User)
+                .map(|message| message.content.clone())
+                .ok_or_else(|| {
+                    anyhow!(
+                        "benchmark sample `{}` is missing a user prompt",
+                        sample.sample_id
+                    )
+                })?;
+            let tool_recorder = Arc::new(Mutex::new(Vec::<AppleAdapterObservedToolCall>::new()));
+            let tools = sample
+                .tools
+                .iter()
+                .map(|tool| {
+                    Ok(Arc::new(ArchitectureExplainerRecordingTool {
+                        definition: AppleFmToolDefinition::new(
+                            tool.function.name.clone(),
+                            tool.function.description.clone(),
+                            AppleFmGenerationSchema::new(tool.function.arguments.clone())?,
+                        ),
+                        recorder: tool_recorder.clone(),
+                    }) as Arc<dyn AppleFmTool>)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let session = client
+                .create_session_with_tools(
+                    &AppleFmSessionCreateRequest {
+                        instructions,
+                        model: None,
+                        tools: Vec::new(),
+                        adapter: None,
+                        tool_callback: None,
+                        transcript_json: None,
+                        transcript: None,
                     },
+                    tools,
                 )
-                .context("failed to attach Apple adapter for benchmark session")?;
-        }
-
-        let observed_output = if let Some(response_format) = sample.response_format.as_ref() {
-            match client.respond_structured_in_session(
-                session.id.as_str(),
-                &AppleFmSessionStructuredGenerationRequest {
-                    prompt,
-                    schema: AppleFmGenerationSchema::new(
-                        response_format.json_schema.schema.clone(),
-                    )?,
-                    options: None,
-                    adapter: None,
-                },
-            ) {
-                Ok(response) => AppleAdapterObservedSampleOutput::from_text(
-                    sample.sample_id.clone(),
-                    response.content.to_json_string().unwrap_or_default(),
-                )
-                .with_structured_output(response.content.content),
-                Err(error) => runtime_error_observed_output(
-                    sample.sample_id.as_str(),
-                    error.to_string(),
-                    true,
-                ),
+                .context("failed to create Apple FM benchmark session")?;
+            if let Some(adapter) = loaded_adapter.as_ref() {
+                client
+                    .attach_session_adapter(
+                        session.id.as_str(),
+                        &AppleFmAdapterAttachRequest {
+                            adapter: adapter.adapter.clone(),
+                        },
+                    )
+                    .context("failed to attach Apple adapter for benchmark session")?;
             }
-        } else {
-            match client.respond_in_session(
-                session.id.as_str(),
-                &AppleFmSessionRespondRequest {
-                    prompt,
-                    options: None,
-                    adapter: None,
-                },
-            ) {
-                Ok(response) => AppleAdapterObservedSampleOutput::from_text(
-                    sample.sample_id.clone(),
-                    response.output,
-                ),
-                Err(error) => runtime_error_observed_output(
-                    sample.sample_id.as_str(),
-                    error.to_string(),
-                    false,
-                ),
-            }
-        };
 
-        let observed_tool_calls = tool_recorder
-            .lock()
-            .map_err(|_| anyhow!("Apple benchmark tool recorder lock poisoned"))?
-            .clone();
-        let observed_output = if observed_tool_calls.is_empty() {
-            observed_output
-        } else {
-            observed_output.with_tool_calls(observed_tool_calls)
-        };
-        let _ = client.delete_session(session.id.as_str());
-        observed_outputs.push(observed_output);
+            let observed_output = if let Some(response_format) = sample.response_format.as_ref() {
+                match client.respond_structured_in_session(
+                    session.id.as_str(),
+                    &AppleFmSessionStructuredGenerationRequest {
+                        prompt,
+                        schema: AppleFmGenerationSchema::new(
+                            response_format.json_schema.schema.clone(),
+                        )?,
+                        options: None,
+                        adapter: None,
+                    },
+                ) {
+                    Ok(response) => AppleAdapterObservedSampleOutput::from_text(
+                        sample.sample_id.clone(),
+                        response.content.to_json_string().unwrap_or_default(),
+                    )
+                    .with_structured_output(response.content.content),
+                    Err(error) => runtime_error_observed_output(
+                        sample.sample_id.as_str(),
+                        error.to_string(),
+                        true,
+                    ),
+                }
+            } else {
+                match client.respond_in_session(
+                    session.id.as_str(),
+                    &AppleFmSessionRespondRequest {
+                        prompt,
+                        options: None,
+                        adapter: None,
+                    },
+                ) {
+                    Ok(response) => {
+                        AppleAdapterObservedSampleOutput::from_text(sample.sample_id.clone(), response.output)
+                    }
+                    Err(error) => runtime_error_observed_output(
+                        sample.sample_id.as_str(),
+                        error.to_string(),
+                        false,
+                    ),
+                }
+            };
+
+            let observed_tool_calls = tool_recorder
+                .lock()
+                .map_err(|_| anyhow!("Apple benchmark tool recorder lock poisoned"))?
+                .clone();
+            let observed_output = if observed_tool_calls.is_empty() {
+                observed_output
+            } else {
+                observed_output.with_tool_calls(observed_tool_calls)
+            };
+            let _ = client.delete_session(session.id.as_str());
+            Ok(observed_output)
+        })();
+        observed_outputs.push(match sample_result {
+            Ok(output) => output.with_verification(reference_benchmark_verification(
+                sample_started.elapsed().as_millis() as u64,
+            )),
+            Err(error) => runtime_error_observed_output(
+                sample.sample_id.as_str(),
+                error.to_string(),
+                sample.response_format.is_some(),
+            )
+            .with_verification(reference_benchmark_verification(
+                sample_started.elapsed().as_millis() as u64,
+            )),
+        });
     }
 
     if let Some(adapter) = loaded_adapter.as_ref() {
         let _ = client.unload_adapter(adapter.adapter.adapter_id.as_str());
     }
     Ok(observed_outputs)
+}
+
+fn reference_benchmark_verification(elapsed_ms: u64) -> EvalVerificationFacts {
+    EvalVerificationFacts {
+        timer_integrity: Some(EvalTimerIntegrityFacts {
+            declared_budget_ms: Some(30_000),
+            elapsed_ms,
+            within_budget: elapsed_ms <= 30_000,
+        }),
+        token_accounting: None,
+        final_state: None,
+        execution_strategy: Some(EvalExecutionStrategyFacts {
+            strategy_label: String::from("apple_foundation_models_live_bridge"),
+            runtime_family: Some(String::from("apple_fm")),
+            scheduler_posture: Some(String::from("single_host")),
+        }),
+    }
 }
 
 fn runtime_error_observed_output(
@@ -565,6 +682,7 @@ Generated at: `{}`\n\n\
 - experiment_manifest_digest: `{}`\n\
 - report_json_fixture: `{}`\n\
 - export_path: `{}`\n\
+- launch_error: `{}`\n\
 - acceptance_error: `{}`\n",
         report.generated_at_epoch_ms,
         disposition,
@@ -637,6 +755,7 @@ Generated at: `{}`\n\n\
             .exported_package_path
             .clone()
             .unwrap_or_default(),
+        report.launch_error.clone().unwrap_or_default(),
         report.acceptance_error.clone().unwrap_or_default(),
     )
 }
