@@ -79,7 +79,5 @@ This closes the first governance requirement in `ROADMAP_MLX.md`:
 - one named upstream MLX version window is frozen
 - compatibility language is explicit and bounded
 
-The remaining Epic 0 work still needs:
-
-- a parity harness entrypoint
-- a supported, convertible, and unsupported matrix
+Epic 0 governance is now complete because the acceptance matrix, parity harness,
+and supported/convertible/unsupported compatibility matrix all exist too.
