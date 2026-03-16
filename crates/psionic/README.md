@@ -166,6 +166,17 @@ Current posture:
   keeps Phase 11 honest by recording the current 4x4 gate as still closed
   (`0/2` validation first-target exact cases, `0/2` exact-trace cases) while
   still making the real 9x9 workload and curriculum plan explicit
+- the twelfth trained-executor follow-on bar from the post-audit issue spine
+  now also exists in `psionic-eval`, `psionic-train`, `docs/audits/`, and a
+  new committed follow-on run bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_boundary_v1`: the learned
+  4x4 lane now emits first-target / first-8 / first-32 boundary metrics,
+  divergence histograms, first-token confusion, and a checkpoint leaderboard,
+  and the boundary-curriculum run clears the token-0 failure at the selected
+  checkpoint (`10000` bps first-target exactness, no token-0 confusions,
+  divergence moved to target index `1` on both validation cases); it still has
+  `0/2` exact traces and only `5000` bps first-32 exactness, so this is
+  honest boundary progress rather than an exact learned-executor claim
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

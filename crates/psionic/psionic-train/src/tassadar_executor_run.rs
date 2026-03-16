@@ -9,8 +9,12 @@ use psionic_datastream::{
     DatastreamSubjectKind,
 };
 use psionic_eval::{
-    benchmark_tassadar_executor_linear_decode, build_tassadar_sudoku_v0_sequence_dataset,
-    EvalArtifact, TassadarExecutorLinearBenchmarkReport,
+    EvalArtifact, TassadarExecutorBoundaryExactnessReport,
+    TassadarExecutorDivergenceHistogramReport, TassadarExecutorFirstTokenConfusionReport,
+    TassadarExecutorLinearBenchmarkReport, benchmark_tassadar_executor_linear_decode,
+    build_tassadar_executor_boundary_exactness_report,
+    build_tassadar_executor_divergence_histogram_report,
+    build_tassadar_executor_first_token_confusion_report, build_tassadar_sequence_dataset,
 };
 use psionic_models::{
     TassadarExecutorTransformer, TassadarExecutorTransformerDescriptor,
@@ -21,9 +25,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    build_tassadar_sudoku_v0_sequence_training_manifest, train_tassadar_executor_transformer,
     TassadarExecutorTrainingConfig, TassadarExecutorTrainingError, TassadarExecutorTrainingReport,
     TassadarSequenceTrainingError, TassadarSequenceTrainingManifest,
+    build_tassadar_sequence_training_manifest, train_tassadar_executor_transformer,
 };
 
 /// Stable schema version for persisted Tassadar reference-run bundles.
@@ -31,15 +35,25 @@ pub const TASSADAR_EXECUTOR_REFERENCE_RUN_SCHEMA_VERSION: u16 = 1;
 /// Stable run identifier for the first committed Sudoku-v0 reference run.
 pub const TASSADAR_EXECUTOR_REFERENCE_RUN_ID: &str =
     "tassadar-executor-transformer-sudoku-v0-reference-run-v0";
+/// Stable run identifier for the first boundary-curriculum follow-on run.
+pub const TASSADAR_EXECUTOR_BOUNDARY_RUN_ID: &str =
+    "tassadar-executor-transformer-sudoku-v0-boundary-v1";
 /// Stable checkpoint family for persisted trained executor checkpoints.
 pub const TASSADAR_EXECUTOR_CHECKPOINT_FAMILY: &str = "train.tassadar.executor_transformer";
 /// Canonical repo path used for the first committed reference run.
 pub const TASSADAR_EXECUTOR_REFERENCE_RUN_OUTPUT_DIR: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0";
+/// Canonical repo path used for the first boundary-curriculum follow-on run.
+pub const TASSADAR_EXECUTOR_BOUNDARY_RUN_OUTPUT_DIR: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_boundary_v1";
 
 const TRAINING_MANIFEST_FILE: &str = "training_manifest.json";
 const TRAINING_REPORT_FILE: &str = "training_report.json";
 const LINEAR_BENCHMARK_REPORT_FILE: &str = "linear_benchmark_report.json";
+pub const TASSADAR_EXECUTOR_BOUNDARY_EXACTNESS_REPORT_FILE: &str = "boundary_exactness_report.json";
+pub const TASSADAR_EXECUTOR_DIVERGENCE_HISTOGRAM_FILE: &str = "divergence_histogram.json";
+pub const TASSADAR_EXECUTOR_FIRST_TOKEN_CONFUSION_FILE: &str = "first_token_confusion_report.json";
+pub const TASSADAR_EXECUTOR_CHECKPOINT_LEADERBOARD_FILE: &str = "checkpoint_leaderboard.json";
 pub const TASSADAR_EXECUTOR_NEURAL_HULL_BENCHMARK_REPORT_FILE: &str =
     "neural_hull_benchmark_report.json";
 const CHECKPOINT_ARTIFACT_FILE: &str = "checkpoint_artifact.json";
@@ -77,11 +91,11 @@ pub struct TassadarExecutorCheckpointState {
 
 impl TassadarExecutorCheckpointState {
     fn new(
+        checkpoint_id: &str,
         run_id: &str,
         training_manifest: &TassadarSequenceTrainingManifest,
         model: &TassadarExecutorTransformer,
     ) -> Self {
-        let checkpoint_id = format!("{run_id}.checkpoint.epoch_0001");
         let output_projection = model.weights().output_projection().to_vec();
         let output_bias = model.weights().output_bias().to_vec();
         let output_projection_digest = stable_digest(
@@ -91,7 +105,7 @@ impl TassadarExecutorCheckpointState {
         let output_bias_digest =
             stable_digest(b"psionic_tassadar_executor_output_bias|", &output_bias);
         let mut checkpoint = Self {
-            checkpoint_id,
+            checkpoint_id: checkpoint_id.to_string(),
             run_id: run_id.to_string(),
             base_model_id: model.descriptor().model.model_id.clone(),
             trained_model_descriptor_digest: model.descriptor().stable_digest(),
@@ -112,14 +126,22 @@ impl TassadarExecutorCheckpointState {
     pub fn materialize_model(
         &self,
     ) -> Result<TassadarExecutorTransformer, TassadarExecutorRunError> {
-        if self.base_model_id != TassadarExecutorTransformer::MODEL_ID {
-            return Err(TassadarExecutorRunError::UnexpectedBaseModel {
-                expected: String::from(TassadarExecutorTransformer::MODEL_ID),
-                actual: self.base_model_id.clone(),
-            });
-        }
-
-        let mut model = TassadarExecutorTransformer::sudoku_v0();
+        let mut model = match self.base_model_id.as_str() {
+            TassadarExecutorTransformer::MODEL_ID => TassadarExecutorTransformer::sudoku_v0(),
+            TassadarExecutorTransformer::SUDOKU_9X9_MODEL_ID => {
+                TassadarExecutorTransformer::sudoku_9x9()
+            }
+            actual => {
+                return Err(TassadarExecutorRunError::UnexpectedBaseModel {
+                    expected: format!(
+                        "{}/{}",
+                        TassadarExecutorTransformer::MODEL_ID,
+                        TassadarExecutorTransformer::SUDOKU_9X9_MODEL_ID
+                    ),
+                    actual: actual.to_string(),
+                });
+            }
+        };
         model.apply_trained_output_head(
             self.output_projection.as_slice(),
             self.output_bias.as_slice(),
@@ -257,6 +279,18 @@ pub struct TassadarExecutorReferenceRunBundle {
     pub training_report_digest: String,
     /// Persisted benchmark report digest.
     pub linear_benchmark_report_digest: String,
+    /// Persisted boundary exactness report digest when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boundary_exactness_report_digest: Option<String>,
+    /// Persisted divergence histogram report digest when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub divergence_histogram_report_digest: Option<String>,
+    /// Persisted first-token confusion report digest when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_token_confusion_report_digest: Option<String>,
+    /// Persisted checkpoint leaderboard digest when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_leaderboard_report_digest: Option<String>,
     /// Persisted neural hull benchmark report digest when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub neural_hull_benchmark_report_digest: Option<String>,
@@ -276,6 +310,9 @@ impl TassadarExecutorReferenceRunBundle {
         training_manifest: &TassadarSequenceTrainingManifest,
         training_report: &TassadarExecutorTrainingReport,
         benchmark_report: &TassadarExecutorLinearBenchmarkReport,
+        boundary_exactness_report: Option<&TassadarExecutorBoundaryExactnessReport>,
+        divergence_histogram_report: Option<&TassadarExecutorDivergenceHistogramReport>,
+        first_token_confusion_report: Option<&TassadarExecutorFirstTokenConfusionReport>,
         checkpoint_artifact: &TassadarExecutorCheckpointArtifact,
         model_artifact: &TassadarExecutorModelArtifact,
         artifacts: Vec<EvalArtifact>,
@@ -299,6 +336,16 @@ impl TassadarExecutorReferenceRunBundle {
             trained_weight_digest: training_report.trained_weight_digest.clone(),
             training_report_digest: training_report.report_digest.clone(),
             linear_benchmark_report_digest: benchmark_digest,
+            boundary_exactness_report_digest: boundary_exactness_report
+                .map(|report| report.report_digest.clone()),
+            divergence_histogram_report_digest: divergence_histogram_report
+                .map(|report| report.report_digest.clone()),
+            first_token_confusion_report_digest: first_token_confusion_report
+                .map(|report| report.report_digest.clone()),
+            checkpoint_leaderboard_report_digest: Some(stable_digest(
+                b"psionic_tassadar_executor_checkpoint_leaderboard|",
+                &training_report.checkpoint_leaderboard,
+            )),
             neural_hull_benchmark_report_digest: None,
             checkpoint_artifact_digest: checkpoint_artifact.artifact_digest.clone(),
             model_artifact_digest: model_artifact.artifact_digest.clone(),
@@ -388,6 +435,21 @@ pub fn execute_tassadar_reference_training_run(
     execute_tassadar_training_run(output_dir, &tassadar_executor_reference_run_config(), None)
 }
 
+/// Returns the canonical config for the first boundary-curriculum follow-on run.
+#[must_use]
+pub fn tassadar_executor_boundary_run_config() -> TassadarExecutorTrainingConfig {
+    let mut config = TassadarExecutorTrainingConfig::boundary_curriculum_reference();
+    config.run_id = String::from(TASSADAR_EXECUTOR_BOUNDARY_RUN_ID);
+    config
+}
+
+/// Executes the first boundary-curriculum follow-on run and persists its artifacts.
+pub fn execute_tassadar_boundary_training_run(
+    output_dir: &Path,
+) -> Result<TassadarExecutorReferenceRunBundle, TassadarExecutorRunError> {
+    execute_tassadar_training_run(output_dir, &tassadar_executor_boundary_run_config(), None)
+}
+
 /// Executes one persisted Tassadar training run with an optional benchmark split filter.
 pub fn execute_tassadar_training_run(
     output_dir: &Path,
@@ -399,18 +461,28 @@ pub fn execute_tassadar_training_run(
         error,
     })?;
 
-    let training_manifest =
-        build_tassadar_sudoku_v0_sequence_training_manifest(config.dataset_version.as_str())?;
+    let training_manifest = build_tassadar_sequence_training_manifest(
+        config.workload,
+        config.dataset_version.as_str(),
+    )?;
     let outcome = train_tassadar_executor_transformer(config)?;
-    let dataset_bundle = build_tassadar_sudoku_v0_sequence_dataset(config.dataset_version.as_str())
-        .map_err(TassadarExecutorTrainingError::from)?;
+    let dataset_bundle =
+        build_tassadar_sequence_dataset(config.workload, config.dataset_version.as_str())
+            .map_err(TassadarExecutorTrainingError::from)?;
     let benchmark_report = benchmark_tassadar_executor_linear_decode(
         &outcome.model,
         &dataset_bundle.dataset,
         benchmark_split_filter,
     )
     .map_err(TassadarExecutorTrainingError::from)?;
+    let boundary_exactness_report =
+        build_tassadar_executor_boundary_exactness_report(&outcome.report.evaluation);
+    let divergence_histogram_report =
+        build_tassadar_executor_divergence_histogram_report(&outcome.report.evaluation);
+    let first_token_confusion_report =
+        build_tassadar_executor_first_token_confusion_report(&outcome.report.evaluation);
     let checkpoint_state = TassadarExecutorCheckpointState::new(
+        outcome.report.best_checkpoint_id.as_str(),
         config.run_id.as_str(),
         &training_manifest,
         &outcome.model,
@@ -463,6 +535,30 @@ pub fn execute_tassadar_training_run(
     )?);
     artifacts.push(write_json_artifact(
         output_dir,
+        TASSADAR_EXECUTOR_BOUNDARY_EXACTNESS_REPORT_FILE,
+        "tassadar_boundary_exactness_report",
+        &boundary_exactness_report,
+    )?);
+    artifacts.push(write_json_artifact(
+        output_dir,
+        TASSADAR_EXECUTOR_DIVERGENCE_HISTOGRAM_FILE,
+        "tassadar_divergence_histogram_report",
+        &divergence_histogram_report,
+    )?);
+    artifacts.push(write_json_artifact(
+        output_dir,
+        TASSADAR_EXECUTOR_FIRST_TOKEN_CONFUSION_FILE,
+        "tassadar_first_token_confusion_report",
+        &first_token_confusion_report,
+    )?);
+    artifacts.push(write_json_artifact(
+        output_dir,
+        TASSADAR_EXECUTOR_CHECKPOINT_LEADERBOARD_FILE,
+        "tassadar_checkpoint_leaderboard",
+        &outcome.report.checkpoint_leaderboard,
+    )?);
+    artifacts.push(write_json_artifact(
+        output_dir,
         CHECKPOINT_ARTIFACT_FILE,
         "tassadar_checkpoint_artifact",
         &checkpoint_artifact,
@@ -494,6 +590,9 @@ pub fn execute_tassadar_training_run(
         &training_manifest,
         &outcome.report,
         &benchmark_report,
+        Some(&boundary_exactness_report),
+        Some(&divergence_histogram_report),
+        Some(&first_token_confusion_report),
         &checkpoint_artifact,
         &model_artifact,
         artifacts,
@@ -571,14 +670,18 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        execute_tassadar_training_run, tassadar_executor_reference_run_config,
-        TassadarExecutorCheckpointState, CHECKPOINT_STATE_FILE, MODEL_ARTIFACT_FILE,
-        RUN_BUNDLE_FILE, TRAINING_REPORT_FILE,
+        CHECKPOINT_STATE_FILE, MODEL_ARTIFACT_FILE, RUN_BUNDLE_FILE,
+        TASSADAR_EXECUTOR_BOUNDARY_EXACTNESS_REPORT_FILE,
+        TASSADAR_EXECUTOR_CHECKPOINT_LEADERBOARD_FILE, TASSADAR_EXECUTOR_DIVERGENCE_HISTOGRAM_FILE,
+        TASSADAR_EXECUTOR_FIRST_TOKEN_CONFUSION_FILE, TRAINING_REPORT_FILE,
+        TassadarExecutorCheckpointState, execute_tassadar_boundary_training_run,
+        execute_tassadar_training_run, tassadar_executor_boundary_run_config,
+        tassadar_executor_reference_run_config,
     };
 
     #[test]
-    fn persisted_reference_run_writes_reconstructable_artifacts(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn persisted_reference_run_writes_reconstructable_artifacts()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let bundle = execute_tassadar_training_run(
             temp.path(),
@@ -590,6 +693,26 @@ mod tests {
         assert!(temp.path().join(CHECKPOINT_STATE_FILE).exists());
         assert!(temp.path().join(MODEL_ARTIFACT_FILE).exists());
         assert!(temp.path().join(RUN_BUNDLE_FILE).exists());
+        assert!(
+            temp.path()
+                .join(TASSADAR_EXECUTOR_BOUNDARY_EXACTNESS_REPORT_FILE)
+                .exists()
+        );
+        assert!(
+            temp.path()
+                .join(TASSADAR_EXECUTOR_DIVERGENCE_HISTOGRAM_FILE)
+                .exists()
+        );
+        assert!(
+            temp.path()
+                .join(TASSADAR_EXECUTOR_FIRST_TOKEN_CONFUSION_FILE)
+                .exists()
+        );
+        assert!(
+            temp.path()
+                .join(TASSADAR_EXECUTOR_CHECKPOINT_LEADERBOARD_FILE)
+                .exists()
+        );
         assert!(!bundle.bundle_digest.is_empty());
 
         let checkpoint: TassadarExecutorCheckpointState =
@@ -603,6 +726,24 @@ mod tests {
             restored.descriptor().weights.digest,
             checkpoint.trained_weight_digest
         );
+        Ok(())
+    }
+
+    #[test]
+    fn persisted_boundary_run_uses_boundary_curriculum_config()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let bundle = execute_tassadar_boundary_training_run(temp.path())?;
+
+        assert_eq!(
+            bundle.run_id,
+            tassadar_executor_boundary_run_config().run_id
+        );
+        assert_eq!(bundle.dataset_version, "train-v0");
+        assert!(bundle.boundary_exactness_report_digest.is_some());
+        assert!(bundle.divergence_histogram_report_digest.is_some());
+        assert!(bundle.first_token_confusion_report_digest.is_some());
+        assert!(bundle.checkpoint_leaderboard_report_digest.is_some());
         Ok(())
     }
 }

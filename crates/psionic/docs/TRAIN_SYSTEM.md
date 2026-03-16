@@ -257,6 +257,17 @@ That now includes one intentionally narrow executor-training answer:
   plan keeps the promotion gate explicit, so Phase 11 now means “real 9x9
   workload and curriculum path exist” rather than “the 9x9 trained executor is
   already good”
+- the Phase 12 boundary-truth run now also exists above that baseline:
+  `psionic-eval` emits first-target / first-8 / first-32 exactness plus
+  first-divergence and confusion reports, `psionic-train` now supports an
+  explicit boundary curriculum with per-epoch validation and boundary-ranked
+  checkpoint selection, and the resulting follow-on run bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_boundary_v1` records that
+  the selected checkpoint clears the token-0 boundary (`10000` bps
+  first-target exactness, no token-0 confusions, divergence bucket moved to
+  target index `1`) while still failing the later gates (`5000` bps first-32
+  exactness, `0/2` exact traces); `docs/audits/2026-03-16-tassadar-phase-12-boundary-audit.md`
+  is the human-readable companion note for that run
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim
