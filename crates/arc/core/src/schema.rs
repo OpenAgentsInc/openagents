@@ -12,8 +12,12 @@ pub const ARC_CORE_SCHEMA_VERSION: u32 = 1;
 pub const SCHEMA_BOUNDARY_SUMMARY: &str = "Own ARC task/grid/example value types and shared identifiers. Do not absorb benchmark policy, transport behavior, solver search state, or reusable Psionic substrate.";
 /// ARC tasks are 2D grids with edge sizes in the 1..=30 range.
 pub const ARC_GRID_MAX_EDGE: u8 = 30;
+/// ARC-AGI-3 frame rasters are bounded by the 64x64 interaction surface.
+pub const ARC_FRAME_MAX_EDGE: u8 = 64;
 /// ARC palette values stay in the canonical 0..=9 range.
 pub const ARC_PALETTE_SIZE: u8 = 10;
+/// `ACTION6` coordinates stay inside the 0..=63 grid advertised upstream.
+pub const ARC_ACTION6_COORDINATE_MAX: u8 = 63;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArcTaskId(String);
@@ -217,9 +221,347 @@ pub enum ArcTaskError {
     MissingTestInputs,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArcBenchmark {
+    ArcAgi1,
+    ArcAgi2,
+    ArcAgi3,
+    InternalSynthetic,
+    InternalHoldout,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ArcAction {
+    Reset,
+    Action1,
+    Action2,
+    Action3,
+    Action4,
+    Action5,
+    Action6 { x: u8, y: u8 },
+    Action7,
+}
+
+impl ArcAction {
+    pub fn action6(x: u8, y: u8) -> Result<Self, ArcActionError> {
+        if x > ARC_ACTION6_COORDINATE_MAX {
+            return Err(ArcActionError::CoordinateOutOfRange {
+                axis: "x",
+                value: x,
+            });
+        }
+        if y > ARC_ACTION6_COORDINATE_MAX {
+            return Err(ArcActionError::CoordinateOutOfRange {
+                axis: "y",
+                value: y,
+            });
+        }
+        Ok(Self::Action6 { x, y })
+    }
+}
+
+impl Serialize for ArcAction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let wire = match self {
+            Self::Reset => ArcActionWire {
+                kind: "RESET".to_owned(),
+                x: None,
+                y: None,
+            },
+            Self::Action1 => ArcActionWire {
+                kind: "ACTION1".to_owned(),
+                x: None,
+                y: None,
+            },
+            Self::Action2 => ArcActionWire {
+                kind: "ACTION2".to_owned(),
+                x: None,
+                y: None,
+            },
+            Self::Action3 => ArcActionWire {
+                kind: "ACTION3".to_owned(),
+                x: None,
+                y: None,
+            },
+            Self::Action4 => ArcActionWire {
+                kind: "ACTION4".to_owned(),
+                x: None,
+                y: None,
+            },
+            Self::Action5 => ArcActionWire {
+                kind: "ACTION5".to_owned(),
+                x: None,
+                y: None,
+            },
+            Self::Action6 { x, y } => ArcActionWire {
+                kind: "ACTION6".to_owned(),
+                x: Some(*x),
+                y: Some(*y),
+            },
+            Self::Action7 => ArcActionWire {
+                kind: "ACTION7".to_owned(),
+                x: None,
+                y: None,
+            },
+        };
+        wire.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ArcAction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ArcActionWire::deserialize(deserializer)?;
+        match wire.kind.as_str() {
+            "RESET" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Reset)
+            }
+            "ACTION1" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Action1)
+            }
+            "ACTION2" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Action2)
+            }
+            "ACTION3" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Action3)
+            }
+            "ACTION4" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Action4)
+            }
+            "ACTION5" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Action5)
+            }
+            "ACTION6" => {
+                let x = wire
+                    .x
+                    .ok_or_else(|| de::Error::custom(ArcActionError::MissingCoordinate("x")))?;
+                let y = wire
+                    .y
+                    .ok_or_else(|| de::Error::custom(ArcActionError::MissingCoordinate("y")))?;
+                Self::action6(x, y).map_err(de::Error::custom)
+            }
+            "ACTION7" => {
+                reject_unexpected_coordinates(&wire).map_err(de::Error::custom)?;
+                Ok(Self::Action7)
+            }
+            other => Err(de::Error::custom(ArcActionError::UnknownActionKind(
+                other.to_owned(),
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArcActionError {
+    #[error("ARC action kind is unknown: {0}")]
+    UnknownActionKind(String),
+    #[error("ARC {0} coordinate is required for ACTION6")]
+    MissingCoordinate(&'static str),
+    #[error("ARC action {kind} must not carry coordinates")]
+    UnexpectedCoordinates { kind: String },
+    #[error(
+        "ARC ACTION6 coordinate {axis} must be in the 0..={ARC_ACTION6_COORDINATE_MAX} range, got {value}"
+    )]
+    CoordinateOutOfRange { axis: &'static str, value: u8 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArcFrameData {
+    width: u8,
+    height: u8,
+    pixels: Vec<u8>,
+}
+
+impl ArcFrameData {
+    pub fn new(width: u8, height: u8, pixels: Vec<u8>) -> Result<Self, ArcFrameDataError> {
+        if width == 0 || width > ARC_FRAME_MAX_EDGE {
+            return Err(ArcFrameDataError::InvalidWidth(width));
+        }
+        if height == 0 || height > ARC_FRAME_MAX_EDGE {
+            return Err(ArcFrameDataError::InvalidHeight(height));
+        }
+
+        let expected_len = usize::from(width) * usize::from(height);
+        if pixels.len() != expected_len {
+            return Err(ArcFrameDataError::MismatchedPixelCount {
+                expected: expected_len,
+                actual: pixels.len(),
+            });
+        }
+
+        if let Some(color) = pixels
+            .iter()
+            .copied()
+            .find(|cell| *cell >= ARC_PALETTE_SIZE)
+        {
+            return Err(ArcFrameDataError::InvalidColor(color));
+        }
+
+        Ok(Self {
+            width,
+            height,
+            pixels,
+        })
+    }
+
+    #[must_use]
+    pub fn width(&self) -> u8 {
+        self.width
+    }
+
+    #[must_use]
+    pub fn height(&self) -> u8 {
+        self.height
+    }
+
+    #[must_use]
+    pub fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+}
+
+impl Serialize for ArcFrameData {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        ArcFrameDataWire {
+            width: self.width,
+            height: self.height,
+            pixels: self.pixels.clone(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ArcFrameData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ArcFrameDataWire::deserialize(deserializer)?;
+        Self::new(wire.width, wire.height, wire.pixels).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArcFrameDataError {
+    #[error("ARC frame width must be in the 1..={ARC_FRAME_MAX_EDGE} range, got {0}")]
+    InvalidWidth(u8),
+    #[error("ARC frame height must be in the 1..={ARC_FRAME_MAX_EDGE} range, got {0}")]
+    InvalidHeight(u8),
+    #[error("ARC frame pixel count mismatch: expected {expected}, got {actual}")]
+    MismatchedPixelCount { expected: usize, actual: usize },
+    #[error("ARC frame color must be in the 0..=9 range, got {0}")]
+    InvalidColor(u8),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcObservation {
+    pub frame: ArcFrameData,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcEpisodeStep {
+    pub step_index: u32,
+    pub action: ArcAction,
+    pub observation: ArcObservation,
+    pub terminal: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcRecording {
+    pub benchmark: ArcBenchmark,
+    pub task_id: ArcTaskId,
+    pub steps: Vec<ArcEpisodeStep>,
+}
+
+impl ArcRecording {
+    pub fn new(
+        benchmark: ArcBenchmark,
+        task_id: ArcTaskId,
+        steps: Vec<ArcEpisodeStep>,
+    ) -> Result<Self, ArcRecordingError> {
+        if steps.is_empty() {
+            return Err(ArcRecordingError::MissingSteps);
+        }
+        Ok(Self {
+            benchmark,
+            task_id,
+            steps,
+        })
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArcRecordingError {
+    #[error("ARC recording must include at least one step")]
+    MissingSteps,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArcScorecardMetadata {
+    pub source_url: Option<String>,
+    pub tags: Vec<String>,
+    pub opaque: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArcLevelScore {
+    pub level_index: u16,
+    pub action_count: u32,
+    pub score: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArcScorecard {
+    pub benchmark: ArcBenchmark,
+    pub task_id: ArcTaskId,
+    pub overall_score: f32,
+    pub metadata: ArcScorecardMetadata,
+    pub levels: Vec<ArcLevelScore>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ArcGridWire {
     width: u8,
     height: u8,
     cells: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct ArcActionWire {
+    kind: String,
+    #[serde(default)]
+    x: Option<u8>,
+    #[serde(default)]
+    y: Option<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct ArcFrameDataWire {
+    width: u8,
+    height: u8,
+    pixels: Vec<u8>,
+}
+
+fn reject_unexpected_coordinates(action: &ArcActionWire) -> Result<(), ArcActionError> {
+    if action.x.is_some() || action.y.is_some() {
+        return Err(ArcActionError::UnexpectedCoordinates {
+            kind: action.kind.clone(),
+        });
+    }
+    Ok(())
 }

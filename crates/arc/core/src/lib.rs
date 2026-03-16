@@ -26,8 +26,11 @@ pub use envelopes::{
     EXECUTION_ENVELOPE_BOUNDARY_SUMMARY, SolveBudget,
 };
 pub use schema::{
-    ARC_CORE_SCHEMA_VERSION, ARC_GRID_MAX_EDGE, ARC_PALETTE_SIZE, ArcExample, ArcGrid,
-    ArcGridError, ArcTask, ArcTaskError, ArcTaskId, ArcTaskIdError, SCHEMA_BOUNDARY_SUMMARY,
+    ARC_ACTION6_COORDINATE_MAX, ARC_CORE_SCHEMA_VERSION, ARC_FRAME_MAX_EDGE, ARC_GRID_MAX_EDGE,
+    ARC_PALETTE_SIZE, ArcAction, ArcActionError, ArcBenchmark, ArcEpisodeStep, ArcExample,
+    ArcFrameData, ArcFrameDataError, ArcGrid, ArcGridError, ArcLevelScore, ArcObservation,
+    ArcRecording, ArcRecordingError, ArcScorecard, ArcScorecardMetadata, ArcTask, ArcTaskError,
+    ArcTaskId, ArcTaskIdError, SCHEMA_BOUNDARY_SUMMARY,
 };
 
 /// Stable internal layers that downstream ARC crates are allowed to build on.
@@ -35,7 +38,7 @@ pub const ARC_CORE_LAYER_BOUNDARIES: [&str; 3] = ["schema", "analysis", "envelop
 
 #[cfg(test)]
 mod tests {
-    use crate::{ARC_CORE_LAYER_BOUNDARIES, ArcGrid, ArcTaskId};
+    use crate::{ARC_CORE_LAYER_BOUNDARIES, ArcAction, ArcGrid, ArcTaskId};
 
     #[test]
     fn arc_task_id_normalizes_and_validates() {
@@ -56,6 +59,12 @@ mod tests {
     #[test]
     fn arc_grid_rejects_invalid_shapes() {
         let invalid = ArcGrid::new(2, 2, vec![0, 1, 2]);
+        assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn action6_rejects_out_of_bounds_coordinates() {
+        let invalid = ArcAction::action6(64, 0);
         assert!(invalid.is_err());
     }
 }

@@ -7,7 +7,10 @@
 
 use std::fs;
 
-use arc_core::{ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget, summarize_grid};
+use arc_core::{
+    ArcAction, ArcBenchmark, ArcRecording, ArcScorecard, ArcTask, ArcTaskId, GridAnalysisSummary,
+    SolveBudget, summarize_grid,
+};
 
 #[test]
 fn minimal_task_fixture_round_trips() {
@@ -58,4 +61,34 @@ fn solve_budget_serializes_stably() {
         serialized,
         "{\"max_attempts\":8,\"max_steps\":64,\"max_runtime_millis\":1500}"
     );
+}
+
+#[test]
+fn recording_fixture_round_trips() {
+    let fixture = fs::read_to_string("fixtures/minimal_recording.json")
+        .expect("recording fixture should be readable from the crate root");
+    let recording: ArcRecording =
+        serde_json::from_str(&fixture).expect("recording fixture should deserialize");
+
+    assert_eq!(recording.benchmark, ArcBenchmark::ArcAgi3);
+    assert_eq!(recording.steps.len(), 2);
+    assert_eq!(recording.steps[0].action, ArcAction::Reset);
+    assert_eq!(
+        recording.steps[1].action,
+        ArcAction::action6(1, 0).expect("valid coordinate")
+    );
+    assert!(recording.steps[1].terminal);
+}
+
+#[test]
+fn scorecard_fixture_round_trips() {
+    let fixture = fs::read_to_string("fixtures/minimal_scorecard.json")
+        .expect("scorecard fixture should be readable from the crate root");
+    let scorecard: ArcScorecard =
+        serde_json::from_str(&fixture).expect("scorecard fixture should deserialize");
+
+    assert_eq!(scorecard.benchmark, ArcBenchmark::ArcAgi3);
+    assert_eq!(scorecard.metadata.tags, vec!["fixture", "demo"]);
+    assert_eq!(scorecard.levels.len(), 1);
+    assert_eq!(scorecard.levels[0].action_count, 2);
 }

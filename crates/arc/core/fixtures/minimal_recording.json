@@ -1,0 +1,36 @@
+{
+  "benchmark": "arc_agi3",
+  "task_id": "demo-bridge-task",
+  "steps": [
+    {
+      "step_index": 0,
+      "action": {
+        "kind": "RESET"
+      },
+      "observation": {
+        "frame": {
+          "width": 2,
+          "height": 2,
+          "pixels": [0, 0, 0, 0]
+        }
+      },
+      "terminal": false
+    },
+    {
+      "step_index": 1,
+      "action": {
+        "kind": "ACTION6",
+        "x": 1,
+        "y": 0
+      },
+      "observation": {
+        "frame": {
+          "width": 2,
+          "height": 2,
+          "pixels": [1, 0, 0, 0]
+        }
+      },
+      "terminal": true
+    }
+  ]
+}
