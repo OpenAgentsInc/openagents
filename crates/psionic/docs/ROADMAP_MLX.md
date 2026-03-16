@@ -5,13 +5,14 @@
 > `TRAIN_SYSTEM.md`,
 > `deep-research-mlx.md`, and
 > `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`,
-> and after reviewing the local upstream MLX checkout at `~/code/mlx`.
+> and after reviewing the local upstream MLX checkout at `~/code/mlx` and the
+> local MLX ecosystem checkout at `~/code/ivanf`.
 >
 > This is the lane-specific roadmap for building an MLX-class framework surface
 > inside `crates/psionic/*`. It is intentionally narrower than
 > `crates/psionic/docs/ROADMAP.md`: it is about the MLX-shaped array,
-> transform, module, export, and distributed-semantics program in Rust, not
-> the whole Psionic library roadmap.
+> transform, module, export, distributed-semantics, and package-ecosystem
+> program in Rust, not the whole Psionic library roadmap.
 
 Agent execution instruction: implement this roadmap in dependency order, not by
 whichever backend or compatibility surface looks most tempting first. The first
@@ -80,6 +81,14 @@ Build an MLX-class framework surface inside Psionic with:
 - framework-level distributed helpers above Psionic collectives and cluster
   truth
 - backend-visible memory, cache, profiling, and debug tooling
+- an `mlx-lm`-class text package and CLI above the native framework core,
+  including prompt-cache and model-catalog workflows
+- OpenAI-compatible text and multimodal serving surfaces with tool calling,
+  structured output, logprobs, and explicit model-lifecycle truth
+- `mlx-vlm`-class multimodal and `mlx-audio`-class speech or audio package
+  families where the underlying Psionic substrate is real
+- training-recipe and benchmark packages above `psionic-train` and
+  `psionic-eval`, not sidecar Python-only ecosystems
 - a bounded MLX compatibility shell only after the native substrate is real
 
 This is not a plan to:
@@ -88,6 +97,8 @@ This is not a plan to:
 - rewrite Psionic around Python
 - turn Apple unified memory assumptions into cross-backend lies
 - use MLX compatibility as a substitute for native semantics
+- port every notebook, Gradio demo, or desktop shell from the MLX ecosystem
+  into Psionic crates
 
 ## Relationship To The Main Roadmap
 
@@ -145,6 +156,8 @@ The biggest current gaps are:
 - no function-export/import layer above the current IR
 - no MLX-class framework-distributed API above collectives
 - no dedicated MLX parity harness or version window
+- no MLX-class package ecosystem above the framework surface for text,
+  multimodal, audio, serving, training-recipe, or benchmark workflows
 
 ## Current Position
 
@@ -164,9 +177,47 @@ Psionic already has strong lower-layer fit for this work:
 
 What is missing is the MLX-shaped public semantics layer above that substrate.
 
+## Ecosystem Evidence From `~/code/ivanf`
+
+Reviewing `~/code/ivanf` clarified that "full MLX port" means more than the
+upstream `mlx` framework repo.
+
+The local ecosystem check shows concrete package layers Psionic does not yet
+name explicitly in this roadmap:
+
+- `mlx-lm` adds the text-model package expectations: `load`, `generate`,
+  `stream_generate`, chat or batch helpers, Hugging Face conversion flows,
+  prompt-cache artifacts, rotating KV caches, quantized KV caches, and a broad
+  architecture-registry model family
+- `maclocal-api` adds the serving expectations: OpenAI-compatible endpoints,
+  model hot-load or unload, prompt-prefix caching, tool-call extraction,
+  guided or JSON-shaped output, stop-sequence handling, logprobs, and
+  reasoning-content extraction
+- `mlx-vlm` shows that the practical MLX ecosystem now includes image, audio,
+  and video-capable package and server surfaces, not only text LLM helpers
+- `mlx-audio` shows a real speech and audio layer above MLX, including TTS,
+  speech-to-speech, codec-style models, quantized checkpoint flows, and server
+  packaging
+- `mlx-lm-lora` and `unsloth-mlx` show a recipe layer above the framework and
+  train substrate: LoRA, DoRA, QLoRA, DPO, ORPO, GRPO-family methods,
+  synthetic-data generation, reward or judge stages, and GGUF or HF export
+- `mlx-openbench` shows the benchmark or eval package discipline expected from
+  a serious local model ecosystem
+- `vllm-metal` is not a direct port target for Psionic, but it does confirm
+  that scheduler-aware serving, cache policy, and long-context inference
+  ergonomics are first-class ecosystem requirements rather than optional demos
+
+The right implication is not "clone these repos in Rust."
+
+The right implication is:
+
+- keep the framework-native port first
+- then add the package and service layer that makes the MLX lane actually
+  usable as an ecosystem inside `crates/psionic/*`
+
 ## Success Bar
 
-The MLX lane should be judged against four progressively stronger claims.
+The MLX lane should be judged against five progressively stronger claims.
 
 ### Claim 1: `mlx-core-surface`
 
@@ -184,7 +235,12 @@ Psionic can expose MLX-class framework-distributed semantics above its own
 collectives and cluster truth, including gradient averaging, tensor-parallel
 helpers, and FSDP-class update helpers.
 
-### Claim 4: `mlx-compatible-bounded`
+### Claim 4: `mlx-ecosystem-usable`
+
+Psionic can expose a real MLX-class package ecosystem above the native core for
+text, multimodal, audio, serving, training recipes, and benchmark workflows.
+
+### Claim 5: `mlx-compatible-bounded`
 
 Psionic can make explicit bounded compatibility claims against a named upstream
 MLX version window, backed by parity harnesses and explicit supported,
@@ -192,7 +248,7 @@ convertible, and unsupported matrices.
 
 ## Roadmap Shape
 
-This roadmap is organized into seven epics.
+This roadmap is organized into eight epics.
 
 | Epic | Theme | Outcome |
 | --- | --- | --- |
@@ -203,9 +259,10 @@ This roadmap is organized into seven epics.
 | Epic 4 | Export, serialization, and tooling | general array IO, native function export, optional `.mlxfn` interop, memory tools, and debug tools |
 | Epic 5 | Framework distributed semantics | MLX-class distributed groups and helpers on top of Psionic collectives |
 | Epic 6 | Backend closure and compatibility shell | CPU, Metal, CUDA, test closure, and bounded compatibility or bindings |
+| Epic 7 | Ecosystem packages and service surfaces | `mlx-lm`-class text tooling, multimodal and audio packages, serving lanes, recipe APIs, and benchmark packages |
 
-There is no GitHub issue block yet. This document is the source of truth for
-opening that queue.
+There is no GitHub issue queue opened from this block yet. This document is the
+source of truth for opening that queue.
 
 ## Epic 0: Governance And Parity Discipline
 
@@ -385,6 +442,37 @@ MLX claims honest.
 | `PMLX-607` | planned | `Psionic MLX: add optional Python, C, or Swift binding layers above the Rust-native core` | Bindings are explicitly late-surface work and must depend on the native substrate rather than freezing a Python-first architecture into the core. |
 | `PMLX-608` | planned | `Psionic MLX: publish an MLX-to-Psionic migration guide, example suite, and bounded compatibility matrix` | Finish the adoption story with examples, migration steps, and explicit supported, convertible, and unsupported tables. |
 
+## Epic 7: Ecosystem Packages And Service Surfaces
+
+### Goal
+
+Close the package and service layer that makes the MLX lane usable as an
+ecosystem inside Psionic rather than only as a low-level framework port.
+
+### Exit Criteria
+
+- one `mlx-lm`-class text package and CLI exists above the native framework
+- one reusable OpenAI-compatible served text lane exists with structured-output
+  and tool-calling behavior
+- one multimodal package family exists above the same core
+- one audio package family exists above the same core
+- one recipe layer exists above `psionic-train`
+- one benchmark package exists above `psionic-eval`
+
+### Issues
+
+| ID | Status | Proposed GitHub issue title | Description |
+| --- | --- | --- | --- |
+| `PMLX-701` | planned | `Psionic MLX: add an mlx-lm-class text package with load, generate, stream, batch, and prompt-cache workflows` | Build the first text-model package and CLI above `psionic-models` and the MLX-class framework core, including chat templating, sampler composition, batch generation, rotating and quantized KV-cache behavior, and persisted prompt-cache artifacts. |
+| `PMLX-702` | planned | `Psionic MLX: build model-catalog, Hugging Face cache, and architecture-registry workflows for MLX-class packages` | Add model-id resolution, local cache discovery, architecture-specific loader registration, conversion entrypoints, and explicit trust or refusal policy for remote processor or template metadata so the ecosystem can support `mlx-community`-style catalogs honestly. |
+| `PMLX-703` | planned | `Psionic MLX: expose an OpenAI-compatible text-serving surface with tool calling, structured output, logprobs, and prefix caching` | Build a reusable served text lane in `psionic-serve` with chat or responses endpoints, streaming and non-streaming behavior, tool-call extraction, JSON-schema or guided-output posture, logprobs, stop-sequence handling, model hot-load or unload, reasoning-content extraction, and prefix-cache reuse. |
+| `PMLX-704` | planned | `Psionic MLX: add a multimodal package and served surface for image, audio, and video inputs` | Land the `mlx-vlm` analogue above `psionic-models` and `psionic-serve`, including processor registries, multimodal prompt shaping, OpenAI-compatible image or audio request shapes, and bounded model-family coverage for VLM and omni models. |
+| `PMLX-705` | planned | `Psionic MLX: add an audio package for TTS, speech-to-speech, codecs, and speech model IO` | Add the `mlx-audio` analogue for reusable audio generation and codec models, keeping UI shells out of Psionic while supporting library, CLI, and server surfaces, streaming audio outputs, quantized checkpoints, and honest voice or reference-conditioning posture. |
+| `PMLX-706` | planned | `Psionic MLX: add a training-recipe layer for LoRA, DoRA, QLoRA, and preference or RL methods above psionic-train` | Build ergonomic MLX-class recipe APIs and CLIs on top of `psionic-train` for SFT, LoRA or DoRA or QLoRA, DPO or CPO or ORPO, GRPO-family methods, online DPO or XPO, PPO, and related bounded methods without creating a second trainer architecture outside Psionic. |
+| `PMLX-707` | planned | `Psionic MLX: add synthetic-data, judge or reward-model, adapter-merge, and publish workflows` | Add synthetic SFT and preference dataset generation, reward or judge model training helpers, adapter merge or export, GGUF or Hugging Face publish pipeline, and lineage-bound dataset or output manifests so recipe work produces reusable artifacts rather than notebook-only side effects. |
+| `PMLX-708` | planned | `Psionic MLX: add an openbench-class evaluation and benchmark package for local MLX-class providers` | Build the benchmark and eval package plus provider adapter layer that makes local MLX-text, multimodal, and served lanes easy to score across standardized tasks and local or private eval suites while reusing `psionic-eval` and receipt truth. |
+| `PMLX-709` | planned | `Psionic MLX: publish ecosystem CLIs, examples, and migration guides without leaking product UX into app code` | Ship the package-facing CLI and example layer for text, multimodal, audio, serving, training recipes, and evaluation so the MLX lane is usable as an ecosystem in this repo, while keeping Gradio demos, desktop pickers, and product UX out of `crates/psionic/*`. |
+
 ## Current Execution Order
 
 ### Phase 1: freeze the MLX parity contract
@@ -442,13 +530,28 @@ MLX claims honest.
 - `PMLX-506`
 - `PMLX-507`
 
-### Phase 7: close backend breadth and only then add bounded compatibility shells
+### Phase 7: close backend breadth and parity evidence
 
 - `PMLX-601`
 - `PMLX-602`
 - `PMLX-603`
 - `PMLX-604`
 - `PMLX-605`
+
+### Phase 8: close the package and service ecosystem above the native substrate
+
+- `PMLX-701`
+- `PMLX-702`
+- `PMLX-703`
+- `PMLX-704`
+- `PMLX-705`
+- `PMLX-706`
+- `PMLX-707`
+- `PMLX-708`
+- `PMLX-709`
+
+### Phase 9: only then add bounded compatibility shells, bindings, and migration facades
+
 - `PMLX-606`
 - `PMLX-607`
 - `PMLX-608`
@@ -481,6 +584,11 @@ transform, `nn`, or distributed semantics.
 
 MLX parity claims are only honest if CPU reference semantics are green first.
 
+### 7. Do not port notebook or web-UI convenience layers into Psionic crates
+
+Package-facing CLIs, libraries, and service surfaces belong in Psionic.
+Gradio apps, desktop pickers, and product UX do not.
+
 ## Bottom Line
 
 The right structural decision is:
@@ -491,7 +599,10 @@ The right structural decision is:
 The right programmatic decision is:
 
 - build a Rust-native MLX-class framework surface above Psionic's current core
-- reuse current optimizer, IO, collectives, cluster, and runtime substrate
+- extend that core into a Psionic-owned MLX package ecosystem for text,
+  multimodal, audio, serving, training recipes, and evaluation
+- reuse current optimizer, IO, collectives, cluster, runtime, serve, and eval
+  substrate
 - delay compatibility shells and bindings until the native semantics are honest
 
 This document is now the source of truth for opening the MLX issue program on
