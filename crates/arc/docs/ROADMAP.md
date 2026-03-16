@@ -738,6 +738,10 @@ score, trajectory, and environment truth into ad hoc prompting.
 - baseline agents are reproducible and replayable
 - interactive run artifacts are compatible with `arc-benchmark`
 
+Those exit criteria are now satisfied in bounded retained form. The remaining
+ARC-AGI-3 work is Phase 5 model/training work plus later Phase 6 hardening,
+not missing Epic 4 runtime contracts.
+
 Master issue:
 [#3810](https://github.com/OpenAgentsInc/openagents/issues/3810)
 
