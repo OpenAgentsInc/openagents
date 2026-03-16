@@ -1,0 +1,61 @@
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::unwrap_used
+)]
+
+use std::fs;
+
+use arc_core::{ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget, summarize_grid};
+
+#[test]
+fn minimal_task_fixture_round_trips() {
+    let fixture = fs::read_to_string("fixtures/minimal_task.json")
+        .expect("fixture should be readable from the crate root");
+    let task: ArcTask = serde_json::from_str(&fixture).expect("fixture should deserialize");
+
+    assert_eq!(
+        task.id,
+        ArcTaskId::new("demo-bridge-task").expect("valid task id")
+    );
+    assert_eq!(task.train.len(), 1);
+    assert_eq!(task.test.len(), 1);
+}
+
+#[test]
+fn analysis_summary_matches_expected_contract() {
+    let fixture = fs::read_to_string("fixtures/minimal_task.json")
+        .expect("fixture should be readable from the crate root");
+    let task: ArcTask = serde_json::from_str(&fixture).expect("fixture should deserialize");
+    let analysis = summarize_grid(&task.train[0].input);
+
+    assert_eq!(
+        analysis,
+        GridAnalysisSummary {
+            palette: vec![0, 1, 2],
+            non_background_cell_count: 2,
+            bounding_box: Some(arc_core::ArcBoundingBox {
+                min_x: 0,
+                min_y: 0,
+                max_x: 1,
+                max_y: 1,
+            }),
+        }
+    );
+}
+
+#[test]
+fn solve_budget_serializes_stably() {
+    let budget = SolveBudget {
+        max_attempts: 8,
+        max_steps: 64,
+        max_runtime_millis: 1_500,
+    };
+
+    let serialized = serde_json::to_string(&budget).expect("budget should serialize");
+    assert_eq!(
+        serialized,
+        "{\"max_attempts\":8,\"max_steps\":64,\"max_runtime_millis\":1500}"
+    );
+}
