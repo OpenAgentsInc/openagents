@@ -1,0 +1,146 @@
+{
+  "model": {
+    "model_id": "tassadar-executor-transformer-sudoku-v0-v0",
+    "family": "tassadar_executor_transformer",
+    "revision": "v0"
+  },
+  "executor_family": "wasm_trace_executor",
+  "profile": {
+    "profile_id": "tassadar.wasm.sudoku_v0_search.v1",
+    "allowed_opcodes": [
+      "i32_const",
+      "local_get",
+      "local_set",
+      "i32_add",
+      "i32_sub",
+      "i32_mul",
+      "i32_load",
+      "i32_store",
+      "br_if",
+      "output",
+      "return"
+    ],
+    "max_locals": 8,
+    "max_memory_slots": 32,
+    "max_program_len": 2048,
+    "max_steps": 32768,
+    "branch_mode": "br_if_non_zero",
+    "host_output_opcode": true
+  },
+  "trace_abi": {
+    "abi_id": "tassadar.trace.v1",
+    "schema_version": 1,
+    "profile_id": "tassadar.wasm.sudoku_v0_search.v1",
+    "append_only": true,
+    "includes_stack_snapshots": true,
+    "includes_local_snapshots": true,
+    "includes_memory_snapshots": true
+  },
+  "supported_decode_modes": [
+    "reference_linear",
+    "hull_cache"
+  ],
+  "attention_mode": "hard_max_lookup",
+  "attention_geometry": {
+    "constrained_lookup_head_dim": 2,
+    "hull_cache_eligible": true
+  },
+  "claim_boundary": "greedy_decode_unvalidated",
+  "trainable_surface": "output_head_embeddings_and_small_learned_mixer",
+  "config": {
+    "vocab_size": 301,
+    "max_sequence_tokens": 262144,
+    "embedding_dim": 16,
+    "context_offsets": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "constrained_lookup_head_dim": 2
+  },
+  "weights": {
+    "format": "ProgrammaticFixture",
+    "source": "Fixture",
+    "quantization": "none",
+    "digest": "20518a553a62b5c8de9c83367c9979e4a5b4c852b23fec2dc9b2d4d05768b7f2",
+    "tensors": [
+      {
+        "name": "head_offsets",
+        "shape": {
+          "dims": [
+            5
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      },
+      {
+        "name": "output_bias",
+        "shape": {
+          "dims": [
+            301
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      },
+      {
+        "name": "output_projection",
+        "shape": {
+          "dims": [
+            96,
+            301
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      },
+      {
+        "name": "position_embeddings",
+        "shape": {
+          "dims": [
+            262144,
+            16
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      },
+      {
+        "name": "small_learned_mixer_bias",
+        "shape": {
+          "dims": [
+            96
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      },
+      {
+        "name": "small_learned_mixer_projection",
+        "shape": {
+          "dims": [
+            96,
+            96
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      },
+      {
+        "name": "token_embeddings",
+        "shape": {
+          "dims": [
+            301,
+            16
+          ]
+        },
+        "dtype": "F32",
+        "quantization": "none"
+      }
+    ],
+    "artifacts": []
+  }
+}

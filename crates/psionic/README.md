@@ -229,6 +229,22 @@ Current posture:
   exact bounded traces, and still loses the lookup baseline on the specific
   gate that matters, so this is a truthful research follow-on rather than a
   learned-lane promotion result
+- the post-Phase-15 boundary-adapter follow-on now also exists in
+  `psionic-models`, `psionic-eval`, `psionic-research`, `docs/audits/`, and
+  three preserved bounded artifact roots at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`:
+  the executor-attention family now carries a bounded relative-target
+  output-bias adapter, the preserved `boundary_v1` artifact records the
+  destructive output-head-only attempt (`10000` bps first-target but only
+  `313` bps first-32), and the accepted `boundary_v2` artifact shows the first
+  honest attention-family boundary improvement that keeps the suffix mostly
+  intact (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32);
+  the corresponding `v4` same-corpus comparison now marks the attention family
+  as more exact than the lookup baseline on the bounded 4x4 window, but the
+  learned gate still remains red because exact validation traces are still
+  `0/2`
 - the separate post-audit Phase 17 bar now also exists in `psionic-models`,
   `psionic-eval`, `psionic-research`, `docs/audits/`, and a canonical bounded
   compiled-lane bundle at

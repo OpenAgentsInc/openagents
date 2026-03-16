@@ -353,6 +353,20 @@ That now includes one intentionally narrow executor-training answer:
   attention family still gets the first target token wrong (`0` bps
   first-target), still yields `0/2` exact bounded traces, and therefore still
   does not clear the open Phase 14 gate
+- the post-Phase-15 boundary-adapter follow-on now also exists beside that
+  trained attention floor: `psionic-models` now carries a bounded
+  relative-target output-bias adapter, `psionic-research` now preserves the
+  failed output-head-only boundary attempt under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`,
+  the improved adapter-backed run under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the corresponding same-corpus comparison under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`;
+  the new run keeps the boundary fix without destroying the bounded suffix
+  (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32) and the
+  comparison now marks the attention family as more exact than the lookup
+  baseline on the same 4x4 bounded window, but the promotion gate is still red
+  because exact validation traces remain `0/2`
 - the separate Phase 17 compiled lane now also exists beside that learned
   stack: `psionic-models` now exposes a bounded typed
   `TassadarCompiledProgramExecutor` with compile-evidence bundles,

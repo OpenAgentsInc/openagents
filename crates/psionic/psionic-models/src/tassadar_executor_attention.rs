@@ -76,6 +76,9 @@ pub struct TassadarExecutorAttentionConfig {
     pub layer_count: usize,
     /// Feed-forward width per layer.
     pub feed_forward_width: usize,
+    /// Number of early decoded target positions that may carry a bounded
+    /// position-specific output-bias adapter.
+    pub relative_target_bias_token_cap: usize,
 }
 
 impl TassadarExecutorAttentionConfig {
@@ -90,6 +93,7 @@ impl TassadarExecutorAttentionConfig {
             head_dim: 2,
             layer_count: 7,
             feed_forward_width: 36,
+            relative_target_bias_token_cap: 32,
         }
     }
 }
@@ -144,6 +148,7 @@ pub struct TassadarExecutorAttentionWeightBundle {
     feed_forward_out: Vec<Vec<f32>>,
     output_projection: Vec<f32>,
     output_bias: Vec<f32>,
+    relative_target_output_bias: Vec<f32>,
 }
 
 impl TassadarExecutorAttentionWeightBundle {
@@ -216,6 +221,10 @@ impl TassadarExecutorAttentionWeightBundle {
             0.06,
         );
         let output_bias = vec![0.0; config.vocab_size];
+        let relative_target_output_bias = vec![
+            0.0;
+            config.relative_target_bias_token_cap * config.vocab_size
+        ];
 
         let mut entries = vec![
             (
@@ -251,6 +260,19 @@ impl TassadarExecutorAttentionWeightBundle {
                 output_bias.as_slice(),
             ),
         ];
+        if config.relative_target_bias_token_cap > 0 {
+            entries.push((
+                WeightTensorMetadata::new(
+                    "relative_target_output_bias",
+                    Shape::new(vec![
+                        config.relative_target_bias_token_cap,
+                        config.vocab_size,
+                    ]),
+                    DType::F32,
+                ),
+                relative_target_output_bias.as_slice(),
+            ));
+        }
         for layer in 0..config.layer_count {
             entries.extend([
                 (
@@ -325,6 +347,7 @@ impl TassadarExecutorAttentionWeightBundle {
             feed_forward_out,
             output_projection,
             output_bias,
+            relative_target_output_bias,
         }
     }
 
@@ -354,6 +377,18 @@ impl TassadarExecutorAttentionWeightBundle {
     /// Returns mutable output bias weights for bounded research training.
     pub fn output_bias_mut(&mut self) -> &mut [f32] {
         &mut self.output_bias
+    }
+
+    /// Returns the flattened relative-target output-bias adapter tensor.
+    #[must_use]
+    pub fn relative_target_output_bias(&self) -> &[f32] {
+        &self.relative_target_output_bias
+    }
+
+    /// Returns mutable relative-target output-bias adapter weights for bounded
+    /// research training.
+    pub fn relative_target_output_bias_mut(&mut self) -> &mut [f32] {
+        &mut self.relative_target_output_bias
     }
 
     fn refresh_metadata(&mut self, config: &TassadarExecutorAttentionConfig) {
@@ -391,6 +426,19 @@ impl TassadarExecutorAttentionWeightBundle {
                 self.output_bias.as_slice(),
             ),
         ];
+        if config.relative_target_bias_token_cap > 0 {
+            entries.push((
+                WeightTensorMetadata::new(
+                    "relative_target_output_bias",
+                    Shape::new(vec![
+                        config.relative_target_bias_token_cap,
+                        config.vocab_size,
+                    ]),
+                    DType::F32,
+                ),
+                self.relative_target_output_bias.as_slice(),
+            ));
+        }
         for layer in 0..config.layer_count {
             entries.extend([
                 (
@@ -539,6 +587,8 @@ impl TassadarExecutorAttentionLayerCache {
 pub struct TassadarExecutorAttentionDecodeState {
     /// Prefix tokens visible to the next decode step.
     pub prefix: TokenSequence,
+    /// Prompt token count before any decoded targets were appended.
+    pub initial_prompt_len: usize,
     /// Layer caches built over the current prefix.
     layer_caches: Vec<TassadarExecutorAttentionLayerCache>,
     /// Per-layer contexts recorded for the last processed token.
@@ -716,6 +766,7 @@ impl TassadarExecutorAttentionTransformer {
         }
         let mut state = TassadarExecutorAttentionDecodeState {
             prefix: TokenSequence::default(),
+            initial_prompt_len: prompt.len(),
             layer_caches: (0..self.descriptor.config.layer_count)
                 .map(|_| TassadarExecutorAttentionLayerCache::new(self.descriptor.config.head_count))
                 .collect(),
@@ -767,7 +818,12 @@ impl TassadarExecutorAttentionTransformer {
                 supported: vec![TassadarExecutorDecodeMode::ReferenceLinear],
             });
         }
-        self.project_logits(self.top_hidden_state(state)?)
+        let relative_target_index =
+            state.prefix.len().saturating_sub(state.initial_prompt_len);
+        self.project_logits_for_relative_target_step(
+            self.top_hidden_state(state)?,
+            relative_target_index,
+        )
     }
 
     /// Greedily chooses the next token for one decode state.
@@ -991,17 +1047,60 @@ impl TassadarExecutorAttentionTransformer {
         &self,
         hidden: &[f32],
     ) -> Result<Vec<f32>, TassadarExecutorAttentionError> {
+        self.project_logits_for_relative_target_step(hidden, usize::MAX)
+    }
+
+    fn project_logits_for_relative_target_step(
+        &self,
+        hidden: &[f32],
+        relative_target_index: usize,
+    ) -> Result<Vec<f32>, TassadarExecutorAttentionError> {
         let logits = matvec(
             &self.weights.output_projection,
             self.descriptor.config.model_width,
             self.descriptor.config.vocab_size,
             hidden,
         )?;
-        Ok(logits
+        let mut logits = logits
             .into_iter()
             .enumerate()
             .map(|(index, value)| value + self.weights.output_bias[index])
-            .collect())
+            .collect::<Vec<_>>();
+        self.apply_relative_target_output_bias_in_place(
+            logits.as_mut_slice(),
+            relative_target_index,
+        );
+        Ok(logits)
+    }
+
+    /// Applies the bounded relative-target output-bias adapter to one logit
+    /// slice in place.
+    pub fn apply_relative_target_output_bias_in_place(
+        &self,
+        logits: &mut [f32],
+        relative_target_index: usize,
+    ) {
+        let vocab_size = self.descriptor.config.vocab_size;
+        if logits.len() != vocab_size
+            || relative_target_index >= self.descriptor.config.relative_target_bias_token_cap
+        {
+            return;
+        }
+        let start = relative_target_index * vocab_size;
+        let bias_slice = &self.weights.relative_target_output_bias[start..start + vocab_size];
+        for (logit, bias) in logits.iter_mut().zip(bias_slice.iter()) {
+            *logit += *bias;
+        }
+    }
+
+    /// Returns whether the bounded relative-target output-bias adapter has any
+    /// non-zero trained signal.
+    #[must_use]
+    pub fn has_relative_target_output_bias_signal(&self) -> bool {
+        self.weights
+            .relative_target_output_bias
+            .iter()
+            .any(|value| value.abs() > 1e-6)
     }
 }
 

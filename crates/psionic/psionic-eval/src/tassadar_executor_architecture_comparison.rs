@@ -271,7 +271,6 @@ pub fn evaluate_lookup_family_for_architecture_comparison(
             predicted_target.as_slice(),
         ));
     }
-
     Ok(build_family_report(
         dataset,
         split,
@@ -324,6 +323,15 @@ pub fn evaluate_attention_family_for_architecture_comparison(
             predicted_target.as_slice(),
         ));
     }
+    let article_fidelity_summary = if model.has_relative_target_output_bias_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded relative-target logit-bias adapter, still only as a research windowed lane with hull fallback",
+        )
+    } else {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention, but only as a bounded windowed research lane with hull fallback",
+        )
+    };
 
     Ok(build_family_report(
         dataset,
@@ -339,7 +347,7 @@ pub fn evaluate_attention_family_for_architecture_comparison(
         model.descriptor().config.layer_count as u32,
         model.descriptor().config.head_count as u32,
         model.descriptor().config.head_dim as u32,
-        String::from("layered full-prefix causal 2D-head hard-max attention, but only as a bounded windowed research lane with hull fallback"),
+        article_fidelity_summary,
         build_attention_decode_selection(model),
         total_target_tokens,
         total_neural_elapsed_ms,
