@@ -8,8 +8,9 @@
 use std::fs;
 
 use arc_core::{
-    ArcAction, ArcBenchmark, ArcRecording, ArcScorecard, ArcTask, ArcTaskId, GridAnalysisSummary,
-    SolveBudget, summarize_grid,
+    ArcAction, ArcBenchmark, ArcRecording, ArcRefusalCode, ArcScorecard, ArcSolveOutcome,
+    ArcSolveRefusal, ArcSolveResultEnvelope, ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget,
+    TraceLocator, summarize_grid,
 };
 
 #[test]
@@ -50,11 +51,7 @@ fn analysis_summary_matches_expected_contract() {
 
 #[test]
 fn solve_budget_serializes_stably() {
-    let budget = SolveBudget {
-        max_attempts: 8,
-        max_steps: 64,
-        max_runtime_millis: 1_500,
-    };
+    let budget = SolveBudget::new(8, 64, 1_500).expect("budget should validate");
 
     let serialized = serde_json::to_string(&budget).expect("budget should serialize");
     assert_eq!(
@@ -91,4 +88,34 @@ fn scorecard_fixture_round_trips() {
     assert_eq!(scorecard.metadata.tags, vec!["fixture", "demo"]);
     assert_eq!(scorecard.levels.len(), 1);
     assert_eq!(scorecard.levels[0].action_count, 2);
+}
+
+#[test]
+fn solve_result_envelope_validates_attempts_and_trace_locator() {
+    let budget = SolveBudget::new(4, 64, 2_000).expect("budget should validate");
+    let trace_locator =
+        TraceLocator::new("trace://arc-core/demo-bridge-task/attempt-1").expect("valid trace");
+    let outcome = ArcSolveOutcome::Refused(
+        ArcSolveRefusal::new(ArcRefusalCode::BudgetExhausted, "attempt budget spent")
+            .expect("refusal detail should validate"),
+    );
+
+    let envelope = ArcSolveResultEnvelope::new(
+        ArcTaskId::new("demo-bridge-task").expect("valid task id"),
+        budget,
+        2,
+        Some(trace_locator),
+        outcome,
+    )
+    .expect("envelope should validate");
+
+    let serialized = serde_json::to_string(&envelope).expect("envelope should serialize");
+    assert!(serialized.contains("trace://arc-core/demo-bridge-task/attempt-1"));
+}
+
+#[test]
+fn solve_budget_and_refusal_reject_empty_contracts() {
+    assert!(SolveBudget::new(0, 1, 1).is_err());
+    assert!(TraceLocator::new(" ").is_err());
+    assert!(ArcSolveRefusal::new(ArcRefusalCode::UnsupportedTask, "   ").is_err());
 }
