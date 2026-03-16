@@ -1394,6 +1394,89 @@ impl MetaExecutionReport {
     }
 }
 
+/// Outcome status for one operator parity case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorParityStatus {
+    /// The operator matched the bounded expected output contract.
+    Supported,
+    /// The operator refused explicitly under the bounded capability profile.
+    Refused,
+}
+
+/// One machine-readable seeded operator parity case result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorParityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable oracle family label.
+    pub oracle_family: String,
+    /// Stable operator label.
+    pub operator: String,
+    /// Stable capability-profile label.
+    pub capability_profile: String,
+    /// Stable input tensor specs used for the case.
+    pub input_specs: Vec<TensorSpec>,
+    /// Expected output spec when the case is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_output: Option<TensorSpec>,
+    /// Actual output spec when the case succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_output: Option<TensorSpec>,
+    /// Expected refusal when the case is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_refusal: Option<PsionicRefusal>,
+    /// Actual refusal surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_refusal: Option<PsionicRefusal>,
+    /// Stable parity outcome status.
+    pub status: OperatorParityStatus,
+}
+
+/// Machine-readable seeded operator parity matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorParityMatrixReport {
+    /// Stable schema version for the parity matrix report.
+    pub schema_version: u32,
+    /// Stable oracle family window label.
+    pub oracle_family_window: String,
+    /// Seeded parity case results.
+    pub cases: Vec<OperatorParityCaseResult>,
+    /// Stable digest over the report contents.
+    pub matrix_digest: String,
+}
+
+impl OperatorParityMatrixReport {
+    fn new(oracle_family_window: impl Into<String>, cases: Vec<OperatorParityCaseResult>) -> Self {
+        let oracle_family_window = oracle_family_window.into();
+        let matrix_digest =
+            stable_operator_parity_matrix_digest(oracle_family_window.as_str(), cases.as_slice());
+        Self {
+            schema_version: 1,
+            oracle_family_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("oracle_family_window={}", self.oracle_family_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{:?}",
+                case.case_id, case.operator, case.status
+            ));
+        }
+        lines
+    }
+}
+
 /// Capability profile used to answer whether a fake or meta execution target
 /// claims support for one backend-kernel surface.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2987,18 +3070,231 @@ fn digest_lines(lines: Vec<String>) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Returns the seeded operator parity matrix report for the current built-in
+/// Psionic operator surface.
+pub fn builtin_operator_parity_matrix_report() -> Result<OperatorParityMatrixReport, GraphError> {
+    let mut cases = Vec::new();
+
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.add.broadcast_2d_row",
+        "add",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let left = builder.input("left", Shape::new(vec![2, 3]), DType::F32);
+            let right = builder.input("right", Shape::new(vec![3]), DType::F32);
+            builder.add(&left, &right)
+        },
+        TensorSpec::new(Shape::new(vec![2, 3]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.mul.same_shape",
+        "mul",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let left = builder.input("left", Shape::new(vec![2, 2]), DType::F32);
+            let right = builder.input("right", Shape::new(vec![2, 2]), DType::F32);
+            builder.mul(&left, &right)
+        },
+        TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.matmul.matrix_matrix",
+        "matmul",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let left = builder.input("left", Shape::new(vec![2, 4]), DType::F32);
+            let right = builder.input("right", Shape::new(vec![4, 3]), DType::F32);
+            builder.matmul(&left, &right)
+        },
+        TensorSpec::new(Shape::new(vec![2, 3]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.reshape.flatten",
+        "reshape",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+            builder.reshape(&input, Shape::new(vec![6]))
+        },
+        TensorSpec::new(Shape::new(vec![6]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.permute.transpose_2d",
+        "permute",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+            builder.permute(&input, vec![1, 0])
+        },
+        TensorSpec::new(Shape::new(vec![3, 2]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.concat.axis0",
+        "concat",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let a = builder.input("a", Shape::new(vec![1, 2]), DType::F32);
+            let b = builder.input("b", Shape::new(vec![3, 2]), DType::F32);
+            builder.concat(&[a, b], 0)
+        },
+        TensorSpec::new(Shape::new(vec![4, 2]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_supported_case(
+        "pytorch.scaled_dot_product_attention.rank4",
+        "scaled_dot_product_attention",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let query = builder.input("query", Shape::new(vec![1, 2, 4, 8]), DType::F32);
+            let key = builder.input("key", Shape::new(vec![1, 2, 4, 8]), DType::F32);
+            let value = builder.input("value", Shape::new(vec![1, 2, 4, 16]), DType::F32);
+            builder.scaled_dot_product_attention(&query, &key, &value, 1.0, false)
+        },
+        TensorSpec::new(Shape::new(vec![1, 2, 4, 16]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_operator_parity_refusal_case(
+        "pytorch.rms_norm.backend_kernel_missing",
+        "rms_norm",
+        "add_only",
+        MetaCapabilityProfile::empty().with_supported_backend_kernels(["add"]),
+        |builder| {
+            let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+            let weight = builder.input("weight", Shape::new(vec![4]), DType::F32);
+            builder.rms_norm(&input, &weight, 1e-5)
+        },
+        PsionicRefusal::new(
+            PsionicRefusalCode::UnsupportedBackendCapability,
+            PsionicRefusalScope::Graph,
+            "meta capability profile does not declare backend kernel `rms_norm`",
+        )
+        .with_subject("rms_norm"),
+    )?);
+
+    Ok(OperatorParityMatrixReport::new(
+        "pytorch_opinfo_seed_v0",
+        cases,
+    ))
+}
+
+fn run_operator_parity_supported_case(
+    case_id: &str,
+    operator: &str,
+    capability_profile: &str,
+    profile: MetaCapabilityProfile,
+    build: impl FnOnce(&mut GraphBuilder) -> Result<Tensor, GraphError>,
+    expected_output: TensorSpec,
+) -> Result<OperatorParityCaseResult, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let output = build(&mut builder)?;
+    let graph = builder.finish(vec![output.clone()]);
+    let input_specs = graph_input_specs(&graph);
+    let report = OperatorRegistry::builtin().meta_execute_graph(&graph, Some(&profile))?;
+    let actual_output = report.output(output.id()).map(|tensor| tensor.spec.clone());
+    Ok(OperatorParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_opinfo_seed"),
+        operator: String::from(operator),
+        capability_profile: String::from(capability_profile),
+        input_specs,
+        expected_output: Some(expected_output),
+        actual_output,
+        expected_refusal: None,
+        actual_refusal: None,
+        status: OperatorParityStatus::Supported,
+    })
+}
+
+fn run_operator_parity_refusal_case(
+    case_id: &str,
+    operator: &str,
+    capability_profile: &str,
+    profile: MetaCapabilityProfile,
+    build: impl FnOnce(&mut GraphBuilder) -> Result<Tensor, GraphError>,
+    expected_refusal: PsionicRefusal,
+) -> Result<OperatorParityCaseResult, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let output = build(&mut builder)?;
+    let graph = builder.finish(vec![output]);
+    let input_specs = graph_input_specs(&graph);
+    let error = OperatorRegistry::builtin()
+        .meta_execute_graph(&graph, Some(&profile))
+        .expect_err("operator parity refusal case must refuse");
+    let actual_refusal = error
+        .refusal()
+        .expect("refusal case must map into taxonomy");
+    Ok(OperatorParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_opinfo_seed"),
+        operator: String::from(operator),
+        capability_profile: String::from(capability_profile),
+        input_specs,
+        expected_output: None,
+        actual_output: None,
+        expected_refusal: Some(expected_refusal),
+        actual_refusal: Some(actual_refusal),
+        status: OperatorParityStatus::Refused,
+    })
+}
+
+fn stable_operator_parity_matrix_digest(
+    oracle_family_window: &str,
+    cases: &[OperatorParityCaseResult],
+) -> String {
+    let mut lines = vec![format!("oracle_family_window={oracle_family_window}")];
+    for case in cases {
+        lines.push(format!(
+            "{}|{}|{}|{:?}",
+            case.case_id, case.operator, case.capability_profile, case.status
+        ));
+        for spec in &case.input_specs {
+            lines.push(format!("input={}", format_spec(spec)));
+        }
+        if let Some(output) = &case.expected_output {
+            lines.push(format!("expected_output={}", format_spec(output)));
+        }
+        if let Some(refusal) = &case.expected_refusal {
+            lines.push(format!(
+                "expected_refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or(""),
+                refusal.detail
+            ));
+        }
+    }
+    digest_lines(lines)
+}
+
+fn graph_input_specs(graph: &Graph) -> Vec<TensorSpec> {
+    graph
+        .nodes()
+        .iter()
+        .filter_map(|node| match node.op() {
+            OpKind::Input { .. } => Some(node.tensor().spec().clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
-        DType, ExecutionOp, ExecutionPlan, ExecutionStep, FunctionalTensorKind,
-        FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
-        KernelRegistration, MaskedMetaContract, MetaCapabilityProfile, MetaTensor,
-        MetaTensorFamily, MetaTensorFamilyKind, OperatorArity, OperatorImplementationKind,
-        OperatorMetaExecutionKind, OperatorRegistry, RegisteredOperatorSchema,
-        RegistryExtensionError, Shape, SparseMetaContract, SparseMetaLayout,
-        StorageAwareMetaContract, TensorSpec, TransformBarrierKind,
+        builtin_operator_parity_matrix_report, DType, ExecutionOp, ExecutionPlan, ExecutionStep,
+        FunctionalTensorKind, FunctionalizationPolicy, GraphBuilder, GraphError,
+        GraphTransformError, KernelDispatchKind, KernelRegistration, MaskedMetaContract,
+        MetaCapabilityProfile, MetaTensor, MetaTensorFamily, MetaTensorFamilyKind, OperatorArity,
+        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorParityStatus,
+        OperatorRegistry, RegisteredOperatorSchema, RegistryExtensionError, Shape,
+        SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract, TensorSpec,
+        TransformBarrierKind,
     };
 
     #[test]
@@ -3578,6 +3874,58 @@ mod tests {
             result.is_ok(),
             "built-in operator registry should validate plan"
         );
+    }
+
+    #[test]
+    fn operator_parity_matrix_report_tracks_seeded_supported_and_refusal_cases(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_operator_parity_matrix_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.oracle_family_window, "pytorch_opinfo_seed_v0");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("matrix_digest=")));
+
+        let add_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.add.broadcast_2d_row")
+            .expect("missing add parity case");
+        assert_eq!(add_case.status, OperatorParityStatus::Supported);
+        assert_eq!(add_case.expected_output, add_case.actual_output);
+
+        let refusal_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.rms_norm.backend_kernel_missing")
+            .expect("missing refusal parity case");
+        assert_eq!(refusal_case.status, OperatorParityStatus::Refused);
+        assert_eq!(
+            refusal_case
+                .expected_refusal
+                .as_ref()
+                .map(|refusal| refusal.code),
+            refusal_case
+                .actual_refusal
+                .as_ref()
+                .map(|refusal| refusal.code)
+        );
+        assert_eq!(
+            refusal_case
+                .expected_refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("rms_norm")
+        );
+        assert_eq!(
+            refusal_case
+                .actual_refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("rms_norm")
+        );
+        Ok(())
     }
 
     #[test]

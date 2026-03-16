@@ -552,6 +552,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md](docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md)** —
   canonical framework-core acceptance split for tensor, compiler, IO, replay,
   and local multi-device behavior.
+- **[docs/OPERATOR_PARITY_MATRIX.md](docs/OPERATOR_PARITY_MATRIX.md)** —
+  canonical seeded operator parity artifact for the current PyTorch-derived
+  `OpInfo`-style coverage slice.
 - **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
   inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training

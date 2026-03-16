@@ -413,7 +413,8 @@ Psionic already owns meaningful system-truth substrate for:
 The largest open gaps are now more architectural than existential:
 
 - framework-core breadth is still much thinner than PyTorch or Tinygrad
-- operator and module parity harnesses are still too sparse
+- operator parity now has a first seeded matrix in `psionic-ir`, but module
+  and optimizer parity harnesses are still too sparse
 - module/state-tree and keyed `state_dict` load semantics now exist in
   `psionic-nn`, but checkpoint interoperability and parity breadth are still
   underdeveloped
@@ -881,7 +882,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-205` / [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720) | planned | Add a PyTorch-derived operator parity matrix analogous to `op_db` / `OpInfo` for Rust-native conformance. |
+| `PLIB-205` / [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720) | done (2026-03-16) | `psionic-ir` now publishes a machine-readable seeded operator parity matrix report with PyTorch-derived support cases for `add`, `mul`, `matmul`, `reshape`, `permute`, `concat`, and `scaled_dot_product_attention`, plus an explicit backend-capability refusal proof for `rms_norm`, and the harness is wired through a repo-owned release script instead of ad hoc notes. |
 | `PLIB-206` / [#3721](https://github.com/OpenAgentsInc/openagents/issues/3721) | planned | Add a PyTorch-derived module parity matrix analogous to `module_db`. |
 | `PLIB-207` / [#3722](https://github.com/OpenAgentsInc/openagents/issues/3722) | planned | Add a PyTorch-derived optimizer parity matrix analogous to `optim_db`. |
 | `PLIB-208` / [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723) | planned | Add symbolic-shape, fake-tensor, and compiler-hygiene parity harnesses informed by modern PyTorch compiler tests. |
