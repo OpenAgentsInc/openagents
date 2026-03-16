@@ -268,6 +268,9 @@ summaries now also start in this layer. Typed bitmasks, connected components,
 hole counts, symmetry signatures, relation graphs, and train-pair
 correspondence candidates now also live here.
 
+`crates/arc/datasets` now exists as the owner for ARC-AGI-1/2 file loading and
+split metadata export into Psionic-owned dataset manifest contracts.
+
 ## 4. Shared domain model
 
 The old single-crate `psionic-arc` idea is replaced by a shared-domain core

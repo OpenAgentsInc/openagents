@@ -259,6 +259,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-datasets"
+version = "0.1.0"
+dependencies = [
+ "arc-core",
+ "psionic-data",
+ "psionic-datastream",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "arg_enum_proc_macro"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

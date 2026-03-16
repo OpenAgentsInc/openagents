@@ -1,0 +1,23 @@
+{
+  "train": [
+    {
+      "input": {
+        "width": 2,
+        "height": 2,
+        "cells": [4, 0, 0, 0]
+      },
+      "output": {
+        "width": 2,
+        "height": 2,
+        "cells": [0, 4, 0, 0]
+      }
+    }
+  ],
+  "test": [
+    {
+      "width": 2,
+      "height": 2,
+      "cells": [0, 4, 0, 0]
+    }
+  ]
+}
