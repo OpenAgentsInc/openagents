@@ -15,6 +15,7 @@
 
 pub mod dsl;
 pub mod interpreter;
+pub mod mdl;
 pub mod model;
 pub mod recursive;
 pub mod symbolic;
@@ -27,6 +28,11 @@ pub use dsl::{
     ArcObjectTransform, ArcProgram, ArcProgramMetadata, ArcSymbol, ArcSymbolError,
 };
 pub use interpreter::{ArcInterpreter, ArcInterpreterError};
+pub use mdl::{
+    ArcMdlCandidateReport, ArcMdlInitializationMode, ArcMdlLane, ArcMdlLaneConfig,
+    ArcMdlLaneError, ArcMdlLaneRun, ArcMdlRepresentation, MDL_LANE_BOUNDARY_SUMMARY,
+    MDL_LANE_ID,
+};
 pub use model::{
     ArcDigest, ArcDigestError, BudgetCounterDelta, BudgetCounterKind, BudgetCounterSummary,
     BudgetLedger, BudgetLedgerError, CandidateDeduplicationDecision, CandidateDeduplicationStatus,

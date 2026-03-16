@@ -1150,6 +1150,22 @@ Required behavior:
 - allow no-pretraining mode
 - provide an independent ranking signal
 
+Current bounded landing:
+
+- `ARC-308` lands a bounded task-local MDL lane in `arc-solvers::mdl`
+- the lane enumerates explicit compact representations rather than hidden
+  learned state: input-shape fill models, fixed-shape fill models, and direct
+  train-output reuse models
+- each candidate is scored by an explicit description-length decomposition over
+  model bits, train residual bits, and solution bits, and that score becomes an
+  independent simplicity-aware ranking signal before verifier adjudication
+- `no_pretraining` is a first-class initialization mode, with optional
+  warm-start priors modeled only as a small explicit bias in description length
+  rather than as a hidden learned dependency
+- later work may widen the representation family or replace parts of it with
+  richer task-local code models, but must keep the description-length accounting
+  explicit and replayable
+
 ### 7.7 Lane E: learned search-guide lane
 
 This lane is optional in v1 and required in later stages.
