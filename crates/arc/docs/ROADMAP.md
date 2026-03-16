@@ -9,6 +9,8 @@
 > `crates/arc/spec.md` remains the canonical architecture and ownership spec.
 > `crates/arc/docs/CLAIMS.md` remains the canonical claim-vocabulary doc.
 > `crates/arc/docs/INDEX.md` remains the compact ARC docs entrypoint.
+> `crates/arc/docs/UPSTREAM_TARGETS.md` remains the canonical first-pass
+> upstream target freeze.
 > The audit remains the port-source and upstream-mapping reference.
 
 ## Executive Summary

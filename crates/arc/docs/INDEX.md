@@ -19,6 +19,7 @@ Use it when you need to answer:
 | `crates/arc/docs/spec.md` | canonical architecture and ownership spec | crate boundaries, owner split, dependency direction, and normative ARC system shape |
 | `crates/arc/docs/ROADMAP.md` | canonical dependency-ordered roadmap | execution order, epic boundaries, issue sequencing, and acceptance gating |
 | `crates/arc/docs/CLAIMS.md` | canonical claim vocabulary | frozen claim names, minimum meanings, and claim-to-artifact expectations |
+| `crates/arc/docs/UPSTREAM_TARGETS.md` | canonical first-pass upstream target freeze | exact upstream repo commits, protocol files, and benchmark/scoring source targets |
 | `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md` | canonical port-source and upstream-mapping audit | upstream source mapping, direct-port priorities, and Psionic-vs-ARC split rationale |
 
 ## Future Acceptance Surfaces
@@ -44,8 +45,9 @@ If you are new to the ARC subtree, read in this order:
 1. `crates/arc/docs/INDEX.md`
 2. `crates/arc/docs/spec.md`
 3. `crates/arc/docs/CLAIMS.md`
-4. `crates/arc/docs/ROADMAP.md`
-5. `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
+4. `crates/arc/docs/UPSTREAM_TARGETS.md`
+5. `crates/arc/docs/ROADMAP.md`
+6. `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
 
 ## Maintenance Rule
 
