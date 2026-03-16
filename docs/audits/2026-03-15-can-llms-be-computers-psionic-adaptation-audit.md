@@ -88,6 +88,10 @@ Relevant prior audits reviewed:
 
 Live GitHub open issues reviewed on March 15, 2026:
 
+- [OpenAgentsInc/openagents#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+  - `Psionic Executor Lane Phase 1: land CPU reference WebAssembly executor fixture and exact parity harness`
+- [OpenAgentsInc/openagents#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
+  - `Psionic Executor Lane Phase 0: declare WebAssembly-first executor lane scope, ownership, and issue spine`
 - [OpenAgentsInc/openagents#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
   - `Psionic Epic 2 Master: semantics and compatibility`
 - [OpenAgentsInc/openagents#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
@@ -402,6 +406,9 @@ The important distinction is:
 
 As of March 15, 2026, the closest matching open-issue dependencies are:
 
+- direct executor-lane tracking:
+  - [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
+  - [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - framework-core and semantics umbrella:
   - [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
   - [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
@@ -422,9 +429,7 @@ As of March 15, 2026, the closest matching open-issue dependencies are:
 
 No currently-open issue reviewed here appears to directly cover:
 
-- a WebAssembly-first executor model family
 - hull-cache or geometric retrieval decoding
-- exact trace parity against a direct CPU Wasm runner
 - executor-trace proof bundles
 - a dedicated `psionic.executor_trace` served surface
 
@@ -453,6 +458,8 @@ describe this executor lane.
 
 Closest existing prerequisite issues:
 
+- direct executor-lane tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3713](https://github.com/OpenAgentsInc/openagents/issues/3713)
 - [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732)
 - [#3735](https://github.com/OpenAgentsInc/openagents/issues/3735)
@@ -481,6 +488,8 @@ But this lane needs more explicit model-family truth:
 
 Closest existing prerequisite issues:
 
+- direct executor-lane tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
 - [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
 - umbrella tracking under [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
@@ -511,6 +520,8 @@ That is a real runtime gap, not just a performance gap.
 
 Closest existing prerequisite issues:
 
+- direct executor-lane tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707)
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
 - umbrella tracking under [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
@@ -566,6 +577,8 @@ This lane needs different green bars:
 
 Closest existing prerequisite issues:
 
+- direct executor-lane tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
 - [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
@@ -975,11 +988,13 @@ Concretely:
 
 Existing tracker dependency posture:
 
-- this lane should sit under the umbrella planning already represented by
+- this lane is now directly tracked by
+  [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
+- the implementation spine now begins with
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- the lane still sits under the umbrella planning already represented by
   [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741) and
   [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
-- the executor-specific Wasm lane itself still appears to need dedicated issue
-  tracking beyond those umbrellas
 
 ### Phase 1: Land a CPU reference executor fixture
 
@@ -1015,6 +1030,8 @@ Success bar:
 
 Closest existing prerequisite issues:
 
+- direct implementation tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709) for
   fixture-backed replay and failure coverage
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710) for typed
@@ -1049,6 +1066,8 @@ Psionic artifact path.
 
 Closest existing prerequisite issues:
 
+- direct implementation tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
 - [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
 
@@ -1084,6 +1103,8 @@ Metrics should include:
 
 Closest existing prerequisite issues:
 
+- direct implementation tracking under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
 - [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
 - [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
