@@ -253,7 +253,13 @@ The current path is:
 6. `autopilotctl training launch ...`, `autopilotctl training export ...`, and
    `autopilotctl training accept ...` provide the shipped app-owned operator
    flow, while `autopilotctl apple-fm load ...` and `autopilotctl apple-fm
-   attach ...` exercise the resulting package through the retained bridge.
+   attach ...` exercise the resulting package through the retained bridge. That
+   operator flow now runs the long Apple launch pipeline in the background and
+   exposes typed live phase, heartbeat, ETA, and recent-event telemetry through
+   desktop-control instead of waiting for one buffered child-process exit. The
+   legacy toolkit compatibility wrapper in `psionic-train` now also streams
+   stdout/stderr lines before returning its final receipt, so even non-live-path
+   toolkit invocations no longer depend on `Command::output()` buffering.
 
 That last bridge-backed load step is the authoritative export-validity gate.
 

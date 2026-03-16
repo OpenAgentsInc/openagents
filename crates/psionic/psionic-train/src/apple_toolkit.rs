@@ -3,13 +3,16 @@ use std::{
     env,
     ffi::OsString,
     fs,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
-    process::Command,
-    time::Instant,
+    process::{Command, Stdio},
+    sync::mpsc::{self, RecvTimeoutError},
+    thread,
+    time::{Duration, Instant},
 };
 
 use psionic_adapters::{
-    APPLE_FM_ADAPTER_METADATA_FILE, APPLE_FM_ADAPTER_WEIGHTS_FILE, AppleFmAdapterPackageMetadata,
+    AppleFmAdapterPackageMetadata, APPLE_FM_ADAPTER_METADATA_FILE, APPLE_FM_ADAPTER_WEIGHTS_FILE,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -231,6 +234,35 @@ pub struct AppleAdapterToolkitCommandReceipt {
     pub stderr: String,
 }
 
+/// One live output line observed from the toolkit wrapper.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAdapterToolkitOutputStream {
+    Stdout,
+    Stderr,
+}
+
+impl AppleAdapterToolkitOutputStream {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+}
+
+/// One live toolkit output event emitted before the wrapped command exits.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppleAdapterToolkitOutputEvent {
+    /// Which stream produced the line.
+    pub stream: AppleAdapterToolkitOutputStream,
+    /// UTF-8 lossy decoded line content without trailing newlines.
+    pub line: String,
+    /// Elapsed wall-clock milliseconds since command start.
+    pub elapsed_ms: u64,
+}
+
 /// Successful toolkit training result.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppleAdapterToolkitTrainingOutcome {
@@ -288,6 +320,13 @@ pub enum AppleAdapterToolkitError {
     /// Spawning one toolkit command failed.
     #[error("failed to launch Apple adapter toolkit command `{command}`: {message}")]
     SpawnFailed { command: String, message: String },
+    /// Streaming one toolkit output pipe failed.
+    #[error("failed to stream Apple adapter toolkit {stream} for `{command}`: {message}")]
+    StreamReadFailed {
+        command: String,
+        stream: &'static str,
+        message: String,
+    },
     /// One toolkit command exited with failure.
     #[error("Apple adapter toolkit command `{command}` failed with status {status:?}")]
     CommandFailed {
@@ -311,6 +350,18 @@ pub enum AppleAdapterToolkitError {
 pub fn run_apple_adapter_toolkit_training(
     request: &AppleAdapterToolkitTrainingRequest,
 ) -> Result<AppleAdapterToolkitTrainingOutcome, AppleAdapterToolkitError> {
+    run_apple_adapter_toolkit_training_with_progress(request, |_| {})
+}
+
+/// Runs Apple toolkit training and streams live stdout/stderr lines before the
+/// final command receipt is returned.
+pub fn run_apple_adapter_toolkit_training_with_progress<F>(
+    request: &AppleAdapterToolkitTrainingRequest,
+    on_output: F,
+) -> Result<AppleAdapterToolkitTrainingOutcome, AppleAdapterToolkitError>
+where
+    F: FnMut(&AppleAdapterToolkitOutputEvent),
+{
     request.validate()?;
     let installation = AppleAdapterToolkitInstallation::discover()?;
     fs::create_dir_all(request.checkpoint_dir.as_path()).map_err(|error| {
@@ -371,6 +422,7 @@ pub fn run_apple_adapter_toolkit_training(
         installation.python_path.as_path(),
         args.as_slice(),
         environment,
+        on_output,
     )?;
 
     let checkpoint_path = request.checkpoint_dir.join("adapter-final.pt");
@@ -391,6 +443,18 @@ pub fn run_apple_adapter_toolkit_training(
 pub fn run_apple_adapter_toolkit_export(
     request: &AppleAdapterToolkitExportRequest,
 ) -> Result<AppleAdapterToolkitExportOutcome, AppleAdapterToolkitError> {
+    run_apple_adapter_toolkit_export_with_progress(request, |_| {})
+}
+
+/// Runs Apple toolkit export and streams live stdout/stderr lines before the
+/// final command receipt is returned.
+pub fn run_apple_adapter_toolkit_export_with_progress<F>(
+    request: &AppleAdapterToolkitExportRequest,
+    on_output: F,
+) -> Result<AppleAdapterToolkitExportOutcome, AppleAdapterToolkitError>
+where
+    F: FnMut(&AppleAdapterToolkitOutputEvent),
+{
     request.validate()?;
     let installation = AppleAdapterToolkitInstallation::discover()?;
     fs::create_dir_all(request.output_dir.as_path()).map_err(|error| {
@@ -433,6 +497,7 @@ pub fn run_apple_adapter_toolkit_export(
         installation.python_path.as_path(),
         args.as_slice(),
         request.environment.clone(),
+        on_output,
     )?;
 
     let package_path = request
@@ -517,6 +582,7 @@ fn run_toolkit_command(
     executable: &Path,
     args: &[OsString],
     environment: BTreeMap<String, String>,
+    mut on_output: impl FnMut(&AppleAdapterToolkitOutputEvent),
 ) -> Result<AppleAdapterToolkitCommandReceipt, AppleAdapterToolkitError> {
     let mut command = if Path::new("/usr/bin/time").exists() {
         let mut command = Command::new("/usr/bin/time");
@@ -530,23 +596,93 @@ fn run_toolkit_command(
         command
     };
     command.current_dir(installation.toolkit_root.as_path());
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
     for (key, value) in environment {
         command.env(key, value);
     }
     let started = Instant::now();
-    let output = command
-        .output()
+    let rendered_command = render_command(executable, args);
+    let mut child = command
+        .spawn()
         .map_err(|error| AppleAdapterToolkitError::SpawnFailed {
-            command: render_command(executable, args),
+            command: rendered_command.clone(),
             message: error.to_string(),
         })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppleAdapterToolkitError::SpawnFailed {
+            command: rendered_command.clone(),
+            message: "stdout pipe was not available".to_string(),
+        })?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppleAdapterToolkitError::SpawnFailed {
+            command: rendered_command.clone(),
+            message: "stderr pipe was not available".to_string(),
+        })?;
+    let (event_tx, event_rx) = mpsc::channel::<AppleAdapterToolkitOutputEvent>();
+    let stdout_handle = spawn_toolkit_stream_reader(
+        stdout,
+        AppleAdapterToolkitOutputStream::Stdout,
+        event_tx.clone(),
+        started,
+    );
+    let stderr_handle = spawn_toolkit_stream_reader(
+        stderr,
+        AppleAdapterToolkitOutputStream::Stderr,
+        event_tx,
+        started,
+    );
+
+    let mut status = None;
+    loop {
+        match event_rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(event) => on_output(&event),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                status =
+                    Some(
+                        child
+                            .wait()
+                            .map_err(|error| AppleAdapterToolkitError::SpawnFailed {
+                                command: rendered_command.clone(),
+                                message: error.to_string(),
+                            })?,
+                    );
+                break;
+            }
+        }
+        if status.is_none() {
+            status = child
+                .try_wait()
+                .map_err(|error| AppleAdapterToolkitError::SpawnFailed {
+                    command: rendered_command.clone(),
+                    message: error.to_string(),
+                })?;
+        }
+    }
+
     let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let stdout = String::from_utf8_lossy(output.stdout.as_slice()).into_owned();
-    let stderr = String::from_utf8_lossy(output.stderr.as_slice()).into_owned();
-    if !output.status.success() {
+    let stdout = join_toolkit_stream(stdout_handle, rendered_command.as_str(), "stdout")?;
+    let stderr = join_toolkit_stream(stderr_handle, rendered_command.as_str(), "stderr")?;
+    let status = if let Some(status) = status {
+        status
+    } else {
+        child
+            .wait()
+            .map_err(|error| AppleAdapterToolkitError::SpawnFailed {
+                command: rendered_command.clone(),
+                message: error.to_string(),
+            })?
+    };
+    if !status.success() {
         return Err(AppleAdapterToolkitError::CommandFailed {
-            command: render_command(executable, args),
-            status: output.status.code(),
+            command: rendered_command,
+            status: status.code(),
             stdout,
             stderr,
         });
@@ -572,6 +708,56 @@ fn render_command(executable: &Path, args: &[OsString]) -> String {
         rendered.push_str(arg.to_string_lossy().as_ref());
     }
     rendered
+}
+
+fn spawn_toolkit_stream_reader(
+    stream: impl std::io::Read + Send + 'static,
+    kind: AppleAdapterToolkitOutputStream,
+    event_tx: mpsc::Sender<AppleAdapterToolkitOutputEvent>,
+    started: Instant,
+) -> thread::JoinHandle<Result<String, String>> {
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stream);
+        let mut captured = String::new();
+        let mut buffer = Vec::new();
+        loop {
+            buffer.clear();
+            let read = reader
+                .read_until(b'\n', &mut buffer)
+                .map_err(|error| error.to_string())?;
+            if read == 0 {
+                break;
+            }
+            let chunk = String::from_utf8_lossy(buffer.as_slice()).into_owned();
+            captured.push_str(chunk.as_str());
+            let event = AppleAdapterToolkitOutputEvent {
+                stream: kind,
+                line: chunk.trim_end_matches(['\r', '\n']).to_string(),
+                elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            };
+            let _ = event_tx.send(event);
+        }
+        Ok(captured)
+    })
+}
+
+fn join_toolkit_stream(
+    handle: thread::JoinHandle<Result<String, String>>,
+    command: &str,
+    stream: &'static str,
+) -> Result<String, AppleAdapterToolkitError> {
+    handle
+        .join()
+        .map_err(|_| AppleAdapterToolkitError::StreamReadFailed {
+            command: command.to_string(),
+            stream,
+            message: "reader thread panicked".to_string(),
+        })?
+        .map_err(|message| AppleAdapterToolkitError::StreamReadFailed {
+            command: command.to_string(),
+            stream,
+            message,
+        })
 }
 
 fn parse_time_output(stderr: &str) -> AppleAdapterToolkitResourceUsage {
@@ -611,6 +797,7 @@ fn parse_seconds_ms(value: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn parse_time_output_extracts_wall_clock_and_memory() {
@@ -624,5 +811,47 @@ mod tests {
         assert_eq!(usage.sys_ms, Some(100));
         assert_eq!(usage.max_resident_set_size_bytes, Some(1_179_648));
         assert_eq!(usage.peak_memory_footprint_bytes, Some(901_312));
+    }
+
+    #[test]
+    fn run_toolkit_command_streams_lines_and_keeps_receipt_capture() {
+        let toolkit_root = tempdir().expect("temp toolkit root");
+        let installation = AppleAdapterToolkitInstallation {
+            toolkit_root: toolkit_root.path().to_path_buf(),
+            python_path: PathBuf::from("/bin/sh"),
+        };
+        let args = vec![
+            OsString::from("-c"),
+            OsString::from("printf 'stdout-line\\n'; sleep 0.1; printf 'stderr-line\\n' >&2"),
+        ];
+        let mut events = Vec::new();
+        let receipt = run_toolkit_command(
+            &installation,
+            Path::new("/bin/sh"),
+            args.as_slice(),
+            BTreeMap::new(),
+            |event| events.push(event.clone()),
+        )
+        .expect("streamed toolkit command should succeed");
+
+        assert!(receipt.stdout.contains("stdout-line"));
+        assert!(receipt.stderr.contains("stderr-line"));
+        assert!(events.iter().any(|event| {
+            event.stream == AppleAdapterToolkitOutputStream::Stdout && event.line == "stdout-line"
+        }));
+        assert!(events.iter().any(|event| {
+            event.stream == AppleAdapterToolkitOutputStream::Stderr && event.line == "stderr-line"
+        }));
+        let stdout_elapsed = events
+            .iter()
+            .find(|event| event.stream == AppleAdapterToolkitOutputStream::Stdout)
+            .map(|event| event.elapsed_ms)
+            .expect("stdout event");
+        let stderr_elapsed = events
+            .iter()
+            .find(|event| event.stream == AppleAdapterToolkitOutputStream::Stderr)
+            .map(|event| event.elapsed_ms)
+            .expect("stderr event");
+        assert!(stderr_elapsed >= stdout_elapsed);
     }
 }
