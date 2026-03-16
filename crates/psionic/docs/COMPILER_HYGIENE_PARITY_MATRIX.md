@@ -1,7 +1,7 @@
 # Compiler Hygiene Parity Matrix
 
 > Status: canonical `PLIB-208` / `#3723` reference record, updated 2026-03-16
-> after landing the first seeded symbolic-shape, fake-tensor, and
+> after widening the seeded symbolic-shape, fake-tensor, and
 > compiler-hygiene parity matrix in
 > `crates/psionic/psionic-compiler/src/lib.rs`.
 
@@ -38,9 +38,14 @@ The current matrix covers:
 - compiler cache-temperature and cache-action hygiene for cold compile then
   warm reuse
 - alias-aware memory-planning hygiene for view lowering and fusion grouping
+- one bounded shapeless trace-family identity case over same-rank primitive
+  compile graphs
 - explicit refusal for symbolic-shape and guard-environment parity, because the
   current bounded substrate still requires concrete `usize` dimensions in
   `TensorSpec`
+- explicit refusal for reshape under `shapeless_trace_family`, because the
+  current graph model still lacks symbolic output formulas for concrete reshape
+  targets
 
 ## Why This Is Bounded
 
@@ -51,14 +56,16 @@ Current scope is intentionally limited to:
 - fake/meta execution parity for a small graph slice
 - non-dense fake-tensor contract validation
 - cache-temperature, alias-view, and replay-safe compiler hygiene signals
-- one explicit refusal-path proof for symbolic-shape absence
+- one bounded shapeless trace-family identity seed plus explicit refusal-path
+  proofs for symbolic-shape absence and reshape-formula gaps
 
 It does not yet claim:
 
 - symbolic-shape environments or guard simplification
 - Dynamo/AOTAutograd/Inductor-class compiler closure
 - broad transform or export parity
-- dynamic-shape specialization or recompilation heuristics
+- dynamic-shape specialization, guard-driven recompilation heuristics, or broad
+  shapeless support over reshape, expand, and other shape-dependent graph ops
 
 The point of this issue is to make support and refusal posture machine-legible,
 repeatable, and expandable without silent skips.

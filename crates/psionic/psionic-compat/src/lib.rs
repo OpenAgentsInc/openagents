@@ -1065,7 +1065,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
         },
         MlxAcceptanceCategory {
             category_id: String::from("transform-compile"),
-            matrix_status: MlxAcceptanceCategoryStatus::Partial,
+            matrix_status: MlxAcceptanceCategoryStatus::ImplementedEarly,
             epic_id: String::from("PMLX-E2"),
             issue_refs: vec![
                 String::from("PMLX-201 (#3840)"),
@@ -1079,10 +1079,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The public transform layer exposes grad, value_and_grad, vjp, jvp, vmap, checkpoint, compile-as-transform, and explicit symbolic or shapeless compile boundaries with typed refusals.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, vmap, checkpoint, and graph-registry-backed custom_vjp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, checkpoint replay that retains only the requested output then replays backward-plan primal bindings, graph-digest plus reverse-signature keyed transform-hook registration, and explicit cast plus backend-extension refusal for the current vmap and checkpoint coverage; psionic-compiler now adds a first public compile transform with explicit enable/disable posture, purity declaration, cache reuse versus bypass versus explicit invalidation control, trace capture, and plan-debug output, but jacobian and shapeless or symbolic compile boundaries remain open.",
+                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, vmap, checkpoint, and graph-registry-backed custom_vjp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, checkpoint replay that retains only the requested output then replays backward-plan primal bindings, graph-digest plus reverse-signature keyed transform-hook registration, and explicit cast plus backend-extension refusal for the current vmap and checkpoint coverage; psionic-compiler now adds a first public compile transform with explicit enable/disable posture, purity declaration, cache reuse versus bypass versus explicit invalidation control, cache-identity versus trace-family trace capture, plan-debug output, a bounded shapeless trace-family identity over same-rank primitive graphs, and explicit reshape/expand plus opaque-op refusal for the current symbolic boundary.",
             ),
             boundary_note: String::from(
-                "Do not infer full MLX transform closure from the current reverse-plus-forward plus bounded-vmap plus checkpoint plus first compile-transform slice; jacobian and shapeless or symbolic compile contracts remain open, and custom_vjp is still graph-scoped rather than a broad plugin-distribution story.",
+                "Do not infer full MLX transform closure from the current reverse-plus-forward plus bounded-vmap plus checkpoint plus compile-transform slice; jacobian remains outside the current bounded surface, shapeless compile is still intentionally narrower than a full symbolic-shape environment, and custom_vjp is still graph-scoped rather than a broad plugin-distribution story.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1373,12 +1373,18 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-compiler tests::compile_transform_cache_controls_make_bypass_and_invalidation_explicit -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-compiler tests::compile_transform_shapeless_trace_family_identity_groups_same_rank_graphs -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-compiler tests::compile_transform_shapeless_trace_family_refuses_reshape_without_formula -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "The seeded compile family can now point at both the compiler-hygiene parity matrix and a first public compile-transform surface with explicit purity, cache, trace, and debug controls.",
+                "The seeded compile family can now point at both the compiler-hygiene parity matrix and a first public compile-transform surface with explicit purity, cache, concrete-plan identity, and bounded shapeless trace-family identity controls.",
             ),
             boundary_note: String::from(
-                "This bounded compile-transform pass does not imply shapeless or symbolic compile closure yet.",
+                "This bounded compile-transform pass now includes a narrow shapeless trace-family identity, but it is still not a full symbolic-shape, dynamic-guard, or broad shape-polymorphic compile claim.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1569,9 +1575,9 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("public_mlx_transform_api"),
-            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, jvp, bounded vmap, checkpoint replay, and graph-scoped custom_vjp hooks above AutodiffGraph, while psionic-compiler now exposes compile-as-transform with explicit purity, cache, trace, and debug controls, but jacobian and shapeless or symbolic compile boundaries are still incomplete.",
+                "psionic-ir now exposes a bounded public transform layer with grad, value_and_grad, vjp, jvp, vmap, checkpoint replay, and graph-scoped custom_vjp hooks above AutodiffGraph, while psionic-compiler now exposes compile-as-transform with explicit purity, cache, concrete-plan identity, trace-family identity, and debug controls plus honest reshape/expand refusal on the current shapeless boundary.",
             ),
             evidence_refs: vec![
                 String::from("grad"),
@@ -1583,12 +1589,13 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("custom_vjp"),
                 String::from("compile_transform"),
                 String::from("MlxParityHarnessReport"),
-                String::from("MlxAcceptanceMatrixReport::transform-compile = partial"),
+                String::from("CompileTraceFamilyIdentity"),
+                String::from("MlxAcceptanceMatrixReport::transform-compile = implemented_early"),
                 String::from("ProgramTransformCapabilityMatrixReport"),
             ],
-            blocking_issue_refs: vec![String::from("PMLX-206 (#3845)")],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "The first public reverse-plus-forward plus bounded-vmap plus checkpoint plus compile-transform slice is not yet the same thing as full supported MLX transform closure.",
+                "This is a bounded supported public transform surface, not a claim of jacobian support, full symbolic-shape closure, or broad higher-order transform completeness.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2067,7 +2074,7 @@ mod tests {
                 .expect("missing MLX acceptance category");
             let expected_status = match category_id {
                 "array-runtime-surface" => MlxAcceptanceCategoryStatus::ImplementedEarly,
-                "transform-compile" => MlxAcceptanceCategoryStatus::Partial,
+                "transform-compile" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 _ => MlxAcceptanceCategoryStatus::Planned,
             };
             assert_eq!(category.matrix_status, expected_status);
@@ -2245,7 +2252,7 @@ mod tests {
             .expect("missing public transform row");
         assert_eq!(
             transform.matrix_status,
-            MlxCompatibilityMatrixStatus::Convertible
+            MlxCompatibilityMatrixStatus::Supported
         );
 
         let filtered = report.filter_to_surfaces(&[

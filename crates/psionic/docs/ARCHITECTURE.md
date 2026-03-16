@@ -386,7 +386,8 @@ Applications / Operators / Authority
 3. `psionic-compiler`
    - lowering, schedule-formation, fusion-policy, memory-plan, and
      plan-cache-identity boundaries over IR, plus the first public
-     compile-transform surface with explicit purity, cache, trace, and
+     compile-transform surface with explicit purity, concrete-plan cache
+     identity, bounded shapeless trace-family identity, trace capture, and
      plan-debug posture
    - compiler replay fixtures now guard deterministic lowering, explicit
      schedule/fusion/memory/cache artifacts, and topology-bound program
@@ -521,7 +522,7 @@ training subsystems.
 | `ExtensionContractSemanticsReport` | `psionic-ir` | machine-readable bounded contract surface for custom ops, kernels, autograd, backend plugins, and quantizer plugins above the extensible registry | `implemented` |
 | `TensorFamilyCapabilityMatrixReport` | `psionic-ir` | machine-readable capability and refusal matrix for dense, sparse, nested, masked, and storage-aware tensor-family semantics across meta, declared-output, alias-view, and runtime-materialization surfaces | `implemented` |
 | `ArrayDevice` + `ArrayStream` + `ArrayContext` + `Array` + `EvaluatedArray` + `PendingAsyncEval` | `psionic-array` | first public lazy-array facade above `psionic-core` and `psionic-ir`, including runtime-backed device truth, unified-memory capability flags, explicit stream-dependency policy, context-owned graph construction, graph-backed arithmetic, scalar and filled-array creation helpers, reshape/permute/transpose/slice/select/concat/broadcast view families, explicit runtime determinism contracts with seeded random creation, logical dtype casts, `arange` / `linspace` / `eye` helpers, explicit `eval` / deferred `async_eval` semantics, and explicit-only materialization boundaries over replay-stable graph snapshots | `implemented_early` |
-| `CompilerHygieneParityMatrixReport` | `psionic-compiler` | machine-readable seeded symbolic-shape, fake-tensor, and compiler-hygiene parity cases plus an explicit symbolic-shape refusal proof for the current PyTorch-derived oracle window | `implemented` |
+| `CompilerHygieneParityMatrixReport` | `psionic-compiler` | machine-readable seeded symbolic-shape, fake-tensor, and compiler-hygiene parity cases including one bounded shapeless trace-family identity seed plus explicit symbolic-shape and reshape-formula refusal proofs for the current PyTorch-derived oracle window | `implemented` |
 | `DeploymentArtifactContract` + `ExportDeploymentArtifactSemanticsReport` | `psionic-compiler` | machine-readable deployment bundle contract and bounded report for execution-plan and topology-aware graph-first artifacts | `implemented` |
 | `SemanticsClaimReport` | `psionic-compat` | machine-readable claim vocabulary that separates seeded evidence from `PyTorch-credible` and `PyTorch-compatible later` posture across the current semantics program | `implemented` |
 | `MlxCompatibilityScopeReport` | `psionic-compat` | machine-readable bounded upstream MLX version window and claim-language contract that keeps `MLX-class` distinct from later `MLX-compatible` facades | `implemented` |

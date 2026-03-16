@@ -445,7 +445,7 @@ Turn current graph and autodiff substrate into MLX-class public transforms.
 | `PMLX-203` / [#3842](https://github.com/OpenAgentsInc/openagents/issues/3842) | done (2026-03-16) | `Psionic MLX: add vmap with explicit unsupported-op refusals and parity fixtures` | `psionic-ir` now exposes a first-class public `vmap` transform above `AutodiffGraph`, treating the existing graph as the single-lane function, batching selected graph inputs at runtime, stacking one requested output, publishing an explicit cast/backend-extension support matrix, and seeding the MLX parity harness with a bounded `vmap` pass without implying `custom_vjp`, checkpoint, or compile-as-transform closure. |
 | `PMLX-204` / [#3843](https://github.com/OpenAgentsInc/openagents/issues/3843) | done (2026-03-16) | `Psionic MLX: add checkpoint, custom_vjp, and custom transform registration hooks` | `psionic-ir` now exposes a first-class public `checkpoint` transform with explicit forward replay of backward-plan primal bindings, a graph-scoped transform-hook registry keyed by graph digest plus reverse-mode signature, and a public `custom_vjp` transform with typed registration and cotangent validation, while the lower program-transform capability matrix now treats checkpoint as a bounded supported family and still leaves jacobian plus compile work explicit. |
 | `PMLX-205` / [#3844](https://github.com/OpenAgentsInc/openagents/issues/3844) | done (2026-03-16) | `Psionic MLX: expose compile as a transform with purity, cache, and debug controls` | `psionic-compiler` now exposes a first public `compile_transform(...)` surface with explicit enable/disable posture, declared purity, cache reuse versus bypass versus explicit invalidation control, trace capture, and plan-debug output above the existing compiler pipeline and in-memory plan cache, while intentionally leaving shapeless or symbolic compile scope for the next issue. |
-| `PMLX-206` | planned | `Psionic MLX: add shapeless or symbolic compile behavior and trace-family cache identity` | Make shape-polymorphic compile and export rules explicit so later export or compatibility claims do not overpromise what compiled traces actually support. |
+| `PMLX-206` / [#3845](https://github.com/OpenAgentsInc/openagents/issues/3845) | done (2026-03-16) | `Psionic MLX: add shapeless or symbolic compile behavior and trace-family cache identity` | `psionic-compiler` now exposes a bounded `CompileShapeMode` contract with concrete-only and `shapeless_trace_family` posture, a public `CompileTraceFamilyIdentity` distinct from the concrete plan-cache key, trace-family capture through `compile_transform(...)`, same-rank primitive-family identity grouping over the current bounded shape lane, and explicit reshape/expand plus opaque-op refusal where the current graph model still lacks symbolic output formulas. |
 
 ## Epic 3: `nn` And Optimizers
 
@@ -610,7 +610,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 - `PMLX-203` done 2026-03-16
 - `PMLX-204` done 2026-03-16
 - `PMLX-205` done 2026-03-16
-- `PMLX-206`
+- `PMLX-206` done 2026-03-16
 
 ### Phase 4: land the first reusable `nn` slice, using AttnRes as the first forcing function
 
