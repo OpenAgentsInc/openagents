@@ -783,6 +783,270 @@ impl GraphTransformError {
     }
 }
 
+/// Stable kind for the first bounded exportable-graph contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportGraphContractKind {
+    /// Functionalized export-safe graph envelope.
+    FunctionalizedV1,
+}
+
+impl ExportGraphContractKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::FunctionalizedV1 => "functionalized_v1",
+        }
+    }
+}
+
+/// One named tensor binding carried by an exportable graph contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportTensorBinding {
+    /// Stable binding name.
+    pub binding_name: String,
+    /// Tensor referenced by the binding.
+    pub tensor: TensorId,
+    /// Tensor spec surfaced to downstream consumers.
+    pub spec: TensorSpec,
+}
+
+/// Machine-readable exportable graph contract independent of raw checkpoints.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportableGraphContract {
+    /// Stable schema version for the contract.
+    pub schema_version: u32,
+    /// Export contract kind.
+    pub contract_kind: ExportGraphContractKind,
+    /// Stable entrypoint name for downstream packaging.
+    pub entrypoint: String,
+    /// Stable source graph digest.
+    pub source_graph_digest: String,
+    /// Stable functionalized-graph digest.
+    pub functional_graph_digest: String,
+    /// Stable transform-report digest.
+    pub transform_report_digest: String,
+    /// Ordered input bindings.
+    pub input_bindings: Vec<ExportTensorBinding>,
+    /// Ordered output bindings.
+    pub output_bindings: Vec<ExportTensorBinding>,
+    /// Whether the graph carries explicit quantization intent.
+    pub quantization_intent: bool,
+    /// Stable digest over the full export contract.
+    pub contract_digest: String,
+}
+
+impl ExportableGraphContract {
+    fn new(
+        contract_kind: ExportGraphContractKind,
+        entrypoint: impl Into<String>,
+        source_graph_digest: impl Into<String>,
+        functional_graph_digest: impl Into<String>,
+        transform_report_digest: impl Into<String>,
+        input_bindings: Vec<ExportTensorBinding>,
+        output_bindings: Vec<ExportTensorBinding>,
+        quantization_intent: bool,
+    ) -> Self {
+        let entrypoint = entrypoint.into();
+        let source_graph_digest = source_graph_digest.into();
+        let functional_graph_digest = functional_graph_digest.into();
+        let transform_report_digest = transform_report_digest.into();
+        let contract_digest = stable_exportable_graph_contract_digest(
+            contract_kind,
+            entrypoint.as_str(),
+            source_graph_digest.as_str(),
+            functional_graph_digest.as_str(),
+            transform_report_digest.as_str(),
+            input_bindings.as_slice(),
+            output_bindings.as_slice(),
+            quantization_intent,
+        );
+        Self {
+            schema_version: 1,
+            contract_kind,
+            entrypoint,
+            source_graph_digest,
+            functional_graph_digest,
+            transform_report_digest,
+            input_bindings,
+            output_bindings,
+            quantization_intent,
+            contract_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or downstream audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("contract_kind={}", self.contract_kind.label()),
+            format!("entrypoint={}", self.entrypoint),
+            format!("source_graph_digest={}", self.source_graph_digest),
+            format!("functional_graph_digest={}", self.functional_graph_digest),
+            format!("transform_report_digest={}", self.transform_report_digest),
+            format!("quantization_intent={}", self.quantization_intent),
+            format!("contract_digest={}", self.contract_digest),
+        ];
+        for binding in &self.input_bindings {
+            lines.push(format!(
+                "input|{}|{}|{}",
+                binding.binding_name,
+                binding.tensor,
+                format_spec(&binding.spec)
+            ));
+        }
+        for binding in &self.output_bindings {
+            lines.push(format!(
+                "output|{}|{}|{}",
+                binding.binding_name,
+                binding.tensor,
+                format_spec(&binding.spec)
+            ));
+        }
+        lines
+    }
+
+    /// Validates that this contract still refers to the provided source graph.
+    pub fn validate_against_graph(&self, graph: &Graph) -> Result<(), GraphExportContractError> {
+        let actual = graph.stable_digest();
+        if self.source_graph_digest != actual {
+            return Err(GraphExportContractError::GraphDigestMismatch {
+                expected: self.source_graph_digest.clone(),
+                actual,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Failure returned while creating or validating an exportable graph contract.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum GraphExportContractError {
+    #[error(transparent)]
+    Transform(#[from] GraphTransformError),
+    #[error("exportable graph contract requires a non-empty entrypoint")]
+    MissingEntrypoint,
+    #[error("exportable graph contract requires export-safe functionalization, found policy `{policy:?}`")]
+    ExportSafePolicyRequired { policy: FunctionalizationPolicy },
+    #[error("exportable graph contract requires at least one output tensor")]
+    MissingOutputs,
+    #[error("exportable graph contract references unknown output tensor {tensor}")]
+    UnknownOutputTensor { tensor: TensorId },
+    #[error("exportable graph contract expected source graph `{expected}` but found `{actual}`")]
+    GraphDigestMismatch { expected: String, actual: String },
+}
+
+impl GraphExportContractError {
+    /// Returns the canonical refusal when the export-contract failure belongs to
+    /// one explicit unsupported or compatibility boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::Transform(error) => error.refusal(),
+            Self::MissingEntrypoint
+            | Self::ExportSafePolicyRequired { .. }
+            | Self::MissingOutputs
+            | Self::UnknownOutputTensor { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedOp,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )),
+            Self::GraphDigestMismatch { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::SerializationIncompatibility,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )),
+        }
+    }
+}
+
+impl Graph {
+    /// Creates one exportable graph contract under the current bounded export-safe rules.
+    pub fn exportable_graph_contract(
+        &self,
+        entrypoint: impl Into<String>,
+    ) -> Result<ExportableGraphContract, GraphExportContractError> {
+        self.functionalize(FunctionalizationPolicy::ExportSafeOnly)?
+            .exportable_graph_contract(entrypoint)
+    }
+}
+
+impl FunctionalGraph {
+    /// Creates one exportable graph contract from an existing functionalized graph.
+    pub fn exportable_graph_contract(
+        &self,
+        entrypoint: impl Into<String>,
+    ) -> Result<ExportableGraphContract, GraphExportContractError> {
+        let entrypoint = entrypoint.into();
+        if entrypoint.trim().is_empty() {
+            return Err(GraphExportContractError::MissingEntrypoint);
+        }
+        if !matches!(self.policy, FunctionalizationPolicy::ExportSafeOnly)
+            || !self.report.is_export_safe()
+        {
+            return Err(GraphExportContractError::ExportSafePolicyRequired {
+                policy: self.policy,
+            });
+        }
+        if self.report.outputs.is_empty() {
+            return Err(GraphExportContractError::MissingOutputs);
+        }
+        let input_bindings = self
+            .graph
+            .nodes()
+            .iter()
+            .filter_map(|node| match node.op() {
+                OpKind::Input { name } => Some(ExportTensorBinding {
+                    binding_name: name.clone(),
+                    tensor: node.tensor().id(),
+                    spec: node.tensor().spec().clone(),
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let output_bindings = self
+            .report
+            .outputs
+            .iter()
+            .enumerate()
+            .map(|(index, tensor)| {
+                let Some(node) = self
+                    .graph
+                    .nodes()
+                    .iter()
+                    .find(|node| node.tensor().id() == *tensor)
+                else {
+                    return Err(GraphExportContractError::UnknownOutputTensor { tensor: *tensor });
+                };
+                Ok(ExportTensorBinding {
+                    binding_name: format!("output_{index}"),
+                    tensor: *tensor,
+                    spec: node.tensor().spec().clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let quantization_intent = self.graph.nodes().iter().any(|node| match node.op() {
+            OpKind::Constant {
+                data: TensorData::QuantizedBlocks(_),
+            } => true,
+            OpKind::BackendExtension {
+                op: BackendExtensionOp::QuantizedMatmul { .. },
+            } => true,
+            _ => false,
+        });
+        Ok(ExportableGraphContract::new(
+            ExportGraphContractKind::FunctionalizedV1,
+            entrypoint,
+            self.graph.stable_digest(),
+            self.stable_digest(),
+            self.report.stable_digest(),
+            input_bindings,
+            output_bindings,
+            quantization_intent,
+        ))
+    }
+}
+
 /// Higher-level program-transform family tracked by the bounded current scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -5105,6 +5369,43 @@ fn stable_advanced_operator_program_matrix_digest(
     digest_lines(lines)
 }
 
+fn stable_exportable_graph_contract_digest(
+    contract_kind: ExportGraphContractKind,
+    entrypoint: &str,
+    source_graph_digest: &str,
+    functional_graph_digest: &str,
+    transform_report_digest: &str,
+    input_bindings: &[ExportTensorBinding],
+    output_bindings: &[ExportTensorBinding],
+    quantization_intent: bool,
+) -> String {
+    let mut lines = vec![
+        format!("contract_kind={}", contract_kind.label()),
+        format!("entrypoint={entrypoint}"),
+        format!("source_graph_digest={source_graph_digest}"),
+        format!("functional_graph_digest={functional_graph_digest}"),
+        format!("transform_report_digest={transform_report_digest}"),
+        format!("quantization_intent={quantization_intent}"),
+    ];
+    for binding in input_bindings {
+        lines.push(format!(
+            "input|{}|{}|{}",
+            binding.binding_name,
+            binding.tensor,
+            format_spec(&binding.spec)
+        ));
+    }
+    for binding in output_bindings {
+        lines.push(format!(
+            "output|{}|{}|{}",
+            binding.binding_name,
+            binding.tensor,
+            format_spec(&binding.spec)
+        ));
+    }
+    digest_lines(lines)
+}
+
 fn graph_input_specs(graph: &Graph) -> Vec<TensorSpec> {
     graph
         .nodes()
@@ -5740,6 +6041,34 @@ mod tests {
         };
         assert_eq!(preserved.report.barriers.len(), 1);
         assert!(!preserved.report.is_export_safe());
+    }
+
+    #[test]
+    fn exportable_graph_contract_tracks_entry_signature_and_refuses_opaque_graphs() {
+        let export_safe_graph = super::seeded_export_safe_alias_graph();
+        let contract = export_safe_graph
+            .exportable_graph_contract("main")
+            .expect("export-safe graph should produce a contract");
+        assert_eq!(contract.schema_version, 1);
+        assert_eq!(contract.entrypoint, "main");
+        assert_eq!(contract.input_bindings.len(), 1);
+        assert_eq!(contract.output_bindings.len(), 1);
+        assert!(!contract.contract_digest.is_empty());
+        assert!(!contract.quantization_intent);
+        contract
+            .validate_against_graph(&export_safe_graph)
+            .expect("contract should validate against source graph");
+
+        let opaque_graph = super::seeded_opaque_barrier_graph();
+        let error = opaque_graph
+            .exportable_graph_contract("main")
+            .expect_err("opaque graph should refuse export contract");
+        let refusal = error
+            .refusal()
+            .expect("opaque export contract refusal should map into taxonomy");
+        assert_eq!(refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(refusal.scope, PsionicRefusalScope::Graph);
+        assert_eq!(refusal.subject.as_deref(), Some("rms_norm"));
     }
 
     #[test]

@@ -114,6 +114,9 @@ pub enum SemanticsClaimError {
     /// One compiler-hygiene artifact failed to build.
     #[error(transparent)]
     Compiler(#[from] psionic_compiler::CompilerHygieneParityError),
+    /// One export/deployment artifact semantics report failed to build.
+    #[error(transparent)]
+    ExportDeployment(#[from] psionic_compiler::ExportDeploymentArtifactSemanticsError),
 }
 
 /// Builds the canonical semantics-claim report for the current Psionic
@@ -134,6 +137,8 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let gradient_scaling = psionic_train::builtin_gradient_scaling_semantics_report();
     let reproducibility = psionic_train::builtin_reproducibility_semantics_report();
     let compiler = psionic_compiler::builtin_compiler_hygiene_parity_matrix_report()?;
+    let export_deployment =
+        psionic_compiler::builtin_export_deployment_artifact_semantics_report()?;
 
     Ok(SemanticsClaimReport::new(vec![
         seeded_area(
@@ -176,7 +181,20 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("broaden transform capability beyond functionalization and export-safe graph readiness"),
                 String::from("connect export-safe graph capability to deployment artifact contracts"),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
+        ),
+        seeded_area(
+            "export_and_deployment_semantics",
+            "Current claim is bounded to export-safe functionalized graph contracts with named entry signatures plus deployment artifact contracts over execution-plan and topology-aware bundles, including explicit refusal for opaque backend-extension graphs and graph-digest mismatches.",
+            vec![SemanticsEvidenceRef::new(
+                "export_deployment_artifact_semantics",
+                export_deployment.report_digest,
+            )],
+            vec![
+                String::from("broaden export and deployment semantics beyond the current execution-plan and topology-aware bundle window"),
+                String::from("connect checkpoint migration and broader plugin distribution to the graph-first deployment contracts"),
+            ],
+            Vec::new(),
         ),
         seeded_area(
             "extension_contract_semantics",
@@ -189,7 +207,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("broaden extension semantics beyond the current typed contract bundles"),
                 String::from("connect extension contracts to deployment and distribution surfaces"),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
         seeded_area(
             "data_ingress_semantics",
@@ -232,7 +250,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                     "connect broader operator-family and export semantics to these non-dense families",
                 ),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
         seeded_area(
             "advanced_dtype_semantics",
@@ -262,7 +280,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("connect mixed-precision and distributed data-feed semantics to the replayable RNG contract"),
                 String::from("extend checkpointed RNG restore deeper into later train-loop and export surfaces"),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
         seeded_area(
             "precision_policy_semantics",
@@ -295,7 +313,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("connect quantization capability to extension and plugin contracts"),
                 String::from("land deployment-facing export artifacts on top of the export-aware quantization surface"),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
         seeded_area(
             "module_and_state_semantics",
@@ -338,7 +356,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("land symbolic-shape environments and guard simplification"),
                 String::from("land export breadth above the current fake/meta slice"),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
         future_area(
             "checkpoint_and_model_io_interop",
@@ -351,7 +369,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                     "prove practical migration behavior over dense and sharded checkpoint families",
                 ),
             ],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
         future_area(
             "advanced_tensor_dtype_and_precision",
@@ -362,20 +380,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             Vec::new(),
         ),
         future_area(
-            "quantization_and_export",
-            "Export-safe graphs and deployment-facing compatibility remain future compatibility targets after landing bounded quantization capability seed coverage.",
-            vec![
-                String::from("land export-safe graph and deployment artifact contracts"),
-            ],
-            vec![String::from("#3736")],
-        ),
-        future_area(
             "extensions_and_plugins",
             "Broader extension and plugin distribution, loading, and deployment behavior remain future compatibility targets after landing bounded typed contracts.",
             vec![String::from(
                 "connect extension contracts to deployment and distribution surfaces",
             )],
-            vec![String::from("#3736")],
+            Vec::new(),
         ),
     ]))
 }
@@ -470,6 +480,7 @@ mod tests {
             "operator_semantics",
             "advanced_operator_family_semantics",
             "program_transform_semantics",
+            "export_and_deployment_semantics",
             "extension_contract_semantics",
             "data_ingress_semantics",
             "distributed_data_feed_semantics",
@@ -497,7 +508,6 @@ mod tests {
         for area_id in [
             "checkpoint_and_model_io_interop",
             "advanced_tensor_dtype_and_precision",
-            "quantization_and_export",
             "extensions_and_plugins",
         ] {
             let area = report
