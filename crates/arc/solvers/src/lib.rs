@@ -19,6 +19,7 @@ pub mod interactive;
 pub mod interactive_adcr;
 pub mod interactive_baselines;
 pub mod interactive_context;
+pub mod interactive_eval;
 pub mod interactive_parity;
 pub mod interactive_receipts;
 pub mod interpreter;
@@ -64,6 +65,11 @@ pub use interactive_context::{
     ArcInteractivePromptPolicy, ArcInteractivePromptResumeSummary, ArcInteractivePromptSection,
     ArcInteractivePromptSectionView, ArcInteractiveResumeContextMode, ArcInteractiveSessionMemory,
     INTERACTIVE_CONTEXT_BOUNDARY_SUMMARY,
+};
+pub use interactive_eval::{
+    ArcInteractiveEvalAggregate, ArcInteractiveEvalCaseResult, ArcInteractiveEvalConfig,
+    ArcInteractiveEvalError, ArcInteractiveEvalRound, ArcInteractiveEvalRoundSummary,
+    INTERACTIVE_EVAL_BOUNDARY_SUMMARY, run_repeated_interactive_eval,
 };
 pub use interactive_parity::{
     ArcInteractiveRunnerExpectedDifference, ArcInteractiveRunnerExpectedDifferenceField,

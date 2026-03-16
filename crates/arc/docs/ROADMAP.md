@@ -746,7 +746,7 @@ Master issue:
 | `ARC-403` / [#3802](https://github.com/OpenAgentsInc/openagents/issues/3802) | landed | Ported an ADCR-style baseline lane in `arc-solvers` with explicit Analyze/Decide/Convert/Review phases, baseline-local prompt templates and scratchpad memory, heuristic plus replay-program modes, checkpointable ADCR state, and fixture-backed local/remote runs proving the lane stays on the shared runner contract instead of becoming the contract. |
 | `ARC-404` / [#3803](https://github.com/OpenAgentsInc/openagents/issues/3803) | landed | Added shared interactive budget / reset / refusal envelopes in `arc-core`, taught the `arc-solvers` runner to emit explicit per-turn outcomes plus final completion-or-refusal artifacts, and covered success, invalid-action, budget-exhausted, terminal-state, policy-refusal, level-reset, and closed-scorecard cases with bounded local/remote tests. |
 | `ARC-405` / [#3804](https://github.com/OpenAgentsInc/openagents/issues/3804) | landed | Added an ARC-owned trajectory bundle in `arc-solvers` that preserves pre/post frames, requested actions, refusals, per-step score deltas, replay locators, checkpoint evidence, and full run artifacts while exporting the same bounded episode through typed `psionic-environments` turn receipts plus a session summary. |
-| `ARC-406` / [#3805](https://github.com/OpenAgentsInc/openagents/issues/3805) | planned | Add repeated interactive benchmark runs over the Psionic eval bridge once `PLIB-514` lands. |
+| `ARC-406` / [#3805](https://github.com/OpenAgentsInc/openagents/issues/3805) | landed | Added a bounded repeated interactive eval bridge in `arc-solvers` that launches typed ARC episodes per benchmark case, exports each one through the ARC trajectory bundle plus Psionic environment receipts, assembles finalized `psionic-eval` runs and repeated benchmark sessions, and surfaces completion, refusal, error, action-efficiency, and replay-coverage summaries per round and in aggregate. |
 | `ARC-407` / [#3806](https://github.com/OpenAgentsInc/openagents/issues/3806) | landed | Added a reusable `arc-solvers` interactive parity report surface plus a manifest-driven runner harness that compares local/offline and remote/online episodes for action execution, checkpoint-resume completion, recording parity, and scorecard closeout while documenting the expected environment/operation-mode divergences explicitly. |
 | `ARC-408` / [#3807](https://github.com/OpenAgentsInc/openagents/issues/3807) | landed | Added bounded interactive context-retention and prompt-policy surfaces in `arc-solvers`, including typed retained-history and session-memory contracts, structured prompt-plan sections, runner-owned checkpoint context handoff, explicit resume-policy compatibility refusal, and fixture-backed tests proving bounded local context exposure plus checkpoint-resume continuity. |
 
@@ -836,6 +836,11 @@ That gate is now satisfied in bounded form by `ARC-210`.
     ARC-owned trajectory bundle that keeps replay/action/refusal/checkpoint
     truth in ARC while emitting generalized Psionic turn receipts and a final
     session summary for the same episode.
+    `ARC-406` is now also landed in bounded form: `arc-solvers` runs repeated
+    ARC-AGI-3 benchmark rounds over `psionic-eval`, records typed per-case
+    trajectory bundles plus shared eval-run artifacts, and aggregates
+    completion, refusal, error, efficiency, and replay coverage without
+    replacing ARC-owned scoring semantics.
 
 ### Phase 5: add ARC-ML over honest Psionic substrate
 

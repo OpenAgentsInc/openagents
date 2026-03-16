@@ -1739,7 +1739,12 @@ form: `arc-solvers` owns a typed trajectory bundle that preserves frames,
 actions, refusals, score deltas, checkpoints, and replay locators while
 exporting the same episode through generalized `psionic-environments` turn
 receipts and a final session summary instead of collapsing ARC evidence into ad
-hoc prompt text.
+hoc prompt text. `ARC-406` is now also landed in bounded form: `arc-solvers`
+ships a repeated interactive eval bridge that launches typed ARC-AGI-3
+episodes per benchmark case, exports each case through the trajectory bundle
+and shared Psionic environment receipts, finalizes `psionic-eval` benchmark
+runs, and reports completion, refusal, error, action-efficiency, and replay
+coverage per round without replacing ARC-owned scoring semantics.
 
 ### Phase 5: Psionic primitive expansion
 
@@ -1807,8 +1812,8 @@ Acceptance:
 23. Add repair operators.
 24. Add common verifier and arbiter.
 25. Add budget controller and trace bundle writer.
-26. Add baseline interactive agents, prompt policies, and trajectory receipt
-    export.
+26. Add baseline interactive agents, prompt policies, trajectory receipt
+    export, and repeated eval bridging.
 
 ### Phase 5: model work
 
