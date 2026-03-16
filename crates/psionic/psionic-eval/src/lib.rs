@@ -8,6 +8,7 @@
 
 mod apple_adapter;
 mod apple_adapter_benchmark;
+mod tassadar;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -24,6 +25,7 @@ use thiserror::Error;
 
 pub use apple_adapter::*;
 pub use apple_adapter_benchmark::*;
+pub use tassadar::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "held-out eval, benchmark packages, and rubric runtime for Psionic";

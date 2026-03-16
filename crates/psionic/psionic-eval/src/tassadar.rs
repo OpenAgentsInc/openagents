@@ -1,0 +1,690 @@
+use std::time::Instant;
+
+use psionic_data::DatasetKey;
+use psionic_environments::{
+    EnvironmentDatasetBinding, EnvironmentPolicyKind, EnvironmentPolicyReference,
+    TassadarEnvironmentBundle, TassadarEnvironmentError, TassadarEnvironmentPackageRefs,
+    TassadarEnvironmentSpec, TassadarExactnessContract, TassadarIoContract, TassadarProgramBinding,
+    TassadarWorkloadTarget,
+};
+use psionic_models::{TassadarExecutorContractError, TassadarExecutorFixture};
+use psionic_runtime::{
+    TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
+    TassadarFixtureRunner, TassadarProgramArtifact, TassadarProgramArtifactError, TassadarTraceAbi,
+    TassadarWasmProfile, tassadar_validation_corpus,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use sha2::Digest;
+use thiserror::Error;
+
+use crate::{
+    BenchmarkAggregationKind, BenchmarkCase, BenchmarkExecutionMode, BenchmarkPackage,
+    BenchmarkPackageKey, BenchmarkVerificationPolicy, EvalArtifact, EvalExecutionStrategyFacts,
+    EvalFinalStateCapture, EvalMetric, EvalRunContract, EvalRunMode, EvalRunState,
+    EvalRuntimeError, EvalSampleRecord, EvalSampleStatus, EvalTimerIntegrityFacts,
+    EvalVerificationFacts,
+};
+
+/// Stable environment ref for the Tassadar eval package.
+pub const TASSADAR_EVAL_ENVIRONMENT_REF: &str = "env.openagents.tassadar.eval";
+/// Stable environment ref for the Tassadar benchmark package.
+pub const TASSADAR_BENCHMARK_ENVIRONMENT_REF: &str = "env.openagents.tassadar.benchmark";
+/// Stable benchmark ref for the Tassadar validation-corpus suite.
+pub const TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF: &str =
+    "benchmark://openagents/tassadar/reference_fixture/validation_corpus";
+/// Stable dataset ref for the current validation corpus.
+pub const TASSADAR_VALIDATION_CORPUS_DATASET_REF: &str =
+    "dataset://openagents/tassadar/validation_corpus";
+/// Stable future metric id reserved for the hull-cache lane.
+pub const TASSADAR_HULL_CACHE_FUTURE_METRIC_ID: &str = "tassadar.hull_cache_steps_per_second";
+
+const TASSADAR_OUTPUT_EXACTNESS_METRIC_ID: &str = "tassadar.final_output_exactness_bps";
+const TASSADAR_STEP_EXACTNESS_METRIC_ID: &str = "tassadar.step_exactness_bps";
+const TASSADAR_HALT_EXACTNESS_METRIC_ID: &str = "tassadar.halt_exactness_bps";
+const TASSADAR_CPU_BASELINE_METRIC_ID: &str = "tassadar.cpu_reference_steps_per_second";
+const TASSADAR_REFERENCE_LINEAR_METRIC_ID: &str = "tassadar.reference_linear_steps_per_second";
+const TASSADAR_TRACE_STEP_COUNT_METRIC_ID: &str = "tassadar.trace_step_count";
+
+/// One packaged Tassadar Phase 3 suite.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TassadarReferenceFixtureSuite {
+    /// Environment bundle shared by eval and benchmark execution.
+    pub environment_bundle: TassadarEnvironmentBundle,
+    /// Packaged benchmark contract for the current corpus.
+    pub benchmark_package: BenchmarkPackage,
+    /// Digest-bound artifacts for the benchmark corpus.
+    pub artifacts: Vec<TassadarProgramArtifact>,
+    /// Stable digest over the ordered artifact set.
+    pub corpus_digest: String,
+}
+
+/// Per-case benchmark result for the current Tassadar suite.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TassadarBenchmarkCaseReport {
+    /// Stable benchmark case id.
+    pub case_id: String,
+    /// Workload target for the case.
+    pub workload_target: TassadarWorkloadTarget,
+    /// Terminal sample status.
+    pub status: EvalSampleStatus,
+    /// Aggregate score in basis points.
+    pub score_bps: u32,
+    /// Final-output exactness score.
+    pub final_output_exactness_bps: u32,
+    /// Step exactness score.
+    pub step_exactness_bps: u32,
+    /// Halt exactness score.
+    pub halt_exactness_bps: u32,
+    /// Observed trace-step count.
+    pub trace_steps: u64,
+    /// Direct CPU baseline throughput.
+    pub cpu_reference_steps_per_second: f64,
+    /// Reference-linear executor throughput.
+    pub reference_linear_steps_per_second: f64,
+    /// Future hull-cache throughput placeholder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hull_cache_steps_per_second: Option<f64>,
+    /// Runner-independent CPU behavior digest.
+    pub cpu_behavior_digest: String,
+    /// Runner-independent reference-linear behavior digest.
+    pub reference_linear_behavior_digest: String,
+}
+
+/// Full report for one package-driven Tassadar benchmark run.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TassadarBenchmarkReport {
+    /// Packaged suite identity.
+    pub suite: TassadarReferenceFixtureSuite,
+    /// Finalized benchmark-mode eval run.
+    pub eval_run: EvalRunState,
+    /// Aggregate benchmark summary.
+    pub aggregate_summary: crate::BenchmarkAggregateSummary,
+    /// Per-case benchmark reports.
+    pub case_reports: Vec<TassadarBenchmarkCaseReport>,
+}
+
+/// Tassadar benchmark build or execution failure.
+#[derive(Debug, Error)]
+pub enum TassadarBenchmarkError {
+    /// Environment bundle build failed.
+    #[error(transparent)]
+    Environment(#[from] TassadarEnvironmentError),
+    /// Eval runtime failed.
+    #[error(transparent)]
+    EvalRuntime(#[from] EvalRuntimeError),
+    /// Program artifact assembly failed.
+    #[error(transparent)]
+    ProgramArtifact(#[from] TassadarProgramArtifactError),
+    /// Runtime execution refused one program.
+    #[error(transparent)]
+    ExecutionRefusal(#[from] TassadarExecutionRefusal),
+    /// Executor descriptor rejected one program artifact.
+    #[error(transparent)]
+    ExecutorContract(#[from] TassadarExecutorContractError),
+    /// Artifact count and validation-corpus count differed.
+    #[error("Tassadar artifact count mismatch: expected {expected}, found {actual}")]
+    ArtifactCountMismatch { expected: usize, actual: usize },
+    /// One artifact targeted a different case than the current corpus ordering.
+    #[error(
+        "Tassadar artifact `{artifact_id}` does not match case `{case_id}` in the validation corpus"
+    )]
+    ArtifactCaseMismatch {
+        artifact_id: String,
+        case_id: String,
+    },
+}
+
+/// Builds the packaged Phase 3 suite for the current Tassadar validation corpus.
+pub fn build_tassadar_reference_fixture_suite(
+    version: &str,
+) -> Result<TassadarReferenceFixtureSuite, TassadarBenchmarkError> {
+    let artifacts = tassadar_program_artifacts(version)?;
+    let corpus_digest = stable_corpus_digest(artifacts.as_slice());
+    let environment_bundle =
+        build_tassadar_environment_bundle(version, &artifacts, &corpus_digest)?;
+    let benchmark_package =
+        build_tassadar_benchmark_package(version, &environment_bundle, artifacts.as_slice())?;
+    Ok(TassadarReferenceFixtureSuite {
+        environment_bundle,
+        benchmark_package,
+        artifacts,
+        corpus_digest,
+    })
+}
+
+/// Runs the current packaged Phase 3 suite through the reference-linear executor.
+pub fn run_tassadar_reference_fixture_benchmark(
+    version: &str,
+) -> Result<TassadarBenchmarkReport, TassadarBenchmarkError> {
+    let suite = build_tassadar_reference_fixture_suite(version)?;
+    let corpus = tassadar_validation_corpus();
+    if suite.artifacts.len() != corpus.len() {
+        return Err(TassadarBenchmarkError::ArtifactCountMismatch {
+            expected: corpus.len(),
+            actual: suite.artifacts.len(),
+        });
+    }
+
+    let fixture = TassadarExecutorFixture::new();
+    let descriptor = fixture.descriptor();
+    let cpu_runner = TassadarCpuReferenceRunner::new();
+    let reference_linear_runner = TassadarFixtureRunner::new();
+
+    let mut eval_run = EvalRunState::open(
+        EvalRunContract::new(
+            format!("tassadar-benchmark-run-{version}"),
+            EvalRunMode::Benchmark,
+            suite.environment_bundle.benchmark_package.key.clone(),
+        )
+        .with_dataset(
+            suite.environment_bundle.program_binding.dataset.clone(),
+            Some(String::from("benchmark")),
+        )
+        .with_benchmark_package(suite.benchmark_package.key.clone())
+        .with_expected_sample_count(corpus.len() as u64),
+    )?;
+    eval_run.start(1_000)?;
+
+    let mut case_reports = Vec::new();
+    for (ordinal, (case, artifact)) in corpus.into_iter().zip(suite.artifacts.iter()).enumerate() {
+        if artifact.validated_program.program_id != case.program.program_id {
+            return Err(TassadarBenchmarkError::ArtifactCaseMismatch {
+                artifact_id: artifact.artifact_id.clone(),
+                case_id: case.case_id,
+            });
+        }
+        descriptor
+            .validate_program_artifact(artifact, TassadarExecutorDecodeMode::ReferenceLinear)?;
+
+        let cpu_started = Instant::now();
+        let cpu_execution = cpu_runner.execute(&case.program)?;
+        let cpu_elapsed = cpu_started.elapsed();
+
+        let reference_started = Instant::now();
+        let reference_execution = reference_linear_runner.execute(&case.program)?;
+        let reference_elapsed = reference_started.elapsed();
+
+        let final_output_exactness_bps = u32::from(
+            reference_execution.outputs == case.expected_outputs
+                && reference_execution.outputs == cpu_execution.outputs,
+        ) * 10_000;
+        let step_exactness_bps = u32::from(
+            reference_execution.steps == case.expected_trace
+                && reference_execution.steps == cpu_execution.steps,
+        ) * 10_000;
+        let halt_exactness_bps =
+            u32::from(reference_execution.halt_reason == cpu_execution.halt_reason) * 10_000;
+        let score_bps = (final_output_exactness_bps + step_exactness_bps + halt_exactness_bps) / 3;
+        let status = if score_bps == 10_000 {
+            EvalSampleStatus::Passed
+        } else {
+            EvalSampleStatus::Failed
+        };
+        let trace_steps = reference_execution.steps.len() as u64;
+        let cpu_steps_per_second =
+            throughput_steps_per_second(trace_steps, cpu_elapsed.as_secs_f64());
+        let reference_linear_steps_per_second =
+            throughput_steps_per_second(trace_steps, reference_elapsed.as_secs_f64());
+
+        let sample_artifacts = build_case_artifacts(
+            version,
+            &case.case_id,
+            artifact,
+            &reference_execution,
+            &case,
+        )?;
+        let sample = EvalSampleRecord {
+            sample_id: case.case_id.clone(),
+            ordinal: Some(ordinal as u64),
+            environment: suite.environment_bundle.benchmark_package.key.clone(),
+            status,
+            input_ref: Some(format!("tassadar://input/{}/none", case.case_id)),
+            output_ref: Some(format!(
+                "tassadar://output/{}/reference_linear",
+                case.case_id
+            )),
+            expected_output_ref: Some(format!("tassadar://expected_output/{}", case.case_id)),
+            score_bps: Some(score_bps),
+            metrics: vec![
+                EvalMetric::new(
+                    TASSADAR_OUTPUT_EXACTNESS_METRIC_ID,
+                    f64::from(final_output_exactness_bps),
+                )
+                .with_unit("bps"),
+                EvalMetric::new(
+                    TASSADAR_STEP_EXACTNESS_METRIC_ID,
+                    f64::from(step_exactness_bps),
+                )
+                .with_unit("bps"),
+                EvalMetric::new(
+                    TASSADAR_HALT_EXACTNESS_METRIC_ID,
+                    f64::from(halt_exactness_bps),
+                )
+                .with_unit("bps"),
+                EvalMetric::new(TASSADAR_CPU_BASELINE_METRIC_ID, cpu_steps_per_second)
+                    .with_unit("steps_per_second"),
+                EvalMetric::new(
+                    TASSADAR_REFERENCE_LINEAR_METRIC_ID,
+                    reference_linear_steps_per_second,
+                )
+                .with_unit("steps_per_second"),
+                EvalMetric::new(TASSADAR_TRACE_STEP_COUNT_METRIC_ID, trace_steps as f64)
+                    .with_unit("steps"),
+            ],
+            artifacts: sample_artifacts.clone(),
+            error_reason: None,
+            verification: Some(EvalVerificationFacts {
+                timer_integrity: Some(EvalTimerIntegrityFacts {
+                    declared_budget_ms: Some(
+                        suite
+                            .environment_bundle
+                            .exactness_contract
+                            .timeout_budget_ms,
+                    ),
+                    elapsed_ms: reference_elapsed.as_millis() as u64,
+                    within_budget: reference_elapsed.as_millis() as u64
+                        <= suite
+                            .environment_bundle
+                            .exactness_contract
+                            .timeout_budget_ms,
+                }),
+                token_accounting: None,
+                final_state: Some(EvalFinalStateCapture {
+                    session_digest: reference_execution.behavior_digest(),
+                    output_digest: Some(stable_outputs_digest(&reference_execution.outputs)),
+                    artifact_digests: sample_artifacts
+                        .iter()
+                        .map(|artifact| artifact.artifact_digest.clone())
+                        .collect(),
+                }),
+                execution_strategy: Some(EvalExecutionStrategyFacts {
+                    strategy_label: String::from("tassadar_reference_fixture"),
+                    runtime_family: Some(String::from("tassadar_executor")),
+                    scheduler_posture: Some(String::from("reference_linear")),
+                }),
+            }),
+            session_digest: Some(reference_execution.behavior_digest()),
+            metadata: std::collections::BTreeMap::from([
+                (
+                    String::from("workload_target"),
+                    serde_json::to_value(classify_case(&case.case_id)).unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("cpu_behavior_digest"),
+                    Value::String(cpu_execution.behavior_digest()),
+                ),
+                (
+                    String::from("reference_linear_behavior_digest"),
+                    Value::String(reference_execution.behavior_digest()),
+                ),
+                (
+                    String::from("future_hull_cache_metric_id"),
+                    Value::String(String::from(TASSADAR_HULL_CACHE_FUTURE_METRIC_ID)),
+                ),
+            ]),
+        };
+        eval_run.append_sample(sample)?;
+        case_reports.push(TassadarBenchmarkCaseReport {
+            case_id: case.case_id,
+            workload_target: classify_case(&artifact.validated_program.program_id),
+            status,
+            score_bps,
+            final_output_exactness_bps,
+            step_exactness_bps,
+            halt_exactness_bps,
+            trace_steps,
+            cpu_reference_steps_per_second: cpu_steps_per_second,
+            reference_linear_steps_per_second,
+            hull_cache_steps_per_second: None,
+            cpu_behavior_digest: cpu_execution.behavior_digest(),
+            reference_linear_behavior_digest: reference_execution.behavior_digest(),
+        });
+    }
+
+    let run_artifacts = vec![
+        EvalArtifact::new(
+            "tassadar_benchmark_package.json",
+            format!("artifact://tassadar/{version}/benchmark_package"),
+            &serde_json::to_vec(&suite.benchmark_package).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_environment_bundle.json",
+            format!("artifact://tassadar/{version}/environment_bundle"),
+            &serde_json::to_vec(&suite.environment_bundle).unwrap_or_default(),
+        ),
+    ];
+    eval_run.finalize(2_000, run_artifacts)?;
+
+    let mut execution = suite
+        .benchmark_package
+        .clone()
+        .open_execution(BenchmarkExecutionMode::OperatorSimulation)?;
+    execution.record_round(&eval_run)?;
+    let aggregate_summary = execution.finalize()?;
+
+    Ok(TassadarBenchmarkReport {
+        suite,
+        eval_run,
+        aggregate_summary,
+        case_reports,
+    })
+}
+
+/// Builds digest-bound fixture artifacts for the current validation corpus.
+pub fn tassadar_program_artifacts(
+    version: &str,
+) -> Result<Vec<TassadarProgramArtifact>, TassadarBenchmarkError> {
+    let profile = TassadarWasmProfile::core_i32_v1();
+    let trace_abi = TassadarTraceAbi::core_i32_v1();
+    tassadar_validation_corpus()
+        .into_iter()
+        .map(|case| {
+            TassadarProgramArtifact::fixture_reference(
+                format!("tassadar://artifact/{version}/{}", case.case_id),
+                &profile,
+                &trace_abi,
+                case.program,
+            )
+            .map_err(TassadarBenchmarkError::from)
+        })
+        .collect()
+}
+
+fn build_tassadar_environment_bundle(
+    version: &str,
+    artifacts: &[TassadarProgramArtifact],
+    corpus_digest: &str,
+) -> Result<TassadarEnvironmentBundle, TassadarBenchmarkError> {
+    let profile = TassadarWasmProfile::core_i32_v1();
+    let trace_abi = TassadarTraceAbi::core_i32_v1();
+    let dataset = DatasetKey::new(TASSADAR_VALIDATION_CORPUS_DATASET_REF, version);
+    TassadarEnvironmentSpec {
+        version: String::from(version),
+        display_name: String::from("Tassadar Validation Corpus"),
+        eval_environment_ref: String::from(TASSADAR_EVAL_ENVIRONMENT_REF),
+        benchmark_environment_ref: String::from(TASSADAR_BENCHMARK_ENVIRONMENT_REF),
+        eval_dataset: EnvironmentDatasetBinding {
+            dataset: dataset.clone(),
+            split: Some(String::from("validation")),
+            mount_path: String::from("/datasets/tassadar/validation"),
+            required: true,
+        },
+        benchmark_dataset: EnvironmentDatasetBinding {
+            dataset: dataset.clone(),
+            split: Some(String::from("benchmark")),
+            mount_path: String::from("/datasets/tassadar/benchmark"),
+            required: true,
+        },
+        package_refs: TassadarEnvironmentPackageRefs {
+            group_ref: String::from("group.tassadar.validation"),
+            eval_pin_alias: String::from("tassadar_eval"),
+            benchmark_pin_alias: String::from("tassadar_benchmark"),
+            eval_member_ref: String::from("tassadar_eval_member"),
+            benchmark_member_ref: String::from("tassadar_benchmark_member"),
+            program_corpus_ref: String::from("tassadar://corpus/phase1.validation"),
+            io_contract_ref: String::from("tassadar://io/exact_i32_sequence"),
+            rubric_binding_ref: String::from("tassadar://rubric/exactness"),
+            eval_runtime_profile_ref: String::from("runtime://tassadar/eval"),
+            benchmark_profile_ref: String::from("benchmark://tassadar/reference_fixture"),
+            benchmark_runtime_profile_ref: String::from("runtime://tassadar/benchmark"),
+        },
+        program_binding: TassadarProgramBinding {
+            dataset,
+            program_corpus_ref: String::from("tassadar://corpus/phase1.validation"),
+            corpus_digest: String::from(corpus_digest),
+            wasm_profile_id: profile.profile_id.clone(),
+            trace_abi_id: trace_abi.abi_id.clone(),
+            trace_abi_version: trace_abi.schema_version,
+            opcode_vocabulary_digest: profile.opcode_vocabulary_digest(),
+            artifact_digests: artifacts
+                .iter()
+                .map(|artifact| artifact.artifact_digest.clone())
+                .collect(),
+        },
+        io_contract: TassadarIoContract::exact_i32_sequence(),
+        exactness_contract: TassadarExactnessContract {
+            require_final_output_exactness: true,
+            require_step_exactness: true,
+            require_halt_exactness: true,
+            timeout_budget_ms: 5_000,
+            trace_budget_steps: 128,
+            require_cpu_reference_baseline: true,
+            require_reference_linear_baseline: true,
+            future_throughput_metric_ids: vec![String::from(TASSADAR_HULL_CACHE_FUTURE_METRIC_ID)],
+        },
+        eval_policy_references: vec![EnvironmentPolicyReference {
+            kind: EnvironmentPolicyKind::Verification,
+            policy_ref: String::from("policy://tassadar/eval/verification"),
+            required: true,
+        }],
+        benchmark_policy_references: vec![
+            EnvironmentPolicyReference {
+                kind: EnvironmentPolicyKind::Benchmark,
+                policy_ref: String::from("policy://tassadar/benchmark"),
+                required: true,
+            },
+            EnvironmentPolicyReference {
+                kind: EnvironmentPolicyKind::Verification,
+                policy_ref: String::from("policy://tassadar/benchmark/verification"),
+                required: true,
+            },
+        ],
+        current_workload_targets: vec![
+            TassadarWorkloadTarget::ArithmeticMicroprogram,
+            TassadarWorkloadTarget::MemoryLookupMicroprogram,
+            TassadarWorkloadTarget::BranchControlFlowMicroprogram,
+        ],
+        planned_workload_targets: vec![
+            TassadarWorkloadTarget::MicroWasmKernel,
+            TassadarWorkloadTarget::SudokuClass,
+            TassadarWorkloadTarget::HungarianMatching,
+        ],
+    }
+    .build_bundle()
+    .map_err(TassadarBenchmarkError::from)
+}
+
+fn build_tassadar_benchmark_package(
+    version: &str,
+    environment_bundle: &TassadarEnvironmentBundle,
+    artifacts: &[TassadarProgramArtifact],
+) -> Result<BenchmarkPackage, TassadarBenchmarkError> {
+    let corpus = tassadar_validation_corpus();
+    if artifacts.len() != corpus.len() {
+        return Err(TassadarBenchmarkError::ArtifactCountMismatch {
+            expected: corpus.len(),
+            actual: artifacts.len(),
+        });
+    }
+
+    let cases = corpus
+        .into_iter()
+        .zip(artifacts.iter())
+        .enumerate()
+        .map(|(ordinal, (case, artifact))| {
+            let mut benchmark_case = BenchmarkCase::new(case.case_id.clone());
+            benchmark_case.ordinal = Some(ordinal as u64);
+            benchmark_case.input_ref = Some(format!("tassadar://input/{}/none", case.case_id));
+            benchmark_case.expected_output_ref =
+                Some(format!("tassadar://expected_output/{}", case.case_id));
+            benchmark_case.metadata = json!({
+                "summary": case.summary,
+                "workload_target": classify_case(&case.case_id),
+                "artifact_id": artifact.artifact_id,
+                "artifact_digest": artifact.artifact_digest,
+                "program_digest": artifact.validated_program_digest,
+                "expected_outputs": case.expected_outputs,
+                "expected_trace_steps": case.expected_trace.len(),
+                "trace_budget_steps": environment_bundle.exactness_contract.trace_budget_steps,
+                "timeout_budget_ms": environment_bundle.exactness_contract.timeout_budget_ms
+            });
+            benchmark_case
+        })
+        .collect::<Vec<_>>();
+
+    let mut package = BenchmarkPackage::new(
+        BenchmarkPackageKey::new(TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF, version),
+        "Tassadar Validation Corpus Benchmark",
+        environment_bundle.benchmark_package.key.clone(),
+        1,
+        BenchmarkAggregationKind::MedianScore,
+    )
+    .with_dataset(
+        environment_bundle.program_binding.dataset.clone(),
+        Some(String::from("benchmark")),
+    )
+    .with_verification_policy(BenchmarkVerificationPolicy {
+        require_timer_integrity: true,
+        require_token_accounting: false,
+        require_final_state_capture: true,
+        require_execution_strategy: true,
+    })
+    .with_cases(cases);
+    package.metadata.insert(
+        String::from("tassadar.current_workload_targets"),
+        serde_json::to_value(&environment_bundle.current_workload_targets).unwrap_or(Value::Null),
+    );
+    package.metadata.insert(
+        String::from("tassadar.planned_workload_targets"),
+        serde_json::to_value(&environment_bundle.planned_workload_targets).unwrap_or(Value::Null),
+    );
+    package.metadata.insert(
+        String::from("tassadar.cpu_baseline_metric_id"),
+        Value::String(String::from(TASSADAR_CPU_BASELINE_METRIC_ID)),
+    );
+    package.metadata.insert(
+        String::from("tassadar.reference_linear_metric_id"),
+        Value::String(String::from(TASSADAR_REFERENCE_LINEAR_METRIC_ID)),
+    );
+    package.metadata.insert(
+        String::from("tassadar.future_hull_cache_metric_ids"),
+        json!([TASSADAR_HULL_CACHE_FUTURE_METRIC_ID]),
+    );
+    package.metadata.insert(
+        String::from("tassadar.corpus_digest"),
+        Value::String(environment_bundle.program_binding.corpus_digest.clone()),
+    );
+    package.validate()?;
+    Ok(package)
+}
+
+fn classify_case(case_id: &str) -> TassadarWorkloadTarget {
+    match case_id {
+        "locals_add" | "tassadar.locals_add.v1" => TassadarWorkloadTarget::ArithmeticMicroprogram,
+        "memory_roundtrip" | "tassadar.memory_roundtrip.v1" => {
+            TassadarWorkloadTarget::MemoryLookupMicroprogram
+        }
+        "branch_guard" | "tassadar.branch_guard.v1" => {
+            TassadarWorkloadTarget::BranchControlFlowMicroprogram
+        }
+        _ => TassadarWorkloadTarget::MicroWasmKernel,
+    }
+}
+
+fn stable_corpus_digest(artifacts: &[TassadarProgramArtifact]) -> String {
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(b"tassadar_corpus|");
+    for artifact in artifacts {
+        hasher.update(artifact.artifact_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(artifact.artifact_digest.as_bytes());
+        hasher.update(b"|");
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn throughput_steps_per_second(steps: u64, elapsed_seconds: f64) -> f64 {
+    steps as f64 / elapsed_seconds.max(1e-9)
+}
+
+fn stable_outputs_digest(outputs: &[i32]) -> String {
+    let bytes = serde_json::to_vec(outputs).unwrap_or_default();
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+fn build_case_artifacts(
+    version: &str,
+    case_id: &str,
+    artifact: &TassadarProgramArtifact,
+    execution: &psionic_runtime::TassadarExecution,
+    case: &psionic_runtime::TassadarValidationCase,
+) -> Result<Vec<EvalArtifact>, TassadarBenchmarkError> {
+    Ok(vec![
+        EvalArtifact::new(
+            "tassadar_program_artifact.json",
+            format!("artifact://tassadar/{version}/{case_id}/program"),
+            &serde_json::to_vec(artifact).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_trace.json",
+            format!("artifact://tassadar/{version}/{case_id}/trace"),
+            &serde_json::to_vec(&execution.steps).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_expected_trace.json",
+            format!("artifact://tassadar/{version}/{case_id}/expected_trace"),
+            &serde_json::to_vec(&case.expected_trace).unwrap_or_default(),
+        ),
+    ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tassadar_reference_fixture_suite_builds_package_and_environment_contracts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let suite = build_tassadar_reference_fixture_suite("2026.03.15")?;
+        assert_eq!(suite.artifacts.len(), 3);
+        assert_eq!(suite.benchmark_package.cases.len(), 3);
+        assert_eq!(
+            suite
+                .benchmark_package
+                .metadata
+                .get("tassadar.future_hull_cache_metric_ids")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            suite.environment_bundle.current_workload_targets,
+            vec![
+                TassadarWorkloadTarget::ArithmeticMicroprogram,
+                TassadarWorkloadTarget::MemoryLookupMicroprogram,
+                TassadarWorkloadTarget::BranchControlFlowMicroprogram,
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tassadar_reference_fixture_benchmark_is_exact_on_current_validation_corpus()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = run_tassadar_reference_fixture_benchmark("2026.03.15")?;
+        assert_eq!(report.aggregate_summary.round_count, 1);
+        assert_eq!(report.aggregate_summary.aggregate_score_bps, Some(10_000));
+        assert_eq!(report.aggregate_summary.aggregate_pass_rate_bps, 10_000);
+        assert_eq!(report.eval_run.status, crate::EvalRunStatus::Finalized);
+        assert!(
+            report
+                .case_reports
+                .iter()
+                .all(|case| case.status == EvalSampleStatus::Passed)
+        );
+        assert!(
+            report
+                .case_reports
+                .iter()
+                .all(|case| case.cpu_reference_steps_per_second > 0.0)
+        );
+        assert!(
+            report
+                .case_reports
+                .iter()
+                .all(|case| case.reference_linear_steps_per_second > 0.0)
+        );
+        Ok(())
+    }
+}

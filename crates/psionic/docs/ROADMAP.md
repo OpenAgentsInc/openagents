@@ -38,7 +38,8 @@
   is real, not before.
 - An implemented-early executor-class reference lane codenamed `Tassadar` now
   exists as WebAssembly-first, CPU-reference-first, library-owned work rather
-  than MVP product scope.
+  than MVP product scope, with Phase 3 benchmark/environment package support
+  now landed above it.
 
 ## Why This Doc Exists
 
@@ -472,7 +473,7 @@ Epic 0 and later epics beyond 2 still use roadmap-local IDs until activated.
 ### Tassadar Executor-Class Reference Lane
 
 This track is now implemented early as a Psionic-owned reference lane and
-remains dependency-ordered beyond Phase 2.
+remains dependency-ordered beyond Phase 3.
 
 It is a cross-epic lane that depends on:
 
@@ -487,9 +488,13 @@ Its declared scope is:
 - landed Phase 1 bar: CPU reference fixture and exact parity harness
 - landed Phase 2 bar: digest-bound program artifacts and explicit
   model/program compatibility contracts
+- landed Phase 3 bar: typed environment bundle plus package-driven exactness
+  benchmark suite with CPU and reference-linear baselines
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
+  - `psionic-environments::TassadarEnvironmentBundle`
+  - `psionic-eval::run_tassadar_reference_fixture_benchmark`
 - strategic value: inner exact-computation substrate for larger reasoning
   systems
 - non-goals: current MVP product scope, kernel authority, or replacement of
@@ -503,8 +508,10 @@ The current issue spine is:
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - Phase 2 executor model and program artifact contracts:
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
+- Phase 3 benchmark and environment packages:
+  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
 
-What Phases 1 and 2 now concretely provide:
+What Phases 1 through 3 now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -517,12 +524,16 @@ What Phases 1 and 2 now concretely provide:
 - one digest-bound `TassadarProgramArtifact` contract
 - explicit executor-family compatibility, decode-mode, and exactness claims for
   model/program pairing
+- one typed `TassadarEnvironmentBundle` for eval and benchmark package binding
+- one package-driven benchmark suite over the current validation corpus
+- exact output/step/halt scoring with explicit CPU and reference-linear
+  throughput metrics
+- declared future hull-cache metric ids so later fast-path work widens the
+  same package family instead of replacing it
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
 
-- benchmark and environment packages:
-  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
 - executor-trace proof bundles:
   [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 - hull-cache or geometric retrieval decoding:
