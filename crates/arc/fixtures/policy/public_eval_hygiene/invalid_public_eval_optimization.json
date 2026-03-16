@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifact_id": "arc-public-eval-optimization-loop",
+  "benchmark_family": "arc",
+  "evaluation_visibility": "public_eval",
+  "artifact_labels": [
+    "public-eval",
+    "non-regression",
+    "optimization"
+  ],
+  "per_task_manual_tuning": false,
+  "feeds_training": false,
+  "synthetic_derivation": "none"
+}

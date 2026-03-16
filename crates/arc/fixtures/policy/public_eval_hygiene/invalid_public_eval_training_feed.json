@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifact_id": "arc-public-eval-training-feed",
+  "benchmark_family": "arc",
+  "evaluation_visibility": "public_eval",
+  "artifact_labels": [
+    "public-eval",
+    "non-regression",
+    "non-optimization"
+  ],
+  "per_task_manual_tuning": false,
+  "feeds_training": true,
+  "synthetic_derivation": "none"
+}
