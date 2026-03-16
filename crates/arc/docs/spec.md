@@ -273,6 +273,8 @@ split metadata export into Psionic-owned dataset manifest contracts.
 The current parser/objectization acceptance corpus now lives in
 `crates/arc/core/fixtures/objectization_corpus_manifest.json` over sampled
 ARC-AGI-1/2 task fixtures.
+`arc-datasets` now also owns the first augmentation-builder surface plus
+synthetic-task lineage and trace-derived Psionic dataset packaging.
 
 ## 4. Shared domain model
 
