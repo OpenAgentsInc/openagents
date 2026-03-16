@@ -97,8 +97,8 @@ shadow refusal records for the same unsupported families.
 | Tensor semantics | `implemented_early` | typed tensor identity, shape/layout transforms, alias-preserving view rules, storage identity and view posture contracts, broadcast-compatible binary shape semantics, reduction shape rules, dtype promotion, and quantized payload containers behave deterministically enough to anchor compiler and IO layers | `psionic-core` now owns explicit broadcast, dtype-promotion, dtype-class, quantized-logical-storage, layout storage-span, and alias/view-semantic rules, `psionic-runtime` now exposes a backend-visible `BufferStorageContract`, and `psionic-ir` lowers broadcasted binary ops through explicit `expand` views instead of backend-only coincidence | `psionic-core`, `psionic-runtime`, `psionic-ir`, and `psionic-backend-cpu` tensor-semantics tests | Keep the category honest: the shared semantics are now explicit, but this is still not a blanket claim that every backend already executes every promoted dtype or advanced storage family |
 | Autodiff and optimizer behavior | `implemented_early` | reverse-mode autodiff, detach semantics, training-mode gradient rules, broad current primitive-family coverage, and reusable optimizer families are all machine-checkable and not hidden inside one training loop | `psionic-ir` now owns autodiff-aware graph construction, an explicit gradient-support matrix, symbolic backward plans, dense reference materialization, full current primitive-family gradient regression tests, and typed refusal across current backend-extension families, while `psionic-train` owns the reusable optimizer and distributed-optimizer contracts layered above it | `psionic-ir` autodiff tests plus `psionic-train` integration, optimizer, and distributed-optimizer tests | Keep the category honest: the current primitive-family surface is broadly covered, but backend-extension gradients still refuse explicitly and later operator families remain outside this runner |
 | Model and state IO | `implemented_early` | model weights, optimizer state, adapter deltas, tokenizer bindings, and manifest receipts roundtrip through stable formats without losing role or spec truth | `psionic-train::model_io` already owns safetensors export/import, GGUF import, tensor-role manifests, and typed artifact receipts | `psionic-train` model-IO roundtrip and GGUF inventory tests | Do not treat a serving-family loader alone as full model-state IO closure; state-dict and optimizer-state roundtrip must stay in scope |
-| Compiler lowering and realize path | `implemented_early` | compile lowering is deterministic, topology-sensitive, extension-aware, schema-backed, fake- or meta-executable, and replayable from named fixtures instead of being only an internal implementation detail | `psionic-ir` now publishes a built-in operator registry with explicit schema, implementation-family, meta-execution contracts, shape-only graph/plan execution, and capability-gated refusal behavior, while `psionic-compiler` owns deterministic lowering, topology-sensitive digests, and fixture-backed replay tests above that IR surface | `psionic-ir` operator-registry and meta-execution tests plus `psionic-compiler` compile-graph and `process_replay` tests | Do not claim framework-core closure if lowering stays green only on one happy-path fixture while operator schemas, meta validation, fake execution, graph identity, or topology sensitivity drift |
-| Memory planning and cache behavior | `implemented_early` | model admission, allocator/cache budgets, KV/prefix cache state, and runtime resource reports stay explicit and bounded instead of being hidden behind backend heuristics | `psionic-runtime` already owns model-admission planning, runtime resource reports, prefix/KV cache contracts, and cache observations | `psionic-runtime` admission, budget, KV cache, and prefix-cache tests | Do not collapse runtime cache truth into product throughput headlines; framework-core acceptance cares about explicit policy and refusal behavior too |
+| Compiler lowering and realize path | `implemented_early` | compile lowering is deterministic, topology-sensitive, extension-aware, schema-backed, fake- or meta-executable, and replayable from named fixtures instead of being only an internal implementation detail | `psionic-ir` now publishes a built-in operator registry with explicit schema, implementation-family, meta-execution contracts, shape-only graph/plan execution, and capability-gated refusal behavior, while `psionic-compiler` now owns deterministic lowering plus explicit schedule formation, fusion-policy realization, alias-aware memory planning, plan-cache identity, compile-cache evidence, and fixture-backed replay above that IR surface | `psionic-ir` operator-registry and meta-execution tests plus `psionic-compiler` compile-graph, compiler-artifact, plan-cache, and `process_replay` tests | Do not claim framework-core closure if lowering stays green only on one happy-path fixture while operator schemas, meta validation, fake execution, schedule/memory/cache identity, graph identity, or topology sensitivity drift |
+| Memory planning and cache behavior | `implemented_early` | model admission, compiler memory planning, allocator/cache budgets, KV/prefix cache state, and runtime resource reports stay explicit and bounded instead of being hidden behind backend heuristics | `psionic-compiler` now owns compile-time tensor lifetime intervals, alias-aware slot reuse, stable plan-cache identity, and cold-vs-warm compile-cache evidence, while `psionic-runtime` still owns model-admission planning, runtime resource reports, and prefix/KV cache contracts | `psionic-compiler` compiler-artifact and plan-cache tests plus `psionic-runtime` admission, budget, KV cache, and prefix-cache tests | Do not collapse compile-time or runtime cache truth into product throughput headlines; framework-core acceptance cares about explicit policy and refusal behavior too |
 | Process replay and program identity | `implemented_early` | reviewers can tell whether a compiled or trained path is the same program, the same replay contract, and the same tool/environment posture | `psionic-compiler` fixture replay and `psionic-train` replay-truth receipts already exist | `psionic-compiler` replay fixtures plus `psionic-train` replay-truth tests | Do not treat request receipts or serving-route provenance alone as framework replay closure |
 | Same-type local multi-device behavior | `implemented_early` | one same-host same-backend runner can realize a plan across multiple devices with explicit topology, sharding policy, and refusal reasons | `psionic-runtime` now owns a same-type local multi-device runner plus explicit refusal taxonomy, and `psionic-models` now publishes one representative decoder-family tensor-parallel sharding contract | representative decoder-family sharding-contract test, local multi-device runner execution/refusal tests, plus topology-sensitive compiler digest test | Keep local serving acceptance honest: the lower-level runtime runner is real, but `TOPOLOGY_ACCEPTANCE_MATRIX.md` still keeps local tensor/pipeline/layer/replica serving unsupported until a served lane adopts it |
 
@@ -215,6 +215,12 @@ Current shipped foundation:
 - fake execution can refuse explicit backend-kernel capability gaps, which lets
   compatibility harnesses stay honest about what a target surface claims to
   support
+- `psionic-compiler` now publishes deterministic schedule formation, explicit
+  fusion groups, alias-aware memory intervals and slot reuse, stable
+  plan-cache identity, and cold-versus-warm compile-cache evidence rather than
+  leaving those compiler surfaces implicit inside one backend
+- compiler replay fixtures now snapshot the richer compiler artifact contract,
+  not only the lowered plan signature
 
 Canonical hooks:
 
@@ -225,6 +231,9 @@ Canonical hooks:
 - `cargo test -p psionic-compiler --lib tests::compile_graph_lists_expected_steps -- --exact`
 - `cargo test -p psionic-compiler --lib tests::compile_graph_plan_can_run_through_meta_execution_without_tensor_data -- --exact`
 - `cargo test -p psionic-compiler --lib tests::compile_graph_preserves_deterministic_digest -- --exact`
+- `cargo test -p psionic-compiler --lib tests::compile_graph_artifacts_surface_schedule_fusion_and_memory_contracts -- --exact`
+- `cargo test -p psionic-compiler --lib tests::compile_graph_artifacts_cache_identity_tracks_topology_and_contract_changes -- --exact`
+- `cargo test -p psionic-compiler --lib tests::compiler_plan_cache_emits_cold_compile_then_warm_reuse_evidence -- --exact`
 - `cargo test -p psionic-compiler --test process_replay matmul_add_replay_fixture_matches -- --exact`
 - `cargo test -p psionic-compiler --test process_replay attention_backend_extension_tensor_sharded_replay_fixture_matches -- --exact`
 
@@ -232,8 +241,19 @@ Canonical hooks:
 
 This category is about explicit planning, budget, and reuse truth.
 
+Current shipped foundation:
+
+- `psionic-compiler` now exposes compile-time tensor lifetime intervals,
+  alias-aware slot reuse, and stable plan-cache identity/evidence instead of
+  leaving those decisions implicit inside a backend-specific compile path
+- `psionic-runtime` still owns runtime admission budgets, runtime resource
+  reports, and prefix/KV cache contracts for realized execution paths
+
 Canonical hooks:
 
+- `cargo test -p psionic-compiler --lib tests::compile_graph_artifacts_surface_schedule_fusion_and_memory_contracts -- --exact`
+- `cargo test -p psionic-compiler --lib tests::compile_graph_artifacts_cache_identity_tracks_topology_and_contract_changes -- --exact`
+- `cargo test -p psionic-compiler --lib tests::compiler_plan_cache_emits_cold_compile_then_warm_reuse_evidence -- --exact`
 - `cargo test -p psionic-runtime --lib tests::model_admission_can_evict_oldest_idle_model_to_fit_budget -- --exact`
 - `cargo test -p psionic-runtime --lib tests::model_admission_refuses_when_only_active_models_block_the_budget -- --exact`
 - `cargo test -p psionic-runtime --lib tests::prefix_cache_identity_and_policy_serialize_stably -- --exact`

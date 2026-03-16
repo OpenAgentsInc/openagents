@@ -32,5 +32,50 @@
     "outputs|t4",
     "topology|none"
   ],
+  "artifact_digest": "54d4ac0b05867bf478fb641d3f63909c64aac0e63ec098df5449cebfcfe07cd7",
+  "artifact_signature": [
+    "compiled_digest|ada9800969a86e39e8b868c56e5062cd687798c3aaa85d86f1678dd67b464a86",
+    "schedule_digest|e34f4e599e0b810c6fe70be063665cfe28216b248314bfb75de83f3754f65c22",
+    "fusion_digest|e9407f6a3e7bb8f94538c2c5933546fd118fcd2b1aebbc2db7228941cccfe9d4",
+    "memory_plan_digest|3dad73194f0e9b89f7ed8878e2d3a8e36240a3a482c4e3b4df251f70e422564c",
+    "cache_identity_digest|f378df7140b29180d105894fa8ad8da27addc02229a356e1a3db9df13a81bc3a"
+  ],
+  "schedule_digest": "e34f4e599e0b810c6fe70be063665cfe28216b248314bfb75de83f3754f65c22",
+  "schedule_signature": [
+    "schedule_policy|insertion_order_topological",
+    "schedule_step|0|t0|input|deps=|fusion=none",
+    "schedule_step|1|t1|constant|deps=|fusion=none",
+    "schedule_step|2|t2|constant|deps=|fusion=none",
+    "schedule_step|3|t3|compute|deps=0,1|fusion=none",
+    "schedule_step|4|t4|elementwise|deps=2,3|fusion=none"
+  ],
+  "fusion_digest": "e9407f6a3e7bb8f94538c2c5933546fd118fcd2b1aebbc2db7228941cccfe9d4",
+  "fusion_signature": [
+    "fusion_policy|elementwise_and_views|max_group_size=8"
+  ],
+  "memory_plan_digest": "3dad73194f0e9b89f7ed8878e2d3a8e36240a3a482c4e3b4df251f70e422564c",
+  "memory_plan_signature": [
+    "memory_policy|alias_aware_reuse",
+    "memory_interval|t0|0|3|external_input|logical_bytes=16|allocated_bytes=0|slot=none|alias=none",
+    "memory_interval|t1|1|3|constant|logical_bytes=16|allocated_bytes=16|slot=0|alias=none",
+    "memory_interval|t2|2|4|constant|logical_bytes=16|allocated_bytes=16|slot=1|alias=none",
+    "memory_interval|t3|3|4|ephemeral|logical_bytes=16|allocated_bytes=16|slot=2|alias=none",
+    "memory_interval|t4|4|5|materialized_output|logical_bytes=16|allocated_bytes=16|slot=0|alias=none",
+    "memory_slot|0|capacity_bytes=16|tensors=t1,t4",
+    "memory_slot|1|capacity_bytes=16|tensors=t2",
+    "memory_slot|2|capacity_bytes=16|tensors=t3",
+    "memory_peak_allocated_bytes|48"
+  ],
+  "cache_identity_digest": "f378df7140b29180d105894fa8ad8da27addc02229a356e1a3db9df13a81bc3a",
+  "cache_identity_signature": [
+    "compiler_schema_version|1",
+    "operator_schema_version|1",
+    "graph_digest|831261d4cc262c4e7021cb3bba7bf28b40bf7350037ad3bed39cc927efd0f124",
+    "topology_digest|none",
+    "schedule_digest|e34f4e599e0b810c6fe70be063665cfe28216b248314bfb75de83f3754f65c22",
+    "fusion_digest|e9407f6a3e7bb8f94538c2c5933546fd118fcd2b1aebbc2db7228941cccfe9d4",
+    "memory_plan_digest|3dad73194f0e9b89f7ed8878e2d3a8e36240a3a482c4e3b4df251f70e422564c",
+    "lowering_pass|0|insertion_order_lowering"
+  ],
   "topology": null
 }

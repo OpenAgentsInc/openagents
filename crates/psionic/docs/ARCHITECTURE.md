@@ -323,9 +323,11 @@ Applications / Operators / Authority
      validation contracts, detach/no-grad/autodiff tracking, symbolic backward
      plans, and execution-plan representation
 3. `psionic-compiler`
-   - lowering and scheduling boundaries over IR
-   - compiler replay fixtures now guard deterministic lowering and
-     topology-bound program identity through
+   - lowering, schedule-formation, fusion-policy, memory-plan, and
+     plan-cache-identity boundaries over IR
+   - compiler replay fixtures now guard deterministic lowering, explicit
+     schedule/fusion/memory/cache artifacts, and topology-bound program
+     identity through
      `scripts/lint/psionic-compiler-replay-gate.sh`
 4. `psionic-runtime`
    - runtime traits, runtime planning, execution-proof bundles, training-class

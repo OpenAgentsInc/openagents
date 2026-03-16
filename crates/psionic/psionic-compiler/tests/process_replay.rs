@@ -2,7 +2,7 @@
 
 use std::{fs, path::PathBuf};
 
-use psionic_compiler::compile_graph_with_topology;
+use psionic_compiler::{CompilerContract, compile_graph_artifacts_with_topology};
 use psionic_core::{DType, Device, DeviceKind, QuantizationMode, Shape};
 use psionic_ir::GraphBuilder;
 use psionic_runtime::{
@@ -22,6 +22,16 @@ struct CompilerReplayFixture {
     plan_debug: String,
     compiled_digest: String,
     compiled_signature: Vec<String>,
+    artifact_digest: String,
+    artifact_signature: Vec<String>,
+    schedule_digest: String,
+    schedule_signature: Vec<String>,
+    fusion_digest: String,
+    fusion_signature: Vec<String>,
+    memory_plan_digest: String,
+    memory_plan_signature: Vec<String>,
+    cache_identity_digest: String,
+    cache_identity_signature: Vec<String>,
     topology: Option<Value>,
 }
 
@@ -32,18 +42,32 @@ impl CompilerReplayFixture {
         graph: &psionic_ir::Graph,
         topology: Option<ExecutionTopologyPlan>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let compiled = compile_graph_with_topology(graph, topology.clone())?;
+        let artifacts = compile_graph_artifacts_with_topology(
+            graph,
+            topology.clone(),
+            CompilerContract::default(),
+        )?;
         let topology = topology.map(serde_json::to_value).transpose()?;
         Ok(Self {
             name: name.to_string(),
             description: description.to_string(),
             graph_digest: graph.stable_digest(),
             graph_signature: graph.stable_signature_lines(),
-            plan_digest: compiled.plan.stable_digest(),
-            plan_signature: compiled.plan.stable_signature_lines(),
-            plan_debug: compiled.plan.stable_debug(),
-            compiled_digest: compiled.stable_digest(),
-            compiled_signature: compiled.stable_signature_lines(),
+            plan_digest: artifacts.compiled.plan.stable_digest(),
+            plan_signature: artifacts.compiled.plan.stable_signature_lines(),
+            plan_debug: artifacts.compiled.plan.stable_debug(),
+            compiled_digest: artifacts.compiled.stable_digest(),
+            compiled_signature: artifacts.compiled.stable_signature_lines(),
+            artifact_digest: artifacts.stable_digest(),
+            artifact_signature: artifacts.stable_signature_lines(),
+            schedule_digest: artifacts.schedule.stable_digest(),
+            schedule_signature: artifacts.schedule.stable_signature_lines(),
+            fusion_digest: artifacts.fusion.stable_digest(),
+            fusion_signature: artifacts.fusion.stable_signature_lines(),
+            memory_plan_digest: artifacts.memory_plan.stable_digest(),
+            memory_plan_signature: artifacts.memory_plan.stable_signature_lines(),
+            cache_identity_digest: artifacts.cache_identity.stable_digest(),
+            cache_identity_signature: artifacts.cache_identity.stable_signature_lines(),
             topology,
         })
     }
