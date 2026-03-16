@@ -4,8 +4,8 @@
 > after landing `PMLX-101` / `#3834`, `PMLX-102` / `#3835`,
 > `PMLX-103` / `#3836`, `PMLX-104` / `#3837`, `PMLX-105` / `#3838`, and
 > `PMLX-402` / `#3854`, `PMLX-403` / `#3855`, plus `PMLX-404` / `#3856`, and
-> `PMLX-501` / `#3859`, and refreshing the native function-export, `.mlxfn`,
-> public array, and distributed rows.
+> `PMLX-501` / `#3859`, plus `PMLX-502` / `#3860`, and refreshing the native
+> function-export, `.mlxfn`, public array, and distributed rows.
 
 This document is the bounded adoption matrix for the Psionic MLX roadmap.
 
@@ -66,7 +66,7 @@ docs:
 | `public_mlx_nn_optimizer_api` | `supported` | `psionic-nn` now exposes a bounded supported public `nn` surface with a `Module` tree, bounded public `save_weights` / `load_weights`, a CPU-reference core layer surface, CPU-reference losses and initializers, a public optimizer plus scheduler shell, and a first eval-oriented quantized module API through `Module::quantize(...)` plus `QuantizedLinear` and `QuantizedEmbedding`. | none | This is a bounded supported early public `nn` surface, not a claim of broad quantized training closure, quantized conv/norm wrapper breadth, or export-format quantization parity. |
 | `mlxfn_interop` | `supported` | `psionic-function-io` now exposes one bounded supported `.mlxfn` import/export shell on top of the native function artifact, with stable compatibility receipts and explicit refusal for unsupported version, trace-count, shapeless, keyword-input, device, primitive, and dtype cases. | none | This support is intentionally narrow: one CPU positional trace only, one bounded primitive and dtype subset, no shapeless traces, no keyword inputs, and no guarantee that native compile bundles survive the `.mlxfn` boundary. |
 | `mlx_naming_facade_and_bindings` | `unsupported` | There is no MLX naming facade or Python/C/Swift binding layer in Psionic today. | `PMLX-606`, `PMLX-607`, `PMLX-608` | Adoption-facing names and bindings are explicitly late work and must not be implied early. |
-| `public_mlx_distributed_api` | `unsupported` | `psionic-distributed` now exposes a bounded public distributed-group API with explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, and explicit-plan subgroup split semantics, but the broader MLX distributed helper surface remains unsupported. | `PMLX-502` through `PMLX-507` | Current collectives and cluster internals are not themselves a supported MLX distributed surface, and the new group layer alone is not enough to claim full MLX distributed support. |
+| `public_mlx_distributed_api` | `unsupported` | `psionic-distributed` now exposes a bounded public distributed-group plus core collective-helper API with explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, explicit-plan subgroup split semantics, singleton `all_sum` / `all_gather` / `reduce_scatter` passthrough, reference-emulated multi-rank collectives and `recv`, validation-only `send`, and typed collective-support snapshots, but the broader MLX distributed helper surface remains unsupported. | `PMLX-503` through `PMLX-507` | Current collectives and cluster internals are not themselves a supported MLX distributed surface, and the new group plus bounded collective-helper layer is still not enough to claim full MLX distributed support. |
 | `mlx_package_ecosystem` | `unsupported` | There is no supported MLX-lm, multimodal, audio, serving, recipe, or benchmark ecosystem layer in Psionic today. | `PMLX-701` through `PMLX-709` | Ecosystem workflows are intentionally later and must not be implied by the current governance slice. |
 
 ## Why This Matters

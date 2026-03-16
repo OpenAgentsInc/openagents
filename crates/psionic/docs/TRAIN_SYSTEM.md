@@ -12,6 +12,7 @@
 > `crates/psionic/psionic-runtime/src/lib.rs`,
 > `crates/psionic/psionic-datastream/src/lib.rs`,
 > `crates/psionic/psionic-collectives/src/lib.rs`,
+> `crates/psionic/psionic-distributed/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`,
 > `crates/psionic/psionic-environments/src/lib.rs`,
 > `crates/psionic/psionic-eval/src/lib.rs`,
@@ -905,6 +906,10 @@ The current train-relevant ownership split in Psionic is:
 - `psionic-collectives`
   - elastic mesh observation, local/global sync planning, transport-feedback
     replanning, and benchmark-gated collective policy
+- `psionic-distributed`
+  - bounded public framework-distributed group plus core collective-helper
+    shell above runtime mesh truth, with explicit reference emulation and
+    honest refusal where public backend transport has not landed yet
 - `psionic-environments`
   - environment package ABI, execution entrypoints, tool and rubric hooks,
     artifact expectations, versioned dataset bindings, deterministic runtime
