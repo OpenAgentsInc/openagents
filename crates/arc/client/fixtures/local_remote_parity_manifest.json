@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "These parity cases compare arc-client local wrapper traces against the local compatibility server for translated bt11 and bt33 fixtures. They prove step-by-step parity for docs-shaped local server flows, but they do not claim benchmark-truth scoring, online rate-limit policy, or competition-mode parity yet.",
+  "cases": [
+    {
+      "game_id": "bt11-fd9df0622a1a",
+      "title": "BT11",
+      "baseline_actions": [4],
+      "package_path": "../engine/fixtures/upstream/bt11-fd9df0622a1a.json",
+      "scripts": [
+        {
+          "id": "reset_then_four_action3_advances_to_next_level",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION3" },
+            { "kind": "ACTION3" },
+            { "kind": "ACTION3" },
+            { "kind": "ACTION3" }
+          ]
+        },
+        {
+          "id": "reset_then_four_action4_games_over",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" }
+          ]
+        }
+      ]
+    },
+    {
+      "game_id": "bt33-a7c3f9d18b4e",
+      "title": "BT33",
+      "baseline_actions": [4],
+      "package_path": "../engine/fixtures/upstream/bt33-a7c3f9d18b4e.json",
+      "scripts": [
+        {
+          "id": "reset_then_four_left_clicks_advances_to_next_level",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION6", "x": 1, "y": 1 },
+            { "kind": "ACTION6", "x": 1, "y": 1 },
+            { "kind": "ACTION6", "x": 1, "y": 1 },
+            { "kind": "ACTION6", "x": 1, "y": 1 }
+          ]
+        },
+        {
+          "id": "reset_then_four_right_clicks_games_over",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION6", "x": 63, "y": 1 },
+            { "kind": "ACTION6", "x": 63, "y": 1 },
+            { "kind": "ACTION6", "x": 63, "y": 1 },
+            { "kind": "ACTION6", "x": 63, "y": 1 }
+          ]
+        }
+      ]
+    }
+  ]
+}

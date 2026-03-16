@@ -11,6 +11,7 @@
 
 pub mod local;
 pub mod models;
+pub mod parity;
 pub mod remote;
 pub mod server;
 
@@ -25,6 +26,10 @@ pub use models::{
     ArcComplexActionCommand, ArcEnvironmentInfo, ArcOpenScorecardRequest, ArcOpenScorecardResponse,
     ArcRemoteSession, ArcResetCommand, ArcScorecardEnvironment, ArcScorecardRunSummary,
     ArcScorecardSummary, ArcSessionFrame, ArcSimpleActionCommand, ArcTagScore,
+};
+pub use parity::{
+    ArcLocalRemoteParityField, ArcLocalRemoteParityMismatch, ArcLocalRemoteParityOutcome,
+    ArcLocalRemoteParityReport, ArcParityTraceStep, compare_local_remote_traces,
 };
 pub use remote::{ArcRemoteClient, RemoteArcEnvironment};
 pub use server::{ArcCompatibilityServer, ArcRegisteredEnvironment};

@@ -466,8 +466,9 @@ The current baseline is intentionally thin.
 - there is no deterministic engine parity harness in-tree yet
 - there is not yet a benchmark-truthful REST/runtime parity layer for
   local/remote ARC-AGI-3 flows; the bounded local compatibility server is now
-  in-tree, but local-vs-remote parity, rate-limit policy, recording
-  compatibility, and score-policy truth still remain open
+  in-tree, the wrapper-level local-vs-remote parity harness is now in-tree,
+  but rate-limit policy, recording compatibility, and score-policy truth still
+  remain open
 - there is no explicit versioned score-policy implementation despite the
   methodology, scoring, and competition docs carrying policy-specific behavior
 - there is no operation-mode/competition-mode surface in Rust yet
@@ -642,7 +643,7 @@ Master issue:
 | `ARC-202` / [#3681](https://github.com/OpenAgentsInc/openagents/issues/3681) | landed | Add fixture-driven parity against the upstream `ARC-AGI/test_environment_files` samples. |
 | `ARC-203` / [#3682](https://github.com/OpenAgentsInc/openagents/issues/3682) | landed | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
 | `ARC-204` / [#3683](https://github.com/OpenAgentsInc/openagents/issues/3683) | landed | Port the local compatibility server against the ARC docs schema and local-vs-online behavior docs. |
-| `ARC-205` / [#3684](https://github.com/OpenAgentsInc/openagents/issues/3684) | planned | Add local-vs-remote parity harnesses so game-client behavior is explicitly comparable across modes. |
+| `ARC-205` / [#3684](https://github.com/OpenAgentsInc/openagents/issues/3684) | landed | Add local-vs-remote parity harnesses so game-client behavior is explicitly comparable across modes. |
 | `ARC-211` / [#3690](https://github.com/OpenAgentsInc/openagents/issues/3690) | planned | Implement versioned interactive score policies, including the current weighted-and-squared methodology/competition policy and any required compatibility fixtures for upstream preview behavior. |
 | `ARC-212` / [#3691](https://github.com/OpenAgentsInc/openagents/issues/3691) | planned | Implement scorecard lifecycle and operation-mode policy surfaces: default-scorecard reuse, auto-close behavior, closed-card refusal, and competition-mode restrictions. |
 | `ARC-213` / [#3692](https://github.com/OpenAgentsInc/openagents/issues/3692) | planned | Implement cookie-affine remote sessions, 429/backoff handling, and local-vs-online recording policy with JSONL recording compatibility. |
