@@ -1,7 +1,10 @@
 use psionic_core::{DType, QuantizationMode, Shape};
 use psionic_runtime::{
-    TassadarExecutorDecodeMode, TassadarFixtureWeights as RuntimeTassadarFixtureWeights,
-    TassadarProgramArtifact, TassadarTraceAbi, TassadarWasmProfile,
+    diagnose_tassadar_executor_request, tassadar_runtime_capability_report,
+    TassadarExecutorDecodeMode, TassadarExecutorSelectionDiagnostic,
+    TassadarFixtureWeights as RuntimeTassadarFixtureWeights, TassadarProgram,
+    TassadarProgramArtifact, TassadarRuntimeCapabilityReport, TassadarTraceAbi,
+    TassadarWasmProfile,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -409,6 +412,32 @@ impl TassadarExecutorFixture {
     pub fn weight_bundle(&self) -> &TassadarExecutorWeightBundle {
         &self.weight_bundle
     }
+
+    /// Returns the current runtime capability report for the fixture-backed executor lane.
+    #[must_use]
+    pub fn runtime_capability_report(&self) -> TassadarRuntimeCapabilityReport {
+        tassadar_runtime_capability_report()
+    }
+
+    /// Returns the runtime decode selection diagnostic for one requested program path.
+    #[must_use]
+    pub fn runtime_selection_diagnostic(
+        &self,
+        program: &TassadarProgram,
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> TassadarExecutorSelectionDiagnostic {
+        diagnose_tassadar_executor_request(
+            program,
+            requested_decode_mode,
+            self.descriptor.trace_abi.schema_version,
+            Some(
+                self.descriptor
+                    .compatibility
+                    .supported_decode_modes
+                    .as_slice(),
+            ),
+        )
+    }
 }
 
 fn build_weight_bundle(
@@ -741,6 +770,56 @@ mod tests {
                 .compatibility
                 .attention_geometry
                 .hull_cache_eligible
+        );
+    }
+
+    #[test]
+    fn tassadar_descriptor_rejects_sparse_top_k_decode_mode() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        let error = fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::SparseTopK)
+            .expect_err("sparse top-k decode mode should refuse");
+        assert_eq!(
+            error,
+            TassadarExecutorContractError::DecodeModeUnsupported {
+                requested: TassadarExecutorDecodeMode::SparseTopK,
+                supported: vec![
+                    TassadarExecutorDecodeMode::ReferenceLinear,
+                    TassadarExecutorDecodeMode::HullCache,
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn tassadar_fixture_reports_runtime_capability_and_selection_truth() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let capability = fixture.runtime_capability_report();
+        assert!(capability.supports_executor_trace);
+        assert!(capability.supports_hull_decode);
+        assert_eq!(capability.validated_trace_abi_versions, vec![1]);
+        let diagnostic = fixture
+            .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::HullCache);
+        assert!(!diagnostic.is_refused());
+        assert_eq!(
+            diagnostic.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::HullCache)
         );
     }
 

@@ -11,8 +11,9 @@ use psionic_models::{TassadarExecutorContractError, TassadarExecutorFixture};
 use psionic_runtime::{
     build_tassadar_execution_evidence_bundle, run_tassadar_exact_equivalence,
     tassadar_validation_corpus, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
-    TassadarExecutorDecodeMode, TassadarFixtureRunner, TassadarHullCacheRunner,
-    TassadarProgramArtifact, TassadarProgramArtifactError, TassadarTraceAbi, TassadarWasmProfile,
+    TassadarExecutorDecodeMode, TassadarExecutorSelectionReason, TassadarExecutorSelectionState,
+    TassadarFixtureRunner, TassadarHullCacheRunner, TassadarProgramArtifact,
+    TassadarProgramArtifactError, TassadarTraceAbi, TassadarWasmProfile,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -82,6 +83,17 @@ pub struct TassadarBenchmarkCaseReport {
     pub step_exactness_bps: u32,
     /// Halt exactness score.
     pub halt_exactness_bps: u32,
+    /// Decode mode requested by the benchmark harness.
+    pub requested_decode_mode: TassadarExecutorDecodeMode,
+    /// Effective decode mode after runtime direct/fallback selection.
+    pub effective_decode_mode: TassadarExecutorDecodeMode,
+    /// Direct/fallback/refused state emitted before execution.
+    pub selection_state: TassadarExecutorSelectionState,
+    /// Stable reason for fallback or refusal when one existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<TassadarExecutorSelectionReason>,
+    /// Whether execution used an explicit decode fallback.
+    pub used_decode_fallback: bool,
     /// Whether trace digests matched across CPU, linear, and hull-cache paths.
     pub trace_digest_equal: bool,
     /// Whether outputs matched across CPU, linear, and hull-cache paths.
@@ -186,6 +198,7 @@ pub fn run_tassadar_reference_fixture_benchmark(
     let fixture = TassadarExecutorFixture::new();
     let descriptor = fixture.descriptor();
     let model_descriptor_digest = descriptor.stable_digest();
+    let runtime_capability = fixture.runtime_capability_report();
     let cpu_runner = TassadarCpuReferenceRunner::new();
     let reference_linear_runner = TassadarFixtureRunner::new();
     let hull_cache_runner = TassadarHullCacheRunner::new();
@@ -216,6 +229,11 @@ pub fn run_tassadar_reference_fixture_benchmark(
         descriptor
             .validate_program_artifact(artifact, TassadarExecutorDecodeMode::ReferenceLinear)?;
         descriptor.validate_program_artifact(artifact, TassadarExecutorDecodeMode::HullCache)?;
+        let selection = fixture
+            .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::HullCache);
+        let effective_decode_mode = selection
+            .effective_decode_mode
+            .expect("validated benchmark corpus should not be refused");
 
         let equivalence_started = Instant::now();
         let equivalence_report = run_tassadar_exact_equivalence(&case.program)?;
@@ -270,9 +288,10 @@ pub fn run_tassadar_reference_fixture_benchmark(
             version,
             &case.case_id,
             artifact,
-            &reference_execution,
+            reference_execution,
             &case,
             &evidence,
+            &selection,
         )?;
         let sample = EvalSampleRecord {
             sample_id: case.case_id.clone(),
@@ -397,6 +416,14 @@ pub fn run_tassadar_reference_fixture_benchmark(
                     serde_json::to_value(hull_cache_remaining_gap_vs_cpu_reference)
                         .unwrap_or(Value::Null),
                 ),
+                (
+                    String::from("selection_state"),
+                    serde_json::to_value(selection.selection_state).unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("selection_reason"),
+                    serde_json::to_value(selection.selection_reason).unwrap_or(Value::Null),
+                ),
             ]),
         };
         eval_run.append_sample(sample)?;
@@ -408,6 +435,11 @@ pub fn run_tassadar_reference_fixture_benchmark(
             final_output_exactness_bps,
             step_exactness_bps,
             halt_exactness_bps,
+            requested_decode_mode: TassadarExecutorDecodeMode::HullCache,
+            effective_decode_mode,
+            selection_state: selection.selection_state,
+            selection_reason: selection.selection_reason,
+            used_decode_fallback: selection.is_fallback(),
             trace_digest_equal,
             outputs_equal,
             halt_equal,
@@ -433,6 +465,11 @@ pub fn run_tassadar_reference_fixture_benchmark(
             "tassadar_environment_bundle.json",
             format!("artifact://tassadar/{version}/environment_bundle"),
             &serde_json::to_vec(&suite.environment_bundle).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_runtime_capability.json",
+            format!("artifact://tassadar/{version}/runtime_capability"),
+            &serde_json::to_vec(&runtime_capability).unwrap_or_default(),
         ),
     ];
     eval_run.finalize(2_000, run_artifacts)?;
@@ -716,6 +753,7 @@ fn build_case_artifacts(
     execution: &psionic_runtime::TassadarExecution,
     case: &psionic_runtime::TassadarValidationCase,
     evidence: &psionic_runtime::TassadarExecutionEvidenceBundle,
+    selection: &psionic_runtime::TassadarExecutorSelectionDiagnostic,
 ) -> Result<Vec<EvalArtifact>, TassadarBenchmarkError> {
     Ok(vec![
         EvalArtifact::new(
@@ -747,6 +785,11 @@ fn build_case_artifacts(
             "tassadar_execution_proof_bundle.json",
             format!("artifact://tassadar/{version}/{case_id}/execution_proof_bundle"),
             &serde_json::to_vec(&evidence.proof_bundle).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_selection_diagnostic.json",
+            format!("artifact://tassadar/{version}/{case_id}/selection_diagnostic"),
+            &serde_json::to_vec(selection).unwrap_or_default(),
         ),
     ])
 }
@@ -808,6 +851,13 @@ mod tests {
             .case_reports
             .iter()
             .all(|case| case.hull_cache_speedup_over_reference_linear > 1.0));
+        assert!(report.case_reports.iter().all(|case| {
+            case.requested_decode_mode == TassadarExecutorDecodeMode::HullCache
+                && case.effective_decode_mode == TassadarExecutorDecodeMode::HullCache
+                && case.selection_state == TassadarExecutorSelectionState::Direct
+                && case.selection_reason.is_none()
+                && !case.used_decode_fallback
+        }));
         assert!(report
             .case_reports
             .iter()
@@ -832,6 +882,17 @@ mod tests {
                 .iter()
                 .any(|artifact| artifact.artifact_kind == "tassadar_execution_proof_bundle.json")
         }));
+        assert!(report.eval_run.samples.iter().all(|sample| {
+            sample
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.artifact_kind == "tassadar_selection_diagnostic.json")
+        }));
+        assert!(report
+            .eval_run
+            .run_artifacts
+            .iter()
+            .any(|artifact| { artifact.artifact_kind == "tassadar_runtime_capability.json" }));
         Ok(())
     }
 }

@@ -17,6 +17,8 @@ pub const TASSADAR_CPU_REFERENCE_RUNNER_ID: &str = "tassadar.cpu_reference.v1";
 pub const TASSADAR_FIXTURE_RUNNER_ID: &str = "tassadar.fixture_runner.v1";
 /// Stable hull-cache runner identifier for the Phase 5 lane.
 pub const TASSADAR_HULL_CACHE_RUNNER_ID: &str = "tassadar.hull_cache_runner.v1";
+/// Stable runtime backend identifier for the current Tassadar reference lane.
+pub const TASSADAR_RUNTIME_BACKEND_ID: &str = "cpu";
 /// Stable opcode-vocabulary family identifier for the Phase 2 artifact lane.
 pub const TASSADAR_OPCODE_VOCABULARY_ID: &str = "tassadar.opcodes.v1";
 /// Current schema version for emitted Tassadar trace artifacts.
@@ -32,8 +34,10 @@ pub const TASSADAR_PROOF_CLAIMS_PROFILE_ID: &str = "tassadar.executor_trace.proo
 pub enum TassadarExecutorDecodeMode {
     /// Linear reference decode path over the executor trace.
     ReferenceLinear,
-    /// Future hull-cache geometric fast path.
+    /// Hull-cache geometric fast path.
     HullCache,
+    /// Approximate sparse top-k decode request that currently falls back to exact reference decoding.
+    SparseTopK,
 }
 
 impl TassadarExecutorDecodeMode {
@@ -43,6 +47,7 @@ impl TassadarExecutorDecodeMode {
         match self {
             Self::ReferenceLinear => "tassadar.decode.reference_linear.v1",
             Self::HullCache => "tassadar.decode.hull_cache.v1",
+            Self::SparseTopK => "tassadar.decode.sparse_top_k.v1",
         }
     }
 
@@ -52,6 +57,7 @@ impl TassadarExecutorDecodeMode {
         match self {
             Self::ReferenceLinear => TassadarExecutorCacheAlgorithm::LinearScanKvCache,
             Self::HullCache => TassadarExecutorCacheAlgorithm::HullSupportCache,
+            Self::SparseTopK => TassadarExecutorCacheAlgorithm::SparseTopKCache,
         }
     }
 }
@@ -62,8 +68,10 @@ impl TassadarExecutorDecodeMode {
 pub enum TassadarExecutorCacheAlgorithm {
     /// Prefix-linear cache lookups over the trace.
     LinearScanKvCache,
-    /// Future hull-backed geometric cache.
+    /// Hull-backed geometric cache.
     HullSupportCache,
+    /// Sparse top-k approximate cache lookups.
+    SparseTopKCache,
 }
 
 impl TassadarExecutorCacheAlgorithm {
@@ -73,8 +81,154 @@ impl TassadarExecutorCacheAlgorithm {
         match self {
             Self::LinearScanKvCache => "tassadar.cache.linear_scan_kv.v1",
             Self::HullSupportCache => "tassadar.cache.hull_support.v1",
+            Self::SparseTopKCache => "tassadar.cache.sparse_top_k.v1",
         }
     }
+}
+
+/// Runtime-visible attention families for the Tassadar executor lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarRuntimeAttentionMode {
+    /// Exact reference-linear attention over the append-only trace.
+    ReferenceLinear,
+    /// Exact hard-max hull lookup over the validated fast-path subset.
+    HardMaxHull,
+    /// Approximate sparse top-k attention that currently degrades to exact reference decoding.
+    SparseTopKApproximate,
+}
+
+/// Runtime capability report for the current Tassadar executor lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarRuntimeCapabilityReport {
+    /// Runtime backend currently exposing the executor lane.
+    pub runtime_backend: String,
+    /// Whether append-only executor traces are supported at all.
+    pub supports_executor_trace: bool,
+    /// Whether exact hull-cache decode is available on a validated subset.
+    pub supports_hull_decode: bool,
+    /// Stable Wasm profiles accepted by the runtime.
+    pub supported_wasm_profiles: Vec<String>,
+    /// Stable attention families the runtime can speak about honestly.
+    pub supported_attention_modes: Vec<TassadarRuntimeAttentionMode>,
+    /// Validated trace ABI schema versions.
+    pub validated_trace_abi_versions: Vec<u16>,
+    /// Exact decode modes supported directly without fallback.
+    pub supported_decode_modes: Vec<TassadarExecutorDecodeMode>,
+    /// Default exact decode mode when no fast path is requested.
+    pub default_decode_mode: TassadarExecutorDecodeMode,
+    /// Exact fallback decode mode when a requested fast path is unsupported.
+    pub exact_fallback_decode_mode: TassadarExecutorDecodeMode,
+}
+
+impl TassadarRuntimeCapabilityReport {
+    /// Returns the canonical current capability report for Tassadar on CPU.
+    #[must_use]
+    pub fn current() -> Self {
+        Self {
+            runtime_backend: String::from(TASSADAR_RUNTIME_BACKEND_ID),
+            supports_executor_trace: true,
+            supports_hull_decode: true,
+            supported_wasm_profiles: vec![String::from(TassadarWasmProfileId::CoreI32V1.as_str())],
+            supported_attention_modes: vec![
+                TassadarRuntimeAttentionMode::ReferenceLinear,
+                TassadarRuntimeAttentionMode::HardMaxHull,
+                TassadarRuntimeAttentionMode::SparseTopKApproximate,
+            ],
+            validated_trace_abi_versions: vec![TASSADAR_TRACE_ABI_VERSION],
+            supported_decode_modes: vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ],
+            default_decode_mode: TassadarExecutorDecodeMode::ReferenceLinear,
+            exact_fallback_decode_mode: TassadarExecutorDecodeMode::ReferenceLinear,
+        }
+    }
+}
+
+/// Selection state for one requested Tassadar decode path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorSelectionState {
+    /// Requested path can run directly.
+    Direct,
+    /// Requested path degrades to an explicit fallback mode.
+    Fallback,
+    /// Requested path is refused before execution.
+    Refused,
+}
+
+/// Machine-legible reason explaining one decode selection outcome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorSelectionReason {
+    /// Hull-cache is outside the validated control-flow subset.
+    HullCacheControlFlowUnsupported,
+    /// Approximate sparse decode is not yet validated and falls back to exact decoding.
+    ApproximateModeRequiresExactFallback,
+    /// The program targeted a different Wasm profile than the runtime supports.
+    UnsupportedWasmProfile,
+    /// The caller requested an ABI schema version this runtime has not validated.
+    UnsupportedTraceAbiVersion,
+    /// The effective decode mode is not supported by the selected model descriptor.
+    UnsupportedModelDecodeMode,
+}
+
+/// Machine-legible decode-path diagnostic emitted before execution begins.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorSelectionDiagnostic {
+    /// Stable program identifier targeted by the request.
+    pub program_id: String,
+    /// Runtime backend evaluating the request.
+    pub runtime_backend: String,
+    /// Requested Wasm profile identifier.
+    pub requested_profile_id: String,
+    /// Requested trace ABI schema version.
+    pub requested_trace_abi_version: u16,
+    /// Requested decode mode.
+    pub requested_decode_mode: TassadarExecutorDecodeMode,
+    /// Effective decode mode after fallback, when execution remains allowed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_decode_mode: Option<TassadarExecutorDecodeMode>,
+    /// Direct, fallback, or refused resolution state.
+    pub selection_state: TassadarExecutorSelectionState,
+    /// Stable reason for fallback or refusal when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<TassadarExecutorSelectionReason>,
+    /// Human-readable summary safe for logs or UI.
+    pub detail: String,
+    /// Model-supported decode modes consulted during resolution when provided.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_supported_decode_modes: Vec<TassadarExecutorDecodeMode>,
+}
+
+impl TassadarExecutorSelectionDiagnostic {
+    /// Returns whether the request resolved through an explicit fallback.
+    #[must_use]
+    pub const fn is_fallback(&self) -> bool {
+        matches!(
+            self.selection_state,
+            TassadarExecutorSelectionState::Fallback
+        )
+    }
+
+    /// Returns whether the request was refused before execution.
+    #[must_use]
+    pub const fn is_refused(&self) -> bool {
+        matches!(
+            self.selection_state,
+            TassadarExecutorSelectionState::Refused
+        )
+    }
+}
+
+/// Execution report pairing one executed trace with its pre-execution selection diagnostic.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorExecutionReport {
+    /// Selection diagnostic emitted before execution.
+    pub selection: TassadarExecutorSelectionDiagnostic,
+    /// Resulting exact execution on the effective path.
+    pub execution: TassadarExecution,
 }
 
 /// Machine-legible supported WebAssembly-first profile for the Phase 1 lane.
@@ -2005,6 +2159,221 @@ pub fn run_tassadar_exact_equivalence(
     Ok(report)
 }
 
+/// Returns the current machine-legible runtime capability report for Tassadar.
+#[must_use]
+pub fn tassadar_runtime_capability_report() -> TassadarRuntimeCapabilityReport {
+    TassadarRuntimeCapabilityReport::current()
+}
+
+/// Diagnoses how the runtime would resolve one requested executor decode path.
+#[must_use]
+pub fn diagnose_tassadar_executor_request(
+    program: &TassadarProgram,
+    requested_decode_mode: TassadarExecutorDecodeMode,
+    requested_trace_abi_version: u16,
+    model_supported_decode_modes: Option<&[TassadarExecutorDecodeMode]>,
+) -> TassadarExecutorSelectionDiagnostic {
+    let capability = tassadar_runtime_capability_report();
+    let model_supported_decode_modes =
+        model_supported_decode_modes.map_or_else(Vec::new, std::borrow::ToOwned::to_owned);
+
+    if !capability
+        .supported_wasm_profiles
+        .contains(&program.profile_id)
+    {
+        return TassadarExecutorSelectionDiagnostic {
+            program_id: program.program_id.clone(),
+            runtime_backend: capability.runtime_backend,
+            requested_profile_id: program.profile_id.clone(),
+            requested_trace_abi_version,
+            requested_decode_mode,
+            effective_decode_mode: None,
+            selection_state: TassadarExecutorSelectionState::Refused,
+            selection_reason: Some(TassadarExecutorSelectionReason::UnsupportedWasmProfile),
+            detail: format!(
+                "runtime supports profiles {:?}, but request targeted `{}`",
+                capability.supported_wasm_profiles, program.profile_id
+            ),
+            model_supported_decode_modes,
+        };
+    }
+
+    if !capability
+        .validated_trace_abi_versions
+        .contains(&requested_trace_abi_version)
+    {
+        return TassadarExecutorSelectionDiagnostic {
+            program_id: program.program_id.clone(),
+            runtime_backend: capability.runtime_backend,
+            requested_profile_id: program.profile_id.clone(),
+            requested_trace_abi_version,
+            requested_decode_mode,
+            effective_decode_mode: None,
+            selection_state: TassadarExecutorSelectionState::Refused,
+            selection_reason: Some(TassadarExecutorSelectionReason::UnsupportedTraceAbiVersion),
+            detail: format!(
+                "runtime validated ABI versions {:?}, but request targeted `{}`",
+                capability.validated_trace_abi_versions, requested_trace_abi_version
+            ),
+            model_supported_decode_modes,
+        };
+    }
+
+    let mut diagnostic = match requested_decode_mode {
+        TassadarExecutorDecodeMode::ReferenceLinear => TassadarExecutorSelectionDiagnostic {
+            program_id: program.program_id.clone(),
+            runtime_backend: capability.runtime_backend.clone(),
+            requested_profile_id: program.profile_id.clone(),
+            requested_trace_abi_version,
+            requested_decode_mode,
+            effective_decode_mode: Some(TassadarExecutorDecodeMode::ReferenceLinear),
+            selection_state: TassadarExecutorSelectionState::Direct,
+            selection_reason: None,
+            detail: String::from("reference-linear decode requested and supported directly"),
+            model_supported_decode_modes: model_supported_decode_modes.clone(),
+        },
+        TassadarExecutorDecodeMode::HullCache => match validate_hull_cache_program(program) {
+            Ok(()) => TassadarExecutorSelectionDiagnostic {
+                program_id: program.program_id.clone(),
+                runtime_backend: capability.runtime_backend.clone(),
+                requested_profile_id: program.profile_id.clone(),
+                requested_trace_abi_version,
+                requested_decode_mode,
+                effective_decode_mode: Some(TassadarExecutorDecodeMode::HullCache),
+                selection_state: TassadarExecutorSelectionState::Direct,
+                selection_reason: None,
+                detail: String::from(
+                    "hull-cache decode requested and supported on the validated subset",
+                ),
+                model_supported_decode_modes: model_supported_decode_modes.clone(),
+            },
+            Err(TassadarExecutionRefusal::HullCacheBackwardBranchUnsupported { pc, target_pc }) => {
+                TassadarExecutorSelectionDiagnostic {
+                    program_id: program.program_id.clone(),
+                    runtime_backend: capability.runtime_backend.clone(),
+                    requested_profile_id: program.profile_id.clone(),
+                    requested_trace_abi_version,
+                    requested_decode_mode,
+                    effective_decode_mode: Some(capability.exact_fallback_decode_mode),
+                    selection_state: TassadarExecutorSelectionState::Fallback,
+                    selection_reason: Some(
+                        TassadarExecutorSelectionReason::HullCacheControlFlowUnsupported,
+                    ),
+                    detail: format!(
+                        "backward branch at pc {} to target {} is outside the validated hull-cache subset; falling back to `{}`",
+                        pc,
+                        target_pc,
+                        capability.exact_fallback_decode_mode.as_str()
+                    ),
+                    model_supported_decode_modes: model_supported_decode_modes.clone(),
+                }
+            }
+            Err(other) => TassadarExecutorSelectionDiagnostic {
+                program_id: program.program_id.clone(),
+                runtime_backend: capability.runtime_backend.clone(),
+                requested_profile_id: program.profile_id.clone(),
+                requested_trace_abi_version,
+                requested_decode_mode,
+                effective_decode_mode: Some(capability.exact_fallback_decode_mode),
+                selection_state: TassadarExecutorSelectionState::Fallback,
+                selection_reason: Some(
+                    TassadarExecutorSelectionReason::HullCacheControlFlowUnsupported,
+                ),
+                detail: format!(
+                    "requested hull-cache decode fell back to `{}` because the fast path rejected the program: {}",
+                    capability.exact_fallback_decode_mode.as_str(),
+                    other
+                ),
+                model_supported_decode_modes: model_supported_decode_modes.clone(),
+            },
+        },
+        TassadarExecutorDecodeMode::SparseTopK => TassadarExecutorSelectionDiagnostic {
+            program_id: program.program_id.clone(),
+            runtime_backend: capability.runtime_backend.clone(),
+            requested_profile_id: program.profile_id.clone(),
+            requested_trace_abi_version,
+            requested_decode_mode,
+            effective_decode_mode: Some(capability.exact_fallback_decode_mode),
+            selection_state: TassadarExecutorSelectionState::Fallback,
+            selection_reason: Some(
+                TassadarExecutorSelectionReason::ApproximateModeRequiresExactFallback,
+            ),
+            detail: format!(
+                "approximate sparse-top-k decode is not validated yet; falling back to exact `{}`",
+                capability.exact_fallback_decode_mode.as_str()
+            ),
+            model_supported_decode_modes: model_supported_decode_modes.clone(),
+        },
+    };
+
+    if let Some(effective_decode_mode) = diagnostic.effective_decode_mode
+        && !diagnostic.model_supported_decode_modes.is_empty()
+        && !diagnostic
+            .model_supported_decode_modes
+            .contains(&effective_decode_mode)
+    {
+        diagnostic.effective_decode_mode = None;
+        diagnostic.selection_state = TassadarExecutorSelectionState::Refused;
+        diagnostic.selection_reason =
+            Some(TassadarExecutorSelectionReason::UnsupportedModelDecodeMode);
+        diagnostic.detail = format!(
+            "model supports decode modes {:?}, but runtime would need `{}`",
+            diagnostic.model_supported_decode_modes,
+            effective_decode_mode.as_str()
+        );
+    }
+
+    diagnostic
+}
+
+/// Executes one requested decode path with explicit direct/fallback/refused diagnostics.
+pub fn execute_tassadar_executor_request(
+    program: &TassadarProgram,
+    requested_decode_mode: TassadarExecutorDecodeMode,
+    requested_trace_abi_version: u16,
+    model_supported_decode_modes: Option<&[TassadarExecutorDecodeMode]>,
+) -> Result<TassadarExecutorExecutionReport, TassadarExecutorSelectionDiagnostic> {
+    let diagnostic = diagnose_tassadar_executor_request(
+        program,
+        requested_decode_mode,
+        requested_trace_abi_version,
+        model_supported_decode_modes,
+    );
+
+    let Some(effective_decode_mode) = diagnostic.effective_decode_mode else {
+        return Err(diagnostic);
+    };
+
+    let execution = match effective_decode_mode {
+        TassadarExecutorDecodeMode::ReferenceLinear => TassadarFixtureRunner::new()
+            .execute(program)
+            .map_err(|error| TassadarExecutorSelectionDiagnostic {
+                detail: format!("reference-linear execution refused after selection: {error}"),
+                selection_state: TassadarExecutorSelectionState::Refused,
+                selection_reason: diagnostic.selection_reason,
+                effective_decode_mode: None,
+                ..diagnostic.clone()
+            })?,
+        TassadarExecutorDecodeMode::HullCache => TassadarHullCacheRunner::new()
+            .execute(program)
+            .map_err(|error| TassadarExecutorSelectionDiagnostic {
+                detail: format!("hull-cache execution refused after selection: {error}"),
+                selection_state: TassadarExecutorSelectionState::Refused,
+                selection_reason: diagnostic.selection_reason,
+                effective_decode_mode: None,
+                ..diagnostic.clone()
+            })?,
+        TassadarExecutorDecodeMode::SparseTopK => unreachable!(
+            "sparse-top-k requests should always resolve to an exact fallback before execution"
+        ),
+    };
+
+    Ok(TassadarExecutorExecutionReport {
+        selection: diagnostic,
+        execution,
+    })
+}
+
 /// Deterministically replays the supplied execution against the direct CPU runner.
 pub fn replay_tassadar_execution(
     program: &TassadarProgram,
@@ -3298,13 +3667,17 @@ fn stable_bytes_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tassadar_execution_evidence_bundle, replay_tassadar_execution,
-        run_tassadar_exact_equivalence, run_tassadar_exact_parity, tassadar_validation_corpus,
+        build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
+        execute_tassadar_executor_request, replay_tassadar_execution,
+        run_tassadar_exact_equivalence, run_tassadar_exact_parity,
+        tassadar_runtime_capability_report, tassadar_validation_corpus,
         TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
-        TassadarExecutorDecodeMode, TassadarFixtureRunner, TassadarHullCacheRunner,
+        TassadarExecutorDecodeMode, TassadarExecutorSelectionReason,
+        TassadarExecutorSelectionState, TassadarFixtureRunner, TassadarHullCacheRunner,
         TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
         TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
-        TassadarTraceAbi, TassadarWasmProfile,
+        TassadarTraceAbi, TassadarWasmProfile, TASSADAR_FIXTURE_RUNNER_ID,
+        TASSADAR_RUNTIME_BACKEND_ID,
     };
 
     #[test]
@@ -3379,6 +3752,176 @@ mod tests {
             assert!(report.outputs_equal(), "case={}", case.case_id);
             assert!(report.halt_equal(), "case={}", case.case_id);
         }
+    }
+
+    #[test]
+    fn tassadar_runtime_capability_report_declares_executor_truth() {
+        let capability = tassadar_runtime_capability_report();
+        assert_eq!(capability.runtime_backend, TASSADAR_RUNTIME_BACKEND_ID);
+        assert!(capability.supports_executor_trace);
+        assert!(capability.supports_hull_decode);
+        assert_eq!(
+            capability.supported_wasm_profiles,
+            vec![String::from(TassadarWasmProfile::core_i32_v1().profile_id)]
+        );
+        assert_eq!(capability.validated_trace_abi_versions, vec![1]);
+        assert_eq!(
+            capability.supported_decode_modes,
+            vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ]
+        );
+    }
+
+    #[test]
+    fn runtime_selection_is_direct_on_validated_hull_cache_workloads() {
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let diagnostic = diagnose_tassadar_executor_request(
+            &case.program,
+            TassadarExecutorDecodeMode::HullCache,
+            TassadarTraceAbi::core_i32_v1().schema_version,
+            Some(&[
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ]),
+        );
+        assert_eq!(
+            diagnostic.selection_state,
+            TassadarExecutorSelectionState::Direct
+        );
+        assert_eq!(
+            diagnostic.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::HullCache)
+        );
+        assert_eq!(diagnostic.selection_reason, None);
+    }
+
+    #[test]
+    fn runtime_selection_surfaces_hull_cache_fallback() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let program = TassadarProgram::new(
+            "tassadar.backward_branch.v1",
+            &profile,
+            0,
+            0,
+            vec![
+                TassadarInstruction::I32Const { value: 0 },
+                TassadarInstruction::BrIf { target_pc: 0 },
+                TassadarInstruction::Return,
+            ],
+        );
+        let diagnostic = diagnose_tassadar_executor_request(
+            &program,
+            TassadarExecutorDecodeMode::HullCache,
+            TassadarTraceAbi::core_i32_v1().schema_version,
+            Some(&[
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ]),
+        );
+        assert!(diagnostic.is_fallback());
+        assert_eq!(
+            diagnostic.selection_reason,
+            Some(TassadarExecutorSelectionReason::HullCacheControlFlowUnsupported)
+        );
+        assert_eq!(
+            diagnostic.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::ReferenceLinear)
+        );
+    }
+
+    #[test]
+    fn runtime_selection_surfaces_sparse_top_k_exact_fallback() {
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let diagnostic = diagnose_tassadar_executor_request(
+            &case.program,
+            TassadarExecutorDecodeMode::SparseTopK,
+            TassadarTraceAbi::core_i32_v1().schema_version,
+            Some(&[
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ]),
+        );
+        assert!(diagnostic.is_fallback());
+        assert_eq!(
+            diagnostic.selection_reason,
+            Some(TassadarExecutorSelectionReason::ApproximateModeRequiresExactFallback)
+        );
+        assert_eq!(
+            diagnostic.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::ReferenceLinear)
+        );
+    }
+
+    #[test]
+    fn runtime_selection_refuses_unsupported_trace_abi() {
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let diagnostic = diagnose_tassadar_executor_request(
+            &case.program,
+            TassadarExecutorDecodeMode::ReferenceLinear,
+            99,
+            Some(&[TassadarExecutorDecodeMode::ReferenceLinear]),
+        );
+        assert!(diagnostic.is_refused());
+        assert_eq!(
+            diagnostic.selection_reason,
+            Some(TassadarExecutorSelectionReason::UnsupportedTraceAbiVersion)
+        );
+        assert_eq!(diagnostic.effective_decode_mode, None);
+    }
+
+    #[test]
+    fn runtime_selection_refuses_when_model_cannot_accept_effective_decode_mode() {
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let diagnostic = diagnose_tassadar_executor_request(
+            &case.program,
+            TassadarExecutorDecodeMode::HullCache,
+            TassadarTraceAbi::core_i32_v1().schema_version,
+            Some(&[TassadarExecutorDecodeMode::ReferenceLinear]),
+        );
+        assert!(diagnostic.is_refused());
+        assert_eq!(
+            diagnostic.selection_reason,
+            Some(TassadarExecutorSelectionReason::UnsupportedModelDecodeMode)
+        );
+    }
+
+    #[test]
+    fn execute_request_returns_fallback_diagnostic_with_reference_execution() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let program = TassadarProgram::new(
+            "tassadar.backward_branch.v1",
+            &profile,
+            0,
+            0,
+            vec![
+                TassadarInstruction::I32Const { value: 0 },
+                TassadarInstruction::BrIf { target_pc: 0 },
+                TassadarInstruction::Return,
+            ],
+        );
+        let report = execute_tassadar_executor_request(
+            &program,
+            TassadarExecutorDecodeMode::HullCache,
+            TassadarTraceAbi::core_i32_v1().schema_version,
+            Some(&[TassadarExecutorDecodeMode::ReferenceLinear]),
+        )
+        .expect("request should fall back rather than refuse");
+        assert!(report.selection.is_fallback());
+        assert_eq!(report.execution.runner_id, TASSADAR_FIXTURE_RUNNER_ID);
     }
 
     #[test]
