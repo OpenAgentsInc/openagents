@@ -7,15 +7,16 @@ use psionic_core::{
     TensorSpec,
 };
 use psionic_ir::{
-    BUILTIN_OPERATOR_SCHEMA_VERSION, ExecutionOp, ExecutionPlan, ExecutionStep, Graph,
-    GraphBuilder, GraphError, MetaCapabilityProfile, MetaTensor, MetaTensorFamily, OperatorArity,
-    OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry,
+    ExecutionOp, ExecutionPlan, ExecutionStep, ExportableGraphContract, Graph, GraphBuilder,
+    GraphError, GraphExportContractError, MetaCapabilityProfile, MetaTensor, MetaTensorFamily,
+    OperatorArity, OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry,
     RegisteredOperatorSchema, RegistryExtensionError, SparseMetaContract, SparseMetaLayout,
-    StorageAwareMetaContract,
+    StorageAwareMetaContract, BUILTIN_OPERATOR_SCHEMA_VERSION,
 };
 use psionic_runtime::{
     BackendSelection, CacheAction, CacheKind, CacheObservation, CompilePathEvidence,
-    CompilePathTemperature, ExecutionTopologyPlan,
+    CompilePathTemperature, DeviceInventoryQualifiers, DeviceMemoryClass, DevicePerformanceClass,
+    ExecutionTopologyPlan,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -182,8 +183,8 @@ impl PlanBuilder {
 
 /// Returns the seeded symbolic-shape, fake-tensor, and compiler-hygiene parity
 /// matrix for the current built-in Psionic surface.
-pub fn builtin_compiler_hygiene_parity_matrix_report()
--> Result<CompilerHygieneParityMatrixReport, CompilerHygieneParityError> {
+pub fn builtin_compiler_hygiene_parity_matrix_report(
+) -> Result<CompilerHygieneParityMatrixReport, CompilerHygieneParityError> {
     let cases = vec![
         run_compiler_hygiene_supported_case(
             "pytorch.fake_tensor.graph_plan_shape_parity",
@@ -1049,6 +1050,287 @@ impl CompilerArtifacts {
             ),
         }
     }
+
+    /// Builds one deployment artifact contract on top of an exportable graph contract.
+    pub fn deployment_artifact_contract(
+        &self,
+        export_graph: &ExportableGraphContract,
+        artifact_label: impl Into<String>,
+        artifact_format: DeploymentArtifactFormat,
+    ) -> Result<DeploymentArtifactContract, DeploymentArtifactContractError> {
+        let artifact_label = artifact_label.into();
+        if artifact_label.trim().is_empty() {
+            return Err(DeploymentArtifactContractError::MissingArtifactLabel);
+        }
+        if export_graph.source_graph_digest != self.compiled.plan.graph_digest {
+            return Err(DeploymentArtifactContractError::GraphDigestMismatch {
+                expected: export_graph.source_graph_digest.clone(),
+                actual: self.compiled.plan.graph_digest.clone(),
+            });
+        }
+        if matches!(
+            artifact_format,
+            DeploymentArtifactFormat::TopologyAwareBundle
+        ) && self.compiled.topology.is_none()
+        {
+            return Err(DeploymentArtifactContractError::MissingTopology);
+        }
+        Ok(DeploymentArtifactContract::new(
+            artifact_label,
+            artifact_format,
+            export_graph.entrypoint.clone(),
+            export_graph.source_graph_digest.clone(),
+            export_graph.contract_digest.clone(),
+            self.compiled.stable_digest(),
+            self.schedule.stable_digest(),
+            self.memory_plan.stable_digest(),
+            self.cache_identity.stable_digest(),
+            self.compiled
+                .topology
+                .as_ref()
+                .map(ExecutionTopologyPlan::stable_digest),
+        ))
+    }
+}
+
+/// Stable deployment artifact packaging kinds surfaced by the bounded compiler contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeploymentArtifactFormat {
+    /// Lowered execution-plan bundle without an attached topology plan.
+    ExecutionPlanBundle,
+    /// Lowered execution-plan bundle with explicit topology attachment.
+    TopologyAwareBundle,
+}
+
+impl DeploymentArtifactFormat {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::ExecutionPlanBundle => "execution_plan_bundle",
+            Self::TopologyAwareBundle => "topology_aware_bundle",
+        }
+    }
+}
+
+/// Machine-readable deployment artifact contract independent of raw checkpoints.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeploymentArtifactContract {
+    /// Stable schema version.
+    pub schema_version: u32,
+    /// Stable artifact label used by downstream packaging.
+    pub artifact_label: String,
+    /// Deployment artifact format.
+    pub artifact_format: DeploymentArtifactFormat,
+    /// Stable entrypoint inherited from the exportable graph.
+    pub entrypoint: String,
+    /// Stable source graph digest.
+    pub source_graph_digest: String,
+    /// Stable export-contract digest.
+    pub export_contract_digest: String,
+    /// Stable compiled-plan digest.
+    pub compiled_plan_digest: String,
+    /// Stable schedule digest.
+    pub schedule_digest: String,
+    /// Stable memory-plan digest.
+    pub memory_plan_digest: String,
+    /// Stable cache-identity digest.
+    pub cache_identity_digest: String,
+    /// Stable topology digest when the artifact carries one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_digest: Option<String>,
+    /// Stable aggregate artifact digest.
+    pub artifact_digest: String,
+}
+
+impl DeploymentArtifactContract {
+    fn new(
+        artifact_label: impl Into<String>,
+        artifact_format: DeploymentArtifactFormat,
+        entrypoint: impl Into<String>,
+        source_graph_digest: impl Into<String>,
+        export_contract_digest: impl Into<String>,
+        compiled_plan_digest: impl Into<String>,
+        schedule_digest: impl Into<String>,
+        memory_plan_digest: impl Into<String>,
+        cache_identity_digest: impl Into<String>,
+        topology_digest: Option<String>,
+    ) -> Self {
+        let artifact_label = artifact_label.into();
+        let entrypoint = entrypoint.into();
+        let source_graph_digest = source_graph_digest.into();
+        let export_contract_digest = export_contract_digest.into();
+        let compiled_plan_digest = compiled_plan_digest.into();
+        let schedule_digest = schedule_digest.into();
+        let memory_plan_digest = memory_plan_digest.into();
+        let cache_identity_digest = cache_identity_digest.into();
+        let artifact_digest = stable_deployment_artifact_contract_digest(
+            artifact_label.as_str(),
+            artifact_format,
+            entrypoint.as_str(),
+            source_graph_digest.as_str(),
+            export_contract_digest.as_str(),
+            compiled_plan_digest.as_str(),
+            schedule_digest.as_str(),
+            memory_plan_digest.as_str(),
+            cache_identity_digest.as_str(),
+            topology_digest.as_deref(),
+        );
+        Self {
+            schema_version: 1,
+            artifact_label,
+            artifact_format,
+            entrypoint,
+            source_graph_digest,
+            export_contract_digest,
+            compiled_plan_digest,
+            schedule_digest,
+            memory_plan_digest,
+            cache_identity_digest,
+            topology_digest,
+            artifact_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or packaging audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("artifact_label={}", self.artifact_label),
+            format!("artifact_format={}", self.artifact_format.label()),
+            format!("entrypoint={}", self.entrypoint),
+            format!("source_graph_digest={}", self.source_graph_digest),
+            format!("export_contract_digest={}", self.export_contract_digest),
+            format!("compiled_plan_digest={}", self.compiled_plan_digest),
+            format!("schedule_digest={}", self.schedule_digest),
+            format!("memory_plan_digest={}", self.memory_plan_digest),
+            format!("cache_identity_digest={}", self.cache_identity_digest),
+            format!("artifact_digest={}", self.artifact_digest),
+        ];
+        if let Some(topology_digest) = &self.topology_digest {
+            lines.push(format!("topology_digest={topology_digest}"));
+        }
+        lines
+    }
+}
+
+/// Failure returned while building one deployment artifact contract.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DeploymentArtifactContractError {
+    #[error(transparent)]
+    Export(#[from] GraphExportContractError),
+    #[error("deployment artifact contract requires a non-empty artifact label")]
+    MissingArtifactLabel,
+    #[error("deployment artifact contract expected export graph `{expected}` but compiled plan came from `{actual}`")]
+    GraphDigestMismatch { expected: String, actual: String },
+    #[error(
+        "deployment artifact format `topology_aware_bundle` requires an explicit topology plan"
+    )]
+    MissingTopology,
+}
+
+impl DeploymentArtifactContractError {
+    /// Returns the canonical refusal when the deployment-artifact failure belongs
+    /// to one explicit unsupported or compatibility boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::Export(error) => error.refusal(),
+            Self::MissingArtifactLabel | Self::MissingTopology => Some(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedOp,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )),
+            Self::GraphDigestMismatch { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::SerializationIncompatibility,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )),
+        }
+    }
+}
+
+/// Failure returned while constructing the export/deployment semantics report.
+#[derive(Debug, Error)]
+pub enum ExportDeploymentArtifactSemanticsError {
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    #[error(transparent)]
+    Export(#[from] GraphExportContractError),
+    #[error(transparent)]
+    Compile(#[from] CompileError),
+    #[error(transparent)]
+    Artifact(#[from] DeploymentArtifactContractError),
+}
+
+/// Outcome status for one export/deployment semantics case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportDeploymentArtifactStatus {
+    Supported,
+    Refused,
+}
+
+/// One machine-readable export/deployment artifact semantics case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportDeploymentArtifactCaseResult {
+    pub case_id: String,
+    pub artifact_format: DeploymentArtifactFormat,
+    pub status: ExportDeploymentArtifactStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_contract_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_digest: Option<String>,
+    pub bounded_scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable bounded report for exportable graph and deployment artifact semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportDeploymentArtifactSemanticsReport {
+    pub schema_version: u32,
+    pub current_scope_window: String,
+    pub cases: Vec<ExportDeploymentArtifactCaseResult>,
+    pub report_digest: String,
+}
+
+impl ExportDeploymentArtifactSemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<ExportDeploymentArtifactCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest = stable_export_deployment_artifact_report_digest(
+            current_scope_window.as_str(),
+            cases.as_slice(),
+        );
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{:?}",
+                case.case_id,
+                case.artifact_format.label(),
+                case.status
+            ));
+        }
+        lines
+    }
 }
 
 /// Compile-with-cache result carrying the artifacts and compile-path evidence.
@@ -1225,6 +1507,78 @@ pub fn compile_graph_artifacts_for_selection(
     )
 }
 
+/// Returns the seeded export/deployment artifact semantics report for the current
+/// bounded Psionic surface.
+pub fn builtin_export_deployment_artifact_semantics_report(
+) -> Result<ExportDeploymentArtifactSemanticsReport, ExportDeploymentArtifactSemanticsError> {
+    let export_safe = seeded_export_safe_compiler_graph()?;
+    let export_contract = export_safe.exportable_graph_contract("main")?;
+    let execution_plan_bundle = compile_graph_artifacts(&export_safe)?;
+    let topology_bundle = compile_graph_artifacts_with_topology(
+        &export_safe,
+        Some(ExecutionTopologyPlan::single_device(
+            "cpu",
+            seeded_cpu_inventory(),
+        )),
+        CompilerContract::default(),
+    )?;
+    let opaque_graph = seeded_opaque_export_graph()?;
+    let mismatch_graph = seeded_alternative_export_safe_compiler_graph()?;
+    let mismatch_artifacts = compile_graph_artifacts(&mismatch_graph)?;
+
+    Ok(ExportDeploymentArtifactSemanticsReport::new(
+        "psionic_export_deployment_artifact_v1",
+        vec![
+            supported_export_deployment_case(
+                "export_safe.execution_plan_bundle",
+                DeploymentArtifactFormat::ExecutionPlanBundle,
+                &export_contract,
+                execution_plan_bundle.deployment_artifact_contract(
+                    &export_contract,
+                    "main.execution_plan",
+                    DeploymentArtifactFormat::ExecutionPlanBundle,
+                )?,
+                "Current scope supports export-safe graph handoff into a stable execution-plan deployment bundle independent of raw checkpoint files.",
+            ),
+            supported_export_deployment_case(
+                "export_safe.topology_aware_bundle",
+                DeploymentArtifactFormat::TopologyAwareBundle,
+                &export_contract,
+                topology_bundle.deployment_artifact_contract(
+                    &export_contract,
+                    "main.topology_bundle",
+                    DeploymentArtifactFormat::TopologyAwareBundle,
+                )?,
+                "Current scope supports attaching one explicit execution topology to the export-safe graph handoff so deployment artifacts can stay graph-first instead of checkpoint-first.",
+            ),
+            refused_export_deployment_case(
+                "opaque_backend_extension.export_contract",
+                DeploymentArtifactFormat::ExecutionPlanBundle,
+                opaque_graph
+                    .exportable_graph_contract("main")
+                    .expect_err("opaque export contract case must refuse")
+                    .refusal()
+                    .expect("opaque export refusal must map into taxonomy"),
+                "Current scope refuses export contracts for graphs that still contain opaque backend-extension barriers under export-safe policy.",
+            ),
+            refused_export_deployment_case(
+                "digest_mismatch.execution_plan_bundle",
+                DeploymentArtifactFormat::ExecutionPlanBundle,
+                mismatch_artifacts
+                    .deployment_artifact_contract(
+                        &export_contract,
+                        "main.mismatch",
+                        DeploymentArtifactFormat::ExecutionPlanBundle,
+                    )
+                    .expect_err("mismatched deployment contract must refuse")
+                    .refusal()
+                    .expect("mismatched deployment refusal must map into taxonomy"),
+                "Current scope refuses deployment bundles when the exportable graph contract and compiled artifact no longer describe the same graph digest.",
+            ),
+        ],
+    ))
+}
+
 fn digest_lines(lines: Vec<String>) -> String {
     let mut hasher = Sha256::new();
     for line in lines {
@@ -1275,6 +1629,136 @@ fn stable_compiler_hygiene_matrix_lines(
     }
     lines.sort();
     lines
+}
+
+fn stable_deployment_artifact_contract_digest(
+    artifact_label: &str,
+    artifact_format: DeploymentArtifactFormat,
+    entrypoint: &str,
+    source_graph_digest: &str,
+    export_contract_digest: &str,
+    compiled_plan_digest: &str,
+    schedule_digest: &str,
+    memory_plan_digest: &str,
+    cache_identity_digest: &str,
+    topology_digest: Option<&str>,
+) -> String {
+    let mut lines = vec![
+        format!("artifact_label={artifact_label}"),
+        format!("artifact_format={}", artifact_format.label()),
+        format!("entrypoint={entrypoint}"),
+        format!("source_graph_digest={source_graph_digest}"),
+        format!("export_contract_digest={export_contract_digest}"),
+        format!("compiled_plan_digest={compiled_plan_digest}"),
+        format!("schedule_digest={schedule_digest}"),
+        format!("memory_plan_digest={memory_plan_digest}"),
+        format!("cache_identity_digest={cache_identity_digest}"),
+    ];
+    if let Some(topology_digest) = topology_digest {
+        lines.push(format!("topology_digest={topology_digest}"));
+    }
+    digest_lines(lines)
+}
+
+fn stable_export_deployment_artifact_report_digest(
+    current_scope_window: &str,
+    cases: &[ExportDeploymentArtifactCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!(
+            "{}|{}|{:?}",
+            case.case_id,
+            case.artifact_format.label(),
+            case.status
+        ));
+        if let Some(export_contract_digest) = &case.export_contract_digest {
+            lines.push(format!("export_contract_digest={export_contract_digest}"));
+        }
+        if let Some(artifact_digest) = &case.artifact_digest {
+            lines.push(format!("artifact_digest={artifact_digest}"));
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!(
+                "refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or(""),
+                refusal.detail
+            ));
+        }
+    }
+    digest_lines(lines)
+}
+
+fn seeded_cpu_inventory() -> DeviceInventoryQualifiers {
+    DeviceInventoryQualifiers {
+        stable_device_id: String::from("cpu:0"),
+        topology_key: None,
+        performance_class: DevicePerformanceClass::Reference,
+        memory_class: DeviceMemoryClass::HostOnly,
+        total_memory_bytes: Some(16 * 1024 * 1024 * 1024),
+        free_memory_bytes: Some(8 * 1024 * 1024 * 1024),
+    }
+}
+
+fn seeded_export_safe_compiler_graph() -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+    let row = builder.select(&input, 0, 0)?;
+    let expanded = builder.expand(&row, Shape::new(vec![2, 3]))?;
+    let summed = builder.add(&input, &expanded)?;
+    Ok(builder.finish(vec![summed]))
+}
+
+fn seeded_alternative_export_safe_compiler_graph() -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+    let reduced = builder.reduce_sum_axis(&input, 1)?;
+    Ok(builder.finish(vec![reduced]))
+}
+
+fn seeded_opaque_export_graph() -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+    let weight = builder.input("weight", Shape::new(vec![4]), DType::F32);
+    let output = builder.rms_norm(&input, &weight, 1e-5)?;
+    Ok(builder.finish(vec![output]))
+}
+
+fn supported_export_deployment_case(
+    case_id: &str,
+    artifact_format: DeploymentArtifactFormat,
+    export_contract: &ExportableGraphContract,
+    artifact_contract: DeploymentArtifactContract,
+    bounded_scope: &str,
+) -> ExportDeploymentArtifactCaseResult {
+    ExportDeploymentArtifactCaseResult {
+        case_id: String::from(case_id),
+        artifact_format,
+        status: ExportDeploymentArtifactStatus::Supported,
+        export_contract_digest: Some(export_contract.contract_digest.clone()),
+        artifact_digest: Some(artifact_contract.artifact_digest),
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_export_deployment_case(
+    case_id: &str,
+    artifact_format: DeploymentArtifactFormat,
+    refusal: PsionicRefusal,
+    bounded_scope: &str,
+) -> ExportDeploymentArtifactCaseResult {
+    ExportDeploymentArtifactCaseResult {
+        case_id: String::from(case_id),
+        artifact_format,
+        status: ExportDeploymentArtifactStatus::Refused,
+        export_contract_digest: None,
+        artifact_digest: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
 }
 
 fn run_compiler_hygiene_supported_case(
@@ -1770,17 +2254,19 @@ fn join_usize(values: &[usize]) -> String {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use psionic_core::{DType, Device, QuantizationMode, Shape, TensorId};
+    use psionic_core::{DType, Device, PsionicRefusalCode, QuantizationMode, Shape, TensorId};
     use psionic_ir::{GraphBuilder, MetaCapabilityProfile, OperatorRegistry};
     use psionic_runtime::{
         CacheAction, CompilePathTemperature, ExecutionTopologyKind, ExecutionTopologyPlan,
     };
 
     use super::{
-        CompileError, CompilerContract, CompilerHygieneParityStatus, CompilerPlanCache, FusionMode,
-        MemoryStorageClass, builtin_compiler_hygiene_parity_matrix_report, compile_graph,
+        builtin_compiler_hygiene_parity_matrix_report,
+        builtin_export_deployment_artifact_semantics_report, compile_graph,
         compile_graph_artifacts_with_topology, compile_graph_for_selection,
-        compile_graph_with_topology,
+        compile_graph_with_topology, CompileError, CompilerContract, CompilerHygieneParityStatus,
+        CompilerPlanCache, DeploymentArtifactFormat, ExportDeploymentArtifactStatus, FusionMode,
+        MemoryStorageClass,
     };
 
     #[test]
@@ -2032,6 +2518,65 @@ mod tests {
     }
 
     #[test]
+    fn deployment_artifact_contract_tracks_export_graph_digest_and_topology_attachment(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let graph = super::seeded_export_safe_compiler_graph()?;
+        let export_contract = graph.exportable_graph_contract("main")?;
+
+        let base =
+            compile_graph_artifacts_with_topology(&graph, None, CompilerContract::default())?;
+        let base_contract = base.deployment_artifact_contract(
+            &export_contract,
+            "main.execution_plan",
+            DeploymentArtifactFormat::ExecutionPlanBundle,
+        )?;
+        assert_eq!(
+            base_contract.artifact_format,
+            DeploymentArtifactFormat::ExecutionPlanBundle
+        );
+        assert!(base_contract.topology_digest.is_none());
+
+        let topo = compile_graph_artifacts_with_topology(
+            &graph,
+            Some(ExecutionTopologyPlan::single_device(
+                "cpu",
+                super::seeded_cpu_inventory(),
+            )),
+            CompilerContract::default(),
+        )?;
+        let topo_contract = topo.deployment_artifact_contract(
+            &export_contract,
+            "main.topology_bundle",
+            DeploymentArtifactFormat::TopologyAwareBundle,
+        )?;
+        assert_eq!(
+            topo_contract.artifact_format,
+            DeploymentArtifactFormat::TopologyAwareBundle
+        );
+        assert!(topo_contract.topology_digest.is_some());
+
+        let mismatch_graph = super::seeded_alternative_export_safe_compiler_graph()?;
+        let mismatch_artifacts = compile_graph_artifacts_with_topology(
+            &mismatch_graph,
+            None,
+            CompilerContract::default(),
+        )?;
+        let mismatch = mismatch_artifacts
+            .deployment_artifact_contract(
+                &export_contract,
+                "main.mismatch",
+                DeploymentArtifactFormat::ExecutionPlanBundle,
+            )
+            .expect_err("mismatched graph digest should refuse");
+        assert_eq!(
+            mismatch.refusal().map(|refusal| refusal.code),
+            Some(PsionicRefusalCode::SerializationIncompatibility)
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn compiler_plan_cache_emits_cold_compile_then_warm_reuse_evidence() {
         let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
         assert!(graph.is_ok());
@@ -2078,20 +2623,18 @@ mod tests {
     }
 
     #[test]
-    fn compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_compiler_hygiene_parity_matrix_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(
             report.oracle_family_window,
             "pytorch_compiler_hygiene_seed_v0"
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("matrix_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("matrix_digest=")));
 
         for case in report
             .cases
@@ -2114,6 +2657,73 @@ mod tests {
                 .as_ref()
                 .and_then(|refusal| refusal.subject.as_deref()),
             Some("symbolic_shape_environment")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn export_deployment_artifact_semantics_report_tracks_seeded_supported_and_refused_cases(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_export_deployment_artifact_semantics_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.current_scope_window,
+            "psionic_export_deployment_artifact_v1"
+        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let plan_bundle = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "export_safe.execution_plan_bundle")
+            .expect("missing execution-plan bundle case");
+        assert_eq!(
+            plan_bundle.status,
+            ExportDeploymentArtifactStatus::Supported
+        );
+        assert_eq!(
+            plan_bundle.artifact_format,
+            DeploymentArtifactFormat::ExecutionPlanBundle
+        );
+        assert!(plan_bundle.export_contract_digest.is_some());
+        assert!(plan_bundle.artifact_digest.is_some());
+
+        let opaque_refusal = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "opaque_backend_extension.export_contract")
+            .expect("missing opaque export refusal case");
+        assert_eq!(
+            opaque_refusal.status,
+            ExportDeploymentArtifactStatus::Refused
+        );
+        assert_eq!(
+            opaque_refusal
+                .refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("rms_norm")
+        );
+
+        let mismatch_refusal = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "digest_mismatch.execution_plan_bundle")
+            .expect("missing digest mismatch refusal case");
+        assert_eq!(
+            mismatch_refusal.status,
+            ExportDeploymentArtifactStatus::Refused
+        );
+        assert_eq!(
+            mismatch_refusal
+                .refusal
+                .as_ref()
+                .map(|refusal| refusal.code),
+            Some(PsionicRefusalCode::SerializationIncompatibility)
         );
 
         Ok(())

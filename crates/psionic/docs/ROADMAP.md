@@ -923,7 +923,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `PLIB-220` / [#3735](https://github.com/OpenAgentsInc/openagents/issues/3735) | done (2026-03-16) | `psionic-ir` now publishes reusable advanced operator-family programs plus a machine-readable bounded matrix over linalg gram-matrix, signal Fourier-projection, and rotary-attention residual programs, with explicit refusal posture for unsupported distribution and special-function family programs and backend-capability refusal for attention paths missing the required kernels. |
-| `PLIB-221` / [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736) | planned | Add exportable graph and deployment artifact contracts so the semantics layer can hand off stable graph units independent of raw checkpoints. |
+| `PLIB-221` / [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736) | done (2026-03-16) | `psionic-ir` now publishes exportable graph contracts with named entry signatures, and `psionic-compiler` now publishes deployment artifact contracts plus a bounded semantics report over execution-plan and topology-aware graph-first bundles, with explicit refusal for opaque export barriers and graph-digest mismatches. |
 
 ## Epic 3: Model IO And Runtime Families
 
