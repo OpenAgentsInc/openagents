@@ -1750,7 +1750,9 @@ ships a repeated interactive eval bridge that launches typed ARC-AGI-3
 episodes per benchmark case, exports each case through the trajectory bundle
 and shared Psionic environment receipts, finalizes `psionic-eval` benchmark
 runs, and reports completion, refusal, error, action-efficiency, and replay
-coverage per round without replacing ARC-owned scoring semantics.
+coverage per round without replacing ARC-owned scoring semantics. With
+`ARC-401` through `ARC-408` plus the linked Phase 6 evidence docs landed, the
+retained Epic 4 interactive runtime substrate is now complete in bounded form.
 
 ### Phase 5: Psionic primitive expansion
 
