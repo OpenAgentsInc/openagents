@@ -7,6 +7,7 @@ use psionic_eval::{
     TassadarBenchmarkReport, run_tassadar_article_class_benchmark,
     run_tassadar_reference_fixture_benchmark,
 };
+use psionic_models::{TassadarCompiledProgramSuiteArtifact, TassadarExecutorFixture};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -18,6 +19,7 @@ use crate::{
     ExperimentScoreEvaluationError, ExperimentSpec, ResearchSweepEntry, ResearchSweepRecord,
     TassadarExecutorAttentionMode, TassadarExecutorBenchmarkTarget,
     TassadarExecutorDecodeCacheKind, TassadarExecutorExperimentSpec,
+    TassadarExecutorWeightConstruction,
 };
 
 /// Invocation contract passed to the compiled research runner.
@@ -152,6 +154,9 @@ pub enum ResearchRunnerError {
     /// The executor benchmark backend failed.
     #[error("tassadar benchmark failed: {0}")]
     TassadarBenchmark(String),
+    /// The compiled-weight suite builder failed.
+    #[error("tassadar compiled-weight build failed: {0}")]
+    TassadarCompiledWeights(String),
 }
 
 /// Failure while executing or comparing a sweep of comparable research runs.
@@ -467,17 +472,29 @@ fn execute_executor_variants(
 ) -> Result<ResearchRunnerRecord, ResearchRunnerError> {
     validate_executor_variant(invocation, executor)?;
     let report = run_executor_benchmark(executor)?;
-    let stats = build_executor_benchmark_stats(executor, &report, estimated_runtime_ms);
+    let compiled_suite = maybe_build_compiled_weight_suite(invocation, executor, &report)?;
+    let stats = build_executor_benchmark_stats(
+        executor,
+        &report,
+        compiled_suite.as_ref(),
+        estimated_runtime_ms,
+    );
     let scores = build_executor_scores(invocation, &stats);
     let metrics = build_executor_metrics(&stats);
     let stdout_log = format!(
-        "run_id={} family={} benchmark_target={:?} benchmark_ref={} decode_cache={:?} attention_mode={:?} profile_mode={:?} profile_ref={} status=succeeded case_count={} exactness_bps={} candidate_speedup_ratio_micros={} candidate_cpu_gap_ratio_micros={}",
+        "run_id={} family={} benchmark_target={:?} benchmark_ref={} decode_cache={:?} attention_mode={:?} weight_construction={:?} head_dim={} head_count={} d_model={} parameter_count_estimate={} compiled_artifact_bytes={} profile_mode={:?} profile_ref={} status=succeeded case_count={} exactness_bps={} candidate_speedup_ratio_micros={} candidate_cpu_gap_ratio_micros={}",
         invocation.run_id,
         invocation.spec.family.kind().label(),
         executor.benchmark_target,
         executor.benchmark_ref,
         executor.decode_cache.cache_kind,
         executor.decode_cache.attention_mode,
+        executor.architecture.weight_construction,
+        executor.architecture.head_dim,
+        executor.architecture.head_count,
+        stats.d_model,
+        stats.parameter_count_estimate,
+        stats.compiled_weight_artifact_bytes,
         profile_mode,
         profile_ref,
         stats.case_count,
@@ -499,7 +516,7 @@ fn execute_executor_variants(
     );
     let mut receipt_refs = vec![receipt.as_receipt_ref()];
     receipt_refs.push(build_executor_eval_receipt(invocation, &report)?);
-    let artifact_outputs = build_executor_artifact_outputs(invocation, &report)?;
+    let artifact_outputs = build_executor_artifact_outputs(invocation, &report, compiled_suite.as_ref())?;
     let result = ExperimentResult::new(
         invocation.run_id.clone(),
         &invocation.spec,
@@ -527,6 +544,10 @@ struct ExecutorBenchmarkStats {
     direct_selection_bps: i64,
     candidate_speedup_ratio_micros: i64,
     candidate_cpu_gap_ratio_micros: i64,
+    d_model: i64,
+    parameter_count_estimate: i64,
+    compiled_weight_artifact_bytes: i64,
+    compiled_program_count: i64,
     total_trace_steps: i64,
     case_count: i64,
     passed_case_count: i64,
@@ -552,9 +573,17 @@ fn validate_executor_variant(
             "executor experiment surfaces must declare non-empty variant and model ids",
         )));
     }
-    if !executor.architecture.handcrafted_weights {
+    if executor.architecture.head_count == 0 {
         return Err(ResearchRunnerError::InvalidInvocation(String::from(
-            "current Tassadar research family only supports handcrafted-weight candidates",
+            "executor architecture must declare a non-zero head_count",
+        )));
+    }
+    if !executor.architecture.is_two_dimensional_lookup_family() {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "executor architecture `{}` left the 2D-head regime: head_dim={} head_count={}",
+            executor.architecture.variant_id,
+            executor.architecture.head_dim,
+            executor.architecture.head_count
         )));
     }
     if executor.trace_abi.abi_id != "tassadar.trace.v1" || executor.trace_abi.schema_version != 1 {
@@ -592,6 +621,16 @@ fn validate_executor_variant(
         return Err(ResearchRunnerError::InvalidInvocation(String::from(
             "current Tassadar research backend requires exact_required=true",
         )));
+    }
+    match executor.architecture.weight_construction {
+        TassadarExecutorWeightConstruction::HandcraftedInterpreter => {}
+        TassadarExecutorWeightConstruction::ProgramCompiled => {
+            if executor.decode_cache.cache_kind == TassadarExecutorDecodeCacheKind::StandardKv {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "program-compiled Tassadar candidates do not yet support standard-kv cache research",
+                )));
+            }
+        }
     }
     match executor.decode_cache.cache_kind {
         TassadarExecutorDecodeCacheKind::ReferenceLinear
@@ -680,9 +719,39 @@ fn run_executor_benchmark(
     Ok(report)
 }
 
+fn maybe_build_compiled_weight_suite(
+    invocation: &ResearchRunnerInvocation,
+    executor: &TassadarExecutorExperimentSpec,
+    report: &TassadarBenchmarkReport,
+) -> Result<Option<TassadarCompiledProgramSuiteArtifact>, ResearchRunnerError> {
+    if executor.architecture.weight_construction
+        != TassadarExecutorWeightConstruction::ProgramCompiled
+    {
+        return Ok(None);
+    }
+    let fixture = match executor.wasm_profile.profile_id.as_str() {
+        "core_i32_v1" => TassadarExecutorFixture::core_i32_v1(),
+        "core_i32_v2" => TassadarExecutorFixture::core_i32_v2(),
+        profile_id => TassadarExecutorFixture::for_profile_id(profile_id).ok_or_else(|| {
+            ResearchRunnerError::InvalidInvocation(format!(
+                "no Tassadar fixture exists for profile `{profile_id}`"
+            ))
+        })?,
+    };
+    let suite = TassadarCompiledProgramSuiteArtifact::compile(
+        format!("{}.compiled_suite", invocation.spec.candidate_id),
+        format!("{}@{}", executor.benchmark_ref, executor.benchmark_version),
+        &fixture,
+        report.suite.artifacts.as_slice(),
+    )
+    .map_err(|error| ResearchRunnerError::TassadarCompiledWeights(error.to_string()))?;
+    Ok(Some(suite))
+}
+
 fn build_executor_benchmark_stats(
     executor: &TassadarExecutorExperimentSpec,
     report: &TassadarBenchmarkReport,
+    compiled_suite: Option<&TassadarCompiledProgramSuiteArtifact>,
     estimated_runtime_ms: u64,
 ) -> ExecutorBenchmarkStats {
     let case_count = saturating_i64_from_usize(report.case_reports.len());
@@ -769,11 +838,26 @@ fn build_executor_benchmark_stats(
                 TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
             }
         }));
+    let d_model = i64::from(executor.architecture.d_model());
+    let parameter_count_estimate =
+        saturating_i64_from_u64(executor.architecture.estimated_parameter_count());
+    let (compiled_weight_artifact_bytes, compiled_program_count) = compiled_suite
+        .map(|suite| {
+            (
+                saturating_i64_from_u64(suite.total_compiled_weight_artifact_bytes),
+                saturating_i64_from_usize(suite.deployments.len()),
+            )
+        })
+        .unwrap_or((0, 0));
     ExecutorBenchmarkStats {
         exactness_bps,
         direct_selection_bps,
         candidate_speedup_ratio_micros,
         candidate_cpu_gap_ratio_micros,
+        d_model,
+        parameter_count_estimate,
+        compiled_weight_artifact_bytes,
+        compiled_program_count,
         total_trace_steps,
         case_count,
         passed_case_count,
@@ -804,6 +888,12 @@ fn build_executor_metrics(stats: &ExecutorBenchmarkStats) -> Vec<ExperimentMetri
     vec![
         ExperimentMetric::new("wall_time_ms", "milliseconds", stats.wall_time_ms),
         ExperimentMetric::new("executor_exactness_bps", "bps", stats.exactness_bps),
+        ExperimentMetric::new("executor_d_model", "count", stats.d_model),
+        ExperimentMetric::new(
+            "executor_parameter_count_estimate",
+            "count",
+            stats.parameter_count_estimate,
+        ),
         ExperimentMetric::new(
             "executor_direct_selection_bps",
             "bps",
@@ -830,12 +920,32 @@ fn build_executor_metrics(stats: &ExecutorBenchmarkStats) -> Vec<ExperimentMetri
             "count",
             stats.passed_case_count,
         ),
+        ExperimentMetric::new(
+            "executor_compiled_weight_artifact_bytes",
+            "bytes",
+            stats.compiled_weight_artifact_bytes,
+        ),
+        ExperimentMetric::new(
+            "executor_compiled_program_count",
+            "count",
+            stats.compiled_program_count,
+        ),
     ]
 }
 
 fn executor_metric_value(stats: &ExecutorBenchmarkStats, metric_id: &str) -> i64 {
     if metric_id.contains("exactness") {
         stats.exactness_bps
+    } else if metric_id.contains("parameter_count") {
+        stats.parameter_count_estimate
+    } else if metric_id.contains("compiled_weight_artifact_bytes")
+        || metric_id.contains("bundle_bytes")
+    {
+        stats.compiled_weight_artifact_bytes
+    } else if metric_id.contains("compiled_program_count") {
+        stats.compiled_program_count
+    } else if metric_id.contains("d_model") {
+        stats.d_model
     } else if metric_id.contains("direct_selection") {
         stats.direct_selection_bps
     } else if metric_id.contains("speedup") {
@@ -872,6 +982,7 @@ fn build_executor_eval_receipt(
 fn build_executor_artifact_outputs(
     invocation: &ResearchRunnerInvocation,
     report: &TassadarBenchmarkReport,
+    compiled_suite: Option<&TassadarCompiledProgramSuiteArtifact>,
 ) -> Result<Vec<ExperimentArtifactOutput>, ResearchRunnerError> {
     let benchmark_report_bytes = serde_json::to_vec(report)
         .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
@@ -879,7 +990,7 @@ fn build_executor_artifact_outputs(
         .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
     let program_artifact_bytes = serde_json::to_vec(&report.suite.artifacts)
         .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
-    Ok(vec![
+    let mut artifacts = vec![
         ExperimentArtifactOutput::new(
             ExperimentArtifactKind::BenchmarkReport,
             format!(
@@ -917,7 +1028,18 @@ fn build_executor_artifact_outputs(
             ),
             collect_eval_artifact_digest(report, "tassadar_execution_proof_bundle.json"),
         ),
-    ])
+    ];
+    if let Some(compiled_suite) = compiled_suite {
+        artifacts.push(ExperimentArtifactOutput::new(
+            ExperimentArtifactKind::CompiledWeightArtifact,
+            format!(
+                "artifact://research/{}/compiled_weight_suite",
+                invocation.spec.candidate_id
+            ),
+            compiled_suite.artifact_digest.clone(),
+        ));
+    }
+    Ok(artifacts)
 }
 
 fn collect_eval_artifact_digest(report: &TassadarBenchmarkReport, artifact_kind: &str) -> String {
@@ -1035,10 +1157,21 @@ fn estimate_runtime_ms(spec: &ExperimentSpec) -> u64 {
                 TassadarExecutorBenchmarkTarget::ValidationCorpus => 2_500,
                 TassadarExecutorBenchmarkTarget::ArticleClass => 4_500,
             };
+            let architecture_cost = u64::from(executor.architecture.layer_count) * 40
+                + u64::from(executor.architecture.head_count) * 12
+                + u64::from(executor.architecture.feed_forward_width / 4);
+            let compile_cost = match executor.architecture.weight_construction {
+                TassadarExecutorWeightConstruction::HandcraftedInterpreter => 0,
+                TassadarExecutorWeightConstruction::ProgramCompiled => {
+                    u64::from(executor.wasm_profile.max_program_len) * 6
+                        + u64::from(executor.wasm_profile.max_memory_slots) * 20
+                }
+            };
             target_base
                 + executor.wasm_profile.max_steps.saturating_mul(2)
                 + u64::from(executor.wasm_profile.max_program_len) * 4
-                + u64::from(executor.architecture.layer_count) * 40
+                + architecture_cost
+                + compile_cost
         }
     }
 }
@@ -1279,11 +1412,13 @@ mod tests {
     use crate::{
         CandidateMutation, ExperimentArtifactKind, ExperimentArtifactRef, ExperimentBudget,
         ExperimentFamily, ExperimentFamilyKind, ExperimentRunStatus, ExperimentScoreContract,
-        ExperimentThreshold, ResearchRunner, ResearchRunnerInvocation, ScoreDirection,
-        ScoreMetricSpec, ServingSchedulerPolicy, TassadarExecutorArchitectureVariant,
+        ExperimentThreshold, ResearchRunner, ResearchRunnerError, ResearchRunnerInvocation,
+        ScoreDirection, ScoreMetricSpec, ServingSchedulerPolicy,
+        TassadarExecutorArchitectureVariant,
         TassadarExecutorAttentionMode, TassadarExecutorBenchmarkTarget,
         TassadarExecutorDecodeCacheKind, TassadarExecutorDecodeCacheVariant,
         TassadarExecutorExperimentSpec, TassadarExecutorTraceAbiVariant,
+        TassadarExecutorWeightConstruction,
         TassadarExecutorWasmProfileVariant,
     };
 
@@ -1339,6 +1474,7 @@ mod tests {
         candidate_id: &str,
         run_id: &str,
         cache_kind: TassadarExecutorDecodeCacheKind,
+        weight_construction: TassadarExecutorWeightConstruction,
     ) -> ResearchRunnerInvocation {
         let spec = crate::ExperimentSpec::new(
             "exp.tassadar.1",
@@ -1353,9 +1489,10 @@ mod tests {
                         format!("{candidate_id}.arch"),
                         "tassadar.executor.article_class.v2",
                         2,
+                        18,
                         7,
                         36,
-                        true,
+                        weight_construction,
                     ),
                     TassadarExecutorTraceAbiVariant::new(
                         format!("{candidate_id}.abi"),
@@ -1500,6 +1637,7 @@ mod tests {
             "candidate-hull",
             "run-hull",
             TassadarExecutorDecodeCacheKind::HullCache,
+            TassadarExecutorWeightConstruction::HandcraftedInterpreter,
         );
         let record = ResearchRunner::execute_local(&invocation).expect("runner should succeed");
         assert_eq!(record.result.status, ExperimentRunStatus::Succeeded);
@@ -1540,11 +1678,13 @@ mod tests {
             "candidate-hull",
             "run-hull",
             TassadarExecutorDecodeCacheKind::HullCache,
+            TassadarExecutorWeightConstruction::HandcraftedInterpreter,
         );
         let reference = sample_executor_invocation(
             "candidate-reference",
             "run-reference",
             TassadarExecutorDecodeCacheKind::ReferenceLinear,
+            TassadarExecutorWeightConstruction::HandcraftedInterpreter,
         );
         let (_records, sweep) =
             ResearchRunner::execute_local_sweep("sweep.tassadar.1", &[hull, reference])
@@ -1556,5 +1696,47 @@ mod tests {
             Some("candidate-hull")
         );
         assert!(!sweep.sweep_digest.is_empty());
+    }
+
+    #[test]
+    fn runner_emits_compiled_weight_artifact_for_program_compiled_candidate() {
+        let invocation = sample_executor_invocation(
+            "candidate-compiled",
+            "run-compiled",
+            TassadarExecutorDecodeCacheKind::HullCache,
+            TassadarExecutorWeightConstruction::ProgramCompiled,
+        );
+        let record = ResearchRunner::execute_local(&invocation).expect("runner should succeed");
+        assert!(
+            record
+                .result
+                .artifact_outputs
+                .iter()
+                .any(|artifact| artifact.kind == ExperimentArtifactKind::CompiledWeightArtifact)
+        );
+        assert!(
+            record
+                .result
+                .metrics
+                .iter()
+                .any(|metric| metric.metric_id == "executor_compiled_weight_artifact_bytes"
+                    && metric.value_micros > 0)
+        );
+    }
+
+    #[test]
+    fn runner_rejects_non_two_dimensional_executor_candidates() {
+        let mut invocation = sample_executor_invocation(
+            "candidate-bad-heads",
+            "run-bad-heads",
+            TassadarExecutorDecodeCacheKind::HullCache,
+            TassadarExecutorWeightConstruction::HandcraftedInterpreter,
+        );
+        let ExperimentFamily::ExecutorVariants { executor } = &mut invocation.spec.family else {
+            panic!("executor variants");
+        };
+        executor.architecture.head_dim = 4;
+        let error = ResearchRunner::execute_local(&invocation).expect_err("runner should refuse");
+        assert!(matches!(error, ResearchRunnerError::InvalidInvocation(_)));
     }
 }

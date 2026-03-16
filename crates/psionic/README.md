@@ -102,9 +102,14 @@ Current posture:
   with a small-model Tassadar trainer over package-backed supervision, a
   fixed-budget train receipt, proof-aware exactness comparison against the
   handcrafted reference lane, and explicit validation-corpus-only scope claims
+- its Phase 9C compiled-weight and larger-2D exploration now exists in
+  `psionic-models` and `psionic-research`, with program-specialized compiled
+  executor artifacts carrying exact program binding, runtime-contract truth,
+  and compile-time proof/runtime-manifest lineage, plus explicit 2D-head family
+  geometry and compiled-weight suite outputs in research runs
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A/9B issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A/9B/9C issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
@@ -117,7 +122,8 @@ Current posture:
   [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762) and
   [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763) and
   [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764) and
-  [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765)
+  [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765) and
+  [#3766](https://github.com/OpenAgentsInc/openagents/issues/3766)
 
 ## Crate Map
 
