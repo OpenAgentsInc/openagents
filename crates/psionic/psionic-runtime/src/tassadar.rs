@@ -129,7 +129,10 @@ impl TassadarRuntimeCapabilityReport {
             runtime_backend: String::from(TASSADAR_RUNTIME_BACKEND_ID),
             supports_executor_trace: true,
             supports_hull_decode: true,
-            supported_wasm_profiles: vec![String::from(TassadarWasmProfileId::CoreI32V1.as_str())],
+            supported_wasm_profiles: vec![
+                String::from(TassadarWasmProfileId::CoreI32V1.as_str()),
+                String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
+            ],
             supported_attention_modes: vec![
                 TassadarRuntimeAttentionMode::ReferenceLinear,
                 TassadarRuntimeAttentionMode::HardMaxHull,
@@ -237,6 +240,8 @@ pub struct TassadarExecutorExecutionReport {
 pub enum TassadarWasmProfileId {
     /// Narrow i32-only profile with explicit host-side `output`.
     CoreI32V1,
+    /// Widened i32-only profile for article-class exact executor benchmarks.
+    CoreI32V2,
 }
 
 impl TassadarWasmProfileId {
@@ -245,6 +250,7 @@ impl TassadarWasmProfileId {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::CoreI32V1 => "tassadar.wasm.core_i32.v1",
+            Self::CoreI32V2 => "tassadar.wasm.core_i32.v2",
         }
     }
 }
@@ -479,6 +485,21 @@ impl TassadarWasmProfile {
         }
     }
 
+    /// Returns the widened article-class benchmark profile.
+    #[must_use]
+    pub fn core_i32_v2() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
+            allowed_opcodes: TassadarOpcode::ALL.to_vec(),
+            max_locals: 8,
+            max_memory_slots: 16,
+            max_program_len: 128,
+            max_steps: 512,
+            branch_mode: TassadarBranchMode::BrIfNonZero,
+            host_output_opcode: true,
+        }
+    }
+
     /// Returns whether the profile explicitly supports one opcode.
     #[must_use]
     pub fn supports(&self, opcode: TassadarOpcode) -> bool {
@@ -504,6 +525,20 @@ impl TassadarWasmProfile {
 impl Default for TassadarWasmProfile {
     fn default() -> Self {
         Self::core_i32_v1()
+    }
+}
+
+/// Returns one machine-legible WebAssembly profile by stable identifier.
+#[must_use]
+pub fn tassadar_wasm_profile_for_id(profile_id: &str) -> Option<TassadarWasmProfile> {
+    match profile_id {
+        value if value == TassadarWasmProfileId::CoreI32V1.as_str() => {
+            Some(TassadarWasmProfile::core_i32_v1())
+        }
+        value if value == TassadarWasmProfileId::CoreI32V2.as_str() => {
+            Some(TassadarWasmProfile::core_i32_v2())
+        }
+        _ => None,
     }
 }
 
@@ -541,6 +576,20 @@ impl TassadarTraceAbi {
         }
     }
 
+    /// Returns the widened article-class benchmark trace ABI.
+    #[must_use]
+    pub fn core_i32_v2() -> Self {
+        Self {
+            abi_id: String::from("tassadar.trace.v1"),
+            schema_version: TASSADAR_TRACE_ABI_VERSION,
+            profile_id: String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
+            append_only: true,
+            includes_stack_snapshots: true,
+            includes_local_snapshots: true,
+            includes_memory_snapshots: true,
+        }
+    }
+
     /// Returns a stable digest over the ABI compatibility surface.
     #[must_use]
     pub fn compatibility_digest(&self) -> String {
@@ -564,6 +613,20 @@ impl TassadarTraceAbi {
 impl Default for TassadarTraceAbi {
     fn default() -> Self {
         Self::core_i32_v1()
+    }
+}
+
+/// Returns the canonical append-only trace ABI for one supported profile id.
+#[must_use]
+pub fn tassadar_trace_abi_for_profile_id(profile_id: &str) -> Option<TassadarTraceAbi> {
+    match profile_id {
+        value if value == TassadarWasmProfileId::CoreI32V1.as_str() => {
+            Some(TassadarTraceAbi::core_i32_v1())
+        }
+        value if value == TassadarWasmProfileId::CoreI32V2.as_str() => {
+            Some(TassadarTraceAbi::core_i32_v2())
+        }
+        _ => None,
     }
 }
 
@@ -1234,6 +1297,16 @@ impl TassadarFixtureWeights {
         }
     }
 
+    /// Returns the widened article-class handcrafted fixture table.
+    #[must_use]
+    pub fn core_i32_v2() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
+            trace_abi_id: String::from("tassadar.trace.v1"),
+            opcode_rules: Self::core_i32_v1().opcode_rules,
+        }
+    }
+
     /// Returns one rule by opcode.
     #[must_use]
     pub fn rule_for(&self, opcode: TassadarOpcode) -> Option<&TassadarOpcodeRule> {
@@ -1244,6 +1317,20 @@ impl TassadarFixtureWeights {
 impl Default for TassadarFixtureWeights {
     fn default() -> Self {
         Self::core_i32_v1()
+    }
+}
+
+/// Returns the current handcrafted fixture table for one supported profile id.
+#[must_use]
+pub fn tassadar_fixture_weights_for_profile_id(profile_id: &str) -> Option<TassadarFixtureWeights> {
+    match profile_id {
+        value if value == TassadarWasmProfileId::CoreI32V1.as_str() => {
+            Some(TassadarFixtureWeights::core_i32_v1())
+        }
+        value if value == TassadarWasmProfileId::CoreI32V2.as_str() => {
+            Some(TassadarFixtureWeights::core_i32_v2())
+        }
+        _ => None,
     }
 }
 
@@ -1989,6 +2076,35 @@ impl TassadarCpuReferenceRunner {
         }
     }
 
+    /// Creates a reference runner for one supported profile.
+    #[must_use]
+    pub fn for_profile(profile: TassadarWasmProfile) -> Option<Self> {
+        let trace_abi = tassadar_trace_abi_for_profile_id(profile.profile_id.as_str())?;
+        Some(Self { profile, trace_abi })
+    }
+
+    /// Creates a reference runner that matches one validated program profile.
+    pub fn for_program(program: &TassadarProgram) -> Result<Self, TassadarExecutionRefusal> {
+        let Some(profile) = tassadar_wasm_profile_for_id(program.profile_id.as_str()) else {
+            return Err(TassadarExecutionRefusal::ProfileMismatch {
+                expected: format!(
+                    "{}, {}",
+                    TassadarWasmProfileId::CoreI32V1.as_str(),
+                    TassadarWasmProfileId::CoreI32V2.as_str()
+                ),
+                actual: program.profile_id.clone(),
+            });
+        };
+        Self::for_profile(profile).ok_or(TassadarExecutionRefusal::ProfileMismatch {
+            expected: format!(
+                "{}, {}",
+                TassadarWasmProfileId::CoreI32V1.as_str(),
+                TassadarWasmProfileId::CoreI32V2.as_str()
+            ),
+            actual: program.profile_id.clone(),
+        })
+    }
+
     /// Executes one validated Tassadar program on the direct CPU reference path.
     pub fn execute(
         &self,
@@ -2021,6 +2137,40 @@ impl TassadarFixtureRunner {
             trace_abi: TassadarTraceAbi::core_i32_v1(),
             weights: TassadarFixtureWeights::core_i32_v1(),
         }
+    }
+
+    /// Creates a fixture-backed runner for one supported profile.
+    #[must_use]
+    pub fn for_profile(profile: TassadarWasmProfile) -> Option<Self> {
+        let trace_abi = tassadar_trace_abi_for_profile_id(profile.profile_id.as_str())?;
+        let weights = tassadar_fixture_weights_for_profile_id(profile.profile_id.as_str())?;
+        Some(Self {
+            profile,
+            trace_abi,
+            weights,
+        })
+    }
+
+    /// Creates a fixture-backed runner that matches one validated program profile.
+    pub fn for_program(program: &TassadarProgram) -> Result<Self, TassadarExecutionRefusal> {
+        let Some(profile) = tassadar_wasm_profile_for_id(program.profile_id.as_str()) else {
+            return Err(TassadarExecutionRefusal::ProfileMismatch {
+                expected: format!(
+                    "{}, {}",
+                    TassadarWasmProfileId::CoreI32V1.as_str(),
+                    TassadarWasmProfileId::CoreI32V2.as_str()
+                ),
+                actual: program.profile_id.clone(),
+            });
+        };
+        Self::for_profile(profile).ok_or(TassadarExecutionRefusal::ProfileMismatch {
+            expected: format!(
+                "{}, {}",
+                TassadarWasmProfileId::CoreI32V1.as_str(),
+                TassadarWasmProfileId::CoreI32V2.as_str()
+            ),
+            actual: program.profile_id.clone(),
+        })
     }
 
     /// Returns the handcrafted rule tables backing the fixture runner.
@@ -2061,6 +2211,40 @@ impl TassadarHullCacheRunner {
             trace_abi: TassadarTraceAbi::core_i32_v1(),
             weights: TassadarFixtureWeights::core_i32_v1(),
         }
+    }
+
+    /// Creates a hull-cache runner for one supported profile.
+    #[must_use]
+    pub fn for_profile(profile: TassadarWasmProfile) -> Option<Self> {
+        let trace_abi = tassadar_trace_abi_for_profile_id(profile.profile_id.as_str())?;
+        let weights = tassadar_fixture_weights_for_profile_id(profile.profile_id.as_str())?;
+        Some(Self {
+            profile,
+            trace_abi,
+            weights,
+        })
+    }
+
+    /// Creates a hull-cache runner that matches one validated program profile.
+    pub fn for_program(program: &TassadarProgram) -> Result<Self, TassadarExecutionRefusal> {
+        let Some(profile) = tassadar_wasm_profile_for_id(program.profile_id.as_str()) else {
+            return Err(TassadarExecutionRefusal::ProfileMismatch {
+                expected: format!(
+                    "{}, {}",
+                    TassadarWasmProfileId::CoreI32V1.as_str(),
+                    TassadarWasmProfileId::CoreI32V2.as_str()
+                ),
+                actual: program.profile_id.clone(),
+            });
+        };
+        Self::for_profile(profile).ok_or(TassadarExecutionRefusal::ProfileMismatch {
+            expected: format!(
+                "{}, {}",
+                TassadarWasmProfileId::CoreI32V1.as_str(),
+                TassadarWasmProfileId::CoreI32V2.as_str()
+            ),
+            actual: program.profile_id.clone(),
+        })
     }
 
     /// Executes one validated Tassadar program against the hull-cache fast path.
@@ -2134,8 +2318,8 @@ impl TassadarExactEquivalenceReport {
 pub fn run_tassadar_exact_parity(
     program: &TassadarProgram,
 ) -> Result<TassadarParityReport, TassadarExecutionRefusal> {
-    let reference = TassadarCpuReferenceRunner::new().execute(program)?;
-    let fixture = TassadarFixtureRunner::new().execute(program)?;
+    let reference = TassadarCpuReferenceRunner::for_program(program)?.execute(program)?;
+    let fixture = TassadarFixtureRunner::for_program(program)?.execute(program)?;
     let report = TassadarParityReport {
         program_id: program.program_id.clone(),
         reference,
@@ -2151,9 +2335,9 @@ pub fn run_tassadar_exact_equivalence(
 ) -> Result<TassadarExactEquivalenceReport, TassadarExecutionRefusal> {
     let report = TassadarExactEquivalenceReport {
         program_id: program.program_id.clone(),
-        cpu_reference: TassadarCpuReferenceRunner::new().execute(program)?,
-        reference_linear: TassadarFixtureRunner::new().execute(program)?,
-        hull_cache: TassadarHullCacheRunner::new().execute(program)?,
+        cpu_reference: TassadarCpuReferenceRunner::for_program(program)?.execute(program)?,
+        reference_linear: TassadarFixtureRunner::for_program(program)?.execute(program)?,
+        hull_cache: TassadarHullCacheRunner::for_program(program)?.execute(program)?,
     };
     report.require_exact()?;
     Ok(report)
@@ -2345,7 +2529,17 @@ pub fn execute_tassadar_executor_request(
     };
 
     let execution = match effective_decode_mode {
-        TassadarExecutorDecodeMode::ReferenceLinear => TassadarFixtureRunner::new()
+        TassadarExecutorDecodeMode::ReferenceLinear => TassadarFixtureRunner::for_program(program)
+            .map_err(|error| TassadarExecutorSelectionDiagnostic {
+                detail: format!(
+                    "reference-linear runner could not be constructed for profile `{}`: {error}",
+                    program.profile_id
+                ),
+                selection_state: TassadarExecutorSelectionState::Refused,
+                selection_reason: diagnostic.selection_reason,
+                effective_decode_mode: None,
+                ..diagnostic.clone()
+            })?
             .execute(program)
             .map_err(|error| TassadarExecutorSelectionDiagnostic {
                 detail: format!("reference-linear execution refused after selection: {error}"),
@@ -2354,7 +2548,17 @@ pub fn execute_tassadar_executor_request(
                 effective_decode_mode: None,
                 ..diagnostic.clone()
             })?,
-        TassadarExecutorDecodeMode::HullCache => TassadarHullCacheRunner::new()
+        TassadarExecutorDecodeMode::HullCache => TassadarHullCacheRunner::for_program(program)
+            .map_err(|error| TassadarExecutorSelectionDiagnostic {
+                detail: format!(
+                    "hull-cache runner could not be constructed for profile `{}`: {error}",
+                    program.profile_id
+                ),
+                selection_state: TassadarExecutorSelectionState::Refused,
+                selection_reason: diagnostic.selection_reason,
+                effective_decode_mode: None,
+                ..diagnostic.clone()
+            })?
             .execute(program)
             .map_err(|error| TassadarExecutorSelectionDiagnostic {
                 detail: format!("hull-cache execution refused after selection: {error}"),
@@ -2379,7 +2583,7 @@ pub fn replay_tassadar_execution(
     program: &TassadarProgram,
     expected: &TassadarExecution,
 ) -> Result<(), TassadarExecutionRefusal> {
-    let actual = TassadarCpuReferenceRunner::new().execute(program)?;
+    let actual = TassadarCpuReferenceRunner::for_program(program)?.execute(program)?;
     if actual.behavior_digest() == expected.behavior_digest() {
         Ok(())
     } else {
@@ -2414,6 +2618,39 @@ pub fn tassadar_validation_corpus() -> Vec<TassadarValidationCase> {
         memory_roundtrip_case(),
         branch_guard_case(),
     ]
+}
+
+/// Returns the widened article-class benchmark corpus.
+#[must_use]
+pub fn tassadar_article_class_corpus() -> Vec<TassadarValidationCase> {
+    vec![
+        micro_wasm_kernel_case(),
+        sudoku_class_case(),
+        hungarian_matching_case(),
+    ]
+}
+
+fn computed_validation_case(
+    case_id: impl Into<String>,
+    summary: impl Into<String>,
+    program: TassadarProgram,
+    expected_outputs: Vec<i32>,
+) -> TassadarValidationCase {
+    let execution = TassadarCpuReferenceRunner::for_program(&program)
+        .expect("supported article-class program profile")
+        .execute(&program)
+        .expect("article-class reference program should execute");
+    assert_eq!(
+        execution.outputs, expected_outputs,
+        "article-class validation case outputs must stay exact"
+    );
+    TassadarValidationCase {
+        case_id: case_id.into(),
+        summary: summary.into(),
+        program,
+        expected_trace: execution.steps,
+        expected_outputs,
+    }
 }
 
 fn execute_program_direct(
@@ -3490,6 +3727,152 @@ fn branch_guard_case() -> TassadarValidationCase {
     }
 }
 
+fn micro_wasm_kernel_case() -> TassadarValidationCase {
+    let profile = TassadarWasmProfile::core_i32_v2();
+    computed_validation_case(
+        "micro_wasm_kernel",
+        "unrolled weighted-sum and checksum micro-kernel over memory-backed inputs",
+        TassadarProgram::new(
+            "tassadar.micro_wasm_kernel.v2",
+            &profile,
+            2,
+            8,
+            vec![
+                TassadarInstruction::I32Const { value: 0 },
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::I32Const { value: 0 },
+                TassadarInstruction::LocalSet { local: 1 },
+                TassadarInstruction::I32Load { slot: 0 },
+                TassadarInstruction::I32Const { value: 1 },
+                TassadarInstruction::I32Mul,
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::I32Load { slot: 0 },
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 1 },
+                TassadarInstruction::I32Load { slot: 1 },
+                TassadarInstruction::I32Const { value: 2 },
+                TassadarInstruction::I32Mul,
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::I32Load { slot: 1 },
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 1 },
+                TassadarInstruction::I32Load { slot: 2 },
+                TassadarInstruction::I32Const { value: 3 },
+                TassadarInstruction::I32Mul,
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::I32Load { slot: 2 },
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 1 },
+                TassadarInstruction::I32Load { slot: 3 },
+                TassadarInstruction::I32Const { value: 4 },
+                TassadarInstruction::I32Mul,
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::I32Load { slot: 3 },
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 1 },
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::Output,
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::Output,
+                TassadarInstruction::Return,
+            ],
+        )
+        .with_initial_memory(vec![2, 3, 4, 5, 0, 0, 0, 0]),
+        vec![40, 14],
+    )
+}
+
+fn sudoku_class_case() -> TassadarValidationCase {
+    let profile = TassadarWasmProfile::core_i32_v2();
+    computed_validation_case(
+        "sudoku_class",
+        "sum-based exact completion for two missing values in a tiny 4x4 Sudoku-style instance",
+        TassadarProgram::new(
+            "tassadar.sudoku_class.v2",
+            &profile,
+            0,
+            8,
+            vec![
+                TassadarInstruction::I32Const { value: 10 },
+                TassadarInstruction::I32Load { slot: 0 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::I32Load { slot: 2 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::I32Load { slot: 3 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::I32Store { slot: 1 },
+                TassadarInstruction::I32Load { slot: 1 },
+                TassadarInstruction::Output,
+                TassadarInstruction::I32Const { value: 10 },
+                TassadarInstruction::I32Load { slot: 5 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::I32Load { slot: 6 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::I32Load { slot: 7 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::I32Store { slot: 4 },
+                TassadarInstruction::I32Load { slot: 4 },
+                TassadarInstruction::Output,
+                TassadarInstruction::Return,
+            ],
+        )
+        .with_initial_memory(vec![1, 0, 3, 4, 0, 4, 1, 2]),
+        vec![2, 3],
+    )
+}
+
+fn hungarian_matching_case() -> TassadarValidationCase {
+    let profile = TassadarWasmProfile::core_i32_v2();
+    computed_validation_case(
+        "hungarian_matching",
+        "tiny fixed 2x2 matching instance with branch-selected winning assignment and exact cost",
+        TassadarProgram::new(
+            "tassadar.hungarian_matching.v2",
+            &profile,
+            2,
+            4,
+            vec![
+                TassadarInstruction::I32Load { slot: 0 },
+                TassadarInstruction::I32Load { slot: 3 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::I32Load { slot: 1 },
+                TassadarInstruction::I32Load { slot: 2 },
+                TassadarInstruction::I32Add,
+                TassadarInstruction::LocalSet { local: 1 },
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::I32Sub,
+                TassadarInstruction::BrIf { target_pc: 17 },
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::Output,
+                TassadarInstruction::I32Const { value: 0 },
+                TassadarInstruction::Output,
+                TassadarInstruction::Return,
+                TassadarInstruction::LocalGet { local: 1 },
+                TassadarInstruction::Output,
+                TassadarInstruction::I32Const { value: 1 },
+                TassadarInstruction::Output,
+                TassadarInstruction::Return,
+            ],
+        )
+        .with_initial_memory(vec![3, 1, 2, 4]),
+        vec![3, 1],
+    )
+}
+
 fn trace_step(
     step_index: usize,
     pc: usize,
@@ -3667,17 +4050,17 @@ fn stable_bytes_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
-        execute_tassadar_executor_request, replay_tassadar_execution,
-        run_tassadar_exact_equivalence, run_tassadar_exact_parity,
-        tassadar_runtime_capability_report, tassadar_validation_corpus,
-        TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
-        TassadarExecutorDecodeMode, TassadarExecutorSelectionReason,
-        TassadarExecutorSelectionState, TassadarFixtureRunner, TassadarHullCacheRunner,
-        TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
+        TASSADAR_FIXTURE_RUNNER_ID, TASSADAR_RUNTIME_BACKEND_ID, TassadarCompilerToolchainIdentity,
+        TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
+        TassadarExecutorSelectionReason, TassadarExecutorSelectionState, TassadarFixtureRunner,
+        TassadarHullCacheRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
         TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
-        TassadarTraceAbi, TassadarWasmProfile, TASSADAR_FIXTURE_RUNNER_ID,
-        TASSADAR_RUNTIME_BACKEND_ID,
+        TassadarTraceAbi, TassadarWasmProfile, TassadarWasmProfileId,
+        build_tassadar_execution_evidence_bundle,
+        diagnose_tassadar_executor_request, execute_tassadar_executor_request,
+        replay_tassadar_execution, run_tassadar_exact_equivalence, run_tassadar_exact_parity,
+        tassadar_article_class_corpus, tassadar_runtime_capability_report,
+        tassadar_validation_corpus,
     };
 
     #[test]
@@ -3755,6 +4138,18 @@ mod tests {
     }
 
     #[test]
+    fn exact_equivalence_holds_on_article_class_corpus() {
+        for case in tassadar_article_class_corpus() {
+            let report =
+                run_tassadar_exact_equivalence(&case.program).expect("equivalence should hold");
+            report.require_exact().expect("report should be exact");
+            assert!(report.trace_digest_equal(), "case={}", case.case_id);
+            assert!(report.outputs_equal(), "case={}", case.case_id);
+            assert!(report.halt_equal(), "case={}", case.case_id);
+        }
+    }
+
+    #[test]
     fn tassadar_runtime_capability_report_declares_executor_truth() {
         let capability = tassadar_runtime_capability_report();
         assert_eq!(capability.runtime_backend, TASSADAR_RUNTIME_BACKEND_ID);
@@ -3762,7 +4157,10 @@ mod tests {
         assert!(capability.supports_hull_decode);
         assert_eq!(
             capability.supported_wasm_profiles,
-            vec![String::from(TassadarWasmProfile::core_i32_v1().profile_id)]
+            vec![
+                String::from(TassadarWasmProfile::core_i32_v1().profile_id),
+                String::from(TassadarWasmProfile::core_i32_v2().profile_id),
+            ]
         );
         assert_eq!(capability.validated_trace_abi_versions, vec![1]);
         assert_eq!(
@@ -3772,6 +4170,22 @@ mod tests {
                 TassadarExecutorDecodeMode::HullCache,
             ]
         );
+    }
+
+    #[test]
+    fn article_class_profiles_resolve_to_runtime_builders() {
+        for case in tassadar_article_class_corpus() {
+            assert_eq!(
+                case.program.profile_id,
+                TassadarWasmProfileId::CoreI32V2.as_str()
+            );
+            TassadarCpuReferenceRunner::for_program(&case.program)
+                .expect("article-class CPU runner should resolve");
+            TassadarFixtureRunner::for_program(&case.program)
+                .expect("article-class fixture runner should resolve");
+            TassadarHullCacheRunner::for_program(&case.program)
+                .expect("article-class hull runner should resolve");
+        }
     }
 
     #[test]

@@ -507,11 +507,17 @@ Its declared scope is:
   pull-driven trace streaming, final output extraction helpers, typed refusal
   responses, and served evidence bundles that preserve decode selection, trace
   proof, and runtime-manifest lineage
+- landed Phase 7B bar: widened `core_i32_v2` Wasm profile, profile-aware
+  runner construction, and article-class benchmark coverage for
+  `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching` with exact
+  CPU/reference-linear/hull-cache parity plus published speedup and CPU-gap
+  metrics
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
   - `psionic-environments::TassadarEnvironmentBundle`
   - `psionic-eval::run_tassadar_reference_fixture_benchmark`
+  - `psionic-eval::run_tassadar_article_class_benchmark`
   - `psionic-runtime::build_tassadar_execution_evidence_bundle`
   - `psionic-serve::LocalTassadarExecutorService`
 - strategic value: inner exact-computation substrate for larger reasoning
@@ -537,8 +543,10 @@ The current issue spine is:
   [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - Phase 7A dedicated executor serving surface and trace product:
   [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760)
+- Phase 7B widened WebAssembly profile and article-class benchmark coverage:
+  [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761)
 
-What Phases 1 through 6 now concretely provide:
+What Phases 1 through 7B now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -579,11 +587,17 @@ What Phases 1 through 6 now concretely provide:
   output, and terminal events without pretending to be chat completion
 - one local reference service that preserves exact refusal, fallback, proof,
   and lineage truth through the serving boundary
+- one widened `core_i32_v2` Wasm profile with explicit limits for article-class
+  workloads
+- profile-aware CPU reference, reference-linear, and hull-cache runner
+  construction that fails explicitly on unsupported profile ids
+- one widened article-class corpus and benchmark package family covering
+  `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching`
+- exact parity plus throughput, speedup, and remaining gap-vs-CPU reporting on
+  that widened corpus
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
-
-- widened Wasm profile and article-class benchmark coverage
 - hybrid planner-plus-executor routing
 
 ## Epic 0: Governance And Acceptance
