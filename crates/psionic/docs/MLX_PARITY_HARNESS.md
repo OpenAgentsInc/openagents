@@ -1,0 +1,76 @@
+# Psionic MLX Parity Harness
+
+> Status: canonical `PMLX-004` / `#3832` reference record, updated 2026-03-16
+> after adding the first seeded MLX parity-harness report, schema, and repo
+> runner.
+
+This document defines the seeded upstream MLX test families that Psionic uses
+to ground later MLX parity claims.
+
+It is intentionally bounded.
+
+The current harness is not "all upstream MLX tests in Rust."
+
+It is the first repo-owned runner and report that say:
+
+- which upstream MLX test families are being mirrored
+- which ones currently map to a seeded Psionic `pass`
+- which ones currently map to an explicit `refusal`
+- which ones remain honestly `unsupported`
+
+## Canonical Runner
+
+Run the harness from the repo root:
+
+```bash
+scripts/release/check-psionic-mlx-parity-harness.sh
+```
+
+Write the machine-readable report:
+
+```bash
+scripts/release/check-psionic-mlx-parity-harness.sh \
+  --report /tmp/psionic-mlx-parity-harness.json
+```
+
+Target one or more families:
+
+```bash
+scripts/release/check-psionic-mlx-parity-harness.sh --only autograd
+scripts/release/check-psionic-mlx-parity-harness.sh --only compile --only export_import
+```
+
+The report schema lives at
+`crates/psionic/docs/mlx_parity_harness_report.schema.json`.
+
+## Frozen Oracle Window
+
+The seeded harness is explicitly tied to the frozen MLX oracle window from
+`MLX_COMPATIBILITY_SCOPE.md`:
+
+- `ml-explore/mlx`
+- `v0.31.0` through `v0.31.1`
+
+## Seeded Families
+
+| Family | Current outcome | Upstream sources | Current Psionic anchor | Boundary note |
+| --- | --- | --- | --- | --- |
+| `array_core` | `unsupported` | `tests/array_tests.cpp`, `python/tests/test_array.py`, `python/tests/test_constants.py`, `python/tests/test_bf16.py`, `python/tests/test_double.py` | none yet | Lower-layer tensor substrate is not enough to call the upstream array family ported. |
+| `ops_numeric` | `unsupported` | `tests/ops_tests.cpp`, `tests/creations_tests.cpp`, `tests/arg_reduce_tests.cpp`, `tests/einsum_tests.cpp`, `tests/random_tests.cpp`, `python/tests/test_ops.py`, `python/tests/test_reduce.py`, `python/tests/test_einsum.py`, `python/tests/test_random.py` | none yet | Operator internals are not yet an MLX public array family. |
+| `device_eval_memory` | `unsupported` | `tests/device_tests.cpp`, `tests/eval_tests.cpp`, `tests/allocator_tests.cpp`, `tests/gpu_tests.cpp`, `tests/scheduler_tests.cpp`, `python/tests/test_device.py`, `python/tests/test_eval.py`, `python/tests/test_memory.py` | none yet | Backend substrate and diagnostics are not yet MLX public runtime parity. |
+| `autograd` | `pass` | `tests/autograd_tests.cpp`, `python/tests/test_autograd.py` | `cargo test -p psionic-ir autodiff::tests::reverse_mode_autodiff_materializes_matmul_chain_gradients -- --exact --nocapture` | This is a seeded pass, not proof that the public MLX transform API is complete. |
+| `vmap_custom_vjp` | `refusal` | `tests/vmap_tests.cpp`, `tests/custom_vjp_tests.cpp`, `python/tests/test_vmap.py` | `cargo test -p psionic-ir tests::program_transform_capability_matrix_tracks_seeded_transform_and_future_cases -- --exact --nocapture` | A typed refusal is honest progress, but not a ported transform family. |
+| `compile` | `pass` | `tests/compile_tests.cpp`, `python/tests/test_compile.py`, `python/tests/test_graph.py` | `cargo test -p psionic-compiler tests::compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases -- --exact --nocapture` | This is a seeded compile-family pass, not proof that the public MLX compile surface exists. |
+| `export_import` | `pass` | `tests/export_import_tests.cpp`, `tests/load_tests.cpp`, `python/tests/test_export_import.py`, `python/tests/test_load.py` | `cargo test -p psionic-ir tests::exportable_graph_contract_tracks_entry_signature_and_refuses_opaque_graphs -- --exact --nocapture`; `cargo test -p psionic-train model_io::tests::portable_model_bundle_roundtrips_through_safetensors_manifest -- --exact --nocapture` | This is a bounded export/import seed, not full MLX tooling closure. |
+| `nn_optimizers_quantized` | `unsupported` | `python/tests/test_nn.py`, `python/tests/test_losses.py`, `python/tests/test_init.py`, `python/tests/test_optimizers.py`, `python/tests/test_quantized.py`, `python/tests/test_tree.py` | none yet | Current `psionic-nn` and `psionic-train` internals do not yet equal an MLX-class public `nn` family. |
+| `distributed` | `unsupported` | `python/tests/ring_test_distributed.py`, `python/tests/mpi_test_distributed.py`, `python/tests/nccl_test_distributed.py`, `python/tests/mlx_distributed_tests.py` | none yet | Collectives and cluster substrate are not yet an MLX public distributed API. |
+
+## Why This Matters
+
+This issue closes the third governance requirement in `ROADMAP_MLX.md`:
+
+- one parity harness entrypoint exists
+
+The remaining Epic 0 work still needs:
+
+- one supported, convertible, and unsupported compatibility matrix
