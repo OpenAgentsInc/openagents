@@ -119,8 +119,9 @@ It already has real substrate for:
 
 - reusable module, parameter, buffer, explicit trainable-versus-frozen
   posture, and deterministic state-tree semantics in `psionic-nn`
-- deterministic `state_dict` naming plus strict/non-strict keyed load behavior
-  with explicit size-mismatch refusal in `psionic-nn`
+- deterministic `state_dict` naming plus bounded public `save_weights` /
+  `load_weights` behavior with strict/non-strict keyed load posture and
+  explicit size-mismatch refusal in `psionic-nn`
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity
