@@ -123,6 +123,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
     let autocast = psionic_core::builtin_autocast_policy_matrix_report();
+    let quantization = psionic_core::builtin_quantization_capability_semantics_report();
     let module = psionic_nn::builtin_module_parity_matrix_report()?;
     let optimizer = psionic_train::builtin_optimizer_parity_matrix_report()?;
     let gradient_scaling = psionic_train::builtin_gradient_scaling_semantics_report();
@@ -158,14 +159,14 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             )],
             vec![
                 String::from("land runtime materialization for non-dense tensor families"),
-                String::from("broaden tensor-family behavior beyond meta, alias, and declared-output contracts"),
-                String::from("connect future dtype, autocast, and quantization systems to these non-dense families"),
+                String::from(
+                    "broaden tensor-family behavior beyond meta, alias, and declared-output contracts",
+                ),
+                String::from(
+                    "connect broader operator-family and export semantics to these non-dense families",
+                ),
             ],
-            vec![
-                String::from("#3735"),
-                String::from("#3728"),
-                String::from("#3730"),
-            ],
+            vec![String::from("#3735"), String::from("#3736")],
         ),
         seeded_area(
             "advanced_dtype_semantics",
@@ -176,14 +177,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             )],
             vec![
                 String::from("broaden promotion and cast coverage beyond the current seeded matrix"),
-                String::from("connect precision-policy and mixed-precision train systems to the richer dtype vocabulary"),
+                String::from(
+                    "connect broader operator-family semantics to the richer dtype vocabulary",
+                ),
                 String::from("materialize additional dtypes beyond the compact runtime-core subset"),
             ],
-            vec![
-                String::from("#3728"),
-                String::from("#3729"),
-                String::from("#3730"),
-            ],
+            vec![String::from("#3735")],
         ),
         seeded_area(
             "reproducibility_semantics",
@@ -197,11 +196,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("connect mixed-precision and distributed data-feed semantics to the replayable RNG contract"),
                 String::from("extend checkpointed RNG restore deeper into later train-loop and export surfaces"),
             ],
-            vec![
-                String::from("#3728"),
-                String::from("#3734"),
-                String::from("#3736"),
-            ],
+            vec![String::from("#3734"), String::from("#3736")],
         ),
         seeded_area(
             "precision_policy_semantics",
@@ -215,13 +210,29 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             ],
             vec![
                 String::from("broaden autocast and train-class mixed-precision coverage beyond the current seeded fp16 and bf16 cases"),
-                String::from("connect quantization and distributed data-feed semantics to the mixed-precision surface"),
+                String::from(
+                    "connect distributed data-feed semantics and wider operator-family coverage to the mixed-precision surface",
+                ),
                 String::from("extend backend capability truth beyond the current bounded runtime-vs-meta split"),
             ],
+            vec![String::from("#3734"), String::from("#3735")],
+        ),
+        seeded_area(
+            "quantization_semantics",
+            "Current claim is bounded to seeded PTQ, QAT, runtime-execution, compiler-lowering, and export-aware quantization capability semantics above raw file-format decode, plus explicit refusal for unsupported block-quant QAT and broader runtime activation-dtype closure.",
+            vec![SemanticsEvidenceRef::new(
+                "quantization_capability_semantics",
+                quantization.report_digest,
+            )],
             vec![
-                String::from("#3730"),
-                String::from("#3734"),
+                String::from("broaden quantization coverage beyond the current int8 and ggml_q4_0 seeded cases"),
+                String::from("connect quantization capability to extension and plugin contracts"),
+                String::from("land deployment-facing export artifacts on top of the export-aware quantization surface"),
+            ],
+            vec![
+                String::from("#3732"),
                 String::from("#3735"),
+                String::from("#3736"),
             ],
         ),
         seeded_area(
@@ -247,14 +258,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             )],
             vec![
                 String::from("broaden parameter-group and multi-step optimizer parity coverage"),
-                String::from("add mixed-precision and distributed optimizer claim surfaces"),
+                String::from(
+                    "add broader mixed-precision and distributed optimizer claim surfaces",
+                ),
                 String::from("add wider scheduler parity coverage"),
             ],
-            vec![
-                String::from("#3728"),
-                String::from("#3729"),
-                String::from("#3734"),
-            ],
+            vec![String::from("#3734")],
         ),
         seeded_area(
             "compiler_hygiene_and_fake_tensor",
@@ -288,21 +297,15 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             vec![
                 String::from("broaden mixed-precision and train-class precision control beyond the current seeded fp16/bf16 window"),
             ],
-            vec![
-                String::from("#3730"),
-                String::from("#3734"),
-            ],
+            vec![String::from("#3734")],
         ),
         future_area(
             "quantization_and_export",
-            "Quantization, export-safe graphs, and deployment-facing compatibility remain future compatibility targets rather than current credibility claims.",
+            "Export-safe graphs and deployment-facing compatibility remain future compatibility targets after landing bounded quantization capability seed coverage.",
             vec![
-                String::from(
-                    "land quantization as a library capability family above file-format decode",
-                ),
                 String::from("land export-safe graph and deployment artifact contracts"),
             ],
-            vec![String::from("#3730"), String::from("#3736")],
+            vec![String::from("#3736")],
         ),
         future_area(
             "data_and_distributed_training_semantics",
@@ -424,6 +427,7 @@ mod tests {
             "advanced_dtype_semantics",
             "reproducibility_semantics",
             "precision_policy_semantics",
+            "quantization_semantics",
             "module_and_state_semantics",
             "optimizer_semantics",
             "compiler_hygiene_and_fake_tensor",

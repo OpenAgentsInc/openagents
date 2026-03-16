@@ -2619,6 +2619,13 @@ backoff plus step-skip, underflow-driven scale growth, bf16 no-scaling
 posture, and unsupported mixed-precision refusal machine-legible instead of
 burying those decisions inside one trainer loop.
 
+`PLIB-215` / `#3730` now lands one bounded
+`QuantizationCapabilitySemanticsReport` in `psionic-core`. That report
+separates PTQ, QAT, quantized runtime execution, compiler-lowering posture,
+and export-aware quantization intent above raw decode so train- and
+deployment-class quantization claims stop collapsing into "the loader can read
+GGUF."
+
 This is still not the claim that the full train system can be re-executed from
 one receipt without more runtime work. It is the claim that replay-compatible
 inputs, pins, and verification are now explicit enough to support "same

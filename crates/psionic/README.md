@@ -573,6 +573,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/GRADIENT_SCALING_SEMANTICS.md](docs/GRADIENT_SCALING_SEMANTICS.md)** —
   canonical bounded train-class mixed-precision gradient-scaling surface for
   fp16 overflow/underflow handling and bf16 no-scaling posture.
+- **[docs/QUANTIZATION_CAPABILITY_SEMANTICS.md](docs/QUANTIZATION_CAPABILITY_SEMANTICS.md)** —
+  canonical bounded PTQ, QAT, quantized execution, compiler-lowering, and
+  export-aware quantization capability surface above raw decode.
 - **[docs/REPRODUCIBILITY_SEMANTICS.md](docs/REPRODUCIBILITY_SEMANTICS.md)** —
   canonical framework-wide replay seed, generator-derivation, and
   checkpoint-restore truth surface across runtime and training replay.

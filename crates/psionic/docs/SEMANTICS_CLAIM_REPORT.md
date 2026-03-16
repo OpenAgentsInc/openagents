@@ -44,6 +44,7 @@ machine-readable evidence for:
 - reproducibility seed, generator-derivation, and checkpoint-restore coverage
 - autocast-style precision-policy coverage with numerics diagnostics
 - train-class gradient-scaling coverage with explicit overflow and underflow handling
+- bounded quantization capability coverage above raw decode
 - module and `state_dict` parity
 - optimizer step parity
 - fake-tensor and compiler-hygiene parity
@@ -54,7 +55,7 @@ The report keeps broader future targets marked `pytorch_compatible_later`,
 including:
 
 - broader mixed-precision runtime systems beyond the current seeded fp16 and bf16 train window
-- quantization and export-safe graph compatibility
+- export-safe graph compatibility beyond the current quantization seed coverage
 - dataset and distributed-training semantics
 - extension and plugin contracts
 - advanced operator-family breadth
