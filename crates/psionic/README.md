@@ -247,8 +247,10 @@ Current posture:
 - `psionic-array`: first public lazy-array facade above `psionic-core` and
   `psionic-ir`, including context-owned graph construction, public device and
   stream handles with honest unified-memory flags and dependency-policy truth,
-  graph-backed arithmetic, explicit `eval` / `async_eval` boundaries, and
-  snapshot graph export for the current output set.
+  graph-backed arithmetic, scalar and filled-array creation helpers,
+  reshape/permute/transpose/slice/select/concat/broadcast view families,
+  explicit `eval` / `async_eval` boundaries, and snapshot graph export for the
+  current output set.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

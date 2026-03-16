@@ -29,6 +29,9 @@ pub enum ArrayError {
     /// Two arrays came from different public graph-construction contexts.
     #[error("array operations require arrays from the same ArrayContext")]
     MixedContexts,
+    /// One operation expected at least one array but received none.
+    #[error("array operation requires at least one input array")]
+    EmptyArrayList,
     /// One stream belongs to a different device than the owning context.
     #[error("stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`")]
     StreamDeviceMismatch {
@@ -519,6 +522,26 @@ impl ArrayContext {
         Ok(Array::from_tensor(self.inner.clone(), self.stream.clone(), tensor))
     }
 
+    /// Adds a scalar `f32` constant to the current lazy graph.
+    pub fn scalar_f32(&self, value: f32) -> Result<Array, ArrayError> {
+        self.constant_f32(Shape::scalar(), vec![value])
+    }
+
+    /// Adds a zero-filled `f32` array to the current lazy graph.
+    pub fn zeros_f32(&self, shape: Shape) -> Result<Array, ArrayError> {
+        self.full_f32(shape, 0.0)
+    }
+
+    /// Adds a one-filled `f32` array to the current lazy graph.
+    pub fn ones_f32(&self, shape: Shape) -> Result<Array, ArrayError> {
+        self.full_f32(shape, 1.0)
+    }
+
+    /// Adds an `f32` array filled with one repeated value.
+    pub fn full_f32(&self, shape: Shape, value: f32) -> Result<Array, ArrayError> {
+        self.constant_f32(shape.clone(), vec![value; shape.element_count()])
+    }
+
     /// Snapshots the current context graph with the provided output arrays.
     ///
     /// This returns the current builder snapshot rather than a pruned subgraph.
@@ -688,6 +711,81 @@ impl Array {
         self.stream.dependency_policy_after(upstream.stream())
     }
 
+    /// Reshapes the array without changing the element count.
+    pub fn reshape(&self, shape: Shape) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .reshape(&self.tensor, shape)?;
+        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+    }
+
+    /// Reorders axes using a logical view.
+    pub fn permute(&self, axes: Vec<usize>) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .permute(&self.tensor, axes)?;
+        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+    }
+
+    /// Convenience transpose that reverses the current axis order.
+    pub fn transpose(&self) -> Result<Self, ArrayError> {
+        let axes = (0..self.shape().rank()).rev().collect::<Vec<_>>();
+        self.permute(axes)
+    }
+
+    /// Returns a narrowed slice along one axis.
+    pub fn slice(&self, axis: usize, start: usize, end: usize) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .slice(&self.tensor, axis, start, end)?;
+        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+    }
+
+    /// Selects one index along one axis and removes that axis.
+    pub fn select(&self, axis: usize, index: usize) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .select(&self.tensor, axis, index)?;
+        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+    }
+
+    /// Broadcasts the array to the provided target shape.
+    pub fn broadcast_to(&self, shape: Shape) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .expand(&self.tensor, shape)?;
+        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+    }
+
+    /// Concatenates multiple arrays along one axis.
+    pub fn concat(inputs: &[Self], axis: usize) -> Result<Self, ArrayError> {
+        let (first, rest) = inputs.split_first().ok_or(ArrayError::EmptyArrayList)?;
+        for input in rest {
+            first.require_same_context(input)?;
+        }
+        let tensors = inputs.iter().map(Array::tensor_handle).collect::<Vec<_>>();
+        let tensor = first
+            .context
+            .builder
+            .borrow_mut()
+            .concat(tensors.as_slice(), axis)?;
+        Ok(Self::from_tensor(
+            first.context.clone(),
+            first.stream.clone(),
+            tensor,
+        ))
+    }
+
     /// Adds two arrays using the lower IR broadcast semantics.
     pub fn add(&self, other: &Self) -> Result<Self, ArrayError> {
         self.binary_op(other, GraphBuilder::add)
@@ -742,6 +840,19 @@ fn evaluate_graph_snapshot(
             OpKind::Add => binary_dense_value(node.tensor(), node.inputs(), &values, |l, r| l + r)?,
             OpKind::Mul => binary_dense_value(node.tensor(), node.inputs(), &values, |l, r| l * r)?,
             OpKind::Matmul => matmul_dense_value(node.tensor(), node.inputs(), &values)?,
+            OpKind::Reshape => reshape_dense_value(node.tensor(), node.inputs(), &values)?,
+            OpKind::Permute { axes } => {
+                permute_dense_value(node.tensor(), node.inputs(), &values, axes.as_slice())?
+            }
+            OpKind::Slice { axis, start, end } => {
+                slice_dense_value(node.tensor(), node.inputs(), &values, *axis, *start, *end)?
+            }
+            OpKind::Select { axis, index } => {
+                select_dense_value(node.tensor(), node.inputs(), &values, *axis, *index)?
+            }
+            OpKind::Concat { axis } => {
+                concat_dense_value(node.tensor(), node.inputs(), &values, *axis)?
+            }
             OpKind::Expand { shape } => expand_dense_value(
                 node.tensor(),
                 node.inputs(),
@@ -759,7 +870,7 @@ fn evaluate_graph_snapshot(
                     tensor: node.tensor().id(),
                     op: other.label().to_string(),
                     detail: String::from(
-                        "bounded explicit eval currently materializes only constant, detach, add, mul, matmul, expand, and reduce_sum graphs",
+                        "bounded explicit eval currently materializes only constant, detach, add, mul, matmul, reshape, permute, slice, select, concat, expand, and reduce_sum graphs",
                     ),
                 });
             }
@@ -942,6 +1053,192 @@ fn matmul_dense_value(
     })
 }
 
+fn reshape_dense_value(
+    tensor: &Tensor,
+    inputs: &[TensorId],
+    values: &BTreeMap<TensorId, DenseValue>,
+) -> Result<DenseValue, ArrayError> {
+    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
+        tensor: tensor.id(),
+        op: String::from("reshape"),
+        detail: String::from("reshape requires one input"),
+    })?;
+    let value = values
+        .get(&input)
+        .ok_or(ArrayError::MissingDependency {
+            tensor: tensor.id(),
+            input,
+        })?;
+    Ok(DenseValue {
+        tensor: tensor.clone(),
+        values: value.values.clone(),
+    })
+}
+
+fn permute_dense_value(
+    tensor: &Tensor,
+    inputs: &[TensorId],
+    values: &BTreeMap<TensorId, DenseValue>,
+    axes: &[usize],
+) -> Result<DenseValue, ArrayError> {
+    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
+        tensor: tensor.id(),
+        op: String::from("permute"),
+        detail: String::from("permute requires one input"),
+    })?;
+    let value = values
+        .get(&input)
+        .ok_or(ArrayError::MissingDependency {
+            tensor: tensor.id(),
+            input,
+        })?;
+    let output_shape = tensor.spec().shape();
+    let input_shape = value.tensor.spec().shape();
+    let mut output = Vec::with_capacity(output_shape.element_count());
+    for output_index in 0..output_shape.element_count() {
+        let output_coords = unravel_index(output_index, output_shape.dims());
+        let mut input_coords = vec![0; input_shape.rank()];
+        for (output_axis, input_axis) in axes.iter().copied().enumerate() {
+            input_coords[input_axis] = output_coords[output_axis];
+        }
+        let input_index = ravel_index(&input_coords, input_shape.dims());
+        output.push(value.values[input_index]);
+    }
+    Ok(DenseValue {
+        tensor: tensor.clone(),
+        values: output,
+    })
+}
+
+fn slice_dense_value(
+    tensor: &Tensor,
+    inputs: &[TensorId],
+    values: &BTreeMap<TensorId, DenseValue>,
+    axis: usize,
+    start: usize,
+    end: usize,
+) -> Result<DenseValue, ArrayError> {
+    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
+        tensor: tensor.id(),
+        op: String::from("slice"),
+        detail: String::from("slice requires one input"),
+    })?;
+    let value = values
+        .get(&input)
+        .ok_or(ArrayError::MissingDependency {
+            tensor: tensor.id(),
+            input,
+        })?;
+    let output_shape = tensor.spec().shape();
+    let input_shape = value.tensor.spec().shape();
+    let mut output = Vec::with_capacity(output_shape.element_count());
+    for output_index in 0..output_shape.element_count() {
+        let mut input_coords = unravel_index(output_index, output_shape.dims());
+        input_coords[axis] += start;
+        debug_assert!(input_coords[axis] < end);
+        let input_index = ravel_index(&input_coords, input_shape.dims());
+        output.push(value.values[input_index]);
+    }
+    Ok(DenseValue {
+        tensor: tensor.clone(),
+        values: output,
+    })
+}
+
+fn select_dense_value(
+    tensor: &Tensor,
+    inputs: &[TensorId],
+    values: &BTreeMap<TensorId, DenseValue>,
+    axis: usize,
+    index: usize,
+) -> Result<DenseValue, ArrayError> {
+    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
+        tensor: tensor.id(),
+        op: String::from("select"),
+        detail: String::from("select requires one input"),
+    })?;
+    let value = values
+        .get(&input)
+        .ok_or(ArrayError::MissingDependency {
+            tensor: tensor.id(),
+            input,
+        })?;
+    let output_shape = tensor.spec().shape();
+    let input_shape = value.tensor.spec().shape();
+    let mut output = Vec::with_capacity(output_shape.element_count());
+    for output_index in 0..output_shape.element_count() {
+        let output_coords = unravel_index(output_index, output_shape.dims());
+        let mut input_coords = Vec::with_capacity(input_shape.rank());
+        let mut output_axis = 0;
+        for input_axis in 0..input_shape.rank() {
+            if input_axis == axis {
+                input_coords.push(index);
+            } else {
+                input_coords.push(output_coords[output_axis]);
+                output_axis += 1;
+            }
+        }
+        let input_index = ravel_index(&input_coords, input_shape.dims());
+        output.push(value.values[input_index]);
+    }
+    Ok(DenseValue {
+        tensor: tensor.clone(),
+        values: output,
+    })
+}
+
+fn concat_dense_value(
+    tensor: &Tensor,
+    inputs: &[TensorId],
+    values: &BTreeMap<TensorId, DenseValue>,
+    axis: usize,
+) -> Result<DenseValue, ArrayError> {
+    let tensors = inputs
+        .iter()
+        .map(|input| {
+            values.get(input).cloned().ok_or(ArrayError::MissingDependency {
+                tensor: tensor.id(),
+                input: *input,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let output_shape = tensor.spec().shape();
+    let mut boundaries = Vec::with_capacity(tensors.len());
+    let mut running = 0;
+    for value in &tensors {
+        running += value.tensor.spec().shape().dims()[axis];
+        boundaries.push(running);
+    }
+
+    let mut output = Vec::with_capacity(output_shape.element_count());
+    for output_index in 0..output_shape.element_count() {
+        let output_coords = unravel_index(output_index, output_shape.dims());
+        let concat_index = output_coords[axis];
+        let source_position = boundaries
+            .iter()
+            .position(|boundary| concat_index < *boundary)
+            .ok_or(ArrayError::MaterializationRefusal {
+                tensor: tensor.id(),
+                op: String::from("concat"),
+                detail: String::from("concat output index fell outside source boundaries"),
+            })?;
+        let source = &tensors[source_position];
+        let axis_offset = if source_position == 0 {
+            0
+        } else {
+            boundaries[source_position - 1]
+        };
+        let mut input_coords = output_coords;
+        input_coords[axis] -= axis_offset;
+        let input_index = ravel_index(&input_coords, source.tensor.spec().shape().dims());
+        output.push(source.values[input_index]);
+    }
+    Ok(DenseValue {
+        tensor: tensor.clone(),
+        values: output,
+    })
+}
+
 fn expand_dense_value(
     tensor: &Tensor,
     inputs: &[TensorId],
@@ -1065,8 +1362,9 @@ fn ravel_index(indices: &[usize], dims: &[usize]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        ArrayContext, ArrayError, AsyncEvalStatus, ImplicitMaterializationPolicy, StreamDependencyPolicy,
-        StreamKind, UnifiedMemoryCapability, MaterializationTrigger, ReplayBoundary,
+        Array, ArrayContext, ArrayError, AsyncEvalStatus, ImplicitMaterializationPolicy,
+        MaterializationTrigger, ReplayBoundary, StreamDependencyPolicy, StreamKind,
+        UnifiedMemoryCapability,
     };
     use psionic_core::{DType, Device, DeviceKind, Shape};
     use psionic_runtime::DeviceDescriptor;
@@ -1282,5 +1580,47 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_creation_and_view_families_materialize() -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let scalar = context.scalar_f32(2.0)?;
+        let scalar_broadcast = scalar.broadcast_to(Shape::new(vec![2, 1]))?;
+        let zeros = context.zeros_f32(Shape::new(vec![2, 2]))?;
+        let ones = context.ones_f32(Shape::new(vec![2, 2]))?;
+        let full = context.full_f32(Shape::new(vec![2, 2]), 3.0)?;
+        let base = Array::concat(&[zeros, ones, full], 0)?;
+        let sliced = base.slice(0, 1, 5)?;
+        let reshaped = sliced.reshape(Shape::new(vec![2, 2, 2]))?;
+        let permuted = reshaped.permute(vec![1, 0, 2])?;
+        let selected = permuted.select(1, 1)?;
+        let transposed = selected.transpose()?;
+        let broadcast = transposed.broadcast_to(Shape::new(vec![2, 2, 2]))?;
+        let evaluated = broadcast.eval()?;
+        let scalar_evaluated = scalar_broadcast.eval()?;
+
+        assert_eq!(base.shape(), &Shape::new(vec![6, 2]));
+        assert_eq!(scalar.shape(), &Shape::scalar());
+        assert_eq!(scalar_broadcast.shape(), &Shape::new(vec![2, 1]));
+        assert_eq!(sliced.shape(), &Shape::new(vec![4, 2]));
+        assert_eq!(reshaped.shape(), &Shape::new(vec![2, 2, 2]));
+        assert_eq!(selected.shape(), &Shape::new(vec![2, 2]));
+        assert_eq!(transposed.shape(), &Shape::new(vec![2, 2]));
+        assert_eq!(broadcast.shape(), &Shape::new(vec![2, 2, 2]));
+        assert_eq!(scalar_evaluated.data.as_f32_slice(), Some(&[2.0, 2.0][..]));
+        assert_eq!(
+            evaluated.data.as_f32_slice(),
+            Some(&[1.0, 3.0, 1.0, 3.0, 1.0, 3.0, 1.0, 3.0][..])
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_concat_requires_at_least_one_input() {
+        let inputs: &[Array] = &[];
+        let error = Array::concat(inputs, 0).expect_err("concat should refuse empty inputs");
+        assert_eq!(error, ArrayError::EmptyArrayList);
     }
 }
