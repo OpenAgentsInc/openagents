@@ -58,6 +58,9 @@ binding constraints.
 
 The ARC subtree currently has four canonical documents with different roles:
 
+- `crates/arc/docs/INDEX.md`
+  - compact entrypoint linking the current canonical ARC docs and future
+    acceptance-matrix anchors
 - `crates/arc/docs/spec.md`
   - canonical architecture, ownership, and crate-boundary spec
 - `crates/arc/docs/ROADMAP.md`
@@ -70,6 +73,8 @@ The ARC subtree currently has four canonical documents with different roles:
 
 Acceptance artifacts and future ARC matrices SHOULD use the frozen claim names
 from `crates/arc/docs/CLAIMS.md` rather than inventing near-duplicates.
+Readers who need the compact document map SHOULD start at
+`crates/arc/docs/INDEX.md`.
 
 ## 1. Architectural fit and boundaries
 
