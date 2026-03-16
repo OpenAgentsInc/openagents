@@ -11,7 +11,8 @@ use arc_core::{
     ArcAction, ArcActionKind, ArcBenchmark, ArcGameState, ArcOperationMode, ArcRecording,
     ArcRecordingEnvelopeId, ArcRefusalCode, ArcScorePolicyId, ArcScorecard, ArcSolveOutcome,
     ArcSolveRefusal, ArcSolveResultEnvelope, ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget,
-    TraceLocator, canonicalize_task, summarize_grid, summarize_task_dimensions,
+    TraceLocator, canonicalize_task, extract_relation_graph, summarize_grid,
+    summarize_task_dimensions,
 };
 
 #[test]
@@ -301,4 +302,37 @@ fn canonicalization_normalizes_colors_and_dimension_summaries() {
         &[1, 3, 0]
     );
     assert_eq!(canonical.normalized_test_inputs[0].grid.cells(), &[2, 0, 1]);
+}
+
+#[test]
+fn object_graph_extraction_is_deterministic() {
+    let fixture = fs::read_to_string("fixtures/object_graph_grid.json")
+        .expect("object graph fixture should be readable from the crate root");
+    let grid: arc_core::ArcGrid =
+        serde_json::from_str(&fixture).expect("fixture should deserialize");
+
+    let graph = extract_relation_graph(&grid);
+    assert_eq!(graph.objects.len(), 4);
+    assert_eq!(graph.objects[0].bbox.min_x, 0);
+    assert_eq!(graph.objects[0].bbox.min_y, 0);
+    assert_eq!(graph.objects[0].holes, 1);
+    assert!(graph.objects[0].shape_signature.horizontal);
+    assert!(graph.objects[0].shape_signature.vertical);
+    assert!(graph.objects[0].shape_signature.rotational_180);
+    assert_eq!(graph.objects[0].mask.width, 3);
+    assert_eq!(graph.objects[0].mask.height, 3);
+    assert!(!graph.objects[0].mask.is_set(1, 1));
+    assert_eq!(graph.objects[1].bbox.min_x, 4);
+    assert_eq!(graph.objects[2].bbox.min_y, 4);
+
+    assert!(graph.edges.iter().any(|edge| {
+        edge.source == arc_core::ObjectId(0)
+            && edge.target == arc_core::ObjectId(1)
+            && matches!(edge.kind, arc_core::ObjectRelationKind::LeftOf { gap: 1 })
+    }));
+    assert!(graph.edges.iter().any(|edge| {
+        edge.source == arc_core::ObjectId(2)
+            && edge.target == arc_core::ObjectId(3)
+            && edge.kind == arc_core::ObjectRelationKind::RowAligned
+    }));
 }
