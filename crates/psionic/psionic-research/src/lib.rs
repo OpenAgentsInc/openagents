@@ -38,6 +38,7 @@ pub enum ExperimentFamilyKind {
     TrainingPolicy,
     ValidatorPolicy,
     EnvironmentMix,
+    ExecutorVariants,
 }
 
 impl ExperimentFamilyKind {
@@ -52,6 +53,7 @@ impl ExperimentFamilyKind {
             Self::TrainingPolicy => "training_policy",
             Self::ValidatorPolicy => "validator_policy",
             Self::EnvironmentMix => "environment_mix",
+            Self::ExecutorVariants => "executor_variants",
         }
     }
 }
@@ -66,6 +68,11 @@ pub enum ExperimentArtifactKind {
     EnvironmentManifest,
     ValidatorPolicy,
     BenchmarkSuite,
+    BenchmarkReport,
+    ModelDescriptor,
+    ProgramArtifact,
+    RuntimeManifest,
+    ExecutionProofBundle,
     RunnerBinary,
     Auxiliary,
 }
@@ -695,6 +702,205 @@ impl EnvironmentMixPolicy {
     }
 }
 
+/// Benchmark target for one Tassadar executor experiment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorBenchmarkTarget {
+    ValidationCorpus,
+    ArticleClass,
+}
+
+/// Attention mode under test for one executor candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorAttentionMode {
+    HardMax,
+    SparseTopK,
+    SoftmaxApprox,
+}
+
+/// Decode-cache posture under test for one executor candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorDecodeCacheKind {
+    ReferenceLinear,
+    HullCache,
+    SparseTopK,
+    StandardKv,
+}
+
+/// Architecture variant under test for one executor candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorArchitectureVariant {
+    pub variant_id: String,
+    pub model_id: String,
+    pub head_dim: u16,
+    pub layer_count: u16,
+    pub feed_forward_width: u32,
+    pub handcrafted_weights: bool,
+}
+
+impl TassadarExecutorArchitectureVariant {
+    /// Creates an architecture variant declaration.
+    #[must_use]
+    pub fn new(
+        variant_id: impl Into<String>,
+        model_id: impl Into<String>,
+        head_dim: u16,
+        layer_count: u16,
+        feed_forward_width: u32,
+        handcrafted_weights: bool,
+    ) -> Self {
+        Self {
+            variant_id: variant_id.into(),
+            model_id: model_id.into(),
+            head_dim,
+            layer_count,
+            feed_forward_width,
+            handcrafted_weights,
+        }
+    }
+}
+
+/// Trace-ABI variant under test for one executor candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorTraceAbiVariant {
+    pub variant_id: String,
+    pub abi_id: String,
+    pub schema_version: u16,
+    pub append_only: bool,
+    pub includes_stack_snapshots: bool,
+    pub includes_local_snapshots: bool,
+    pub includes_memory_snapshots: bool,
+}
+
+impl TassadarExecutorTraceAbiVariant {
+    /// Creates a trace-ABI declaration.
+    #[must_use]
+    pub fn new(
+        variant_id: impl Into<String>,
+        abi_id: impl Into<String>,
+        schema_version: u16,
+        append_only: bool,
+        includes_stack_snapshots: bool,
+        includes_local_snapshots: bool,
+        includes_memory_snapshots: bool,
+    ) -> Self {
+        Self {
+            variant_id: variant_id.into(),
+            abi_id: abi_id.into(),
+            schema_version,
+            append_only,
+            includes_stack_snapshots,
+            includes_local_snapshots,
+            includes_memory_snapshots,
+        }
+    }
+}
+
+/// WebAssembly-profile variant under test for one executor candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorWasmProfileVariant {
+    pub variant_id: String,
+    pub profile_id: String,
+    pub max_locals: u16,
+    pub max_memory_slots: u16,
+    pub max_program_len: u16,
+    pub max_steps: u64,
+}
+
+impl TassadarExecutorWasmProfileVariant {
+    /// Creates a Wasm-profile declaration.
+    #[must_use]
+    pub fn new(
+        variant_id: impl Into<String>,
+        profile_id: impl Into<String>,
+        max_locals: u16,
+        max_memory_slots: u16,
+        max_program_len: u16,
+        max_steps: u64,
+    ) -> Self {
+        Self {
+            variant_id: variant_id.into(),
+            profile_id: profile_id.into(),
+            max_locals,
+            max_memory_slots,
+            max_program_len,
+            max_steps,
+        }
+    }
+}
+
+/// Decode-cache and attention variant under test for one executor candidate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorDecodeCacheVariant {
+    pub variant_id: String,
+    pub cache_kind: TassadarExecutorDecodeCacheKind,
+    pub attention_mode: TassadarExecutorAttentionMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sparse_top_k: Option<u16>,
+    pub exact_required: bool,
+}
+
+impl TassadarExecutorDecodeCacheVariant {
+    /// Creates a decode-cache declaration.
+    #[must_use]
+    pub fn new(
+        variant_id: impl Into<String>,
+        cache_kind: TassadarExecutorDecodeCacheKind,
+        attention_mode: TassadarExecutorAttentionMode,
+        sparse_top_k: Option<u16>,
+        exact_required: bool,
+    ) -> Self {
+        Self {
+            variant_id: variant_id.into(),
+            cache_kind,
+            attention_mode,
+            sparse_top_k,
+            exact_required,
+        }
+    }
+}
+
+/// Full Tassadar executor experiment payload for one bounded candidate run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorExperimentSpec {
+    pub benchmark_target: TassadarExecutorBenchmarkTarget,
+    pub benchmark_ref: String,
+    pub benchmark_version: String,
+    pub environment_ref: String,
+    pub architecture: TassadarExecutorArchitectureVariant,
+    pub trace_abi: TassadarExecutorTraceAbiVariant,
+    pub wasm_profile: TassadarExecutorWasmProfileVariant,
+    pub decode_cache: TassadarExecutorDecodeCacheVariant,
+}
+
+impl TassadarExecutorExperimentSpec {
+    /// Creates an executor experiment payload.
+    #[must_use]
+    pub fn new(
+        benchmark_target: TassadarExecutorBenchmarkTarget,
+        benchmark_ref: impl Into<String>,
+        benchmark_version: impl Into<String>,
+        environment_ref: impl Into<String>,
+        architecture: TassadarExecutorArchitectureVariant,
+        trace_abi: TassadarExecutorTraceAbiVariant,
+        wasm_profile: TassadarExecutorWasmProfileVariant,
+        decode_cache: TassadarExecutorDecodeCacheVariant,
+    ) -> Self {
+        Self {
+            benchmark_target,
+            benchmark_ref: benchmark_ref.into(),
+            benchmark_version: benchmark_version.into(),
+            environment_ref: environment_ref.into(),
+            architecture,
+            trace_abi,
+            wasm_profile,
+            decode_cache,
+        }
+    }
+}
+
 /// Typed experiment family payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "family", rename_all = "snake_case")]
@@ -726,6 +932,9 @@ pub enum ExperimentFamily {
     EnvironmentMix {
         mix: EnvironmentMixPolicy,
     },
+    ExecutorVariants {
+        executor: TassadarExecutorExperimentSpec,
+    },
 }
 
 impl ExperimentFamily {
@@ -740,6 +949,7 @@ impl ExperimentFamily {
             Self::TrainingPolicy { .. } => ExperimentFamilyKind::TrainingPolicy,
             Self::ValidatorPolicy { .. } => ExperimentFamilyKind::ValidatorPolicy,
             Self::EnvironmentMix { .. } => ExperimentFamilyKind::EnvironmentMix,
+            Self::ExecutorVariants { .. } => ExperimentFamilyKind::ExecutorVariants,
         }
     }
 }
@@ -1276,6 +1486,76 @@ impl PromotionRecord {
     }
 }
 
+/// Comparable summary for one candidate inside a bounded research sweep.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResearchSweepEntry {
+    /// Stable run identifier.
+    pub run_id: String,
+    /// Stable candidate identifier.
+    pub candidate_id: String,
+    /// Stable result digest.
+    pub result_digest: String,
+    /// Aggregate weighted score under the shared contract.
+    pub weighted_score: i128,
+    /// Whether the shared score contract marked the candidate as gate-failed.
+    pub hard_gate_failed: bool,
+}
+
+/// Machine-readable sweep record for one comparable family run-set.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResearchSweepRecord {
+    /// Stable sweep identifier.
+    pub sweep_id: String,
+    /// Shared experiment family.
+    pub family: ExperimentFamilyKind,
+    /// Shared score contract digest.
+    pub contract_digest: String,
+    /// Ordered candidate entries.
+    pub entries: Vec<ResearchSweepEntry>,
+    /// Winning run when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub winning_run_id: Option<String>,
+    /// Winning candidate when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub winning_candidate_id: Option<String>,
+    /// Stable sweep digest.
+    pub sweep_digest: String,
+}
+
+impl ResearchSweepRecord {
+    /// Creates a sweep record from ordered entries and an optional winner.
+    #[must_use]
+    pub fn new(
+        sweep_id: impl Into<String>,
+        family: ExperimentFamilyKind,
+        contract_digest: impl Into<String>,
+        mut entries: Vec<ResearchSweepEntry>,
+        winning_run_id: Option<String>,
+        winning_candidate_id: Option<String>,
+    ) -> Self {
+        let sweep_id = sweep_id.into();
+        let contract_digest = contract_digest.into();
+        entries.sort_by(|left, right| left.run_id.cmp(&right.run_id));
+        let sweep_digest = stable_research_sweep_digest(
+            sweep_id.as_str(),
+            family,
+            contract_digest.as_str(),
+            entries.as_slice(),
+            winning_run_id.as_deref(),
+            winning_candidate_id.as_deref(),
+        );
+        Self {
+            sweep_id,
+            family,
+            contract_digest,
+            entries,
+            winning_run_id,
+            winning_candidate_id,
+            sweep_digest,
+        }
+    }
+}
+
 /// Error while evaluating a result under one score contract.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ExperimentScoreEvaluationError {
@@ -1483,6 +1763,39 @@ fn stable_promotion_record_digest(
     if let Some(note) = note {
         hasher.update(b"|note|");
         hasher.update(note.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_research_sweep_digest(
+    sweep_id: &str,
+    family: ExperimentFamilyKind,
+    contract_digest: &str,
+    entries: &[ResearchSweepEntry],
+    winning_run_id: Option<&str>,
+    winning_candidate_id: Option<&str>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_research_sweep|");
+    hasher.update(sweep_id.as_bytes());
+    hasher.update(b"|family|");
+    hasher.update(family.label().as_bytes());
+    hasher.update(b"|contract|");
+    hasher.update(contract_digest.as_bytes());
+    for entry in entries {
+        hasher.update(b"|entry|");
+        hasher.update(
+            serde_json::to_vec(entry)
+                .unwrap_or_else(|_| unreachable!("sweep entry should serialize")),
+        );
+    }
+    if let Some(winning_run_id) = winning_run_id {
+        hasher.update(b"|winning_run|");
+        hasher.update(winning_run_id.as_bytes());
+    }
+    if let Some(winning_candidate_id) = winning_candidate_id {
+        hasher.update(b"|winning_candidate|");
+        hasher.update(winning_candidate_id.as_bytes());
     }
     hex::encode(hasher.finalize())
 }

@@ -512,6 +512,9 @@ Its declared scope is:
   `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching` with exact
   CPU/reference-linear/hull-cache parity plus published speedup and CPU-gap
   metrics
+- landed Phase 8A bar: typed `psionic-research` executor-variant family with
+  benchmark/proof/lineage-backed bounded runs and machine-readable sweep
+  records for reproducible same-contract candidate comparison
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -520,6 +523,7 @@ Its declared scope is:
   - `psionic-eval::run_tassadar_article_class_benchmark`
   - `psionic-runtime::build_tassadar_execution_evidence_bundle`
   - `psionic-serve::LocalTassadarExecutorService`
+  - `psionic-research::ExperimentFamily::ExecutorVariants`
 - strategic value: inner exact-computation substrate for larger reasoning
   systems
 - non-goals: current MVP product scope, kernel authority, or replacement of
@@ -545,8 +549,10 @@ The current issue spine is:
   [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760)
 - Phase 7B widened WebAssembly profile and article-class benchmark coverage:
   [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761)
+- Phase 8A executor architecture, ABI, and cache research families:
+  [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762)
 
-What Phases 1 through 7B now concretely provide:
+What Phases 1 through 8A now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -595,9 +601,19 @@ What Phases 1 through 7B now concretely provide:
   `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching`
 - exact parity plus throughput, speedup, and remaining gap-vs-CPU reporting on
   that widened corpus
+- one typed executor-variant research family in `psionic-research` covering
+  architecture, trace ABI, Wasm profile, decode-cache, and attention-mode
+  surfaces
+- one bounded research runner path that consumes the real Tassadar benchmark
+  backend instead of synthetic executor placeholders
+- benchmark, proof-bundle, runtime-manifest, and benchmark-report artifacts as
+  first-class experiment inputs and outputs
+- one machine-readable sweep record for reproducible same-contract executor
+  candidate comparison
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
+
 - hybrid planner-plus-executor routing
 
 ## Epic 0: Governance And Acceptance
