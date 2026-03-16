@@ -205,7 +205,7 @@ Current posture:
 ### Framework Core
 
 - `psionic-core`: canonical tensor, shape, dtype, device, layout, and bounded
-  advanced-dtype semantics contract.
+  advanced-dtype plus autocast-style precision-policy semantics contract.
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types plus tensor-family capability matrices for dense,
   sparse, nested, masked, and storage-aware semantics.
@@ -567,6 +567,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical bounded promotion, cast, and backend-capability matrix for complex,
   low-precision, and wider integer dtype semantics above the compact runtime
   subset.
+- **[docs/AUTOCAST_PRECISION_POLICY.md](docs/AUTOCAST_PRECISION_POLICY.md)** —
+  canonical bounded autocast-style precision-policy matrix for backend-aware
+  low-precision rules, numerics diagnostics, and typed refusal posture.
 - **[docs/REPRODUCIBILITY_SEMANTICS.md](docs/REPRODUCIBILITY_SEMANTICS.md)** —
   canonical framework-wide replay seed, generator-derivation, and
   checkpoint-restore truth surface across runtime and training replay.

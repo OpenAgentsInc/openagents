@@ -122,6 +122,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
+    let autocast = psionic_core::builtin_autocast_policy_matrix_report();
     let module = psionic_nn::builtin_module_parity_matrix_report()?;
     let optimizer = psionic_train::builtin_optimizer_parity_matrix_report()?;
     let reproducibility = psionic_train::builtin_reproducibility_semantics_report();
@@ -202,6 +203,24 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             ],
         ),
         seeded_area(
+            "precision_policy_semantics",
+            "Current claim is bounded to seeded autocast-style precision-policy rules over backend family, preferred low-precision dtype, operator family, and numerics diagnostics, plus explicit refusal when the bounded runtime surface cannot safely realize the request.",
+            vec![SemanticsEvidenceRef::new(
+                "autocast_policy_matrix",
+                autocast.report_digest,
+            )],
+            vec![
+                String::from("broaden autocast coverage beyond the current seeded matmul, pointwise, reduction, and meta-only float8 cases"),
+                String::from("connect gradient scaling and overflow handling to the precision-policy surface"),
+                String::from("extend backend capability truth beyond the current bounded runtime-vs-meta split"),
+            ],
+            vec![
+                String::from("#3729"),
+                String::from("#3730"),
+                String::from("#3734"),
+            ],
+        ),
+        seeded_area(
             "module_and_state_semantics",
             "Current claim is bounded to normalized module-tree and state_dict semantics for linear, batch_norm1d, and one nested transformer-style fixture plus one explicit registration-order refusal proof.",
             vec![SemanticsEvidenceRef::new(
@@ -261,12 +280,11 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         ),
         future_area(
             "advanced_tensor_dtype_and_precision",
-            "Autocast policy, broader mixed-precision behavior, and train-class precision control remain explicit future compatibility targets after landing bounded tensor-family and advanced-dtype seed coverage.",
+            "Broader mixed-precision behavior and train-class precision control remain explicit future compatibility targets after landing bounded tensor-family, dtype, reproducibility, and autocast seed coverage.",
             vec![
-                String::from("land autocast and gradient-scaling systems"),
+                String::from("land gradient scaling and overflow handling"),
             ],
             vec![
-                String::from("#3728"),
                 String::from("#3729"),
             ],
         ),
@@ -400,6 +418,7 @@ mod tests {
             "tensor_family_semantics",
             "advanced_dtype_semantics",
             "reproducibility_semantics",
+            "precision_policy_semantics",
             "module_and_state_semantics",
             "optimizer_semantics",
             "compiler_hygiene_and_fake_tensor",
