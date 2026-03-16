@@ -2,6 +2,8 @@
 
 mod autodiff;
 
+use std::collections::BTreeMap;
+
 use psionic_core::{
     BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, QuantizedTensorData, Shape,
     Tensor, TensorData, TensorId, TensorSpec,
@@ -51,6 +53,25 @@ pub enum GraphError {
         left: DType,
         /// Right-hand dtype.
         right: DType,
+    },
+    /// An operator was invoked with the wrong number of inputs.
+    #[error("invalid operator arity for `{op}`: expected {expected}, actual {actual}")]
+    InvalidOperatorArity {
+        /// Stable operator label.
+        op: String,
+        /// Human-readable expected arity description.
+        expected: String,
+        /// Actual input count.
+        actual: usize,
+    },
+    /// An operator did not receive valid inputs for meta execution or schema
+    /// validation.
+    #[error("invalid operator inputs for `{op}`: {message}")]
+    InvalidOperatorInputs {
+        /// Stable operator label.
+        op: String,
+        /// Human-readable validation failure.
+        message: String,
     },
     /// A matmul used tensors with unsupported ranks or dimensions.
     #[error("invalid matmul shapes: left={left} right={right}")]
@@ -129,6 +150,16 @@ pub enum GraphError {
         op: String,
         /// Human-readable validation failure.
         message: String,
+    },
+    /// A declared step output spec diverged from operator meta execution.
+    #[error("meta execution mismatch for `{op}`: declared={expected} actual={actual}")]
+    MetaExecutionMismatch {
+        /// Stable operator label.
+        op: String,
+        /// Declared step spec.
+        expected: String,
+        /// Meta-derived step spec.
+        actual: String,
     },
 }
 
@@ -218,6 +249,12 @@ impl OpKind {
             Self::ReduceSum { .. } => "reduce_sum",
             Self::BackendExtension { op } => op.label(),
         }
+    }
+
+    /// Returns the built-in operator schema for this graph op.
+    #[must_use]
+    pub fn schema(&self) -> &'static OperatorSchema {
+        OperatorRegistry::builtin().schema_for_op_kind(self)
     }
 }
 
@@ -436,6 +473,12 @@ impl ExecutionOp {
             OpKind::BackendExtension { op } => Self::BackendExtension { op: op.clone() },
         }
     }
+
+    /// Returns the built-in operator schema for this execution op.
+    #[must_use]
+    pub fn schema(&self) -> &'static OperatorSchema {
+        OperatorRegistry::builtin().schema_for_execution_op(self)
+    }
 }
 
 /// Execution step placeholder emitted by the compiler layer.
@@ -531,6 +574,677 @@ impl ExecutionPlan {
                 .join(",")
         ));
         lines
+    }
+}
+
+/// Stable schema version for the built-in Psionic operator registry.
+pub const BUILTIN_OPERATOR_SCHEMA_VERSION: u16 = 1;
+
+/// Stable implementation family for one operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OperatorImplementationKind {
+    /// Source op whose runtime shape is declared directly by the surrounding
+    /// graph or plan.
+    SchemaOnly,
+    /// Framework-owned behavior realized without a backend kernel family.
+    Composite,
+    /// Backend-owned kernel or loop implementation.
+    BackendKernel,
+}
+
+/// Declared input count contract for one operator schema.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OperatorArity {
+    /// Fixed number of inputs.
+    Fixed(u8),
+    /// Variadic inputs with a minimum count.
+    Variadic { min_inputs: u8 },
+}
+
+impl OperatorArity {
+    fn accepts(self, actual: usize) -> bool {
+        match self {
+            Self::Fixed(expected) => actual == usize::from(expected),
+            Self::Variadic { min_inputs } => actual >= usize::from(min_inputs),
+        }
+    }
+
+    fn describe(self) -> String {
+        match self {
+            Self::Fixed(expected) => expected.to_string(),
+            Self::Variadic { min_inputs } => format!("{min_inputs}+"),
+        }
+    }
+}
+
+/// Meta execution posture for one operator schema.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OperatorMetaExecutionKind {
+    /// Output spec is carried explicitly by the surrounding graph or plan.
+    DeclaredOutput,
+    /// Output spec is computed from operator attributes and input specs.
+    BuiltinInference,
+}
+
+/// One declared operator schema in the built-in registry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OperatorSchema {
+    /// Stable operator label.
+    pub name: &'static str,
+    /// Stable schema version.
+    pub schema_version: u16,
+    /// Input-count contract.
+    pub arity: OperatorArity,
+    /// Runtime implementation family.
+    pub implementation: OperatorImplementationKind,
+    /// Meta execution posture.
+    pub meta_execution: OperatorMetaExecutionKind,
+}
+
+impl OperatorSchema {
+    const fn new(
+        name: &'static str,
+        arity: OperatorArity,
+        implementation: OperatorImplementationKind,
+        meta_execution: OperatorMetaExecutionKind,
+    ) -> Self {
+        Self {
+            name,
+            schema_version: BUILTIN_OPERATOR_SCHEMA_VERSION,
+            arity,
+            implementation,
+            meta_execution,
+        }
+    }
+}
+
+const BUILTIN_OPERATOR_SCHEMAS: &[OperatorSchema] = &[
+    OperatorSchema::new(
+        "input",
+        OperatorArity::Fixed(0),
+        OperatorImplementationKind::SchemaOnly,
+        OperatorMetaExecutionKind::DeclaredOutput,
+    ),
+    OperatorSchema::new(
+        "constant",
+        OperatorArity::Fixed(0),
+        OperatorImplementationKind::SchemaOnly,
+        OperatorMetaExecutionKind::DeclaredOutput,
+    ),
+    OperatorSchema::new(
+        "detach",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "add",
+        OperatorArity::Fixed(2),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "mul",
+        OperatorArity::Fixed(2),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "matmul",
+        OperatorArity::Fixed(2),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "reshape",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "permute",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "slice",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "select",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "concat",
+        OperatorArity::Variadic { min_inputs: 1 },
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "expand",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "reduce_sum",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "rms_norm",
+        OperatorArity::Fixed(2),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "layer_norm",
+        OperatorArity::Fixed(3),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "rotary_embedding",
+        OperatorArity::Fixed(3),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "scaled_dot_product_attention",
+        OperatorArity::Fixed(3),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
+        "quantized_matmul",
+        OperatorArity::Fixed(2),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+];
+
+/// Built-in operator registry for the current compact Psionic framework-core
+/// surface.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OperatorRegistry;
+
+impl OperatorRegistry {
+    /// Returns the built-in operator registry.
+    #[must_use]
+    pub const fn builtin() -> Self {
+        Self
+    }
+
+    /// Returns all built-in operator schemas in stable order.
+    #[must_use]
+    pub fn all(&self) -> &'static [OperatorSchema] {
+        BUILTIN_OPERATOR_SCHEMAS
+    }
+
+    /// Returns one operator schema by stable name.
+    #[must_use]
+    pub fn find(&self, name: &str) -> Option<&'static OperatorSchema> {
+        self.all().iter().find(|schema| schema.name == name)
+    }
+
+    /// Returns the schema for a graph op.
+    #[must_use]
+    pub fn schema_for_op_kind(&self, op: &OpKind) -> &'static OperatorSchema {
+        self.find(op.label())
+            .expect("all built-in graph ops must have registered schemas")
+    }
+
+    /// Returns the schema for an execution op.
+    #[must_use]
+    pub fn schema_for_execution_op(&self, op: &ExecutionOp) -> &'static OperatorSchema {
+        self.find(op.label())
+            .expect("all built-in execution ops must have registered schemas")
+    }
+
+    /// Computes or validates the output spec for one execution op.
+    pub fn meta_execute(
+        &self,
+        op: &ExecutionOp,
+        inputs: &[TensorSpec],
+        declared_output: Option<&TensorSpec>,
+    ) -> Result<TensorSpec, GraphError> {
+        let schema = self.schema_for_execution_op(op);
+        if !schema.arity.accepts(inputs.len()) {
+            return Err(GraphError::InvalidOperatorArity {
+                op: op.label().to_string(),
+                expected: schema.arity.describe(),
+                actual: inputs.len(),
+            });
+        }
+
+        match schema.meta_execution {
+            OperatorMetaExecutionKind::DeclaredOutput => {
+                declared_output
+                    .cloned()
+                    .ok_or_else(|| GraphError::InvalidOperatorInputs {
+                        op: op.label().to_string(),
+                        message: String::from("declared output spec is required for source ops"),
+                    })
+            }
+            OperatorMetaExecutionKind::BuiltinInference => {
+                meta_execute_builtin(op, inputs, declared_output)
+            }
+        }
+    }
+
+    /// Validates that one execution plan's declared step specs match built-in
+    /// meta execution.
+    pub fn validate_execution_plan(&self, plan: &ExecutionPlan) -> Result<(), GraphError> {
+        let mut known_specs = BTreeMap::<TensorId, TensorSpec>::new();
+        for step in &plan.steps {
+            let input_specs = step
+                .inputs
+                .iter()
+                .map(|tensor_id| {
+                    known_specs.get(tensor_id).cloned().ok_or_else(|| {
+                        GraphError::InvalidOperatorInputs {
+                            op: step.op.label().to_string(),
+                            message: format!("missing input tensor {tensor_id}"),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let actual = self.meta_execute(&step.op, input_specs.as_slice(), Some(&step.spec))?;
+            if actual != step.spec {
+                return Err(GraphError::MetaExecutionMismatch {
+                    op: step.op.label().to_string(),
+                    expected: format_spec(&step.spec),
+                    actual: format_spec(&actual),
+                });
+            }
+            known_specs.insert(step.output, step.spec.clone());
+        }
+        Ok(())
+    }
+}
+
+fn meta_execute_builtin(
+    op: &ExecutionOp,
+    inputs: &[TensorSpec],
+    declared_output: Option<&TensorSpec>,
+) -> Result<TensorSpec, GraphError> {
+    match op {
+        ExecutionOp::Input { .. } | ExecutionOp::Constant { .. } => declared_output
+            .cloned()
+            .ok_or_else(|| GraphError::InvalidOperatorInputs {
+                op: op.label().to_string(),
+                message: String::from("declared output spec is required for source ops"),
+            }),
+        ExecutionOp::Detach => Ok(inputs[0].clone()),
+        ExecutionOp::Add | ExecutionOp::Mul => meta_execute_binary(&inputs[0], &inputs[1]),
+        ExecutionOp::Matmul => meta_execute_matmul(&inputs[0], &inputs[1]),
+        ExecutionOp::Reshape => meta_execute_reshape(&inputs[0], declared_output),
+        ExecutionOp::Permute { axes } => meta_execute_permute(&inputs[0], axes),
+        ExecutionOp::Slice { axis, start, end } => {
+            meta_execute_slice(&inputs[0], *axis, *start, *end)
+        }
+        ExecutionOp::Select { axis, index } => meta_execute_select(&inputs[0], *axis, *index),
+        ExecutionOp::Concat { axis } => meta_execute_concat(inputs, *axis),
+        ExecutionOp::Expand { shape } => meta_execute_expand(&inputs[0], shape),
+        ExecutionOp::ReduceSum { axis } => meta_execute_reduce_sum(&inputs[0], *axis),
+        ExecutionOp::BackendExtension { op } => meta_execute_backend_extension(op, inputs),
+    }
+}
+
+fn meta_execute_binary(left: &TensorSpec, right: &TensorSpec) -> Result<TensorSpec, GraphError> {
+    let Some(shape) = left.shape().broadcast_with(right.shape()) else {
+        return Err(GraphError::BinaryShapeMismatch {
+            left: left.shape().clone(),
+            right: right.shape().clone(),
+        });
+    };
+    let Some(dtype) = left.dtype().promote_binary(right.dtype()) else {
+        return Err(GraphError::BinaryDTypeMismatch {
+            left: left.dtype(),
+            right: right.dtype(),
+        });
+    };
+    Ok(TensorSpec::new(shape, dtype, left.device().clone()))
+}
+
+fn meta_execute_matmul(left: &TensorSpec, right: &TensorSpec) -> Result<TensorSpec, GraphError> {
+    let left_shape = left.shape();
+    let right_shape = right.shape();
+    let valid = left_shape.rank() == 2
+        && right_shape.rank() == 2
+        && left_shape.dims()[1] == right_shape.dims()[0];
+    if !valid {
+        return Err(GraphError::InvalidMatmulShapes {
+            left: left_shape.clone(),
+            right: right_shape.clone(),
+        });
+    }
+    Ok(TensorSpec::new(
+        Shape::new(vec![left_shape.dims()[0], right_shape.dims()[1]]),
+        left.dtype(),
+        left.device().clone(),
+    ))
+}
+
+fn meta_execute_reshape(
+    input: &TensorSpec,
+    declared_output: Option<&TensorSpec>,
+) -> Result<TensorSpec, GraphError> {
+    let Some(declared_output) = declared_output else {
+        return Err(GraphError::InvalidOperatorInputs {
+            op: String::from("reshape"),
+            message: String::from("declared output spec is required for reshape"),
+        });
+    };
+    if input.shape().element_count() != declared_output.shape().element_count() {
+        return Err(GraphError::InvalidReshape {
+            from: input.shape().clone(),
+            to: declared_output.shape().clone(),
+        });
+    }
+    Ok(TensorSpec::new(
+        declared_output.shape().clone(),
+        input.dtype(),
+        input.device().clone(),
+    ))
+}
+
+fn meta_execute_permute(input: &TensorSpec, axes: &[usize]) -> Result<TensorSpec, GraphError> {
+    let Some(layout) = input.layout().permuted(axes) else {
+        return Err(GraphError::InvalidPermute {
+            shape: input.shape().clone(),
+            axes: axes.to_vec(),
+        });
+    };
+    Ok(input.with_layout(layout))
+}
+
+fn meta_execute_slice(
+    input: &TensorSpec,
+    axis: usize,
+    start: usize,
+    end: usize,
+) -> Result<TensorSpec, GraphError> {
+    let Some(layout) = input.layout().sliced(axis, start, end) else {
+        return Err(GraphError::InvalidSlice {
+            shape: input.shape().clone(),
+            axis,
+            start,
+            end,
+        });
+    };
+    Ok(input.with_layout(layout))
+}
+
+fn meta_execute_select(
+    input: &TensorSpec,
+    axis: usize,
+    index: usize,
+) -> Result<TensorSpec, GraphError> {
+    let Some(layout) = input.layout().selected(axis, index) else {
+        return Err(GraphError::InvalidSelect {
+            shape: input.shape().clone(),
+            axis,
+            index,
+        });
+    };
+    Ok(input.with_layout(layout))
+}
+
+fn meta_execute_concat(inputs: &[TensorSpec], axis: usize) -> Result<TensorSpec, GraphError> {
+    let Some(first) = inputs.first() else {
+        return Err(GraphError::InvalidConcat {
+            axis,
+            shapes: Vec::new(),
+        });
+    };
+    let rank = first.shape().rank();
+    if axis >= rank {
+        return Err(GraphError::InvalidConcat {
+            axis,
+            shapes: inputs.iter().map(|spec| spec.shape().clone()).collect(),
+        });
+    }
+
+    let mut dims = first.shape().dims().to_vec();
+    let mut shapes = Vec::with_capacity(inputs.len());
+    for spec in inputs {
+        let shape = spec.shape();
+        shapes.push(shape.clone());
+        if spec.dtype() != first.dtype()
+            || shape.rank() != rank
+            || shape
+                .dims()
+                .iter()
+                .enumerate()
+                .any(|(index, dim)| index != axis && *dim != dims[index])
+        {
+            return Err(GraphError::InvalidConcat { axis, shapes });
+        }
+    }
+
+    dims[axis] = inputs.iter().map(|spec| spec.shape().dims()[axis]).sum();
+    Ok(TensorSpec::new(
+        Shape::new(dims),
+        first.dtype(),
+        first.device().clone(),
+    ))
+}
+
+fn meta_execute_expand(input: &TensorSpec, shape: &Shape) -> Result<TensorSpec, GraphError> {
+    let Some(layout) = input.layout().expanded(shape) else {
+        return Err(GraphError::InvalidExpand {
+            from: input.shape().clone(),
+            to: shape.clone(),
+        });
+    };
+    Ok(input.with_layout(layout))
+}
+
+fn meta_execute_reduce_sum(
+    input: &TensorSpec,
+    axis: Option<usize>,
+) -> Result<TensorSpec, GraphError> {
+    let shape = match axis {
+        None => Shape::scalar(),
+        Some(axis) => input
+            .shape()
+            .without_axis(axis)
+            .ok_or(GraphError::InvalidReduceAxis {
+                shape: input.shape().clone(),
+                axis,
+            })?,
+    };
+    Ok(TensorSpec::new(
+        shape,
+        input.dtype(),
+        input.device().clone(),
+    ))
+}
+
+fn meta_execute_backend_extension(
+    op: &BackendExtensionOp,
+    inputs: &[TensorSpec],
+) -> Result<TensorSpec, GraphError> {
+    match op {
+        BackendExtensionOp::RmsNorm { .. } => {
+            ensure_matching_specs("rms_norm", inputs)?;
+            let input = &inputs[0];
+            let weight = &inputs[1];
+            let Some(&last_dim) = input.shape().dims().last() else {
+                return Err(extension_error(
+                    "rms_norm",
+                    "input must have at least one dimension",
+                ));
+            };
+            if weight.shape().dims() != [last_dim] {
+                return Err(extension_error(
+                    "rms_norm",
+                    format!(
+                        "weight shape {} must match input last dimension {last_dim}",
+                        weight.shape()
+                    ),
+                ));
+            }
+            Ok(TensorSpec::new(
+                input.shape().clone(),
+                input.dtype(),
+                input.device().clone(),
+            ))
+        }
+        BackendExtensionOp::LayerNorm { .. } => {
+            ensure_matching_specs("layer_norm", inputs)?;
+            let input = &inputs[0];
+            let weight = &inputs[1];
+            let bias = &inputs[2];
+            let Some(&last_dim) = input.shape().dims().last() else {
+                return Err(extension_error(
+                    "layer_norm",
+                    "input must have at least one dimension",
+                ));
+            };
+            if weight.shape().dims() != [last_dim] {
+                return Err(extension_error(
+                    "layer_norm",
+                    format!(
+                        "weight shape {} must match input last dimension {last_dim}",
+                        weight.shape()
+                    ),
+                ));
+            }
+            if bias.shape().dims() != [last_dim] {
+                return Err(extension_error(
+                    "layer_norm",
+                    format!(
+                        "bias shape {} must match input last dimension {last_dim}",
+                        bias.shape()
+                    ),
+                ));
+            }
+            Ok(TensorSpec::new(
+                input.shape().clone(),
+                input.dtype(),
+                input.device().clone(),
+            ))
+        }
+        BackendExtensionOp::RotaryEmbedding { .. } => {
+            ensure_matching_specs("rotary_embedding", inputs)?;
+            let input = &inputs[0];
+            let cos = &inputs[1];
+            let sin = &inputs[2];
+            let input_dims = input.shape().dims();
+            if input_dims.len() != 4 || input_dims[3] == 0 || !input_dims[3].is_multiple_of(2) {
+                return Err(extension_error(
+                    "rotary_embedding",
+                    format!(
+                        "input shape {} must be rank-4 with an even last dimension",
+                        input.shape()
+                    ),
+                ));
+            }
+            if cos.shape().dims() != sin.shape().dims() {
+                return Err(extension_error(
+                    "rotary_embedding",
+                    format!(
+                        "cos shape {} must match sin shape {}",
+                        cos.shape(),
+                        sin.shape()
+                    ),
+                ));
+            }
+            let seq_len = input_dims[2];
+            let half_dim = input_dims[3] / 2;
+            let cos_dims = cos.shape().dims();
+            let valid = matches!(cos_dims, [s, d] if *s == seq_len && *d == half_dim)
+                || matches!(cos_dims, [b, s, d] if *b == input_dims[0] && *s == seq_len && *d == half_dim);
+            if !valid {
+                return Err(extension_error(
+                    "rotary_embedding",
+                    format!(
+                        "cos/sin shape {} must be [{seq_len}, {half_dim}] or [{}, {seq_len}, {half_dim}]",
+                        cos.shape(),
+                        input_dims[0]
+                    ),
+                ));
+            }
+            Ok(TensorSpec::new(
+                input.shape().clone(),
+                input.dtype(),
+                input.device().clone(),
+            ))
+        }
+        BackendExtensionOp::ScaledDotProductAttention { .. } => {
+            ensure_matching_specs("scaled_dot_product_attention", inputs)?;
+            let query = &inputs[0];
+            let key = &inputs[1];
+            let value = &inputs[2];
+            let query_dims = query.shape().dims();
+            let key_dims = key.shape().dims();
+            let value_dims = value.shape().dims();
+            let valid = query_dims.len() == 4
+                && key_dims.len() == 4
+                && value_dims.len() == 4
+                && query_dims[0] == key_dims[0]
+                && query_dims[0] == value_dims[0]
+                && query_dims[1] == key_dims[1]
+                && query_dims[1] == value_dims[1]
+                && key_dims[2] == value_dims[2]
+                && query_dims[3] == key_dims[3];
+            if !valid {
+                return Err(extension_error(
+                    "scaled_dot_product_attention",
+                    format!(
+                        "query/key/value shapes {} / {} / {} are incompatible",
+                        query.shape(),
+                        key.shape(),
+                        value.shape()
+                    ),
+                ));
+            }
+            Ok(TensorSpec::new(
+                Shape::new(vec![
+                    query_dims[0],
+                    query_dims[1],
+                    query_dims[2],
+                    value_dims[3],
+                ]),
+                query.dtype(),
+                query.device().clone(),
+            ))
+        }
+        BackendExtensionOp::QuantizedMatmul { rhs_mode } => {
+            if *rhs_mode == QuantizationMode::None {
+                return Err(extension_error(
+                    "quantized_matmul",
+                    "rhs quantization mode must be non-dense",
+                ));
+            }
+            ensure_matching_specs("quantized_matmul", inputs)?;
+            let left = &inputs[0];
+            let right = &inputs[1];
+            let left_shape = left.shape();
+            let right_shape = right.shape();
+            let valid = left_shape.rank() == 2
+                && right_shape.rank() == 2
+                && left_shape.dims()[1] == right_shape.dims()[1];
+            if !valid {
+                return Err(extension_error(
+                    "quantized_matmul",
+                    format!("invalid matmul shapes: left={left_shape} right={right_shape}"),
+                ));
+            }
+            Ok(TensorSpec::new(
+                Shape::new(vec![left_shape.dims()[0], right_shape.dims()[0]]),
+                left.dtype(),
+                left.device().clone(),
+            ))
+        }
     }
 }
 
@@ -650,23 +1364,7 @@ impl GraphBuilder {
 
     /// Matrix multiply for rank-2 tensors.
     pub fn matmul(&mut self, left: &Tensor, right: &Tensor) -> Result<Tensor, GraphError> {
-        let left_shape = left.spec().shape();
-        let right_shape = right.spec().shape();
-        let valid = left_shape.rank() == 2
-            && right_shape.rank() == 2
-            && left_shape.dims()[1] == right_shape.dims()[0];
-        if !valid {
-            return Err(GraphError::InvalidMatmulShapes {
-                left: left_shape.clone(),
-                right: right_shape.clone(),
-            });
-        }
-        let output_shape = Shape::new(vec![left_shape.dims()[0], right_shape.dims()[1]]);
-        let spec = TensorSpec::new(
-            output_shape,
-            left.spec().dtype(),
-            left.spec().device().clone(),
-        );
+        let spec = self.meta_spec(&ExecutionOp::Matmul, &[left, right], None)?;
         Ok(self.register(
             LazyOp::Matmul,
             OpKind::Matmul,
@@ -677,29 +1375,23 @@ impl GraphBuilder {
 
     /// Reshapes a tensor without changing the element count.
     pub fn reshape(&mut self, input: &Tensor, new_shape: Shape) -> Result<Tensor, GraphError> {
-        if input.spec().shape().element_count() != new_shape.element_count() {
-            return Err(GraphError::InvalidReshape {
-                from: input.spec().shape().clone(),
-                to: new_shape,
-            });
-        }
-        let spec = input.spec().with_shape(new_shape);
+        let declared_output = TensorSpec::new(
+            new_shape.clone(),
+            input.spec().dtype(),
+            input.spec().device().clone(),
+        );
+        let spec = self.meta_spec(&ExecutionOp::Reshape, &[input], Some(&declared_output))?;
         Ok(self.register(LazyOp::Reshape, OpKind::Reshape, vec![input.id()], spec))
     }
 
     /// Reorders axes using a logical view.
     pub fn permute(&mut self, input: &Tensor, axes: Vec<usize>) -> Result<Tensor, GraphError> {
-        let Some(layout) = input.spec().layout().permuted(&axes) else {
-            return Err(GraphError::InvalidPermute {
-                shape: input.spec().shape().clone(),
-                axes,
-            });
-        };
+        let spec = self.meta_spec(&ExecutionOp::Permute { axes: axes.clone() }, &[input], None)?;
         Ok(self.register(
             LazyOp::Permute { axes: axes.clone() },
             OpKind::Permute { axes },
             vec![input.id()],
-            input.spec().with_layout(layout),
+            spec,
         ))
     }
 
@@ -711,19 +1403,12 @@ impl GraphBuilder {
         start: usize,
         end: usize,
     ) -> Result<Tensor, GraphError> {
-        let Some(layout) = input.spec().layout().sliced(axis, start, end) else {
-            return Err(GraphError::InvalidSlice {
-                shape: input.spec().shape().clone(),
-                axis,
-                start,
-                end,
-            });
-        };
+        let spec = self.meta_spec(&ExecutionOp::Slice { axis, start, end }, &[input], None)?;
         Ok(self.register(
             LazyOp::Slice { axis, start, end },
             OpKind::Slice { axis, start, end },
             vec![input.id()],
-            input.spec().with_layout(layout),
+            spec,
         ))
     }
 
@@ -734,64 +1419,19 @@ impl GraphBuilder {
         axis: usize,
         index: usize,
     ) -> Result<Tensor, GraphError> {
-        let Some(layout) = input.spec().layout().selected(axis, index) else {
-            return Err(GraphError::InvalidSelect {
-                shape: input.spec().shape().clone(),
-                axis,
-                index,
-            });
-        };
+        let spec = self.meta_spec(&ExecutionOp::Select { axis, index }, &[input], None)?;
         Ok(self.register(
             LazyOp::Select { axis, index },
             OpKind::Select { axis, index },
             vec![input.id()],
-            input.spec().with_layout(layout),
+            spec,
         ))
     }
 
     /// Concatenates tensors along a single axis.
     pub fn concat(&mut self, inputs: &[Tensor], axis: usize) -> Result<Tensor, GraphError> {
-        let Some(first) = inputs.first() else {
-            return Err(GraphError::InvalidConcat {
-                axis,
-                shapes: Vec::new(),
-            });
-        };
-        let rank = first.spec().shape().rank();
-        if axis >= rank {
-            return Err(GraphError::InvalidConcat {
-                axis,
-                shapes: inputs
-                    .iter()
-                    .map(|tensor| tensor.spec().shape().clone())
-                    .collect(),
-            });
-        }
-
-        let dtype = first.spec().dtype();
-        let device = first.spec().device().clone();
-        let mut dims = first.spec().shape().dims().to_vec();
-        let mut shapes = Vec::with_capacity(inputs.len());
-        for tensor in inputs {
-            let shape = tensor.spec().shape();
-            shapes.push(shape.clone());
-            if tensor.spec().dtype() != dtype
-                || shape.rank() != rank
-                || shape
-                    .dims()
-                    .iter()
-                    .enumerate()
-                    .any(|(index, dim)| index != axis && *dim != dims[index])
-            {
-                return Err(GraphError::InvalidConcat { axis, shapes });
-            }
-        }
-
-        dims[axis] = inputs
-            .iter()
-            .map(|tensor| tensor.spec().shape().dims()[axis])
-            .sum();
-        let spec = TensorSpec::new(Shape::new(dims), dtype, device);
+        let refs = inputs.iter().collect::<Vec<_>>();
+        let spec = self.meta_spec(&ExecutionOp::Concat { axis }, refs.as_slice(), None)?;
         Ok(self.register(
             LazyOp::Concat { axis },
             OpKind::Concat { axis },
@@ -802,29 +1442,28 @@ impl GraphBuilder {
 
     /// Expands a tensor view through broadcast semantics.
     pub fn expand(&mut self, input: &Tensor, shape: Shape) -> Result<Tensor, GraphError> {
-        let Some(layout) = input.spec().layout().expanded(&shape) else {
-            return Err(GraphError::InvalidExpand {
-                from: input.spec().shape().clone(),
-                to: shape,
-            });
-        };
+        let spec = self.meta_spec(
+            &ExecutionOp::Expand {
+                shape: shape.clone(),
+            },
+            &[input],
+            None,
+        )?;
         Ok(self.register(
             LazyOp::Expand {
                 shape: shape.clone(),
             },
             OpKind::Expand { shape },
             vec![input.id()],
-            input.spec().with_layout(layout),
+            spec,
         ))
     }
 
     /// Reduces a tensor to a scalar sum.
     pub fn reduce_sum(&mut self, input: &Tensor) -> Tensor {
-        let spec = TensorSpec::new(
-            Shape::scalar(),
-            input.spec().dtype(),
-            input.spec().device().clone(),
-        );
+        let spec = self
+            .meta_spec(&ExecutionOp::ReduceSum { axis: None }, &[input], None)
+            .expect("reduce_sum meta execution should accept one input");
         self.register(
             LazyOp::ReduceSum { axis: None },
             OpKind::ReduceSum { axis: None },
@@ -835,17 +1474,7 @@ impl GraphBuilder {
 
     /// Reduces a tensor along a single axis.
     pub fn reduce_sum_axis(&mut self, input: &Tensor, axis: usize) -> Result<Tensor, GraphError> {
-        let Some(output_shape) = input.spec().shape().without_axis(axis) else {
-            return Err(GraphError::InvalidReduceAxis {
-                shape: input.spec().shape().clone(),
-                axis,
-            });
-        };
-        let spec = TensorSpec::new(
-            output_shape,
-            input.spec().dtype(),
-            input.spec().device().clone(),
-        );
+        let spec = self.meta_spec(&ExecutionOp::ReduceSum { axis: Some(axis) }, &[input], None)?;
         Ok(self.register(
             LazyOp::ReduceSum { axis: Some(axis) },
             OpKind::ReduceSum { axis: Some(axis) },
@@ -861,34 +1490,15 @@ impl GraphBuilder {
         weight: &Tensor,
         epsilon: f32,
     ) -> Result<Tensor, GraphError> {
-        ensure_matching_context("rms_norm", &[input, weight])?;
-        let Some(&last_dim) = input.spec().shape().dims().last() else {
-            return Err(extension_error(
-                "rms_norm",
-                "input must have at least one dimension",
-            ));
+        let op = BackendExtensionOp::RmsNorm {
+            epsilon: psionic_core::StableF32::from_f32(epsilon),
         };
-        if weight.spec().shape().dims() != [last_dim] {
-            return Err(extension_error(
-                "rms_norm",
-                format!(
-                    "weight shape {} must match input last dimension {last_dim}",
-                    weight.spec().shape()
-                ),
-            ));
-        }
-        let spec = TensorSpec::new(
-            input.spec().shape().clone(),
-            input.spec().dtype(),
-            input.spec().device().clone(),
-        );
-        Ok(self.register_backend_extension(
-            BackendExtensionOp::RmsNorm {
-                epsilon: psionic_core::StableF32::from_f32(epsilon),
-            },
-            vec![input.id(), weight.id()],
-            spec,
-        ))
+        let spec = self.meta_spec(
+            &ExecutionOp::BackendExtension { op: op.clone() },
+            &[input, weight],
+            None,
+        )?;
+        Ok(self.register_backend_extension(op, vec![input.id(), weight.id()], spec))
     }
 
     /// Applies layer normalization over the last dimension.
@@ -899,43 +1509,15 @@ impl GraphBuilder {
         bias: &Tensor,
         epsilon: f32,
     ) -> Result<Tensor, GraphError> {
-        ensure_matching_context("layer_norm", &[input, weight, bias])?;
-        let Some(&last_dim) = input.spec().shape().dims().last() else {
-            return Err(extension_error(
-                "layer_norm",
-                "input must have at least one dimension",
-            ));
+        let op = BackendExtensionOp::LayerNorm {
+            epsilon: psionic_core::StableF32::from_f32(epsilon),
         };
-        if weight.spec().shape().dims() != [last_dim] {
-            return Err(extension_error(
-                "layer_norm",
-                format!(
-                    "weight shape {} must match input last dimension {last_dim}",
-                    weight.spec().shape()
-                ),
-            ));
-        }
-        if bias.spec().shape().dims() != [last_dim] {
-            return Err(extension_error(
-                "layer_norm",
-                format!(
-                    "bias shape {} must match input last dimension {last_dim}",
-                    bias.spec().shape()
-                ),
-            ));
-        }
-        let spec = TensorSpec::new(
-            input.spec().shape().clone(),
-            input.spec().dtype(),
-            input.spec().device().clone(),
-        );
-        Ok(self.register_backend_extension(
-            BackendExtensionOp::LayerNorm {
-                epsilon: psionic_core::StableF32::from_f32(epsilon),
-            },
-            vec![input.id(), weight.id(), bias.id()],
-            spec,
-        ))
+        let spec = self.meta_spec(
+            &ExecutionOp::BackendExtension { op: op.clone() },
+            &[input, weight, bias],
+            None,
+        )?;
+        Ok(self.register_backend_extension(op, vec![input.id(), weight.id(), bias.id()], spec))
     }
 
     /// Applies RoPE over a rank-4 `[batch, heads, seq, dim]` tensor.
@@ -946,53 +1528,13 @@ impl GraphBuilder {
         sin: &Tensor,
         interleaved: bool,
     ) -> Result<Tensor, GraphError> {
-        ensure_matching_context("rotary_embedding", &[input, cos, sin])?;
-        let input_dims = input.spec().shape().dims();
-        if input_dims.len() != 4 || input_dims[3] == 0 || !input_dims[3].is_multiple_of(2) {
-            return Err(extension_error(
-                "rotary_embedding",
-                format!(
-                    "input shape {} must be rank-4 with an even last dimension",
-                    input.spec().shape()
-                ),
-            ));
-        }
-        let seq_len = input_dims[2];
-        let half_dim = input_dims[3] / 2;
-        let cos_dims = cos.spec().shape().dims();
-        let sin_dims = sin.spec().shape().dims();
-        if cos_dims != sin_dims {
-            return Err(extension_error(
-                "rotary_embedding",
-                format!(
-                    "cos shape {} must match sin shape {}",
-                    cos.spec().shape(),
-                    sin.spec().shape()
-                ),
-            ));
-        }
-        let valid = matches!(cos_dims, [s, d] if *s == seq_len && *d == half_dim)
-            || matches!(cos_dims, [b, s, d] if *b == input_dims[0] && *s == seq_len && *d == half_dim);
-        if !valid {
-            return Err(extension_error(
-                "rotary_embedding",
-                format!(
-                    "cos/sin shape {} must be [{seq_len}, {half_dim}] or [{}, {seq_len}, {half_dim}]",
-                    cos.spec().shape(),
-                    input_dims[0]
-                ),
-            ));
-        }
-        let spec = TensorSpec::new(
-            input.spec().shape().clone(),
-            input.spec().dtype(),
-            input.spec().device().clone(),
-        );
-        Ok(self.register_backend_extension(
-            BackendExtensionOp::RotaryEmbedding { interleaved },
-            vec![input.id(), cos.id(), sin.id()],
-            spec,
-        ))
+        let op = BackendExtensionOp::RotaryEmbedding { interleaved };
+        let spec = self.meta_spec(
+            &ExecutionOp::BackendExtension { op: op.clone() },
+            &[input, cos, sin],
+            None,
+        )?;
+        Ok(self.register_backend_extension(op, vec![input.id(), cos.id(), sin.id()], spec))
     }
 
     /// Applies scaled dot-product attention over rank-4 `[batch, heads, seq, dim]` tensors.
@@ -1004,48 +1546,16 @@ impl GraphBuilder {
         scale: f32,
         causal: bool,
     ) -> Result<Tensor, GraphError> {
-        ensure_matching_context("scaled_dot_product_attention", &[query, key, value])?;
-        let query_dims = query.spec().shape().dims();
-        let key_dims = key.spec().shape().dims();
-        let value_dims = value.spec().shape().dims();
-        let valid = query_dims.len() == 4
-            && key_dims.len() == 4
-            && value_dims.len() == 4
-            && query_dims[0] == key_dims[0]
-            && query_dims[0] == value_dims[0]
-            && query_dims[1] == key_dims[1]
-            && query_dims[1] == value_dims[1]
-            && key_dims[2] == value_dims[2]
-            && query_dims[3] == key_dims[3];
-        if !valid {
-            return Err(extension_error(
-                "scaled_dot_product_attention",
-                format!(
-                    "query/key/value shapes {} / {} / {} are incompatible",
-                    query.spec().shape(),
-                    key.spec().shape(),
-                    value.spec().shape()
-                ),
-            ));
-        }
-        let spec = TensorSpec::new(
-            Shape::new(vec![
-                query_dims[0],
-                query_dims[1],
-                query_dims[2],
-                value_dims[3],
-            ]),
-            query.spec().dtype(),
-            query.spec().device().clone(),
-        );
-        Ok(self.register_backend_extension(
-            BackendExtensionOp::ScaledDotProductAttention {
-                scale: psionic_core::StableF32::from_f32(scale),
-                causal,
-            },
-            vec![query.id(), key.id(), value.id()],
-            spec,
-        ))
+        let op = BackendExtensionOp::ScaledDotProductAttention {
+            scale: psionic_core::StableF32::from_f32(scale),
+            causal,
+        };
+        let spec = self.meta_spec(
+            &ExecutionOp::BackendExtension { op: op.clone() },
+            &[query, key, value],
+            None,
+        )?;
+        Ok(self.register_backend_extension(op, vec![query.id(), key.id(), value.id()], spec))
     }
 
     /// Registers a matmul that is eligible for a quantized-GEMM specialization.
@@ -1055,34 +1565,13 @@ impl GraphBuilder {
         right: &Tensor,
         rhs_mode: QuantizationMode,
     ) -> Result<Tensor, GraphError> {
-        if rhs_mode == QuantizationMode::None {
-            return Err(extension_error(
-                "quantized_matmul",
-                "rhs quantization mode must be non-dense",
-            ));
-        }
-        ensure_matching_context("quantized_matmul", &[left, right])?;
-        let left_shape = left.spec().shape();
-        let right_shape = right.spec().shape();
-        let valid = left_shape.rank() == 2
-            && right_shape.rank() == 2
-            && left_shape.dims()[1] == right_shape.dims()[1];
-        if !valid {
-            return Err(extension_error(
-                "quantized_matmul",
-                format!("invalid matmul shapes: left={left_shape} right={right_shape}"),
-            ));
-        }
-        let spec = TensorSpec::new(
-            Shape::new(vec![left_shape.dims()[0], right_shape.dims()[0]]),
-            left.spec().dtype(),
-            left.spec().device().clone(),
-        );
-        Ok(self.register_backend_extension(
-            BackendExtensionOp::QuantizedMatmul { rhs_mode },
-            vec![left.id(), right.id()],
-            spec,
-        ))
+        let op = BackendExtensionOp::QuantizedMatmul { rhs_mode };
+        let spec = self.meta_spec(
+            &ExecutionOp::BackendExtension { op: op.clone() },
+            &[left, right],
+            None,
+        )?;
+        Ok(self.register_backend_extension(op, vec![left.id(), right.id()], spec))
     }
 
     /// Finishes the graph with the provided outputs.
@@ -1101,18 +1590,9 @@ impl GraphBuilder {
         lazy_op: LazyOp,
         op: OpKind,
     ) -> Result<Tensor, GraphError> {
-        let Some(output_shape) = left.spec().shape().broadcast_with(right.spec().shape()) else {
-            return Err(GraphError::BinaryShapeMismatch {
-                left: left.spec().shape().clone(),
-                right: right.spec().shape().clone(),
-            });
-        };
-        let Some(output_dtype) = left.spec().dtype().promote_binary(right.spec().dtype()) else {
-            return Err(GraphError::BinaryDTypeMismatch {
-                left: left.spec().dtype(),
-                right: right.spec().dtype(),
-            });
-        };
+        let execution_op = ExecutionOp::from_op_kind(&op);
+        let output_spec = self.meta_spec(&execution_op, &[left, right], None)?;
+        let output_shape = output_spec.shape().clone();
 
         let left = if left.spec().shape() != &output_shape {
             self.expand(left, output_shape.clone())?
@@ -1125,8 +1605,7 @@ impl GraphBuilder {
             right.clone()
         };
 
-        let spec = TensorSpec::new(output_shape, output_dtype, left.spec().device().clone());
-        Ok(self.register(lazy_op, op, vec![left.id(), right.id()], spec))
+        Ok(self.register(lazy_op, op, vec![left.id(), right.id()], output_spec))
     }
 
     fn register_backend_extension(
@@ -1164,25 +1643,40 @@ impl GraphBuilder {
     fn device(&self) -> Device {
         self.device.clone().unwrap_or_else(Device::cpu)
     }
+
+    fn meta_spec(
+        &self,
+        op: &ExecutionOp,
+        inputs: &[&Tensor],
+        declared_output: Option<&TensorSpec>,
+    ) -> Result<TensorSpec, GraphError> {
+        let specs = inputs
+            .iter()
+            .map(|tensor| tensor.spec().clone())
+            .collect::<Vec<_>>();
+        OperatorRegistry::builtin().meta_execute(op, specs.as_slice(), declared_output)
+    }
 }
 
-fn ensure_matching_context(op: &str, tensors: &[&Tensor]) -> Result<(), GraphError> {
-    let Some(first) = tensors.first() else {
+fn ensure_matching_specs(op: &str, specs: &[TensorSpec]) -> Result<(), GraphError> {
+    let Some(first) = specs.first() else {
         return Ok(());
     };
-    let first_dtype = first.spec().dtype();
-    let first_device = first.spec().device();
-    if let Some(tensor) = tensors.iter().skip(1).find(|tensor| {
-        tensor.spec().dtype() != first_dtype || tensor.spec().device() != first_device
-    }) {
+    let first_dtype = first.dtype();
+    let first_device = first.device();
+    if let Some(spec) = specs
+        .iter()
+        .skip(1)
+        .find(|spec| spec.dtype() != first_dtype || spec.device() != first_device)
+    {
         return Err(extension_error(
             op,
             format!(
                 "all inputs must share dtype/device; expected {:?} on {}, actual {:?} on {}",
                 first_dtype,
                 first_device,
-                tensor.spec().dtype(),
-                tensor.spec().device()
+                spec.dtype(),
+                spec.device()
             ),
         ));
     }
@@ -1320,7 +1814,10 @@ fn digest_lines(lines: Vec<String>) -> String {
 mod tests {
     use psionic_core::{Device, QuantizationMode};
 
-    use super::{DType, GraphBuilder, Shape};
+    use super::{
+        DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, OperatorImplementationKind,
+        OperatorMetaExecutionKind, OperatorRegistry, Shape, TensorSpec,
+    };
 
     #[test]
     fn graph_digest_is_stable_for_identical_layout_graphs() {
@@ -1435,6 +1932,91 @@ mod tests {
             error,
             Err(super::GraphError::BinaryShapeMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn builtin_operator_registry_exposes_kernel_composite_and_meta_surfaces() {
+        let registry = OperatorRegistry::builtin();
+
+        let add = registry.find("add");
+        assert!(add.is_some());
+        let Some(add) = add else {
+            return;
+        };
+        assert_eq!(
+            add.implementation,
+            OperatorImplementationKind::BackendKernel
+        );
+        assert_eq!(
+            add.meta_execution,
+            OperatorMetaExecutionKind::BuiltinInference
+        );
+
+        let expand = registry.find("expand");
+        assert!(expand.is_some());
+        let Some(expand) = expand else {
+            return;
+        };
+        assert_eq!(expand.implementation, OperatorImplementationKind::Composite);
+
+        let input = registry.find("input");
+        assert!(input.is_some());
+        let Some(input) = input else {
+            return;
+        };
+        assert_eq!(input.implementation, OperatorImplementationKind::SchemaOnly);
+        assert_eq!(
+            input.meta_execution,
+            OperatorMetaExecutionKind::DeclaredOutput
+        );
+
+        let rope = registry.find("rotary_embedding");
+        assert!(rope.is_some());
+        let Some(rope) = rope else {
+            return;
+        };
+        assert_eq!(rope.arity, super::OperatorArity::Fixed(3));
+    }
+
+    #[test]
+    fn operator_registry_refuses_wrong_arity_during_meta_execution() {
+        let registry = OperatorRegistry::builtin();
+        let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
+
+        let error = registry.meta_execute(&ExecutionOp::Add, &[spec], None);
+        assert!(matches!(
+            error,
+            Err(super::GraphError::InvalidOperatorArity { .. })
+        ));
+    }
+
+    #[test]
+    fn operator_registry_validates_execution_plan_specs() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+        let row = builder.select(&input, 0, 0);
+        assert!(row.is_ok());
+        let Ok(row) = row else {
+            return;
+        };
+        let shifted = builder.add(&input, &row);
+        assert!(shifted.is_ok());
+        let Ok(shifted) = shifted else {
+            return;
+        };
+        let reduced = builder.reduce_sum_axis(&shifted, 1);
+        assert!(reduced.is_ok());
+        let Ok(reduced) = reduced else {
+            return;
+        };
+        let graph = builder.finish(vec![reduced]);
+        let plan = graph_to_execution_plan(&graph);
+
+        let result = OperatorRegistry::builtin().validate_execution_plan(&plan);
+        assert!(
+            result.is_ok(),
+            "built-in operator registry should validate plan"
+        );
     }
 
     #[test]
@@ -1570,5 +2152,22 @@ mod tests {
         let concatenated = builder.concat(&[input.clone(), expanded], 0)?;
         let reduced = builder.reduce_sum_axis(&concatenated, 0)?;
         Ok(builder.finish(vec![reduced]))
+    }
+
+    fn graph_to_execution_plan(graph: &super::Graph) -> ExecutionPlan {
+        ExecutionPlan {
+            graph_digest: graph.stable_digest(),
+            steps: graph
+                .nodes()
+                .iter()
+                .map(|node| ExecutionStep {
+                    output: node.tensor().id(),
+                    op: ExecutionOp::from_op_kind(node.op()),
+                    spec: node.tensor().spec().clone(),
+                    inputs: node.inputs().to_vec(),
+                })
+                .collect(),
+            outputs: graph.outputs().to_vec(),
+        }
     }
 }

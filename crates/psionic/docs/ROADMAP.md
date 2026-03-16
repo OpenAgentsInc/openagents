@@ -750,7 +750,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `PLIB-101` / [#3703](https://github.com/OpenAgentsInc/openagents/issues/3703) | done (2026-03-16) | `psionic-core` now owns explicit broadcast, alias-preserving view, and dtype-promotion rules; `psionic-ir` lowers broadcasted binary ops through inserted `expand` views; and CPU/reference tests prove the semantics over indexed views plus axis reduction. |
-| `PLIB-102` / [#3704](https://github.com/OpenAgentsInc/openagents/issues/3704) | planned | Add a real operator registry, schema layer, and dispatch/composite/meta execution split above the current primitive op set. |
+| `PLIB-102` / [#3704](https://github.com/OpenAgentsInc/openagents/issues/3704) | done (2026-03-16) | `psionic-ir` now publishes a built-in operator registry with stable schemas, implementation families, and meta-execution posture; graph construction routes through that contract; and execution plans can be revalidated against the registry before later fake/meta or compatibility work lands. |
 | `PLIB-103` / [#3705](https://github.com/OpenAgentsInc/openagents/issues/3705) | planned | Add fake or meta tensor execution for shape-only planning, compile validation, and compatibility harnesses. |
 | `PLIB-104` / [#3706](https://github.com/OpenAgentsInc/openagents/issues/3706) | planned | Expand autodiff coverage to broader operator families while keeping typed refusal on unsupported gradients. |
 | `PLIB-105` / [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707) | planned | Deepen compiler passes: schedule formation, fusion policy, memory planning, plan cache identity, and compile-cache evidence. |
