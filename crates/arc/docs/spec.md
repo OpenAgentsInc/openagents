@@ -253,6 +253,12 @@ The phased creation order is:
 6. `arc-solvers`
 7. `arc-ml`
 
+`crates/arc/core` is now the first live ARC package in the workspace. It is the
+shared owner for ARC task IDs, grid/task contracts, deterministic analysis
+summaries, and solver-facing budget/result envelopes. Benchmark scoring,
+client/session behavior, and solver search state remain out of scope for this
+crate and stay in higher ARC packages.
+
 ## 4. Shared domain model
 
 The old single-crate `psionic-arc` idea is replaced by a shared-domain core

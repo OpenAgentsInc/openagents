@@ -1,0 +1,24 @@
+{
+  "id": "demo-bridge-task",
+  "train": [
+    {
+      "input": {
+        "width": 2,
+        "height": 2,
+        "cells": [0, 1, 2, 0]
+      },
+      "output": {
+        "width": 2,
+        "height": 2,
+        "cells": [1, 1, 2, 2]
+      }
+    }
+  ],
+  "test": [
+    {
+      "width": 2,
+      "height": 2,
+      "cells": [0, 2, 1, 0]
+    }
+  ]
+}

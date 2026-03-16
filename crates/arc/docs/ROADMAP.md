@@ -451,6 +451,8 @@ The current baseline is intentionally thin.
 ### Foundations already present
 
 - `crates/arc/spec.md` now fixes the crate split and owner boundaries
+- `crates/arc/core` now exists as the first live ARC workspace crate with
+  explicit `schema`, `analysis`, and `envelopes` module boundaries
 - the 2026-03-15 audit maps the relevant ARC Prize repos into the crate plan
 - the upstream Python sources and protocol docs have already been audited
 - Psionic already offers meaningful substrate for dataset manifests, eval runs,
@@ -458,7 +460,8 @@ The current baseline is intentionally thin.
 
 ### Biggest current gaps
 
-- there are no substantive `crates/arc/*` Rust crates yet
+- only `arc-core` exists so far; the rest of the `crates/arc/*` Rust crate
+  family is still absent
 - there is no benchmark-truth crate computing exact-match and RHAE in Rust
 - there is no deterministic engine parity harness in-tree yet
 - there is no REST compatibility surface for local/remote ARC-AGI-3 flows
@@ -557,10 +560,10 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `ARC-001` | landed | Write the canonical ARC subtree roadmap. This document closes that issue. |
-| `ARC-002` / [#3665](https://github.com/OpenAgentsInc/openagents/issues/3665) | planned | Freeze the ARC claim vocabulary: `contracts-real`, `benchmark-real`, `solver-real`, `interactive-real`, and `research-credible`. |
-| `ARC-003` / [#3666](https://github.com/OpenAgentsInc/openagents/issues/3666) | planned | Add one compact index linking `crates/arc/spec.md`, this roadmap, the audit, and future acceptance matrices. |
-| `ARC-004` / [#3667](https://github.com/OpenAgentsInc/openagents/issues/3667) | planned | Freeze the supported upstream benchmark and protocol versions this subtree targets first. |
-| `ARC-005` / [#3668](https://github.com/OpenAgentsInc/openagents/issues/3668) | planned | Publish the public-eval hygiene rule as explicit harness, artifact-labeling, and operator policy, not only as prose. |
+| `ARC-002` / [#3665](https://github.com/OpenAgentsInc/openagents/issues/3665) | landed | Freeze the ARC claim vocabulary: `contracts-real`, `benchmark-real`, `solver-real`, `interactive-real`, and `research-credible`. |
+| `ARC-003` / [#3666](https://github.com/OpenAgentsInc/openagents/issues/3666) | landed | Add one compact index linking `crates/arc/spec.md`, this roadmap, the audit, and future acceptance matrices. |
+| `ARC-004` / [#3667](https://github.com/OpenAgentsInc/openagents/issues/3667) | landed | Freeze the supported upstream benchmark and protocol versions this subtree targets first. |
+| `ARC-005` / [#3668](https://github.com/OpenAgentsInc/openagents/issues/3668) | landed | Publish the public-eval hygiene rule as explicit harness, artifact-labeling, and operator policy, not only as prose. |
 
 ## Epic 1: Contracts And Dataset Core
 
@@ -586,7 +589,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-101` / [#3669](https://github.com/OpenAgentsInc/openagents/issues/3669) | planned | Create `crates/arc/core` as package `arc-core`. |
+| `ARC-101` / [#3669](https://github.com/OpenAgentsInc/openagents/issues/3669) | landed | Create `crates/arc/core` as package `arc-core`. |
 | `ARC-102` / [#3670](https://github.com/OpenAgentsInc/openagents/issues/3670) | planned | Add `ArcGrid`, `ArcTask`, and ARC-AGI-3 action/frame/recording/scorecard contracts. |
 | `ARC-103` / [#3671](https://github.com/OpenAgentsInc/openagents/issues/3671) | planned | Add budget, solve-result, refusal, and trace-locator envelopes used across benchmark and solver layers. |
 | `ARC-104` / [#3672](https://github.com/OpenAgentsInc/openagents/issues/3672) | planned | Freeze deterministic task IDs, hashes, and serialization contracts so fixtures survive refactors. |
