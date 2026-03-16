@@ -1456,7 +1456,7 @@ parity report surface plus a manifest-driven harness that compares
 `LocalArcEnvironment` traces against the compatibility server step by step for
 translated `bt11` and `bt33` scripts. Checkpoint/resume behavior, lifecycle
 policy, and online/runtime policy remain the next explicit follow-on in
-`ARC-208`, `ARC-211`, `ARC-212`, and `ARC-213`.
+`ARC-211`, `ARC-212`, and `ARC-213`.
 
 ### Phase 3: benchmark runtime
 
@@ -1488,8 +1488,13 @@ summary harness. `ARC-207` is now also landed in bounded form: the crate can
 score deterministic ARC-AGI-3 recordings with the current methodology policy,
 emit typed scorecards plus per-step summaries, and refuse unsupported
 competition-mode, non-initial full-reset, or malformed baseline cases
-explicitly. Scorecard lifecycle, JSONL compatibility, checkpoints, resume
-behavior, and repeated-run aggregation remain follow-on benchmark work.
+explicitly. `ARC-208` is now also landed in bounded form: the crate ships
+typed task checkpoints, batch run manifests, and inspectable interactive
+checkpoint bundles with local JSON persistence plus resume-oriented helpers
+such as next-attempt selection, stale-task reset, retry-failed-task reset, and
+next-step cursor recovery from saved ARC-AGI-3 runs. Scorecard lifecycle,
+JSONL compatibility, and repeated-run aggregation remain follow-on benchmark
+work.
 
 ### Phase 4: solver layer
 

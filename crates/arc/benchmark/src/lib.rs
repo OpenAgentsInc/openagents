@@ -15,9 +15,15 @@
 //! ARC-AGI-3 recordings. Scorecard lifecycle policy, checkpoints, resume
 //! behavior, and JSONL parity remain follow-on work.
 
+mod checkpoint;
 mod exact_match;
 mod interactive;
 
+pub use checkpoint::{
+    ArcBenchmarkUsageTotals, ArcCheckpointErrorRecord, ArcInteractiveCheckpointBundle,
+    ArcInteractiveCheckpointMetadata, ArcRunManifest, ArcRunManifestManager, ArcRunTaskProgress,
+    ArcRunTaskStatus, ArcTaskAttemptCheckpoint, ArcTaskCheckpoint, ArcTaskCheckpointManager,
+};
 pub use exact_match::{
     ArcBenchmarkError, ArcExactMatchAttemptReport, ArcExactMatchBenchmarkSummary,
     ArcExactMatchPairReport, ArcExactMatchTaskReport, ArcStaticAnswerKey, ArcStaticPairSubmission,
