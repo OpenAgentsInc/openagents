@@ -860,6 +860,8 @@ Current bounded landing:
 - `ARC-304` further extends the same model with `LaneProposalBatch`,
   `ArbiterDecision`, `SolverTraceBundle`, JSON trace-bundle IO, and replay
   validation against manifest and budget lineage
+- `ARC-305` adds the first bounded `SymbolicLane` implementation over these
+  same proposal/refinement contracts
 - later lane and arbiter work must extend these same records rather than
   redefining shadow types
 
@@ -1069,6 +1071,18 @@ Allowed search strategies:
 - sketch completion
 - branch-and-bound
 - typed enumerative search
+
+Current bounded landing:
+
+- `ARC-305` lands a deterministic typed-enumerative seed search in
+  `arc-solvers::symbolic`
+- the current lane enumerates bounded Tier A programs for identity,
+  rotate/reflect, and crop selectors, scores them by local fit plus size/stability
+  heuristics, and emits typed proposal batches
+- repair coverage is currently typed and explicit rather than ad hoc:
+  single-color recolor repair and output-transform repair
+- later lane work can widen the symbolic search frontier, but must continue to
+  use the same verifier, proposal, refinement, and trace-bundle contracts
 
 ### 7.4 Lane B: transductive neural lane
 
