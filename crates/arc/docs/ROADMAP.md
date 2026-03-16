@@ -707,7 +707,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-305` / [#3697](https://github.com/OpenAgentsInc/openagents/issues/3697) | planned | Implement the symbolic induction lane with typed program search and repair operators. |
+| `ARC-305` / [#3697](https://github.com/OpenAgentsInc/openagents/issues/3697) | done | Added the bounded symbolic lane with typed enumerative seed search, explicit budget accounting, deduplicated proposal/refinement batches, and typed recolor/output-transform repair operators. |
 | `ARC-306` / [#3698](https://github.com/OpenAgentsInc/openagents/issues/3698) | planned | Implement the first transductive lane with a Psionic-backed local model adapter. |
 | `ARC-307` / [#3699](https://github.com/OpenAgentsInc/openagents/issues/3699) | planned | Implement the recursive tiny-model lane interface and bounded step tracing, even if the first model remains small. |
 | `ARC-308` / [#3700](https://github.com/OpenAgentsInc/openagents/issues/3700) | planned | Implement the MDL/compression lane and simplicity-aware ranking signal. |
