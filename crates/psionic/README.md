@@ -309,8 +309,9 @@ Current posture:
   seeded or best-effort random uniform/normal creation, dtype casts,
   `arange`/`linspace`/`eye` helpers, explicit `eval` / `async_eval`
   boundaries, explicit host-owned typed buffer export, singleton `item()`
-  extraction, deterministic tree flatten/map/unflatten utilities, and snapshot
-  graph export for the current output set.
+  extraction, deterministic tree flatten/map/unflatten utilities, bounded
+  runtime resource reporting with active/peak/cache counters plus cache-limit
+  and reset controls, and snapshot graph export for the current output set.
 - `psionic-array-io`: public array artifact import/export companion above
   `psionic-array`, with stable receipts, explicit dtype and quantization truth,
   single-array `npy`, multi-array `npz`, multi-array `safetensors`, and a

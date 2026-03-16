@@ -2938,7 +2938,9 @@ while `psionic-array-io` owns public framework-facing `npy` / `npz` /
 surface, and `psionic-function-io` owns public `.psifn` export/import
 artifacts plus a bounded `.mlxfn` compatibility shell above export-safe graph
 and compiler contracts instead of burying that boundary inside train-local
-packaging code.
+packaging code; `psionic-array` now also owns bounded public runtime memory
+reporting with active/peak/cache counters plus explicit cache-limit and reset
+controls above the reference eval substrate.
 
 ### 25. `Training Truth: add deterministic replay and reproducibility guarantees`
 

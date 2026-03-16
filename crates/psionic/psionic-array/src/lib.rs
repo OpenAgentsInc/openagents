@@ -6,15 +6,23 @@
 //! substrate without claiming full runtime scheduling or broader MLX-class
 //! array closure yet.
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, VecDeque},
+    rc::Rc,
+};
 
 use psionic_core::{
     DType, Device, DeviceKind, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec,
 };
 use psionic_ir::{Graph, GraphBuilder, GraphError, OpKind};
 use psionic_runtime::{
-    DeterminismContractError, DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryClass,
-    GeneratorState, RuntimeDeterminismContract,
+    default_cache_invalidation_policy, AllocatorPoolPolicy, AllocatorPoolReport,
+    AllocatorPoolState, BackendRuntimeResources, CacheInvalidationPolicy, DeterminismContractError,
+    DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
+    ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState, GeneratorState,
+    IsolationResetScope, KernelCachePolicy, KernelCacheReport, KernelCacheState,
+    RuntimeDeterminismContract,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use thiserror::Error;
@@ -22,12 +30,143 @@ use thiserror::Error;
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "public lazy array facade above psionic-core and psionic-ir";
 
+const DEFAULT_EXECUTION_PLAN_CACHE_ENTRIES: usize = 16;
+const DEFAULT_EXECUTION_PLAN_CACHE_BYTES: u64 = 512 * 1024;
+const DEFAULT_ALLOCATOR_POOL_BUFFERS: usize = 16;
+const DEFAULT_ALLOCATOR_POOL_BYTES: u64 = 512 * 1024;
+const DEFAULT_KERNEL_CACHE_ENTRIES: usize = 16;
+const DEFAULT_KERNEL_CACHE_BYTES: u64 = 256 * 1024;
+
 #[derive(Debug)]
 struct ArrayContextInner {
     device: ArrayDevice,
     builder: RefCell<GraphBuilder>,
     determinism: RefCell<RuntimeDeterminismContract>,
     next_stream_id: RefCell<u32>,
+    runtime_state: RefCell<ArrayRuntimeState>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArrayRuntimeState {
+    total_bytes: u64,
+    peak_bytes: u64,
+    tensor_bytes: BTreeMap<TensorId, u64>,
+    runtime_resources: BackendRuntimeResources,
+    cache_invalidation_policy: CacheInvalidationPolicy,
+    execution_plan_cache: VecDeque<ArrayCacheEntry>,
+    allocator_pool: VecDeque<ArrayAllocatorEntry>,
+    kernel_cache: VecDeque<ArrayCacheEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArrayCacheEntry {
+    key: String,
+    bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArrayAllocatorEntry {
+    signature: String,
+    bytes: u64,
+}
+
+/// Public active, peak, and cached-memory counters for the bounded array surface.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ArrayMemoryCounters {
+    /// Bytes currently owned by the graph-backed array context.
+    pub active_bytes: u64,
+    /// Peak active bytes observed by the context so far.
+    pub peak_bytes: u64,
+    /// Bytes currently retained by runtime-owned caches.
+    pub cached_bytes: u64,
+}
+
+/// Public cache-limit control for the bounded array runtime surface.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayCacheLimitControl {
+    /// Execution-plan cache policy for graph-eval reuse.
+    pub execution_plan_cache: ExecutionPlanCachePolicy,
+    /// Allocator-pool policy for reusable reference buffers.
+    pub allocator_pool: AllocatorPoolPolicy,
+    /// Kernel-cache policy for bounded op-family reuse.
+    pub kernel_cache: KernelCachePolicy,
+}
+
+impl ArrayCacheLimitControl {
+    /// Returns the default bounded cache-control posture for the current array surface.
+    #[must_use]
+    pub const fn bounded_reference_defaults() -> Self {
+        Self {
+            execution_plan_cache: ExecutionPlanCachePolicy::bounded(
+                DEFAULT_EXECUTION_PLAN_CACHE_ENTRIES,
+                Some(DEFAULT_EXECUTION_PLAN_CACHE_BYTES),
+            ),
+            allocator_pool: AllocatorPoolPolicy::exact_tensor_spec(
+                DEFAULT_ALLOCATOR_POOL_BUFFERS,
+                DEFAULT_ALLOCATOR_POOL_BYTES,
+            ),
+            kernel_cache: KernelCachePolicy::bounded(
+                DEFAULT_KERNEL_CACHE_ENTRIES,
+                Some(DEFAULT_KERNEL_CACHE_BYTES),
+            ),
+        }
+    }
+}
+
+impl Default for ArrayCacheLimitControl {
+    fn default() -> Self {
+        Self::bounded_reference_defaults()
+    }
+}
+
+/// Public runtime-resource report for the bounded array surface.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayRuntimeResourceReport {
+    /// Active, peak, and cached-memory counters.
+    pub memory: ArrayMemoryCounters,
+    /// Explicit runtime-owned cache policy and occupancy state.
+    pub backend_resources: BackendRuntimeResources,
+    /// Explicit cache invalidation policy inherited from the runtime substrate.
+    pub cache_invalidation_policy: CacheInvalidationPolicy,
+}
+
+/// Runtime cache family that can be reset on the bounded array surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayCacheResetScope {
+    /// Reset only the execution-plan cache.
+    ExecutionPlanCache,
+    /// Reset only the reusable allocator pool.
+    AllocatorPool,
+    /// Reset only the kernel cache.
+    KernelCache,
+    /// Reset all backend runtime resources together.
+    BackendRuntimeResources,
+}
+
+impl ArrayCacheResetScope {
+    /// Returns the matching isolation-reset scope exposed by the runtime substrate.
+    #[must_use]
+    pub const fn isolation_reset_scope(self) -> IsolationResetScope {
+        match self {
+            Self::ExecutionPlanCache
+            | Self::AllocatorPool
+            | Self::KernelCache
+            | Self::BackendRuntimeResources => IsolationResetScope::BackendRuntimeResources,
+        }
+    }
+}
+
+/// Stable receipt for one explicit runtime-cache reset.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayCacheResetReceipt {
+    /// Cache scopes that were explicitly reset.
+    pub reset_scopes: Vec<ArrayCacheResetScope>,
+    /// Cache bytes reclaimed by the reset.
+    pub reclaimed_cache_bytes: u64,
+    /// Resource report before the reset.
+    pub before: ArrayRuntimeResourceReport,
+    /// Resource report after the reset.
+    pub after: ArrayRuntimeResourceReport,
 }
 
 /// Error type raised by the public lazy-array facade.
@@ -128,6 +267,330 @@ pub enum ArrayError {
     /// The lower graph builder rejected the requested operation.
     #[error(transparent)]
     Graph(#[from] GraphError),
+}
+
+impl ArrayRuntimeState {
+    fn new(device: &ArrayDevice) -> Self {
+        let limits = ArrayCacheLimitControl::default();
+        let execution_plan_cache = limits.execution_plan_cache;
+        let allocator_pool = limits.allocator_pool;
+        let allocator_pool_budget_bytes = allocator_pool.max_cached_bytes;
+        let kernel_cache = limits.kernel_cache;
+        let kernel_cache_budget_bytes = kernel_cache.max_cached_bytes.unwrap_or(0);
+        let runtime_resources = BackendRuntimeResources {
+            execution_plan_cache: ExecutionPlanCacheReport {
+                policy: execution_plan_cache,
+                state: ExecutionPlanCacheState::default(),
+            },
+            allocator_pool: AllocatorPoolReport {
+                policy: allocator_pool,
+                state: AllocatorPoolState::default(),
+            },
+            kernel_cache: KernelCacheReport {
+                policy: kernel_cache,
+                state: KernelCacheState::default(),
+            },
+            device_memory_budget: Some(DeviceMemoryBudget::new(
+                device.descriptor().memory_capacity_bytes,
+                allocator_pool_budget_bytes,
+                kernel_cache_budget_bytes,
+            )),
+        };
+        Self {
+            total_bytes: 0,
+            peak_bytes: 0,
+            tensor_bytes: BTreeMap::new(),
+            runtime_resources,
+            cache_invalidation_policy: default_cache_invalidation_policy(),
+            execution_plan_cache: VecDeque::new(),
+            allocator_pool: VecDeque::new(),
+            kernel_cache: VecDeque::new(),
+        }
+    }
+
+    fn report(&self) -> ArrayRuntimeResourceReport {
+        ArrayRuntimeResourceReport {
+            memory: ArrayMemoryCounters {
+                active_bytes: self.total_bytes,
+                peak_bytes: self.peak_bytes,
+                cached_bytes: self.cached_bytes(),
+            },
+            backend_resources: self.runtime_resources.clone(),
+            cache_invalidation_policy: self.cache_invalidation_policy.clone(),
+        }
+    }
+
+    fn cached_bytes(&self) -> u64 {
+        self.runtime_resources
+            .execution_plan_cache
+            .state
+            .cached_bytes
+            .saturating_add(self.runtime_resources.allocator_pool.state.cached_bytes)
+            .saturating_add(self.runtime_resources.kernel_cache.state.cached_bytes)
+    }
+
+    fn record_tensor(&mut self, tensor: &Tensor) {
+        self.tensor_bytes.entry(tensor.id()).or_insert_with(|| {
+            let bytes = tensor_bytes(tensor.spec());
+            self.total_bytes = self.total_bytes.saturating_add(bytes);
+            self.peak_bytes = self.peak_bytes.max(self.total_bytes);
+            bytes
+        });
+    }
+
+    fn apply_cache_limits(
+        &mut self,
+        limits: ArrayCacheLimitControl,
+        memory_capacity_bytes: Option<u64>,
+    ) {
+        let execution_plan_cache = limits.execution_plan_cache;
+        let allocator_pool = limits.allocator_pool;
+        let allocator_pool_budget_bytes = allocator_pool.max_cached_bytes;
+        let kernel_cache = limits.kernel_cache;
+        let kernel_cache_budget_bytes = kernel_cache.max_cached_bytes.unwrap_or(0);
+        self.runtime_resources.execution_plan_cache.policy = execution_plan_cache;
+        self.runtime_resources.allocator_pool.policy = allocator_pool;
+        self.runtime_resources.kernel_cache.policy = kernel_cache;
+        self.runtime_resources.device_memory_budget = Some(DeviceMemoryBudget::new(
+            memory_capacity_bytes,
+            allocator_pool_budget_bytes,
+            kernel_cache_budget_bytes,
+        ));
+        self.enforce_execution_plan_cache_limits();
+        self.enforce_allocator_pool_limits();
+        self.enforce_kernel_cache_limits();
+        self.refresh_cache_state();
+    }
+
+    fn record_eval(&mut self, graph: &Graph, outputs: &[Array]) {
+        self.record_execution_plan(graph);
+        self.record_kernel_families(graph);
+        self.record_allocator_buffers(outputs);
+        self.refresh_cache_state();
+    }
+
+    fn record_execution_plan(&mut self, graph: &Graph) {
+        let policy = &self.runtime_resources.execution_plan_cache.policy;
+        if !policy.enabled || policy.max_cached_entries == 0 {
+            self.execution_plan_cache.clear();
+            return;
+        }
+        let digest = graph.stable_digest();
+        if let Some(index) = self
+            .execution_plan_cache
+            .iter()
+            .position(|entry| entry.key == digest)
+        {
+            if let Some(entry) = self.execution_plan_cache.remove(index) {
+                self.execution_plan_cache.push_back(entry);
+            }
+            return;
+        }
+        self.execution_plan_cache.push_back(ArrayCacheEntry {
+            key: digest,
+            bytes: estimate_execution_plan_cache_bytes(graph),
+        });
+        self.enforce_execution_plan_cache_limits();
+    }
+
+    fn record_kernel_families(&mut self, graph: &Graph) {
+        let policy = &self.runtime_resources.kernel_cache.policy;
+        if !policy.enabled || policy.max_cached_entries == 0 {
+            self.kernel_cache.clear();
+            return;
+        }
+        for label in graph
+            .nodes()
+            .iter()
+            .filter_map(|node| kernel_cache_label(node.op()))
+        {
+            if let Some(index) = self
+                .kernel_cache
+                .iter()
+                .position(|entry| entry.key == label)
+            {
+                if let Some(entry) = self.kernel_cache.remove(index) {
+                    self.kernel_cache.push_back(entry);
+                }
+                continue;
+            }
+            self.kernel_cache.push_back(ArrayCacheEntry {
+                bytes: estimate_kernel_cache_bytes(label.as_str()),
+                key: label,
+            });
+        }
+        self.enforce_kernel_cache_limits();
+    }
+
+    fn record_allocator_buffers(&mut self, outputs: &[Array]) {
+        let policy = &self.runtime_resources.allocator_pool.policy;
+        if policy.mode == psionic_runtime::AllocatorPoolMode::Disabled
+            || policy.max_cached_buffers == 0
+        {
+            self.allocator_pool.clear();
+            return;
+        }
+        for output in outputs {
+            let signature = tensor_spec_signature(output.spec());
+            if let Some(index) = self
+                .allocator_pool
+                .iter()
+                .position(|entry| entry.signature == signature)
+            {
+                if let Some(entry) = self.allocator_pool.remove(index) {
+                    self.allocator_pool.push_back(entry);
+                }
+                continue;
+            }
+            self.allocator_pool.push_back(ArrayAllocatorEntry {
+                bytes: tensor_bytes(output.spec()),
+                signature,
+            });
+        }
+        self.enforce_allocator_pool_limits();
+    }
+
+    fn reset_caches(&mut self, scopes: &[ArrayCacheResetScope]) -> ArrayCacheResetReceipt {
+        let before = self.report();
+        for scope in scopes {
+            match scope {
+                ArrayCacheResetScope::ExecutionPlanCache => self.execution_plan_cache.clear(),
+                ArrayCacheResetScope::AllocatorPool => self.allocator_pool.clear(),
+                ArrayCacheResetScope::KernelCache => self.kernel_cache.clear(),
+                ArrayCacheResetScope::BackendRuntimeResources => {
+                    self.execution_plan_cache.clear();
+                    self.allocator_pool.clear();
+                    self.kernel_cache.clear();
+                }
+            }
+        }
+        self.refresh_cache_state();
+        let after = self.report();
+        ArrayCacheResetReceipt {
+            reset_scopes: scopes.to_vec(),
+            reclaimed_cache_bytes: before
+                .memory
+                .cached_bytes
+                .saturating_sub(after.memory.cached_bytes),
+            before,
+            after,
+        }
+    }
+
+    fn refresh_cache_state(&mut self) {
+        self.runtime_resources.execution_plan_cache.state = ExecutionPlanCacheState {
+            cached_entries: self.execution_plan_cache.len(),
+            cached_bytes: self
+                .execution_plan_cache
+                .iter()
+                .map(|entry| entry.bytes)
+                .sum(),
+        };
+        self.runtime_resources.allocator_pool.state = AllocatorPoolState {
+            cached_buffers: self.allocator_pool.len(),
+            cached_bytes: self.allocator_pool.iter().map(|entry| entry.bytes).sum(),
+        };
+        self.runtime_resources.kernel_cache.state = KernelCacheState {
+            cached_entries: self.kernel_cache.len(),
+            cached_bytes: self.kernel_cache.iter().map(|entry| entry.bytes).sum(),
+        };
+    }
+
+    fn enforce_execution_plan_cache_limits(&mut self) {
+        let policy = &self.runtime_resources.execution_plan_cache.policy;
+        if !policy.enabled || policy.max_cached_entries == 0 {
+            self.execution_plan_cache.clear();
+            return;
+        }
+        while self.execution_plan_cache.len() > policy.max_cached_entries {
+            self.execution_plan_cache.pop_front();
+        }
+        if let Some(max_cached_bytes) = policy.max_cached_bytes {
+            while cache_bytes(self.execution_plan_cache.iter().map(|entry| entry.bytes))
+                > max_cached_bytes
+            {
+                if self.execution_plan_cache.pop_front().is_none() {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn enforce_allocator_pool_limits(&mut self) {
+        let policy = &self.runtime_resources.allocator_pool.policy;
+        if policy.mode == psionic_runtime::AllocatorPoolMode::Disabled
+            || policy.max_cached_buffers == 0
+        {
+            self.allocator_pool.clear();
+            return;
+        }
+        while self.allocator_pool.len() > policy.max_cached_buffers {
+            self.allocator_pool.pop_front();
+        }
+        while cache_bytes(self.allocator_pool.iter().map(|entry| entry.bytes))
+            > policy.max_cached_bytes
+        {
+            if self.allocator_pool.pop_front().is_none() {
+                break;
+            }
+        }
+    }
+
+    fn enforce_kernel_cache_limits(&mut self) {
+        let policy = &self.runtime_resources.kernel_cache.policy;
+        if !policy.enabled || policy.max_cached_entries == 0 {
+            self.kernel_cache.clear();
+            return;
+        }
+        while self.kernel_cache.len() > policy.max_cached_entries {
+            self.kernel_cache.pop_front();
+        }
+        if let Some(max_cached_bytes) = policy.max_cached_bytes {
+            while cache_bytes(self.kernel_cache.iter().map(|entry| entry.bytes)) > max_cached_bytes
+            {
+                if self.kernel_cache.pop_front().is_none() {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn tensor_bytes(spec: &TensorSpec) -> u64 {
+    (spec.shape().element_count() as u64).saturating_mul(spec.dtype().element_size_bytes() as u64)
+}
+
+fn tensor_spec_signature(spec: &TensorSpec) -> String {
+    format!(
+        "{}:{:?}:{:?}",
+        spec.device(),
+        spec.dtype(),
+        spec.shape().dims()
+    )
+}
+
+fn cache_bytes<I>(bytes: I) -> u64
+where
+    I: IntoIterator<Item = u64>,
+{
+    bytes.into_iter().sum()
+}
+
+fn estimate_execution_plan_cache_bytes(graph: &Graph) -> u64 {
+    (graph.nodes().len() as u64)
+        .saturating_mul(64)
+        .saturating_add((graph.outputs().len() as u64).saturating_mul(16))
+}
+
+fn kernel_cache_label(op: &OpKind) -> Option<String> {
+    match op {
+        OpKind::Input { .. } | OpKind::Constant { .. } => None,
+        other => Some(other.label().to_string()),
+    }
+}
+
+fn estimate_kernel_cache_bytes(label: &str) -> u64 {
+    32_u64.saturating_add(label.len() as u64)
 }
 
 /// Honest current unified-memory posture for one public array device.
@@ -744,7 +1207,12 @@ impl TreeSpec {
         I: Iterator<Item = T>,
     {
         match self {
-            Self::Leaf => Tree::Leaf(leaves.next().expect("leaf count already validated")),
+            Self::Leaf => {
+                let Some(leaf) = leaves.next() else {
+                    unreachable!("leaf count should have been validated before unflatten")
+                };
+                Tree::Leaf(leaf)
+            }
             Self::List(values) => Tree::List(
                 values
                     .iter()
@@ -777,6 +1245,7 @@ pub enum AsyncEvalStatus {
 /// Deferred public evaluation ticket returned by `async_eval`.
 #[derive(Clone, Debug)]
 pub struct PendingAsyncEval {
+    context: Rc<ArrayContextInner>,
     graph: Graph,
     outputs: Vec<Array>,
     stream: ArrayStream,
@@ -791,12 +1260,17 @@ impl PendingAsyncEval {
 
     /// Synchronizes the deferred ticket and materializes the requested outputs.
     pub fn wait(self) -> Result<Vec<EvaluatedArray>, ArrayError> {
-        evaluate_graph_snapshot(
+        let outputs = evaluate_graph_snapshot(
             &self.graph,
             self.outputs.as_slice(),
             MaterializationTrigger::AsyncEvalWait,
             &self.stream,
-        )
+        )?;
+        self.context
+            .runtime_state
+            .borrow_mut()
+            .record_eval(&self.graph, self.outputs.as_slice());
+        Ok(outputs)
     }
 }
 
@@ -835,8 +1309,12 @@ impl ArrayContext {
     /// Creates a context pinned to one public array-device handle.
     #[must_use]
     pub fn with_device(device: ArrayDevice) -> Self {
-        Self::with_device_and_determinism(device, RuntimeDeterminismContract::best_effort())
-            .expect("best-effort array determinism contract should validate")
+        match Self::with_device_and_determinism(device, RuntimeDeterminismContract::best_effort()) {
+            Ok(context) => context,
+            Err(error) => {
+                unreachable!("best-effort array determinism contract should validate: {error}")
+            }
+        }
     }
 
     /// Creates a context pinned to one device plus one explicit runtime determinism contract.
@@ -876,12 +1354,14 @@ impl ArrayContext {
             determinism
         };
         let stream = ArrayStream::default_for(device.clone());
+        let runtime_state = ArrayRuntimeState::new(&device);
         Ok(Self {
             inner: Rc::new(ArrayContextInner {
                 builder: RefCell::new(GraphBuilder::new(device.device().clone())),
                 determinism: RefCell::new(determinism),
                 device,
                 next_stream_id: RefCell::new(1),
+                runtime_state: RefCell::new(runtime_state),
             }),
             stream,
         })
@@ -921,6 +1401,28 @@ impl ArrayContext {
     #[must_use]
     pub fn stream(&self) -> &ArrayStream {
         &self.stream
+    }
+
+    /// Returns the current bounded runtime-memory and cache report for the context.
+    #[must_use]
+    pub fn runtime_resource_report(&self) -> ArrayRuntimeResourceReport {
+        self.inner.runtime_state.borrow().report()
+    }
+
+    /// Applies explicit cache limits to the bounded runtime surface.
+    pub fn configure_cache_limits(
+        &self,
+        limits: ArrayCacheLimitControl,
+    ) -> ArrayRuntimeResourceReport {
+        let memory_capacity_bytes = self.inner.device.descriptor().memory_capacity_bytes;
+        let mut runtime_state = self.inner.runtime_state.borrow_mut();
+        runtime_state.apply_cache_limits(limits, memory_capacity_bytes);
+        runtime_state.report()
+    }
+
+    /// Explicitly resets one or more bounded runtime cache families.
+    pub fn reset_runtime_caches(&self, scopes: &[ArrayCacheResetScope]) -> ArrayCacheResetReceipt {
+        self.inner.runtime_state.borrow_mut().reset_caches(scopes)
     }
 
     /// Allocates a new explicit stream handle on the current device.
@@ -1137,7 +1639,13 @@ impl ArrayContext {
     /// CPU-reference path.
     pub fn eval(&self, outputs: &[Array]) -> Result<Vec<EvaluatedArray>, ArrayError> {
         let graph = self.graph_for(outputs)?;
-        evaluate_graph_snapshot(&graph, outputs, MaterializationTrigger::Eval, &self.stream)
+        let evaluated =
+            evaluate_graph_snapshot(&graph, outputs, MaterializationTrigger::Eval, &self.stream)?;
+        self.inner
+            .runtime_state
+            .borrow_mut()
+            .record_eval(&graph, outputs);
+        Ok(evaluated)
     }
 
     /// Captures a replay-stable deferred evaluation ticket for the requested
@@ -1145,6 +1653,7 @@ impl ArrayContext {
     pub fn async_eval(&self, outputs: &[Array]) -> Result<PendingAsyncEval, ArrayError> {
         let graph = self.graph_for(outputs)?;
         Ok(PendingAsyncEval {
+            context: self.inner.clone(),
             graph,
             outputs: outputs.to_vec(),
             stream: self.stream.clone(),
@@ -1175,6 +1684,7 @@ pub type ScalarTree = Tree<ArrayScalar>;
 
 impl Array {
     fn from_tensor(context: Rc<ArrayContextInner>, stream: ArrayStream, tensor: Tensor) -> Self {
+        context.runtime_state.borrow_mut().record_tensor(&tensor);
         let graph = context
             .builder
             .borrow()
@@ -1293,8 +1803,13 @@ impl Array {
         &self,
         trigger: MaterializationTrigger,
     ) -> Result<EvaluatedArray, ArrayError> {
-        let graph = self.context().graph_for(&[self.clone()])?;
-        let mut outputs = evaluate_graph_snapshot(&graph, &[self.clone()], trigger, self.stream())?;
+        let graph = self.context().graph_for(std::slice::from_ref(self))?;
+        let mut outputs =
+            evaluate_graph_snapshot(&graph, std::slice::from_ref(self), trigger, self.stream())?;
+        self.context
+            .runtime_state
+            .borrow_mut()
+            .record_eval(&graph, std::slice::from_ref(self));
         Ok(outputs.remove(0))
     }
 
@@ -1306,7 +1821,7 @@ impl Array {
 
     /// Captures a replay-stable deferred evaluation ticket for this array.
     pub fn async_eval(&self) -> Result<PendingAsyncEval, ArrayError> {
-        self.context().async_eval(&[self.clone()])
+        self.context().async_eval(std::slice::from_ref(self))
     }
 
     /// Explicitly exports this array into one host-owned typed buffer.
@@ -1623,10 +2138,16 @@ fn scalar_from_evaluated(
     let host = host_array_data_from_evaluated(tensor, dtype, data)?;
     let value = match &host.values {
         HostArrayStorage::F32(values) => {
-            HostScalarValue::F32(*values.first().expect("singleton check already validated"))
+            let Some(value) = values.first() else {
+                unreachable!("singleton check should guarantee one f32 value")
+            };
+            HostScalarValue::F32(*value)
         }
         HostArrayStorage::I8(values) => {
-            HostScalarValue::I8(*values.first().expect("singleton check already validated"))
+            let Some(value) = values.first() else {
+                unreachable!("singleton check should guarantee one i8 value")
+            };
+            HostScalarValue::I8(*value)
         }
     };
     Ok(ArrayScalar::new(dtype, value))
@@ -2134,12 +2655,15 @@ fn ravel_index(indices: &[usize], dims: &[usize]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        Array, ArrayContext, ArrayError, ArrayScalar, AsyncEvalStatus,
-        ImplicitMaterializationPolicy, MaterializationTrigger, ReplayBoundary,
+        Array, ArrayCacheLimitControl, ArrayCacheResetScope, ArrayContext, ArrayError, ArrayScalar,
+        AsyncEvalStatus, ImplicitMaterializationPolicy, MaterializationTrigger, ReplayBoundary,
         StreamDependencyPolicy, StreamKind, Tree, TreeError, TreeSpec, UnifiedMemoryCapability,
     };
     use psionic_core::{DType, Device, DeviceKind, Shape};
-    use psionic_runtime::{DeviceDescriptor, GeneratorScope};
+    use psionic_runtime::{
+        AllocatorPoolPolicy, DeviceDescriptor, ExecutionPlanCachePolicy, GeneratorScope,
+        KernelCachePolicy,
+    };
     use std::collections::BTreeMap;
 
     #[test]
@@ -2283,6 +2807,166 @@ mod tests {
                 name: String::from("x"),
             }
         );
+    }
+
+    #[test]
+    fn public_lazy_array_runtime_resource_report_tracks_active_peak_and_cache_counters(
+    ) -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let left = context.ones_f32(Shape::new(vec![2, 2]))?;
+        let right = context.full_f32(Shape::new(vec![2, 2]), 2.0)?;
+        let output = left.add(&right)?;
+
+        let initial = context.runtime_resource_report();
+        assert_eq!(initial.memory.active_bytes, 48);
+        assert_eq!(initial.memory.peak_bytes, 48);
+        assert_eq!(initial.memory.cached_bytes, 0);
+        assert_eq!(
+            initial
+                .backend_resources
+                .execution_plan_cache
+                .state
+                .cached_entries,
+            0
+        );
+        assert_eq!(
+            initial
+                .backend_resources
+                .allocator_pool
+                .state
+                .cached_buffers,
+            0
+        );
+        assert_eq!(
+            initial.backend_resources.kernel_cache.state.cached_entries,
+            0
+        );
+
+        let _ = output.eval()?;
+
+        let after_eval = context.runtime_resource_report();
+        assert_eq!(after_eval.memory.active_bytes, 48);
+        assert_eq!(after_eval.memory.peak_bytes, 48);
+        assert!(after_eval.memory.cached_bytes > 0);
+        assert_eq!(
+            after_eval
+                .backend_resources
+                .execution_plan_cache
+                .state
+                .cached_entries,
+            1
+        );
+        assert_eq!(
+            after_eval
+                .backend_resources
+                .allocator_pool
+                .state
+                .cached_buffers,
+            1
+        );
+        assert_eq!(
+            after_eval
+                .backend_resources
+                .kernel_cache
+                .state
+                .cached_entries,
+            1
+        );
+
+        let _ = output.eval()?;
+        let repeated = context.runtime_resource_report();
+        assert_eq!(
+            repeated
+                .backend_resources
+                .execution_plan_cache
+                .state
+                .cached_entries,
+            1
+        );
+        assert_eq!(
+            repeated
+                .backend_resources
+                .allocator_pool
+                .state
+                .cached_buffers,
+            1
+        );
+        assert_eq!(
+            repeated.backend_resources.kernel_cache.state.cached_entries,
+            1
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_cache_limit_controls_clamp_and_reset_runtime_resources(
+    ) -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let _ = context.configure_cache_limits(ArrayCacheLimitControl {
+            execution_plan_cache: ExecutionPlanCachePolicy::bounded(1, Some(512)),
+            allocator_pool: AllocatorPoolPolicy::exact_tensor_spec(1, 64),
+            kernel_cache: KernelCachePolicy::bounded(1, Some(64)),
+        });
+
+        let add_left = context.ones_f32(Shape::new(vec![2, 2]))?;
+        let add_right = context.full_f32(Shape::new(vec![2, 2]), 3.0)?;
+        let add_graph = add_left.add(&add_right)?;
+        let mat_left = context.ones_f32(Shape::new(vec![2, 3]))?;
+        let mat_right = context.ones_f32(Shape::new(vec![3, 2]))?;
+        let mat_graph = mat_left.matmul(&mat_right)?;
+
+        let _ = add_graph.eval()?;
+        let _ = mat_graph.eval()?;
+
+        let clamped = context.runtime_resource_report();
+        assert_eq!(
+            clamped
+                .backend_resources
+                .execution_plan_cache
+                .policy
+                .max_cached_entries,
+            1
+        );
+        assert_eq!(
+            clamped
+                .backend_resources
+                .execution_plan_cache
+                .state
+                .cached_entries,
+            1
+        );
+        assert_eq!(
+            clamped
+                .backend_resources
+                .allocator_pool
+                .state
+                .cached_buffers,
+            1
+        );
+        assert_eq!(
+            clamped.backend_resources.kernel_cache.state.cached_entries,
+            1
+        );
+
+        let receipt =
+            context.reset_runtime_caches(&[ArrayCacheResetScope::BackendRuntimeResources]);
+        assert!(receipt.reclaimed_cache_bytes > 0);
+        assert_eq!(
+            receipt.before.memory.cached_bytes,
+            clamped.memory.cached_bytes
+        );
+        assert_eq!(receipt.after.memory.cached_bytes, 0);
+        assert_eq!(
+            receipt
+                .reset_scopes
+                .iter()
+                .map(|scope| scope.isolation_reset_scope())
+                .collect::<Vec<_>>(),
+            vec![psionic_runtime::IsolationResetScope::BackendRuntimeResources]
+        );
+
+        Ok(())
     }
 
     #[test]
