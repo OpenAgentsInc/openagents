@@ -14,7 +14,7 @@ APP_SETTINGS_PATH="${APP_HOME}/.openagents/autopilot-settings-v1.conf"
 APP_IDENTITY_PATH="${APP_HOME}/.openagents/pylon/identity.mnemonic"
 APP_BUNDLE_PATH="${OPENAGENTS_PACKAGED_APP_BUNDLE:-$ROOT_DIR/target/release/bundle/osx/Autopilot.app}"
 APP_EXECUTABLE="${APP_BUNDLE_PATH}/Contents/MacOS/autopilot-desktop"
-APP_BRIDGE_BINARY="${APP_BUNDLE_PATH}/Contents/MacOS/foundation-bridge"
+APP_BRIDGE_APP="${APP_BUNDLE_PATH}/Contents/Helpers/FoundationBridge.app"
 AUTOPILOTCTL_BIN="${OPENAGENTS_PACKAGED_AUTOPILOTCTL_BIN:-$ROOT_DIR/target/release/autopilotctl}"
 HEADLESS_BIN="${OPENAGENTS_PACKAGED_HEADLESS_BIN:-$ROOT_DIR/target/release/autopilot-headless-compute}"
 SPARK_BIN="${OPENAGENTS_PACKAGED_SPARK_BIN:-$ROOT_DIR/target/release/spark-wallet-cli}"
@@ -273,9 +273,9 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
       "$CARGO_BUNDLE_BIN" --release --bin autopilot-desktop --format osx
     )
   fi
-  mkdir -p "${APP_BUNDLE_PATH}/Contents/MacOS"
-  cp bin/foundation-bridge "$APP_BRIDGE_BINARY"
-  chmod +x "$APP_BRIDGE_BINARY"
+  mkdir -p "${APP_BUNDLE_PATH}/Contents/Helpers"
+  rm -rf "$APP_BRIDGE_APP"
+  cp -R bin/FoundationBridge.app "$APP_BRIDGE_APP"
 fi
 
 [[ -x "$APP_EXECUTABLE" ]] || die "Missing packaged app executable at ${APP_EXECUTABLE}"

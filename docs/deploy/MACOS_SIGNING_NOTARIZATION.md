@@ -84,8 +84,8 @@ Example:
 The script will:
 
 1. Build and bundle `Autopilot.app`
-2. Build `swift/foundation-bridge` and copy the helper into `Autopilot.app/Contents/MacOS/foundation-bridge`
-3. Sign each executable inside the app bundle, then sign the app bundle
+2. Build `swift/foundation-bridge` and copy `FoundationBridge.app` into `Autopilot.app/Contents/Helpers/FoundationBridge.app`
+3. Sign the nested helper app, each executable inside the main app bundle, then sign the app bundle
 4. Create `Autopilot-<version>.dmg`
 5. Submit DMG for notarization
 6. Staple notarization ticket

@@ -455,7 +455,7 @@ scripts/release/check-v01-packaged-compute.sh
 What it does:
 
 - builds `Autopilot.app`, `autopilotctl`, `autopilot-headless-compute`, and `spark-wallet-cli`
-- bundles `foundation-bridge` into the app
+- bundles `FoundationBridge.app` into `Autopilot.app/Contents/Helpers`
 - launches the packaged app executable with isolated `HOME` and `OPENAGENTS_AUTOPILOT_LOG_DIR`
 - configures the bundle against a local deterministic relay via its settings file
 - brings the provider online through `autopilotctl`
