@@ -1605,6 +1605,622 @@ pub struct OperatorDispatchContract {
     pub resolved_backend: Option<String>,
 }
 
+/// Kind of user-facing extension contract carried by the bounded current scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionContractKind {
+    /// Custom operator schema registration.
+    CustomOp,
+    /// Custom backend-kernel registration.
+    CustomKernel,
+    /// Custom autograd hook registration.
+    CustomAutograd,
+    /// Backend plugin bundle.
+    BackendPlugin,
+    /// Quantizer plugin bundle.
+    QuantizerPlugin,
+}
+
+impl ExtensionContractKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CustomOp => "custom_op",
+            Self::CustomKernel => "custom_kernel",
+            Self::CustomAutograd => "custom_autograd",
+            Self::BackendPlugin => "backend_plugin",
+            Self::QuantizerPlugin => "quantizer_plugin",
+        }
+    }
+}
+
+/// Custom-op extension contract above the built-in registry.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomOpExtensionContract {
+    /// Custom schema surfaced to the registry.
+    pub schema: RegisteredOperatorSchema,
+    /// Whether the caller explicitly acknowledges declared-output ownership.
+    pub declared_output_required: bool,
+}
+
+impl CustomOpExtensionContract {
+    /// Validates the bounded custom-op contract.
+    pub fn validate(&self) -> Result<(), PsionicRefusal> {
+        if !self.declared_output_required {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedOp,
+                PsionicRefusalScope::Graph,
+                "custom-op extension contracts must explicitly require declared outputs",
+            )
+            .with_subject(self.schema.name.clone()));
+        }
+        let mut registry = ExtensibleOperatorRegistry::with_builtin();
+        registry
+            .register_custom_schema(self.schema.clone())
+            .map_err(|error| {
+                error.refusal().unwrap_or_else(|| {
+                    PsionicRefusal::new(
+                        PsionicRefusalCode::UnsupportedOp,
+                        PsionicRefusalScope::Graph,
+                        error.to_string(),
+                    )
+                })
+            })
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("kind={}", ExtensionContractKind::CustomOp.label()),
+            format!("name={}", self.schema.name),
+            format!("schema_version={}", self.schema.schema_version),
+            format!("arity={:?}", self.schema.arity),
+            format!("implementation={:?}", self.schema.implementation),
+            format!("meta_execution={:?}", self.schema.meta_execution),
+            format!("declared_output_required={}", self.declared_output_required),
+        ])
+    }
+}
+
+/// Custom-kernel extension contract above one validated custom schema.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomKernelExtensionContract {
+    /// Owning custom schema.
+    pub schema: RegisteredOperatorSchema,
+    /// Backend-kernel registration.
+    pub registration: KernelRegistration,
+}
+
+impl CustomKernelExtensionContract {
+    /// Validates the bounded custom-kernel contract.
+    pub fn validate(&self) -> Result<(), PsionicRefusal> {
+        let mut registry = ExtensibleOperatorRegistry::with_builtin();
+        registry
+            .register_custom_schema(self.schema.clone())
+            .map_err(|error| {
+                error.refusal().unwrap_or_else(|| {
+                    PsionicRefusal::new(
+                        PsionicRefusalCode::UnsupportedOp,
+                        PsionicRefusalScope::Graph,
+                        error.to_string(),
+                    )
+                })
+            })?;
+        registry
+            .register_kernel(self.registration.clone())
+            .map_err(|error| {
+                error.refusal().unwrap_or_else(|| {
+                    PsionicRefusal::new(
+                        PsionicRefusalCode::UnsupportedBackendCapability,
+                        PsionicRefusalScope::Graph,
+                        error.to_string(),
+                    )
+                })
+            })
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("kind={}", ExtensionContractKind::CustomKernel.label()),
+            format!("schema_name={}", self.schema.name),
+            format!("kernel_name={}", self.registration.name),
+            format!("backend={}", self.registration.backend_key()),
+            format!("kernel_symbol={}", self.registration.kernel_symbol),
+            format!("dispatch_kind={:?}", self.registration.dispatch_kind),
+        ])
+    }
+}
+
+/// Custom-autograd binding family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CustomAutogradBindingKind {
+    /// Symbolic vector-Jacobian product rule.
+    SymbolicVjp,
+    /// Composite backward program.
+    CompositeBackward,
+}
+
+/// User-facing custom-autograd contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomAutogradExtensionContract {
+    /// Operator label the custom backward attaches to.
+    pub op_name: String,
+    /// Stable custom backward symbol or family label.
+    pub backward_symbol: String,
+    /// Bounded current-scope autograd binding family.
+    pub binding_kind: CustomAutogradBindingKind,
+    /// Whether the custom backward expects functionalized inputs.
+    pub requires_functional_inputs: bool,
+}
+
+impl CustomAutogradExtensionContract {
+    /// Validates the bounded custom-autograd contract.
+    pub fn validate(&self) -> Result<(), PsionicRefusal> {
+        if self.op_name.is_empty() || self.backward_symbol.is_empty() {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedGradient,
+                PsionicRefusalScope::Autodiff,
+                "custom-autograd contract requires non-empty operator and backward symbols",
+            )
+            .with_subject(self.op_name.clone()));
+        }
+        if !self.requires_functional_inputs {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedGradient,
+                PsionicRefusalScope::Autodiff,
+                "bounded custom-autograd contracts require functionalized inputs",
+            )
+            .with_subject(self.op_name.clone()));
+        }
+        Ok(())
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("kind={}", ExtensionContractKind::CustomAutograd.label()),
+            format!("op_name={}", self.op_name),
+            format!("backward_symbol={}", self.backward_symbol),
+            format!("binding_kind={:?}", self.binding_kind),
+            format!(
+                "requires_functional_inputs={}",
+                self.requires_functional_inputs
+            ),
+        ])
+    }
+}
+
+/// User-facing backend-plugin contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendPluginExtensionContract {
+    /// Stable plugin identifier.
+    pub plugin_id: String,
+    /// Backend label surfaced by the plugin.
+    pub backend_label: String,
+    /// Custom schemas registered by the plugin.
+    pub custom_schemas: Vec<RegisteredOperatorSchema>,
+    /// Kernel registrations contributed by the plugin.
+    pub kernel_registrations: Vec<KernelRegistration>,
+}
+
+impl BackendPluginExtensionContract {
+    /// Validates the bounded backend-plugin contract.
+    pub fn validate(&self) -> Result<(), PsionicRefusal> {
+        if self.plugin_id.is_empty() || self.backend_label.is_empty() {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                "backend-plugin contracts require non-empty plugin and backend labels",
+            )
+            .with_subject(self.plugin_id.clone()));
+        }
+        if self.custom_schemas.is_empty() && self.kernel_registrations.is_empty() {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                "backend-plugin contracts must register at least one custom schema or kernel",
+            )
+            .with_subject(self.plugin_id.clone()));
+        }
+        let mut registry = ExtensibleOperatorRegistry::with_builtin();
+        for schema in &self.custom_schemas {
+            registry
+                .register_custom_schema(schema.clone())
+                .map_err(|error| {
+                    error.refusal().unwrap_or_else(|| {
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            error.to_string(),
+                        )
+                    })
+                })?;
+        }
+        for registration in &self.kernel_registrations {
+            registry
+                .register_kernel(registration.clone())
+                .map_err(|error| {
+                    error.refusal().unwrap_or_else(|| {
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedBackendCapability,
+                            PsionicRefusalScope::Graph,
+                            error.to_string(),
+                        )
+                    })
+                })?;
+        }
+        Ok(())
+    }
+
+    fn stable_digest(&self) -> String {
+        let mut lines = vec![
+            format!("kind={}", ExtensionContractKind::BackendPlugin.label()),
+            format!("plugin_id={}", self.plugin_id),
+            format!("backend_label={}", self.backend_label),
+        ];
+        for schema in &self.custom_schemas {
+            lines.push(format!("schema={}:{}", schema.name, schema.schema_version));
+        }
+        for registration in &self.kernel_registrations {
+            lines.push(format!(
+                "kernel={}@{}:{}",
+                registration.name,
+                registration.backend_key(),
+                registration.kernel_symbol
+            ));
+        }
+        digest_lines(lines)
+    }
+}
+
+/// User-facing quantizer-plugin contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizerPluginExtensionContract {
+    /// Stable plugin identifier.
+    pub plugin_id: String,
+    /// Quantization modes surfaced by the plugin.
+    pub supported_weight_modes: Vec<QuantizationMode>,
+    /// Whether the plugin can preserve export-aware quantization intent.
+    pub export_aware: bool,
+    /// Whether the plugin requires observer/fake-quant metadata.
+    pub requires_observer_contracts: bool,
+}
+
+impl QuantizerPluginExtensionContract {
+    /// Validates the bounded quantizer-plugin contract.
+    pub fn validate(&self) -> Result<(), PsionicRefusal> {
+        if self.plugin_id.is_empty() {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                "quantizer-plugin contracts require a non-empty plugin id",
+            )
+            .with_subject("quantizer_plugin"));
+        }
+        if self.supported_weight_modes.is_empty()
+            || self
+                .supported_weight_modes
+                .iter()
+                .any(|mode| matches!(mode, QuantizationMode::None))
+        {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                "quantizer-plugin contracts require one non-dense quantization mode",
+            )
+            .with_subject(self.plugin_id.clone()));
+        }
+        Ok(())
+    }
+
+    fn stable_digest(&self) -> String {
+        let mut lines = vec![
+            format!("kind={}", ExtensionContractKind::QuantizerPlugin.label()),
+            format!("plugin_id={}", self.plugin_id),
+            format!("export_aware={}", self.export_aware),
+            format!(
+                "requires_observer_contracts={}",
+                self.requires_observer_contracts
+            ),
+        ];
+        for mode in &self.supported_weight_modes {
+            lines.push(format!("mode={}", mode.label()));
+        }
+        digest_lines(lines)
+    }
+}
+
+/// Status for one bounded extension-contract case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionContractStatus {
+    /// The contract is supported in the bounded current scope.
+    Supported,
+    /// The contract is explicitly refused in the bounded current scope.
+    Refused,
+}
+
+/// One machine-readable bounded extension-contract case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionContractCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Contract kind under test.
+    pub kind: ExtensionContractKind,
+    /// Stable subject identifier such as an op or plugin id.
+    pub subject: String,
+    /// Current status for the case.
+    pub status: ExtensionContractStatus,
+    /// Stable digest of the contract payload when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_digest: Option<String>,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the contract is unsupported today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable bounded report for extension-contract semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionContractSemanticsReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Seeded contract cases that define the current scope.
+    pub cases: Vec<ExtensionContractCaseResult>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl ExtensionContractSemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<ExtensionContractCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest =
+            stable_extension_contract_semantics_digest(current_scope_window.as_str(), &cases);
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{:?}",
+                case.case_id,
+                case.kind.label(),
+                case.subject,
+                case.status
+            ));
+        }
+        lines
+    }
+}
+
+/// Builds the canonical bounded extension-contract semantics report.
+#[must_use]
+pub fn builtin_extension_contract_semantics_report() -> ExtensionContractSemanticsReport {
+    let custom_schema = RegisteredOperatorSchema::custom(
+        "x.example.masked_scale",
+        1,
+        OperatorArity::Fixed(2),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::DeclaredOutput,
+    );
+    let custom_kernel =
+        KernelRegistration::backend_specific("x.example.masked_scale", "cuda", "masked_scale_cuda");
+
+    ExtensionContractSemanticsReport::new(
+        String::from("psionic_extension_contracts_v1"),
+        vec![
+            supported_extension_contract_case(
+                "custom_op.masked_scale",
+                ExtensionContractKind::CustomOp,
+                "x.example.masked_scale",
+                CustomOpExtensionContract {
+                    schema: custom_schema.clone(),
+                    declared_output_required: true,
+                }
+                .validate()
+                .map(|_| CustomOpExtensionContract {
+                    schema: custom_schema.clone(),
+                    declared_output_required: true,
+                })
+                .expect("seeded custom-op contract should validate")
+                .stable_digest(),
+                "Current scope supports custom ops through declared-output schemas above the built-in registry.",
+            ),
+            supported_extension_contract_case(
+                "custom_kernel.masked_scale_cuda",
+                ExtensionContractKind::CustomKernel,
+                "x.example.masked_scale@cuda",
+                CustomKernelExtensionContract {
+                    schema: custom_schema.clone(),
+                    registration: custom_kernel.clone(),
+                }
+                .validate()
+                .map(|_| CustomKernelExtensionContract {
+                    schema: custom_schema.clone(),
+                    registration: custom_kernel.clone(),
+                })
+                .expect("seeded custom-kernel contract should validate")
+                .stable_digest(),
+                "Current scope supports backend-kernel registrations above validated custom schemas.",
+            ),
+            supported_extension_contract_case(
+                "custom_autograd.masked_scale_backward",
+                ExtensionContractKind::CustomAutograd,
+                "x.example.masked_scale",
+                CustomAutogradExtensionContract {
+                    op_name: String::from("x.example.masked_scale"),
+                    backward_symbol: String::from("masked_scale_backward"),
+                    binding_kind: CustomAutogradBindingKind::SymbolicVjp,
+                    requires_functional_inputs: true,
+                }
+                .validate()
+                .map(|_| CustomAutogradExtensionContract {
+                    op_name: String::from("x.example.masked_scale"),
+                    backward_symbol: String::from("masked_scale_backward"),
+                    binding_kind: CustomAutogradBindingKind::SymbolicVjp,
+                    requires_functional_inputs: true,
+                })
+                .expect("seeded custom-autograd contract should validate")
+                .stable_digest(),
+                "Current scope supports bounded custom-autograd bindings so long as they declare functional-input requirements explicitly.",
+            ),
+            supported_extension_contract_case(
+                "backend_plugin.example_cuda_plugin",
+                ExtensionContractKind::BackendPlugin,
+                "example_cuda_plugin",
+                BackendPluginExtensionContract {
+                    plugin_id: String::from("example_cuda_plugin"),
+                    backend_label: String::from("cuda"),
+                    custom_schemas: vec![custom_schema.clone()],
+                    kernel_registrations: vec![custom_kernel.clone()],
+                }
+                .validate()
+                .map(|_| BackendPluginExtensionContract {
+                    plugin_id: String::from("example_cuda_plugin"),
+                    backend_label: String::from("cuda"),
+                    custom_schemas: vec![custom_schema.clone()],
+                    kernel_registrations: vec![custom_kernel.clone()],
+                })
+                .expect("seeded backend-plugin contract should validate")
+                .stable_digest(),
+                "Current scope supports backend plugins as typed bundles of custom schemas and kernel registrations rather than hidden dynamic glue.",
+            ),
+            supported_extension_contract_case(
+                "quantizer_plugin.example_int8_quantizer",
+                ExtensionContractKind::QuantizerPlugin,
+                "example_int8_quantizer",
+                QuantizerPluginExtensionContract {
+                    plugin_id: String::from("example_int8_quantizer"),
+                    supported_weight_modes: vec![QuantizationMode::Int8Symmetric],
+                    export_aware: true,
+                    requires_observer_contracts: true,
+                }
+                .validate()
+                .map(|_| QuantizerPluginExtensionContract {
+                    plugin_id: String::from("example_int8_quantizer"),
+                    supported_weight_modes: vec![QuantizationMode::Int8Symmetric],
+                    export_aware: true,
+                    requires_observer_contracts: true,
+                })
+                .expect("seeded quantizer-plugin contract should validate")
+                .stable_digest(),
+                "Current scope supports quantizer plugins as typed capability bundles above raw decode and ad hoc observer wiring.",
+            ),
+            refused_extension_contract_case(
+                "custom_op.invalid_builtin_inference",
+                ExtensionContractKind::CustomOp,
+                "x.example.invalid_meta",
+                CustomOpExtensionContract {
+                    schema: RegisteredOperatorSchema::custom(
+                        "x.example.invalid_meta",
+                        1,
+                        OperatorArity::Fixed(1),
+                        OperatorImplementationKind::BackendKernel,
+                        OperatorMetaExecutionKind::BuiltinInference,
+                    ),
+                    declared_output_required: true,
+                }
+                .validate()
+                .expect_err("invalid custom-op contract should refuse"),
+                "Current scope refuses custom ops that try to bypass declared-output ownership.",
+            ),
+            refused_extension_contract_case(
+                "quantizer_plugin.invalid_empty_modes",
+                ExtensionContractKind::QuantizerPlugin,
+                "invalid_quantizer",
+                QuantizerPluginExtensionContract {
+                    plugin_id: String::from("invalid_quantizer"),
+                    supported_weight_modes: Vec::new(),
+                    export_aware: false,
+                    requires_observer_contracts: false,
+                }
+                .validate()
+                .expect_err("empty quantizer-plugin contract should refuse"),
+                "Current scope refuses quantizer plugins that do not declare at least one non-dense quantization mode.",
+            ),
+        ],
+    )
+}
+
+fn supported_extension_contract_case(
+    case_id: &str,
+    kind: ExtensionContractKind,
+    subject: &str,
+    contract_digest: String,
+    bounded_scope: &str,
+) -> ExtensionContractCaseResult {
+    ExtensionContractCaseResult {
+        case_id: String::from(case_id),
+        kind,
+        subject: String::from(subject),
+        status: ExtensionContractStatus::Supported,
+        contract_digest: Some(contract_digest),
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_extension_contract_case(
+    case_id: &str,
+    kind: ExtensionContractKind,
+    subject: &str,
+    refusal: PsionicRefusal,
+    bounded_scope: &str,
+) -> ExtensionContractCaseResult {
+    ExtensionContractCaseResult {
+        case_id: String::from(case_id),
+        kind,
+        subject: String::from(subject),
+        status: ExtensionContractStatus::Refused,
+        contract_digest: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_extension_contract_semantics_digest(
+    current_scope_window: &str,
+    cases: &[ExtensionContractCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("kind={}", case.kind.label()));
+        lines.push(format!("subject={}", case.subject));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!("bounded_scope={}", case.bounded_scope));
+        if let Some(contract_digest) = &case.contract_digest {
+            lines.push(format!("contract_digest={contract_digest}"));
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("refusal_code={:?}", refusal.code));
+            lines.push(format!("refusal_scope={:?}", refusal.scope));
+            lines.push(format!("refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    digest_lines(lines)
+}
+
 /// Extensible operator registry seeded from the built-in compact-core schemas.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExtensibleOperatorRegistry {
@@ -4089,16 +4705,17 @@ mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
-        builtin_operator_parity_matrix_report, builtin_program_transform_capability_matrix_report,
+        builtin_extension_contract_semantics_report, builtin_operator_parity_matrix_report,
+        builtin_program_transform_capability_matrix_report,
         builtin_tensor_family_capability_matrix_report, DType, ExecutionOp, ExecutionPlan,
-        ExecutionStep, FunctionalTensorKind, FunctionalizationPolicy, GraphBuilder, GraphError,
-        GraphTransformError, KernelDispatchKind, KernelRegistration, MaskedMetaContract,
-        MetaCapabilityProfile, MetaTensor, MetaTensorFamily, MetaTensorFamilyKind,
-        NestedMetaContract, OperatorArity, OperatorImplementationKind, OperatorMetaExecutionKind,
-        OperatorParityStatus, OperatorRegistry, ProgramTransformFamily, RegisteredOperatorSchema,
-        RegistryExtensionError, Shape, SparseMetaContract, SparseMetaLayout,
-        StorageAwareMetaContract, TensorFamilyCapabilityStatus, TensorFamilyCapabilitySurface,
-        TensorSpec, TransformBarrierKind,
+        ExecutionStep, ExtensionContractKind, FunctionalTensorKind, FunctionalizationPolicy,
+        GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind, KernelRegistration,
+        MaskedMetaContract, MetaCapabilityProfile, MetaTensor, MetaTensorFamily,
+        MetaTensorFamilyKind, NestedMetaContract, OperatorArity, OperatorImplementationKind,
+        OperatorMetaExecutionKind, OperatorParityStatus, OperatorRegistry, ProgramTransformFamily,
+        RegisteredOperatorSchema, RegistryExtensionError, Shape, SparseMetaContract,
+        SparseMetaLayout, StorageAwareMetaContract, TensorFamilyCapabilityStatus,
+        TensorFamilyCapabilitySurface, TensorSpec, TransformBarrierKind,
     };
 
     #[test]
@@ -4775,6 +5392,56 @@ mod tests {
         assert_eq!(vmap_refusal.code, PsionicRefusalCode::UnsupportedOp);
         assert_eq!(vmap_refusal.scope, PsionicRefusalScope::Graph);
         assert_eq!(vmap_refusal.subject.as_deref(), Some("vmap"));
+    }
+
+    #[test]
+    fn extension_contract_semantics_report_tracks_seeded_plugin_and_refusal_cases() {
+        let report = builtin_extension_contract_semantics_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.current_scope_window,
+            "psionic_extension_contracts_v1"
+        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let custom_op = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "custom_op.masked_scale")
+            .expect("missing custom-op seeded case");
+        assert_eq!(custom_op.kind, ExtensionContractKind::CustomOp);
+        assert!(custom_op.contract_digest.is_some());
+
+        let backend_plugin = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "backend_plugin.example_cuda_plugin")
+            .expect("missing backend-plugin seeded case");
+        assert_eq!(backend_plugin.kind, ExtensionContractKind::BackendPlugin);
+        assert!(backend_plugin.contract_digest.is_some());
+
+        let quantizer_refusal = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "quantizer_plugin.invalid_empty_modes")
+            .expect("missing quantizer refusal case");
+        assert_eq!(
+            quantizer_refusal.kind,
+            ExtensionContractKind::QuantizerPlugin
+        );
+        assert!(quantizer_refusal.refusal.is_some());
+        let refusal = quantizer_refusal
+            .refusal
+            .as_ref()
+            .expect("quantizer refusal should carry refusal");
+        assert_eq!(
+            refusal.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(refusal.scope, PsionicRefusalScope::Runtime);
     }
 
     #[test]

@@ -563,6 +563,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md](docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md)** —
   canonical bounded capability matrix for functionalization, symbolic rewrites,
   export-safe graphs, and explicit future higher-order transform refusal.
+- **[docs/EXTENSION_CONTRACT_SEMANTICS.md](docs/EXTENSION_CONTRACT_SEMANTICS.md)** —
+  canonical bounded contract surface for custom ops, kernels, autograd,
+  backend plugins, and quantizer plugins.
 - **[docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md](docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md)** —
   canonical capability and refusal matrix for dense, sparse, nested, masked,
   and storage-aware tensor-family contracts.
