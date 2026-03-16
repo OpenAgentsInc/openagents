@@ -8,13 +8,88 @@ use thiserror::Error;
 
 /// Stable ABI version for first-run Apple adapter experiment manifests.
 pub const APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION: &str =
-    "psionic.apple_adapter_experiment_manifest.v1";
+    "psionic.apple_adapter_experiment_manifest.v2";
 /// Stable ABI version for first-run Apple adapter trend ledgers.
 pub const APPLE_ADAPTER_EXPERIMENT_TREND_LEDGER_ABI_VERSION: &str =
     "psionic.apple_adapter_experiment_trend_ledger.v1";
 /// Canonical experiment id for the first real architecture-explainer run.
 pub const APPLE_ARCHITECTURE_EXPLAINER_EXPERIMENT_ID: &str =
     "apple_adapter.psionic_architecture_explainer.first_real_run";
+
+/// Benchmark gate variant used when judging whether one Apple adapter is useful.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAdapterUsefulAdapterBenchmarkMode {
+    /// The normal benchmark gate for the standard architecture-explainer run.
+    Standard,
+    /// The weaker benchmark-overfit gate that still requires non-zero movement.
+    OverfitNonZero,
+}
+
+impl AppleAdapterUsefulAdapterBenchmarkMode {
+    /// Returns the stable label for this benchmark mode.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::OverfitNonZero => "overfit_non_zero",
+        }
+    }
+}
+
+/// Frozen success contract for the first useful-adapter Apple reference lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppleAdapterUsefulAdapterAcceptanceGate {
+    /// Whether runtime smoke must pass before usefulness can be claimed.
+    pub runtime_smoke_required: bool,
+    /// Standard benchmark gate for the normal architecture-explainer run.
+    pub standard_benchmark_policy: AppleAdapterBaseVsAdapterAcceptancePolicy,
+    /// Separate non-zero overfit gate used to prove the lane can actually move.
+    pub overfit_non_zero_policy: AppleAdapterBaseVsAdapterAcceptancePolicy,
+}
+
+impl AppleAdapterUsefulAdapterAcceptanceGate {
+    /// Canonical useful-adapter gate for the first architecture-explainer lane.
+    #[must_use]
+    pub const fn architecture_explainer_default() -> Self {
+        Self {
+            runtime_smoke_required: true,
+            standard_benchmark_policy:
+                AppleAdapterBaseVsAdapterAcceptancePolicy::architecture_explainer_default(),
+            overfit_non_zero_policy: AppleAdapterBaseVsAdapterAcceptancePolicy {
+                minimum_adapter_score_bps: 1,
+                minimum_adapter_pass_rate_bps: 1,
+                minimum_score_delta_bps: 1,
+                minimum_pass_rate_delta_bps: 1,
+                minimum_improved_case_count: 1,
+            },
+        }
+    }
+
+    /// Returns the selected benchmark policy for one useful-adapter mode.
+    #[must_use]
+    pub const fn policy_for_mode(
+        &self,
+        mode: AppleAdapterUsefulAdapterBenchmarkMode,
+    ) -> &AppleAdapterBaseVsAdapterAcceptancePolicy {
+        match mode {
+            AppleAdapterUsefulAdapterBenchmarkMode::Standard => &self.standard_benchmark_policy,
+            AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero => &self.overfit_non_zero_policy,
+        }
+    }
+
+    fn validate(&self) -> Result<(), AppleAdapterExperimentError> {
+        validate_acceptance_policy(
+            &self.standard_benchmark_policy,
+            "useful_adapter_gate.standard_benchmark_policy",
+        )?;
+        validate_acceptance_policy(
+            &self.overfit_non_zero_policy,
+            "useful_adapter_gate.overfit_non_zero_policy",
+        )?;
+        Ok(())
+    }
+}
 
 /// One frozen experiment manifest for a concrete Apple adapter training attempt.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,8 +132,8 @@ pub struct AppleAdapterExperimentManifest {
     pub lora_rank: usize,
     /// Fixed-budget max step count.
     pub max_steps: u64,
-    /// Base-vs-adapter acceptance policy frozen with the run.
-    pub acceptance_policy: AppleAdapterBaseVsAdapterAcceptancePolicy,
+    /// Frozen useful-adapter contract for the run.
+    pub useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate,
 }
 
 impl AppleAdapterExperimentManifest {
@@ -123,6 +198,7 @@ impl AppleAdapterExperimentManifest {
         if self.max_steps == 0 {
             return Err(AppleAdapterExperimentError::InvalidMaxSteps);
         }
+        self.useful_adapter_gate.validate()?;
         Ok(())
     }
 
@@ -171,9 +247,9 @@ impl AppleAdapterExperimentManifest {
             hasher.update(b"|target|");
             hasher.update(target.as_bytes());
         }
-        hasher.update(b"|policy|");
+        hasher.update(b"|useful_adapter_gate|");
         hasher.update(
-            serde_json::to_vec(&self.acceptance_policy)
+            serde_json::to_vec(&self.useful_adapter_gate)
                 .unwrap_or_default()
                 .as_slice(),
         );
@@ -429,6 +505,11 @@ pub enum AppleAdapterExperimentError {
     /// Invalid step budget.
     #[error("Apple adapter experiment manifest requires `max_steps > 0`")]
     InvalidMaxSteps,
+    /// One acceptance-policy value was outside the supported range.
+    #[error(
+        "Apple adapter experiment manifest field `{field}` must stay within its supported benchmark-policy range"
+    )]
+    InvalidAcceptancePolicyField { field: String },
     /// No candidate checkpoints were available for selection.
     #[error("Apple adapter experiment selection requires at least one candidate")]
     MissingCheckpointCandidates,
@@ -456,6 +537,41 @@ pub enum AppleAdapterExperimentError {
     /// Selected package digest was empty.
     #[error("Apple adapter experiment trend entry is missing `selection.selected_package_digest`")]
     MissingSelectedPackageDigest,
+}
+
+fn validate_acceptance_policy(
+    policy: &AppleAdapterBaseVsAdapterAcceptancePolicy,
+    prefix: &str,
+) -> Result<(), AppleAdapterExperimentError> {
+    for (field, value) in [
+        (
+            format!("{prefix}.minimum_adapter_score_bps"),
+            policy.minimum_adapter_score_bps > 10_000,
+        ),
+        (
+            format!("{prefix}.minimum_adapter_pass_rate_bps"),
+            policy.minimum_adapter_pass_rate_bps > 10_000,
+        ),
+    ] {
+        if value {
+            return Err(AppleAdapterExperimentError::InvalidAcceptancePolicyField { field });
+        }
+    }
+    for (field, value) in [
+        (
+            format!("{prefix}.minimum_score_delta_bps"),
+            policy.minimum_score_delta_bps.unsigned_abs() > 10_000,
+        ),
+        (
+            format!("{prefix}.minimum_pass_rate_delta_bps"),
+            policy.minimum_pass_rate_delta_bps.unsigned_abs() > 10_000,
+        ),
+    ] {
+        if value {
+            return Err(AppleAdapterExperimentError::InvalidAcceptancePolicyField { field });
+        }
+    }
+    Ok(())
 }
 
 /// Selects the best checkpoint candidate for one experiment iteration.
@@ -585,8 +701,8 @@ mod tests {
             ],
             lora_rank: 4,
             max_steps: 8,
-            acceptance_policy:
-                AppleAdapterBaseVsAdapterAcceptancePolicy::architecture_explainer_default(),
+            useful_adapter_gate:
+                AppleAdapterUsefulAdapterAcceptanceGate::architecture_explainer_default(),
         }
     }
 
@@ -617,6 +733,38 @@ mod tests {
         let manifest = sample_manifest();
         manifest.validate().expect("manifest should validate");
         assert_eq!(manifest.stable_digest(), manifest.stable_digest());
+    }
+
+    #[test]
+    fn useful_adapter_gate_exposes_standard_and_overfit_policies() {
+        let gate = AppleAdapterUsefulAdapterAcceptanceGate::architecture_explainer_default();
+        assert!(gate.runtime_smoke_required);
+        assert_eq!(
+            gate.policy_for_mode(AppleAdapterUsefulAdapterBenchmarkMode::Standard),
+            &AppleAdapterBaseVsAdapterAcceptancePolicy::architecture_explainer_default()
+        );
+        assert_eq!(
+            gate.policy_for_mode(AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero)
+                .minimum_improved_case_count,
+            1
+        );
+    }
+
+    #[test]
+    fn manifest_rejects_out_of_range_acceptance_policy_values() {
+        let mut manifest = sample_manifest();
+        manifest
+            .useful_adapter_gate
+            .standard_benchmark_policy
+            .minimum_adapter_score_bps = 10_001;
+        assert_eq!(
+            manifest.validate(),
+            Err(AppleAdapterExperimentError::InvalidAcceptancePolicyField {
+                field: String::from(
+                    "useful_adapter_gate.standard_benchmark_policy.minimum_adapter_score_bps"
+                ),
+            })
+        );
     }
 
     #[test]

@@ -10,7 +10,23 @@ use autopilot_desktop::apple_architecture_explainer_reference_run::{
     ArchitectureExplainerFirstRunConfig, benchmark_architecture_explainer_adapter_package,
     run_architecture_explainer_reference_cycle,
 };
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+use psionic_train::AppleAdapterUsefulAdapterBenchmarkMode;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CliBenchmarkMode {
+    Standard,
+    OverfitNonZero,
+}
+
+impl From<CliBenchmarkMode> for AppleAdapterUsefulAdapterBenchmarkMode {
+    fn from(value: CliBenchmarkMode) -> Self {
+        match value {
+            CliBenchmarkMode::Standard => Self::Standard,
+            CliBenchmarkMode::OverfitNonZero => Self::OverfitNonZero,
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "apple-architecture-explainer-reference-run")]
@@ -48,6 +64,8 @@ struct Cli {
     control_base_url: Option<String>,
     #[arg(long)]
     control_bearer_token: Option<String>,
+    #[arg(long, value_enum, default_value_t = CliBenchmarkMode::Standard)]
+    benchmark_mode: CliBenchmarkMode,
     #[arg(long)]
     benchmark_only_adapter_package_path: Option<PathBuf>,
 }
@@ -94,6 +112,7 @@ fn main() -> Result<()> {
     config.apple_fm_base_url = cli.apple_fm_base_url;
     config.control_base_url = cli.control_base_url;
     config.control_bearer_token = cli.control_bearer_token;
+    config.benchmark_mode = cli.benchmark_mode.into();
 
     if let Some(adapter_package_path) = cli.benchmark_only_adapter_package_path {
         let report = benchmark_architecture_explainer_adapter_package(

@@ -57,11 +57,11 @@ use psionic_eval::{
 };
 use psionic_train::{
     APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
-    APPLE_LIVE_REFERENCE_LORA_RANK, AppleAdapterExperimentManifest,
-    AppleAdapterActivationCheckpointPolicy, AppleAdapterExecutionConfig,
-    AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel, AppleAdapterSftProgressEvent,
-    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterTrainingExecutionBackend,
-    TrainingLoopBudget, TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
+    APPLE_LIVE_REFERENCE_LORA_RANK, AppleAdapterActivationCheckpointPolicy,
+    AppleAdapterExecutionConfig, AppleAdapterExperimentManifest, AppleAdapterPrecisionPolicy,
+    AppleAdapterReferenceModel, AppleAdapterSftProgressEvent, AppleAdapterSftRunOutcome,
+    AppleAdapterSftRunRequest, AppleAdapterTrainingExecutionBackend, TrainingLoopBudget,
+    TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
     apple_live_reference_trainable_targets, run_apple_adapter_sft_export_with_progress,
 };
 use serde::{Deserialize, Serialize};
@@ -1052,8 +1052,12 @@ fn execute_launch_pipeline(
             })?;
         }
     }
-    let execution_config =
-        build_psionic_execution_config(run_id, &runtime_profile, &packing_policy, experiment_manifest.as_ref())?;
+    let execution_config = build_psionic_execution_config(
+        run_id,
+        &runtime_profile,
+        &packing_policy,
+        experiment_manifest.as_ref(),
+    )?;
     let sft_request = build_psionic_sft_request(run_id, request);
     with_controller(|controller| {
         let learning_rate = execution_config
@@ -3072,10 +3076,9 @@ fn manifest_trainable_targets(
     let mut targets = Vec::new();
     for symbolic_target in &manifest.lora_targets {
         let mut expanded = match symbolic_target.as_str() {
-            "decoder.attn.q_proj" => q_projection_trainable_targets(
-                optimizer,
-                optimizer_residency_policy,
-            ),
+            "decoder.attn.q_proj" => {
+                q_projection_trainable_targets(optimizer, optimizer_residency_policy)
+            }
             "decoder.ffn.up_proj" => Vec::new(),
             other => {
                 return Err(format!(
@@ -3088,14 +3091,15 @@ fn manifest_trainable_targets(
     targets.sort_by(|lhs, rhs| lhs.target_id.cmp(&rhs.target_id));
     targets.dedup_by(|lhs, rhs| lhs.target_id == rhs.target_id);
     if targets.is_empty() {
-        return Err("Apple experiment manifest did not expand to any runtime-exportable targets".to_string());
+        return Err(
+            "Apple experiment manifest did not expand to any runtime-exportable targets"
+                .to_string(),
+        );
     }
     Ok(targets)
 }
 
-fn live_backend_skipped_manifest_targets(
-    manifest: &AppleAdapterExperimentManifest,
-) -> Vec<String> {
+fn live_backend_skipped_manifest_targets(manifest: &AppleAdapterExperimentManifest) -> Vec<String> {
     manifest
         .lora_targets
         .iter()
@@ -3109,8 +3113,8 @@ fn q_projection_trainable_targets(
     optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
 ) -> Vec<psionic_train::AppleAdapterTrainableTarget> {
     let mut targets = Vec::new();
-    for layer in APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER
-        ..APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
     {
         targets.push(psionic_train::AppleAdapterTrainableTarget {
             target_id: format!(
@@ -3122,8 +3126,8 @@ fn q_projection_trainable_targets(
             optimizer_residency_policy,
         });
     }
-    for layer in APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER
-        ..APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
     {
         targets.push(psionic_train::AppleAdapterTrainableTarget {
             target_id: format!(
@@ -3137,7 +3141,6 @@ fn q_projection_trainable_targets(
     }
     targets
 }
-
 
 fn build_psionic_sft_request(
     run_id: &str,
@@ -3981,11 +3984,10 @@ mod tests {
         DatasetPackingPolicy,
     };
     use psionic_train::{
-        AppleAdapterExperimentManifest, APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION,
-        APPLE_LIVE_REFERENCE_LORA_RANK,
+        APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_LORA_RANK,
+        AppleAdapterExperimentManifest, AppleAdapterUsefulAdapterAcceptanceGate,
         TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
     };
-    use psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy;
 
     #[test]
     fn apple_operator_authoritative_backends_are_rust_only() {
@@ -4008,8 +4010,10 @@ mod tests {
     fn symbolic_q_projection_targets_expand_to_exportable_runtime_targets() {
         let optimizer =
             TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0);
-        let targets =
-            q_projection_trainable_targets(&optimizer, TrainingOptimizerResidencyPolicy::host_only());
+        let targets = q_projection_trainable_targets(
+            &optimizer,
+            TrainingOptimizerResidencyPolicy::host_only(),
+        );
         assert_eq!(
             targets.len(),
             (APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
@@ -4019,7 +4023,9 @@ mod tests {
         );
         assert!(targets.iter().all(|target| {
             target.lora_rank == APPLE_LIVE_REFERENCE_LORA_RANK
-                && (target.target_id.contains("qkv_transform.adapters.base_adapter.lora_0")
+                && (target
+                    .target_id
+                    .contains("qkv_transform.adapters.base_adapter.lora_0")
                     || target
                         .target_id
                         .contains("attention.q_transform.adapters.base_adapter"))
@@ -4033,12 +4039,8 @@ mod tests {
             "general",
             "default",
         );
-        let packing_policy = DatasetPackingPolicy::new(
-            DatasetPackingMode::PackIntoContextWindow,
-            256,
-            512,
-            1,
-        );
+        let packing_policy =
+            DatasetPackingPolicy::new(DatasetPackingMode::PackIntoContextWindow, 256, 512, 1);
         let manifest = AppleAdapterExperimentManifest {
             abi_version: APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION.to_string(),
             experiment_id: "apple_adapter.test.max_steps".to_string(),
@@ -4059,12 +4061,23 @@ mod tests {
             lora_targets: vec!["decoder.attn.q_proj".to_string()],
             lora_rank: 4,
             max_steps: 8,
-            acceptance_policy: AppleAdapterBaseVsAdapterAcceptancePolicy {
-                minimum_adapter_score_bps: 0,
-                minimum_adapter_pass_rate_bps: 0,
-                minimum_score_delta_bps: 0,
-                minimum_pass_rate_delta_bps: 0,
-                minimum_improved_case_count: 0,
+            useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
+                runtime_smoke_required: true,
+                standard_benchmark_policy:
+                    psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                        minimum_adapter_score_bps: 0,
+                        minimum_adapter_pass_rate_bps: 0,
+                        minimum_score_delta_bps: 0,
+                        minimum_pass_rate_delta_bps: 0,
+                        minimum_improved_case_count: 0,
+                    },
+                overfit_non_zero_policy: psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                    minimum_adapter_score_bps: 1,
+                    minimum_adapter_pass_rate_bps: 1,
+                    minimum_score_delta_bps: 1,
+                    minimum_pass_rate_delta_bps: 1,
+                    minimum_improved_case_count: 1,
+                },
             },
         };
 

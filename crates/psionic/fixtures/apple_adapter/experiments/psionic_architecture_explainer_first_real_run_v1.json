@@ -1,5 +1,5 @@
 {
-  "abi_version": "psionic.apple_adapter_experiment_manifest.v1",
+  "abi_version": "psionic.apple_adapter_experiment_manifest.v2",
   "experiment_id": "apple_adapter.psionic_architecture_explainer.first_real_run",
   "target_id": "apple_adapter.psionic_architecture_explainer",
   "dataset": {
@@ -24,11 +24,21 @@
   ],
   "lora_rank": 4,
   "max_steps": 8,
-  "acceptance_policy": {
-    "minimum_adapter_score_bps": 9000,
-    "minimum_adapter_pass_rate_bps": 9000,
-    "minimum_score_delta_bps": 1500,
-    "minimum_pass_rate_delta_bps": 1500,
-    "minimum_improved_case_count": 4
+  "useful_adapter_gate": {
+    "runtime_smoke_required": true,
+    "standard_benchmark_policy": {
+      "minimum_adapter_score_bps": 9000,
+      "minimum_adapter_pass_rate_bps": 9000,
+      "minimum_score_delta_bps": 1500,
+      "minimum_pass_rate_delta_bps": 1500,
+      "minimum_improved_case_count": 4
+    },
+    "overfit_non_zero_policy": {
+      "minimum_adapter_score_bps": 1,
+      "minimum_adapter_pass_rate_bps": 1,
+      "minimum_score_delta_bps": 1,
+      "minimum_pass_rate_delta_bps": 1,
+      "minimum_improved_case_count": 1
+    }
   }
 }
