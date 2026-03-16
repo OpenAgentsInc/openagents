@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "run_id": "tassadar-executor-transformer-sudoku-v0-boundary-v1",
+  "dataset_version": "train-v0",
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
+  "tokenizer_digest": "1c9a6e64cc81a028756ff1ed8cf507b0f69bbd9f7da7ef7293cb85a30ec5d857",
+  "vocabulary_digest": "a1ee06319f535f18ad9d0e43e6dcca7a1ba94413f5995fa3823215e36b795af7",
+  "training_manifest_digest": "d77cc0a8fdf53536e875d385756b48f999f08aad6c49d116db25a7dfb8d538af",
+  "trained_model_descriptor_digest": "fe341ca8ed57464195eaa9b419080e73ce02cbc049fdf0a3d99f2daff08fe264",
+  "trained_weight_digest": "5d784de809b2958f601adf2dcc7c6d89acfeaee15307164945108303a9a2cdde",
+  "training_report_digest": "5d49ae8358fa7b31b52a152b9e962b5543b90ef04a491b08295d2762825fb2eb",
+  "linear_benchmark_report_digest": "bf4f66d5a28b41e6a43666fd417f2af5bfc21964ff43f34b7432d178974fd46a",
+  "boundary_exactness_report_digest": "21226d1c7615a1d757694e2b135bf08886a451aff6c60d3d9aadbb541b037108",
+  "divergence_histogram_report_digest": "20170dff74f44eeff26c5848a454d6af562c3fc172bc1d76c7edb684108c2d64",
+  "first_token_confusion_report_digest": "610d3e8d0abb695ebbb134323bee57a26013eaf68511631fbd66be7ea60050e4",
+  "checkpoint_leaderboard_report_digest": "3dc8225a535bf1eaeee3af384d6e9ce3d102137d79c7386baa85cd669086f4ac",
+  "checkpoint_artifact_digest": "0e44572dcc1cc32908799d56d6b64bc433fff7945c5cc6731ccc238464b382be",
+  "model_artifact_digest": "0b38f3512172192f218dec8fb92151216bb4ba77b7a91f65763496edff770508",
+  "artifacts": [
+    {
+      "artifact_kind": "tassadar_training_manifest",
+      "artifact_ref": "training_manifest.json",
+      "artifact_digest": "6d6cabbce1899bed85af0c1b3e55c7207ad71e43bed0cd15a7c3c49d5bd7e336"
+    },
+    {
+      "artifact_kind": "tassadar_training_report",
+      "artifact_ref": "training_report.json",
+      "artifact_digest": "d65dcdfc25aba27354cb7056e549b6ca9716eb26b72355bf8efbba4ee368333f"
+    },
+    {
+      "artifact_kind": "tassadar_linear_benchmark_report",
+      "artifact_ref": "linear_benchmark_report.json",
+      "artifact_digest": "a734e1d5334d717dd018ea274ea6c4b98d3faf3fed7f52bdaca32eab0d4cbf15"
+    },
+    {
+      "artifact_kind": "tassadar_boundary_exactness_report",
+      "artifact_ref": "boundary_exactness_report.json",
+      "artifact_digest": "1bb9fa5fd22142506e5985efe2c00fcc9b6a251515c09672a20385afb5e0e33d"
+    },
+    {
+      "artifact_kind": "tassadar_divergence_histogram_report",
+      "artifact_ref": "divergence_histogram.json",
+      "artifact_digest": "94032d31c88b51e7ec6ece0891d0a54c85880b7251981499fef59c47076edf77"
+    },
+    {
+      "artifact_kind": "tassadar_first_token_confusion_report",
+      "artifact_ref": "first_token_confusion_report.json",
+      "artifact_digest": "5de122a2f88a14042c2456a25d31d5a1fb78ebb861e21e32ba2799f298168af3"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_leaderboard",
+      "artifact_ref": "checkpoint_leaderboard.json",
+      "artifact_digest": "71b3014d59e85d7568b76ff32855d12cdc8e9166d81baf967875a2a61e6e33aa"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_artifact",
+      "artifact_ref": "checkpoint_artifact.json",
+      "artifact_digest": "20c1d108e35aa42e9fc458e79b3e474b32acc4c406afab17402ea3d08b287899"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_state",
+      "artifact_ref": "checkpoint_state.json",
+      "artifact_digest": "3110a18391cea8e3a2a50f0c00c7e01f4d9b4711c5f3e289a0c332f4b659332a"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_manifest",
+      "artifact_ref": "checkpoint_manifest.json",
+      "artifact_digest": "939af729fa6b910271e9ce798c8afc09ec447bafa46f48eb73dc7fd2e6904a62"
+    },
+    {
+      "artifact_kind": "tassadar_model_artifact",
+      "artifact_ref": "model_artifact.json",
+      "artifact_digest": "18704e0f6b2ce8e29c24eab4e1512b70fb54c1ecc3ce2f8c060daa871a15cda7"
+    }
+  ],
+  "bundle_digest": "8e9bc2e0ce4b8b8b17c0e7438c0c9372ccd8ec3b4dd07a750940fc65c2f42b7a"
+}

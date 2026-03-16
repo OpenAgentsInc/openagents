@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use psionic_data::{TassadarSequenceExample, TassadarSequenceSplit};
 use psionic_eval::{
-    EvalArtifact, TassadarExecutorLinearBenchmarkReport, build_tassadar_sudoku_v0_sequence_dataset,
+    EvalArtifact, TassadarExecutorLinearBenchmarkReport, build_tassadar_sequence_dataset,
 };
 use psionic_models::{
     TassadarExecutorTransformer, TassadarExecutorTransformerError, TassadarTraceTokenizer, TokenId,
@@ -108,7 +108,7 @@ impl TassadarExecutorTrainingTelemetryReport {
                     cumulative_target_tokens.saturating_add(batch.target_token_count);
                 TassadarExecutorTrainingStepTelemetry {
                     global_step_index: index as u32,
-                    epoch_index: batch.epoch_index,
+                    epoch_index: batch.global_epoch_index,
                     batch_id: batch.batch_id.clone(),
                     sequence_ids: batch.sequence_ids.clone(),
                     mean_loss_milli: milli(batch.mean_loss),
@@ -121,7 +121,7 @@ impl TassadarExecutorTrainingTelemetryReport {
         let mut epoch_accumulators = BTreeMap::<u32, (u32, f64, u32)>::new();
         for batch in &training_report.batch_reports {
             let entry = epoch_accumulators
-                .entry(batch.epoch_index)
+                .entry(batch.global_epoch_index)
                 .or_insert((0, 0.0, 0));
             entry.0 = entry.0.saturating_add(1);
             entry.1 += f64::from(batch.mean_loss) * f64::from(batch.target_token_count);
@@ -403,10 +403,12 @@ pub fn augment_tassadar_reference_run_with_telemetry(
         "tassadar_model_artifact",
     )?;
     let model = checkpoint_state.materialize_model()?;
-    let dataset_bundle =
-        build_tassadar_sudoku_v0_sequence_dataset(run_bundle.dataset_version.as_str())
-            .map_err(crate::TassadarExecutorTrainingError::from)
-            .map_err(TassadarExecutorRunError::from)?;
+    let dataset_bundle = build_tassadar_sequence_dataset(
+        training_report.config.workload,
+        run_bundle.dataset_version.as_str(),
+    )
+    .map_err(crate::TassadarExecutorTrainingError::from)
+    .map_err(TassadarExecutorRunError::from)?;
     let tokenizer = model.tokenizer().clone();
     let analyses = dataset_bundle
         .dataset

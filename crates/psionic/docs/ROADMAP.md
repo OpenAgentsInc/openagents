@@ -594,6 +594,18 @@ Its declared scope is:
   that scale plan records the actual 4x4 promotion gate as still closed, so
   the repo now has the real 9x9 workload and curriculum path without
   collapsing into fake “9x9 already works” reporting
+- landed trained-executor Phase 12 bar from the post-audit issue spine:
+  `psionic-eval` now emits boundary-first exactness plus first-divergence and
+  first-token-confusion reports, `psionic-train` now supports a boundary
+  curriculum with per-epoch validation and explicit checkpoint ranking by
+  boundary metrics, and the committed follow-on run bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_boundary_v1` records the
+  first honest improvement after the reality audit: the selected checkpoint
+  clears token-0 divergence on the 4x4 validation lane (`10000` bps
+  first-target exactness, divergence histogram bucket at target index `1`,
+  empty token-zero confusion report) while still remaining below promotion
+  bars (`5000` bps first-32 exactness, `0/2` exact traces); the companion
+  audit is `docs/audits/2026-03-16-tassadar-phase-12-boundary-audit.md`
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
@@ -782,6 +794,25 @@ implemented:
   [#3777](https://github.com/OpenAgentsInc/openagents/issues/3777)
 - Phase 2 replace the placeholder Sudoku benchmark with a real 4x4 solver
   corpus: [#3778](https://github.com/OpenAgentsInc/openagents/issues/3778)
+
+After the March 16 reality audit, the current truthfulness-first continuation
+is tracked under the post-audit umbrella
+[#3811](https://github.com/OpenAgentsInc/openagents/issues/3811):
+
+- Phase 12 clear the prompt-to-trace boundary on 4x4 Sudoku-v0:
+  [#3812](https://github.com/OpenAgentsInc/openagents/issues/3812)
+- Phase 13 widen the trainable surface beyond the output head:
+  [#3813](https://github.com/OpenAgentsInc/openagents/issues/3813)
+- Phase 14 produce the first exact 4x4 validation trace:
+  [#3814](https://github.com/OpenAgentsInc/openagents/issues/3814)
+- Phase 15 add a true executor-attention candidate family:
+  [#3815](https://github.com/OpenAgentsInc/openagents/issues/3815)
+- Phase 16 persist and review the first honest 9x9 run:
+  [#3816](https://github.com/OpenAgentsInc/openagents/issues/3816)
+- Phase 17 add a bounded proof-oriented / compile-to-weights executor lane:
+  [#3817](https://github.com/OpenAgentsInc/openagents/issues/3817)
+- Phase 18 land the real Hungarian-class benchmark and exact result:
+  [#3818](https://github.com/OpenAgentsInc/openagents/issues/3818)
 
 ## Epic 0: Governance And Acceptance
 
