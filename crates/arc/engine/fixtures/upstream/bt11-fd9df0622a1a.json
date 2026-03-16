@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "name": "ARC upstream parity sample bt11-fd9df0622a1a",
+  "task_id": "bt11-fd9df0622a1a",
+  "version": "upstream-fixture-v1",
+  "sprites": [
+    {
+      "id": "cursor",
+      "width": 1,
+      "height": 1,
+      "pixels": [null],
+      "blocking": "not_blocked",
+      "interaction": "removed",
+      "z_index": 10
+    }
+  ],
+  "levels": [
+    {
+      "id": "bt11-level-1",
+      "background": {
+        "width": 8,
+        "height": 8,
+        "pixels": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+      },
+      "camera": {
+        "x": 0,
+        "y": 0,
+        "width": 8,
+        "height": 8,
+        "background": 5,
+        "letter_box": 3
+      },
+      "available_actions": ["ACTION3", "ACTION4"],
+      "player_spawn": { "x": 3, "y": 0 },
+      "player_sprite_id": "cursor",
+      "targets": [
+        {
+          "id": "advance-on-four-lefts",
+          "trigger": "action3",
+          "position": { "x": 3, "y": 0 },
+          "effect": {
+            "kind": "complete_level_if_action_count_at_least",
+            "threshold": 4
+          }
+        }
+      ],
+      "solid_background_colors": [5],
+      "max_actions": 4
+    },
+    {
+      "id": "bt11-level-2",
+      "background": {
+        "width": 8,
+        "height": 8,
+        "pixels": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+      },
+      "camera": {
+        "x": 0,
+        "y": 0,
+        "width": 8,
+        "height": 8,
+        "background": 5,
+        "letter_box": 3
+      },
+      "available_actions": ["ACTION3", "ACTION4"],
+      "player_spawn": { "x": 3, "y": 0 },
+      "player_sprite_id": "cursor",
+      "solid_background_colors": [5],
+      "max_actions": 8
+    }
+  ]
+}

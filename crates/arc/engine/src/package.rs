@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use arc_core::{
-    ARC_FRAME_MAX_EDGE, ARC_FRAME_PALETTE_SIZE, ARC_PALETTE_SIZE, ArcActionKind, ArcGrid, ArcTaskId,
+    ARC_FRAME_MAX_EDGE, ARC_FRAME_PALETTE_SIZE, ArcActionKind, ArcFrameData, ArcTaskId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -204,6 +204,10 @@ impl ArcCamera {
 #[serde(rename_all = "snake_case")]
 pub enum ArcInteractionTrigger {
     OnEnter,
+    Action1,
+    Action2,
+    Action3,
+    Action4,
     Action5,
     Action6,
 }
@@ -213,6 +217,7 @@ pub enum ArcInteractionTrigger {
 pub enum ArcLevelEffect {
     ToggleFlag { flag_id: String },
     CompleteLevel,
+    CompleteLevelIfActionCountAtLeast { threshold: u32 },
     TeleportPlayer { destination: ArcPoint },
 }
 
@@ -244,7 +249,7 @@ pub struct ArcSpriteInstance {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArcLevelDefinition {
     pub id: String,
-    pub background: ArcGrid,
+    pub background: ArcFrameData,
     pub camera: ArcCamera,
     pub available_actions: Vec<ArcActionKind>,
     pub player_spawn: ArcPoint,
@@ -339,7 +344,7 @@ fn validate_level(
         .solid_background_colors
         .iter()
         .copied()
-        .find(|color| *color >= ARC_PALETTE_SIZE)
+        .find(|color| *color >= ARC_FRAME_PALETTE_SIZE)
     {
         return Err(ArcEngineError::InvalidBackgroundColor {
             level_id: level.id.clone(),
@@ -361,6 +366,15 @@ fn validate_level(
         }
         match &target.effect {
             ArcLevelEffect::ToggleFlag { flag_id } => validate_identifier("flag id", flag_id)?,
+            ArcLevelEffect::CompleteLevelIfActionCountAtLeast { threshold } => {
+                if *threshold == 0 {
+                    return Err(ArcEngineError::InvalidActionThreshold {
+                        level_id: level.id.clone(),
+                        target_id: target.id.clone(),
+                        threshold: *threshold,
+                    });
+                }
+            }
             ArcLevelEffect::TeleportPlayer { destination } => {
                 if !destination.within(world_width, world_height) {
                     return Err(point_outside_level(&level.id, *destination));

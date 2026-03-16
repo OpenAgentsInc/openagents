@@ -279,7 +279,12 @@ synthetic-task lineage and trace-derived Psionic dataset packaging.
 ARC runtime surface: typed sprite/level/camera/package contracts, 64x64
 letterboxed frame rendering, display-space `ACTION6` coordinate handling,
 full-vs-level reset semantics, replay-safe stepping, and a fixture-backed
-sample game package.
+sample game package. `ARC-202` is now also landed in bounded form:
+`crates/arc/engine/fixtures/upstream/parity_manifest.json` pins the upstream
+`bt11` and `bt33` sample blobs by SHA-256, drives translated local package
+fixtures, and machine-checks reset semantics, available actions, first-level
+success transitions, and pure failure branches without claiming arbitrary
+Python-environment equivalence.
 
 ## 4. Shared domain model
 
@@ -363,6 +368,8 @@ Static ARC task grids MUST satisfy:
 These limits apply to ARC task grids.
 Interactive ARC-AGI-3 frame rasters remain governed by their frame and engine
 contracts rather than by `ArcGrid`.
+Interactive engine-package background rasters also stay in the ARC-AGI-3
+1..=64 and 0..=15 domain even though static task grids stay 1..=30 and 0..=9.
 
 #### Interactive environment types
 
@@ -1415,8 +1422,11 @@ Acceptance:
 The local-engine half of this phase is now live: `arc-engine` can load a
 fixture game package, render ARCEngine-style 64x64 letterboxed frames, execute
 typed actions deterministically, and replay the same action trace into a stable
-recording digest. Upstream `ARC-AGI/test_environment_files` fixture parity
-remains the next explicit follow-on in `ARC-202`.
+recording digest. The bounded `ARC-202` follow-on is now also live:
+translated `bt11` and `bt33` package fixtures plus a parity manifest pin the
+upstream sample blobs and machine-check the local-wrapper behaviors this crate
+currently claims. Full local-vs-remote wrapper parity remains the next explicit
+follow-on in `ARC-203` through `ARC-205`.
 
 ### Phase 3: benchmark runtime
 
