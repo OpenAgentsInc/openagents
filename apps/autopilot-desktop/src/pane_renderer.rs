@@ -1829,10 +1829,14 @@ fn paint_go_online_pane(
     let now_epoch_ms = mission_control_now_epoch_millis();
     let status_label = provider_runtime.mode.label().to_ascii_uppercase();
     let status_color = mission_control_mode_color(provider_runtime.mode);
-    let wallet_status = match spark_wallet.network_status_label() {
-        "connected" => "CONNECTED",
-        "disconnected" => "DISCONNECTED",
-        _ => "UNKNOWN",
+    let wallet_status = if spark_wallet.balance_reconciling() {
+        "RECONCILING"
+    } else {
+        match spark_wallet.network_status_label() {
+            "connected" => "CONNECTED",
+            "disconnected" => "DISCONNECTED",
+            _ => "UNKNOWN",
+        }
     };
     let preflight_value = if provider_blockers.is_empty() {
         "CLEAR".to_string()
@@ -1896,6 +1900,8 @@ fn paint_go_online_pane(
         wallet_status,
         if wallet_status == "CONNECTED" {
             mission_control_green_color()
+        } else if wallet_status == "RECONCILING" {
+            mission_control_cyan_color()
         } else {
             mission_control_amber_color()
         },
@@ -2009,13 +2015,60 @@ fn paint_go_online_pane(
     } else {
         "GO OFFLINE"
     };
-    let sell_optional_rows =
-        usize::from(provider_runtime.mode != crate::app_state::ProviderMode::Offline)
-            + usize::from(sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline)
-            + usize::from(skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown)
-            + usize::from(ac_lane.credit_available);
-    let sell_content_height = (6.0 * 39.0) + (sell_optional_rows as f32 * 38.0);
+    let primary_model_label = mission_control_primary_model_label(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let backend_label = mission_control_backend_label(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let load_status_label = mission_control_model_load_status(
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+    );
+    let control_label = provider_runtime
+        .control_authority_label(backend_kernel_authority)
+        .to_string();
     let sell_viewport = mission_control_sell_scroll_viewport_bounds(content_bounds);
+    let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
+    let mut sell_content_height = 0.0;
+    for value in [
+        provider_runtime.mode.label().to_string(),
+        primary_model_label.clone(),
+        backend_label.clone(),
+        load_status_label.clone(),
+        control_label.clone(),
+        preflight_value.clone(),
+    ] {
+        sell_content_height +=
+            mission_control_wrapped_row_height(value.as_str(), sell_value_chunk_len, true);
+    }
+    if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
+        sell_content_height += mission_control_wrapped_row_height(
+            format!("{}s", provider_runtime.uptime_seconds(now)).as_str(),
+            sell_value_chunk_len,
+            false,
+        );
+    }
+    if sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline {
+        sell_content_height +=
+            mission_control_wrapped_row_height(sa_lane.mode.label(), sell_value_chunk_len, false);
+    }
+    if skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown {
+        sell_content_height += mission_control_wrapped_row_height(
+            skl_lane.trust_tier.label(),
+            sell_value_chunk_len,
+            false,
+        );
+    }
+    if ac_lane.credit_available {
+        sell_content_height +=
+            mission_control_wrapped_row_height("AVAILABLE", sell_value_chunk_len, false);
+    }
     let sell_max_scroll =
         mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
     let sell_scroll = mission_control.clamp_sell_scroll_offset(sell_max_scroll);
@@ -2027,7 +2080,6 @@ fn paint_go_online_pane(
         paint,
     );
 
-    let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
     paint.scene.push_clip(sell_viewport);
     let mut sell_y = sell_viewport.origin.y - sell_scroll;
     sell_y = paint_wrapped_label_line_mission_control_label(
@@ -2045,11 +2097,7 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Model",
-        &mission_control_primary_model_label(
-            desktop_shell_mode,
-            provider_runtime,
-            local_inference_runtime,
-        ),
+        &primary_model_label,
         sell_value_chunk_len,
         layout.sell_panel.size.width - 24.0,
         true,
@@ -2059,11 +2107,7 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Backend",
-        &mission_control_backend_label(
-            desktop_shell_mode,
-            provider_runtime,
-            local_inference_runtime,
-        ),
+        &backend_label,
         sell_value_chunk_len,
         layout.sell_panel.size.width - 24.0,
         true,
@@ -2073,11 +2117,7 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Load",
-        &mission_control_model_load_status(
-            desktop_shell_mode,
-            provider_runtime,
-            local_inference_runtime,
-        ),
+        &load_status_label,
         sell_value_chunk_len,
         layout.sell_panel.size.width - 24.0,
         true,
@@ -2087,7 +2127,7 @@ fn paint_go_online_pane(
         layout.sell_panel.origin.x + 12.0,
         sell_y,
         "Control",
-        provider_runtime.control_authority_label(backend_kernel_authority),
+        &control_label,
         sell_value_chunk_len,
         layout.sell_panel.size.width - 24.0,
         true,
@@ -2235,7 +2275,10 @@ fn paint_go_online_pane(
         .unwrap_or_else(|| "NOT GENERATED".to_string());
     let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
-    let wallet_content_height = 41.0 + 39.0 + 39.0 + 38.0;
+    let wallet_content_height = 41.0
+        + mission_control_wrapped_row_height(&wallet_network, wallet_value_chunk_len, true)
+        + mission_control_wrapped_row_height(wallet_status, wallet_value_chunk_len, true)
+        + mission_control_wrapped_row_height(&wallet_address, wallet_value_chunk_len, false);
     let wallet_max_scroll =
         mission_control_section_max_scroll(layout.wallet_panel, wallet_content_height);
     let wallet_scroll = mission_control.clamp_wallet_scroll_offset(wallet_max_scroll);
@@ -2613,15 +2656,7 @@ fn paint_go_online_pane(
         log_copy_clicked,
         paint,
     );
-    let log_body_bounds = Bounds::new(
-        layout.log_stream.origin.x,
-        mission_control_section_content_y(layout.log_stream),
-        layout.log_stream.size.width,
-        (layout.log_stream.size.height
-            - MISSION_CONTROL_SECTION_CONTENT_TOP
-            - MISSION_CONTROL_SECTION_BOTTOM_PADDING)
-            .max(0.0),
-    );
+    let log_body_bounds = mission_control_section_scroll_viewport_bounds(layout.log_stream);
     paint.scene.draw_quad(
         Quad::new(log_body_bounds)
             .with_background(mission_control_background_color().with_alpha(0.75))
@@ -3730,13 +3765,12 @@ fn mission_control_local_fm_test_enabled(
             == Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
 }
 
-fn mission_control_short_model_label(model: &str) -> String {
+fn mission_control_display_model_label(model: &str) -> String {
     let trimmed = model.trim();
-    if trimmed.len() <= 18 {
-        return trimmed.to_ascii_uppercase();
+    if trimmed.is_empty() {
+        return "NO SUPPORTED MODEL".to_string();
     }
-    let prefix: String = trimmed.chars().take(15).collect();
-    format!("{}...", prefix.to_ascii_uppercase())
+    trimmed.to_ascii_uppercase()
 }
 
 fn mission_control_primary_model_label(
@@ -3744,7 +3778,7 @@ fn mission_control_primary_model_label(
     provider_runtime: &ProviderRuntimeState,
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
 ) -> String {
-    mission_control_short_model_label(
+    mission_control_display_model_label(
         crate::app_state::mission_control_local_runtime_view_model(
             desktop_shell_mode,
             provider_runtime,
@@ -7821,6 +7855,21 @@ fn paint_wrapped_label_line_with_style(
     line_y.max(y + 18.0)
 }
 
+fn mission_control_wrapped_row_height(
+    value: &str,
+    value_chunk_len: usize,
+    show_divider: bool,
+) -> f32 {
+    let lines = split_text_for_display(value, value_chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    if show_divider {
+        lines * 18.0 + 21.0
+    } else {
+        lines * 18.0 + 20.0
+    }
+}
+
 fn mission_control_value_x_offset(label: &str) -> f32 {
     (label.chars().count() as f32 * 6.4 + 18.0).clamp(82.0, 118.0)
 }
@@ -8704,6 +8753,26 @@ mod tests {
                 &local
             ),
             ""
+        );
+    }
+
+    #[test]
+    fn mission_control_primary_model_label_preserves_full_runtime_name_for_wrapping() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.apple_fm.reachable = true;
+        provider.apple_fm.model_available = true;
+        provider.apple_fm.ready_model = Some("apple-foundation-model-preview".to_string());
+        provider.apple_fm.bridge_status = Some("running".to_string());
+
+        let local = LocalInferenceExecutionSnapshot::default();
+
+        assert_eq!(
+            mission_control_primary_model_label(
+                crate::desktop_shell::DesktopShellMode::Production,
+                &provider,
+                &local,
+            ),
+            "APPLE-FOUNDATION-MODEL-PREVIEW"
         );
     }
 

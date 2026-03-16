@@ -9564,6 +9564,14 @@ pub(super) fn run_mission_control_action(
             queue_spark_command(state, SparkWalletCommand::Reload);
             if let Some(error) = state.spark_wallet.last_error.clone() {
                 state.mission_control.record_error(error);
+            } else if state
+                .spark_wallet
+                .pending_balance_confirmation_payment_id
+                .is_some()
+            {
+                state
+                    .mission_control
+                    .record_action("Queued wallet refresh; awaiting Spark settlement confirmation");
             } else {
                 state.mission_control.record_action("Queued wallet refresh");
             }
