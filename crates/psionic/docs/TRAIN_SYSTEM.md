@@ -1834,7 +1834,9 @@ training execution backend inside `psionic-train`:
 - repo-owned forward/loss and low-rank gradient production that feeds
   `TrainingGradientBatch` and `FixedBudgetTrainingRun`
 - explicit training-posture declaration for the currently supported `f32`
-  reference precision path and disabled activation checkpointing
+  reference precision path, with graph-level checkpoint transforms available
+  in `psionic-ir` but activation checkpointing still disabled in this shipped
+  Apple reference lane
 
 This lands the learning computation itself for the first Apple lane.
 

@@ -1,7 +1,7 @@
 # Program Transform Capability Matrix
 
 > Status: canonical `PLIB-216` / `#3731` reference record, updated 2026-03-16
-> after landing bounded public `vmap` capability alongside the original
+> after landing bounded public `checkpoint` and `vmap` capability alongside the original
 > program-transform matrix in `crates/psionic/psionic-ir/src/lib.rs`.
 
 This document records the current bounded program-transform semantics surface
@@ -36,6 +36,8 @@ The bounded seeded surface now makes these seams explicit:
 - functionalization over graphs with explicit alias-root and barrier reporting
 - symbolic-rewrite readiness over functionalized graphs
 - export-safe graph handoff under `export_safe_only` policy
+- public `checkpoint` over dense `f32` primitive graphs with explicit cast and
+  backend-extension refusal
 - public `vmap` over dense `f32` single-lane graphs with explicit cast and
   backend-extension refusal
 - public `jvp` over dense `f32` primitive graphs with explicit cast and

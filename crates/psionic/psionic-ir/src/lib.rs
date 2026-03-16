@@ -563,6 +563,36 @@ impl Graph {
                     ),
                 })
             }
+            ProgramTransformFamily::Checkpoint => {
+                if let Some(node) = self.nodes().iter().find(|node| {
+                    matches!(
+                        gradient_support_for_op(node.op()),
+                        AutodiffGradientSupport::Unsupported { .. }
+                    )
+                }) {
+                    return Err(
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            format!(
+                                "program-transform family `{}` refuses graph op `{}` in the bounded current scope",
+                                family.label(),
+                                node.op().label()
+                            ),
+                        )
+                        .with_subject(format!("{}:{}", family.label(), node.op().label())),
+                    );
+                }
+                Ok(ProgramTransformCapabilityOutcome {
+                    family,
+                    policy,
+                    graph_digest: self.stable_digest(),
+                    artifact_digest: None,
+                    bounded_scope: String::from(
+                        "Current scope supports public checkpoint-style reverse-mode replay over dense f32 primitive graphs by retaining the requested output on the first forward pass, replaying only backward-plan primal bindings, and refusing cast plus opaque backend-extension barriers explicitly.",
+                    ),
+                })
+            }
             ProgramTransformFamily::Vmap => {
                 if let Some(node) = self
                     .nodes()
@@ -1122,6 +1152,8 @@ pub enum ProgramTransformFamily {
     SymbolicRewrite,
     /// Export-safe graph handoff.
     ExportSafeGraph,
+    /// Public checkpoint-style forward replay for reverse-mode execution.
+    Checkpoint,
     /// Future `vmap`-style transforms.
     Vmap,
     /// Future `jvp`-style transforms.
@@ -1136,6 +1168,7 @@ impl ProgramTransformFamily {
             Self::Functionalization => "functionalization",
             Self::SymbolicRewrite => "symbolic_rewrite",
             Self::ExportSafeGraph => "export_safe_graph",
+            Self::Checkpoint => "checkpoint",
             Self::Vmap => "vmap",
             Self::Jvp => "jvp",
             Self::Jacobian => "jacobian",
@@ -1251,7 +1284,7 @@ pub fn builtin_program_transform_capability_matrix_report() -> ProgramTransformC
     let opaque_barrier_graph = seeded_opaque_barrier_graph();
 
     ProgramTransformCapabilityMatrixReport::new(
-        String::from("psionic_program_transform_v2"),
+        String::from("psionic_program_transform_v3"),
         vec![
             supported_program_transform_case(
                 "functionalization.export_safe_alias_graph",
@@ -1282,6 +1315,18 @@ pub fn builtin_program_transform_capability_matrix_report() -> ProgramTransformC
                 Some(&opaque_barrier_graph),
                 ProgramTransformFamily::ExportSafeGraph,
                 FunctionalizationPolicy::ExportSafeOnly,
+            ),
+            supported_program_transform_case(
+                "checkpoint.primitive_dense_graph",
+                &export_safe_graph,
+                ProgramTransformFamily::Checkpoint,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            ),
+            refused_program_transform_case(
+                "checkpoint.cast_barrier_graph",
+                Some(&cast_graph),
+                ProgramTransformFamily::Checkpoint,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
             ),
             supported_program_transform_case(
                 "vmap.primitive_dense_graph",
@@ -6193,7 +6238,7 @@ mod tests {
     fn program_transform_capability_matrix_tracks_seeded_transform_and_future_cases() {
         let report = builtin_program_transform_capability_matrix_report();
         assert_eq!(report.schema_version, 1);
-        assert_eq!(report.current_scope_window, "psionic_program_transform_v2");
+        assert_eq!(report.current_scope_window, "psionic_program_transform_v3");
         assert!(
             report
                 .stable_signature_lines()
@@ -6250,6 +6295,14 @@ mod tests {
         assert_eq!(opaque_refusal.code, PsionicRefusalCode::UnsupportedOp);
         assert_eq!(opaque_refusal.scope, PsionicRefusalScope::Graph);
 
+        let checkpoint_ready = export_safe_graph
+            .program_transform_capability(
+                ProgramTransformFamily::Checkpoint,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            )
+            .expect("checkpoint should now be supported on primitive dense graphs");
+        assert_eq!(checkpoint_ready.family, ProgramTransformFamily::Checkpoint);
+
         let vmap_ready = export_safe_graph
             .program_transform_capability(
                 ProgramTransformFamily::Vmap,
@@ -6273,6 +6326,19 @@ mod tests {
         assert_eq!(vmap_refusal.code, PsionicRefusalCode::UnsupportedOp);
         assert_eq!(vmap_refusal.scope, PsionicRefusalScope::Graph);
         assert_eq!(vmap_refusal.subject.as_deref(), Some("vmap:cast"));
+
+        let checkpoint_refusal = cast_graph
+            .program_transform_capability(
+                ProgramTransformFamily::Checkpoint,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            )
+            .expect_err("cast graph should refuse checkpoint capability");
+        assert_eq!(checkpoint_refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(checkpoint_refusal.scope, PsionicRefusalScope::Graph);
+        assert_eq!(
+            checkpoint_refusal.subject.as_deref(),
+            Some("checkpoint:cast")
+        );
     }
 
     #[test]

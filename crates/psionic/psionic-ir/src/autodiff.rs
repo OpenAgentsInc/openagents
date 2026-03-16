@@ -1,10 +1,14 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use psionic_core::{
     DType, Device, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, Shape, Tensor,
     TensorData, TensorId,
 };
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use thiserror::Error;
 
 use crate::{Graph, GraphBuilder, GraphError, OpKind};
@@ -869,6 +873,612 @@ pub struct VmapTransformResult {
     pub lane_outputs: Vec<TensorData>,
 }
 
+/// Summary from one bounded retained-value reference evaluation pass.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetainedEvaluationSummary {
+    /// Tensor ids retained after the pass completes.
+    pub retained_tensors: Vec<TensorId>,
+    /// Number of tensors dropped after their final consumer.
+    pub dropped_tensor_count: usize,
+    /// Peak simultaneously-live tensor count during the pass.
+    pub peak_live_tensors: usize,
+}
+
+/// Materialized rematerialization report from one public `checkpoint` transform.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckpointRematerializationReport {
+    /// Output tensor kept from the initial forward pass.
+    pub output_tensor: TensorId,
+    /// Retention summary from the initial forward pass.
+    pub initial_forward: RetainedEvaluationSummary,
+    /// Retention summary from the replay forward pass.
+    pub replay_forward: RetainedEvaluationSummary,
+    /// Forward tensors intentionally replayed to bind the backward graph.
+    pub replayed_binding_tensors: Vec<TensorId>,
+}
+
+/// Typed error returned by the public `checkpoint` transform layer.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum CheckpointTransformError {
+    /// One graph op is outside the bounded current checkpoint support matrix.
+    #[error("checkpoint transform used unsupported op `{op}` at tensor `{tensor_id}`")]
+    UnsupportedOp {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Stable op label.
+        op: String,
+    },
+    /// One retained forward output value was unexpectedly absent.
+    #[error("checkpoint transform output `{tensor_id}` did not materialize a forward value")]
+    MissingForwardValue {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One replay pass failed to retain a required backward binding.
+    #[error("checkpoint transform replay did not retain required primal tensor `{tensor_id}`")]
+    MissingReplayBinding {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One lower reverse-mode transform validation failed.
+    #[error(transparent)]
+    ReverseMode(#[from] ReverseModeTransformError),
+    /// One lower autodiff operation refused the requested transform.
+    #[error(transparent)]
+    Autodiff(#[from] AutodiffError),
+    /// One lower-layer reference-evaluation operation failed.
+    #[error(transparent)]
+    ReferenceEvaluation(#[from] ReferenceEvaluationError),
+}
+
+impl CheckpointTransformError {
+    /// Returns the canonical refusal when the checkpoint layer intentionally
+    /// refuses one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedOp { tensor_id, op } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedGradient,
+                    PsionicRefusalScope::Autodiff,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}:{op}")),
+            ),
+            Self::ReverseMode(error) => error.refusal(),
+            Self::Autodiff(error) => error.refusal(),
+            Self::ReferenceEvaluation(error) => error.refusal(),
+            Self::MissingForwardValue { .. } | Self::MissingReplayBinding { .. } => None,
+        }
+    }
+}
+
+/// Materialized result from one public `checkpoint` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CheckpointTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: ReverseModeTransformSignature,
+    /// Forward value for the differentiated output tensor.
+    pub value: TensorData,
+    /// Materialized gradients for each requested primal target.
+    pub gradients: BTreeMap<TensorId, TensorData>,
+    /// Symbolic backward plan replayed by the transform.
+    pub plan: AutodiffBackwardPlan,
+    /// Replayed primal bindings retained for backward execution.
+    pub replayed_primal_values: BTreeMap<TensorId, TensorData>,
+    /// Explicit rematerialization report for the bounded reference path.
+    pub rematerialization: CheckpointRematerializationReport,
+}
+
+/// First-class public `checkpoint` transform over one autodiff graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CheckpointTransform {
+    graph: AutodiffGraph,
+    signature: ReverseModeTransformSignature,
+}
+
+impl CheckpointTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &ReverseModeTransformSignature {
+        &self.signature
+    }
+
+    /// Materializes the forward value and requested gradients using explicit
+    /// forward replay for the backward-plan primal bindings.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+    ) -> Result<CheckpointTransformResult, CheckpointTransformError> {
+        self.apply_with_seed(inputs, None)
+    }
+
+    /// Materializes the forward value and gradients with one explicit upstream
+    /// seed when the output is non-scalar.
+    pub fn apply_with_seed(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+        seed: Option<TensorData>,
+    ) -> Result<CheckpointTransformResult, CheckpointTransformError> {
+        let plan = self.graph.backward_plan(self.signature.output)?;
+        let seed = resolve_backward_seed(&self.graph, self.signature.output, seed)?;
+        let initial_forward = evaluate_graph_retaining(
+            self.graph.graph(),
+            inputs,
+            BTreeSet::from([self.signature.output]),
+        )?;
+        let value = initial_forward
+            .values
+            .get(&self.signature.output)
+            .cloned()
+            .ok_or(CheckpointTransformError::MissingForwardValue {
+                tensor_id: self.signature.output,
+            })?;
+
+        let replay_targets = plan
+            .primal_bindings
+            .iter()
+            .map(|binding| binding.primal_tensor)
+            .collect::<BTreeSet<_>>();
+        let replay_forward = evaluate_graph_retaining(self.graph.graph(), inputs, replay_targets)?;
+        let mut backward_inputs = BTreeMap::new();
+        for binding in &plan.primal_bindings {
+            let replayed = replay_forward
+                .values
+                .get(&binding.primal_tensor)
+                .cloned()
+                .ok_or(CheckpointTransformError::MissingReplayBinding {
+                    tensor_id: binding.primal_tensor,
+                })?;
+            backward_inputs.insert(binding.gradient_graph_input, replayed);
+        }
+        backward_inputs.insert(plan.seed_input, seed);
+
+        let backward_values = evaluate_graph(&plan.gradient_graph, &backward_inputs)?;
+        let gradients = collect_requested_gradients_from_plan(
+            &self.graph,
+            &plan,
+            &backward_values,
+            self.signature.primal_targets.as_slice(),
+        )?;
+        let replayed_binding_tensors = replay_forward.summary.retained_tensors.clone();
+
+        Ok(CheckpointTransformResult {
+            signature: self.signature.clone(),
+            value,
+            gradients,
+            plan,
+            replayed_primal_values: replay_forward.values,
+            rematerialization: CheckpointRematerializationReport {
+                output_tensor: self.signature.output,
+                initial_forward: initial_forward.summary,
+                replay_forward: replay_forward.summary,
+                replayed_binding_tensors,
+            },
+        })
+    }
+}
+
+/// Stable kind identifier for one custom transform hook.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CustomTransformHookKind {
+    /// User-defined reverse-mode vector-Jacobian product override.
+    CustomVjp,
+}
+
+impl CustomTransformHookKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CustomVjp => "custom_vjp",
+        }
+    }
+}
+
+/// Serializable metadata for one registered transform hook.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransformHookRegistration {
+    /// Hook family under registration.
+    pub kind: CustomTransformHookKind,
+    /// Stable digest for the bound graph.
+    pub graph_digest: String,
+    /// Stable reverse-mode target signature for the hook.
+    pub signature: ReverseModeTransformSignature,
+    /// Stable digest for the reverse-mode signature.
+    pub signature_digest: String,
+    /// Human-readable custom rule label.
+    pub rule_label: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct TransformHookKey {
+    kind: CustomTransformHookKind,
+    graph_digest: String,
+    signature_digest: String,
+}
+
+#[derive(Clone)]
+struct RegisteredCustomVjpRule {
+    registration: TransformHookRegistration,
+    rule: Arc<dyn CustomVjpRule>,
+}
+
+/// Typed error returned while registering one custom transform hook.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum TransformHookRegistrationError {
+    /// Custom rules must carry a stable human-readable label.
+    #[error("transform hook registration requires a non-empty rule label")]
+    EmptyRuleLabel,
+    /// One graph/signature pair was already registered.
+    #[error(
+        "transform hook `{kind}` is already registered for graph `{graph_digest}` and signature `{signature_digest}`"
+    )]
+    DuplicateRegistration {
+        /// Hook family under registration.
+        kind: String,
+        /// Stable digest for the bound graph.
+        graph_digest: String,
+        /// Stable digest for the reverse-mode signature.
+        signature_digest: String,
+    },
+    /// One lower reverse-mode transform validation failed.
+    #[error(transparent)]
+    ReverseMode(#[from] ReverseModeTransformError),
+}
+
+impl TransformHookRegistrationError {
+    /// Returns the canonical refusal when the registration layer intentionally
+    /// refuses one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::ReverseMode(error) => error.refusal(),
+            Self::EmptyRuleLabel | Self::DuplicateRegistration { .. } => None,
+        }
+    }
+}
+
+/// Typed error returned while looking up one registered custom transform hook.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum TransformHookLookupError {
+    /// No hook is currently registered for the requested graph/signature pair.
+    #[error(
+        "transform hook `{kind}` is not registered for graph `{graph_digest}` and signature `{signature_digest}`"
+    )]
+    MissingRegistration {
+        /// Hook family under lookup.
+        kind: String,
+        /// Stable digest for the bound graph.
+        graph_digest: String,
+        /// Stable digest for the reverse-mode signature.
+        signature_digest: String,
+    },
+    /// One lower reverse-mode transform validation failed.
+    #[error(transparent)]
+    ReverseMode(#[from] ReverseModeTransformError),
+}
+
+impl TransformHookLookupError {
+    /// Returns the canonical refusal when the lookup layer intentionally refuses
+    /// one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::ReverseMode(error) => error.refusal(),
+            Self::MissingRegistration { .. } => None,
+        }
+    }
+}
+
+/// Runtime invocation context for one custom-vjp rule.
+pub struct CustomVjpInvocation<'a> {
+    /// Graph whose reverse-mode contract is being overridden.
+    pub graph: &'a AutodiffGraph,
+    /// Stable digest for that graph.
+    pub graph_digest: &'a str,
+    /// Reverse-mode signature under execution.
+    pub signature: &'a ReverseModeTransformSignature,
+    /// Runtime primal inputs for the graph.
+    pub inputs: &'a BTreeMap<TensorId, TensorData>,
+    /// Materialized forward value for the requested output.
+    pub value: &'a TensorData,
+    /// Upstream cotangent seed for the requested output.
+    pub seed: &'a TensorData,
+}
+
+/// User-defined reverse-mode cotangent override.
+pub trait CustomVjpRule: Send + Sync {
+    /// Stable rule label surfaced in diagnostics and receipts.
+    fn label(&self) -> &str;
+
+    /// Materializes custom cotangents for the requested reverse-mode targets.
+    fn apply(
+        &self,
+        invocation: &CustomVjpInvocation<'_>,
+    ) -> Result<BTreeMap<TensorId, TensorData>, PsionicRefusal>;
+}
+
+/// Graph-scoped registry for reusable custom transform hooks.
+#[derive(Clone, Default)]
+pub struct TransformHookRegistry {
+    custom_vjp_rules: BTreeMap<TransformHookKey, RegisteredCustomVjpRule>,
+}
+
+impl std::fmt::Debug for TransformHookRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TransformHookRegistry")
+            .field("registrations", &self.registrations())
+            .finish()
+    }
+}
+
+impl TransformHookRegistry {
+    /// Returns all registered hooks in deterministic order.
+    #[must_use]
+    pub fn registrations(&self) -> Vec<TransformHookRegistration> {
+        self.custom_vjp_rules
+            .values()
+            .map(|entry| entry.registration.clone())
+            .collect()
+    }
+
+    /// Registers one custom-vjp rule for a graph/signature pair.
+    pub fn register_custom_vjp(
+        &mut self,
+        graph: &AutodiffGraph,
+        output: TensorId,
+        primal_targets: &[TensorId],
+        rule: Arc<dyn CustomVjpRule>,
+    ) -> Result<TransformHookRegistration, TransformHookRegistrationError> {
+        let signature =
+            validate_reverse_mode_transform_signature(graph, output, primal_targets, None)?;
+        let rule_label = rule.label().trim().to_string();
+        if rule_label.is_empty() {
+            return Err(TransformHookRegistrationError::EmptyRuleLabel);
+        }
+        let graph_digest = graph.graph().stable_digest();
+        let signature_digest = stable_reverse_mode_transform_signature_digest(&signature);
+        let key = TransformHookKey {
+            kind: CustomTransformHookKind::CustomVjp,
+            graph_digest: graph_digest.clone(),
+            signature_digest: signature_digest.clone(),
+        };
+        if self.custom_vjp_rules.contains_key(&key) {
+            return Err(TransformHookRegistrationError::DuplicateRegistration {
+                kind: String::from(CustomTransformHookKind::CustomVjp.label()),
+                graph_digest,
+                signature_digest,
+            });
+        }
+        let registration = TransformHookRegistration {
+            kind: CustomTransformHookKind::CustomVjp,
+            graph_digest: key.graph_digest.clone(),
+            signature,
+            signature_digest: key.signature_digest.clone(),
+            rule_label,
+        };
+        self.custom_vjp_rules.insert(
+            key,
+            RegisteredCustomVjpRule {
+                registration: registration.clone(),
+                rule,
+            },
+        );
+        Ok(registration)
+    }
+
+    /// Looks up one registered custom-vjp transform for the provided graph and
+    /// reverse-mode targets.
+    pub fn custom_vjp(
+        &self,
+        graph: &AutodiffGraph,
+        output: TensorId,
+        primal_targets: &[TensorId],
+    ) -> Result<CustomVjpTransform, TransformHookLookupError> {
+        let signature =
+            validate_reverse_mode_transform_signature(graph, output, primal_targets, None)?;
+        let graph_digest = graph.graph().stable_digest();
+        let signature_digest = stable_reverse_mode_transform_signature_digest(&signature);
+        let key = TransformHookKey {
+            kind: CustomTransformHookKind::CustomVjp,
+            graph_digest: graph_digest.clone(),
+            signature_digest: signature_digest.clone(),
+        };
+        let registered = self.custom_vjp_rules.get(&key).ok_or(
+            TransformHookLookupError::MissingRegistration {
+                kind: String::from(CustomTransformHookKind::CustomVjp.label()),
+                graph_digest,
+                signature_digest,
+            },
+        )?;
+        Ok(CustomVjpTransform {
+            graph: graph.clone(),
+            signature,
+            registration: registered.registration.clone(),
+            rule: Arc::clone(&registered.rule),
+        })
+    }
+}
+
+/// Typed error returned by the public `custom_vjp` transform layer.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum CustomVjpTransformError {
+    /// One retained forward output value was unexpectedly absent.
+    #[error("custom_vjp transform output `{tensor_id}` did not materialize a forward value")]
+    MissingForwardValue {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// The custom rule returned a cotangent for an unknown target.
+    #[error("custom_vjp transform returned unexpected cotangent target `{tensor_id}`")]
+    UnexpectedCotangentTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// The custom rule omitted one requested cotangent.
+    #[error("custom_vjp transform omitted cotangent target `{tensor_id}`")]
+    MissingCotangentTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One returned cotangent used an unsupported storage family.
+    #[error("custom_vjp transform cotangent for tensor `{tensor_id}` must be dense `f32`")]
+    CotangentDenseF32Required {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One returned cotangent length mismatched its target tensor.
+    #[error(
+        "custom_vjp transform cotangent for tensor `{tensor_id}` length mismatch: expected {expected_len}, found {actual_len}"
+    )]
+    CotangentLengthMismatch {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Expected logical element count.
+        expected_len: usize,
+        /// Observed cotangent length.
+        actual_len: usize,
+    },
+    /// The user-defined rule refused the requested invocation.
+    #[error("custom_vjp rule `{rule_label}` refused: {detail}")]
+    RuleRefusal {
+        /// Human-readable rule label.
+        rule_label: String,
+        /// Plain-language refusal detail.
+        detail: String,
+        /// Canonical refusal emitted by the rule.
+        refusal: PsionicRefusal,
+    },
+    /// One lower reverse-mode transform validation failed.
+    #[error(transparent)]
+    ReverseMode(#[from] ReverseModeTransformError),
+    /// One lower autodiff operation refused the requested transform.
+    #[error(transparent)]
+    Autodiff(#[from] AutodiffError),
+    /// One lower-layer reference-evaluation operation failed.
+    #[error(transparent)]
+    ReferenceEvaluation(#[from] ReferenceEvaluationError),
+}
+
+impl CustomVjpTransformError {
+    /// Returns the canonical refusal when the custom-vjp layer intentionally
+    /// refuses one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::CotangentDenseF32Required { tensor_id } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedGradient,
+                    PsionicRefusalScope::Autodiff,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}")),
+            ),
+            Self::RuleRefusal { refusal, .. } => Some(refusal.clone()),
+            Self::ReverseMode(error) => error.refusal(),
+            Self::Autodiff(error) => error.refusal(),
+            Self::ReferenceEvaluation(error) => error.refusal(),
+            Self::MissingForwardValue { .. }
+            | Self::UnexpectedCotangentTarget { .. }
+            | Self::MissingCotangentTarget { .. }
+            | Self::CotangentLengthMismatch { .. } => None,
+        }
+    }
+}
+
+/// Materialized result from one public `custom_vjp` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CustomVjpTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: ReverseModeTransformSignature,
+    /// Forward value for the differentiated output tensor.
+    pub value: TensorData,
+    /// Materialized cotangents from the custom rule.
+    pub cotangents: BTreeMap<TensorId, TensorData>,
+    /// Registration metadata for the applied custom rule.
+    pub registration: TransformHookRegistration,
+}
+
+/// First-class public `custom_vjp` transform over one autodiff graph.
+#[derive(Clone)]
+pub struct CustomVjpTransform {
+    graph: AutodiffGraph,
+    signature: ReverseModeTransformSignature,
+    registration: TransformHookRegistration,
+    rule: Arc<dyn CustomVjpRule>,
+}
+
+impl std::fmt::Debug for CustomVjpTransform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CustomVjpTransform")
+            .field("signature", &self.signature)
+            .field("registration", &self.registration)
+            .finish()
+    }
+}
+
+impl CustomVjpTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &ReverseModeTransformSignature {
+        &self.signature
+    }
+
+    /// Returns the registration metadata for the transform.
+    #[must_use]
+    pub fn registration(&self) -> &TransformHookRegistration {
+        &self.registration
+    }
+
+    /// Materializes the forward value and requested cotangents with the
+    /// default scalar seed when possible.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+    ) -> Result<CustomVjpTransformResult, CustomVjpTransformError> {
+        self.apply_with_seed(inputs, None)
+    }
+
+    /// Materializes the forward value and requested cotangents using one
+    /// explicit upstream seed when the output is non-scalar.
+    pub fn apply_with_seed(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+        seed: Option<TensorData>,
+    ) -> Result<CustomVjpTransformResult, CustomVjpTransformError> {
+        let forward_values = evaluate_graph(self.graph.graph(), inputs)?;
+        let value = forward_values.get(&self.signature.output).cloned().ok_or(
+            CustomVjpTransformError::MissingForwardValue {
+                tensor_id: self.signature.output,
+            },
+        )?;
+        let seed = resolve_backward_seed(&self.graph, self.signature.output, seed)?;
+        let graph_digest = self.graph.graph().stable_digest();
+        let invocation = CustomVjpInvocation {
+            graph: &self.graph,
+            graph_digest: graph_digest.as_str(),
+            signature: &self.signature,
+            inputs,
+            value: &value,
+            seed: &seed,
+        };
+        let cotangents = self.rule.apply(&invocation).map_err(|refusal| {
+            CustomVjpTransformError::RuleRefusal {
+                rule_label: self.registration.rule_label.clone(),
+                detail: refusal.detail.clone(),
+                refusal,
+            }
+        })?;
+        let cotangents = validate_custom_vjp_cotangents(&self.graph, &self.signature, cotangents)?;
+        Ok(CustomVjpTransformResult {
+            signature: self.signature.clone(),
+            value,
+            cotangents,
+            registration: self.registration.clone(),
+        })
+    }
+}
+
 /// First-class public `grad` transform over one autodiff graph.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GradTransform {
@@ -1179,6 +1789,39 @@ pub fn vmap(
         graph: graph.clone(),
         signature,
     })
+}
+
+/// Creates one public `checkpoint` transform over the provided output and
+/// primal targets.
+pub fn checkpoint(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<CheckpointTransform, CheckpointTransformError> {
+    for node in graph.graph().nodes() {
+        if let AutodiffGradientSupport::Unsupported { .. } = gradient_support_for_op(node.op()) {
+            return Err(CheckpointTransformError::UnsupportedOp {
+                tensor_id: node.tensor().id(),
+                op: String::from(node.op().label()),
+            });
+        }
+    }
+    let signature = validate_reverse_mode_transform_signature(graph, output, primal_targets, None)?;
+    Ok(CheckpointTransform {
+        graph: graph.clone(),
+        signature,
+    })
+}
+
+/// Looks up one registered public `custom_vjp` transform over the provided
+/// output and primal targets.
+pub fn custom_vjp(
+    registry: &TransformHookRegistry,
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<CustomVjpTransform, TransformHookLookupError> {
+    registry.custom_vjp(graph, output, primal_targets)
 }
 
 /// Autodiff-aware graph bundle with per-tensor tracking posture.
@@ -1624,31 +2267,7 @@ impl AutodiffGraph {
         seed: Option<TensorData>,
     ) -> Result<AutodiffBackwardResult, AutodiffError> {
         let plan = self.backward_plan(output)?;
-        let output_node = self
-            .graph
-            .node(output)
-            .ok_or(AutodiffError::UnknownTensor { tensor_id: output })?;
-        let output_len = output_node.tensor().spec().shape().element_count();
-        let seed = match seed {
-            Some(seed) => seed,
-            None if output_len == 1 => TensorData::F32(vec![1.0]),
-            None => {
-                return Err(AutodiffError::NonScalarOutputRequiresSeed {
-                    tensor_id: output,
-                    shape: output_node.tensor().spec().shape().clone(),
-                });
-            }
-        };
-        let Some(seed_values) = seed.as_f32_slice() else {
-            return Err(AutodiffError::SeedDenseF32Required { tensor_id: output });
-        };
-        if seed_values.len() != output_len {
-            return Err(AutodiffError::SeedLengthMismatch {
-                tensor_id: output,
-                expected_len: output_len,
-                actual_len: seed_values.len(),
-            });
-        }
+        let seed = resolve_backward_seed(self, output, seed)?;
 
         let forward_values = evaluate_graph(&self.graph, inputs)?;
         let mut backward_inputs = BTreeMap::new();
@@ -1721,6 +2340,21 @@ fn validate_reverse_mode_transform_signature(
     })
 }
 
+fn stable_reverse_mode_transform_signature_digest(
+    signature: &ReverseModeTransformSignature,
+) -> String {
+    let mut lines = vec![format!("output={}", signature.output)];
+    for target in &signature.primal_targets {
+        lines.push(format!("target={target}"));
+    }
+    let mut digest = sha2::Sha256::new();
+    for line in lines {
+        digest.update(line.as_bytes());
+        digest.update(b"\n");
+    }
+    format!("{:x}", digest.finalize())
+}
+
 fn ensure_supported_transform_target(tensor: &Tensor) -> Result<(), ReverseModeTransformError> {
     if tensor.spec().dtype() == DType::F32 {
         Ok(())
@@ -1742,6 +2376,28 @@ fn collect_requested_gradients(
         .map(|target| {
             let gradient = if let Some(gradient) = backward_result.gradient(*target) {
                 gradient.clone()
+            } else {
+                zero_gradient_for_target(graph, *target)?
+            };
+            Ok((*target, gradient))
+        })
+        .collect()
+}
+
+fn collect_requested_gradients_from_plan(
+    graph: &AutodiffGraph,
+    plan: &AutodiffBackwardPlan,
+    backward_values: &BTreeMap<TensorId, TensorData>,
+    primal_targets: &[TensorId],
+) -> Result<BTreeMap<TensorId, TensorData>, ReverseModeTransformError> {
+    primal_targets
+        .iter()
+        .map(|target| {
+            let gradient = if let Some(gradient_tensor) = plan.gradient_for(*target) {
+                backward_values
+                    .get(&gradient_tensor)
+                    .cloned()
+                    .unwrap_or(zero_gradient_for_target(graph, *target)?)
             } else {
                 zero_gradient_for_target(graph, *target)?
             };
@@ -1881,6 +2537,52 @@ fn ensure_supported_vmap_target(tensor: &Tensor) -> Result<(), VmapTransformErro
             dtype: tensor.spec().dtype(),
         })
     }
+}
+
+fn validate_custom_vjp_cotangents(
+    graph: &AutodiffGraph,
+    signature: &ReverseModeTransformSignature,
+    cotangents: BTreeMap<TensorId, TensorData>,
+) -> Result<BTreeMap<TensorId, TensorData>, CustomVjpTransformError> {
+    for tensor_id in cotangents.keys() {
+        if !signature.primal_targets.contains(tensor_id) {
+            return Err(CustomVjpTransformError::UnexpectedCotangentTarget {
+                tensor_id: *tensor_id,
+            });
+        }
+    }
+
+    let mut validated = BTreeMap::new();
+    for tensor_id in &signature.primal_targets {
+        let cotangent =
+            cotangents
+                .get(tensor_id)
+                .ok_or(CustomVjpTransformError::MissingCotangentTarget {
+                    tensor_id: *tensor_id,
+                })?;
+        let Some(values) = cotangent.as_f32_slice() else {
+            return Err(CustomVjpTransformError::CotangentDenseF32Required {
+                tensor_id: *tensor_id,
+            });
+        };
+        let node =
+            graph
+                .graph()
+                .node(*tensor_id)
+                .ok_or(ReverseModeTransformError::UnknownTensor {
+                    tensor_id: *tensor_id,
+                })?;
+        let expected_len = node.tensor().spec().shape().element_count();
+        if values.len() != expected_len {
+            return Err(CustomVjpTransformError::CotangentLengthMismatch {
+                tensor_id: *tensor_id,
+                expected_len,
+                actual_len: values.len(),
+            });
+        }
+        validated.insert(*tensor_id, TensorData::F32(values.to_vec()));
+    }
+    Ok(validated)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -2500,6 +3202,45 @@ fn zero_tensor_like(tensor: &Tensor) -> TensorData {
     TensorData::F32(vec![0.0; tensor.spec().shape().element_count()])
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct RetainedEvaluationResult {
+    values: BTreeMap<TensorId, TensorData>,
+    summary: RetainedEvaluationSummary,
+}
+
+fn resolve_backward_seed(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    seed: Option<TensorData>,
+) -> Result<TensorData, AutodiffError> {
+    let output_node = graph
+        .graph()
+        .node(output)
+        .ok_or(AutodiffError::UnknownTensor { tensor_id: output })?;
+    let output_len = output_node.tensor().spec().shape().element_count();
+    let seed = match seed {
+        Some(seed) => seed,
+        None if output_len == 1 => TensorData::F32(vec![1.0]),
+        None => {
+            return Err(AutodiffError::NonScalarOutputRequiresSeed {
+                tensor_id: output,
+                shape: output_node.tensor().spec().shape().clone(),
+            });
+        }
+    };
+    let Some(seed_values) = seed.as_f32_slice() else {
+        return Err(AutodiffError::SeedDenseF32Required { tensor_id: output });
+    };
+    if seed_values.len() != output_len {
+        return Err(AutodiffError::SeedLengthMismatch {
+            tensor_id: output,
+            expected_len: output_len,
+            actual_len: seed_values.len(),
+        });
+    }
+    Ok(seed)
+}
+
 /// Autodiff-aware wrapper over the canonical graph builder.
 #[derive(Clone, Debug)]
 pub struct AutodiffGraphBuilder {
@@ -2815,6 +3556,223 @@ impl AutodiffGraphBuilder {
     }
 }
 
+fn evaluate_graph_retaining(
+    graph: &Graph,
+    inputs: &BTreeMap<TensorId, TensorData>,
+    retain_tensors: BTreeSet<TensorId>,
+) -> Result<RetainedEvaluationResult, ReferenceEvaluationError> {
+    let mut values = BTreeMap::new();
+    let mut remaining_uses = graph_input_use_counts(graph);
+    let mut dropped_tensor_count = 0usize;
+    let mut peak_live_tensors = 0usize;
+
+    for node in graph.nodes() {
+        let value = match node.op() {
+            OpKind::Input { .. } => inputs.get(&node.tensor().id()).cloned().ok_or(
+                ReferenceEvaluationError::MissingInput {
+                    tensor_id: node.tensor().id(),
+                },
+            )?,
+            OpKind::Constant { data } => data.clone(),
+            OpKind::Detach => values.get(&node.inputs()[0]).cloned().ok_or(
+                ReferenceEvaluationError::UnknownTensor {
+                    tensor_id: node.inputs()[0],
+                },
+            )?,
+            OpKind::Add => {
+                let left =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                let right =
+                    resolve_dense_input(graph, &values, node.inputs()[1], node.op().label())?;
+                TensorData::F32(
+                    left.iter()
+                        .zip(right.iter())
+                        .map(|(left, right)| left + right)
+                        .collect(),
+                )
+            }
+            OpKind::Mul => {
+                let left =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                let right =
+                    resolve_dense_input(graph, &values, node.inputs()[1], node.op().label())?;
+                TensorData::F32(
+                    left.iter()
+                        .zip(right.iter())
+                        .map(|(left, right)| left * right)
+                        .collect(),
+                )
+            }
+            OpKind::Matmul => {
+                let left_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let right_node = graph.node(node.inputs()[1]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[1],
+                    },
+                )?;
+                let left =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                let right =
+                    resolve_dense_input(graph, &values, node.inputs()[1], node.op().label())?;
+                TensorData::F32(matmul_values(
+                    left,
+                    left_node.tensor().spec().shape(),
+                    right,
+                    right_node.tensor().spec().shape(),
+                ))
+            }
+            OpKind::Reshape => values.get(&node.inputs()[0]).cloned().ok_or(
+                ReferenceEvaluationError::UnknownTensor {
+                    tensor_id: node.inputs()[0],
+                },
+            )?,
+            OpKind::Permute { axes } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(permute_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    axes,
+                ))
+            }
+            OpKind::Slice { axis, start, end } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(slice_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                    *start,
+                    *end,
+                ))
+            }
+            OpKind::Select { axis, index } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(select_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                    *index,
+                ))
+            }
+            OpKind::Concat { axis } => {
+                let mut parts = Vec::with_capacity(node.inputs().len());
+                for input_id in node.inputs() {
+                    let input_node =
+                        graph
+                            .node(*input_id)
+                            .ok_or(ReferenceEvaluationError::UnknownTensor {
+                                tensor_id: *input_id,
+                            })?;
+                    let input = resolve_dense_input(graph, &values, *input_id, node.op().label())?;
+                    parts.push((input_node.tensor().spec().shape().clone(), input.to_vec()));
+                }
+                TensorData::F32(concat_values(parts.as_slice(), *axis))
+            }
+            OpKind::Expand { shape } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(expand_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    shape,
+                ))
+            }
+            OpKind::Cast { dtype } => {
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(
+                    input
+                        .iter()
+                        .map(|current| match dtype {
+                            DType::F32 | DType::F16 | DType::BF16 => *current,
+                            DType::I8 => current.round().clamp(i8::MIN as f32, i8::MAX as f32),
+                        })
+                        .collect(),
+                )
+            }
+            OpKind::ReduceSum { axis } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(reduce_sum_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                ))
+            }
+            OpKind::BackendExtension { .. } => {
+                return Err(ReferenceEvaluationError::UnsupportedOp {
+                    tensor_id: node.tensor().id(),
+                    op: String::from(node.op().label()),
+                });
+            }
+        };
+        validate_output_length(node.tensor(), &value)?;
+        values.insert(node.tensor().id(), value);
+        peak_live_tensors = peak_live_tensors.max(values.len());
+
+        release_consumed_tensors(
+            node.inputs(),
+            &mut remaining_uses,
+            &mut values,
+            &retain_tensors,
+            &mut dropped_tensor_count,
+        );
+        release_tensor_if_dead(
+            node.tensor().id(),
+            &remaining_uses,
+            &mut values,
+            &retain_tensors,
+            &mut dropped_tensor_count,
+        );
+    }
+
+    let retained_ids = retain_tensors
+        .iter()
+        .copied()
+        .filter(|tensor_id| values.contains_key(tensor_id))
+        .collect::<Vec<_>>();
+    values.retain(|tensor_id, _| retain_tensors.contains(tensor_id));
+    Ok(RetainedEvaluationResult {
+        values,
+        summary: RetainedEvaluationSummary {
+            retained_tensors: retained_ids,
+            dropped_tensor_count,
+            peak_live_tensors,
+        },
+    })
+}
+
 /// Evaluates a canonical graph through the dense `f32` reference path.
 pub fn evaluate_graph(
     graph: &Graph,
@@ -2996,6 +3954,51 @@ pub fn evaluate_graph(
         values.insert(node.tensor().id(), value);
     }
     Ok(values)
+}
+
+fn graph_input_use_counts(graph: &Graph) -> BTreeMap<TensorId, usize> {
+    let mut counts = BTreeMap::new();
+    for node in graph.nodes() {
+        for input in node.inputs() {
+            *counts.entry(*input).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn release_consumed_tensors(
+    inputs: &[TensorId],
+    remaining_uses: &mut BTreeMap<TensorId, usize>,
+    values: &mut BTreeMap<TensorId, TensorData>,
+    retain_tensors: &BTreeSet<TensorId>,
+    dropped_tensor_count: &mut usize,
+) {
+    for input in inputs {
+        let Some(remaining) = remaining_uses.get_mut(input) else {
+            continue;
+        };
+        if *remaining > 0 {
+            *remaining -= 1;
+        }
+        if *remaining == 0 && !retain_tensors.contains(input) && values.remove(input).is_some() {
+            *dropped_tensor_count += 1;
+        }
+    }
+}
+
+fn release_tensor_if_dead(
+    tensor_id: TensorId,
+    remaining_uses: &BTreeMap<TensorId, usize>,
+    values: &mut BTreeMap<TensorId, TensorData>,
+    retain_tensors: &BTreeSet<TensorId>,
+    dropped_tensor_count: &mut usize,
+) {
+    if remaining_uses.get(&tensor_id).copied().unwrap_or(0) == 0
+        && !retain_tensors.contains(&tensor_id)
+        && values.remove(&tensor_id).is_some()
+    {
+        *dropped_tensor_count += 1;
+    }
 }
 
 fn ensure_supported_gradient_dtype(tensor: &Tensor) -> Result<(), AutodiffError> {
@@ -3383,16 +4386,65 @@ fn ravel_index(coords: &[usize], dims: &[usize]) -> usize {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use std::{collections::BTreeMap, error::Error};
+    use std::{collections::BTreeMap, error::Error, sync::Arc};
 
     use psionic_core::{DType, Device, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData};
 
     use crate::{
         AutodiffContext, AutodiffError, AutodiffGradientSupport, AutodiffGraphBuilder,
-        AutodiffUnsupportedGradientReason, ForwardModeTransformError, ReverseModeTransformError,
-        TensorId, VmapInputBinding, VmapSupport, VmapTransformError, VmapUnsupportedReason, grad,
+        AutodiffUnsupportedGradientReason, CheckpointTransformError, CustomVjpInvocation,
+        CustomVjpRule, CustomVjpTransformError, ForwardModeTransformError,
+        ReverseModeTransformError, TensorId, TransformHookLookupError,
+        TransformHookRegistrationError, TransformHookRegistry, VmapInputBinding, VmapSupport,
+        VmapTransformError, VmapUnsupportedReason, checkpoint, custom_vjp, grad,
         gradient_support_for_op, jvp, value_and_grad, vjp, vmap, vmap_support_for_op,
     };
+
+    struct ScalingCustomVjpRule {
+        label: &'static str,
+        scale: f32,
+    }
+
+    impl CustomVjpRule for ScalingCustomVjpRule {
+        fn label(&self) -> &str {
+            self.label
+        }
+
+        fn apply(
+            &self,
+            invocation: &CustomVjpInvocation<'_>,
+        ) -> Result<BTreeMap<TensorId, TensorData>, psionic_core::PsionicRefusal> {
+            let seed = invocation
+                .seed
+                .as_f32_slice()
+                .expect("custom_vjp seed should be dense f32 in tests");
+            let target = invocation
+                .signature
+                .primal_targets
+                .first()
+                .copied()
+                .expect("custom_vjp test should have one target");
+            Ok(BTreeMap::from([(
+                target,
+                TensorData::F32(seed.iter().map(|value| value * self.scale).collect()),
+            )]))
+        }
+    }
+
+    struct EmptyCustomVjpRule;
+
+    impl CustomVjpRule for EmptyCustomVjpRule {
+        fn label(&self) -> &str {
+            "empty_rule"
+        }
+
+        fn apply(
+            &self,
+            _invocation: &CustomVjpInvocation<'_>,
+        ) -> Result<BTreeMap<TensorId, TensorData>, psionic_core::PsionicRefusal> {
+            Ok(BTreeMap::new())
+        }
+    }
 
     #[test]
     fn reverse_mode_autodiff_materializes_matmul_chain_gradients() -> Result<(), Box<dyn Error>> {
@@ -3797,6 +4849,186 @@ mod tests {
                     .expect("vjp should include vx")
             ),
             vec![0.5, 2.0]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_checkpoint_transform_replays_primal_bindings_and_materializes_gradients()
+    -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let bias = builder.input("bias", Shape::new(vec![2]), DType::F32, true);
+        let shifted = builder.add(&x, &bias)?;
+        let squared = builder.mul(&shifted, &shifted)?;
+        let loss = builder.reduce_sum(&squared);
+        let graph = builder.finish(vec![loss.clone()]);
+        let inputs = BTreeMap::from([
+            (x.id(), TensorData::F32(vec![2.0, 3.0])),
+            (bias.id(), TensorData::F32(vec![1.0, -1.0])),
+        ]);
+
+        let transform = checkpoint(&graph, loss.id(), &[x.id(), bias.id()])?;
+        let result = transform.apply(&inputs)?;
+
+        assert_eq!(dense_tensor(&result.value), vec![13.0]);
+        assert_eq!(
+            dense_tensor(
+                result
+                    .gradients
+                    .get(&x.id())
+                    .expect("checkpoint result should include x")
+            ),
+            vec![6.0, 4.0]
+        );
+        assert_eq!(
+            dense_tensor(
+                result
+                    .gradients
+                    .get(&bias.id())
+                    .expect("checkpoint result should include bias")
+            ),
+            vec![6.0, 4.0]
+        );
+        assert_eq!(
+            result.rematerialization.initial_forward.retained_tensors,
+            vec![loss.id()]
+        );
+        assert_eq!(
+            result.rematerialization.replay_forward.retained_tensors,
+            vec![shifted.id()]
+        );
+        assert_eq!(
+            result.rematerialization.replayed_binding_tensors,
+            vec![shifted.id()]
+        );
+        assert!(
+            result
+                .rematerialization
+                .initial_forward
+                .dropped_tensor_count
+                > 0
+        );
+        assert!(
+            result.replayed_primal_values.contains_key(&shifted.id()),
+            "checkpoint replay should retain the shifted intermediate for backward"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn checkpoint_transform_refuses_cast_barriers() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let casted = builder.cast(&x, DType::I8)?;
+        let graph = builder.finish(vec![casted.clone()]);
+
+        assert_eq!(
+            checkpoint(&graph, casted.id(), &[x.id()]),
+            Err(CheckpointTransformError::UnsupportedOp {
+                tensor_id: casted.id(),
+                op: String::from("cast"),
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn public_custom_vjp_transform_uses_registered_rule() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let bias = builder.constant_f32(Shape::new(vec![2]), vec![1.0, -1.0])?;
+        let output = builder.add(&x, &bias)?;
+        let graph = builder.finish(vec![output.clone()]);
+        let inputs = BTreeMap::from([(x.id(), TensorData::F32(vec![3.0, 1.0]))]);
+
+        let mut registry = TransformHookRegistry::default();
+        let registration = registry.register_custom_vjp(
+            &graph,
+            output.id(),
+            &[x.id()],
+            Arc::new(ScalingCustomVjpRule {
+                label: "triple_seed",
+                scale: 3.0,
+            }),
+        )?;
+        assert_eq!(registry.registrations(), vec![registration.clone()]);
+
+        let transform = custom_vjp(&registry, &graph, output.id(), &[x.id()])?;
+        let result = transform.apply_with_seed(&inputs, Some(TensorData::F32(vec![0.5, 2.0])))?;
+
+        assert_eq!(dense_tensor(&result.value), vec![4.0, 0.0]);
+        assert_eq!(result.registration.rule_label, "triple_seed");
+        assert_eq!(
+            dense_tensor(
+                result
+                    .cotangents
+                    .get(&x.id())
+                    .expect("custom_vjp should include x")
+            ),
+            vec![1.5, 6.0]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn custom_vjp_registry_and_transform_refuse_missing_and_duplicate_rules()
+    -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let output = builder.add(&x, &x)?;
+        let graph = builder.finish(vec![output.clone()]);
+        let inputs = BTreeMap::from([(x.id(), TensorData::F32(vec![1.0, 2.0]))]);
+
+        let registry = TransformHookRegistry::default();
+        let missing = custom_vjp(&registry, &graph, output.id(), &[x.id()]);
+        assert!(matches!(
+            missing,
+            Err(TransformHookLookupError::MissingRegistration { .. })
+        ));
+
+        let mut registry = TransformHookRegistry::default();
+        let _registration = registry.register_custom_vjp(
+            &graph,
+            output.id(),
+            &[x.id()],
+            Arc::new(ScalingCustomVjpRule {
+                label: "duplicate_guard",
+                scale: 1.0,
+            }),
+        )?;
+        let duplicate = registry.register_custom_vjp(
+            &graph,
+            output.id(),
+            &[x.id()],
+            Arc::new(ScalingCustomVjpRule {
+                label: "duplicate_guard",
+                scale: 1.0,
+            }),
+        );
+        assert!(matches!(
+            duplicate,
+            Err(TransformHookRegistrationError::DuplicateRegistration { .. })
+        ));
+
+        let mut invalid_registry = TransformHookRegistry::default();
+        invalid_registry.register_custom_vjp(
+            &graph,
+            output.id(),
+            &[x.id()],
+            Arc::new(EmptyCustomVjpRule),
+        )?;
+        let invalid_transform = custom_vjp(&invalid_registry, &graph, output.id(), &[x.id()])?;
+        assert_eq!(
+            invalid_transform.apply_with_seed(&inputs, Some(TensorData::F32(vec![1.0, 1.0]))),
+            Err(CustomVjpTransformError::MissingCotangentTarget { tensor_id: x.id() })
         );
 
         Ok(())
