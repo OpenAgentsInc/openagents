@@ -1,0 +1,19 @@
+{
+  "benchmark": "arc_agi3",
+  "task_id": "demo-bridge-task",
+  "overall_score": 1.0,
+  "metadata": {
+    "source_url": "https://example.invalid/arc/demo-bridge-task",
+    "tags": ["fixture", "demo"],
+    "opaque": {
+      "origin": "arc-core-test"
+    }
+  },
+  "levels": [
+    {
+      "level_index": 0,
+      "action_count": 2,
+      "score": 1.0
+    }
+  ]
+}
