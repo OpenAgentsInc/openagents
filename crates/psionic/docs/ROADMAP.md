@@ -551,7 +551,7 @@ Its declared scope is:
   containing the frozen training manifest, training report, linear benchmark
   report, checkpoint state plus checkpoint manifest, and trained-model
   artifact; the recorded outcome is intentionally still weak (`0/2`
-  validation exact-trace cases, `13` bps aggregate target exactness), which is
+  validation exact-trace cases, `15` bps aggregate target exactness), which is
   precisely why the next phases are telemetry and postmortem rather than claim
   expansion
 - landed trained-executor Phase 8 bar from the post-audit issue spine:
@@ -566,8 +566,18 @@ Its declared scope is:
   the same committed run bundle, while
   `docs/audits/2026-03-16-tassadar-first-run-postmortem.md` captures the
   human-readable review; the current next-run plan explicitly prioritizes
-  boundary curriculum and more optimization budget, and it blocks Phase 10/11
-  until the 4x4 lane clears short-trace exactness gates
+  boundary curriculum and more optimization budget, and it keeps later model
+  claims tied to 4x4 exactness evidence rather than benchmark theater
+- landed trained-executor Phase 10 bar from the post-audit issue spine:
+  `psionic-models` now exposes explicit model-KV decode state plus
+  machine-legible decode selection, `psionic-eval` now benchmarks trained-model
+  explicit linear-scan KV decode against a real hull-cache KV path and direct
+  CPU execution, and `psionic-train` now persists
+  `neural_hull_benchmark_report.json` into the committed Sudoku-v0 run bundle;
+  the current committed run records `8/8` hull-vs-linear prefix agreement with
+  no fallbacks or refusals and about `1.93x` hull speedup (`42,172` vs
+  `21,860` target tok/s over a `4,096`-token per-case window), while both
+  neural paths remain `0/8` exact against reference traces
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

@@ -1,6 +1,6 @@
 {
   "run_id": "tassadar-executor-transformer-sudoku-v0-reference-run-v0",
-  "basis_postmortem_digest": "dfd60d9f0defbddc33c1e76050f8de7def86b2076210687927001c9753f27218",
+  "basis_postmortem_digest": "6700884e37b5cca7c310aa20891c6e9d164ccfbdfb5ed6c02e0fdb8ca93ab88e",
   "actions": [
     {
       "action_id": "boundary_curriculum_v1",
@@ -65,5 +65,5 @@
       ]
     }
   ],
-  "plan_digest": "3ec6a173b14aea34faa53673f2718b36fd51ddefcee1779af47df90fc796a969"
+  "plan_digest": "4b0109eca7250598bb6e7ea15f943631dbc2190a80f8735f2e90e0819bc07e57"
 }

@@ -206,7 +206,7 @@ The current scope is:
   frozen training manifest, training report, linear benchmark report,
   checkpoint payload plus manifest, and trained-model artifact; the recorded
   run remains explicitly low-exactness (`0/2` validation exact-trace cases,
-  `13` bps aggregate target exactness), so the claim stays at "first honest
+  `15` bps aggregate target exactness), so the claim stays at "first honest
   trained run exists" rather than "the trained executor already works"
 - landed trained-executor Phase 8 follow-on bar: the same persisted run bundle
   now also carries machine-readable post-run telemetry and failure artifacts in
@@ -220,9 +220,19 @@ The current scope is:
   carries `postmortem.json` and `next_run_plan.json`, and the repo now has a
   human-readable first-run review in
   `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`; the resulting
-  plan explicitly gates neural hull-cache and 9x9 scale-out behind improved 4x4
-  boundary and short-trace exactness rather than letting later phases outrun
-  the evidence
+  plan explicitly keeps later claims tied to improved 4x4 boundary and
+  short-trace exactness rather than letting scale claims outrun the evidence
+- landed trained-executor Phase 10 follow-on bar: `psionic-models` now owns an
+  explicit model-KV decode state plus machine-legible decode selection over
+  `ReferenceLinear` and `HullCache`, `psionic-eval` now benchmarks the trained
+  model’s explicit linear-scan KV path against a real hull-cache KV path and
+  full direct CPU execution, and `psionic-train` now persists
+  `neural_hull_benchmark_report.json` into the committed run bundle; the
+  current committed run shows `8/8` hull-vs-linear prefix agreement with no
+  fallback/refusal and about `1.93x` hull speedup (`42,172` vs `21,860`
+  target tok/s over a `4,096`-token per-case window), while exactness remains
+  `0/8`, so this phase closes the “real neural fast path exists” gap without
+  pretending it closes the “trained executor works” gap
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

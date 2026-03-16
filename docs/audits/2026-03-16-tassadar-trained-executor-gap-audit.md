@@ -138,7 +138,7 @@ These issues track the executor-specific work that is still missing:
     frozen training manifest, training report, linear benchmark report,
     checkpoint state plus checkpoint manifest, and trained-model artifact; the
     current run remains intentionally weak (`0/2` validation exact-trace
-    cases, `13` bps aggregate target exactness), so the repo now has a real
+    cases, `15` bps aggregate target exactness), so the repo now has a real
     first-run baseline rather than a false success claim
 - `#3784` Phase 8: add telemetry, trace logging, and failure-analysis artifacts
   - implemented March 16, 2026: the same persisted run bundle now also carries
@@ -152,8 +152,17 @@ These issues track the executor-specific work that is still missing:
     `postmortem.json` and `next_run_plan.json`, and the human-readable review
     lives in `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`; the
     plan prioritizes boundary curriculum and more optimization budget first,
-    and explicitly gates Phase 10/11 on stronger 4x4 evidence
+    and keeps later model claims tied to stronger 4x4 evidence
 - `#3786` Phase 10: add neural hull-cache decode for the trained executor model
+  - implemented March 16, 2026: `psionic-models` now owns explicit model-KV
+    decode state plus machine-legible decode selection for the trained
+    executor model, `psionic-eval` now benchmarks explicit model-KV linear
+    decode against a real hull-cache KV path and direct CPU execution, and the
+    committed run bundle now carries `neural_hull_benchmark_report.json`; on
+    the current Sudoku-v0 run, hull decode matches linear on `8/8` cases with
+    no fallbacks or refusals and improves benchmarked decode throughput from
+    `21,860` to `42,172` target tok/s over a `4,096`-token per-case window,
+    while exactness remains `0/8`
 - `#3787` Phase 11: scale from Sudoku-v0 to real 9x9 Sudoku-class training
 
 ## The Main Correction
@@ -577,8 +586,9 @@ Do this fifth:
 
 Do this sixth:
 
-- then add hull-cache lookup over real model KV state
-- then measure exactness plus speedup honestly
+- `#3786` is now done: the trained model now has a real model-KV hull path and
+  an honest persisted benchmark over that path, but the result is still a
+  throughput claim rather than a model-quality breakthrough
 - move from 4x4 to 9x9 only after the first trained 4x4 lane is real
 - keep the distinction between Sudoku-v0 success and article-grade scale
   completely explicit
@@ -598,8 +608,8 @@ OpenAgents cannot yet honestly claim:
 - a trained model that executes programs inside transformer weights
 - Percepta-style in-model execution
 - a real trained 2D-head executor
-- a real neural hull-cache decode path
 - a real Sudoku solver trained into the model
+- a 9x9 Sudoku-class trained executor
 
 ## Bottom Line
 

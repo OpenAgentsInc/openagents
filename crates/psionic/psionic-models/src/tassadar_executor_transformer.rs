@@ -5,11 +5,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    ModelDescriptor, TassadarTraceTokenizer, TokenId, TokenSequence, TokenizerBoundary,
-    WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
     tassadar::{
         TassadarAttentionGeometryContract, TassadarExecutorAttentionMode, TassadarExecutorFamily,
     },
+    ModelDescriptor, TassadarTraceTokenizer, TokenId, TokenSequence, TokenizerBoundary,
+    WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
 
 /// Stable claim boundary for the first neural executor family.
@@ -267,6 +267,45 @@ pub struct TassadarExecutorTransformerForwardPass {
     pub logits: Vec<Vec<f32>>,
 }
 
+/// Decode refusal for the neural executor family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorTransformerDecodeRefusal {
+    /// No supported decode path exists for the requested mode.
+    NoSupportedDecodeMode,
+}
+
+/// Machine-legible decode selection for one requested model decode path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorTransformerDecodeSelection {
+    /// Decode path requested by the caller.
+    pub requested_decode_mode: TassadarExecutorDecodeMode,
+    /// Decode path actually executed by the model when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_decode_mode: Option<TassadarExecutorDecodeMode>,
+    /// Exact fallback mode used when the request could not execute directly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_decode_mode: Option<TassadarExecutorDecodeMode>,
+    /// Typed refusal reason when the request could not execute at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<TassadarExecutorTransformerDecodeRefusal>,
+    /// Decode modes surfaced by the descriptor.
+    pub supported_decode_modes: Vec<TassadarExecutorDecodeMode>,
+}
+
+/// One explicit KV point owned by the trained executor model decode state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorTransformerKvPoint {
+    /// Zero-based token position in the prefix.
+    pub position: u32,
+    /// Token id stored at this position.
+    pub token_id: TokenId,
+    /// First key component used by the 2D lookup query.
+    pub key_x: i64,
+    /// Second key component used by the 2D lookup query.
+    pub key_y: i64,
+}
+
 /// Typed decode state for linear autoregressive execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExecutorTransformerDecodeState {
@@ -274,6 +313,8 @@ pub struct TassadarExecutorTransformerDecodeState {
     pub prefix: TokenSequence,
     /// Next decode position.
     pub next_position: usize,
+    /// Explicit KV points visible to the next decode step.
+    pub kv_points: Vec<TassadarExecutorTransformerKvPoint>,
 }
 
 /// First honest neural executor family in Psionic.
@@ -301,7 +342,10 @@ impl TassadarExecutorTransformer {
             executor_family: TassadarExecutorFamily::WasmTraceExecutor,
             profile: TassadarWasmProfile::sudoku_v0_search_v1(),
             trace_abi: TassadarTraceAbi::sudoku_v0_search_v1(),
-            supported_decode_modes: vec![TassadarExecutorDecodeMode::ReferenceLinear],
+            supported_decode_modes: vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ],
             attention_mode: TassadarExecutorAttentionMode::HardMaxLookup,
             attention_geometry: TassadarAttentionGeometryContract {
                 constrained_lookup_head_dim: Some(config.constrained_lookup_head_dim),
@@ -339,6 +383,48 @@ impl TassadarExecutorTransformer {
     #[must_use]
     pub fn weights(&self) -> &TassadarExecutorTransformerWeightBundle {
         &self.weights
+    }
+
+    /// Returns whether the descriptor advertises one decode mode.
+    #[must_use]
+    pub fn supports_decode_mode(&self, decode_mode: TassadarExecutorDecodeMode) -> bool {
+        self.descriptor
+            .supported_decode_modes
+            .contains(&decode_mode)
+    }
+
+    /// Resolves one requested decode mode into an effective path or refusal.
+    #[must_use]
+    pub fn select_decode_mode(
+        &self,
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> TassadarExecutorTransformerDecodeSelection {
+        let supported_decode_modes = self.descriptor.supported_decode_modes.clone();
+        if self.supports_decode_mode(requested_decode_mode) {
+            return TassadarExecutorTransformerDecodeSelection {
+                requested_decode_mode,
+                effective_decode_mode: Some(requested_decode_mode),
+                fallback_decode_mode: None,
+                refusal: None,
+                supported_decode_modes,
+            };
+        }
+        if self.supports_decode_mode(TassadarExecutorDecodeMode::ReferenceLinear) {
+            return TassadarExecutorTransformerDecodeSelection {
+                requested_decode_mode,
+                effective_decode_mode: Some(TassadarExecutorDecodeMode::ReferenceLinear),
+                fallback_decode_mode: Some(TassadarExecutorDecodeMode::ReferenceLinear),
+                refusal: None,
+                supported_decode_modes,
+            };
+        }
+        TassadarExecutorTransformerDecodeSelection {
+            requested_decode_mode,
+            effective_decode_mode: None,
+            fallback_decode_mode: None,
+            refusal: Some(TassadarExecutorTransformerDecodeRefusal::NoSupportedDecodeMode),
+            supported_decode_modes,
+        }
     }
 
     /// Refreshes the descriptor metadata after in-place training updates.
@@ -416,8 +502,35 @@ impl TassadarExecutorTransformer {
         }
         Ok(TassadarExecutorTransformerDecodeState {
             next_position: prompt.len(),
+            kv_points: prompt
+                .as_slice()
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(position, token_id)| Self::kv_point(position, token_id))
+                .collect::<Vec<_>>(),
             prefix: prompt,
         })
+    }
+
+    /// Extends one decode state with an accepted next token.
+    pub fn push_decoded_token(
+        &self,
+        state: &mut TassadarExecutorTransformerDecodeState,
+        next_token: TokenId,
+    ) -> Result<(), TassadarExecutorTransformerError> {
+        if state.next_position >= self.descriptor.config.max_sequence_tokens {
+            return Err(TassadarExecutorTransformerError::SequenceTooLong {
+                token_count: state.next_position + 1,
+                max_supported: self.descriptor.config.max_sequence_tokens,
+            });
+        }
+        state.prefix.push(next_token);
+        state
+            .kv_points
+            .push(Self::kv_point(state.next_position, next_token));
+        state.next_position = state.next_position.saturating_add(1);
+        Ok(())
     }
 
     /// Returns next-token logits for the current decode state.
@@ -425,7 +538,23 @@ impl TassadarExecutorTransformer {
         &self,
         state: &TassadarExecutorTransformerDecodeState,
     ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
-        let hidden_state = self.hidden_state(state.prefix.as_slice(), state.next_position)?;
+        self.next_token_logits_for_mode(state, TassadarExecutorDecodeMode::ReferenceLinear)
+    }
+
+    /// Returns next-token logits for one requested decode mode.
+    pub fn next_token_logits_for_mode(
+        &self,
+        state: &TassadarExecutorTransformerDecodeState,
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
+        let selection = self.select_decode_mode(requested_decode_mode);
+        let Some(effective_decode_mode) = selection.effective_decode_mode else {
+            return Err(TassadarExecutorTransformerError::UnsupportedDecodeMode {
+                requested: requested_decode_mode,
+                supported: selection.supported_decode_modes,
+            });
+        };
+        let hidden_state = self.hidden_state_from_decode_state(state, effective_decode_mode)?;
         self.project_logits(hidden_state.as_slice())
     }
 
@@ -434,7 +563,16 @@ impl TassadarExecutorTransformer {
         &self,
         state: &TassadarExecutorTransformerDecodeState,
     ) -> Result<TokenId, TassadarExecutorTransformerError> {
-        let logits = self.next_token_logits(state)?;
+        self.greedy_next_token_for_mode(state, TassadarExecutorDecodeMode::ReferenceLinear)
+    }
+
+    /// Greedily chooses the next token for one requested decode mode.
+    pub fn greedy_next_token_for_mode(
+        &self,
+        state: &TassadarExecutorTransformerDecodeState,
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<TokenId, TassadarExecutorTransformerError> {
+        let logits = self.next_token_logits_for_mode(state, requested_decode_mode)?;
         let (best_index, _) = logits
             .iter()
             .enumerate()
@@ -467,6 +605,98 @@ impl TassadarExecutorTransformer {
         }
         hidden.extend_from_slice(self.position_embedding(position));
         Ok(hidden)
+    }
+
+    fn hidden_state_from_decode_state(
+        &self,
+        state: &TassadarExecutorTransformerDecodeState,
+        decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
+        let config = &self.descriptor.config;
+        let mut hidden = Vec::with_capacity(config.hidden_width());
+        for offset in &config.context_offsets {
+            let token = if *offset > state.next_position {
+                self.tokenizer.vocabulary().bos_id()
+            } else {
+                let target_position = state.next_position - *offset;
+                self.lookup_token_from_kv(state.kv_points.as_slice(), target_position, decode_mode)?
+            };
+            hidden.extend_from_slice(self.token_embedding(token)?);
+        }
+        hidden.extend_from_slice(self.position_embedding(state.next_position));
+        Ok(hidden)
+    }
+
+    fn lookup_token_from_kv(
+        &self,
+        kv_points: &[TassadarExecutorTransformerKvPoint],
+        target_position: usize,
+        decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<TokenId, TassadarExecutorTransformerError> {
+        let matched = match decode_mode {
+            TassadarExecutorDecodeMode::ReferenceLinear => {
+                self.linear_kv_lookup(kv_points, target_position)
+            }
+            TassadarExecutorDecodeMode::HullCache => {
+                self.hull_kv_lookup(kv_points, target_position)
+            }
+            TassadarExecutorDecodeMode::SparseTopK => None,
+        };
+        matched
+            .map(|point| point.token_id)
+            .ok_or(TassadarExecutorTransformerError::KvLookupMiss {
+                target_position,
+                decode_mode,
+                available_points: kv_points.len(),
+            })
+    }
+
+    fn linear_kv_lookup<'a>(
+        &self,
+        kv_points: &'a [TassadarExecutorTransformerKvPoint],
+        target_position: usize,
+    ) -> Option<&'a TassadarExecutorTransformerKvPoint> {
+        kv_points
+            .iter()
+            .max_by_key(|point| Self::lookup_score(point, target_position))
+    }
+
+    fn hull_kv_lookup<'a>(
+        &self,
+        kv_points: &'a [TassadarExecutorTransformerKvPoint],
+        target_position: usize,
+    ) -> Option<&'a TassadarExecutorTransformerKvPoint> {
+        if kv_points.is_empty() {
+            return None;
+        }
+        let mut low = 0_usize;
+        let mut high = kv_points.len() - 1;
+        while low < high {
+            let mid = (low + high) / 2;
+            let mid_score = Self::lookup_score(&kv_points[mid], target_position);
+            let right_score = Self::lookup_score(&kv_points[mid + 1], target_position);
+            if mid_score <= right_score {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        kv_points.get(low)
+    }
+
+    fn lookup_score(point: &TassadarExecutorTransformerKvPoint, target_position: usize) -> i128 {
+        let query_x = target_position as i128;
+        query_x * i128::from(point.key_x) + i128::from(point.key_y)
+    }
+
+    fn kv_point(position: usize, token_id: TokenId) -> TassadarExecutorTransformerKvPoint {
+        let position_i64 = position as i64;
+        TassadarExecutorTransformerKvPoint {
+            position: position as u32,
+            token_id,
+            key_x: position_i64.saturating_mul(2),
+            key_y: -position_i64.saturating_mul(position_i64),
+        }
     }
 
     fn token_embedding(&self, token: TokenId) -> Result<&[f32], TassadarExecutorTransformerError> {
@@ -552,6 +782,26 @@ pub enum TassadarExecutorTransformerError {
         /// Actual length.
         actual: usize,
     },
+    /// The caller requested a decode mode the model does not advertise.
+    #[error("unsupported decode mode `{requested:?}`; supported modes: {supported:?}")]
+    UnsupportedDecodeMode {
+        /// Requested mode.
+        requested: TassadarExecutorDecodeMode,
+        /// Supported modes.
+        supported: Vec<TassadarExecutorDecodeMode>,
+    },
+    /// One decode lookup failed to recover the requested prefix position.
+    #[error(
+        "kv lookup miss for position {target_position} in mode `{decode_mode:?}` over {available_points} points"
+    )]
+    KvLookupMiss {
+        /// Requested prefix position.
+        target_position: usize,
+        /// Decode mode used for the lookup.
+        decode_mode: TassadarExecutorDecodeMode,
+        /// Number of visible KV points.
+        available_points: usize,
+    },
 }
 
 fn seeded_values(label: &str, len: usize, scale: f32) -> Vec<f32> {
@@ -622,13 +872,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use psionic_runtime::{TassadarCpuReferenceRunner, tassadar_sudoku_v0_corpus};
+    use psionic_runtime::{
+        tassadar_sudoku_v0_corpus, TassadarCpuReferenceRunner, TassadarExecutorDecodeMode,
+    };
 
     use crate::{TassadarTraceTokenizer, TokenSequence, TokenizerBoundary};
 
     use super::{
         TassadarExecutorTransformer, TassadarExecutorTransformerClaimBoundary,
-        TassadarExecutorTransformerConfig,
+        TassadarExecutorTransformerConfig, TassadarExecutorTransformerDecodeRefusal,
     };
 
     #[test]
@@ -651,13 +903,16 @@ mod tests {
         );
         assert_eq!(
             descriptor.supported_decode_modes,
-            vec![psionic_runtime::TassadarExecutorDecodeMode::ReferenceLinear]
+            vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache
+            ]
         );
     }
 
     #[test]
-    fn sudoku_v0_executor_transformer_emits_logits_over_tokenized_sequences()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sudoku_v0_executor_transformer_emits_logits_over_tokenized_sequences(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer = TassadarTraceTokenizer::new();
         let model = TassadarExecutorTransformer::sudoku_v0();
         let case = tassadar_sudoku_v0_corpus()
@@ -672,18 +927,16 @@ mod tests {
 
         assert_eq!(forward.logits.len(), sequence.sequence.len() - 1);
         assert_eq!(forward.hidden_states.len(), sequence.sequence.len() - 1);
-        assert!(
-            forward
-                .logits
-                .iter()
-                .all(|step| step.len() == model.descriptor().config.vocab_size)
-        );
+        assert!(forward
+            .logits
+            .iter()
+            .all(|step| step.len() == model.descriptor().config.vocab_size));
         Ok(())
     }
 
     #[test]
-    fn sudoku_v0_executor_transformer_can_start_linear_decode()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sudoku_v0_executor_transformer_can_start_linear_decode(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer = TassadarTraceTokenizer::new();
         let model = TassadarExecutorTransformer::sudoku_v0();
         let config = TassadarExecutorTransformerConfig::sudoku_v0(&tokenizer);
@@ -701,8 +954,77 @@ mod tests {
     }
 
     #[test]
-    fn applying_a_trained_output_head_reconstructs_the_same_descriptor_digest()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sudoku_v0_executor_transformer_surfaces_machine_legible_decode_selection() {
+        let model = TassadarExecutorTransformer::sudoku_v0();
+
+        let direct = model.select_decode_mode(TassadarExecutorDecodeMode::HullCache);
+        assert_eq!(
+            direct.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::HullCache)
+        );
+        assert_eq!(direct.fallback_decode_mode, None);
+        assert_eq!(direct.refusal, None);
+
+        let fallback = model.select_decode_mode(TassadarExecutorDecodeMode::SparseTopK);
+        assert_eq!(
+            fallback.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::ReferenceLinear)
+        );
+        assert_eq!(
+            fallback.fallback_decode_mode,
+            Some(TassadarExecutorDecodeMode::ReferenceLinear)
+        );
+        assert_eq!(fallback.refusal, None);
+
+        let mut model_without_decode_paths = TassadarExecutorTransformer::sudoku_v0();
+        model_without_decode_paths
+            .descriptor
+            .supported_decode_modes
+            .clear();
+        let refusal =
+            model_without_decode_paths.select_decode_mode(TassadarExecutorDecodeMode::HullCache);
+        assert_eq!(refusal.effective_decode_mode, None);
+        assert_eq!(
+            refusal.refusal,
+            Some(TassadarExecutorTransformerDecodeRefusal::NoSupportedDecodeMode)
+        );
+    }
+
+    #[test]
+    fn hull_decode_matches_linear_decode_over_real_model_kv_points(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let tokenizer = TassadarTraceTokenizer::new();
+        let model = TassadarExecutorTransformer::sudoku_v0();
+        let encoded = tokenizer.encode("<program> <locals> <memory> <trace>");
+        let prompt = TokenSequence::new(
+            std::iter::once(tokenizer.vocabulary().bos_id())
+                .chain(encoded.as_slice().iter().copied())
+                .collect::<Vec<_>>(),
+        );
+        let linear_state = model.start_decode(prompt.clone())?;
+        let hull_state = model.start_decode(prompt)?;
+
+        let linear_logits = model.next_token_logits_for_mode(
+            &linear_state,
+            TassadarExecutorDecodeMode::ReferenceLinear,
+        )?;
+        let hull_logits =
+            model.next_token_logits_for_mode(&hull_state, TassadarExecutorDecodeMode::HullCache)?;
+
+        assert_eq!(linear_logits, hull_logits);
+        assert_eq!(
+            model.greedy_next_token_for_mode(
+                &linear_state,
+                TassadarExecutorDecodeMode::ReferenceLinear
+            )?,
+            model.greedy_next_token_for_mode(&hull_state, TassadarExecutorDecodeMode::HullCache)?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn applying_a_trained_output_head_reconstructs_the_same_descriptor_digest(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut trained = TassadarExecutorTransformer::sudoku_v0();
         trained.refresh_after_training();
         let mut restored = TassadarExecutorTransformer::sudoku_v0();

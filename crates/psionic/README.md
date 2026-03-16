@@ -130,7 +130,7 @@ Current posture:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0`; the
   current run is intentionally honest about still being weak
   (`validation_exact_trace_case_count = 0/2`, aggregate target exactness
-  `13` bps), so this is a reproducible first-run artifact lane rather than a
+  `15` bps), so this is a reproducible first-run artifact lane rather than a
   claim that Sudoku is already solved in-model
 - the eighth trained-executor follow-on bar now also exists in
   `psionic-train` and that same run bundle: Phase 8 telemetry now persists
@@ -144,8 +144,18 @@ Current posture:
   machine-readable `postmortem.json` plus `next_run_plan.json`, and a
   human-readable review in `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`;
   the resulting plan explicitly prioritizes a boundary curriculum, a larger
-  optimization budget, conditional trainable-surface expansion, and gating
-  Phase 10/11 until the 4x4 lane actually clears short-trace exactness bars
+  optimization budget, conditional trainable-surface expansion, and truthful
+  gating around what later phases do and do not prove
+- the tenth trained-executor follow-on bar now also exists in
+  `psionic-models`, `psionic-eval`, `psionic-train`, and that same run bundle:
+  the trained executor model now exposes explicit model-KV decode selection,
+  real hull-cache lookup over those KV points, and a persisted
+  `neural_hull_benchmark_report.json`; on the committed Sudoku-v0 run, hull
+  decode matches the explicit model-KV linear path on all `8/8` cases with no
+  fallbacks or refusals and improves benchmarked decode throughput from
+  `21,860` to `42,172` target tok/s over a `4,096`-token per-case window, but
+  exactness remains `0/8`, so this is a real fast-path result rather than a
+  claim that the model now solves Sudoku
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons
