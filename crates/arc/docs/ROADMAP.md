@@ -9,6 +9,8 @@
 > `crates/arc/spec.md` remains the canonical architecture and ownership spec.
 > `crates/arc/docs/CAPABILITY_MATRIX.md` remains the canonical current-state
 > capability matrix.
+> `crates/arc/docs/OPERATOR_WORKFLOWS.md` remains the canonical operator
+> workflow doc.
 > `crates/arc/docs/CLAIMS.md` remains the canonical claim-vocabulary doc.
 > `crates/arc/docs/INDEX.md` remains the compact ARC docs entrypoint.
 > `crates/arc/docs/UPSTREAM_TARGETS.md` remains the canonical first-pass
@@ -799,7 +801,7 @@ on Python-only workflows.
 | --- | --- | --- |
 | `ARC-601` / [#3808](https://github.com/OpenAgentsInc/openagents/issues/3808) | landed | Published `crates/arc/docs/CAPABILITY_MATRIX.md` as the canonical current-state matrix for subtree capabilities, solver lanes, and ARC-AGI-3 preview-vs-release drift, with explicit landed / bounded / blocked / unknown status rows. |
 | `ARC-602` | planned | Curate fixture corpora for parser/objectization, engine parity, score parity, recording replay, and checkpoint resume. |
-| `ARC-603` | planned | Write operator docs for local benchmark runs, remote runs, compatibility-server checks, and fixture replay. |
+| `ARC-603` / [#3809](https://github.com/OpenAgentsInc/openagents/issues/3809) | landed | Published `crates/arc/docs/OPERATOR_WORKFLOWS.md` as the canonical operator guide for retained local benchmark runs, remote-compatible runs, compatibility-server checks, replay / checkpoint flows, and artifact locations rooted in owned Rust tests and APIs. |
 | `ARC-604` | planned | Add non-Python smoke suites proving core static and interactive paths work without Python sidecars. |
 | `ARC-605` | planned | Add bounded import/export tools for recordings, scorecards, or leaderboard-oriented formats only after core benchmark truth is stable. |
 | `ARC-606` | planned | Publish one compact acceptance index linking fixtures, capability matrices, benchmark reports, and Psionic dependency gates. |
@@ -856,6 +858,9 @@ That gate is now satisfied in bounded form by `ARC-210`.
     `ARC-601` is now landed in bounded form: `crates/arc/docs/CAPABILITY_MATRIX.md`
     is the canonical compact matrix for current subtree capability claims and
     ARC-AGI-3 preview drift.
+    `ARC-603` is now also landed in bounded form:
+    `crates/arc/docs/OPERATOR_WORKFLOWS.md` is the canonical operator guide
+    for repo-owned local, remote-compatible, replay, and checkpoint workflows.
 
 ## Program Risks And Dependency Hazards
 

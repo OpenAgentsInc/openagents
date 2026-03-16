@@ -64,6 +64,9 @@ The ARC subtree currently has canonical documents with different roles:
 - `crates/arc/docs/CAPABILITY_MATRIX.md`
   - canonical current-state matrix for landed vs bounded vs blocked vs unknown
     ARC capability claims and ARC-AGI-3 preview drift
+- `crates/arc/docs/OPERATOR_WORKFLOWS.md`
+  - canonical operator guide for retained benchmark, compatibility-server,
+    replay, and checkpoint workflows
 - `crates/arc/docs/spec.md`
   - canonical architecture, ownership, and crate-boundary spec
 - `crates/arc/docs/ROADMAP.md`
