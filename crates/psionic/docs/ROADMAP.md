@@ -915,7 +915,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `PLIB-217` / [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732) | done (2026-03-16) | `psionic-ir` now publishes typed custom-op, custom-kernel, custom-autograd, backend-plugin, and quantizer-plugin contracts plus a machine-readable bounded extension-contract semantics report, with explicit refusal for contracts that bypass declared-output custom-op posture or fail to declare non-dense quantization modes. |
-| `PLIB-218` / [#3733](https://github.com/OpenAgentsInc/openagents/issues/3733) | planned | Add dataset, iterable-streaming, sampler, batch-sampler, and host-device staging abstractions as reusable library capability, not app glue. |
+| `PLIB-218` / [#3733](https://github.com/OpenAgentsInc/openagents/issues/3733) | done (2026-03-16) | `psionic-data` now publishes reusable local data-ingress contracts for dataset source, iterable-streaming, sampler, batch-sampler, and host-device staging plus a machine-readable bounded data-ingress semantics report, with explicit refusal for weighted or round-robin sampler families that depend on later distributed-feed work. |
 | `PLIB-219` / [#3734](https://github.com/OpenAgentsInc/openagents/issues/3734) | planned | Add distributed and sharded data-feed semantics, including sampler partitioning, worker coordination, and replay-safe input ordering. |
 
 ### Advanced Operator Families And Export

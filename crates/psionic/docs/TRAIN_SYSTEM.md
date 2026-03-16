@@ -2626,6 +2626,11 @@ and export-aware quantization intent above raw decode so train- and
 deployment-class quantization claims stop collapsing into "the loader can read
 GGUF."
 
+`PLIB-218` / `#3733` now lands one bounded `DataIngressSemanticsReport` in
+`psionic-data`. That report makes local dataset source, iterable-streaming,
+sampler, batch-sampler, and host-device staging contracts machine-legible
+before distributed and sharded feed semantics land.
+
 This is still not the claim that the full train system can be re-executed from
 one receipt without more runtime work. It is the claim that replay-compatible
 inputs, pins, and verification are now explicit enough to support "same

@@ -6595,6 +6595,7 @@ dependencies = [
  "hex",
  "psionic-compiler",
  "psionic-core",
+ "psionic-data",
  "psionic-ir",
  "psionic-nn",
  "psionic-train",
