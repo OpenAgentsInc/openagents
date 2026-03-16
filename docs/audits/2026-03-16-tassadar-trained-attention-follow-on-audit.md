@@ -151,7 +151,11 @@ It is one of:
 - or carry the Phase 14 gate against whichever family clears it first without
   weakening the gate
 
-Until that happens, the repo should keep saying:
+That boundary-first follow-on now exists and is recorded in
+`docs/audits/2026-03-16-tassadar-attention-boundary-adapter-audit.md`.
+
+Until the learned lane produces an exact 4x4 validation trace, the repo should
+keep saying:
 
 > trained attention improved bounded suffix accuracy substantially over the
 > seeded candidate, but the lookup family still wins on first-token boundary

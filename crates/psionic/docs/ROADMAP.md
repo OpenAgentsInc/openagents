@@ -644,6 +644,20 @@ Its declared scope is:
   exactness instead of `0`), but it still fails the first-token boundary (`0`
   bps first-target), still yields `0/2` exact bounded traces, and therefore
   still does not beat the preserved lookup baseline on the open Phase 14 gate
+- landed trained-executor Phase 15B follow-on bar:
+  `psionic-models` now carries a bounded relative-target output-bias adapter,
+  `psionic-research` now preserves the failed output-head-only boundary attempt
+  under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`, the
+  improved adapter-backed run under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the corresponding same-corpus comparison under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`;
+  those artifacts show the first executor-attention result that both keeps the
+  boundary fix and beats the preserved lookup baseline on bounded correctness
+  (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32 versus
+  lookup `10000` / `6250` / `6563`), while keeping the claim boundary explicit
+  because exact validation traces still remain `0/2`
 - landed trained-executor Phase 17 bar from the post-audit issue spine:
   `psionic-models` now carries a bounded typed
   `TassadarCompiledProgramExecutor` surface with persisted compile-evidence

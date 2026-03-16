@@ -305,6 +305,20 @@ The current scope is:
   `0` exact bounded traces, and still loses the preserved lookup baseline on
   the open 4x4 promotion metric, so the claim boundary remains
   `research_windowed_decode_only` rather than learned-lane success
+- landed trained-executor Phase 15B follow-on bar: the same executor-attention
+  family now also carries a bounded relative-target output-bias adapter in
+  `psionic-models`, the preserved destructive boundary-first output-head
+  attempt now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`, the
+  improved adapter-backed run now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the corresponding same-corpus comparison now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`;
+  those artifacts show the first executor-attention result that both keeps the
+  token-0 fix and beats the preserved lookup baseline on bounded correctness
+  (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32 versus
+  lookup `10000` / `6250` / `6563`), while still keeping the claim boundary
+  explicit because exact validation traces remain `0/2`
 - landed trained-executor Phase 17 follow-on bar: `psionic-models` now carries
   a bounded typed `TassadarCompiledProgramExecutor` surface with persisted
   compile-evidence bundles, `psionic-eval` now emits exactness and
