@@ -569,6 +569,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/DATA_INGRESS_SEMANTICS.md](docs/DATA_INGRESS_SEMANTICS.md)** —
   canonical bounded local data-ingress surface for dataset source, sampler,
   batch-sampler, and host-device staging contracts.
+- **[docs/DISTRIBUTED_DATA_FEED_SEMANTICS.md](docs/DISTRIBUTED_DATA_FEED_SEMANTICS.md)** —
+  canonical bounded fixed-world-size distributed data-feed surface for shard
+  partitioning, worker coordination, and replay-safe input ordering.
 - **[docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md](docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md)** —
   canonical capability and refusal matrix for dense, sparse, nested, masked,
   and storage-aware tensor-family contracts.

@@ -123,6 +123,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let extensions = psionic_ir::builtin_extension_contract_semantics_report();
     let program_transforms = psionic_ir::builtin_program_transform_capability_matrix_report();
     let data_ingress = psionic_data::builtin_data_ingress_semantics_report();
+    let distributed_data_feed = psionic_data::builtin_distributed_data_feed_semantics_report();
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
     let autocast = psionic_core::builtin_autocast_policy_matrix_report();
@@ -188,9 +189,21 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             )],
             vec![
                 String::from("broaden data ingress beyond the current local source, sampler, and staging window"),
-                String::from("land distributed and sharded data-feed semantics"),
             ],
-            vec![String::from("#3734")],
+            Vec::new(),
+        ),
+        seeded_area(
+            "distributed_data_feed_semantics",
+            "Current claim is bounded to fixed-world-size distributed sampler partitioning over shard-ordered local ingress contracts, with contiguous-block and rank-strided shard assignment, explicit epoch-barrier or fixed-cadence step-barrier worker coordination, runtime-derived per-rank replay generators, and explicit refusal for elastic membership.",
+            vec![SemanticsEvidenceRef::new(
+                "distributed_data_feed_semantics",
+                distributed_data_feed.report_digest,
+            )],
+            vec![
+                String::from("broaden distributed data-feed semantics beyond the current fixed-world-size shard partitioning window"),
+                String::from("connect elastic membership and topology revision to replay-safe worker ordering"),
+            ],
+            Vec::new(),
         ),
         seeded_area(
             "tensor_family_semantics",
@@ -238,7 +251,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("connect mixed-precision and distributed data-feed semantics to the replayable RNG contract"),
                 String::from("extend checkpointed RNG restore deeper into later train-loop and export surfaces"),
             ],
-            vec![String::from("#3734"), String::from("#3736")],
+            vec![String::from("#3736")],
         ),
         seeded_area(
             "precision_policy_semantics",
@@ -257,7 +270,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 ),
                 String::from("extend backend capability truth beyond the current bounded runtime-vs-meta split"),
             ],
-            vec![String::from("#3734"), String::from("#3735")],
+            vec![String::from("#3735")],
         ),
         seeded_area(
             "quantization_semantics",
@@ -339,7 +352,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             vec![
                 String::from("broaden mixed-precision and train-class precision control beyond the current seeded fp16/bf16 window"),
             ],
-            vec![String::from("#3734")],
+            Vec::new(),
         ),
         future_area(
             "quantization_and_export",
@@ -348,14 +361,6 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("land export-safe graph and deployment artifact contracts"),
             ],
             vec![String::from("#3736")],
-        ),
-        future_area(
-            "data_and_distributed_training_semantics",
-            "Distributed input-order, sampler partitioning, and sharded data-feed semantics remain future compatibility targets after landing bounded local data-ingress contracts.",
-            vec![
-                String::from("land distributed and sharded data-feed semantics"),
-            ],
-            vec![String::from("#3734")],
         ),
         future_area(
             "extensions_and_plugins",
@@ -467,6 +472,7 @@ mod tests {
             "program_transform_semantics",
             "extension_contract_semantics",
             "data_ingress_semantics",
+            "distributed_data_feed_semantics",
             "tensor_family_semantics",
             "advanced_dtype_semantics",
             "reproducibility_semantics",
@@ -492,7 +498,6 @@ mod tests {
             "checkpoint_and_model_io_interop",
             "advanced_tensor_dtype_and_precision",
             "quantization_and_export",
-            "data_and_distributed_training_semantics",
             "extensions_and_plugins",
             "advanced_operator_families",
         ] {

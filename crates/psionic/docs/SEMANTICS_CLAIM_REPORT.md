@@ -1,7 +1,7 @@
 # Semantics Claim Report
 
 > Status: canonical `PLIB-209` / `#3724` reference record, updated 2026-03-16
-> after adding autocast precision-policy evidence from `PLIB-213` / `#3728`
+> after adding bounded distributed data-feed evidence from `PLIB-219` / `#3734`
 > into `crates/psionic/psionic-compat/src/lib.rs`.
 
 This document records the current honest claim boundary for Psionic's
@@ -42,6 +42,7 @@ machine-readable evidence for:
 - bounded program-transform capability coverage
 - bounded extension-contract coverage
 - bounded local data-ingress coverage
+- bounded distributed data-feed coverage
 - tensor-family capability and refusal coverage
 - advanced dtype promotion, cast, and backend-capability coverage
 - reproducibility seed, generator-derivation, and checkpoint-restore coverage
@@ -59,8 +60,7 @@ including:
 
 - broader mixed-precision runtime systems beyond the current seeded fp16 and bf16 train window
 - export-safe graph compatibility beyond the current quantization seed coverage
-- distributed-training data-feed semantics beyond the current local ingress seed coverage
-- extension and plugin contracts
+- extension and plugin distribution or deployment behavior
 - advanced operator-family breadth
 
 ## Why This Matters

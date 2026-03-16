@@ -2629,7 +2629,14 @@ GGUF."
 `PLIB-218` / `#3733` now lands one bounded `DataIngressSemanticsReport` in
 `psionic-data`. That report makes local dataset source, iterable-streaming,
 sampler, batch-sampler, and host-device staging contracts machine-legible
-before distributed and sharded feed semantics land.
+instead of leaving them as train-loop glue.
+
+`PLIB-219` / `#3734` now layers one bounded
+`DistributedDataFeedSemanticsReport` on top of that local ingress surface in
+`psionic-data`. The new report makes fixed-world-size shard partitioning,
+epoch-barrier or step-barrier worker coordination, and runtime-derived
+replay-safe per-rank ordering machine-legible, while explicitly refusing
+elastic membership until a higher-level distributed run-control contract lands.
 
 This is still not the claim that the full train system can be re-executed from
 one receipt without more runtime work. It is the claim that replay-compatible

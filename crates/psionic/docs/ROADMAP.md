@@ -916,7 +916,7 @@ Master issue:
 | --- | --- | --- |
 | `PLIB-217` / [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732) | done (2026-03-16) | `psionic-ir` now publishes typed custom-op, custom-kernel, custom-autograd, backend-plugin, and quantizer-plugin contracts plus a machine-readable bounded extension-contract semantics report, with explicit refusal for contracts that bypass declared-output custom-op posture or fail to declare non-dense quantization modes. |
 | `PLIB-218` / [#3733](https://github.com/OpenAgentsInc/openagents/issues/3733) | done (2026-03-16) | `psionic-data` now publishes reusable local data-ingress contracts for dataset source, iterable-streaming, sampler, batch-sampler, and host-device staging plus a machine-readable bounded data-ingress semantics report, with explicit refusal for weighted or round-robin sampler families that depend on later distributed-feed work. |
-| `PLIB-219` / [#3734](https://github.com/OpenAgentsInc/openagents/issues/3734) | planned | Add distributed and sharded data-feed semantics, including sampler partitioning, worker coordination, and replay-safe input ordering. |
+| `PLIB-219` / [#3734](https://github.com/OpenAgentsInc/openagents/issues/3734) | done (2026-03-16) | `psionic-data` now publishes fixed-world-size distributed data-feed contracts plus a machine-readable bounded semantics report covering contiguous-block and rank-strided shard partitioning, epoch-barrier or fixed step-barrier worker coordination, runtime-derived replay-safe per-rank ordering, and explicit refusal for elastic membership. |
 
 ### Advanced Operator Families And Export
 

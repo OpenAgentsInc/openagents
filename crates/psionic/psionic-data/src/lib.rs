@@ -16,6 +16,7 @@ use psionic_datastream::{
     DatastreamDatasetBinding, DatastreamEncoding, DatastreamManifest, DatastreamManifestRef,
     DatastreamSubjectKind,
 };
+use psionic_runtime::{DeterminismContractError, GeneratorState, RuntimeDeterminismContract};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1577,6 +1578,26 @@ fn overlong_sequence_posture_label(posture: OverlongSequencePosture) -> &'static
     }
 }
 
+fn distributed_sampler_partition_kind_label(
+    partition_kind: DistributedSamplerPartitionKind,
+) -> &'static str {
+    match partition_kind {
+        DistributedSamplerPartitionKind::ContiguousShardBlocks => "contiguous_shard_blocks",
+        DistributedSamplerPartitionKind::StridedShards => "strided_shards",
+        DistributedSamplerPartitionKind::ElasticRebalance => "elastic_rebalance",
+    }
+}
+
+fn distributed_worker_coordination_mode_label(
+    coordination_mode: DistributedWorkerCoordinationMode,
+) -> &'static str {
+    match coordination_mode {
+        DistributedWorkerCoordinationMode::EpochBarrier => "epoch_barrier",
+        DistributedWorkerCoordinationMode::StepBarrier => "step_barrier",
+        DistributedWorkerCoordinationMode::ElasticMembership => "elastic_membership",
+    }
+}
+
 fn digest_lines(lines: Vec<String>) -> String {
     let mut sorted = lines;
     sorted.sort();
@@ -1961,6 +1982,596 @@ impl DataIngressSemanticsReport {
     }
 }
 
+/// Supported partitioning families for bounded distributed data-feed planning.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributedSamplerPartitionKind {
+    /// Assign one contiguous shard block to each worker.
+    ContiguousShardBlocks,
+    /// Assign every `world_size`-th shard to each worker in global order.
+    StridedShards,
+    /// Placeholder for future elastic or rebalance-aware partitioning.
+    ElasticRebalance,
+}
+
+/// Partitioning contract layered on top of local data ingress.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedSamplerPartitionContract {
+    /// Partitioning strategy used across workers.
+    pub partition_kind: DistributedSamplerPartitionKind,
+}
+
+impl DistributedSamplerPartitionContract {
+    /// Creates one partitioning contract.
+    #[must_use]
+    pub const fn new(partition_kind: DistributedSamplerPartitionKind) -> Self {
+        Self { partition_kind }
+    }
+
+    fn validate(&self) -> Result<(), DistributedDataFeedContractError> {
+        match self.partition_kind {
+            DistributedSamplerPartitionKind::ContiguousShardBlocks
+            | DistributedSamplerPartitionKind::StridedShards => Ok(()),
+            DistributedSamplerPartitionKind::ElasticRebalance => {
+                Err(DistributedDataFeedContractError::UnsupportedPartitionKind {
+                    partition_kind: String::from(distributed_sampler_partition_kind_label(
+                        self.partition_kind,
+                    )),
+                })
+            }
+        }
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![format!(
+            "partition_kind={}",
+            distributed_sampler_partition_kind_label(self.partition_kind)
+        )])
+    }
+}
+
+/// Supported worker-coordination families for the bounded distributed data-feed surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributedWorkerCoordinationMode {
+    /// Workers must finish one epoch partition before advancing together.
+    EpochBarrier,
+    /// Workers must report progress on a fixed batch cadence.
+    StepBarrier,
+    /// Placeholder for later elastic membership or topology revision.
+    ElasticMembership,
+}
+
+/// Fixed worker-topology and barrier contract for distributed data feed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedWorkerCoordinationContract {
+    /// Stable replica-group identity.
+    pub replica_group: String,
+    /// Current worker rank.
+    pub rank: usize,
+    /// Declared worker count for the group.
+    pub world_size: usize,
+    /// Coordination family.
+    pub coordination_mode: DistributedWorkerCoordinationMode,
+    /// Sync cadence for step-barrier coordination.
+    pub sync_interval_batches: u64,
+}
+
+impl DistributedWorkerCoordinationContract {
+    /// Creates one worker-coordination contract.
+    #[must_use]
+    pub fn new(
+        replica_group: impl Into<String>,
+        rank: usize,
+        world_size: usize,
+        coordination_mode: DistributedWorkerCoordinationMode,
+    ) -> Self {
+        Self {
+            replica_group: replica_group.into(),
+            rank,
+            world_size,
+            coordination_mode,
+            sync_interval_batches: 1,
+        }
+    }
+
+    /// Attaches an explicit step-barrier cadence.
+    #[must_use]
+    pub const fn with_sync_interval_batches(mut self, sync_interval_batches: u64) -> Self {
+        self.sync_interval_batches = sync_interval_batches;
+        self
+    }
+
+    fn validate(&self) -> Result<(), DistributedDataFeedContractError> {
+        if self.replica_group.trim().is_empty() {
+            return Err(DistributedDataFeedContractError::MissingReplicaGroup);
+        }
+        if self.world_size == 0 || self.rank >= self.world_size {
+            return Err(DistributedDataFeedContractError::InvalidWorkerTopology {
+                rank: self.rank,
+                world_size: self.world_size,
+            });
+        }
+        match self.coordination_mode {
+            DistributedWorkerCoordinationMode::EpochBarrier => Ok(()),
+            DistributedWorkerCoordinationMode::StepBarrier => {
+                if self.sync_interval_batches == 0 {
+                    return Err(DistributedDataFeedContractError::InvalidSyncIntervalBatches);
+                }
+                Ok(())
+            }
+            DistributedWorkerCoordinationMode::ElasticMembership => Err(
+                DistributedDataFeedContractError::UnsupportedCoordinationMode {
+                    coordination_mode: String::from(distributed_worker_coordination_mode_label(
+                        self.coordination_mode,
+                    )),
+                },
+            ),
+        }
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("replica_group={}", self.replica_group),
+            format!("rank={}", self.rank),
+            format!("world_size={}", self.world_size),
+            format!(
+                "coordination_mode={}",
+                distributed_worker_coordination_mode_label(self.coordination_mode)
+            ),
+            format!("sync_interval_batches={}", self.sync_interval_batches),
+        ])
+    }
+}
+
+/// Replayable ordering contract for one distributed input plan.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedReplayOrderingContract {
+    /// Runtime-owned replay seed discipline used to derive per-rank ordering.
+    pub determinism: RuntimeDeterminismContract,
+    /// Epoch or logical ordering generation.
+    pub epoch: u32,
+}
+
+impl DistributedReplayOrderingContract {
+    /// Creates one replay-ordering contract.
+    #[must_use]
+    pub const fn new(determinism: RuntimeDeterminismContract, epoch: u32) -> Self {
+        Self { determinism, epoch }
+    }
+
+    fn validate(&self) -> Result<(), DistributedDataFeedContractError> {
+        self.determinism.validate()?;
+        if self.determinism.generator.is_none() {
+            return Err(DistributedDataFeedContractError::BestEffortReplayUnsupported);
+        }
+        Ok(())
+    }
+
+    fn rank_generator(
+        &self,
+        coordination: &DistributedWorkerCoordinationContract,
+    ) -> Result<GeneratorState, DistributedDataFeedContractError> {
+        self.validate()?;
+        Ok(self.determinism.derive_distributed_rank_generator(
+            coordination.replica_group.clone(),
+            coordination.rank,
+            coordination.world_size,
+        )?)
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("epoch={}", self.epoch),
+            format!(
+                "determinism_generator={}",
+                self.determinism
+                    .generator
+                    .as_ref()
+                    .map(|generator| generator.seed.to_string())
+                    .unwrap_or_else(|| String::from("none"))
+            ),
+        ])
+    }
+}
+
+/// One worker-visible shard assignment in a distributed input plan.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedWorkerShardAssignment {
+    /// Stable shard identity.
+    pub shard_key: String,
+    /// Datastream reference for the shard.
+    pub manifest: DatastreamManifestRef,
+    /// Global shard index in replay-safe order.
+    pub global_shard_index: usize,
+    /// Worker-local shard index.
+    pub local_shard_index: usize,
+    /// Number of sequences carried by the shard.
+    pub sequence_count: u64,
+    /// Number of tokens carried by the shard.
+    pub token_count: u64,
+}
+
+/// One replay-stable distributed worker input plan.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedDataFeedPlan {
+    /// Stable plan identity for this worker view.
+    pub plan_id: String,
+    /// Stable digest over the distributed data-feed contract.
+    pub contract_digest: String,
+    /// Stable digest over the global replay-safe shard order.
+    pub global_order_digest: String,
+    /// Stable digest over worker coordination posture.
+    pub coordination_digest: String,
+    /// Per-rank generator derived from runtime determinism.
+    pub rank_generator: GeneratorState,
+    /// Worker-visible shard assignments.
+    pub assigned_shards: Vec<DistributedWorkerShardAssignment>,
+}
+
+/// Full bounded distributed data-feed contract built on local data ingress.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedDataFeedContract {
+    /// Local source, sampler, batching, and staging posture.
+    pub ingress: DataIngressContract,
+    /// Partitioning strategy across workers.
+    pub partitioning: DistributedSamplerPartitionContract,
+    /// Worker topology and barrier behavior.
+    pub coordination: DistributedWorkerCoordinationContract,
+    /// Replay-safe ordering discipline.
+    pub replay: DistributedReplayOrderingContract,
+}
+
+impl DistributedDataFeedContract {
+    /// Creates one distributed data-feed contract.
+    #[must_use]
+    pub fn new(
+        ingress: DataIngressContract,
+        partitioning: DistributedSamplerPartitionContract,
+        coordination: DistributedWorkerCoordinationContract,
+        replay: DistributedReplayOrderingContract,
+    ) -> Self {
+        Self {
+            ingress,
+            partitioning,
+            coordination,
+            replay,
+        }
+    }
+
+    /// Validates the bounded distributed data-feed contract.
+    pub fn validate(
+        &self,
+        manifest: &DatasetManifest,
+    ) -> Result<(), DistributedDataFeedContractError> {
+        self.ingress.validate(manifest)?;
+        self.partitioning.validate()?;
+        self.coordination.validate()?;
+        self.replay.validate()?;
+        Ok(())
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("ingress={}", self.ingress.stable_digest()),
+            format!("partitioning={}", self.partitioning.stable_digest()),
+            format!("coordination={}", self.coordination.stable_digest()),
+            format!("replay={}", self.replay.stable_digest()),
+        ])
+    }
+
+    /// Plans one replay-stable worker view over the globally ordered shard list.
+    pub fn plan_worker_input_order(
+        &self,
+        manifest: &DatasetManifest,
+    ) -> Result<DistributedDataFeedPlan, DistributedDataFeedContractError> {
+        self.validate(manifest)?;
+        let split_name = self.ingress.source.iteration.split_name.as_str();
+        let Some(split) = manifest.split(split_name) else {
+            return Err(DistributedDataFeedContractError::UnknownSplit {
+                split_name: String::from(split_name),
+            });
+        };
+        let ordered = ordered_shards(
+            split,
+            self.ingress.source.iteration.shard_ordering,
+            self.ingress.source.iteration.shuffle_seed,
+            self.replay.epoch,
+        );
+        let global_order_digest = stable_distributed_global_order_digest(
+            split_name,
+            self.replay.epoch,
+            ordered.as_slice(),
+        );
+        let rank_generator = self.replay.rank_generator(&self.coordination)?;
+        let assigned_shards = partition_ordered_shards(
+            ordered.as_slice(),
+            self.partitioning.partition_kind,
+            self.coordination.rank,
+            self.coordination.world_size,
+        )
+        .into_iter()
+        .enumerate()
+        .map(
+            |(local_shard_index, (global_shard_index, shard))| DistributedWorkerShardAssignment {
+                shard_key: shard.shard_key.clone(),
+                manifest: shard.manifest.clone(),
+                global_shard_index,
+                local_shard_index,
+                sequence_count: shard.sequence_count,
+                token_count: shard.token_count,
+            },
+        )
+        .collect::<Vec<_>>();
+        let contract_digest = self.stable_digest();
+        let coordination_digest = stable_distributed_coordination_digest(
+            &self.coordination,
+            self.replay.epoch,
+            rank_generator.seed,
+        );
+        let plan_id = stable_distributed_plan_id(
+            contract_digest.as_str(),
+            global_order_digest.as_str(),
+            coordination_digest.as_str(),
+            assigned_shards.as_slice(),
+        );
+        Ok(DistributedDataFeedPlan {
+            plan_id,
+            contract_digest,
+            global_order_digest,
+            coordination_digest,
+            rank_generator,
+            assigned_shards,
+        })
+    }
+}
+
+/// Validation or planning error for bounded distributed data feed.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DistributedDataFeedContractError {
+    #[error(transparent)]
+    Ingress(#[from] DataIngressContractError),
+    #[error(transparent)]
+    Determinism(#[from] DeterminismContractError),
+    #[error("distributed data feed expected split `{split_name}` to exist in the manifest")]
+    UnknownSplit { split_name: String },
+    #[error(
+        "distributed replay ordering requires a seeded or strict runtime determinism contract"
+    )]
+    BestEffortReplayUnsupported,
+    #[error("worker coordination requires a non-empty replica group")]
+    MissingReplicaGroup,
+    #[error("worker topology requires rank < world_size and non-zero world_size; found rank={rank} world_size={world_size}")]
+    InvalidWorkerTopology { rank: usize, world_size: usize },
+    #[error("step-barrier coordination requires `sync_interval_batches > 0`")]
+    InvalidSyncIntervalBatches,
+    #[error("current scope refuses distributed partition kind `{partition_kind}`")]
+    UnsupportedPartitionKind { partition_kind: String },
+    #[error("current scope refuses worker coordination mode `{coordination_mode}`")]
+    UnsupportedCoordinationMode { coordination_mode: String },
+}
+
+/// Status for one bounded distributed data-feed capability case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributedDataFeedCapabilityStatus {
+    Supported,
+    Refused,
+}
+
+/// One machine-readable distributed data-feed capability case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedDataFeedCapabilityCaseResult {
+    pub case_id: String,
+    pub partition_kind: DistributedSamplerPartitionKind,
+    pub coordination_mode: DistributedWorkerCoordinationMode,
+    pub worker_rank: usize,
+    pub status: DistributedDataFeedCapabilityStatus,
+    pub assigned_shard_keys: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_order_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rank_seed: Option<u64>,
+    pub bounded_scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+}
+
+/// Machine-readable bounded report for distributed and sharded data-feed semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedDataFeedSemanticsReport {
+    pub schema_version: u32,
+    pub current_scope_window: String,
+    pub cases: Vec<DistributedDataFeedCapabilityCaseResult>,
+    pub report_digest: String,
+}
+
+impl DistributedDataFeedSemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<DistributedDataFeedCapabilityCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest = digest_lines(
+            std::iter::once(format!("current_scope_window={current_scope_window}"))
+                .chain(cases.iter().flat_map(|case| {
+                    let mut lines = vec![
+                        format!("case_id={}", case.case_id),
+                        format!(
+                            "partition_kind={}",
+                            distributed_sampler_partition_kind_label(case.partition_kind)
+                        ),
+                        format!(
+                            "coordination_mode={}",
+                            distributed_worker_coordination_mode_label(case.coordination_mode)
+                        ),
+                        format!("worker_rank={}", case.worker_rank),
+                        format!("status={:?}", case.status),
+                        format!("bounded_scope={}", case.bounded_scope),
+                        format!("assigned_shard_keys={}", case.assigned_shard_keys.join(",")),
+                    ];
+                    if let Some(plan_id) = &case.plan_id {
+                        lines.push(format!("plan_id={plan_id}"));
+                    }
+                    if let Some(global_order_digest) = &case.global_order_digest {
+                        lines.push(format!("global_order_digest={global_order_digest}"));
+                    }
+                    if let Some(rank_seed) = case.rank_seed {
+                        lines.push(format!("rank_seed={rank_seed}"));
+                    }
+                    if let Some(refusal) = &case.refusal {
+                        lines.push(format!("refusal={refusal}"));
+                    }
+                    lines
+                }))
+                .collect(),
+        );
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{}|{:?}",
+                case.case_id,
+                distributed_sampler_partition_kind_label(case.partition_kind),
+                distributed_worker_coordination_mode_label(case.coordination_mode),
+                case.worker_rank,
+                case.status
+            ));
+        }
+        lines
+    }
+}
+
+/// Builds the canonical bounded distributed data-feed semantics report.
+#[must_use]
+pub fn builtin_distributed_data_feed_semantics_report() -> DistributedDataFeedSemanticsReport {
+    let manifest = seeded_data_ingress_manifest();
+
+    let contiguous_epoch = DistributedDataFeedContract::new(
+        DataIngressContract::new(
+            DatasetSourceContract::new(
+                DatasetSourceKind::MapStyle,
+                DatasetIterationContract::new(manifest.key.clone(), "train"),
+            ),
+            DatasetBatchSamplerContract::new(
+                DatasetSamplerContract::new(DatasetSamplerKind::Sequential),
+                2,
+                24,
+                DatasetPackingPolicy::new(DatasetPackingMode::BatchByTokenBudget, 12, 24, 2),
+            ),
+            HostDeviceStagingContract::new(HostDeviceStagingMode::DirectHost, "cpu"),
+        ),
+        DistributedSamplerPartitionContract::new(
+            DistributedSamplerPartitionKind::ContiguousShardBlocks,
+        ),
+        DistributedWorkerCoordinationContract::new(
+            "data_parallel",
+            0,
+            2,
+            DistributedWorkerCoordinationMode::EpochBarrier,
+        ),
+        DistributedReplayOrderingContract::new(RuntimeDeterminismContract::strict(41), 0),
+    );
+
+    let strided_step = DistributedDataFeedContract::new(
+        DataIngressContract::new(
+            DatasetSourceContract::new(
+                DatasetSourceKind::IterableStreaming,
+                DatasetIterationContract::new(manifest.key.clone(), "train")
+                    .with_mode(DatasetIterationMode::Repeat)
+                    .with_shard_ordering(DatasetShardOrdering::DeterministicShuffle)
+                    .with_shuffle_seed(7),
+            ),
+            DatasetBatchSamplerContract::new(
+                DatasetSamplerContract::new(DatasetSamplerKind::DeterministicShuffle).with_seed(7),
+                4,
+                48,
+                DatasetPackingPolicy::new(DatasetPackingMode::PackIntoContextWindow, 24, 48, 2),
+            ),
+            HostDeviceStagingContract::new(HostDeviceStagingMode::PinnedPrefetch, "cuda:0")
+                .with_prefetch_batch_count(2)
+                .with_pin_host_memory(true),
+        ),
+        DistributedSamplerPartitionContract::new(DistributedSamplerPartitionKind::StridedShards),
+        DistributedWorkerCoordinationContract::new(
+            "data_parallel",
+            1,
+            2,
+            DistributedWorkerCoordinationMode::StepBarrier,
+        )
+        .with_sync_interval_batches(4),
+        DistributedReplayOrderingContract::new(RuntimeDeterminismContract::strict(77), 3),
+    );
+
+    let elastic_membership = DistributedDataFeedContract::new(
+        DataIngressContract::new(
+            DatasetSourceContract::new(
+                DatasetSourceKind::IterableStreaming,
+                DatasetIterationContract::new(manifest.key.clone(), "train")
+                    .with_mode(DatasetIterationMode::Repeat)
+                    .with_shard_ordering(DatasetShardOrdering::DeterministicShuffle)
+                    .with_shuffle_seed(9),
+            ),
+            DatasetBatchSamplerContract::new(
+                DatasetSamplerContract::new(DatasetSamplerKind::DeterministicShuffle).with_seed(9),
+                4,
+                48,
+                DatasetPackingPolicy::new(DatasetPackingMode::BatchByTokenBudget, 24, 48, 2),
+            ),
+            HostDeviceStagingContract::new(HostDeviceStagingMode::PinnedPrefetch, "cuda:0")
+                .with_prefetch_batch_count(2)
+                .with_pin_host_memory(true),
+        ),
+        DistributedSamplerPartitionContract::new(DistributedSamplerPartitionKind::StridedShards),
+        DistributedWorkerCoordinationContract::new(
+            "data_parallel",
+            0,
+            2,
+            DistributedWorkerCoordinationMode::ElasticMembership,
+        ),
+        DistributedReplayOrderingContract::new(RuntimeDeterminismContract::strict(99), 1),
+    );
+
+    DistributedDataFeedSemanticsReport::new(
+        String::from("psionic_distributed_data_feed_v1"),
+        vec![
+            supported_distributed_data_feed_case(
+                "map_style.contiguous_epoch_barrier.rank0",
+                &manifest,
+                &contiguous_epoch,
+                "Current scope supports fixed-world-size shard partitioning with contiguous worker blocks, epoch-barrier coordination, and runtime-derived replay ordering.",
+            ),
+            supported_distributed_data_feed_case(
+                "iterable_streaming.strided_step_barrier.rank1",
+                &manifest,
+                &strided_step,
+                "Current scope supports deterministic-shuffle iterable ingress partitioned by rank-stride, fixed step-barrier coordination, and replay-stable per-rank shard order.",
+            ),
+            refused_distributed_data_feed_case(
+                "iterable_streaming.elastic_membership",
+                &manifest,
+                &elastic_membership,
+                "Current scope refuses elastic membership because topology revision would change per-rank replay order without a higher-level distributed run-control contract.",
+            ),
+        ],
+    )
+}
+
 /// Builds the canonical bounded reusable data-ingress semantics report.
 #[must_use]
 pub fn builtin_data_ingress_semantics_report() -> DataIngressSemanticsReport {
@@ -2136,9 +2747,165 @@ fn refused_data_ingress_case(
     }
 }
 
+fn partition_ordered_shards<'a>(
+    ordered_shards: &[&'a DatasetShardManifest],
+    partition_kind: DistributedSamplerPartitionKind,
+    rank: usize,
+    world_size: usize,
+) -> Vec<(usize, &'a DatasetShardManifest)> {
+    match partition_kind {
+        DistributedSamplerPartitionKind::ContiguousShardBlocks => {
+            let base = ordered_shards.len() / world_size;
+            let extra = ordered_shards.len() % world_size;
+            let start = rank.saturating_mul(base).saturating_add(rank.min(extra));
+            let count = base + usize::from(rank < extra);
+            ordered_shards
+                .iter()
+                .enumerate()
+                .skip(start)
+                .take(count)
+                .map(|(index, shard)| (index, *shard))
+                .collect()
+        }
+        DistributedSamplerPartitionKind::StridedShards => ordered_shards
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| index % world_size == rank)
+            .map(|(index, shard)| (index, *shard))
+            .collect(),
+        DistributedSamplerPartitionKind::ElasticRebalance => Vec::new(),
+    }
+}
+
+fn stable_distributed_global_order_digest(
+    split_name: &str,
+    epoch: u32,
+    ordered_shards: &[&DatasetShardManifest],
+) -> String {
+    digest_lines(
+        std::iter::once(format!("split_name={split_name}"))
+            .chain(std::iter::once(format!("epoch={epoch}")))
+            .chain(
+                ordered_shards
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, shard)| {
+                        [
+                            format!("global_index={index}"),
+                            format!("shard_key={}", shard.shard_key),
+                            format!("manifest_digest={}", shard.manifest.manifest_digest),
+                        ]
+                    }),
+            )
+            .collect(),
+    )
+}
+
+fn stable_distributed_coordination_digest(
+    coordination: &DistributedWorkerCoordinationContract,
+    epoch: u32,
+    rank_seed: u64,
+) -> String {
+    digest_lines(vec![
+        format!("replica_group={}", coordination.replica_group),
+        format!("rank={}", coordination.rank),
+        format!("world_size={}", coordination.world_size),
+        format!(
+            "coordination_mode={}",
+            distributed_worker_coordination_mode_label(coordination.coordination_mode)
+        ),
+        format!(
+            "sync_interval_batches={}",
+            coordination.sync_interval_batches
+        ),
+        format!("epoch={epoch}"),
+        format!("rank_seed={rank_seed}"),
+    ])
+}
+
+fn stable_distributed_plan_id(
+    contract_digest: &str,
+    global_order_digest: &str,
+    coordination_digest: &str,
+    assigned_shards: &[DistributedWorkerShardAssignment],
+) -> String {
+    digest_lines(
+        std::iter::once(format!("contract_digest={contract_digest}"))
+            .chain(std::iter::once(format!(
+                "global_order_digest={global_order_digest}"
+            )))
+            .chain(std::iter::once(format!(
+                "coordination_digest={coordination_digest}"
+            )))
+            .chain(assigned_shards.iter().flat_map(|assignment| {
+                [
+                    format!("global_shard_index={}", assignment.global_shard_index),
+                    format!("local_shard_index={}", assignment.local_shard_index),
+                    format!("shard_key={}", assignment.shard_key),
+                    format!("manifest_digest={}", assignment.manifest.manifest_digest),
+                ]
+            }))
+            .collect(),
+    )
+}
+
+fn supported_distributed_data_feed_case(
+    case_id: &str,
+    manifest: &DatasetManifest,
+    contract: &DistributedDataFeedContract,
+    bounded_scope: &str,
+) -> DistributedDataFeedCapabilityCaseResult {
+    let plan = contract
+        .plan_worker_input_order(manifest)
+        .expect("seeded distributed data-feed case should validate");
+    DistributedDataFeedCapabilityCaseResult {
+        case_id: String::from(case_id),
+        partition_kind: contract.partitioning.partition_kind,
+        coordination_mode: contract.coordination.coordination_mode,
+        worker_rank: contract.coordination.rank,
+        status: DistributedDataFeedCapabilityStatus::Supported,
+        assigned_shard_keys: plan
+            .assigned_shards
+            .iter()
+            .map(|assignment| assignment.shard_key.clone())
+            .collect(),
+        plan_id: Some(plan.plan_id),
+        global_order_digest: Some(plan.global_order_digest),
+        rank_seed: Some(plan.rank_generator.seed),
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_distributed_data_feed_case(
+    case_id: &str,
+    manifest: &DatasetManifest,
+    contract: &DistributedDataFeedContract,
+    bounded_scope: &str,
+) -> DistributedDataFeedCapabilityCaseResult {
+    let refusal = contract
+        .plan_worker_input_order(manifest)
+        .expect_err("seeded distributed data-feed case should refuse");
+    DistributedDataFeedCapabilityCaseResult {
+        case_id: String::from(case_id),
+        partition_kind: contract.partitioning.partition_kind,
+        coordination_mode: contract.coordination.coordination_mode,
+        worker_rank: contract.coordination.rank,
+        status: DistributedDataFeedCapabilityStatus::Refused,
+        assigned_shard_keys: Vec::new(),
+        plan_id: None,
+        global_order_digest: None,
+        rank_seed: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
+
     use psionic_datastream::{DatastreamEncoding, DatastreamManifest, DatastreamSubjectKind};
 
     fn sample_dataset_key() -> DatasetKey {
@@ -2376,5 +3143,160 @@ mod tests {
             .expect("missing weighted-round-robin refusal");
         assert_eq!(refused.status, DataIngressCapabilityStatus::Refused);
         assert!(refused.refusal.is_some());
+    }
+
+    #[test]
+    fn distributed_data_feed_plan_partitions_shards_without_overlap_and_with_stable_replay_order() {
+        let manifest = seeded_data_ingress_manifest();
+        let base_ingress = DataIngressContract::new(
+            DatasetSourceContract::new(
+                DatasetSourceKind::IterableStreaming,
+                DatasetIterationContract::new(manifest.key.clone(), "train")
+                    .with_mode(DatasetIterationMode::Repeat)
+                    .with_shard_ordering(DatasetShardOrdering::DeterministicShuffle)
+                    .with_shuffle_seed(7),
+            ),
+            DatasetBatchSamplerContract::new(
+                DatasetSamplerContract::new(DatasetSamplerKind::DeterministicShuffle).with_seed(7),
+                4,
+                48,
+                DatasetPackingPolicy::new(DatasetPackingMode::PackIntoContextWindow, 24, 48, 2),
+            ),
+            HostDeviceStagingContract::new(HostDeviceStagingMode::PinnedPrefetch, "cuda:0")
+                .with_prefetch_batch_count(2)
+                .with_pin_host_memory(true),
+        );
+        let rank0 = DistributedDataFeedContract::new(
+            base_ingress.clone(),
+            DistributedSamplerPartitionContract::new(
+                DistributedSamplerPartitionKind::StridedShards,
+            ),
+            DistributedWorkerCoordinationContract::new(
+                "data_parallel",
+                0,
+                2,
+                DistributedWorkerCoordinationMode::StepBarrier,
+            )
+            .with_sync_interval_batches(4),
+            DistributedReplayOrderingContract::new(RuntimeDeterminismContract::strict(77), 3),
+        );
+        let rank1 = DistributedDataFeedContract::new(
+            base_ingress,
+            DistributedSamplerPartitionContract::new(
+                DistributedSamplerPartitionKind::StridedShards,
+            ),
+            DistributedWorkerCoordinationContract::new(
+                "data_parallel",
+                1,
+                2,
+                DistributedWorkerCoordinationMode::StepBarrier,
+            )
+            .with_sync_interval_batches(4),
+            DistributedReplayOrderingContract::new(RuntimeDeterminismContract::strict(77), 3),
+        );
+
+        let plan0 = rank0
+            .plan_worker_input_order(&manifest)
+            .expect("rank0 plan should validate");
+        let plan0_repeat = rank0
+            .plan_worker_input_order(&manifest)
+            .expect("rank0 replay plan should validate");
+        let plan1 = rank1
+            .plan_worker_input_order(&manifest)
+            .expect("rank1 plan should validate");
+
+        assert_eq!(plan0, plan0_repeat);
+        assert_eq!(plan0.global_order_digest, plan1.global_order_digest);
+        assert_ne!(plan0.rank_generator.seed, plan1.rank_generator.seed);
+
+        let ordered_keys = ordered_shards(
+            manifest.split("train").expect("train split should exist"),
+            DatasetShardOrdering::DeterministicShuffle,
+            7,
+            3,
+        )
+        .into_iter()
+        .map(|shard| shard.shard_key.clone())
+        .collect::<Vec<_>>();
+        let rank0_keys = plan0
+            .assigned_shards
+            .iter()
+            .map(|assignment| assignment.shard_key.clone())
+            .collect::<BTreeSet<_>>();
+        let rank1_keys = plan1
+            .assigned_shards
+            .iter()
+            .map(|assignment| assignment.shard_key.clone())
+            .collect::<BTreeSet<_>>();
+        assert!(rank0_keys.is_disjoint(&rank1_keys));
+        let union = rank0_keys.union(&rank1_keys).cloned().collect::<Vec<_>>();
+        assert_eq!(union, ordered_keys);
+    }
+
+    #[test]
+    fn distributed_data_feed_semantics_report_tracks_partitioning_coordination_and_replay_cases() {
+        let report = builtin_distributed_data_feed_semantics_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.current_scope_window,
+            "psionic_distributed_data_feed_v1"
+        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let contiguous = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "map_style.contiguous_epoch_barrier.rank0")
+            .expect("missing contiguous rank0 case");
+        assert_eq!(
+            contiguous.status,
+            DistributedDataFeedCapabilityStatus::Supported
+        );
+        assert_eq!(
+            contiguous.partition_kind,
+            DistributedSamplerPartitionKind::ContiguousShardBlocks
+        );
+        assert_eq!(
+            contiguous.coordination_mode,
+            DistributedWorkerCoordinationMode::EpochBarrier
+        );
+        assert!(contiguous.plan_id.is_some());
+        assert!(contiguous.global_order_digest.is_some());
+        assert!(contiguous.rank_seed.is_some());
+
+        let strided = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "iterable_streaming.strided_step_barrier.rank1")
+            .expect("missing strided rank1 case");
+        assert_eq!(strided.worker_rank, 1);
+        assert_eq!(
+            strided.status,
+            DistributedDataFeedCapabilityStatus::Supported
+        );
+        assert_eq!(
+            strided.partition_kind,
+            DistributedSamplerPartitionKind::StridedShards
+        );
+        assert_eq!(
+            strided.coordination_mode,
+            DistributedWorkerCoordinationMode::StepBarrier
+        );
+
+        let refused = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "iterable_streaming.elastic_membership")
+            .expect("missing elastic-membership refusal");
+        assert_eq!(refused.status, DistributedDataFeedCapabilityStatus::Refused);
+        assert!(refused.refusal.is_some());
+        assert!(refused
+            .refusal
+            .as_ref()
+            .expect("refusal should exist")
+            .contains("elastic_membership"));
     }
 }
