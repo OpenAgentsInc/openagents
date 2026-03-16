@@ -67,6 +67,8 @@ The ARC subtree currently has four canonical documents with different roles:
   - canonical dependency-ordered execution roadmap
 - `crates/arc/docs/CLAIMS.md`
   - canonical ARC claim vocabulary and minimum artifact expectations
+- `crates/arc/docs/UPSTREAM_TARGETS.md`
+  - canonical first-pass upstream benchmark and protocol target freeze
 - `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
   - port-source and upstream-mapping audit, not the canonical current-state
     contract
