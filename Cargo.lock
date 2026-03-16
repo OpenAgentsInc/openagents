@@ -312,11 +312,15 @@ dependencies = [
 name = "arc-solvers"
 version = "0.1.0"
 dependencies = [
+ "arc-benchmark",
+ "arc-client",
  "arc-core",
+ "axum 0.8.8",
  "psionic-serve",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]

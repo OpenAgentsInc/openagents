@@ -11,6 +11,8 @@ description = "ARC DSL, interpreter, and solver-lane substrate over ARC contract
 workspace = true
 
 [dependencies]
+arc-benchmark = { path = "../benchmark" }
+arc-client = { path = "../client" }
 arc-core = { path = "../core" }
 psionic-serve = { path = "../../psionic/psionic-serve" }
 serde = { workspace = true }
@@ -18,3 +20,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+axum = "0.8"
+tokio = { workspace = true }
