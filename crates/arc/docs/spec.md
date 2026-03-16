@@ -1445,9 +1445,12 @@ landed in bounded form: `arc-client` ships a typed local compatibility server
 covering the documented game discovery, scorecard, command, and healthcheck
 routes, plus an end-to-end local-flow integration test that proves the local
 mode does not require an API key and keeps compatibility scorecards in-memory.
-Benchmark-truthful scoring, lifecycle policy, and local-vs-remote parity remain
-the next explicit follow-on in `ARC-205`, `ARC-207`, `ARC-211`, `ARC-212`, and
-`ARC-213`.
+`ARC-205` is now also landed: `arc-client` includes a typed local-vs-remote
+parity report surface plus a manifest-driven harness that compares
+`LocalArcEnvironment` traces against the compatibility server step by step for
+translated `bt11` and `bt33` scripts. Benchmark-truthful scoring, lifecycle
+policy, and online/runtime policy remain the next explicit follow-on in
+`ARC-207`, `ARC-211`, `ARC-212`, and `ARC-213`.
 
 ### Phase 3: benchmark runtime
 
