@@ -38,13 +38,19 @@ The Phase 14 substrate is now real in the repo rather than scratch-only:
 - live run-progress output from the trainer and promotion wrapper
   - stage start
   - epoch start
+  - batch start
+  - sequence start
+  - sequence completion
+  - validation start
+  - validation case completion
   - batch completion
   - validation summary
   - best-checkpoint updates
   - benchmark/persist/telemetry/promotion phases
 
 That last item matters operationally. The run is no longer a silent multi-minute
-black box.
+black box, and later reruns now expose which exact sequence or validation case
+is currently consuming time.
 
 ## Canonical Promotion Run
 
@@ -103,6 +109,16 @@ The progress stream exposed the run shape clearly:
 
 That means the run failed for inspectable reasons, not because it disappeared
 into silent training time.
+
+The trainer now goes one step further than the canonical run did on March 16:
+
+- training emits per-batch estimated target-token counts before work starts
+- each sequence now emits a start line with prompt/target length and prefix mode
+- each sequence emits a completion line with token count and per-sequence mean loss
+- validation emits one case-complete line with divergence and exactness facts
+
+That does not improve the model by itself, but it does remove the remaining
+multi-minute blind spots from the Phase 14 loop.
 
 ## Stable Failure Pattern
 
