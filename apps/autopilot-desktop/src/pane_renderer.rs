@@ -2262,11 +2262,31 @@ fn paint_go_online_pane(
 
     let wallet_clip = mission_control_section_clip_bounds(layout.wallet_panel);
     paint.scene.push_clip(wallet_clip);
+    let now_epoch_seconds = mission_control_now_epoch_seconds();
+    let wallet_pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
+        &spark_wallet.recent_payments,
+        now_epoch_seconds,
+    );
+    let current_wallet_total_sats = spark_wallet
+        .balance
+        .as_ref()
+        .map(|balance| balance.total_sats());
+    let wallet_display_balance_sats = mission_control.mission_control_wallet_display_balance_sats(
+        current_wallet_total_sats,
+        wallet_pending_delta_sats,
+        now_epoch_seconds,
+    );
     let wallet_balance = spark_wallet
         .balance
         .as_ref()
-        .map(|balance| format_mission_control_amount(balance.total_sats()))
+        .and(wallet_display_balance_sats)
+        .map(format_mission_control_amount)
         .unwrap_or_else(|| "LOADING".to_string());
+    let wallet_pending = if spark_wallet.balance.is_some() {
+        crate::bitcoin_display::format_mission_control_signed_amount(wallet_pending_delta_sats)
+    } else {
+        "LOADING".to_string()
+    };
     let wallet_address = spark_wallet
         .spark_address
         .as_deref()
@@ -2276,6 +2296,7 @@ fn paint_go_online_pane(
     let wallet_network = spark_wallet.network_name().to_ascii_uppercase();
     let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
     let wallet_content_height = 41.0
+        + 39.0
         + mission_control_wrapped_row_height(&wallet_network, wallet_value_chunk_len, true)
         + mission_control_wrapped_row_height(wallet_status, wallet_value_chunk_len, true)
         + mission_control_wrapped_row_height(&wallet_address, wallet_value_chunk_len, false);
@@ -2290,6 +2311,21 @@ fn paint_go_online_pane(
         "Balance (₿)",
         &wallet_balance,
         mission_control_green_color(),
+        MISSION_CONTROL_PANEL_FONT_SIZE,
+        layout.wallet_panel.size.width - 24.0,
+        true,
+    );
+    wallet_y = paint_mission_control_amount_line(
+        paint,
+        layout.wallet_panel.origin.x + 12.0,
+        wallet_y,
+        "Pending (₿)",
+        &wallet_pending,
+        if wallet_pending_delta_sats == 0 {
+            mission_control_muted_color()
+        } else {
+            theme::status::WARNING
+        },
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.wallet_panel.size.width - 24.0,
         true,

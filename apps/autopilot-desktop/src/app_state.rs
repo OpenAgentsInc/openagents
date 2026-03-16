@@ -1305,6 +1305,8 @@ pub struct MissionControlPaneState {
     pub last_error: Option<String>,
     dismissed_alert_signature: Option<String>,
     wallet_refresh_icon_clicked_at_epoch_ms: u64,
+    wallet_balance_latched_sats: Option<u64>,
+    wallet_pending_last_seen_epoch_seconds: Option<u64>,
     sell_scroll_offset_px: f32,
     earnings_scroll_offset_px: f32,
     wallet_scroll_offset_px: f32,
@@ -1348,6 +1350,8 @@ impl Default for MissionControlPaneState {
             last_error: None,
             dismissed_alert_signature: None,
             wallet_refresh_icon_clicked_at_epoch_ms: 0,
+            wallet_balance_latched_sats: None,
+            wallet_pending_last_seen_epoch_seconds: None,
             sell_scroll_offset_px: 0.0,
             earnings_scroll_offset_px: 0.0,
             wallet_scroll_offset_px: 0.0,
@@ -1360,6 +1364,7 @@ impl Default for MissionControlPaneState {
 
 impl MissionControlPaneState {
     const ICON_CLICK_FEEDBACK_DURATION_MS: u64 = 650;
+    const WALLET_PENDING_LATCH_RELEASE_GRACE_SECONDS: u64 = 12;
 
     fn icon_click_feedback_intensity(clicked_at_epoch_ms: u64, now_epoch_ms: u64) -> f32 {
         if clicked_at_epoch_ms == 0 {
@@ -1375,6 +1380,43 @@ impl MissionControlPaneState {
 
     pub fn mark_wallet_refresh_icon_clicked(&mut self) {
         self.wallet_refresh_icon_clicked_at_epoch_ms = current_epoch_millis_for_state();
+    }
+
+    pub fn mission_control_wallet_display_balance_sats(
+        &mut self,
+        current_total_sats: Option<u64>,
+        pending_delta_sats: i64,
+        now_epoch_seconds: u64,
+    ) -> Option<u64> {
+        if pending_delta_sats != 0 {
+            self.wallet_pending_last_seen_epoch_seconds = Some(now_epoch_seconds);
+            if self.wallet_balance_latched_sats.is_none() {
+                self.wallet_balance_latched_sats = current_total_sats
+                    .map(|total| adjusted_wallet_balance_from_pending(total, pending_delta_sats));
+            }
+            return self.wallet_balance_latched_sats.or(current_total_sats
+                .map(|total| adjusted_wallet_balance_from_pending(total, pending_delta_sats)));
+        }
+
+        let grace_active = self
+            .wallet_pending_last_seen_epoch_seconds
+            .is_some_and(|seen| {
+                now_epoch_seconds.saturating_sub(seen)
+                    < Self::WALLET_PENDING_LATCH_RELEASE_GRACE_SECONDS
+            });
+        if let Some(total) = current_total_sats {
+            if !grace_active || self.wallet_balance_latched_sats != Some(total) {
+                self.wallet_pending_last_seen_epoch_seconds = None;
+                self.wallet_balance_latched_sats = Some(total);
+                return Some(total);
+            }
+        }
+        if grace_active && self.wallet_balance_latched_sats.is_some() {
+            return self.wallet_balance_latched_sats;
+        }
+
+        self.wallet_pending_last_seen_epoch_seconds = None;
+        self.wallet_balance_latched_sats
     }
 
     pub fn wallet_refresh_icon_click_feedback(&self, now_epoch_ms: u64) -> f32 {
@@ -1469,6 +1511,10 @@ impl MissionControlPaneState {
     pub fn record_error(&mut self, error: impl Into<String>) {
         self.last_error = Some(error.into());
     }
+}
+
+fn adjusted_wallet_balance_from_pending(total_sats: u64, pending_delta_sats: i64) -> u64 {
+    (i128::from(total_sats) - i128::from(pending_delta_sats)).clamp(0, i128::from(u64::MAX)) as u64
 }
 
 fn buy_mode_payment_history_requests(
@@ -10879,6 +10925,34 @@ mod tests {
         assert!(!mission_control.should_show_alert("alert:a"));
         assert!(mission_control.should_show_alert("alert:b"));
         assert!(mission_control.should_show_alert("alert:a"));
+    }
+
+    #[test]
+    fn mission_control_wallet_balance_latches_last_settled_total_while_pending() {
+        let mut mission_control = MissionControlPaneState::default();
+
+        assert_eq!(
+            mission_control.mission_control_wallet_display_balance_sats(Some(80), -20, 1_000),
+            Some(100)
+        );
+        assert_eq!(
+            mission_control.mission_control_wallet_display_balance_sats(Some(70), -30, 1_001),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn mission_control_wallet_balance_updates_once_confirmed_total_changes() {
+        let mut mission_control = MissionControlPaneState::default();
+
+        assert_eq!(
+            mission_control.mission_control_wallet_display_balance_sats(Some(80), -20, 1_000),
+            Some(100)
+        );
+        assert_eq!(
+            mission_control.mission_control_wallet_display_balance_sats(Some(80), 0, 1_001),
+            Some(80)
+        );
     }
 
     fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {
