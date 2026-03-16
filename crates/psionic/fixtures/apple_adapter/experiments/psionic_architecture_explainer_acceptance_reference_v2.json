@@ -1,0 +1,69 @@
+{
+  "abi_version": "psionic.apple_adapter_experiment_manifest.v2",
+  "experiment_id": "apple_adapter.psionic_architecture_explainer.acceptance_reference_v2",
+  "target_id": "apple_adapter.psionic_architecture_explainer",
+  "dataset": {
+    "dataset_ref": "dataset://openagents/apple_adapter/psionic_architecture_explainer",
+    "version": "2026.03.15.2"
+  },
+  "train_split_digest": "sha256:a2c76ea8b4852bac55e3e497bb6166cb7ab85494dd7bcef2c48a4263feb9bde9",
+  "held_out_split_digest": "sha256:fee97de9e5632dadb4ff6156f3d0d293c9632f9f46f296e3ccf7c4608f2797be",
+  "benchmark_split_digest": "sha256:942b85a3aa5a72b1bcba42b343972cbe4502af22db20dc2322886ac8c632a9ec",
+  "corpus_manifest_digest": "sha256:3f4baf816383c5ea589b2665121c5f4f739846340bbb48a7ad5c8cbaf87c66f4",
+  "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
+  "tokenizer_digest": "sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1",
+  "prompt_shaping_digest": "sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b",
+  "environment_ref": "env.openagents.apple.architecture_explainer.core",
+  "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+  "fidelity_plan_id": "openagents.apple.token_sequence_reference.v1",
+  "input_width": 2048,
+  "output_width": 2048,
+  "lora_targets": [
+    "decoder.attn.q_proj"
+  ],
+  "lora_rank": 32,
+  "max_steps": 8,
+  "training_policy": {
+    "optimizer": {
+      "kind": "adam_w",
+      "learning_rate": 0.05,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "beta1": 0.9,
+      "beta2": 0.99,
+      "epsilon": 1e-8
+    },
+    "optimizer_residency_policy": {
+      "step_residency": "host_resident",
+      "idle_residency": "host_resident"
+    },
+    "precision_policy": "f32_reference",
+    "activation_checkpoint_policy": "disabled",
+    "packing_policy": {
+      "packing_mode": "pack_into_context_window",
+      "max_row_tokens": 280,
+      "max_batch_tokens": 560,
+      "max_rows_per_batch": 2,
+      "pad_to_multiple_of": 8,
+      "overlong_sequence_posture": "refuse"
+    },
+    "gradient_accumulation_steps": 1
+  },
+  "useful_adapter_gate": {
+    "runtime_smoke_required": true,
+    "standard_benchmark_policy": {
+      "minimum_adapter_score_bps": 9000,
+      "minimum_adapter_pass_rate_bps": 9000,
+      "minimum_score_delta_bps": 1500,
+      "minimum_pass_rate_delta_bps": 1500,
+      "minimum_improved_case_count": 4
+    },
+    "overfit_non_zero_policy": {
+      "minimum_adapter_score_bps": 1,
+      "minimum_adapter_pass_rate_bps": 1,
+      "minimum_score_delta_bps": 1,
+      "minimum_pass_rate_delta_bps": 1,
+      "minimum_improved_case_count": 1
+    }
+  }
+}
