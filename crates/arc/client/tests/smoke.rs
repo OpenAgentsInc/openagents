@@ -2,12 +2,13 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::time::Duration;
 
 use arc_client::{
-    ArcEnvironmentInfo, ArcOpenScorecardRequest, ArcRemoteClient, LocalArcEnvironment,
-    RemoteArcEnvironment,
+    ArcEnvironmentInfo, ArcOpenScorecardRequest, ArcRemoteClient, ArcRemoteRetryPolicy,
+    LocalArcEnvironment, RemoteArcEnvironment,
 };
-use arc_core::{ArcAction, ArcActionKind, ArcGameState, ArcTaskId};
+use arc_core::{ArcAction, ArcActionKind, ArcGameState, ArcOperationMode, ArcTaskId};
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,6 +58,12 @@ fn local_wrapper_executes_translated_fixture() {
         environment.action_space(),
         Some([ArcActionKind::Action3, ArcActionKind::Action4].as_slice())
     );
+    let recording = environment
+        .recording()
+        .expect("local recording should be readable")
+        .expect("local recording should exist after reset + step");
+    assert_eq!(recording.operation_mode, Some(ArcOperationMode::Offline));
+    assert_eq!(recording.steps.len(), 2);
 }
 
 #[test]
@@ -133,6 +140,12 @@ fn remote_client_keeps_cookie_affinity_across_wrapper_steps() {
         environment.action_space(),
         Some([ArcActionKind::Action3, ArcActionKind::Action4].as_slice())
     );
+    let recording = environment
+        .recording()
+        .expect("remote recording should be readable")
+        .expect("remote recording should exist after reset + step");
+    assert_eq!(recording.operation_mode, Some(ArcOperationMode::Online));
+    assert_eq!(recording.steps.len(), 2);
 
     let requests = handle.join().expect("server should join cleanly");
     assert_eq!(requests.len(), 4);
@@ -150,6 +163,82 @@ fn remote_client_keeps_cookie_affinity_across_wrapper_steps() {
     );
     assert!(requests[2].body.contains("\"card_id\":\"card-1\""));
     assert!(requests[3].body.contains("\"guid\":\"guid-1\""));
+}
+
+#[test]
+fn remote_client_retries_rate_limits_without_losing_cookie_affinity() {
+    let responses = vec![
+        MockResponse::json(
+            200,
+            r#"[{"game_id":"bt11-fd9df0622a1a","title":"BT11"}]"#.to_owned(),
+            &[],
+        ),
+        MockResponse::json(
+            200,
+            r#"{"card_id":"card-1"}"#.to_owned(),
+            &[(
+                "Set-Cookie".to_owned(),
+                "AWSALB=sticky-1; Path=/".to_owned(),
+            )],
+        ),
+        MockResponse::json(
+            429,
+            r#"{"error":"rate_limited"}"#.to_owned(),
+            &[("Retry-After".to_owned(), "0".to_owned())],
+        ),
+        MockResponse::json(
+            200,
+            frame_response_json(
+                "bt11-fd9df0622a1a",
+                "guid-1",
+                "NOT_FINISHED",
+                0,
+                2,
+                0,
+                None,
+                true,
+                &[3, 4],
+            ),
+            &[],
+        ),
+    ];
+    let (base_url, handle) = spawn_mock_server(responses);
+
+    let client = ArcRemoteClient::new(base_url, "test-key")
+        .expect("client should initialize")
+        .with_retry_policy(ArcRemoteRetryPolicy {
+            max_retries: 1,
+            initial_delay: Duration::ZERO,
+            backoff_factor: 1.0,
+            max_delay: Duration::ZERO,
+        });
+    let games = client.list_games().expect("games should load");
+    let scorecard = client
+        .open_scorecard(&ArcOpenScorecardRequest {
+            source_url: None,
+            tags: vec!["smoke".to_owned()],
+            opaque: None,
+            competition_mode: None,
+        })
+        .expect("scorecard should open");
+
+    let mut environment = RemoteArcEnvironment::new(client, games[0].clone(), scorecard.card_id);
+    environment
+        .reset()
+        .expect("reset should succeed after one retry");
+
+    let requests = handle.join().expect("server should join cleanly");
+    assert_eq!(requests.len(), 4);
+    assert_eq!(requests[2].path, "/api/cmd/RESET");
+    assert_eq!(requests[3].path, "/api/cmd/RESET");
+    assert_eq!(
+        requests[2].headers.get("cookie").map(String::as_str),
+        Some("AWSALB=sticky-1")
+    );
+    assert_eq!(
+        requests[3].headers.get("cookie").map(String::as_str),
+        Some("AWSALB=sticky-1")
+    );
 }
 
 #[derive(Debug)]

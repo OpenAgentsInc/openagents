@@ -6,6 +6,7 @@ use arc_engine::{ArcEngine, ArcEngineStepOutcome, load_game_package};
 
 use crate::ArcClientError;
 use crate::models::{ArcEnvironmentInfo, ArcSessionFrame};
+use arc_core::ArcRecording;
 
 static LOCAL_GUID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -78,6 +79,10 @@ impl LocalArcEnvironment {
         self.last_response
             .as_ref()
             .map(|response| response.available_actions.as_slice())
+    }
+
+    pub fn recording(&self) -> Result<Option<ArcRecording>, ArcClientError> {
+        self.engine.recording().map_err(Into::into)
     }
 
     pub fn reset(&mut self) -> Result<ArcSessionFrame, ArcClientError> {
