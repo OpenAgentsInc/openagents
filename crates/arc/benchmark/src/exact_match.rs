@@ -453,10 +453,22 @@ pub enum ArcBenchmarkError {
         expected: usize,
         actual: usize,
     },
+    #[error("repeated-run aggregation requires at least one run summary")]
+    RepeatedRunsMissing,
+    #[error(
+        "repeated-run aggregation expected benchmark `{expected:?}` but run `{run_id}` used `{actual:?}`"
+    )]
+    RepeatedRunBenchmarkMismatch {
+        expected: ArcBenchmark,
+        actual: ArcBenchmark,
+        run_id: String,
+    },
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    ResearchScoreEvaluation(#[from] psionic_research::ExperimentScoreEvaluationError),
     #[error(transparent)]
     Serialization(#[from] ContractSerializationError),
 }
