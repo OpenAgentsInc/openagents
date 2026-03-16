@@ -13,6 +13,7 @@
 //! lane, and arbiter policy. It must not absorb benchmark scoring truth, app
 //! UX, or reusable Psionic substrate.
 
+pub mod arbiter;
 pub mod dsl;
 pub mod interpreter;
 pub mod mdl;
@@ -23,6 +24,11 @@ pub mod trace;
 pub mod transductive;
 pub mod verifier;
 
+pub use arbiter::{
+    PORTFOLIO_ARBITER_BOUNDARY_SUMMARY, PortfolioArbiter, PortfolioArbiterCandidateScore,
+    PortfolioArbiterConfig, PortfolioArbiterError, PortfolioArbiterRun,
+    SecondAttemptCandidateGate, SecondAttemptPolicyOutcome,
+};
 pub use dsl::{
     ARC_SOLVER_BOUNDARY_SUMMARY, ArcDslTier, ArcGridBinding, ArcGridExpr, ArcObjectSelector,
     ArcObjectTransform, ArcProgram, ArcProgramMetadata, ArcSymbol, ArcSymbolError,
