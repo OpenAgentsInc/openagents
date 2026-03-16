@@ -449,6 +449,22 @@ patches today. The honest current scope is:
   `autopilotctl training export`, `autopilotctl training accept`, and
   `autopilotctl apple-fm load|attach`
 
+The benchmark-usefulness claim is narrower than the export/runtime claim. The
+canonical gate for "is this adapter actually useful?" is
+`scripts/release/check-psionic-apple-architecture-explainer-acceptance.sh`, not
+`autopilotctl training accept` by itself. The latest live acceptance harness
+receipt on 2026-03-16 passed the weak overfit stage at `520` score bps,
+`1428` pass-rate bps, and `1` improved case, but the standard stage remained
+rejected at `571` score bps, `1428` pass-rate bps, and `1` improved case. The
+current truthful claim is therefore:
+
+- the Rust-only Apple lane can train, export, load, and runtime-smoke valid
+  `.fmadapter` packages
+- the same lane can clear the weak overfit non-zero gate
+- the standard benchmark-useful gate is still red
+- export validity, runtime smoke, and authority acceptance do not by
+  themselves prove benchmark-useful quality
+
 What this does not mean is "full distributed Apple training is done." The
 current Apple lane reuses the repo's data, environment, eval, optimizer,
 autodiff, run-summary, and authority substrate, but it does not yet execute

@@ -2704,7 +2704,7 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
     }
     for run in snapshot.training.operator.runs.iter().take(4) {
         lines.push(format!(
-            "training operator run: id={} package={} launch={} eval={} export={} accept={} steps={}/{} avg_loss={} held_out_bps={} runtime_smoke={} exported_path={} accepted_outcome={} training_run={}",
+            "training operator run: id={} package={} launch={} eval={} export={} authority_accept={} steps={}/{} avg_loss={} held_out_bps={} runtime_smoke={} exported_path={} authority_outcome={} training_run={}",
             run.run_id,
             run.package_name,
             run.launch_state,
@@ -2816,6 +2816,11 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
                 event.resource_summary.as_deref().unwrap_or("-"),
             ));
         }
+    }
+    if !snapshot.training.operator.runs.is_empty() {
+        lines.push(
+            "training operator note: export, runtime smoke, and authority acceptance do not by themselves prove benchmark-useful adapter quality; use the architecture-explainer acceptance harness for that claim".to_string(),
+        );
     }
     if let Some(error) = snapshot.training.last_error.as_deref() {
         lines.push(format!("training last_error: {error}"));
@@ -4032,7 +4037,7 @@ fn print_training_text(payload: &Value) {
         .flatten()
     {
         println!(
-            "training operator run: id={} package={} launch={} eval={} export={} accept={} steps={}/{} avg_loss={} held_out_bps={} runtime_smoke={} exported_path={} accepted_outcome={} training_run={}",
+            "training operator run: id={} package={} launch={} eval={} export={} authority_accept={} steps={}/{} avg_loss={} held_out_bps={} runtime_smoke={} exported_path={} authority_outcome={} training_run={}",
             run.get("run_id").and_then(Value::as_str).unwrap_or("-"),
             run.get("package_name")
                 .and_then(Value::as_str)
@@ -4255,6 +4260,16 @@ fn print_training_text(payload: &Value) {
             );
         }
     }
+    if payload
+        .get("operator")
+        .and_then(|value| value.get("runs"))
+        .and_then(Value::as_array)
+        .is_some_and(|runs| !runs.is_empty())
+    {
+        println!(
+            "training operator note: export, runtime smoke, and authority acceptance do not by themselves prove benchmark-useful adapter quality; use the architecture-explainer acceptance harness for that claim"
+        );
+    }
 }
 
 fn watch_training_run(
@@ -4393,7 +4408,7 @@ fn watch_training_run(
                 }))?;
             } else {
                 println!(
-                    "training watch terminal: run={} launch={} eval={} export={} accept={} last_error={}",
+                    "training watch terminal: run={} launch={} eval={} export={} authority_accept={} last_error={}",
                     run.run_id,
                     run.launch_state,
                     run.evaluation_state,
@@ -6051,6 +6066,7 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("training operator run: id=apple-run-1"))
         );
+        assert!(lines.iter().any(|line| line.contains("authority_accept=")));
         assert!(
             lines
                 .iter()
@@ -6066,6 +6082,9 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("training operator event: id=apple-run-1 seq=7"))
         );
+        assert!(lines.iter().any(|line| line.contains(
+            "training operator note: export, runtime smoke, and authority acceptance do not by themselves prove benchmark-useful adapter quality"
+        )));
     }
 
     #[test]
