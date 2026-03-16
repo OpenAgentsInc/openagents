@@ -17,9 +17,9 @@
 > `docs/audits/2026-03-15-psionic-tinygrad-philosophy-pytorch-drop-in-audit.md`.
 >
 > This is now the canonical full-library roadmap for `crates/psionic/*`.
-> `ROADMAP_CLUSTER.md`, `ROADMAP_FM.md`, and `ROADMAP_METAL.md` remain useful
-> lane-specific references, but they are no longer the canonical answer to
-> "what is the Psionic program overall?"
+> `ROADMAP_CLUSTER.md`, `ROADMAP_FM.md`, `ROADMAP_METAL.md`, and
+> `ROADMAP_MLX.md` remain useful lane-specific references, but they are no
+> longer the canonical answer to "what is the Psionic program overall?"
 
 ## Executive Summary
 
@@ -805,7 +805,7 @@ drifting back into siloed or host-specific roadmaps.
 | --- | --- | --- |
 | `PLIB-001` | landed | Rewrite the full-library roadmap from scratch and supersede the old host-specific framing. This document closes that issue. |
 | `PLIB-002` | planned | Freeze the canonical claim vocabulary: `framework-core`, `library-usable`, `execution-truthful`, `PyTorch-credible`, and `PyTorch-compatible`. |
-| `PLIB-003` | planned | Refresh `ROADMAP_CLUSTER.md`, `ROADMAP_FM.md`, and `ROADMAP_METAL.md` against this roadmap so they become lane deep dives rather than competing primaries. |
+| `PLIB-003` | planned | Refresh `ROADMAP_CLUSTER.md`, `ROADMAP_FM.md`, `ROADMAP_METAL.md`, and `ROADMAP_MLX.md` against this roadmap so they become lane deep dives rather than competing primaries. |
 | `PLIB-004` | planned | Add one compact roadmap-to-acceptance index across architecture, framework-core, inference, train, and future compatibility docs. |
 | `PLIB-005` | planned | Freeze the upstream PyTorch version window that parity matrices, harnesses, and compatibility claims target. |
 
