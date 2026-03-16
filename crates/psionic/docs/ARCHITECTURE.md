@@ -495,6 +495,7 @@ training subsystems.
 | `DatasetIterationContract` | `psionic-data` | resume-safe split iteration over datastream-backed shards | `implemented_early` |
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
 | `PsionicRefusal` | `psionic-core` | canonical cross-library refusal taxonomy for unsupported op, gradient, layout, capability, serialization, sandbox-policy, and topology boundaries | `implemented_early` |
+| `OperatorParityMatrixReport` | `psionic-ir` | machine-readable seeded operator parity cases and refusal proofs against the current PyTorch-derived oracle window | `implemented` |
 | `Module` | `psionic-nn` | reusable nested module tree with deterministic parameter, buffer, and submodule traversal | `implemented` |
 | `ModuleStateDict` | `psionic-nn` | deterministic keyed `state_dict` view with stable path order and persistent-vs-all-buffer selection | `implemented` |
 | `ModuleStateTree` | `psionic-nn` | digest-bound flattened parameter or buffer view that downstream train, checkpoint, and compatibility code can consume | `implemented` |
