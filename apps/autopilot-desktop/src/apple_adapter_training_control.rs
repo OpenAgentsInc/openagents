@@ -35,8 +35,8 @@ use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext
 use psionic_adapters::{AppleFmAdapterPackage, AppleFmAdapterPackageMetadata};
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
-    AppleFmGenerationOptions, AppleFmGenerationSchema, AppleFmHealthResponse,
-    AppleFmSamplingMode, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
+    AppleFmGenerationOptions, AppleFmGenerationSchema, AppleFmHealthResponse, AppleFmSamplingMode,
+    AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
     AppleFmSessionStructuredGenerationRequest, DEFAULT_APPLE_FM_MODEL_ID,
 };
 use psionic_data::{
@@ -60,13 +60,13 @@ use psionic_eval::{
 use psionic_train::{
     APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
     AppleAdapterActivationCheckpointPolicy, AppleAdapterExecutionConfig,
-    AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel, AppleAdapterSftRunOutcome,
-    AppleAdapterSftRunRequest, AppleAdapterToolkitExportOutcome,
+    AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel, AppleAdapterSftProgressEvent,
+    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterToolkitExportOutcome,
     AppleAdapterToolkitExportRequest, AppleAdapterToolkitPrecision,
     AppleAdapterToolkitTrainingOutcome, AppleAdapterToolkitTrainingRequest,
     AppleAdapterTrainingExecutionBackend, TrainingLoopBudget, TrainingOptimizerConfig,
     TrainingOptimizerResidencyPolicy, apple_live_reference_trainable_targets,
-    run_apple_adapter_sft_export,
+    run_apple_adapter_sft_export_with_progress,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -77,6 +77,7 @@ const APPLE_TRAINING_SCHEMA_VERSION: u16 = 1;
 const APPLE_TRAINING_STATE_FILENAME: &str = "apple-adapter-training.json";
 const APPLE_TRAINING_ROOT_DIR: &str = "apple-adapter-training";
 const APPLE_TRAINING_LOG_LIMIT: usize = 64;
+const APPLE_TRAINING_EVENT_LIMIT: usize = 128;
 const APPLE_TRAINING_PACKAGE_FORMAT_VERSION: &str = "openagents.apple-fmadapter.v1";
 const APPLE_TRAINING_OWNER_ID: &str = "openagents.autopilot_desktop";
 const APPLE_TRAINING_CHECKPOINT_FAMILY: &str = "apple_adapter";
@@ -113,6 +114,111 @@ impl AppleAdapterOperatorStageState {
     pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Completed | Self::Failed | Self::Interrupted)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAdapterOperatorProgressPhase {
+    Launch,
+    Training,
+    Evaluation,
+    Export,
+    RuntimeSmoke,
+    Acceptance,
+}
+
+impl AppleAdapterOperatorProgressPhase {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Launch => "launch",
+            Self::Training => "training",
+            Self::Evaluation => "evaluation",
+            Self::Export => "export",
+            Self::RuntimeSmoke => "runtime_smoke",
+            Self::Acceptance => "acceptance",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAdapterOperatorProgressEventKind {
+    TrainingStarted,
+    EpochStarted,
+    StepCompleted,
+    LossObserved,
+    CheckpointWritten,
+    HeldOutEvalStarted,
+    HeldOutSampleCompleted,
+    ExportStarted,
+    ExportCompleted,
+    RuntimeSmokeStarted,
+    RuntimeSmokeCompleted,
+    AcceptanceStarted,
+    AcceptanceCompleted,
+    Heartbeat,
+}
+
+impl AppleAdapterOperatorProgressEventKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::TrainingStarted => "training_started",
+            Self::EpochStarted => "epoch_started",
+            Self::StepCompleted => "step_completed",
+            Self::LossObserved => "loss_observed",
+            Self::CheckpointWritten => "checkpoint_written",
+            Self::HeldOutEvalStarted => "held_out_eval_started",
+            Self::HeldOutSampleCompleted => "held_out_sample_completed",
+            Self::ExportStarted => "export_started",
+            Self::ExportCompleted => "export_completed",
+            Self::RuntimeSmokeStarted => "runtime_smoke_started",
+            Self::RuntimeSmokeCompleted => "runtime_smoke_completed",
+            Self::AcceptanceStarted => "acceptance_started",
+            Self::AcceptanceCompleted => "acceptance_completed",
+            Self::Heartbeat => "heartbeat",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOperatorProgressSnapshot {
+    pub current_phase: Option<AppleAdapterOperatorProgressPhase>,
+    pub run_started_at_epoch_ms: Option<u64>,
+    pub phase_started_at_epoch_ms: Option<u64>,
+    pub last_heartbeat_at_epoch_ms: Option<u64>,
+    pub run_elapsed_ms: Option<u64>,
+    pub phase_elapsed_ms: Option<u64>,
+    pub eta_ms: Option<u64>,
+    pub current_epoch: Option<u64>,
+    pub expected_epochs: Option<u64>,
+    pub completed_steps: Option<u64>,
+    pub expected_steps: Option<u64>,
+    pub latest_loss: Option<f64>,
+    pub completed_eval_samples: Option<u64>,
+    pub expected_eval_samples: Option<u64>,
+    pub last_checkpoint_path: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOperatorProgressEvent {
+    pub sequence: u64,
+    pub event_id: String,
+    pub occurred_at_epoch_ms: u64,
+    pub phase: AppleAdapterOperatorProgressPhase,
+    pub kind: AppleAdapterOperatorProgressEventKind,
+    pub detail: String,
+    pub epoch_index: Option<u64>,
+    pub expected_epochs: Option<u64>,
+    pub step_index: Option<u64>,
+    pub expected_steps: Option<u64>,
+    pub eval_sample_id: Option<String>,
+    pub eval_sample_index: Option<u64>,
+    pub expected_eval_samples: Option<u64>,
+    pub loss: Option<f64>,
+    pub eta_ms: Option<u64>,
+    pub checkpoint_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -197,6 +303,12 @@ pub struct AppleAdapterOperatorRunStatus {
     pub runtime_smoke_receipt: Option<AppleAdapterRuntimeSmokeReceipt>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub progress: AppleAdapterOperatorProgressSnapshot,
+    #[serde(default)]
+    pub recent_events: Vec<AppleAdapterOperatorProgressEvent>,
+    #[serde(default)]
+    pub next_event_sequence: u64,
     pub log_lines: Vec<String>,
 }
 
@@ -238,6 +350,86 @@ struct PersistedAppleAdapterTrainingState {
 struct AppleAdapterTrainingController {
     storage_path: PathBuf,
     state: PersistedAppleAdapterTrainingState,
+}
+
+#[derive(Clone, Debug)]
+struct AppleAdapterOperatorProgressUpdate {
+    phase: AppleAdapterOperatorProgressPhase,
+    kind: AppleAdapterOperatorProgressEventKind,
+    detail: String,
+    epoch_index: Option<u64>,
+    expected_epochs: Option<u64>,
+    step_index: Option<u64>,
+    expected_steps: Option<u64>,
+    eval_sample_id: Option<String>,
+    eval_sample_index: Option<u64>,
+    expected_eval_samples: Option<u64>,
+    loss: Option<f64>,
+    eta_ms: Option<u64>,
+    checkpoint_path: Option<String>,
+}
+
+impl AppleAdapterOperatorProgressUpdate {
+    fn new(
+        phase: AppleAdapterOperatorProgressPhase,
+        kind: AppleAdapterOperatorProgressEventKind,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            phase,
+            kind,
+            detail: detail.into(),
+            epoch_index: None,
+            expected_epochs: None,
+            step_index: None,
+            expected_steps: None,
+            eval_sample_id: None,
+            eval_sample_index: None,
+            expected_eval_samples: None,
+            loss: None,
+            eta_ms: None,
+            checkpoint_path: None,
+        }
+    }
+
+    fn with_epochs(mut self, epoch_index: u64, expected_epochs: u64) -> Self {
+        self.epoch_index = Some(epoch_index);
+        self.expected_epochs = Some(expected_epochs);
+        self
+    }
+
+    fn with_steps(mut self, step_index: u64, expected_steps: u64) -> Self {
+        self.step_index = Some(step_index);
+        self.expected_steps = Some(expected_steps);
+        self
+    }
+
+    fn with_eval_sample(
+        mut self,
+        eval_sample_id: impl Into<String>,
+        eval_sample_index: u64,
+        expected_eval_samples: u64,
+    ) -> Self {
+        self.eval_sample_id = Some(eval_sample_id.into());
+        self.eval_sample_index = Some(eval_sample_index);
+        self.expected_eval_samples = Some(expected_eval_samples);
+        self
+    }
+
+    fn with_loss(mut self, loss: f64) -> Self {
+        self.loss = Some(loss);
+        self
+    }
+
+    fn with_eta_ms(mut self, eta_ms: u64) -> Self {
+        self.eta_ms = Some(eta_ms);
+        self
+    }
+
+    fn with_checkpoint_path(mut self, checkpoint_path: impl Into<String>) -> Self {
+        self.checkpoint_path = Some(checkpoint_path.into());
+        self
+    }
 }
 
 impl AppleAdapterTrainingController {
@@ -334,6 +526,14 @@ impl AppleAdapterTrainingController {
             runtime_smoke_receipt: None,
             last_action: Some("Created Apple adapter operator run".to_string()),
             last_error: None,
+            progress: AppleAdapterOperatorProgressSnapshot {
+                run_started_at_epoch_ms: Some(now),
+                current_phase: Some(AppleAdapterOperatorProgressPhase::Launch),
+                phase_started_at_epoch_ms: Some(now),
+                ..AppleAdapterOperatorProgressSnapshot::default()
+            },
+            recent_events: Vec::new(),
+            next_event_sequence: 0,
             log_lines: vec![format!("{} launch: created operator run {}", now, run_id)],
         };
         self.state.last_action = Some(format!("Created Apple adapter operator run {}", run_id));
@@ -341,6 +541,14 @@ impl AppleAdapterTrainingController {
         self.state.runs.insert(0, run.clone());
         self.persist()?;
         Ok(run)
+    }
+
+    fn append_log_line(run: &mut AppleAdapterOperatorRunStatus, line: String) {
+        run.log_lines.push(line);
+        if run.log_lines.len() > APPLE_TRAINING_LOG_LIMIT {
+            let trim = run.log_lines.len() - APPLE_TRAINING_LOG_LIMIT;
+            run.log_lines.drain(0..trim);
+        }
     }
 
     fn push_log(
@@ -355,12 +563,100 @@ impl AppleAdapterTrainingController {
         let run = self.run_mut(run_id)?;
         run.updated_at_epoch_ms = now;
         run.last_action = Some(action.clone());
-        run.log_lines.push(line);
-        if run.log_lines.len() > APPLE_TRAINING_LOG_LIMIT {
-            let trim = run.log_lines.len() - APPLE_TRAINING_LOG_LIMIT;
-            run.log_lines.drain(0..trim);
-        }
+        Self::append_log_line(run, line);
         self.state.last_action = Some(action);
+        self.state.last_error = None;
+        self.persist()
+    }
+
+    fn push_progress_event(
+        &mut self,
+        run_id: &str,
+        update: AppleAdapterOperatorProgressUpdate,
+    ) -> Result<(), String> {
+        let now = current_epoch_ms();
+        let run = self.run_mut(run_id)?;
+        run.updated_at_epoch_ms = now;
+        let phase_changed = run.progress.current_phase != Some(update.phase);
+        if phase_changed {
+            run.progress.current_phase = Some(update.phase);
+            run.progress.phase_started_at_epoch_ms = Some(now);
+        }
+        let run_started_at = run
+            .progress
+            .run_started_at_epoch_ms
+            .or(run.launched_at_epoch_ms)
+            .unwrap_or(now);
+        run.progress.run_started_at_epoch_ms = Some(run_started_at);
+        run.progress.last_heartbeat_at_epoch_ms = Some(now);
+        run.progress.run_elapsed_ms = Some(now.saturating_sub(run_started_at));
+        let phase_started_at = run.progress.phase_started_at_epoch_ms.unwrap_or(now);
+        run.progress.phase_elapsed_ms = Some(now.saturating_sub(phase_started_at));
+        if let Some(epoch_index) = update.epoch_index {
+            run.progress.current_epoch = Some(epoch_index);
+        }
+        if let Some(expected_epochs) = update.expected_epochs {
+            run.progress.expected_epochs = Some(expected_epochs);
+        }
+        if let Some(step_index) = update.step_index {
+            run.progress.completed_steps = Some(step_index);
+        }
+        if let Some(expected_steps) = update.expected_steps {
+            run.progress.expected_steps = Some(expected_steps);
+        }
+        if let Some(loss) = update.loss {
+            run.progress.latest_loss = Some(loss);
+        }
+        if let Some(eval_sample_index) = update.eval_sample_index {
+            run.progress.completed_eval_samples = Some(eval_sample_index);
+        }
+        if let Some(expected_eval_samples) = update.expected_eval_samples {
+            run.progress.expected_eval_samples = Some(expected_eval_samples);
+        }
+        if let Some(eta_ms) = update.eta_ms {
+            run.progress.eta_ms = Some(eta_ms);
+        }
+        if let Some(checkpoint_path) = update.checkpoint_path.clone() {
+            run.progress.last_checkpoint_path = Some(checkpoint_path);
+        }
+
+        run.next_event_sequence = run.next_event_sequence.saturating_add(1);
+        let sequence = run.next_event_sequence;
+        let detail = update.detail;
+        let event = AppleAdapterOperatorProgressEvent {
+            sequence,
+            event_id: format!("{run_id}-telemetry-{sequence:06}"),
+            occurred_at_epoch_ms: now,
+            phase: update.phase,
+            kind: update.kind,
+            detail: detail.clone(),
+            epoch_index: update.epoch_index,
+            expected_epochs: update.expected_epochs,
+            step_index: update.step_index,
+            expected_steps: update.expected_steps,
+            eval_sample_id: update.eval_sample_id,
+            eval_sample_index: update.eval_sample_index,
+            expected_eval_samples: update.expected_eval_samples,
+            loss: update.loss,
+            eta_ms: update.eta_ms,
+            checkpoint_path: update.checkpoint_path,
+        };
+        run.recent_events.push(event);
+        if run.recent_events.len() > APPLE_TRAINING_EVENT_LIMIT {
+            let trim = run.recent_events.len() - APPLE_TRAINING_EVENT_LIMIT;
+            run.recent_events.drain(0..trim);
+        }
+        run.last_action = Some(detail.clone());
+        Self::append_log_line(
+            run,
+            format!(
+                "{now} telemetry:{}:{} {}",
+                update.phase.label(),
+                update.kind.label(),
+                detail
+            ),
+        );
+        self.state.last_action = Some(detail);
         self.state.last_error = None;
         self.persist()
     }
@@ -371,11 +667,16 @@ impl AppleAdapterTrainingController {
             run.updated_at_epoch_ms = now;
             run.last_error = Some(error.to_string());
             run.last_action = Some(stage.action_label().to_string());
-            run.log_lines.push(format!("{} error: {}", now, error));
-            if run.log_lines.len() > APPLE_TRAINING_LOG_LIMIT {
-                let trim = run.log_lines.len() - APPLE_TRAINING_LOG_LIMIT;
-                run.log_lines.drain(0..trim);
-            }
+            run.progress.last_heartbeat_at_epoch_ms = Some(now);
+            run.progress.run_elapsed_ms = run
+                .progress
+                .run_started_at_epoch_ms
+                .map(|started_at| now.saturating_sub(started_at));
+            run.progress.phase_elapsed_ms = run
+                .progress
+                .phase_started_at_epoch_ms
+                .map(|started_at| now.saturating_sub(started_at));
+            Self::append_log_line(run, format!("{} error: {}", now, error));
             match stage {
                 AppleAdapterFailureStage::Launch => {
                     run.launch_state = AppleAdapterOperatorStageState::Failed;
@@ -414,6 +715,34 @@ impl AppleAdapterFailureStage {
 
 pub(crate) fn operator_status() -> Result<AppleAdapterOperatorStatus, String> {
     with_controller(|controller| Ok(controller.status()))
+}
+
+pub(crate) fn launch_run_async(
+    request: AppleAdapterOperatorLaunchRequest,
+) -> Result<AppleAdapterOperatorRunStatus, String> {
+    validate_launch_request(&request)?;
+    let run = with_controller(|controller| controller.create_run(&request))?;
+    let run_id = run.run_id.clone();
+    let thread_request = request.clone();
+    std::thread::Builder::new()
+        .name(format!("apple-adapter-launch-{run_id}"))
+        .spawn({
+            let run_id = run_id.clone();
+            move || {
+                if let Err(error) = execute_launch_pipeline(run_id.as_str(), &thread_request) {
+                    let _ = with_controller(|controller| {
+                        controller.set_failure(
+                            run_id.as_str(),
+                            AppleAdapterFailureStage::Launch,
+                            error.as_str(),
+                        );
+                        Ok(())
+                    });
+                }
+            }
+        })
+        .map_err(|error| format!("Failed to spawn Apple adapter launch thread: {error}"))?;
+    Ok(run)
 }
 
 pub(crate) fn launch_run(
@@ -505,10 +834,48 @@ fn validate_launch_request(request: &AppleAdapterOperatorLaunchRequest) -> Resul
     Ok(())
 }
 
+fn push_progress_event(
+    run_id: &str,
+    update: AppleAdapterOperatorProgressUpdate,
+) -> Result<(), String> {
+    with_controller(|controller| controller.push_progress_event(run_id, update))
+}
+
+fn training_remaining_eta_ms(
+    completed_steps: u64,
+    expected_steps: u64,
+    step_duration_ms: u64,
+) -> u64 {
+    expected_steps
+        .saturating_sub(completed_steps)
+        .saturating_mul(step_duration_ms)
+}
+
+fn held_out_eval_eta_ms(
+    started_at: Instant,
+    completed_samples: usize,
+    total_samples: usize,
+) -> Option<u64> {
+    if completed_samples == 0 || completed_samples >= total_samples {
+        return Some(0);
+    }
+    let elapsed_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    let average_sample_ms = elapsed_ms / completed_samples as u64;
+    Some(average_sample_ms.saturating_mul(total_samples.saturating_sub(completed_samples) as u64))
+}
+
 fn execute_launch_pipeline(
     run_id: &str,
     request: &AppleAdapterOperatorLaunchRequest,
 ) -> Result<(), String> {
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Launch,
+            AppleAdapterOperatorProgressEventKind::Heartbeat,
+            "Reading Apple adapter train and held-out datasets",
+        ),
+    )?;
     with_controller(|controller| {
         controller.push_log(
             run_id,
@@ -591,6 +958,18 @@ fn execute_launch_pipeline(
             "Prepared Apple adapter datasets",
         )
     })?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Launch,
+            AppleAdapterOperatorProgressEventKind::Heartbeat,
+            format!(
+                "Prepared Apple adapter datasets train_samples={} held_out_samples={}",
+                train_dataset.samples.len(),
+                held_out_dataset.samples.len()
+            ),
+        ),
+    )?;
 
     let environment = build_environment_bundle(run_id, &train_dataset, &held_out_dataset)
         .map_err(|error| error.to_string())?;
@@ -629,12 +1008,152 @@ fn execute_launch_pipeline(
         &environment,
     )
     .map_err(|error| format!("Failed to build Psionic Apple training backend: {error}"))?;
-    let sft_outcome =
-        run_apple_adapter_sft_export(&backend, &train_dataset, &environment, &sft_request)
-            .map_err(|error| format!("Psionic Apple training failed: {error}"))?;
+    let mut progress_error = None;
+    let step_duration_ms = sft_request.step_duration_ms;
+    let sft_outcome = run_apple_adapter_sft_export_with_progress(
+        &backend,
+        &train_dataset,
+        &environment,
+        &sft_request,
+        |event| {
+            if progress_error.is_some() {
+                return;
+            }
+            let result = match event {
+                AppleAdapterSftProgressEvent::TrainingStarted {
+                    expected_steps,
+                    expected_epochs,
+                } => push_progress_event(
+                    run_id,
+                    AppleAdapterOperatorProgressUpdate::new(
+                        AppleAdapterOperatorProgressPhase::Training,
+                        AppleAdapterOperatorProgressEventKind::TrainingStarted,
+                        format!(
+                            "Started Rust-native Apple adapter training steps={expected_steps} epochs={expected_epochs}"
+                        ),
+                    )
+                    .with_epochs(1, *expected_epochs)
+                    .with_steps(0, *expected_steps)
+                    .with_eta_ms(expected_steps.saturating_mul(step_duration_ms)),
+                ),
+                AppleAdapterSftProgressEvent::EpochStarted {
+                    epoch_index,
+                    expected_epochs,
+                    expected_steps,
+                } => push_progress_event(
+                    run_id,
+                    AppleAdapterOperatorProgressUpdate::new(
+                        AppleAdapterOperatorProgressPhase::Training,
+                        AppleAdapterOperatorProgressEventKind::EpochStarted,
+                        format!(
+                            "Started Apple adapter epoch {epoch_index}/{expected_epochs}"
+                        ),
+                    )
+                    .with_epochs(*epoch_index, *expected_epochs)
+                    .with_steps(0, *expected_steps)
+                    .with_eta_ms(expected_steps.saturating_mul(step_duration_ms)),
+                ),
+                AppleAdapterSftProgressEvent::StepCompleted {
+                    receipt,
+                    expected_steps,
+                    expected_epochs,
+                    epoch_index,
+                } => {
+                    let eta_ms = training_remaining_eta_ms(
+                        receipt.schedule.global_step,
+                        *expected_steps,
+                        step_duration_ms,
+                    );
+                    push_progress_event(
+                        run_id,
+                        AppleAdapterOperatorProgressUpdate::new(
+                            AppleAdapterOperatorProgressPhase::Training,
+                            AppleAdapterOperatorProgressEventKind::LossObserved,
+                            format!(
+                                "Observed Apple adapter loss {:.6} at step {}/{}",
+                                receipt.loss,
+                                receipt.schedule.global_step,
+                                expected_steps
+                            ),
+                        )
+                        .with_epochs(*epoch_index, *expected_epochs)
+                        .with_steps(receipt.schedule.global_step, *expected_steps)
+                        .with_loss(f64::from(receipt.loss))
+                        .with_eta_ms(eta_ms),
+                    )
+                    .and_then(|_| {
+                        push_progress_event(
+                            run_id,
+                            AppleAdapterOperatorProgressUpdate::new(
+                                AppleAdapterOperatorProgressPhase::Training,
+                                AppleAdapterOperatorProgressEventKind::StepCompleted,
+                                format!(
+                                    "Completed Apple adapter step {}/{} epoch {}/{}",
+                                    receipt.schedule.global_step,
+                                    expected_steps,
+                                    epoch_index,
+                                    expected_epochs
+                                ),
+                            )
+                            .with_epochs(*epoch_index, *expected_epochs)
+                            .with_steps(receipt.schedule.global_step, *expected_steps)
+                            .with_loss(f64::from(receipt.loss))
+                            .with_eta_ms(eta_ms),
+                        )
+                    })
+                    .and_then(|_| {
+                        push_progress_event(
+                            run_id,
+                            AppleAdapterOperatorProgressUpdate::new(
+                                AppleAdapterOperatorProgressPhase::Training,
+                                AppleAdapterOperatorProgressEventKind::Heartbeat,
+                                format!(
+                                    "Apple adapter training heartbeat step={}/{} eta_ms={}",
+                                    receipt.schedule.global_step, expected_steps, eta_ms
+                                ),
+                            )
+                            .with_epochs(*epoch_index, *expected_epochs)
+                            .with_steps(receipt.schedule.global_step, *expected_steps)
+                            .with_loss(f64::from(receipt.loss))
+                            .with_eta_ms(eta_ms),
+                        )
+                    })
+                }
+            };
+            if let Err(error) = result {
+                progress_error = Some(error);
+            }
+        },
+    )
+    .map_err(|error| format!("Psionic Apple training failed: {error}"))?;
+    if let Some(error) = progress_error {
+        return Err(error);
+    }
     let training_wall_clock_ms = elapsed_ms(training_started);
     let training_artifacts =
         write_psionic_training_artifacts(run_directory.as_path(), &sft_outcome)?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Training,
+            AppleAdapterOperatorProgressEventKind::CheckpointWritten,
+            format!(
+                "Wrote Apple adapter checkpoint {}",
+                training_artifacts.final_checkpoint_path.display()
+            ),
+        )
+        .with_steps(
+            sft_outcome.summary.run_summary.completed_steps,
+            sft_outcome.summary.run_summary.budget.max_steps,
+        )
+        .with_checkpoint_path(
+            training_artifacts
+                .final_checkpoint_path
+                .display()
+                .to_string(),
+        )
+        .with_eta_ms(0),
+    )?;
     with_controller(|controller| {
         controller.push_log(
             run_id,
@@ -658,11 +1177,34 @@ fn execute_launch_pipeline(
         })?;
     }
     let export_started = Instant::now();
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Export,
+            AppleAdapterOperatorProgressEventKind::ExportStarted,
+            format!(
+                "Starting staged Apple adapter export to {}",
+                staged_package_path.display()
+            ),
+        ),
+    )?;
     sft_outcome
         .adapter_package
         .write_to_directory(staged_package_path.as_path())
         .map_err(|error| format!("Failed to write staged Apple adapter package: {error}"))?;
     let export_wall_clock_ms = elapsed_ms(export_started);
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Export,
+            AppleAdapterOperatorProgressEventKind::ExportCompleted,
+            format!(
+                "Completed staged Apple adapter export {}",
+                staged_package_path.display()
+            ),
+        )
+        .with_eta_ms(0),
+    )?;
     with_controller(|controller| {
         controller.push_log(
             run_id,
@@ -704,6 +1246,17 @@ fn execute_launch_pipeline(
             "Evaluating staged Apple adapter package",
         )
     })?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Evaluation,
+            AppleAdapterOperatorProgressEventKind::HeldOutEvalStarted,
+            format!(
+                "Started held-out Apple adapter eval samples={}",
+                held_out_dataset.samples.len()
+            ),
+        ),
+    )?;
     let held_out_eval = run_local_held_out_eval(
         request.apple_fm_base_url.as_str(),
         staged_package_path.as_path(),
@@ -712,6 +1265,14 @@ fn execute_launch_pipeline(
         run_id,
     )
     .map_err(|error| format!("Held-out Apple adapter eval failed: {error}"))?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::RuntimeSmoke,
+            AppleAdapterOperatorProgressEventKind::RuntimeSmokeStarted,
+            "Started Apple adapter runtime smoke",
+        ),
+    )?;
     let runtime_smoke = run_local_runtime_smoke(
         request.apple_fm_base_url.as_str(),
         staged_package_path.as_path(),
@@ -719,6 +1280,18 @@ fn execute_launch_pipeline(
         &runtime_profile,
     )
     .map_err(|error| format!("Apple adapter runtime smoke failed: {error}"))?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::RuntimeSmoke,
+            AppleAdapterOperatorProgressEventKind::RuntimeSmokeCompleted,
+            format!(
+                "Completed Apple adapter runtime smoke passed={} digest={}",
+                runtime_smoke.passed, runtime_smoke.smoke_digest
+            ),
+        )
+        .with_eta_ms(0),
+    )?;
 
     let local_summary = build_psionic_local_summary(
         &sft_outcome,
@@ -776,6 +1349,17 @@ fn export_run_impl(
         controller.persist()?;
         Ok(PathBuf::from(staged_package_path))
     })?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Export,
+            AppleAdapterOperatorProgressEventKind::ExportStarted,
+            format!(
+                "Started exported Apple adapter package copy to {}",
+                export_path.display()
+            ),
+        ),
+    )?;
 
     if export_path.exists() {
         let previous_export = with_controller(|controller| {
@@ -802,6 +1386,18 @@ fn export_run_impl(
 
     copy_directory(staged_package_path.as_path(), export_path)
         .map_err(|error| error.to_string())?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Export,
+            AppleAdapterOperatorProgressEventKind::ExportCompleted,
+            format!(
+                "Completed exported Apple adapter package copy to {}",
+                export_path.display()
+            ),
+        )
+        .with_eta_ms(0),
+    )?;
     with_controller(|controller| {
         let now = current_epoch_ms();
         {
@@ -902,6 +1498,14 @@ fn accept_run_impl(
         ));
         controller.persist()
     })?;
+    push_progress_event(
+        run_id,
+        AppleAdapterOperatorProgressUpdate::new(
+            AppleAdapterOperatorProgressPhase::Acceptance,
+            AppleAdapterOperatorProgressEventKind::AcceptanceStarted,
+            "Started Apple adapter acceptance publication",
+        ),
+    )?;
 
     let exported_package_path = run
         .exported_package_path
@@ -1035,6 +1639,24 @@ fn accept_run_impl(
             .find(|run| run.run_id == run_id)
             .cloned()
             .ok_or_else(|| format!("Apple adapter operator run `{run_id}` disappeared"))
+    })
+    .and_then(|run| {
+        push_progress_event(
+            run_id,
+            AppleAdapterOperatorProgressUpdate::new(
+                AppleAdapterOperatorProgressPhase::Acceptance,
+                AppleAdapterOperatorProgressEventKind::AcceptanceCompleted,
+                format!(
+                    "Completed Apple adapter acceptance outcome={}",
+                    run.authority_refs
+                        .accepted_outcome_id
+                        .as_deref()
+                        .unwrap_or("-")
+                ),
+            )
+            .with_eta_ms(0),
+        )?;
+        Ok(run)
     })
 }
 
@@ -2840,7 +3462,8 @@ fn run_local_held_out_eval(
         })
         .context("Failed to load staged Apple adapter into Apple FM bridge")?;
     let mut observed_outputs = Vec::with_capacity(dataset.samples.len());
-    for sample in &dataset.samples {
+    let eval_started = Instant::now();
+    for (index, sample) in dataset.samples.iter().enumerate() {
         let instructions = sample
             .messages
             .iter()
@@ -2928,6 +3551,46 @@ fn run_local_held_out_eval(
         let observed_output = tool_recorder.attach_to_output(observed_output)?;
         let _ = client.delete_session(session.id.as_str());
         observed_outputs.push(observed_output);
+        let completed_samples = index.saturating_add(1);
+        let total_samples = dataset.samples.len();
+        let eta_ms = held_out_eval_eta_ms(eval_started, completed_samples, total_samples)
+            .unwrap_or_default();
+        push_progress_event(
+            run_id,
+            AppleAdapterOperatorProgressUpdate::new(
+                AppleAdapterOperatorProgressPhase::Evaluation,
+                AppleAdapterOperatorProgressEventKind::HeldOutSampleCompleted,
+                format!(
+                    "Completed held-out eval sample {}/{} `{}`",
+                    completed_samples, total_samples, sample.sample_id
+                ),
+            )
+            .with_eval_sample(
+                sample.sample_id.as_str(),
+                completed_samples as u64,
+                total_samples as u64,
+            )
+            .with_eta_ms(eta_ms),
+        )
+        .map_err(anyhow::Error::msg)?;
+        push_progress_event(
+            run_id,
+            AppleAdapterOperatorProgressUpdate::new(
+                AppleAdapterOperatorProgressPhase::Evaluation,
+                AppleAdapterOperatorProgressEventKind::Heartbeat,
+                format!(
+                    "Held-out eval heartbeat sample={}/{} eta_ms={}",
+                    completed_samples, total_samples, eta_ms
+                ),
+            )
+            .with_eval_sample(
+                sample.sample_id.as_str(),
+                completed_samples as u64,
+                total_samples as u64,
+            )
+            .with_eta_ms(eta_ms),
+        )
+        .map_err(anyhow::Error::msg)?;
     }
     let _ = client.unload_adapter(adapter.adapter.adapter_id.as_str());
     AppleAdapterEvalHarness::new(environment.clone())?

@@ -819,6 +819,29 @@ pub struct AppleAdapterSftRunOutcome {
     pub adapter_package: AppleFmAdapterPackage,
 }
 
+/// Live progress update emitted while the Apple SFT lane is executing.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AppleAdapterSftProgressEvent {
+    /// Fixed-budget execution was admitted and knows its full step budget.
+    TrainingStarted {
+        expected_steps: u64,
+        expected_epochs: u64,
+    },
+    /// A new logical epoch/window started.
+    EpochStarted {
+        epoch_index: u64,
+        expected_epochs: u64,
+        expected_steps: u64,
+    },
+    /// One explicit gradient batch completed.
+    StepCompleted {
+        receipt: TrainingStepReceipt,
+        expected_steps: u64,
+        expected_epochs: u64,
+        epoch_index: u64,
+    },
+}
+
 impl AppleAdapterSftRunOutcome {
     /// Writes the final `.fmadapter` directory to disk.
     pub fn write_package_to_directory(
@@ -1367,7 +1390,27 @@ pub fn run_apple_adapter_sft_export(
     environment: &AppleAdapterEnvironmentBundle,
     request: &AppleAdapterSftRunRequest,
 ) -> Result<AppleAdapterSftRunOutcome, AppleAdapterSftError> {
-    let artifacts = execute_apple_adapter_sft_artifacts(backend, dataset, environment, request)?;
+    run_apple_adapter_sft_export_with_progress(backend, dataset, environment, request, |_| {})
+}
+
+/// Runs the Apple SFT lane and reports live progress for each training step.
+pub fn run_apple_adapter_sft_export_with_progress<F>(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    dataset: &AppleAdapterDatasetContract,
+    environment: &AppleAdapterEnvironmentBundle,
+    request: &AppleAdapterSftRunRequest,
+    mut on_progress: F,
+) -> Result<AppleAdapterSftRunOutcome, AppleAdapterSftError>
+where
+    F: FnMut(&AppleAdapterSftProgressEvent),
+{
+    let artifacts = execute_apple_adapter_sft_artifacts(
+        backend,
+        dataset,
+        environment,
+        request,
+        &mut on_progress,
+    )?;
     build_apple_adapter_sft_outcome(backend, dataset, environment, request, artifacts)
 }
 
@@ -1380,8 +1423,14 @@ pub fn run_apple_adapter_draft_distillation_export(
     draft_request: &AppleAdapterDraftDistillationRequest,
 ) -> Result<AppleAdapterDraftDistillationOutcome, AppleAdapterDraftDistillationError> {
     draft_request.validate()?;
-    let sft_artifacts =
-        execute_apple_adapter_sft_artifacts(backend, dataset, environment, sft_request)?;
+    let mut on_progress = |_event: &AppleAdapterSftProgressEvent| {};
+    let sft_artifacts = execute_apple_adapter_sft_artifacts(
+        backend,
+        dataset,
+        environment,
+        sft_request,
+        &mut on_progress,
+    )?;
     let sft_outcome = build_apple_adapter_sft_outcome(
         backend,
         dataset,
@@ -1488,21 +1537,46 @@ fn execute_apple_adapter_sft_artifacts(
     dataset: &AppleAdapterDatasetContract,
     environment: &AppleAdapterEnvironmentBundle,
     request: &AppleAdapterSftRunRequest,
+    on_progress: &mut impl FnMut(&AppleAdapterSftProgressEvent),
 ) -> Result<AppleAdapterSftExecutionArtifacts, AppleAdapterSftError> {
     request.validate()?;
     let mut run = backend.initialize_run()?;
     let initial_groups = backend.snapshot_training_groups(&run)?;
     let mut step_receipts = Vec::new();
     let mut gradient_records = Vec::new();
+    let expected_steps = backend.config().budget.max_steps;
+    let expected_epochs = apple_adapter_expected_epochs(backend.config().budget);
+    on_progress(&AppleAdapterSftProgressEvent::TrainingStarted {
+        expected_steps,
+        expected_epochs,
+    });
+    let mut current_epoch = None;
     for step_index in 0..backend.config().budget.max_steps {
         let batch_index = step_index as usize % backend.batches().len().max(1);
+        let epoch_index =
+            (step_index / backend.config().budget.steps_per_window.max(1)).saturating_add(1);
+        if current_epoch != Some(epoch_index) {
+            current_epoch = Some(epoch_index);
+            on_progress(&AppleAdapterSftProgressEvent::EpochStarted {
+                epoch_index,
+                expected_epochs,
+                expected_steps,
+            });
+        }
         let started_at_ms =
             request.started_at_ms + step_index.saturating_mul(request.step_duration_ms);
         let finished_at_ms = started_at_ms + request.step_duration_ms;
         let (step_input, gradient_record) =
             backend.produce_step_input(&run, batch_index, started_at_ms, finished_at_ms)?;
         gradient_records.push(gradient_record);
-        step_receipts.push(run.apply_step(step_input)?);
+        let receipt = run.apply_step(step_input)?;
+        on_progress(&AppleAdapterSftProgressEvent::StepCompleted {
+            receipt: receipt.clone(),
+            expected_steps,
+            expected_epochs,
+            epoch_index,
+        });
+        step_receipts.push(receipt);
     }
     let final_groups = backend.snapshot_training_groups(&run)?;
     let tokenizer_binding = tokenizer_binding(dataset.metadata.tokenizer.clone(), environment);
@@ -1561,6 +1635,10 @@ fn execute_apple_adapter_sft_artifacts(
         adapter_delta,
         adapter_identifier,
     })
+}
+
+fn apple_adapter_expected_epochs(budget: TrainingLoopBudget) -> u64 {
+    ((budget.max_steps.saturating_sub(1)) / budget.steps_per_window.max(1)).saturating_add(1)
 }
 
 fn build_apple_adapter_sft_outcome(
