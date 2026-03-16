@@ -105,6 +105,12 @@ Current posture:
   token sequences with a fixed executor vocabulary, reversible symbolic decode,
   versioned dataset manifests, split-stable lineage metadata, and frozen
   packing plans for the first honest training run
+- the fourth trained-executor follow-on bar now also exists in
+  `psionic-models`: a first real neural executor transformer family now runs
+  next-token forward passes over the Tassadar sequence vocabulary with explicit
+  2D lookup-head geometry claims, linear decode state, and a descriptor that
+  marks the lane as next-token-only rather than pretending the trained model is
+  already an exact executor
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons
