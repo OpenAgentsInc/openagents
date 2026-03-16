@@ -148,6 +148,11 @@ These issues track the executor-specific work that is still missing:
     case exactness between `9` and `16` bps, which is the real failure baseline
     for the next run rather than a vague “weak model” summary
 - `#3785` Phase 9: review the first run and land the next-run plan
+  - implemented March 16, 2026: the run bundle now also carries
+    `postmortem.json` and `next_run_plan.json`, and the human-readable review
+    lives in `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`; the
+    plan prioritizes boundary curriculum and more optimization budget first,
+    and explicitly gates Phase 10/11 on stronger 4x4 evidence
 - `#3786` Phase 10: add neural hull-cache decode for the trained executor model
 - `#3787` Phase 11: scale from Sudoku-v0 to real 9x9 Sudoku-class training
 
@@ -565,8 +570,8 @@ Do this fifth:
   checkpoint and trained-model artifact
 - `#3784` is now also done: the first run now has telemetry, trace-divergence,
   and failure-sample artifacts instead of only a weak aggregate score
-- `#3785` is the remaining step in this phase: publish the postmortem plus
-  next-run plan from the now-observed failure pattern
+- `#3785` is now also done: the first run now has both machine-readable and
+  human-readable postmortem outputs plus an explicit next-run plan
 
 ### Phase F: Only then test the neural fast path and scale (`#3786`, `#3787`)
 

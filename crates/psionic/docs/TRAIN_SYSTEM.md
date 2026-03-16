@@ -216,6 +216,13 @@ That now includes one intentionally narrow executor-training answer:
   same dataset/model/checkpoint identity; those artifacts currently show every
   decoded case diverging at target token 0, which is exactly the sort of
   machine-readable failure baseline the next curriculum/model iteration needs
+- the post-run review loop now also exists for that same run:
+  `psionic-train` can emit `postmortem.json` and `next_run_plan.json`, and the
+  repo now carries a human-readable companion review in
+  `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`; the current plan
+  keeps the next run disciplined by prioritizing boundary curriculum and larger
+  optimization budget first, and by explicitly gating hull-cache / 9x9 work on
+  better 4x4 exactness evidence
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

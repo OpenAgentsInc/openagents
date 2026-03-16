@@ -216,6 +216,13 @@ The current scope is:
   run failing immediately on all 8 cases (first divergence at target token 0,
   case exactness between `9` and `16` bps), which is the correct baseline for
   later curriculum/model changes
+- landed trained-executor Phase 9 follow-on bar: the same run bundle now also
+  carries `postmortem.json` and `next_run_plan.json`, and the repo now has a
+  human-readable first-run review in
+  `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`; the resulting
+  plan explicitly gates neural hull-cache and 9x9 scale-out behind improved 4x4
+  boundary and short-trace exactness rather than letting later phases outrun
+  the evidence
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
