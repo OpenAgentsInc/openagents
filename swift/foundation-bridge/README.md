@@ -25,15 +25,14 @@ launch surface for the desktop app on Apple Intelligence systems.
 ## Usage
 
 ```bash
-./bin/foundation-bridge
-./bin/foundation-bridge 8080
 open -n -g ./bin/FoundationBridge.app --args 11435
 ```
 
 For the desktop app and other bundled launches on macOS, prefer
 `FoundationBridge.app`. Launching the inner Mach-O directly is still useful for
-low-level debugging, but it can trigger Apple Intelligence "app needs an
-update" warnings because Launch Services never sees the bundle metadata.
+low-level debugging, but it is not the normal supported path because it can
+trigger Apple Intelligence "app needs an update" warnings when Launch Services
+never sees the bundle metadata.
 
 ## API Endpoints
 
@@ -67,7 +66,7 @@ To ship the app so **users never need to build the bridge or install Xcode**:
 
 1. **Build the bridge once** (on your machine or in CI): from the repo root run `cd swift/foundation-bridge && ./build.sh`. This produces both `bin/foundation-bridge` and `bin/FoundationBridge.app`.
 2. **Include that binary in your app bundle** when you package the app:
-   - **macOS .app**: prefer bundling `FoundationBridge.app` under `YourApp.app/Contents/Helpers/` or `YourApp.app/Contents/Resources/`. The desktop app launches that helper bundle through Launch Services. Raw `foundation-bridge` binaries next to the executable or in `Resources/` are still supported as a fallback.
-   - **Other layouts**: set `OPENAGENTS_APPLE_FM_BRIDGE_BIN` to the full path of the binary in your package.
+   - **macOS .app**: bundle `FoundationBridge.app` under `YourApp.app/Contents/Helpers/` or `YourApp.app/Contents/Resources/`. The desktop app launches that helper bundle through Launch Services.
+   - **Other layouts**: set `OPENAGENTS_APPLE_FM_BRIDGE_BIN` to the full path of the helper-bundle executable in your package. Raw-binary overrides are for developer debugging only.
 
 Users then only need macOS 26+, Apple Silicon, and Apple Intelligence enabled—no Xcode or build step. If you don’t bundle the binary, the app will try to build it once (requires Swift on the user’s machine) or show an error that the app was not packaged with the bridge.

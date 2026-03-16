@@ -10,7 +10,6 @@ LOCKFILE_PATH="Cargo.lock"
 APP_NAME="Autopilot"
 APP_PACKAGE="autopilot-desktop"
 FOUNDATION_BRIDGE_BUILD_SCRIPT="swift/foundation-bridge/build.sh"
-FOUNDATION_BRIDGE_BINARY="bin/foundation-bridge"
 FOUNDATION_BRIDGE_APP="bin/FoundationBridge.app"
 
 PUBLISH=false
@@ -183,7 +182,6 @@ build_foundation_bridge() {
     "./$FOUNDATION_BRIDGE_BUILD_SCRIPT"
   fi
 
-  [[ -x "$FOUNDATION_BRIDGE_BINARY" ]] || die "Bridge build did not produce executable binary at $FOUNDATION_BRIDGE_BINARY"
   [[ -d "$FOUNDATION_BRIDGE_APP" ]] || die "Bridge build did not produce helper app bundle at $FOUNDATION_BRIDGE_APP"
 }
 

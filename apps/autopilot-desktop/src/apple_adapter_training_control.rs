@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,7 +31,6 @@ use openagents_kernel_core::compute::{
 use openagents_kernel_core::compute_benchmarks::ComputeBenchmarkAdapterKind;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext};
-use psionic_adapters::{AppleFmAdapterPackage, AppleFmAdapterPackageMetadata};
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
     AppleFmGenerationOptions, AppleFmGenerationSchema, AppleFmHealthResponse, AppleFmSamplingMode,
@@ -61,12 +59,9 @@ use psionic_train::{
     APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
     AppleAdapterActivationCheckpointPolicy, AppleAdapterExecutionConfig,
     AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel, AppleAdapterSftProgressEvent,
-    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterToolkitExportOutcome,
-    AppleAdapterToolkitExportRequest, AppleAdapterToolkitPrecision,
-    AppleAdapterToolkitTrainingOutcome, AppleAdapterToolkitTrainingRequest,
-    AppleAdapterTrainingExecutionBackend, TrainingLoopBudget, TrainingOptimizerConfig,
-    TrainingOptimizerResidencyPolicy, apple_live_reference_trainable_targets,
-    run_apple_adapter_sft_export_with_progress,
+    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterTrainingExecutionBackend,
+    TrainingLoopBudget, TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
+    apple_live_reference_trainable_targets, run_apple_adapter_sft_export_with_progress,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -89,8 +84,6 @@ const APPLE_TRAINING_RUNTIME_SMOKE_PROMPT: &str =
     "Explain what a mutex does in one short sentence.";
 const APPLE_PSIONIC_TRAINING_BACKEND_ID: &str = "psionic.apple_adapter.reference_sft.v1";
 const APPLE_PSIONIC_EXPORT_BACKEND_ID: &str = "psionic.apple_runtime_asset.native.v1";
-const APPLE_TOOLKIT_TRAINING_BACKEND_ID: &str = "apple_adapter_training_toolkit_v26_0_0";
-const APPLE_TOOLKIT_EXPORT_BACKEND_ID: &str = "apple_runtime_asset.toolkit_export_v26_0_0";
 
 static APPLE_TRAINING_CONTROLLER: OnceLock<Mutex<AppleAdapterTrainingController>> = OnceLock::new();
 
@@ -237,8 +230,6 @@ pub struct AppleAdapterOperatorLocalSummary {
     pub export_peak_memory_footprint_bytes: Option<u64>,
     pub checkpoint_size_bytes: Option<u64>,
     pub runtime_asset_size_bytes: Option<u64>,
-    pub toolkit_root: Option<String>,
-    pub toolkit_python: Option<String>,
     pub held_out_pass_rate_bps: Option<u32>,
     pub held_out_average_score_bps: Option<u32>,
     pub runtime_smoke_passed: Option<bool>,
@@ -3103,8 +3094,6 @@ fn build_psionic_local_summary(
         export_peak_memory_footprint_bytes: None,
         checkpoint_size_bytes: Some(artifacts.checkpoint_size_bytes),
         runtime_asset_size_bytes,
-        toolkit_root: None,
-        toolkit_python: None,
         held_out_pass_rate_bps: held_out_eval
             .summary
             .as_ref()
@@ -3145,155 +3134,6 @@ fn elapsed_ms(started: Instant) -> u64 {
     }
 }
 
-fn build_toolkit_training_request(
-    _run_id: &str,
-    run_directory: &Path,
-    request: &AppleAdapterOperatorLaunchRequest,
-    packing_policy: &DatasetPackingPolicy,
-) -> AppleAdapterToolkitTrainingRequest {
-    AppleAdapterToolkitTrainingRequest {
-        train_data_path: PathBuf::from(request.train_dataset_path.as_str()),
-        eval_data_path: Some(PathBuf::from(request.held_out_dataset_path.as_str())),
-        checkpoint_dir: run_directory.join("toolkit").join("checkpoints"),
-        epochs: 1,
-        learning_rate: String::from("1e-4"),
-        batch_size: 1,
-        gradient_accumulation_steps: 1,
-        activation_checkpointing: true,
-        precision: AppleAdapterToolkitPrecision::F16Mixed,
-        max_sequence_length: Some(packing_policy.max_row_tokens.max(128)),
-        pack_sequences: true,
-        fixed_sized_sequences: false,
-        loss_update_frequency: 1,
-        checkpoint_frequency: 1,
-        environment: BTreeMap::new(),
-    }
-}
-
-fn build_toolkit_export_request(
-    run_directory: &Path,
-    package_name: &str,
-) -> AppleAdapterToolkitExportRequest {
-    AppleAdapterToolkitExportRequest {
-        output_dir: run_directory.join("toolkit").join("export"),
-        adapter_name: toolkit_safe_adapter_name(package_name),
-        checkpoint_path: PathBuf::new(),
-        author: None,
-        description: None,
-        environment: BTreeMap::new(),
-    }
-}
-
-fn build_toolkit_adapter_package(
-    run_id: &str,
-    request: &AppleAdapterOperatorLaunchRequest,
-    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
-    packing_policy: &DatasetPackingPolicy,
-    toolkit_export: &AppleAdapterToolkitExportOutcome,
-) -> Result<AppleFmAdapterPackage, String> {
-    let toolkit_metadata = &toolkit_export.toolkit_metadata;
-    if toolkit_metadata.base_model_signature != runtime_profile.base_model_signature() {
-        return Err(format!(
-            "Toolkit export base signature {} does not match runtime signature {}",
-            toolkit_metadata.base_model_signature,
-            runtime_profile.base_model_signature()
-        ));
-    }
-    let mut creator_defined = BTreeMap::new();
-    creator_defined.insert(
-        String::from("packageFormatVersion"),
-        Value::String(APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string()),
-    );
-    creator_defined.insert(
-        String::from("datasetRef"),
-        Value::String(dataset_ref_for_path(
-            request.train_dataset_path.as_str(),
-            "train",
-        )),
-    );
-    creator_defined.insert(
-        String::from("benchmarkRefs"),
-        json!([benchmark_ref_for_run(run_id)]),
-    );
-    creator_defined.insert(
-        String::from("validatorPolicyRef"),
-        Value::String(validator_policy_ref_for_run(run_id)),
-    );
-    creator_defined.insert(String::from("draftModelPresent"), Value::Bool(false));
-    creator_defined.insert(
-        String::from("runtimeModelId"),
-        Value::String(runtime_profile.model_id.clone()),
-    );
-    creator_defined.insert(
-        String::from("runtimeUseCase"),
-        Value::String(runtime_profile.use_case.clone()),
-    );
-    creator_defined.insert(
-        String::from("runtimeGuardrails"),
-        Value::String(runtime_profile.guardrails.clone()),
-    );
-    creator_defined.insert(
-        String::from("toolkitTrainingBackend"),
-        Value::String(APPLE_TOOLKIT_TRAINING_BACKEND_ID.to_string()),
-    );
-    creator_defined.insert(
-        String::from("toolkitExportBackend"),
-        Value::String(APPLE_TOOLKIT_EXPORT_BACKEND_ID.to_string()),
-    );
-    creator_defined.insert(
-        String::from("toolkitRuntimeAssetSha256"),
-        Value::String(toolkit_export.adapter_weights_sha256.clone()),
-    );
-    creator_defined.insert(
-        String::from("packingPolicy"),
-        json!({
-            "mode": "pack_into_context_window",
-            "max_row_tokens": packing_policy.max_row_tokens,
-            "max_batch_tokens": packing_policy.max_batch_tokens,
-            "max_rows_per_batch": packing_policy.max_rows_per_batch,
-        }),
-    );
-    if let Some(locale) = &runtime_profile.locale {
-        creator_defined.insert(String::from("locale"), Value::String(locale.clone()));
-    }
-    if let Some(default_instruction) = &runtime_profile.default_instruction {
-        creator_defined.insert(
-            String::from("defaultInstruction"),
-            Value::String(default_instruction.clone()),
-        );
-    }
-    if let Some(bridge_version) = &runtime_profile.bridge_version {
-        creator_defined.insert(
-            String::from("bridgeVersion"),
-            Value::String(bridge_version.clone()),
-        );
-    }
-    if let Some(bridge_platform) = &runtime_profile.bridge_platform {
-        creator_defined.insert(
-            String::from("bridgePlatform"),
-            Value::String(bridge_platform.clone()),
-        );
-    }
-    let metadata = AppleFmAdapterPackageMetadata {
-        adapter_identifier: toolkit_metadata.adapter_identifier.clone(),
-        author: request.author.clone(),
-        base_model_signature: toolkit_metadata.base_model_signature.clone(),
-        creator_defined,
-        description: request.description.clone(),
-        license: request.license.clone(),
-        lora_rank: toolkit_metadata.lora_rank,
-        speculative_decoding_draft_token_count: 0,
-    };
-    AppleFmAdapterPackage::new(
-        package_directory_name(request.package_name.as_str()),
-        metadata,
-        toolkit_export.adapter_weights_bytes.clone(),
-        None,
-        None,
-    )
-    .map_err(|error| format!("Failed to build Apple toolkit-backed package: {error}"))
-}
-
 fn round_up_token_budget(value: u32, multiple: u32) -> u32 {
     if multiple <= 1 {
         return value.max(1);
@@ -3306,7 +3146,7 @@ fn round_up_token_budget(value: u32, multiple: u32) -> u32 {
     }
 }
 
-fn toolkit_safe_adapter_name(package_name: &str) -> String {
+fn safe_adapter_package_name(package_name: &str) -> String {
     let mut safe = slugify(package_name).replace('-', "_");
     safe.retain(|character| character.is_ascii_alphanumeric() || character == '_');
     if safe.is_empty() {
@@ -3324,7 +3164,7 @@ fn validate_runtime_compatible_package_path(path: &Path) -> Result<(), String> {
         return Ok(());
     }
     let stem = file_name.trim_end_matches(".fmadapter");
-    let safe = toolkit_safe_adapter_name(stem);
+    let safe = safe_adapter_package_name(stem);
     if stem == safe {
         Ok(())
     } else {
@@ -3696,95 +3536,6 @@ fn build_runtime_smoke_request(
     }
 }
 
-fn build_toolkit_local_summary(
-    training: &AppleAdapterToolkitTrainingOutcome,
-    export: &AppleAdapterToolkitExportOutcome,
-    adapter_package: &AppleFmAdapterPackage,
-    captures: &[AppleAdapterSampleTokenCapture],
-    held_out_eval: &EvalRunState,
-    runtime_smoke: &AppleAdapterRuntimeSmokeReceipt,
-    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
-) -> AppleAdapterOperatorLocalSummary {
-    let processed_token_count = Some(
-        captures
-            .iter()
-            .map(|capture| u64::from(capture.total_tokens()))
-            .sum::<u64>(),
-    );
-    let average_loss = parse_toolkit_average_loss(training.receipt.stdout.as_str())
-        .or_else(|| parse_toolkit_average_loss(training.receipt.stderr.as_str()));
-    let expected_steps = captures.len().max(1) as u64;
-    AppleAdapterOperatorLocalSummary {
-        completed_steps: expected_steps,
-        expected_steps,
-        average_loss,
-        processed_token_count,
-        training_backend: APPLE_TOOLKIT_TRAINING_BACKEND_ID.to_string(),
-        export_backend: APPLE_TOOLKIT_EXPORT_BACKEND_ID.to_string(),
-        training_wall_clock_ms: Some(training.receipt.duration_ms),
-        export_wall_clock_ms: Some(export.receipt.duration_ms),
-        training_max_resident_set_size_bytes: training
-            .receipt
-            .resource_usage
-            .max_resident_set_size_bytes,
-        training_peak_memory_footprint_bytes: training
-            .receipt
-            .resource_usage
-            .peak_memory_footprint_bytes,
-        export_max_resident_set_size_bytes: export
-            .receipt
-            .resource_usage
-            .max_resident_set_size_bytes,
-        export_peak_memory_footprint_bytes: export
-            .receipt
-            .resource_usage
-            .peak_memory_footprint_bytes,
-        checkpoint_size_bytes: Some(training.checkpoint_size_bytes),
-        runtime_asset_size_bytes: Some(export.adapter_weights_bytes.len() as u64),
-        toolkit_root: Some(training.installation.toolkit_root.display().to_string()),
-        toolkit_python: Some(training.installation.python_path.display().to_string()),
-        held_out_pass_rate_bps: held_out_eval
-            .summary
-            .as_ref()
-            .map(|summary| summary.pass_rate_bps),
-        held_out_average_score_bps: held_out_eval
-            .summary
-            .as_ref()
-            .and_then(|summary| summary.average_score_bps),
-        runtime_smoke_passed: Some(runtime_smoke.passed),
-        runtime_smoke_digest: Some(runtime_smoke.smoke_digest.clone()),
-        package_digest: Some(adapter_package.package_digest.clone()),
-        adapter_identifier: Some(adapter_package.metadata.adapter_identifier.clone()),
-        base_model_signature: adapter_package.metadata.base_model_signature.clone(),
-        tokenizer_digest: runtime_profile.tokenizer_digest().tokenizer_digest,
-        prompt_shaping_digest: runtime_profile.prompt_shaping_digest(),
-        runtime_model_id: runtime_profile.model_id.clone(),
-        runtime_use_case: runtime_profile.use_case.clone(),
-        runtime_guardrails: runtime_profile.guardrails.clone(),
-        locale: runtime_profile.locale.clone(),
-        default_instruction: runtime_profile.default_instruction.clone(),
-        bridge_version: runtime_profile.bridge_version.clone(),
-        bridge_platform: runtime_profile.bridge_platform.clone(),
-        package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
-    }
-}
-
-fn parse_toolkit_average_loss(output: &str) -> Option<f64> {
-    let mut loss = None;
-    for line in output.lines() {
-        let Some(index) = line.rfind("loss=") else {
-            continue;
-        };
-        let value = line[index + 5..]
-            .trim()
-            .trim_matches(|character: char| character == ',' || character == ']');
-        if let Ok(parsed) = value.parse::<f64>() {
-            loss = Some(parsed);
-        }
-    }
-    loss
-}
-
 fn compute_eval_sample_from_eval_sample(
     sample: &psionic_eval::EvalSampleRecord,
 ) -> ComputeEvaluationSample {
@@ -3896,7 +3647,7 @@ fn dataset_ref_for_path(path: &str, split: &str) -> String {
 }
 
 fn package_directory_name(package_name: &str) -> String {
-    format!("{}.fmadapter", toolkit_safe_adapter_name(package_name))
+    format!("{}.fmadapter", safe_adapter_package_name(package_name))
 }
 
 fn build_run_id(package_name: &str) -> String {
@@ -4033,14 +3784,14 @@ impl FinalizeComputeEvaluationRunRequestExt for FinalizeComputeEvaluationRunRequ
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        APPLE_PSIONIC_EXPORT_BACKEND_ID, APPLE_PSIONIC_TRAINING_BACKEND_ID,
-        APPLE_TOOLKIT_EXPORT_BACKEND_ID, APPLE_TOOLKIT_TRAINING_BACKEND_ID,
-    };
+    use super::{APPLE_PSIONIC_EXPORT_BACKEND_ID, APPLE_PSIONIC_TRAINING_BACKEND_ID};
 
     #[test]
     fn apple_operator_authoritative_backends_are_rust_only() {
-        for backend in [APPLE_PSIONIC_TRAINING_BACKEND_ID, APPLE_PSIONIC_EXPORT_BACKEND_ID] {
+        for backend in [
+            APPLE_PSIONIC_TRAINING_BACKEND_ID,
+            APPLE_PSIONIC_EXPORT_BACKEND_ID,
+        ] {
             assert!(
                 !backend.contains("toolkit"),
                 "authoritative live backend should not reference toolkit: {backend}"
@@ -4050,13 +3801,5 @@ mod tests {
                 "authoritative live backend should not reference python: {backend}"
             );
         }
-        assert_ne!(
-            APPLE_PSIONIC_TRAINING_BACKEND_ID,
-            APPLE_TOOLKIT_TRAINING_BACKEND_ID
-        );
-        assert_ne!(
-            APPLE_PSIONIC_EXPORT_BACKEND_ID,
-            APPLE_TOOLKIT_EXPORT_BACKEND_ID
-        );
     }
 }

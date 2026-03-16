@@ -1468,7 +1468,7 @@ mod tests {
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::path::PathBuf;
-    use std::process::{Child, Command, Stdio};
+    use std::process::{Command, Stdio};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread::JoinHandle;
@@ -2180,32 +2180,27 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
 
     #[cfg(target_os = "macos")]
     struct LiveFoundationBridge {
-        child: Child,
+        base_url: String,
     }
 
     #[cfg(target_os = "macos")]
     impl Drop for LiveFoundationBridge {
         fn drop(&mut self) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
+            if let Ok(client) = AppleFmBridgeClient::new(self.base_url.clone()) {
+                let _ = client.shutdown();
+            }
         }
     }
 
     #[cfg(target_os = "macos")]
-    fn foundation_bridge_binary() -> Option<PathBuf> {
+    fn foundation_bridge_bundle() -> Option<PathBuf> {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest_dir
             .ancestors()
-            .flat_map(|root| {
-                [
-                    root.join("bin/foundation-bridge"),
-                    root.join("swift/foundation-bridge/.build/release/foundation-bridge"),
-                    root.join(
-                        "swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge",
-                    ),
-                ]
+            .map(|root| root.join("bin/FoundationBridge.app"))
+            .find(|path| {
+                path.is_dir() && path.extension().and_then(|value| value.to_str()) == Some("app")
             })
-            .find(|path| path.is_file())
     }
 
     #[cfg(target_os = "macos")]
@@ -2214,15 +2209,20 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         let port = listener.local_addr().expect("live bridge addr").port();
         drop(listener);
 
-        let binary = foundation_bridge_binary().expect("foundation-bridge binary");
-        let child = Command::new(binary)
+        let bundle = foundation_bridge_bundle().expect("FoundationBridge.app");
+        let status = Command::new("/usr/bin/open")
+            .arg("-n")
+            .arg("-g")
+            .arg(bundle.as_os_str())
+            .arg("--args")
             .arg(port.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn live foundation bridge");
-        let client = AppleFmBridgeClient::new(format!("http://127.0.0.1:{port}"))
-            .expect("live bridge client");
+            .status()
+            .expect("launch live foundation bridge bundle");
+        assert!(status.success(), "launch live foundation bridge bundle");
+        let base_url = format!("http://127.0.0.1:{port}");
+        let client = AppleFmBridgeClient::new(base_url.clone()).expect("live bridge client");
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             if let Ok(health) = client.health() {
@@ -2238,7 +2238,7 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
             );
             std::thread::sleep(Duration::from_millis(250));
         }
-        (client, LiveFoundationBridge { child })
+        (client, LiveFoundationBridge { base_url })
     }
 
     fn write_response_with_content_type(

@@ -6,16 +6,15 @@ This audit answers four specific questions:
 
 1. Why the Apple adapter lane originally still invoked Python.
 2. What changed once the Rust-native training and export issues landed.
-3. Why the current operator experience still goes silent for long stretches
-   instead of surfacing live progress.
-4. What GitHub issue program still remains for telemetry, gates, and final
-   cleanup of the legacy toolkit path.
+3. Why the operator experience originally went silent for long stretches.
+4. What happened once telemetry, the Rust-only gate, and the final cleanup
+   issue landed.
 
 This is a codebase-grounded audit of the current tree, not a wish list.
 
 ## Executive Summary
 
-Update after `#3768`, `#3769`, and `#3770` on 2026-03-16:
+Update after `#3768` through `#3775` on 2026-03-16:
 
 - the shipped Apple operator path no longer uses Python for the train phase or
   the export phase
@@ -40,24 +39,17 @@ Update after `#3768`, `#3769`, and `#3770` on 2026-03-16:
   are classified as model, model-request, or runtime failures instead of being
   hidden behind aggregate benchmark deltas
 
-The shipped train/export lane is therefore now Rust-native end to end.
-Python still exists in-tree only as the external oracle and cleanup target in
-`crates/psionic/psionic-train/src/apple_toolkit.rs`; it is no longer the
-authoritative live train/export path.
-
-That wrapper is not incidental:
-
-- it discovers a toolkit checkout on disk
-- it discovers a Python interpreter inside the toolkit virtualenv
-- it launches `python -m export.export_fmadapter`
-- the toolkit path is still the parity oracle and cleanup target until the
-  final gate/removal issues land
+The shipped train/export lane is therefore Rust-native end to end.
+The legacy toolkit wrapper source now remains only as a quarantined,
+non-default compatibility oracle in
+`crates/psionic/psionic-train/src/apple_toolkit.rs`; default `psionic-train`
+builds do not compile it, and the desktop operator path cannot reach it.
 
 So the honest current answer is:
 
-> the Apple operator lane is now Rust-executed for training and export, but
-> the repo still carries Python toolkit debt until the remaining gate and
-> cleanup issues remove that oracle path from the tree entirely.
+> the shipped Apple operator lane is now Rust-only, with a release gate that
+> refuses toolkit/Python regressions, while the old toolkit oracle remains
+> feature-gated and developer-only instead of part of the live contract.
 
 That specific operator-blindness problem is no longer the shipped behavior
 after `#3771` and `#3772`:
@@ -71,14 +63,13 @@ after `#3771` and `#3772`:
 
 ## Current Code Reality
 
-### 1. The Python toolkit wrapper is no longer the live path, but it is still
-an oracle and cleanup liability
+### 1. The legacy toolkit wrapper is no longer part of the shipped build
 
-The current authoritative wrapper is:
+The legacy compatibility source is:
 
 - `crates/psionic/psionic-train/src/apple_toolkit.rs`
 
-That file currently owns:
+That file still contains:
 
 - `AppleAdapterToolkitInstallation`
 - `discover()` of `adapter_training_toolkit_v26_0_0`
@@ -87,13 +78,20 @@ That file currently owns:
 - `run_apple_adapter_toolkit_export(...)`
 - `run_toolkit_command(...)`
 
-The current export command is built as:
+Its export command is built as:
 
 - `python -m export.export_fmadapter ...`
 
-This is no longer the live train or export codepath after `#3768` and `#3769`,
-but it remains the external oracle the native path was validated against and
-the cleanup target for later issues.
+But after `#3775`, that code is no longer compiled by default. The retained
+crate surface is:
+
+- `crates/psionic/psionic-train/Cargo.toml` defines the non-default
+  `legacy-apple-toolkit-oracle` feature
+- `crates/psionic/psionic-train/src/lib.rs` only includes and re-exports the
+  toolkit module when that feature is enabled
+
+So the source remains in-tree as a developer-only oracle, not as shipped
+runtime behavior.
 
 ### 2. The app-owned operator flow now uses Rust for both training and export
 
@@ -110,9 +108,8 @@ The current launch flow now does this:
 5. stages the resulting `.fmadapter`
 6. runs held-out eval and bridge-backed runtime acceptance
 
-So the heavy lifting for both train and export is now Rust in the shipped path.
-The remaining missing pieces are telemetry, gate enforcement, and final cleanup
-of the obsolete toolkit path.
+So the heavy lifting for both train and export is now Rust in the shipped path,
+and the later telemetry, gate, and cleanup issues are also landed.
 
 ### 3. Psionic now has authoritative Rust Apple training and export paths
 
@@ -133,21 +130,15 @@ Those files are real work, not placeholders. They define:
 After `#3768`, they are now the authoritative live training path for the
 desktop operator lane.
 
-But they are still not yet the same thing as:
-
-- a telemetry-rich operator lane with typed live progress
-- a fully gated and cleanup-complete repo where the legacy toolkit path can no
-  longer silently creep back into the shipped Apple flow
-
-The train system doc already says this precisely:
+The train system doc now says this precisely:
 
 - `crates/psionic/docs/TRAIN_SYSTEM.md`
 
-The repo-native backend is currently a narrower reference backend.
-The earlier version of this audit said the live Apple-valid runtime asset path
-was still the toolkit wrapper. That is no longer true after `#3769`.
+The repo-native backend is currently a narrower reference backend, but it is
+now also the fully gated and cleanup-complete shipped backend for this Apple
+reference lane.
 
-### 4. The operator telemetry is currently coarse and mostly post-hoc
+### 4. The operator telemetry is now live and typed
 
 The operator status types in
 `apps/autopilot-desktop/src/apple_adapter_training_control.rs` do have:
@@ -157,16 +148,10 @@ The operator status types in
 - `last_error`
 - `log_lines`
 - post-run local summary fields
+- progress snapshots
+- typed progress events
 
-But the crucial implementation detail is the toolkit subprocess runner in
-`crates/psionic/psionic-train/src/apple_toolkit.rs`:
-
-- `run_toolkit_command(...)` uses `Command::output()`
-- stdout is only available after exit
-- stderr is only available after exit
-- `/usr/bin/time -l` output is only parsed after exit
-
-That means the operator cannot stream:
+The current shipped lane now surfaces:
 
 - current epoch
 - current batch or step
@@ -177,36 +162,28 @@ That means the operator cannot stream:
 - ETA
 - checkpoint completion events
 
-The app logs reflect that limitation exactly:
+That telemetry contract is now backed by:
 
-- one log line before training starts
-- one log line after training finishes
-- one log line after export finishes
+- the app-owned progress/event stream in
+  `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+- streamed toolkit compatibility output from `#3772` for non-default oracle
+  runs
+- the WGPUI run-detail work from `#3773`
 
-This is why the run feels like "nothing is happening for thirty minutes".
-That is not just a UI complaint. It is a real missing contract in the operator
-path.
+## Why Python Is Still In Tree At All
 
-## Why Python Is Still In Tree
+The honest current reason is narrow:
 
-The honest reasons are now narrower:
+- the old toolkit wrapper source remains as a quarantined developer-only oracle
+  behind the non-default `legacy-apple-toolkit-oracle` feature
 
-### 1. The legacy toolkit wrapper still exists as a compatibility oracle and cleanup target
+It is no longer part of:
 
-`crates/psionic/psionic-train/src/apple_toolkit.rs` still carries toolkit-root
-discovery, Python-interpreter discovery, and toolkit shell-out code.
+- the shipped desktop operator path
+- default `psionic-train` builds
+- packaged release validation
 
-That module is no longer the shipped operator path, but it is still in-tree as
-the legacy compatibility surface until the final cleanup issue removes it.
-
-### 2. The shipped lane is now Rust-only, but it still needs an explicit regression gate
-
-Without a hard gate, the repo could drift back into a dishonest state where the
-desktop operator or release validation silently reintroduces toolkit discovery
-or Python shell-outs.
-
-That is why `#3774` adds a dedicated release gate instead of relying on docs or
-memory.
+`#3774` and `#3775` changed that boundary explicitly.
 
 ## Why The Current Experience Used To Be So Bad During Long Runs
 
@@ -461,6 +438,10 @@ Acceptance:
 ### 7. Psionic Apple De-Pythonization Gate: add a release and acceptance gate
 that fails if the shipped Apple lane still requires Python
 
+Status:
+
+- completed as `#3774`
+
 Why:
 
 - without a hard gate, the codebase can drift back into "Rust wrapper around
@@ -480,6 +461,10 @@ Acceptance:
 
 ### 8. Psionic Apple Cleanup: remove the toolkit discovery and Python execution
 surface after Rust parity lands
+
+Status:
+
+- completed as `#3775`
 
 Why:
 
@@ -520,18 +505,18 @@ The reason to do telemetry first is simple:
 
 ## Bottom Line
 
-We are still using Python because the shipped Apple adapter lane still depends
-on the external Apple toolkit for the authoritative train and export steps.
+We are no longer using Python in the shipped Apple adapter lane.
 
-We are still waiting in the dark because the operator path still buffers child
-process output and only surfaces coarse stage changes and post-run summaries.
+The shipped state is now:
 
-If the requirement is:
+- Rust-native Psionic training and export
+- typed live status updates during long runs
+- a release gate that fails if toolkit/Python dependency creeps back in
+- a quarantined legacy toolkit oracle that is no longer part of the default
+  `psionic-train` build or the desktop operator path
 
-> Rust-only Psionic, no Python in the shipped Apple lane, with live status
-> updates during long runs
-
-then the correct next move is not another vague tuning pass.
-
-The correct next move is to execute the issue program above and make the Rust
-executor, Rust exporter, and typed live telemetry the authoritative path.
+The remaining work after this audit is no longer "make Apple training
+Rust-only." That part is complete for the current narrow Apple reference lane.
+The next work is higher-order quality and scale: model quality improvement,
+broader distributed execution, and future productization beyond this reference
+path.

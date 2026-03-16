@@ -13,6 +13,9 @@ workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+legacy-apple-toolkit-oracle = []
+
 [dependencies]
 ed25519-dalek = { workspace = true }
 half = "2.4.1"

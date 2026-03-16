@@ -2219,8 +2219,8 @@ fn port_from_base_url(base_url: &str) -> Option<u16> {
 }
 
 /// Walks up from the current executable path to find the repo root (directory
-/// containing swift/foundation-bridge or bin/foundation-bridge). Ensures the
-/// app finds the bridge regardless of current working directory.
+/// containing swift/foundation-bridge or a built FoundationBridge.app helper).
+/// Ensures the app finds the helper regardless of current working directory.
 fn find_repo_root_from_exe() -> Option<PathBuf> {
     let mut dir = std::env::current_exe()
         .ok()
@@ -2228,7 +2228,6 @@ fn find_repo_root_from_exe() -> Option<PathBuf> {
     loop {
         if !dir.as_os_str().is_empty()
             && (dir.join("swift/foundation-bridge").exists()
-                || dir.join("bin/foundation-bridge").exists()
                 || dir
                     .join("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge")
                     .exists())
@@ -2286,14 +2285,9 @@ fn find_bridge_binary() -> Option<PathBuf> {
     }
 
     // CWD-relative (e.g. when run from repo root).
-    let cwd_candidates = [
-        PathBuf::from("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge"),
-        PathBuf::from("bin/foundation-bridge"),
-        PathBuf::from("swift/foundation-bridge/.build/release/foundation-bridge"),
-        PathBuf::from(
-            "swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge",
-        ),
-    ];
+    let cwd_candidates = [PathBuf::from(
+        "bin/FoundationBridge.app/Contents/MacOS/foundation-bridge",
+    )];
     for candidate in &cwd_candidates {
         if let Some(candidate) = normalize_bridge_binary_candidate(candidate.clone()) {
             return Some(candidate);
@@ -2302,14 +2296,8 @@ fn find_bridge_binary() -> Option<PathBuf> {
 
     // Exe-relative repo root (works when run from target/debug or anywhere under repo).
     if let Some(root) = find_repo_root_from_exe() {
-        let repo_candidates = [
-            root.join("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge"),
-            root.join("bin/foundation-bridge"),
-            root.join("swift/foundation-bridge/.build/release/foundation-bridge"),
-            root.join(
-                "swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge",
-            ),
-        ];
+        let repo_candidates =
+            [root.join("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge")];
         for candidate in &repo_candidates {
             if let Some(candidate) = normalize_bridge_binary_candidate(candidate.clone()) {
                 return Some(candidate);
@@ -2321,8 +2309,7 @@ fn find_bridge_binary() -> Option<PathBuf> {
 }
 
 fn find_bundled_bridge_binary() -> Option<PathBuf> {
-    // Bundled with the app: next to executable (e.g. MyApp.app/Contents/MacOS/foundation-bridge)
-    // or in Resources (e.g. MyApp.app/Contents/Resources/foundation-bridge).
+    // Bundled with the app as a helper bundle.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(macos_dir) = exe.parent() {
             if let Some(contents_dir) = macos_dir.parent() {
@@ -2336,10 +2323,6 @@ fn find_bundled_bridge_binary() -> Option<PathBuf> {
                     return Some(candidate);
                 }
             }
-            let next_to_exe = macos_dir.join("foundation-bridge");
-            if let Some(candidate) = normalize_bridge_binary_candidate(next_to_exe) {
-                return Some(candidate);
-            }
             if let Some(contents_dir) = macos_dir.parent() {
                 let bundled_helper = contents_dir
                     .join("Resources")
@@ -2348,10 +2331,6 @@ fn find_bundled_bridge_binary() -> Option<PathBuf> {
                     .join("MacOS")
                     .join("foundation-bridge");
                 if let Some(candidate) = normalize_bridge_binary_candidate(bundled_helper) {
-                    return Some(candidate);
-                }
-                let in_resources = contents_dir.join("Resources").join("foundation-bridge");
-                if let Some(candidate) = normalize_bridge_binary_candidate(in_resources) {
                     return Some(candidate);
                 }
             }
