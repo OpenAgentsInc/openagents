@@ -37,6 +37,50 @@ pub struct MlxCompatibilityTerm {
     pub forbidden_shortcuts: Vec<String>,
 }
 
+/// Aggregate posture for the current MLX acceptance matrix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MlxAcceptanceMatrixPosture {
+    /// The matrix exists as the canonical closure contract, but the categories are
+    /// still mainly tracking future implementation work.
+    TrackingOnly,
+}
+
+/// Status vocabulary for one MLX acceptance category.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MlxAcceptanceCategoryStatus {
+    /// The category has full declared coverage for the current MLX lane.
+    Implemented,
+    /// The category is runnable and real, but still intentionally bounded.
+    ImplementedEarly,
+    /// Some substantial part of the category exists, but central work remains open.
+    Partial,
+    /// A meaningful part exists outside the intended owner split and must move inward.
+    PartialOutsidePsionic,
+    /// The category is tracked explicitly but not implemented yet.
+    Planned,
+}
+
+/// One category in the MLX-lane acceptance matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxAcceptanceCategory {
+    /// Stable matrix category identifier.
+    pub category_id: String,
+    /// Current matrix status for the category.
+    pub matrix_status: MlxAcceptanceCategoryStatus,
+    /// Owning roadmap epic identifier.
+    pub epic_id: String,
+    /// Roadmap or GitHub issue references that govern the category.
+    pub issue_refs: Vec<String>,
+    /// What a green category would honestly mean.
+    pub green_definition: String,
+    /// Current repo truth for the category.
+    pub current_repo_truth: String,
+    /// Boundary note that keeps current claims honest.
+    pub boundary_note: String,
+}
+
 /// Aggregate machine-readable contract for Psionic's bounded MLX claim language.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlxCompatibilityScopeReport {
@@ -52,6 +96,106 @@ pub struct MlxCompatibilityScopeReport {
     pub explicit_rules: Vec<String>,
     /// Stable digest over the report contents.
     pub report_digest: String,
+}
+
+/// Aggregate machine-readable acceptance report for the MLX roadmap.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxAcceptanceMatrixReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Canonical JSON schema path for this report.
+    pub schema_path: String,
+    /// Canonical runner path for this report.
+    pub runner: String,
+    /// Whether this report is a tracking contract or a green acceptance proof.
+    pub report_posture: MlxAcceptanceMatrixPosture,
+    /// Category ids included in this report instance.
+    pub selected_categories: Vec<String>,
+    /// Acceptance categories carried by the report.
+    pub categories: Vec<MlxAcceptanceCategory>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl MlxAcceptanceMatrixReport {
+    fn new(categories: Vec<MlxAcceptanceCategory>) -> Self {
+        let selected_categories = categories
+            .iter()
+            .map(|category| category.category_id.clone())
+            .collect::<Vec<_>>();
+        Self::from_selected_categories(categories, selected_categories)
+    }
+
+    fn from_selected_categories(
+        categories: Vec<MlxAcceptanceCategory>,
+        selected_categories: Vec<String>,
+    ) -> Self {
+        let schema_path =
+            String::from("crates/psionic/docs/mlx_acceptance_matrix_report.schema.json");
+        let runner = String::from("scripts/release/check-psionic-mlx-acceptance-matrix.sh");
+        let report_posture = MlxAcceptanceMatrixPosture::TrackingOnly;
+        let report_digest = stable_mlx_acceptance_matrix_report_digest(
+            schema_path.as_str(),
+            runner.as_str(),
+            report_posture,
+            &selected_categories,
+            &categories,
+        );
+        Self {
+            schema_version: 1,
+            schema_path,
+            runner,
+            report_posture,
+            selected_categories,
+            categories,
+            report_digest,
+        }
+    }
+
+    /// Returns a filtered report with only the named categories.
+    pub fn filter_to_categories(
+        &self,
+        category_ids: &[String],
+    ) -> Result<Self, MlxAcceptanceMatrixError> {
+        if category_ids.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let mut filtered_categories = Vec::with_capacity(category_ids.len());
+        for category_id in category_ids {
+            let category = self
+                .categories
+                .iter()
+                .find(|category| category.category_id == *category_id)
+                .cloned()
+                .ok_or_else(|| MlxAcceptanceMatrixError::UnknownCategory(category_id.clone()))?;
+            filtered_categories.push(category);
+        }
+
+        Ok(Self::from_selected_categories(
+            filtered_categories,
+            category_ids.to_vec(),
+        ))
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("schema_path={}", self.schema_path),
+            format!("runner={}", self.runner),
+            format!("report_posture={:?}", self.report_posture),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for category in &self.categories {
+            lines.push(format!(
+                "{}|{:?}",
+                category.category_id, category.matrix_status
+            ));
+        }
+        lines
+    }
 }
 
 impl MlxCompatibilityScopeReport {
@@ -118,6 +262,14 @@ pub enum SemanticsClaimPosture {
     SeededEvidenceOnly,
     /// The area remains an explicit future compatibility target rather than a current credibility claim.
     PyTorchCompatibleLater,
+}
+
+/// Failure returned while filtering the MLX acceptance matrix.
+#[derive(Debug, Error)]
+pub enum MlxAcceptanceMatrixError {
+    /// The requested category id is not declared in the builtin matrix.
+    #[error("unknown MLX acceptance category: {0}")]
+    UnknownCategory(String),
 }
 
 /// One evidence reference that supports the current posture for a claim area.
@@ -615,6 +767,150 @@ pub fn builtin_mlx_compatibility_scope_report() -> MlxCompatibilityScopeReport {
     )
 }
 
+/// Builds the canonical MLX acceptance matrix report for the current Psionic
+/// MLX roadmap.
+#[must_use]
+pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
+    MlxAcceptanceMatrixReport::new(vec![
+        MlxAcceptanceCategory {
+            category_id: String::from("array-runtime-surface"),
+            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            epic_id: String::from("PMLX-E1"),
+            issue_refs: vec![
+                String::from("PMLX-101 (#3834)"),
+                String::from("PMLX-102 (#3835)"),
+                String::from("PMLX-103 (#3836)"),
+                String::from("PMLX-104 (#3837)"),
+                String::from("PMLX-105 (#3838)"),
+                String::from("PMLX-106 (#3839)"),
+            ],
+            green_definition: String::from(
+                "A public lazy array type exists with explicit eval and async_eval posture, public device and stream handles, creation and view families, deterministic random and cast behavior, and safe host materialization boundaries.",
+            ),
+            current_repo_truth: String::from(
+                "Psionic already has lower-layer tensor, IR, runtime, and refusal substrate, but it does not yet publish a user-facing MLX-class array facade or runner contract above those crates.",
+            ),
+            boundary_note: String::from(
+                "Do not claim MLX-class array closure from psionic-core, psionic-ir, or runtime internals alone until PMLX-101 through PMLX-106 land on a public framework surface.",
+            ),
+        },
+        MlxAcceptanceCategory {
+            category_id: String::from("transform-compile"),
+            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            epic_id: String::from("PMLX-E2"),
+            issue_refs: vec![
+                String::from("PMLX-201 (#3840)"),
+                String::from("PMLX-202 (#3841)"),
+                String::from("PMLX-203 (#3842)"),
+                String::from("PMLX-204 (#3843)"),
+                String::from("PMLX-205 (#3844)"),
+                String::from("PMLX-206 (#3845)"),
+            ],
+            green_definition: String::from(
+                "The public transform layer exposes grad, value_and_grad, vjp, jvp, vmap, checkpoint, compile-as-transform, and explicit symbolic or shapeless compile boundaries with typed refusals.",
+            ),
+            current_repo_truth: String::from(
+                "Psionic has substantial autodiff and compiler substrate, but it does not yet expose the MLX-class transform API or compile contracts as a coherent public framework layer.",
+            ),
+            boundary_note: String::from(
+                "Do not infer MLX transform closure from private autodiff helpers or compiler internals until the public transform surface and compile contracts are real.",
+            ),
+        },
+        MlxAcceptanceCategory {
+            category_id: String::from("nn-optimizer"),
+            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            epic_id: String::from("PMLX-E3"),
+            issue_refs: vec![
+                String::from("PMLX-301 (#3846)"),
+                String::from("PMLX-302 (#3847)"),
+                String::from("PMLX-303 (#3848)"),
+                String::from("PMLX-304 (#3849)"),
+                String::from("PMLX-305 (#3850)"),
+                String::from("PMLX-306 (#3851)"),
+                String::from("PMLX-307 (#3852)"),
+            ],
+            green_definition: String::from(
+                "The MLX lane exposes a public Module tree, state save and load behavior, core layers, losses, initializers, optimizers, schedulers, and quantized-module semantics above Psionic-native training primitives.",
+            ),
+            current_repo_truth: String::from(
+                "Psionic already owns module-tree, optimizer, checkpoint, and train primitives, but it does not yet present them as an MLX-class nn and optimizer surface.",
+            ),
+            boundary_note: String::from(
+                "Do not claim MLX nn closure from psionic-nn or psionic-train alone until the public layer, loss, optimizer, and scheduler contracts are exposed together.",
+            ),
+        },
+        MlxAcceptanceCategory {
+            category_id: String::from("export-serialization-tooling"),
+            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            epic_id: String::from("PMLX-E4"),
+            issue_refs: vec![
+                String::from("PMLX-401 (#3853)"),
+                String::from("PMLX-402 (#3854)"),
+                String::from("PMLX-403 (#3855)"),
+                String::from("PMLX-404 (#3856)"),
+                String::from("PMLX-405 (#3857)"),
+                String::from("PMLX-406 (#3858)"),
+            ],
+            green_definition: String::from(
+                "The MLX lane supports general array IO, a Psionic-native function export/import artifact, bounded .mlxfn compatibility, memory and cache controls, backend debug hooks, and extension-facing tooling.",
+            ),
+            current_repo_truth: String::from(
+                "Psionic already has model IO, graph export, compiler artifacts, and runtime diagnostics, but not the MLX-class public export and tooling shell that ties those together.",
+            ),
+            boundary_note: String::from(
+                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure until the public framework APIs exist.",
+            ),
+        },
+        MlxAcceptanceCategory {
+            category_id: String::from("distributed-semantics"),
+            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            epic_id: String::from("PMLX-E5"),
+            issue_refs: vec![
+                String::from("PMLX-501 (#3859)"),
+                String::from("PMLX-502 (#3860)"),
+                String::from("PMLX-503 (#3861)"),
+                String::from("PMLX-504 (#3862)"),
+                String::from("PMLX-505 (#3863)"),
+                String::from("PMLX-506 (#3864)"),
+                String::from("PMLX-507 (#3865)"),
+            ],
+            green_definition: String::from(
+                "The MLX lane publishes distributed group, collective, gradient-reduction, tensor-parallel, FSDP-style update, and launch/topology helpers above Psionic collectives and cluster truth.",
+            ),
+            current_repo_truth: String::from(
+                "Psionic owns collectives, cluster, and distributed optimizer substrate, but it does not yet expose framework-level MLX distributed helpers or launch contracts.",
+            ),
+            boundary_note: String::from(
+                "Do not infer MLX distributed closure from lower-level collectives or cluster internals until the framework-visible group and helper APIs are real.",
+            ),
+        },
+        MlxAcceptanceCategory {
+            category_id: String::from("backend-closure"),
+            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            epic_id: String::from("PMLX-E6"),
+            issue_refs: vec![
+                String::from("PMLX-601 (#3866)"),
+                String::from("PMLX-602 (#3867)"),
+                String::from("PMLX-603 (#3868)"),
+                String::from("PMLX-604 (#3869)"),
+                String::from("PMLX-605 (#3870)"),
+                String::from("PMLX-606 (#3871)"),
+                String::from("PMLX-607 (#3872)"),
+                String::from("PMLX-608 (#3873)"),
+            ],
+            green_definition: String::from(
+                "CPU reference, Metal, and CUDA backends honestly cover the declared MLX surface, the parity harness carries the upstream MLX test families, and any compatibility or binding shells stay explicitly bounded.",
+            ),
+            current_repo_truth: String::from(
+                "Psionic has real backend-specific substrate and the first MLX version window contract, but it does not yet have MLX-class backend closure, parity-harness evidence, or compatibility-shell boundaries above that substrate.",
+            ),
+            boundary_note: String::from(
+                "Do not claim bounded MLX backend or compatibility closure from one backend lane, one demo, or one local checkout until the declared categories have parity evidence and explicit shell boundaries.",
+            ),
+        },
+    ])
+}
+
 fn seeded_area(
     area_id: &str,
     bounded_scope: &str,
@@ -735,12 +1031,49 @@ fn stable_mlx_compatibility_scope_report_digest(
     hex::encode(hasher.finalize())
 }
 
+fn stable_mlx_acceptance_matrix_report_digest(
+    schema_path: &str,
+    runner: &str,
+    report_posture: MlxAcceptanceMatrixPosture,
+    selected_categories: &[String],
+    categories: &[MlxAcceptanceCategory],
+) -> String {
+    let mut lines = vec![
+        format!("schema_path={schema_path}"),
+        format!("runner={runner}"),
+        format!("report_posture={report_posture:?}"),
+    ];
+    for category_id in selected_categories {
+        lines.push(format!("selected={category_id}"));
+    }
+    for category in categories {
+        lines.push(format!(
+            "category={}|{:?}|{}",
+            category.category_id, category.matrix_status, category.epic_id
+        ));
+        for issue_ref in &category.issue_refs {
+            lines.push(format!("issue={issue_ref}"));
+        }
+        lines.push(format!("green={}", category.green_definition));
+        lines.push(format!("truth={}", category.current_repo_truth));
+        lines.push(format!("boundary={}", category.boundary_note));
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        SemanticsClaimPosture, builtin_mlx_compatibility_scope_report,
+        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, SemanticsClaimPosture,
+        builtin_mlx_acceptance_matrix_report, builtin_mlx_compatibility_scope_report,
         builtin_semantics_claim_report,
     };
 
@@ -828,6 +1161,74 @@ mod tests {
                 .iter()
                 .any(|rule| rule.contains("does not widen the supported release window"))
         );
+    }
+
+    #[test]
+    fn mlx_acceptance_matrix_report_declares_all_named_closure_categories_and_filtering()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_mlx_acceptance_matrix_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.schema_path,
+            "crates/psionic/docs/mlx_acceptance_matrix_report.schema.json"
+        );
+        assert_eq!(
+            report.runner,
+            "scripts/release/check-psionic-mlx-acceptance-matrix.sh"
+        );
+        assert_eq!(
+            report.report_posture,
+            MlxAcceptanceMatrixPosture::TrackingOnly
+        );
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
+
+        for category_id in [
+            "array-runtime-surface",
+            "transform-compile",
+            "nn-optimizer",
+            "export-serialization-tooling",
+            "distributed-semantics",
+            "backend-closure",
+        ] {
+            let category = report
+                .categories
+                .iter()
+                .find(|category| category.category_id == category_id)
+                .expect("missing MLX acceptance category");
+            assert_eq!(category.matrix_status, MlxAcceptanceCategoryStatus::Planned);
+            assert!(!category.issue_refs.is_empty());
+            assert!(!category.green_definition.is_empty());
+            assert!(!category.current_repo_truth.is_empty());
+            assert!(!category.boundary_note.is_empty());
+        }
+
+        let filtered = report.filter_to_categories(&[
+            String::from("array-runtime-surface"),
+            String::from("backend-closure"),
+        ])?;
+        assert_eq!(
+            filtered.selected_categories,
+            vec![
+                String::from("array-runtime-surface"),
+                String::from("backend-closure"),
+            ]
+        );
+        assert_eq!(filtered.categories.len(), 2);
+
+        let error = report
+            .filter_to_categories(&[String::from("not-a-real-category")])
+            .expect_err("unknown category should refuse");
+        assert_eq!(
+            error.to_string(),
+            "unknown MLX acceptance category: not-a-real-category"
+        );
+
+        Ok(())
     }
 
     #[test]

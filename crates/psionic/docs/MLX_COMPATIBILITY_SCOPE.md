@@ -81,6 +81,5 @@ This closes the first governance requirement in `ROADMAP_MLX.md`:
 
 The remaining Epic 0 work still needs:
 
-- an MLX acceptance matrix
 - a parity harness entrypoint
 - a supported, convertible, and unsupported matrix
