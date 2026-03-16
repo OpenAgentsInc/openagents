@@ -18,6 +18,7 @@ mod app_state;
 mod apple_adapter_training_control;
 pub mod apple_architecture_explainer_reference_run;
 mod apple_fm_bridge;
+mod apple_repo_lookup_tools;
 mod autopilot_compute_presence;
 mod autopilot_peer_roster;
 mod bitcoin_display;

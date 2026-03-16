@@ -148,6 +148,10 @@ pub struct AppleAdapterBaseVsAdapterBenchmarkReport {
     pub benchmark_key: BenchmarkPackageKey,
     /// Curated benchmark package with case metadata.
     pub benchmark_package: BenchmarkPackage,
+    /// Full base-model benchmark eval receipt.
+    pub base_eval_run: EvalRunState,
+    /// Full adapted-model benchmark eval receipt.
+    pub adapted_eval_run: EvalRunState,
     /// Base-model aggregate summary.
     pub base_summary: BenchmarkAggregateSummary,
     /// Adapted-model aggregate summary.
@@ -468,6 +472,8 @@ pub fn compare_curated_base_vs_adapter_runs(
     Ok(AppleAdapterBaseVsAdapterBenchmarkReport {
         benchmark_key: benchmark_package.key.clone(),
         benchmark_package: benchmark_package.clone(),
+        base_eval_run: base_run.clone(),
+        adapted_eval_run: adapted_run.clone(),
         base_summary,
         adapted_summary,
         case_deltas,

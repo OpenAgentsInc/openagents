@@ -1159,6 +1159,11 @@ fn score_sample(
         .unwrap_or_default();
     let text_match =
         normalized_text(expected_text) == normalized_text(observed.output_text.as_str());
+    let runtime_failure_reasons = metadata_failure_reasons(
+        observed,
+        "apple_adapter.runtime_failures",
+        "runtime_failure",
+    );
     let mut metrics = vec![
         EvalMetric::new(
             "apple_adapter.text_match",
@@ -1166,7 +1171,7 @@ fn score_sample(
         )
         .with_unit("fraction"),
     ];
-    let mut failure_reasons = Vec::new();
+    let mut failure_reasons = runtime_failure_reasons.clone();
 
     if sample.structured_assistant_output.is_some() {
         let expected_structured = sample
@@ -1177,8 +1182,8 @@ fn score_sample(
             Some(structured_output) => structured_output == expected_structured,
             None => false,
         };
-        if !structured_match {
-            failure_reasons.push(String::from("structured_output_mismatch"));
+        if !structured_match && runtime_failure_reasons.is_empty() {
+            failure_reasons.push(String::from("model_output_mismatch:structured"));
         }
         metrics.push(
             EvalMetric::new(
@@ -1189,12 +1194,20 @@ fn score_sample(
         );
     }
 
+    if !text_match && runtime_failure_reasons.is_empty() {
+        failure_reasons.push(String::from("model_output_mismatch:text"));
+    }
+
     if !sample.tools.is_empty() {
         let observed_tools = observed
             .observed_tool_calls
             .iter()
             .map(|tool| (tool.tool_name.as_str(), tool.succeeded))
             .collect::<BTreeMap<_, _>>();
+        let harness_failures =
+            metadata_failure_codes_by_tool(observed, "apple_adapter.harness_failures");
+        let model_request_failures =
+            metadata_failure_codes_by_tool(observed, "apple_adapter.model_request_failures");
         let mut satisfied_required = BTreeSet::new();
         for tool in &sample.tools {
             match observed_tools.get(tool.function.name.as_str()) {
@@ -1202,10 +1215,30 @@ fn score_sample(
                     satisfied_required.insert(tool.function.name.clone());
                 }
                 Some(false) => {
-                    failure_reasons.push(format!("tool_failed:{}", tool.function.name));
+                    if let Some(code) = harness_failures.get(tool.function.name.as_str()) {
+                        failure_reasons.push(format!(
+                            "harness_failure:{}:{}",
+                            tool.function.name, code
+                        ));
+                    } else if let Some(code) =
+                        model_request_failures.get(tool.function.name.as_str())
+                    {
+                        failure_reasons.push(format!(
+                            "model_behavior:tool_failed:{}:{}",
+                            tool.function.name, code
+                        ));
+                    } else {
+                        failure_reasons.push(format!(
+                            "model_behavior:tool_failed:{}",
+                            tool.function.name
+                        ));
+                    }
                 }
                 None => {
-                    failure_reasons.push(format!("tool_missing:{}", tool.function.name));
+                    failure_reasons.push(format!(
+                        "model_behavior:tool_missing:{}",
+                        tool.function.name
+                    ));
                 }
             }
         }
@@ -1291,6 +1324,45 @@ fn average_metric_score_bps(metrics: &[EvalMetric]) -> u32 {
 
 fn normalized_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn metadata_failure_reasons(
+    observed: &AppleAdapterObservedSampleOutput,
+    metadata_key: &str,
+    prefix: &str,
+) -> Vec<String> {
+    observed
+        .metadata
+        .get(metadata_key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let code = entry.get("failure_code").and_then(Value::as_str)?;
+            Some(format!("{prefix}:{code}"))
+        })
+        .collect()
+}
+
+fn metadata_failure_codes_by_tool(
+    observed: &AppleAdapterObservedSampleOutput,
+    metadata_key: &str,
+) -> BTreeMap<String, String> {
+    observed
+        .metadata
+        .get(metadata_key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let tool_name = entry.get("tool_name").and_then(Value::as_str)?;
+            let code = entry
+                .get("failure_code")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            Some((tool_name.to_string(), code.to_string()))
+        })
+        .collect()
 }
 
 fn stable_runtime_smoke_digest(
@@ -1945,7 +2017,7 @@ mod tests {
         assert_eq!(structured.status, EvalSampleStatus::Failed);
         assert_eq!(
             structured.error_reason.as_deref(),
-            Some("structured_output_mismatch")
+            Some("model_output_mismatch:structured; model_output_mismatch:text")
         );
         let tool = held_out
             .samples
@@ -1955,7 +2027,7 @@ mod tests {
         assert_eq!(tool.status, EvalSampleStatus::Failed);
         assert_eq!(
             tool.error_reason.as_deref(),
-            Some("tool_missing:lookup_stock")
+            Some("model_behavior:tool_missing:lookup_stock")
         );
         Ok(())
     }

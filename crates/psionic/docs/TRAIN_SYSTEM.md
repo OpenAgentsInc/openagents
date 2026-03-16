@@ -222,7 +222,14 @@ The current path is:
    the bridge-backed runtime-smoke path proves the exported package can be
    loaded and exercised against the live Apple FM runtime. That smoke path now
    checks the exported package's base-model, tokenizer, and template lineage
-   against the expected runtime compatibility profile before acceptance.
+   against the expected runtime compatibility profile before acceptance. The
+   Apple runtime parity pass now also normalizes raw guided-generation schemas
+   through `AppleFmGenerationSchema::with_title_hint(...)`, uses bounded greedy
+   generation options during live eval/smoke, and backs `lookup_doc` /
+   `lookup_code` eval cases with real repo retrieval instead of echo tools.
+   Benchmark reports now embed the full base/adapted `EvalRunState` receipts so
+   per-sample failures remain visible as model, model-request, or runtime
+   failures instead of collapsing into aggregate benchmark deltas.
 6. `autopilotctl training launch ...`, `autopilotctl training export ...`, and
    `autopilotctl training accept ...` provide the shipped app-owned operator
    flow, while `autopilotctl apple-fm load ...` and `autopilotctl apple-fm
