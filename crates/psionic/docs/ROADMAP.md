@@ -518,6 +518,10 @@ Its declared scope is:
 - landed Phase 8B bar: validated `SparseTopK` decode mode with explicit direct
   selection on the current subset, exact fallback on unsupported shapes, and
   benchmark reporting against CPU, reference-linear, and hull-cache baselines
+- landed Phase 9A bar: planner-owned hybrid routing through
+  `psionic.planner_executor_route`, with executor preflight, replay-stable
+  routing decisions, typed completed/fallback/refused outcomes, and explicit
+  planner-visible policy, budget, proof, selection, and refusal truth
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -526,6 +530,7 @@ Its declared scope is:
   - `psionic-eval::run_tassadar_article_class_benchmark`
   - `psionic-runtime::build_tassadar_execution_evidence_bundle`
   - `psionic-serve::LocalTassadarExecutorService`
+  - `psionic-serve::LocalTassadarPlannerRouter`
   - `psionic-research::ExperimentFamily::ExecutorVariants`
   - `psionic-runtime::TassadarSparseTopKRunner`
 - strategic value: inner exact-computation substrate for larger reasoning
@@ -557,8 +562,10 @@ The current issue spine is:
   [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762)
 - Phase 8B validated sparse-top-k executor decode path:
   [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763)
+- Phase 9A hybrid planner-plus-executor routing:
+  [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764)
 
-What Phases 1 through 8B now concretely provide:
+What Phases 1 through 9A now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -599,6 +606,16 @@ What Phases 1 through 8B now concretely provide:
   output, and terminal events without pretending to be chat completion
 - one local reference service that preserves exact refusal, fallback, proof,
   and lineage truth through the serving boundary
+- one planner-owned `psionic.planner_executor_route` routing contract distinct
+  from ordinary chat completion semantics
+- one executor preflight surface so planner policy and budget gates can act on
+  model compatibility and decode-selection truth before delegation
+- one replay-stable `TassadarPlannerRoutingDecision` carrying planner request
+  digest, routing digest, policy, budget, capability, selection, and
+  contract-error truth
+- one typed `TassadarPlannerRoutingOutcome` that can complete, return a typed
+  planner fallback, or refuse while preserving executor proof and refusal
+  surfaces across the routing boundary
 - one widened `core_i32_v2` Wasm profile with explicit limits for article-class
   workloads
 - profile-aware CPU reference, reference-linear, and hull-cache runner
@@ -623,10 +640,15 @@ What Phases 1 through 8B now concretely provide:
 - sparse-top-k throughput, speedup-over-reference-linear, and remaining
   gap-vs-CPU reporting inside the same benchmark package family
 
-Later phases remain dependency-ordered by the March 15 audit until activated as
-their own GitHub issues:
+Later phases remain dependency-ordered by the March 15 audit and now continue
+through the open Phase 9B through 9D issues:
 
-- hybrid planner-plus-executor routing
+- honest small executor training in `psionic-train`:
+  [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765)
+- larger 2D-head executor and program-to-weight compilation exploration:
+  [#3766](https://github.com/OpenAgentsInc/openagents/issues/3766)
+- hybrid learned-plus-compiled and learned-circuit executor research:
+  [#3767](https://github.com/OpenAgentsInc/openagents/issues/3767)
 
 ## Epic 0: Governance And Acceptance
 

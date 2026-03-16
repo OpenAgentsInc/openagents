@@ -94,9 +94,13 @@ Current posture:
   `psionic-models`, and `psionic-eval`, with a validated direct decode mode,
   explicit fallback on unsupported shapes, and published sparse-top-k
   throughput/speedup/CPU-gap reporting alongside CPU, linear, and hull lanes
+- its Phase 9A hybrid planner route now exists in `psionic-serve`, with an
+  explicit `psionic.planner_executor_route` contract, executor preflight,
+  replay-stable routing decisions, typed completed/fallback/refused outcomes,
+  and planner-visible policy, budget, proof, selection, and refusal truth
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
@@ -107,7 +111,8 @@ Current posture:
   [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760) and
   [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761) and
   [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762) and
-  [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763)
+  [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763) and
+  [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764)
 
 ## Crate Map
 
