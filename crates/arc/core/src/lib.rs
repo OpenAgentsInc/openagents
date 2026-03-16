@@ -27,9 +27,13 @@ pub use analysis::{
     summarize_grid, summarize_task_dimensions,
 };
 pub use envelopes::{
-    ArcRefusalCode, ArcSolveOutcome, ArcSolveRefusal, ArcSolveRefusalError, ArcSolveResultEnvelope,
-    ArcSolveResultEnvelopeError, EXECUTION_ENVELOPE_BOUNDARY_SUMMARY, SolveBudget,
-    SolveBudgetError, TraceLocator, TraceLocatorError,
+    ArcInteractiveActionResult, ArcInteractiveBudget, ArcInteractiveBudgetError,
+    ArcInteractiveBudgetState, ArcInteractiveExecutionOutcome, ArcInteractiveRefusal,
+    ArcInteractiveRefusalCode, ArcInteractiveRefusalError, ArcInteractiveResetKind,
+    ArcInteractiveTurnResult, ArcRefusalCode, ArcSolveOutcome, ArcSolveRefusal,
+    ArcSolveRefusalError, ArcSolveResultEnvelope, ArcSolveResultEnvelopeError,
+    EXECUTION_ENVELOPE_BOUNDARY_SUMMARY, SolveBudget, SolveBudgetError, TraceLocator,
+    TraceLocatorError,
 };
 pub use schema::{
     ARC_ACTION6_COORDINATE_MAX, ARC_CORE_SCHEMA_VERSION, ARC_FRAME_MAX_EDGE,

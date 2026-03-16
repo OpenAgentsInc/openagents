@@ -9,7 +9,7 @@ use crate::schema::{
 };
 
 /// What belongs in execution envelopes and what must stay out of it.
-pub const EXECUTION_ENVELOPE_BOUNDARY_SUMMARY: &str = "Own shared budget, refusal, and solve-result envelopes for ARC crates. Do not absorb benchmark scoring policy, engine step transitions, client sessions, or solver branch internals.";
+pub const EXECUTION_ENVELOPE_BOUNDARY_SUMMARY: &str = "Own shared static and interactive budget, refusal, and solve-result envelopes for ARC crates. Do not absorb benchmark scoring policy, engine step transitions, client sessions, or solver branch internals.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SolveBudget {
@@ -80,6 +80,146 @@ impl TraceLocator {
         }
         Ok(Self(trimmed.to_owned()))
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcInteractiveBudget {
+    pub max_actions: u32,
+}
+
+impl ArcInteractiveBudget {
+    pub fn new(max_actions: u32) -> Result<Self, ArcInteractiveBudgetError> {
+        if max_actions == 0 {
+            return Err(ArcInteractiveBudgetError::ZeroMaxActions);
+        }
+        Ok(Self { max_actions })
+    }
+
+    pub fn state(
+        self,
+        actions_taken: u32,
+    ) -> Result<ArcInteractiveBudgetState, ArcInteractiveBudgetError> {
+        if actions_taken > self.max_actions {
+            return Err(ArcInteractiveBudgetError::ActionsExceedBudget {
+                actions_taken,
+                max_actions: self.max_actions,
+            });
+        }
+        Ok(ArcInteractiveBudgetState {
+            max_actions: self.max_actions,
+            actions_taken,
+            remaining_actions: self.max_actions.saturating_sub(actions_taken),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcInteractiveBudgetState {
+    pub max_actions: u32,
+    pub actions_taken: u32,
+    pub remaining_actions: u32,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArcInteractiveBudgetError {
+    #[error("interactive ARC runs must allow at least one counted action")]
+    ZeroMaxActions,
+    #[error(
+        "interactive ARC budget actions_taken {actions_taken} exceeds max_actions {max_actions}"
+    )]
+    ActionsExceedBudget {
+        actions_taken: u32,
+        max_actions: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArcInteractiveResetKind {
+    FullGame,
+    LevelOnly,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArcInteractiveRefusalCode {
+    InvalidAction,
+    BudgetExhausted,
+    TerminalState,
+    ClosedScorecard,
+    PolicyRefusal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcInteractiveRefusal {
+    pub code: ArcInteractiveRefusalCode,
+    pub step_index: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<crate::schema::ArcAction>,
+    pub detail: String,
+}
+
+impl ArcInteractiveRefusal {
+    pub fn new(
+        code: ArcInteractiveRefusalCode,
+        step_index: u32,
+        action: Option<crate::schema::ArcAction>,
+        detail: impl Into<String>,
+    ) -> Result<Self, ArcInteractiveRefusalError> {
+        let detail = detail.into();
+        let trimmed = detail.trim();
+        if trimmed.is_empty() {
+            return Err(ArcInteractiveRefusalError::EmptyDetail);
+        }
+        Ok(Self {
+            code,
+            step_index,
+            action,
+            detail: trimmed.to_owned(),
+        })
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArcInteractiveRefusalError {
+    #[error("interactive ARC refusal detail must not be empty")]
+    EmptyDetail,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArcInteractiveActionResult {
+    Executed {
+        game_state: crate::schema::ArcGameState,
+        levels_completed: u16,
+        win_levels: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reset: Option<ArcInteractiveResetKind>,
+        terminal: bool,
+    },
+    Refused {
+        refusal: ArcInteractiveRefusal,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArcInteractiveTurnResult {
+    pub step_index: u32,
+    pub requested_action: crate::schema::ArcAction,
+    pub budget: ArcInteractiveBudgetState,
+    pub result: ArcInteractiveActionResult,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArcInteractiveExecutionOutcome {
+    Completed {
+        final_state: crate::schema::ArcGameState,
+        budget: ArcInteractiveBudgetState,
+    },
+    Refused {
+        refusal: ArcInteractiveRefusal,
+    },
 }
 
 impl Serialize for TraceLocator {

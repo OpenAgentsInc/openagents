@@ -11,7 +11,10 @@ use arc_client::{
     RemoteArcEnvironment,
 };
 use arc_core::{
-    ArcAction, ArcBenchmark, ArcGameState, ArcOperationMode, ArcRecording, ArcScorePolicyId,
+    ArcAction, ArcActionKind, ArcBenchmark, ArcGameState, ArcInteractiveActionResult,
+    ArcInteractiveBudget, ArcInteractiveBudgetState, ArcInteractiveExecutionOutcome,
+    ArcInteractiveRefusal, ArcInteractiveRefusalCode, ArcInteractiveResetKind,
+    ArcInteractiveTurnResult, ArcOperationMode, ArcRecording, ArcScorePolicyId,
     ArcScorecardMetadata, ArcTaskId,
 };
 use serde::{Deserialize, Serialize};
@@ -100,6 +103,8 @@ pub struct ArcInteractiveSessionContext {
     pub actions_taken: u32,
     /// Remaining counted actions before the runner halts.
     pub remaining_actions: u32,
+    /// Typed budget state for the current runner step.
+    pub budget: ArcInteractiveBudgetState,
     /// Latest typed observation frame.
     pub latest_frame: ArcSessionFrame,
     /// Full typed history accumulated so far.
@@ -486,6 +491,11 @@ pub struct ArcInteractiveRunArtifacts {
     pub checkpoint_bundle: ArcInteractiveCheckpointBundle,
     /// Solver-owned machine-readable handoff for resume.
     pub checkpoint_handoff: ArcInteractiveCheckpointHandoff,
+    /// Per-step execution or refusal outcomes for the runner-owned episode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub turn_results: Vec<ArcInteractiveTurnResult>,
+    /// Final explicit completion or refusal outcome for the run.
+    pub execution_outcome: ArcInteractiveExecutionOutcome,
     /// Scorecard summary when the environment surface supports it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scorecard_summary: Option<ArcScorecardSummary>,
@@ -562,6 +572,8 @@ where
         &mut self,
         agent: &mut dyn ArcInteractiveAgent,
     ) -> Result<ArcInteractiveRunArtifacts, ArcInteractiveRunnerError> {
+        let budget = ArcInteractiveBudget::new(self.config.max_agent_actions)
+            .map_err(|_| ArcInteractiveRunnerConfigError::ZeroMaxAgentActions)?;
         if let Some(resume_state) = &self.config.resume_state {
             agent.restore_checkpoint_state(resume_state.agent_state.as_ref())?;
         }
@@ -572,16 +584,51 @@ where
             None => self.environment.reset()?,
         };
         history.push(initial);
-
-        loop {
+        let mut turn_results = Vec::new();
+        let mut terminal_reached_during_run = false;
+        let execution_outcome = loop {
             let latest = history.last().cloned().ok_or(
                 ArcInteractiveRunnerError::MissingInitialObservation {
                     game_id: self.environment.info().game_id.clone(),
                 },
             )?;
             let actions_taken = counted_actions(history.as_slice());
-            if is_terminal(latest.game_state) || actions_taken >= self.config.max_agent_actions {
-                break;
+            let current_budget = budget_state(budget, actions_taken);
+            let step_index = u32::try_from(history.len()).unwrap_or(u32::MAX);
+
+            if is_terminal(latest.game_state) {
+                break if terminal_reached_during_run {
+                    ArcInteractiveExecutionOutcome::Completed {
+                        final_state: latest.game_state,
+                        budget: current_budget,
+                    }
+                } else {
+                    ArcInteractiveExecutionOutcome::Refused {
+                        refusal: refusal(
+                            ArcInteractiveRefusalCode::TerminalState,
+                            step_index,
+                            None,
+                            format!(
+                                "environment `{}` is already in terminal state {:?}",
+                                self.environment.info().game_id,
+                                latest.game_state
+                            ),
+                        ),
+                    }
+                };
+            }
+            if current_budget.remaining_actions == 0 {
+                break ArcInteractiveExecutionOutcome::Refused {
+                    refusal: refusal(
+                        ArcInteractiveRefusalCode::BudgetExhausted,
+                        step_index,
+                        None,
+                        format!(
+                            "interactive action budget exhausted after {} counted actions",
+                            current_budget.actions_taken
+                        ),
+                    ),
+                };
             }
 
             let context = ArcInteractiveSessionContext {
@@ -591,21 +638,105 @@ where
                 scorecard_id: self.environment.scorecard_id().to_owned(),
                 operation_mode: self.environment.operation_mode(),
                 session_guid: self.environment.session_guid().map(ToOwned::to_owned),
-                step_index: u32::try_from(history.len()).unwrap_or(u32::MAX),
-                actions_taken,
-                remaining_actions: self.config.max_agent_actions.saturating_sub(actions_taken),
+                step_index,
+                actions_taken: current_budget.actions_taken,
+                remaining_actions: current_budget.remaining_actions,
+                budget: current_budget,
                 latest_frame: latest,
                 history: history.clone(),
                 resume_state: self.config.resume_state.clone(),
             };
-            let step = agent.step(&context)?;
-            let next = if step.action == ArcAction::Reset {
-                self.environment.reset()?
-            } else {
-                self.environment.step(step.action)?
+            let step = match agent.step(&context) {
+                Ok(step) => step,
+                Err(error) => {
+                    break ArcInteractiveExecutionOutcome::Refused {
+                        refusal: refusal(
+                            ArcInteractiveRefusalCode::PolicyRefusal,
+                            step_index,
+                            None,
+                            error.to_string(),
+                        ),
+                    };
+                }
             };
+
+            if step.action != ArcAction::Reset
+                && !context
+                    .latest_frame
+                    .available_actions
+                    .contains(&step.action.kind())
+            {
+                let refusal = refusal(
+                    ArcInteractiveRefusalCode::InvalidAction,
+                    step_index,
+                    Some(step.action.clone()),
+                    format!(
+                        "requested action {:?} is not available; allowed actions: {}",
+                        step.action,
+                        format_available_actions(&context.latest_frame.available_actions)
+                    ),
+                );
+                turn_results.push(ArcInteractiveTurnResult {
+                    step_index,
+                    requested_action: step.action,
+                    budget: current_budget,
+                    result: ArcInteractiveActionResult::Refused {
+                        refusal: refusal.clone(),
+                    },
+                });
+                break ArcInteractiveExecutionOutcome::Refused { refusal };
+            }
+
+            let next = if step.action == ArcAction::Reset {
+                self.environment.reset()
+            } else {
+                self.environment.step(step.action.clone())
+            };
+            let next = match next {
+                Ok(next) => next,
+                Err(error) => {
+                    if let Some(refusal) =
+                        classify_client_refusal(&error, step_index, Some(step.action.clone()))
+                    {
+                        turn_results.push(ArcInteractiveTurnResult {
+                            step_index,
+                            requested_action: step.action,
+                            budget: current_budget,
+                            result: ArcInteractiveActionResult::Refused {
+                                refusal: refusal.clone(),
+                            },
+                        });
+                        break ArcInteractiveExecutionOutcome::Refused { refusal };
+                    }
+                    return Err(error.into());
+                }
+            };
+
+            terminal_reached_during_run = is_terminal(next.game_state);
             history.push(next);
-        }
+            let latest = history
+                .last()
+                .expect("history contains the frame that was just appended");
+            turn_results.push(ArcInteractiveTurnResult {
+                step_index,
+                requested_action: step.action.clone(),
+                budget: budget_state(budget, counted_actions(history.as_slice())),
+                result: ArcInteractiveActionResult::Executed {
+                    game_state: latest.game_state,
+                    levels_completed: latest.levels_completed,
+                    win_levels: latest.win_levels,
+                    reset: (step.action == ArcAction::Reset).then_some(classify_reset_kind(latest)),
+                    terminal: terminal_reached_during_run,
+                },
+            });
+
+            if terminal_reached_during_run {
+                break ArcInteractiveExecutionOutcome::Completed {
+                    final_state: latest.game_state,
+                    budget: budget_state(budget, counted_actions(history.as_slice())),
+                };
+            }
+        };
 
         let mut recording = self.environment.recording()?.ok_or_else(|| {
             ArcInteractiveRunnerError::MissingRecording {
@@ -636,7 +767,12 @@ where
             session_guid: self.environment.session_guid().map(ToOwned::to_owned),
             next_step_index: u32::try_from(recording.steps.len()).unwrap_or(u32::MAX),
             actions_taken: report.total_actions,
-            terminal: is_terminal(report.final_state),
+            terminal: match &execution_outcome {
+                ArcInteractiveExecutionOutcome::Completed { .. } => true,
+                ArcInteractiveExecutionOutcome::Refused { refusal } => {
+                    refusal.code == ArcInteractiveRefusalCode::TerminalState
+                }
+            },
             agent_name: agent.agent_name().to_owned(),
             agent_state: agent.checkpoint_state()?,
         };
@@ -653,6 +789,8 @@ where
             recording,
             checkpoint_bundle,
             checkpoint_handoff,
+            turn_results,
+            execution_outcome,
             scorecard_summary,
         })
     }
@@ -688,6 +826,89 @@ fn counted_actions(history: &[ArcSessionFrame]) -> u32 {
         .count()
         .try_into()
         .unwrap_or(u32::MAX)
+}
+
+fn budget_state(budget: ArcInteractiveBudget, actions_taken: u32) -> ArcInteractiveBudgetState {
+    debug_assert!(actions_taken <= budget.max_actions);
+    ArcInteractiveBudgetState {
+        max_actions: budget.max_actions,
+        actions_taken,
+        remaining_actions: budget.max_actions.saturating_sub(actions_taken),
+    }
+}
+
+fn classify_reset_kind(frame: &ArcSessionFrame) -> ArcInteractiveResetKind {
+    if frame.full_reset {
+        ArcInteractiveResetKind::FullGame
+    } else {
+        ArcInteractiveResetKind::LevelOnly
+    }
+}
+
+fn refusal(
+    code: ArcInteractiveRefusalCode,
+    step_index: u32,
+    action: Option<ArcAction>,
+    detail: impl Into<String>,
+) -> ArcInteractiveRefusal {
+    ArcInteractiveRefusal {
+        code,
+        step_index,
+        action,
+        detail: detail.into().trim().to_owned(),
+    }
+}
+
+fn classify_client_refusal(
+    error: &ArcClientError,
+    step_index: u32,
+    action: Option<ArcAction>,
+) -> Option<ArcInteractiveRefusal> {
+    match error {
+        ArcClientError::UnexpectedStatus { status, body, .. } => {
+            let detail =
+                compatibility_error_message(body).unwrap_or_else(|| body.trim().to_owned());
+            let normalized = detail.to_ascii_lowercase();
+            if normalized.contains("scorecard") && normalized.contains("closed") {
+                return Some(refusal(
+                    ArcInteractiveRefusalCode::ClosedScorecard,
+                    step_index,
+                    action,
+                    detail,
+                ));
+            }
+            if status.as_u16() == 403
+                || status.as_u16() == 409
+                || normalized.contains("competition")
+            {
+                return Some(refusal(
+                    ArcInteractiveRefusalCode::PolicyRefusal,
+                    step_index,
+                    action,
+                    detail,
+                ));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn compatibility_error_message(body: &str) -> Option<String> {
+    let parsed: Value = serde_json::from_str(body).ok()?;
+    parsed
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn format_available_actions(actions: &[ArcActionKind]) -> String {
+    if actions.is_empty() {
+        return "[\"RESET\"]".to_owned();
+    }
+    serde_json::to_string(actions).unwrap_or_else(|_| "[\"unknown\"]".to_owned())
 }
 
 fn is_terminal(state: ArcGameState) -> bool {
