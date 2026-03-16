@@ -2,7 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use psionic_core::{DType, QuantizationMode, TensorData, TensorSpec};
+use psionic_core::{
+    DType, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode, TensorData,
+    TensorSpec,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -481,16 +484,115 @@ impl std::fmt::Display for ModuleStateLoadError {
                 "module state load dtype mismatch for `{path}`: expected {expected:?}, found {actual:?}"
             ),
             Self::InvalidSourcePayload { path, source } => {
-                write!(f, "module state load payload for `{path}` is invalid: {source}")
+                write!(
+                    f,
+                    "module state load payload for `{path}` is invalid: {source}"
+                )
             }
             Self::MissingTargetPath { path, source } => {
-                write!(f, "module state load target path `{path}` disappeared: {source}")
+                write!(
+                    f,
+                    "module state load target path `{path}` disappeared: {source}"
+                )
             }
         }
     }
 }
 
 impl std::error::Error for ModuleStateLoadError {}
+
+/// Outcome status for one module parity case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleParityStatus {
+    /// The bounded module semantics matched the seeded expectation.
+    Supported,
+    /// The bounded module semantics refused explicitly.
+    Refused,
+}
+
+/// One machine-readable seeded module parity case result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleParityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable oracle family label.
+    pub oracle_family: String,
+    /// Stable module-kind label.
+    pub module_kind: String,
+    /// Stable capability-profile label.
+    pub capability_profile: String,
+    /// Buffer view used by this module parity case.
+    pub view: ModuleStateView,
+    /// Expected module paths under the bounded parity profile.
+    pub expected_module_paths: Vec<String>,
+    /// Actual module paths surfaced by the implementation.
+    pub actual_module_paths: Vec<String>,
+    /// Expected parameter paths under the bounded parity profile.
+    pub expected_parameter_paths: Vec<String>,
+    /// Actual parameter paths surfaced by the implementation.
+    pub actual_parameter_paths: Vec<String>,
+    /// Expected buffer paths under the bounded parity profile.
+    pub expected_buffer_paths: Vec<String>,
+    /// Actual buffer paths surfaced by the implementation.
+    pub actual_buffer_paths: Vec<String>,
+    /// Expected state-dict keys under the bounded parity profile.
+    pub expected_state_dict_keys: Vec<String>,
+    /// Actual state-dict keys surfaced by the implementation.
+    pub actual_state_dict_keys: Vec<String>,
+    /// Expected refusal when the case is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_refusal: Option<PsionicRefusal>,
+    /// Actual refusal surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_refusal: Option<PsionicRefusal>,
+    /// Stable parity outcome status.
+    pub status: ModuleParityStatus,
+}
+
+/// Machine-readable seeded module parity matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleParityMatrixReport {
+    /// Stable schema version for the parity matrix report.
+    pub schema_version: u32,
+    /// Stable oracle family window label.
+    pub oracle_family_window: String,
+    /// Seeded parity case results.
+    pub cases: Vec<ModuleParityCaseResult>,
+    /// Stable digest over the report contents.
+    pub matrix_digest: String,
+}
+
+impl ModuleParityMatrixReport {
+    fn new(oracle_family_window: impl Into<String>, cases: Vec<ModuleParityCaseResult>) -> Self {
+        let oracle_family_window = oracle_family_window.into();
+        let matrix_digest =
+            stable_module_parity_matrix_digest(oracle_family_window.as_str(), cases.as_slice());
+        Self {
+            schema_version: 1,
+            oracle_family_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("oracle_family_window={}", self.oracle_family_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{:?}",
+                case.case_id, case.module_kind, case.status
+            ));
+        }
+        lines
+    }
+}
 
 /// One nested reusable module tree.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -890,6 +992,97 @@ impl Module {
     }
 }
 
+#[derive(Clone, Debug)]
+struct ModuleParityExpectations {
+    module_paths: Vec<String>,
+    parameter_paths: Vec<String>,
+    buffer_paths: Vec<String>,
+    state_dict_keys: Vec<String>,
+}
+
+/// Returns the seeded module parity matrix report for the current built-in
+/// Psionic module tree surface.
+pub fn builtin_module_parity_matrix_report() -> Result<ModuleParityMatrixReport, ModuleStateError> {
+    let mut cases = Vec::new();
+
+    cases.push(run_module_parity_supported_case(
+        "pytorch.linear.normalized_state_dict",
+        "linear",
+        "normalized_state_dict_set",
+        ModuleStateView::PersistentOnly,
+        build_linear_module,
+        ModuleParityExpectations {
+            module_paths: normalized_paths([""]),
+            parameter_paths: normalized_paths(["bias", "weight"]),
+            buffer_paths: Vec::new(),
+            state_dict_keys: normalized_paths(["bias", "weight"]),
+        },
+    )?);
+    cases.push(run_module_parity_supported_case(
+        "pytorch.batch_norm1d.persistent_buffers",
+        "batch_norm1d",
+        "persistent_buffer_contract",
+        ModuleStateView::PersistentOnly,
+        build_batch_norm1d_module,
+        ModuleParityExpectations {
+            module_paths: normalized_paths([""]),
+            parameter_paths: normalized_paths(["bias", "weight"]),
+            buffer_paths: normalized_paths(["running_mean", "running_var"]),
+            state_dict_keys: normalized_paths(["bias", "running_mean", "running_var", "weight"]),
+        },
+    )?);
+    cases.push(run_module_parity_supported_case(
+        "pytorch.transformer_encoder_layer.normalized_nested_paths",
+        "transformer_encoder_layer",
+        "normalized_nested_all_buffers",
+        ModuleStateView::AllBuffers,
+        build_transformer_encoder_layer_module,
+        ModuleParityExpectations {
+            module_paths: normalized_paths(["", "norm1", "self_attn", "self_attn.out_proj"]),
+            parameter_paths: normalized_paths([
+                "norm1.bias",
+                "norm1.weight",
+                "self_attn.in_proj_weight",
+                "self_attn.out_proj.bias",
+                "self_attn.out_proj.weight",
+            ]),
+            buffer_paths: normalized_paths(["self_attn.cached_mask"]),
+            state_dict_keys: normalized_paths([
+                "norm1.bias",
+                "norm1.weight",
+                "self_attn.cached_mask",
+                "self_attn.in_proj_weight",
+                "self_attn.out_proj.bias",
+                "self_attn.out_proj.weight",
+            ]),
+        },
+    )?);
+    cases.push(run_module_parity_refusal_case(
+        "pytorch.linear.registration_order_preservation",
+        "linear",
+        "registration_order_preserving_state_dict",
+        ModuleStateView::PersistentOnly,
+        build_linear_module,
+        ModuleParityExpectations {
+            module_paths: normalized_paths([""]),
+            parameter_paths: normalized_paths(["bias", "weight"]),
+            buffer_paths: Vec::new(),
+            state_dict_keys: vec![String::from("weight"), String::from("bias")],
+        },
+        PsionicRefusal::new(
+            PsionicRefusalCode::SerializationIncompatibility,
+            PsionicRefusalScope::Runtime,
+            "module parity case requires PyTorch registration-order-preserving state_dict keys, but psionic-nn currently emits deterministic lexical key order",
+        )
+        .with_subject("state_dict_registration_order"),
+    )?);
+
+    Ok(ModuleParityMatrixReport::new(
+        "pytorch_module_db_seed_v0",
+        cases,
+    ))
+}
+
 fn validate_local_name(name: &str) -> Result<(), ModuleStateError> {
     if name.trim().is_empty() || name.contains('.') {
         return Err(ModuleStateError::InvalidLocalName {
@@ -897,6 +1090,196 @@ fn validate_local_name(name: &str) -> Result<(), ModuleStateError> {
         });
     }
     Ok(())
+}
+
+fn run_module_parity_supported_case(
+    case_id: &str,
+    module_kind: &str,
+    capability_profile: &str,
+    view: ModuleStateView,
+    build: impl FnOnce() -> Result<Module, ModuleStateError>,
+    expected: ModuleParityExpectations,
+) -> Result<ModuleParityCaseResult, ModuleStateError> {
+    let module = build()?;
+    Ok(ModuleParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_module_db_seed"),
+        module_kind: String::from(module_kind),
+        capability_profile: String::from(capability_profile),
+        view,
+        expected_module_paths: expected.module_paths,
+        actual_module_paths: module
+            .named_modules()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect(),
+        expected_parameter_paths: expected.parameter_paths,
+        actual_parameter_paths: module
+            .named_parameters()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect(),
+        expected_buffer_paths: expected.buffer_paths,
+        actual_buffer_paths: module
+            .named_buffers(view)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect(),
+        expected_state_dict_keys: expected.state_dict_keys,
+        actual_state_dict_keys: module.state_dict_with_view(view).keys(),
+        expected_refusal: None,
+        actual_refusal: None,
+        status: ModuleParityStatus::Supported,
+    })
+}
+
+fn run_module_parity_refusal_case(
+    case_id: &str,
+    module_kind: &str,
+    capability_profile: &str,
+    view: ModuleStateView,
+    build: impl FnOnce() -> Result<Module, ModuleStateError>,
+    expected: ModuleParityExpectations,
+    expected_refusal: PsionicRefusal,
+) -> Result<ModuleParityCaseResult, ModuleStateError> {
+    let module = build()?;
+    let actual_module_paths = module
+        .named_modules()
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect::<Vec<_>>();
+    let actual_parameter_paths = module
+        .named_parameters()
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect::<Vec<_>>();
+    let actual_buffer_paths = module
+        .named_buffers(view)
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect::<Vec<_>>();
+    let actual_state_dict_keys = module.state_dict_with_view(view).keys();
+    let actual_refusal = if actual_state_dict_keys == expected.state_dict_keys {
+        None
+    } else {
+        Some(
+            PsionicRefusal::new(
+                PsionicRefusalCode::SerializationIncompatibility,
+                PsionicRefusalScope::Runtime,
+                "module parity case requires PyTorch registration-order-preserving state_dict keys, but psionic-nn currently emits deterministic lexical key order",
+            )
+            .with_subject("state_dict_registration_order"),
+        )
+    };
+    let status = if actual_refusal.is_some() {
+        ModuleParityStatus::Refused
+    } else {
+        ModuleParityStatus::Supported
+    };
+    Ok(ModuleParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_module_db_seed"),
+        module_kind: String::from(module_kind),
+        capability_profile: String::from(capability_profile),
+        view,
+        expected_module_paths: expected.module_paths,
+        actual_module_paths,
+        expected_parameter_paths: expected.parameter_paths,
+        actual_parameter_paths,
+        expected_buffer_paths: expected.buffer_paths,
+        actual_buffer_paths,
+        expected_state_dict_keys: expected.state_dict_keys,
+        actual_state_dict_keys,
+        expected_refusal: Some(expected_refusal),
+        actual_refusal,
+        status,
+    })
+}
+
+fn build_linear_module() -> Result<Module, ModuleStateError> {
+    let mut module = Module::new("linear0", "linear")?;
+    module.insert_parameter(
+        "weight",
+        f32_parameter_entry(&[2, 2], &[1.0, 2.0, 3.0, 4.0])?,
+    )?;
+    module.insert_parameter("bias", f32_parameter_entry(&[2], &[0.1, 0.2])?)?;
+    Ok(module)
+}
+
+fn build_batch_norm1d_module() -> Result<Module, ModuleStateError> {
+    let mut module = Module::new("bn0", "batch_norm1d")?;
+    module.insert_parameter("weight", f32_parameter_entry(&[2], &[1.0, 1.0])?)?;
+    module.insert_parameter("bias", f32_parameter_entry(&[2], &[0.0, 0.0])?)?;
+    module.insert_buffer("running_mean", f32_buffer_entry(&[2], &[0.4, -0.1], true)?)?;
+    module.insert_buffer("running_var", f32_buffer_entry(&[2], &[1.2, 0.8], true)?)?;
+    Ok(module)
+}
+
+fn build_transformer_encoder_layer_module() -> Result<Module, ModuleStateError> {
+    let mut root = Module::new("layer0", "transformer_encoder_layer")?;
+
+    let mut self_attn = Module::new("attn0", "multihead_attention")?;
+    self_attn.insert_parameter(
+        "in_proj_weight",
+        f32_parameter_entry(
+            &[6, 2],
+            &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2],
+        )?,
+    )?;
+    self_attn.insert_buffer("cached_mask", f32_buffer_entry(&[2], &[0.0, 1.0], false)?)?;
+
+    let mut out_proj = Module::new("out_proj0", "linear")?;
+    out_proj.insert_parameter(
+        "weight",
+        f32_parameter_entry(&[2, 2], &[0.9, 0.1, 0.3, 0.7])?,
+    )?;
+    out_proj.insert_parameter("bias", f32_parameter_entry(&[2], &[0.0, 0.1])?)?;
+    self_attn.insert_submodule("out_proj", out_proj)?;
+
+    let mut norm1 = Module::new("norm10", "layer_norm")?;
+    norm1.insert_parameter("weight", f32_parameter_entry(&[2], &[1.0, 1.0])?)?;
+    norm1.insert_parameter("bias", f32_parameter_entry(&[2], &[0.0, 0.0])?)?;
+
+    root.insert_submodule("self_attn", self_attn)?;
+    root.insert_submodule("norm1", norm1)?;
+    Ok(root)
+}
+
+fn f32_parameter_entry(
+    shape: &[usize],
+    values: &[f32],
+) -> Result<ModuleParameter, ModuleStateError> {
+    ModuleParameter::new(
+        TensorSpec::new(
+            psionic_core::Shape::new(shape.to_vec()),
+            DType::F32,
+            psionic_core::Device::cpu(),
+        ),
+        TensorData::F32(values.to_vec()),
+        true,
+    )
+}
+
+fn f32_buffer_entry(
+    shape: &[usize],
+    values: &[f32],
+    persistent: bool,
+) -> Result<ModuleBuffer, ModuleStateError> {
+    ModuleBuffer::new(
+        TensorSpec::new(
+            psionic_core::Shape::new(shape.to_vec()),
+            DType::F32,
+            psionic_core::Device::cpu(),
+        ),
+        TensorData::F32(values.to_vec()),
+        persistent,
+    )
+}
+
+fn normalized_paths<const N: usize>(paths: [&str; N]) -> Vec<String> {
+    let mut normalized = paths.into_iter().map(String::from).collect::<Vec<_>>();
+    normalized.sort();
+    normalized
 }
 
 fn split_state_path(path: &str) -> Result<(String, String), ModuleStateError> {
@@ -961,6 +1344,68 @@ fn validate_tensor_payload(
         }
     }
     Ok(())
+}
+
+fn stable_module_parity_matrix_digest(
+    oracle_family_window: &str,
+    cases: &[ModuleParityCaseResult],
+) -> String {
+    let mut lines = vec![format!("oracle_family_window={oracle_family_window}")];
+    for case in cases {
+        lines.push(format!(
+            "{}|{}|{}|{:?}|{:?}",
+            case.case_id, case.module_kind, case.capability_profile, case.view, case.status
+        ));
+        for path in &case.expected_module_paths {
+            lines.push(format!("expected_module={path}"));
+        }
+        for path in &case.actual_module_paths {
+            lines.push(format!("actual_module={path}"));
+        }
+        for path in &case.expected_parameter_paths {
+            lines.push(format!("expected_parameter={path}"));
+        }
+        for path in &case.actual_parameter_paths {
+            lines.push(format!("actual_parameter={path}"));
+        }
+        for path in &case.expected_buffer_paths {
+            lines.push(format!("expected_buffer={path}"));
+        }
+        for path in &case.actual_buffer_paths {
+            lines.push(format!("actual_buffer={path}"));
+        }
+        for key in &case.expected_state_dict_keys {
+            lines.push(format!("expected_state_dict_key={key}"));
+        }
+        for key in &case.actual_state_dict_keys {
+            lines.push(format!("actual_state_dict_key={key}"));
+        }
+        if let Some(refusal) = &case.expected_refusal {
+            lines.push(format!(
+                "expected_refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or_default(),
+                refusal.detail
+            ));
+        }
+        if let Some(refusal) = &case.actual_refusal {
+            lines.push(format!(
+                "actual_refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or_default(),
+                refusal.detail
+            ));
+        }
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
 }
 
 fn stable_module_state_tree_digest(
@@ -1080,9 +1525,9 @@ mod tests {
     use psionic_core::{Device, Shape, TensorData, TensorSpec};
 
     use super::{
-        DType, Module, ModuleBuffer, ModuleParameter, ModuleStateDict, ModuleStateEntry,
-        ModuleStateEntryKind, ModuleStateError, ModuleStateLoadError, ModuleStateLoadMode,
-        ModuleStateView,
+        DType, Module, ModuleBuffer, ModuleParameter, ModuleParityStatus, ModuleStateDict,
+        ModuleStateEntry, ModuleStateEntryKind, ModuleStateError, ModuleStateLoadError,
+        ModuleStateLoadMode, ModuleStateView, builtin_module_parity_matrix_report,
     };
 
     fn f32_parameter(shape: &[usize], values: &[f32]) -> Result<ModuleParameter, ModuleStateError> {
@@ -1106,8 +1551,8 @@ mod tests {
     }
 
     #[test]
-    fn module_tree_traversal_surfaces_named_parameters_buffers_and_modules(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn module_tree_traversal_surfaces_named_parameters_buffers_and_modules()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut root = Module::new("toy-transformer", "transformer")?;
         root.insert_parameter("embedding", f32_parameter(&[2, 2], &[0.1, 0.2, 0.3, 0.4])?)?;
         root.insert_buffer("running_scale", f32_buffer(&[2], &[1.0, 1.0], true)?)?;
@@ -1162,8 +1607,8 @@ mod tests {
     }
 
     #[test]
-    fn module_state_tree_persistent_view_omits_nonpersistent_buffers_and_stays_stable(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn module_state_tree_persistent_view_omits_nonpersistent_buffers_and_stays_stable()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut root = Module::new("toy-module", "normed_linear")?;
         root.insert_parameter("weight", f32_parameter(&[2, 2], &[1.0, 2.0, 3.0, 4.0])?)?;
         root.insert_buffer("running_mean", f32_buffer(&[2], &[0.0, 0.1], true)?)?;
@@ -1178,17 +1623,19 @@ mod tests {
         assert_eq!(persistent.entries[0].kind, ModuleStateEntryKind::Parameter);
         assert_eq!(persistent.entries[1].kind, ModuleStateEntryKind::Buffer);
         assert!(persistent.entries.iter().all(|entry| entry.persistent));
-        assert!(persistent
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("state_tree_digest=")));
+        assert!(
+            persistent
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("state_tree_digest="))
+        );
         assert_eq!(root.stable_digest(), all.state_tree_digest);
         Ok(())
     }
 
     #[test]
-    fn module_tree_refuses_shadowing_invalid_names_and_missing_paths(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn module_tree_refuses_shadowing_invalid_names_and_missing_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut root = Module::new("toy", "linear")?;
         root.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
 
@@ -1239,8 +1686,8 @@ mod tests {
     }
 
     #[test]
-    fn module_state_dict_is_deterministic_and_persistent_only_by_default(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn module_state_dict_is_deterministic_and_persistent_only_by_default()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut root = Module::new("toy", "encoder")?;
         root.insert_parameter("weight", f32_parameter(&[2], &[1.0, 2.0])?)?;
         root.insert_buffer("running_mean", f32_buffer(&[2], &[0.0, 0.1], true)?)?;
@@ -1252,10 +1699,12 @@ mod tests {
             vec![String::from("running_mean"), String::from("weight")]
         );
         assert_eq!(state_dict.view, ModuleStateView::PersistentOnly);
-        assert!(state_dict
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("state_dict_digest=")));
+        assert!(
+            state_dict
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("state_dict_digest="))
+        );
         assert!(state_dict.entry("scratch").is_none());
 
         let all_buffers = root.state_dict_with_view(ModuleStateView::AllBuffers);
@@ -1289,8 +1738,8 @@ mod tests {
     }
 
     #[test]
-    fn non_strict_module_state_load_reports_missing_and_unexpected_keys(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn non_strict_module_state_load_reports_missing_and_unexpected_keys()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut target = Module::new("target", "linear")?;
         target.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
         target.insert_buffer("running_mean", f32_buffer(&[1], &[0.0], true)?)?;
@@ -1313,8 +1762,8 @@ mod tests {
     }
 
     #[test]
-    fn module_state_load_refuses_shape_and_kind_mismatches_even_non_strict(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn module_state_load_refuses_shape_and_kind_mismatches_even_non_strict()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut target = Module::new("target", "block")?;
         target.insert_parameter("weight", f32_parameter(&[2], &[1.0, 2.0])?)?;
 
@@ -1365,6 +1814,72 @@ mod tests {
         assert_eq!(
             target.parameter("weight")?.data,
             TensorData::F32(vec![1.0, 2.0])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn module_parity_matrix_report_tracks_seeded_supported_and_refusal_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_module_parity_matrix_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.oracle_family_window, "pytorch_module_db_seed_v0");
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
+
+        let linear_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.linear.normalized_state_dict")
+            .expect("missing linear parity case");
+        assert_eq!(linear_case.status, ModuleParityStatus::Supported);
+        assert_eq!(
+            linear_case.expected_module_paths,
+            linear_case.actual_module_paths
+        );
+        assert_eq!(
+            linear_case.expected_parameter_paths,
+            linear_case.actual_parameter_paths
+        );
+        assert_eq!(
+            linear_case.expected_buffer_paths,
+            linear_case.actual_buffer_paths
+        );
+        assert_eq!(
+            linear_case.expected_state_dict_keys,
+            linear_case.actual_state_dict_keys
+        );
+
+        let refusal_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.linear.registration_order_preservation")
+            .expect("missing registration-order refusal case");
+        assert_eq!(refusal_case.status, ModuleParityStatus::Refused);
+        assert_eq!(
+            refusal_case
+                .expected_refusal
+                .as_ref()
+                .map(|refusal| refusal.code),
+            refusal_case
+                .actual_refusal
+                .as_ref()
+                .map(|refusal| refusal.code)
+        );
+        assert_eq!(
+            refusal_case
+                .expected_refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("state_dict_registration_order")
+        );
+        assert_ne!(
+            refusal_case.expected_state_dict_keys,
+            refusal_case.actual_state_dict_keys
         );
         Ok(())
     }
