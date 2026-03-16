@@ -326,15 +326,19 @@ Current posture:
   optional deployment bundle binding, stable import/export receipts, and a
   bounded `.mlxfn` compatibility shell with explicit refusal outside the
   current subset.
-- `psionic-distributed`: first public framework-distributed group plus core
-  collective-helper surface above current runtime mesh truth, with explicit
-  mesh bootstrap, reusable global group initialization, honest singleton
-  fallback, ordered member/rank snapshots, explicit-plan subgroup split
-  semantics, MLX-style singleton passthrough for `all_sum` / `all_gather` /
-  `reduce_scatter`, explicit host-owned reference emulation for multi-rank
-  `all_sum` / `all_gather` / `reduce_scatter` and `recv`, validation-only
-  `send`, and typed collective-support snapshots while backend transport,
-  launch/config tooling, and backend-family mapping remain later work.
+- `psionic-distributed`: first public framework-distributed group, core
+  collective-helper, and bounded launch/config planning surface above current
+  runtime mesh truth, with explicit mesh bootstrap, reusable global group
+  initialization, honest singleton fallback, ordered member/rank snapshots,
+  explicit-plan subgroup split semantics, MLX-style singleton passthrough for
+  `all_sum` / `all_gather` / `reduce_scatter`, explicit host-owned reference
+  emulation for multi-rank `all_sum` / `all_gather` / `reduce_scatter` and
+  `recv`, validation-only `send`, hostfile parsing, honest
+  single-rank-per-node launch validation, cluster membership/address/backend
+  readiness checks, sandbox contract preflight, per-rank bootstrap payloads
+  and sandbox job plans, distributed reserved-environment synthesis, cluster
+  execution evidence, and stable plan digests while backend transport and
+  backend-family mapping remain later work.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

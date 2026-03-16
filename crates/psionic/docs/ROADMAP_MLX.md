@@ -522,7 +522,7 @@ collectives, cluster, and train substrate.
 | --- | --- | --- | --- |
 | `PMLX-501` / [#3859](https://github.com/OpenAgentsInc/openagents/issues/3859) | done (2026-03-16) | `Psionic MLX: add a public distributed group API with init, split, rank, and size semantics` | `psionic-distributed` now exposes the first bounded public framework-distributed group layer above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, and explicit-plan subgroup split semantics while leaving collective helpers and backend-family mapping to `PMLX-502` through `PMLX-507`. |
 | `PMLX-502` / [#3860](https://github.com/OpenAgentsInc/openagents/issues/3860) | done (2026-03-16) | `Psionic MLX: expose all_sum, all_gather, reduce_scatter, send, and recv above the distributed group surface` | `psionic-distributed` now exposes the first bounded public framework-distributed collective-helper layer above `DistributedGroup`, with MLX-style singleton passthrough for `all_sum` / `all_gather` / `reduce_scatter`, explicit host-owned per-rank reference emulation for multi-rank `all_sum` / `all_gather` / `reduce_scatter` and `recv`, validation-only `send`, typed collective-support snapshots, and explicit refusal instead of pretending backend transport or backend-family mapping is already public. |
-| `PMLX-503` | planned | `Psionic MLX: add a framework launch and distributed-config surface mapped onto Psionic cluster truth` | Build the MLX-analogue of launch and hostfile tooling without bypassing Psionic cluster, sandbox, or evidence contracts. |
+| `PMLX-503` / [#3861](https://github.com/OpenAgentsInc/openagents/issues/3861) | done (2026-03-16) | `Psionic MLX: add a framework launch and distributed-config surface mapped onto Psionic cluster truth` | `psionic-distributed` now exposes a bounded public launch/config planning shell above current cluster, sandbox, and mesh truth, including hostfile parsing, honest single-rank-per-node validation, cluster membership/address/backend readiness checks, sandbox contract preflight, per-rank bootstrap payloads and sandbox job plans, distributed reserved-environment synthesis, cluster execution evidence, and stable plan digests while backend-family mapping and transport-backed multi-rank execution remain later work. |
 | `PMLX-504` | planned | `Psionic MLX: add average_gradients and grouped all-reduce helpers` | Expose tree-aware gradient reduction helpers for data-parallel training above the lower-level collectives layer. |
 | `PMLX-505` | planned | `Psionic MLX: add tensor-parallel sharded linear helpers and module wrappers` | Publish the framework-level tensor-parallel helper family needed for MLX-class distributed module semantics. |
 | `PMLX-506` | planned | `Psionic MLX: add an fsdp_apply_gradients-style helper on top of distributed optimizer contracts` | Reuse current train distributed-optimizer substrate to expose an MLX-style FSDP-class update helper above it. |
@@ -646,7 +646,7 @@ track in parallel.
 
 - `PMLX-501` done 2026-03-16
 - `PMLX-502` done 2026-03-16
-- `PMLX-503`
+- `PMLX-503` done 2026-03-16
 - `PMLX-504`
 - `PMLX-505`
 - `PMLX-506`
