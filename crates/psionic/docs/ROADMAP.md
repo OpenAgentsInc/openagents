@@ -527,6 +527,11 @@ Its declared scope is:
   program-and-trace tokenization, versioned tokenized dataset manifests, and
   frozen split-aware packing plans that later model/training issues can depend
   on without regenerating ad hoc traces
+- landed trained-executor Phase 4 bar from the post-audit issue spine: a first
+  neural executor transformer family now exists in `psionic-models`, with an
+  executor-specific descriptor, 2D lookup-head geometry claims, next-token
+  logits over the Tassadar sequence vocabulary, and linear decode state that is
+  explicitly separate from the handcrafted fixture lane
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

@@ -120,6 +120,10 @@ These issues track the executor-specific work that is still missing:
     program-plus-trace tokenization, versioned tokenized dataset manifests, and
     frozen split-aware packing plans for the Sudoku-v0 corpus
 - `#3780` Phase 4: implement a real executor transformer family
+  - implemented March 16, 2026: first neural executor transformer family in
+    `psionic-models`, with an executor-specific descriptor, 2D lookup-head
+    geometry claims, next-token logits over the Tassadar vocabulary, and an
+    explicit next-token-only claim boundary
 - `#3781` Phase 5: add next-token trace training and exact-trace evaluation
 - `#3782` Phase 6: benchmark real neural linear decode against CPU reference
 - `#3783` Phase 7: execute the first Psionic-only Sudoku-v0 training run

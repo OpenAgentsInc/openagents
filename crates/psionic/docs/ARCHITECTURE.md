@@ -181,6 +181,12 @@ The current scope is:
   fixed executor vocabulary, reversible symbolic decode, versioned tokenized
   dataset manifests in `psionic-data`, CPU-reference dataset generation in
   `psionic-eval`, and frozen split packing plans in `psionic-train`
+- landed trained-executor Phase 4 follow-on bar: `psionic-models` now carries a
+  first real neural executor transformer family for the Sudoku-v0 lane, with
+  explicit executor-specific descriptor/config surfaces, 2D lookup-head
+  geometry claims, next-token logits over the fixed Tassadar vocabulary, and a
+  claim boundary that stays honest about this being a trained sequence model
+  rather than the already-exact handcrafted executor
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

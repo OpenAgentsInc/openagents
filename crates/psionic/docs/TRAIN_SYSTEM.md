@@ -185,6 +185,11 @@ That now includes one intentionally narrow executor-training answer:
   tokenizer/vocabulary digest lineage, split-stable dataset manifests, and
   generic packing plans for train/validation/test instead of leaving later
   training work to regenerate traces ad hoc
+- the model side now also has a first honest train target above that corpus:
+  `psionic-models` carries a real neural executor transformer family with
+  explicit next-token logits, linear decode state, and 2D lookup-head geometry
+  claims, while still keeping the claim boundary truthful that this is not yet
+  the exact handcrafted executor path
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim
