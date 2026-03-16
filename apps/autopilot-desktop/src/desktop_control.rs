@@ -553,6 +553,12 @@ pub struct DesktopControlAppleAdapterOperatorProgressStatus {
     pub completed_eval_samples: Option<u64>,
     pub expected_eval_samples: Option<u64>,
     pub last_checkpoint_path: Option<String>,
+    pub telemetry_log_path: Option<String>,
+    pub latest_artifact_path: Option<String>,
+    pub latest_artifact_kind: Option<String>,
+    pub latest_resource_summary: Option<String>,
+    pub last_failure_phase: Option<String>,
+    pub last_failure_detail: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -573,6 +579,10 @@ pub struct DesktopControlAppleAdapterOperatorEventStatus {
     pub loss_label: Option<String>,
     pub eta_ms: Option<u64>,
     pub checkpoint_path: Option<String>,
+    pub artifact_path: Option<String>,
+    pub artifact_kind: Option<String>,
+    pub failure_detail: Option<String>,
+    pub resource_summary: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -5588,6 +5598,15 @@ fn map_operator_run_status(
             completed_eval_samples: run.progress.completed_eval_samples,
             expected_eval_samples: run.progress.expected_eval_samples,
             last_checkpoint_path: run.progress.last_checkpoint_path.clone(),
+            telemetry_log_path: run.progress.telemetry_log_path.clone(),
+            latest_artifact_path: run.progress.latest_artifact_path.clone(),
+            latest_artifact_kind: run.progress.latest_artifact_kind.clone(),
+            latest_resource_summary: run.progress.latest_resource_summary.clone(),
+            last_failure_phase: run
+                .progress
+                .last_failure_phase
+                .map(|phase| phase.label().to_string()),
+            last_failure_detail: run.progress.last_failure_detail.clone(),
         },
         recent_events: run
             .recent_events
@@ -5609,6 +5628,10 @@ fn map_operator_run_status(
                 loss_label: event.loss.map(|loss| format!("{loss:.6}")),
                 eta_ms: event.eta_ms,
                 checkpoint_path: event.checkpoint_path.clone(),
+                artifact_path: event.artifact_path.clone(),
+                artifact_kind: event.artifact_kind.clone(),
+                failure_detail: event.failure_detail.clone(),
+                resource_summary: event.resource_summary.clone(),
             })
             .collect(),
         last_action: run.last_action.clone(),
