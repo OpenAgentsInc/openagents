@@ -38,6 +38,7 @@ use crate::apple_repo_lookup_tools::{AppleRepoLookupRecorder, build_repo_lookup_
 use crate::kernel_control::build_remote_authority_client;
 
 const REPORT_SCHEMA_VERSION: u16 = 1;
+const ACCEPTANCE_REPORT_SCHEMA_VERSION: u16 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ArchitectureExplainerRunDisposition {
@@ -123,7 +124,7 @@ impl ArchitectureExplainerFirstRunConfig {
                 "crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/corpus_manifest.json",
             ),
             experiment_manifest_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/experiments/psionic_architecture_explainer_first_real_run_v1.json",
+                "crates/psionic/fixtures/apple_adapter/experiments/psionic_architecture_explainer_acceptance_reference_v2.json",
             ),
             export_path: std::env::temp_dir()
                 .join("openagents_apple_architecture_explainer_first_real_run.fmadapter"),
@@ -177,6 +178,65 @@ pub struct ArchitectureExplainerAdapterBenchmarkReport {
     pub selected_benchmark_policy: AppleAdapterBaseVsAdapterAcceptancePolicy,
     pub benchmark_report: AppleAdapterBaseVsAdapterBenchmarkReport,
     pub weak_case_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ArchitectureExplainerAcceptanceStage {
+    OverfitNonZero,
+    Standard,
+}
+
+impl ArchitectureExplainerAcceptanceStage {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OverfitNonZero => "overfit_non_zero",
+            Self::Standard => "standard",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ArchitectureExplainerAcceptanceReasonCode {
+    OverfitStageFailed,
+    StandardStageFailed,
+    OverfitRuntimeSmokeFailed,
+    StandardRuntimeSmokeFailed,
+    OverfitGateRejected,
+    StandardGateRejected,
+    OverfitExportMissing,
+    StandardExportMissing,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArchitectureExplainerAcceptanceStageReport {
+    pub stage: ArchitectureExplainerAcceptanceStage,
+    pub report_json_path: String,
+    pub report_markdown_path: String,
+    pub export_path: String,
+    pub run_id: Option<String>,
+    pub disposition: Option<ArchitectureExplainerRunDisposition>,
+    pub runtime_smoke_passed: bool,
+    pub export_completed: bool,
+    pub benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode,
+    pub benchmark_gate_accepted: bool,
+    pub useful_adapter_accepted: bool,
+    pub benchmark_score_bps: Option<u32>,
+    pub benchmark_pass_rate_bps: Option<u32>,
+    pub improved_case_count: Option<u32>,
+    #[serde(default)]
+    pub reason_codes: Vec<String>,
+    pub failure: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArchitectureExplainerAcceptanceHarnessReport {
+    pub schema_version: u16,
+    pub generated_at_epoch_ms: u64,
+    pub acceptance_passed: bool,
+    pub reason_codes: Vec<ArchitectureExplainerAcceptanceReasonCode>,
+    pub overfit_non_zero: ArchitectureExplainerAcceptanceStageReport,
+    pub standard: ArchitectureExplainerAcceptanceStageReport,
 }
 
 pub fn run_architecture_explainer_reference_cycle(
@@ -431,6 +491,181 @@ pub fn benchmark_architecture_explainer_adapter_package(
         benchmark_report,
         weak_case_ids,
     })
+}
+
+pub fn run_architecture_explainer_acceptance_harness(
+    base_config: &ArchitectureExplainerFirstRunConfig,
+    acceptance_report_path: &Path,
+) -> Result<ArchitectureExplainerAcceptanceHarnessReport> {
+    let report_dir = acceptance_report_path
+        .parent()
+        .ok_or_else(|| anyhow!("acceptance report path must have a parent directory"))?;
+    fs::create_dir_all(report_dir).with_context(|| {
+        format!(
+            "failed to create acceptance report dir {}",
+            report_dir.display()
+        )
+    })?;
+
+    let overfit_config = acceptance_stage_config(
+        base_config,
+        report_dir,
+        ArchitectureExplainerAcceptanceStage::OverfitNonZero,
+    );
+    let standard_config = acceptance_stage_config(
+        base_config,
+        report_dir,
+        ArchitectureExplainerAcceptanceStage::Standard,
+    );
+
+    let overfit_non_zero = run_acceptance_stage(
+        ArchitectureExplainerAcceptanceStage::OverfitNonZero,
+        &overfit_config,
+    );
+    let standard = run_acceptance_stage(
+        ArchitectureExplainerAcceptanceStage::Standard,
+        &standard_config,
+    );
+    let report = build_acceptance_harness_report(overfit_non_zero, standard);
+
+    fs::write(
+        acceptance_report_path,
+        serde_json::to_vec_pretty(&report).context("serialize acceptance harness report")?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to write acceptance harness report {}",
+            acceptance_report_path.display()
+        )
+    })?;
+    Ok(report)
+}
+
+fn acceptance_stage_config(
+    base_config: &ArchitectureExplainerFirstRunConfig,
+    report_dir: &Path,
+    stage: ArchitectureExplainerAcceptanceStage,
+) -> ArchitectureExplainerFirstRunConfig {
+    let mut config = base_config.clone();
+    let stage_dir = report_dir.join(stage.label());
+    config.json_report_path = stage_dir.join("report.json");
+    config.markdown_report_path = stage_dir.join("report.md");
+    config.export_path = stage_dir.join(format!("{}.fmadapter", stage.label()));
+    config.package_name = format!("{}-{}", base_config.package_name, stage.label());
+    config.description = format!("{} ({})", base_config.description, stage.label());
+    match stage {
+        ArchitectureExplainerAcceptanceStage::OverfitNonZero => {
+            config.train_dataset_path = base_config.benchmark_dataset_path.clone();
+            config.held_out_dataset_path = base_config.benchmark_dataset_path.clone();
+            config.benchmark_mode = AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero;
+            config.control_base_url = None;
+            config.control_bearer_token = None;
+        }
+        ArchitectureExplainerAcceptanceStage::Standard => {
+            config.benchmark_mode = AppleAdapterUsefulAdapterBenchmarkMode::Standard;
+        }
+    }
+    config
+}
+
+fn run_acceptance_stage(
+    stage: ArchitectureExplainerAcceptanceStage,
+    config: &ArchitectureExplainerFirstRunConfig,
+) -> ArchitectureExplainerAcceptanceStageReport {
+    match run_architecture_explainer_reference_cycle(config) {
+        Ok(report) => acceptance_stage_report(stage, config, Ok(&report)),
+        Err(error) => acceptance_stage_report(stage, config, Err(error.to_string())),
+    }
+}
+
+fn acceptance_stage_report(
+    stage: ArchitectureExplainerAcceptanceStage,
+    config: &ArchitectureExplainerFirstRunConfig,
+    outcome: std::result::Result<&ArchitectureExplainerFirstRunReport, String>,
+) -> ArchitectureExplainerAcceptanceStageReport {
+    match outcome {
+        Ok(report) => ArchitectureExplainerAcceptanceStageReport {
+            stage,
+            report_json_path: config.json_report_path.display().to_string(),
+            report_markdown_path: config.markdown_report_path.display().to_string(),
+            export_path: config.export_path.display().to_string(),
+            run_id: Some(report.operator_run.run_id.clone()),
+            disposition: Some(report.disposition.clone()),
+            runtime_smoke_passed: final_runtime_smoke_passed(&report.operator_run),
+            export_completed: report.operator_run.export_state
+                == crate::apple_adapter_training_control::AppleAdapterOperatorStageState::Completed,
+            benchmark_mode: report.useful_adapter_assessment.benchmark_mode,
+            benchmark_gate_accepted: report.useful_adapter_assessment.benchmark_gate_accepted,
+            useful_adapter_accepted: report.useful_adapter_assessment.useful_adapter_accepted,
+            benchmark_score_bps: report.benchmark_report.adapted_summary.aggregate_score_bps,
+            benchmark_pass_rate_bps: Some(
+                report
+                    .benchmark_report
+                    .adapted_summary
+                    .aggregate_pass_rate_bps,
+            ),
+            improved_case_count: Some(report.benchmark_report.acceptance.improved_case_count),
+            reason_codes: report.useful_adapter_assessment.reason_codes.clone(),
+            failure: None,
+        },
+        Err(error) => ArchitectureExplainerAcceptanceStageReport {
+            stage,
+            report_json_path: config.json_report_path.display().to_string(),
+            report_markdown_path: config.markdown_report_path.display().to_string(),
+            export_path: config.export_path.display().to_string(),
+            run_id: None,
+            disposition: None,
+            runtime_smoke_passed: false,
+            export_completed: false,
+            benchmark_mode: config.benchmark_mode,
+            benchmark_gate_accepted: false,
+            useful_adapter_accepted: false,
+            benchmark_score_bps: None,
+            benchmark_pass_rate_bps: None,
+            improved_case_count: None,
+            reason_codes: Vec::new(),
+            failure: Some(error),
+        },
+    }
+}
+
+fn build_acceptance_harness_report(
+    overfit_non_zero: ArchitectureExplainerAcceptanceStageReport,
+    standard: ArchitectureExplainerAcceptanceStageReport,
+) -> ArchitectureExplainerAcceptanceHarnessReport {
+    let mut reason_codes = Vec::new();
+    if overfit_non_zero.failure.is_some() {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::OverfitStageFailed);
+    }
+    if standard.failure.is_some() {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::StandardStageFailed);
+    }
+    if !overfit_non_zero.runtime_smoke_passed {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::OverfitRuntimeSmokeFailed);
+    }
+    if !standard.runtime_smoke_passed {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::StandardRuntimeSmokeFailed);
+    }
+    if !overfit_non_zero.export_completed {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::OverfitExportMissing);
+    }
+    if !standard.export_completed {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::StandardExportMissing);
+    }
+    if !overfit_non_zero.useful_adapter_accepted {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::OverfitGateRejected);
+    }
+    if !standard.useful_adapter_accepted {
+        reason_codes.push(ArchitectureExplainerAcceptanceReasonCode::StandardGateRejected);
+    }
+    ArchitectureExplainerAcceptanceHarnessReport {
+        schema_version: ACCEPTANCE_REPORT_SCHEMA_VERSION,
+        generated_at_epoch_ms: current_epoch_ms(),
+        acceptance_passed: reason_codes.is_empty(),
+        reason_codes,
+        overfit_non_zero,
+        standard,
+    }
 }
 
 fn authority_client(
@@ -1034,6 +1269,78 @@ mod tests {
             assessment
                 .reason_codes
                 .contains(&String::from("improved_case_count_below_minimum"))
+        );
+    }
+
+    #[test]
+    fn acceptance_stage_config_uses_benchmark_dataset_for_overfit() {
+        let base = ArchitectureExplainerFirstRunConfig::reference();
+        let report_dir = std::env::temp_dir().join("openagents-apple-acceptance-config-test");
+        let overfit = acceptance_stage_config(
+            &base,
+            report_dir.as_path(),
+            ArchitectureExplainerAcceptanceStage::OverfitNonZero,
+        );
+        assert_eq!(overfit.train_dataset_path, base.benchmark_dataset_path);
+        assert_eq!(overfit.held_out_dataset_path, base.benchmark_dataset_path);
+        assert_eq!(
+            overfit.benchmark_mode,
+            AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero
+        );
+        assert!(overfit.package_name.ends_with("-overfit_non_zero"));
+        assert!(overfit.control_base_url.is_none());
+    }
+
+    #[test]
+    fn acceptance_harness_report_requires_both_overfit_and_standard_gates() {
+        let passing_overfit = ArchitectureExplainerAcceptanceStageReport {
+            stage: ArchitectureExplainerAcceptanceStage::OverfitNonZero,
+            report_json_path: "/tmp/overfit/report.json".to_string(),
+            report_markdown_path: "/tmp/overfit/report.md".to_string(),
+            export_path: "/tmp/overfit/export.fmadapter".to_string(),
+            run_id: Some("overfit-run".to_string()),
+            disposition: Some(ArchitectureExplainerRunDisposition::ExportedButNotUseful),
+            runtime_smoke_passed: true,
+            export_completed: true,
+            benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero,
+            benchmark_gate_accepted: true,
+            useful_adapter_accepted: true,
+            benchmark_score_bps: Some(520),
+            benchmark_pass_rate_bps: Some(1_428),
+            improved_case_count: Some(1),
+            reason_codes: Vec::new(),
+            failure: None,
+        };
+        let failing_standard = ArchitectureExplainerAcceptanceStageReport {
+            stage: ArchitectureExplainerAcceptanceStage::Standard,
+            report_json_path: "/tmp/standard/report.json".to_string(),
+            report_markdown_path: "/tmp/standard/report.md".to_string(),
+            export_path: "/tmp/standard/export.fmadapter".to_string(),
+            run_id: Some("standard-run".to_string()),
+            disposition: Some(ArchitectureExplainerRunDisposition::ExportedButNotUseful),
+            runtime_smoke_passed: true,
+            export_completed: true,
+            benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode::Standard,
+            benchmark_gate_accepted: false,
+            useful_adapter_accepted: false,
+            benchmark_score_bps: Some(0),
+            benchmark_pass_rate_bps: Some(0),
+            improved_case_count: Some(0),
+            reason_codes: vec!["score_delta_below_minimum".to_string()],
+            failure: None,
+        };
+
+        let report = build_acceptance_harness_report(passing_overfit, failing_standard);
+        assert!(!report.acceptance_passed);
+        assert!(
+            report
+                .reason_codes
+                .contains(&ArchitectureExplainerAcceptanceReasonCode::StandardGateRejected)
+        );
+        assert!(
+            !report
+                .reason_codes
+                .contains(&ArchitectureExplainerAcceptanceReasonCode::OverfitGateRejected)
         );
     }
 }

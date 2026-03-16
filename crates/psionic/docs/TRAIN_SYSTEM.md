@@ -2110,6 +2110,40 @@ The canonical experiment-program gate for that layer is now:
 
 - `scripts/release/check-psionic-apple-experiment-program.sh`
 
+On 2026-03-16, GitHub issue `#3900` added the full-path acceptance harness for
+that same Rust-only Apple reference lane:
+
+- `apps/autopilot-desktop` now exposes one repo-owned acceptance entrypoint for
+  the architecture-explainer lane:
+  `run_architecture_explainer_acceptance_harness(...)`
+- the harness runs the full path twice:
+  - `overfit_non_zero`, which reuses `benchmark.jsonl` as train plus held-out
+    and still requires runtime smoke, export completion, and the weak non-zero
+    benchmark gate to pass
+  - `standard`, which reruns the normal train/held-out/benchmark path and still
+    requires runtime smoke, export completion, and the stricter benchmark bar
+- the canonical operator entrypoints for that harness are now:
+  - `cargo run -p autopilot-desktop --bin apple_architecture_explainer_acceptance_harness -- ...`
+  - `scripts/release/check-psionic-apple-architecture-explainer-acceptance.sh`
+- the current frozen manifest for that acceptance lane is now:
+  - `crates/psionic/fixtures/apple_adapter/experiments/psionic_architecture_explainer_acceptance_reference_v2.json`
+- the harness always writes a machine-readable acceptance receipt with:
+  - top-level `acceptance_passed`
+  - stage-specific reports for `overfit_non_zero` and `standard`
+  - exact reason codes when a stage fails on launch, runtime smoke, export
+    completion, or benchmark usefulness
+- the stage-specific report tree is deterministic under the chosen report
+  directory:
+  - `overfit_non_zero/report.json`
+  - `overfit_non_zero/report.md`
+  - `overfit_non_zero/overfit_non_zero.fmadapter`
+  - `standard/report.json`
+  - `standard/report.md`
+  - `standard/standard.fmadapter`
+- the release script and harness binary both exit non-zero if either stage
+  fails, so zero-improvement adapters stop at the acceptance boundary instead of
+  being mistaken for complete Apple-lane success
+
 On 2026-03-16, GitHub issue `#3893` moved that same Apple overfit path off the
 flat-zero benchmark floor without weakening the structured or tool contract:
 
