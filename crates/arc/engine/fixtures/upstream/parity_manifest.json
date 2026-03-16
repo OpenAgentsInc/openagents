@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "These translated fixtures pin the upstream bt11 and bt33 sample files by SHA-256 and assert the local-wrapper behaviors this crate currently claims: reset semantics, available action surfaces, a first-level success transition, and a pure failure branch. They do not claim full frame-by-frame or whole-multi-level equivalence to arbitrary upstream Python environments.",
+  "cases": [
+    {
+      "game_id": "bt11-fd9df0622a1a",
+      "package_path": "upstream/bt11-fd9df0622a1a.json",
+      "source_files": [
+        {
+          "path": "ARC-AGI/test_environment_files/game1/bt11.py",
+          "sha256": "9a9036cf55c41e7134176ec92001128b1ace28cc18b7a3b226d84e5dbabb1a39"
+        },
+        {
+          "path": "ARC-AGI/test_environment_files/game1/metadata.json",
+          "sha256": "1b73c9fa74c0ea8e437faf66a09452c1badd1163cad921b21c2ee0d8a22d2790"
+        }
+      ],
+      "scripts": [
+        {
+          "id": "reset_then_four_action3_advances_to_next_level",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION3" },
+            { "kind": "ACTION3" },
+            { "kind": "ACTION3" },
+            { "kind": "ACTION3" }
+          ],
+          "reset_expectation": {
+            "full_reset": true,
+            "level_completed": false,
+            "advanced_level": false,
+            "frames_len": 1,
+            "game_state": "not_finished",
+            "levels_completed": 0,
+            "level_index": 0,
+            "available_actions": ["ACTION3", "ACTION4"]
+          },
+          "final_expectation": {
+            "full_reset": false,
+            "level_completed": true,
+            "advanced_level": true,
+            "frames_len": 2,
+            "game_state": "not_finished",
+            "levels_completed": 1,
+            "level_index": 1,
+            "available_actions": ["ACTION3", "ACTION4"]
+          }
+        },
+        {
+          "id": "reset_then_four_action4_games_over",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" }
+          ],
+          "reset_expectation": {
+            "full_reset": true,
+            "level_completed": false,
+            "advanced_level": false,
+            "frames_len": 1,
+            "game_state": "not_finished",
+            "levels_completed": 0,
+            "level_index": 0,
+            "available_actions": ["ACTION3", "ACTION4"]
+          },
+          "final_expectation": {
+            "full_reset": false,
+            "level_completed": false,
+            "advanced_level": false,
+            "frames_len": 1,
+            "game_state": "game_over",
+            "levels_completed": 0,
+            "level_index": 0,
+            "available_actions": ["ACTION3", "ACTION4"]
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "bt33-a7c3f9d18b4e",
+      "package_path": "upstream/bt33-a7c3f9d18b4e.json",
+      "source_files": [
+        {
+          "path": "ARC-AGI/test_environment_files/game2/subdir/bt33.py",
+          "sha256": "284d9b017257fce86d40a3a8f5ce69b368b790875c0eb97bfe9041e13c146483"
+        },
+        {
+          "path": "ARC-AGI/test_environment_files/game2/subdir/metadata.json",
+          "sha256": "d9836d9ad7b26c1c82d27b9433dfeb67861e8c5bfeaf8a6be8afda11c81f3eb1"
+        }
+      ],
+      "scripts": [
+        {
+          "id": "reset_then_four_left_clicks_advances_to_next_level",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION6", "x": 1, "y": 1 },
+            { "kind": "ACTION6", "x": 1, "y": 1 },
+            { "kind": "ACTION6", "x": 1, "y": 1 },
+            { "kind": "ACTION6", "x": 1, "y": 1 }
+          ],
+          "reset_expectation": {
+            "full_reset": true,
+            "level_completed": false,
+            "advanced_level": false,
+            "frames_len": 1,
+            "game_state": "not_finished",
+            "levels_completed": 0,
+            "level_index": 0,
+            "available_actions": ["ACTION6"]
+          },
+          "final_expectation": {
+            "full_reset": false,
+            "level_completed": true,
+            "advanced_level": true,
+            "frames_len": 2,
+            "game_state": "not_finished",
+            "levels_completed": 1,
+            "level_index": 1,
+            "available_actions": ["ACTION6"]
+          }
+        },
+        {
+          "id": "reset_then_four_right_clicks_games_over",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION6", "x": 63, "y": 1 },
+            { "kind": "ACTION6", "x": 63, "y": 1 },
+            { "kind": "ACTION6", "x": 63, "y": 1 },
+            { "kind": "ACTION6", "x": 63, "y": 1 }
+          ],
+          "reset_expectation": {
+            "full_reset": true,
+            "level_completed": false,
+            "advanced_level": false,
+            "frames_len": 1,
+            "game_state": "not_finished",
+            "levels_completed": 0,
+            "level_index": 0,
+            "available_actions": ["ACTION6"]
+          },
+          "final_expectation": {
+            "full_reset": false,
+            "level_completed": false,
+            "advanced_level": false,
+            "frames_len": 1,
+            "game_state": "game_over",
+            "levels_completed": 0,
+            "level_index": 0,
+            "available_actions": ["ACTION6"]
+          }
+        }
+      ]
+    }
+  ]
+}

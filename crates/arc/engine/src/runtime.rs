@@ -3,8 +3,8 @@ use std::path::Path;
 
 use arc_core::{
     ARC_FRAME_MAX_EDGE, ArcAction, ArcActionKind, ArcBenchmark, ArcEpisodeStep, ArcFrameData,
-    ArcFrameDataError, ArcGridError, ArcObservation, ArcOperationMode, ArcRecording,
-    ArcRecordingError, ArcTaskIdError,
+    ArcFrameDataError, ArcObservation, ArcOperationMode, ArcRecording, ArcRecordingError,
+    ArcTaskIdError,
 };
 use thiserror::Error;
 
@@ -165,10 +165,21 @@ impl ArcEngine {
                 self.state.action_count += 1;
                 self.state.total_step_count += 1;
                 self.apply_movement(&action)?;
-                let transition =
+                let action_trigger = match action {
+                    ArcAction::Action1 => ArcInteractionTrigger::Action1,
+                    ArcAction::Action2 => ArcInteractionTrigger::Action2,
+                    ArcAction::Action3 => ArcInteractionTrigger::Action3,
+                    ArcAction::Action4 => ArcInteractionTrigger::Action4,
+                    _ => unreachable!("action trigger mapping only applies to ACTION1-4"),
+                };
+                let action_transition =
+                    self.apply_targets(action_trigger, self.state.player_position)?;
+                let enter_transition =
                     self.apply_targets(ArcInteractionTrigger::OnEnter, self.state.player_position)?;
-                level_completed = transition.level_completed;
-                advanced_level = transition.advanced_level;
+                level_completed =
+                    action_transition.level_completed || enter_transition.level_completed;
+                advanced_level =
+                    action_transition.advanced_level || enter_transition.advanced_level;
             }
             ArcAction::Action5 => {
                 self.history.push(self.snapshot());
@@ -366,15 +377,11 @@ impl ArcEngine {
                     }
                 }
                 ArcLevelEffect::CompleteLevel => {
-                    self.state.levels_completed = self.state.levels_completed.saturating_add(1);
-                    result.level_completed = true;
-                    let next_level_index = self.state.current_level_index + 1;
-                    if next_level_index < self.package.levels.len() {
-                        self.reset_level(next_level_index, false)?;
-                        self.state.game_state = ArcEngineGameState::NotFinished;
-                        result.advanced_level = true;
-                    } else {
-                        self.state.game_state = ArcEngineGameState::Win;
+                    self.complete_level(&mut result)?;
+                }
+                ArcLevelEffect::CompleteLevelIfActionCountAtLeast { threshold } => {
+                    if self.state.action_count >= threshold {
+                        self.complete_level(&mut result)?;
                     }
                 }
                 ArcLevelEffect::TeleportPlayer { destination } => {
@@ -389,6 +396,20 @@ impl ArcEngine {
             }
         }
         Ok(result)
+    }
+
+    fn complete_level(&mut self, result: &mut ArcTransitionResult) -> Result<(), ArcEngineError> {
+        self.state.levels_completed = self.state.levels_completed.saturating_add(1);
+        result.level_completed = true;
+        let next_level_index = self.state.current_level_index + 1;
+        if next_level_index < self.package.levels.len() {
+            self.reset_level(next_level_index, false)?;
+            self.state.game_state = ArcEngineGameState::NotFinished;
+            result.advanced_level = true;
+        } else {
+            self.state.game_state = ArcEngineGameState::Win;
+        }
+        Ok(())
     }
 
     fn display_to_grid(&self, display_point: ArcPoint) -> Result<ArcPoint, ArcEngineError> {
@@ -436,7 +457,9 @@ impl ArcEngine {
         let level = self.current_level();
         let background_color = level
             .background
-            .cell(point.x, point.y)
+            .pixels()
+            .get(background_index(&level.background, point))
+            .copied()
             .ok_or_else(|| point_outside_level(&level.id, point))?;
         if level.solid_background_colors.contains(&background_color) {
             return Ok(true);
@@ -474,15 +497,26 @@ impl ArcEngine {
                 let world_x = camera.x + view_x;
                 let world_y = camera.y + view_y;
                 let index = usize::from(view_y) * usize::from(camera.width) + usize::from(view_x);
-                raw[index] = level.background.cell(world_x, world_y).ok_or_else(|| {
-                    point_outside_level(
-                        &level.id,
+                raw[index] = level
+                    .background
+                    .pixels()
+                    .get(background_index(
+                        &level.background,
                         ArcPoint {
                             x: world_x,
                             y: world_y,
                         },
-                    )
-                })?;
+                    ))
+                    .copied()
+                    .ok_or_else(|| {
+                        point_outside_level(
+                            &level.id,
+                            ArcPoint {
+                                x: world_x,
+                                y: world_y,
+                            },
+                        )
+                    })?;
             }
         }
 
@@ -771,8 +805,6 @@ pub enum ArcEngineError {
     #[error(transparent)]
     TaskId(#[from] ArcTaskIdError),
     #[error(transparent)]
-    Grid(#[from] ArcGridError),
-    #[error(transparent)]
     Frame(#[from] ArcFrameDataError),
     #[error(transparent)]
     Recording(#[from] ArcRecordingError),
@@ -792,6 +824,14 @@ pub enum ArcEngineError {
     DuplicateLevelId(String),
     #[error("ARC level `{level_id}` referenced duplicate target id `{target_id}`")]
     DuplicateTargetId { level_id: String, target_id: String },
+    #[error(
+        "ARC level `{level_id}` target `{target_id}` must use an action threshold of at least 1, got {threshold}"
+    )]
+    InvalidActionThreshold {
+        level_id: String,
+        target_id: String,
+        threshold: u32,
+    },
     #[error("ARC level `{0}` must allow at least one action")]
     InvalidMaxActions(String),
     #[error("ARC level `{0}` must declare at least one available action")]
@@ -870,4 +910,8 @@ pub enum ArcEngineError {
     UnknownLevelIndex(usize),
     #[error("ARC engine replay produced no recording")]
     MissingRecording,
+}
+
+fn background_index(background: &ArcFrameData, point: ArcPoint) -> usize {
+    usize::from(point.y) * usize::from(background.width()) + usize::from(point.x)
 }

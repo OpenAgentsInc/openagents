@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "name": "ARC upstream parity sample bt33-a7c3f9d18b4e",
+  "task_id": "bt33-a7c3f9d18b4e",
+  "version": "upstream-fixture-v1",
+  "sprites": [
+    {
+      "id": "cursor",
+      "width": 1,
+      "height": 1,
+      "pixels": [null],
+      "blocking": "not_blocked",
+      "interaction": "removed",
+      "z_index": 10
+    },
+    {
+      "id": "left",
+      "width": 2,
+      "height": 2,
+      "pixels": [14, 14, 14, null],
+      "blocking": "not_blocked",
+      "interaction": "intangible",
+      "z_index": 2
+    },
+    {
+      "id": "right",
+      "width": 2,
+      "height": 2,
+      "pixels": [8, 8, null, 8],
+      "blocking": "not_blocked",
+      "interaction": "intangible",
+      "z_index": 2
+    }
+  ],
+  "levels": [
+    {
+      "id": "bt33-level-1",
+      "background": {
+        "width": 8,
+        "height": 8,
+        "pixels": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+      },
+      "camera": {
+        "x": 0,
+        "y": 0,
+        "width": 8,
+        "height": 8,
+        "background": 5,
+        "letter_box": 3
+      },
+      "available_actions": ["ACTION6"],
+      "player_spawn": { "x": 3, "y": 0 },
+      "player_sprite_id": "cursor",
+      "static_sprites": [
+        {
+          "sprite_id": "left",
+          "position": { "x": 0, "y": 0 }
+        },
+        {
+          "sprite_id": "right",
+          "position": { "x": 6, "y": 0 }
+        }
+      ],
+      "targets": [
+        {
+          "id": "advance-on-four-left-clicks",
+          "trigger": "action6",
+          "position": { "x": 0, "y": 0 },
+          "effect": {
+            "kind": "complete_level_if_action_count_at_least",
+            "threshold": 4
+          }
+        }
+      ],
+      "solid_background_colors": [5],
+      "max_actions": 4
+    },
+    {
+      "id": "bt33-level-2",
+      "background": {
+        "width": 8,
+        "height": 8,
+        "pixels": [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]
+      },
+      "camera": {
+        "x": 0,
+        "y": 0,
+        "width": 8,
+        "height": 8,
+        "background": 5,
+        "letter_box": 3
+      },
+      "available_actions": ["ACTION6"],
+      "player_spawn": { "x": 3, "y": 0 },
+      "player_sprite_id": "cursor",
+      "static_sprites": [
+        {
+          "sprite_id": "left",
+          "position": { "x": 0, "y": 0 }
+        },
+        {
+          "sprite_id": "right",
+          "position": { "x": 6, "y": 0 }
+        }
+      ],
+      "solid_background_colors": [5],
+      "max_actions": 8
+    }
+  ]
+}
