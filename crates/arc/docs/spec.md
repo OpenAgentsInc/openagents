@@ -625,6 +625,11 @@ remain deterministic under replay.
 - evaluator wrappers
 - training/eval adapters onto Psionic
 
+The first retained `arc-ml` slice is evaluator-first and synthetic-data-aware:
+practice suites can score ARC-AGI-3-style `ArcRecording` attempts through
+`arc-benchmark`, retain per-attempt `ArcInteractiveRunReport` evidence, and
+aggregate `pass@k` before any model-level parity claim.
+
 ### 5.4 Cross-crate concern matrix
 
 The owner split below is normative for agent implementations:
@@ -1782,6 +1787,13 @@ Acceptance:
 - `pass@k` parity on evaluator fixtures before claiming model parity
 - model-level parity only on tiny deterministic fixtures before any large-scale
   training claims
+
+This phase has now started in bounded synthetic-practice form. `ARC-501`
+landed `arc-ml` as an evaluator-first crate with typed interactive practice
+suites, synthetic ARC-AGI-3-style attempt corpora, benchmark-owned scoring via
+`arc-benchmark`, per-attempt `ArcInteractiveRunReport` retention, and suite
+level `pass@k` aggregation. Real ARC-AGI-3 data access, learned baselines, and
+train-class parity remain later work in this phase.
 
 ## 13. Initial coding-agent backlog
 

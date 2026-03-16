@@ -309,6 +309,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-ml"
+version = "0.1.0"
+dependencies = [
+ "arc-benchmark",
+ "arc-core",
+ "arc-engine",
+ "psionic-eval",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "arc-solvers"
 version = "0.1.0"
 dependencies = [

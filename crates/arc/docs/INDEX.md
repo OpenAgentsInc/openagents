@@ -41,6 +41,12 @@ These are not all separate files yet, but they already have fixed roles.
 Until those later docs exist, the rows above remain the canonical placeholders
 for the future acceptance-matrix family.
 
+## Current Implementation Logs
+
+| Doc | Role |
+| --- | --- |
+| `crates/arc/docs/ARC_ML_PRACTICE_LOG.md` | bounded implementation log for the evaluator-first `arc-ml` practice layer landed under `ARC-501` |
+
 ## Reading Order
 
 If you are new to the ARC subtree, read in this order:

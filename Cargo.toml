@@ -10,6 +10,7 @@ members = [
     "crates/arc/client",
     "crates/arc/benchmark",
     "crates/arc/solvers",
+    "crates/arc/ml",
     "crates/cad",
     "crates/autopilot-spacetime",
     "crates/codex-client",

@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "ARC-501 evaluator-first practice suite over synthetic ARC-AGI-3-style attempts until real ARC-AGI-3 data access exists.",
+  "package_key": {
+    "benchmark_ref": "arc.agi3.synthetic.practice",
+    "version": "v1"
+  },
+  "k_values": [1, 2, 4],
+  "cases": [
+    {
+      "id": "demo-practice-mixed",
+      "task_id": "arc-engine-demo",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "metadata": {
+        "source_url": "https://example.invalid/arc-ml-practice/mixed",
+        "tags": ["arc-501", "synthetic-practice"],
+        "opaque": {
+          "fixture": "demo-practice-mixed"
+        }
+      },
+      "baseline_actions": [7, 5],
+      "attempts": [
+        {
+          "id": "perfect-win",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION6", "x": 22, "y": 22 },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION5" }
+          ]
+        },
+        {
+          "id": "late-partial",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION6", "x": 22, "y": 22 },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION2" }
+          ]
+        },
+        {
+          "id": "early-partial",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" }
+          ]
+        }
+      ],
+      "expected": {
+        "successful_attempts": 1,
+        "best_score_bps": 10000,
+        "pass_at_k_bps": [3333, 6667, 10000]
+      }
+    },
+    {
+      "id": "demo-practice-failures",
+      "task_id": "arc-engine-demo",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "metadata": {
+        "source_url": "https://example.invalid/arc-ml-practice/failures",
+        "tags": ["arc-501", "synthetic-practice"],
+        "opaque": {
+          "fixture": "demo-practice-failures"
+        }
+      },
+      "baseline_actions": [7, 5],
+      "attempts": [
+        {
+          "id": "late-partial",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION6", "x": 22, "y": 22 },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" },
+            { "kind": "ACTION2" }
+          ]
+        },
+        {
+          "id": "early-partial",
+          "actions": [
+            { "kind": "RESET" },
+            { "kind": "ACTION4" },
+            { "kind": "ACTION2" }
+          ]
+        }
+      ],
+      "expected": {
+        "successful_attempts": 0,
+        "best_score_bps": 3333,
+        "pass_at_k_bps": [0, 0, 0]
+      }
+    }
+  ],
+  "expected_aggregate": {
+    "total_cases": 2,
+    "total_attempts": 5,
+    "successful_attempts": 1,
+    "mean_best_score_bps": 6667,
+    "pass_at_k_bps": [1667, 3333, 5000]
+  }
+}

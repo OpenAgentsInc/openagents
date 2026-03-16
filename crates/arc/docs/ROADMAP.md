@@ -778,7 +778,7 @@ without pretending Psionic is already broad enough for full HRM parity.
 
 | ID | Status | Work |
 | --- | --- | --- |
-| `ARC-501` | planned | Create `crates/arc/ml` and port ARC evaluator logic plus `pass@k` aggregation first. |
+| `ARC-501` | landed | Created `crates/arc/ml` in bounded evaluator-first form: synthetic ARC-AGI-3-style practice suites now score typed `ArcRecording` attempts through `arc-benchmark`, emit per-attempt `ArcInteractiveRunReport` evidence, and aggregate suite-level `pass@k` without claiming real ARC-AGI-3 dataset access or model parity. |
 | `ARC-502` | planned | Port a small transductive baseline onto `psionic-train` and `psionic-eval` before any HRM-class claim. |
 | `ARC-503` | planned | Add ARC-specific losses, metrics, and calibration summaries above Psionic train/eval substrate. |
 | `ARC-504` | planned | Add search-guide learning and trace-derived dataset generation for solver guidance models. |
@@ -857,6 +857,11 @@ That gate is now satisfied in bounded form by `ARC-210`.
 11. `ARC-501` through `ARC-505`
 12. `ARC-506` through `ARC-508` after `PLIB-509`, `PLIB-515`,
     `PLIB-612`, `PLIB-613`, and `PLIB-614`
+    `ARC-501` is now landed in bounded synthetic-practice form: `arc-ml`
+    exists as an evaluator-first crate with typed interactive practice suites,
+    benchmark-owned scoring, per-attempt reports, and `pass@k` aggregation
+    over synthetic ARC-AGI-3-style fixtures. Real dataset access, learned
+    baselines, and train-class claims remain later Epic 5 work.
 
 ### Phase 6: harden evidence and operator workflows
 
