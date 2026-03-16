@@ -1083,10 +1083,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             ));
         }
 
+        let mission_control_last_action = state.mission_control.last_action.clone();
+        let mission_control_last_error = state.mission_control.last_error.clone();
         pane_paint_report = PaneRenderer::paint(
             &mut state.panes,
             Bounds::new(0.0, 0.0, width, height),
             active_pane,
+            state.cursor_position,
             state.desktop_shell_mode,
             buy_mode_enabled,
             state.kernel_projection_worker.uses_remote_authority(),
@@ -1161,9 +1164,10 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut state.calculator_inputs,
+            &mut state.mission_control,
             &mut state.provider_control,
-            state.mission_control.last_action.as_deref(),
-            state.mission_control.last_error.as_deref(),
+            mission_control_last_action.as_deref(),
+            mission_control_last_error.as_deref(),
             &mut state.log_stream,
             &mut state.buy_mode_payments,
             &mut state.nip90_sent_payments,
@@ -1650,18 +1654,16 @@ mod tests {
     }
 
     #[test]
-    fn startup_pane_set_matches_split_shell_surfaces() {
+    fn startup_pane_set_restores_mission_control() {
         let startup = startup_pane_kinds();
-        assert_eq!(
-            startup,
-            vec![PaneKind::ProviderControl, PaneKind::EarningsScoreboard]
-        );
+        assert_eq!(startup, vec![PaneKind::GoOnline]);
         assert!(!startup.contains(&PaneKind::AutopilotChat));
         assert!(!startup.contains(&PaneKind::ProjectOps));
         assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
-        assert!(!startup.contains(&PaneKind::GoOnline));
+        assert!(!startup.contains(&PaneKind::ProviderControl));
+        assert!(!startup.contains(&PaneKind::EarningsScoreboard));
     }
 
     #[test]
