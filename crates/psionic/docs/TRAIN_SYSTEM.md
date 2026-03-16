@@ -2166,6 +2166,25 @@ implicit operator default:
   - the run exported, loaded, and runtime-smoked successfully while keeping the
     sourced policy block visible in the resulting receipt
 
+On 2026-03-16, GitHub issue `#3896` fixed the structured-output benchmark
+contract so structured rows are judged on structured truth first instead of
+being vulnerable to harness-format noise:
+
+- Apple structured benchmark rows now canonicalize JSON semantics rather than
+  requiring byte-for-byte raw text identity for the emitted JSON string
+- the eval harness now accepts semantically equal structured payloads even when
+  the raw JSON field order or whitespace differs
+- when a structured request fails at the harness or bridge contract layer, the
+  observed sample now carries explicit structured-contract metadata instead of
+  forcing everything into a generic text-mismatch bucket
+- benchmark failure reasons now distinguish:
+  - `harness_contract_failure:structured_generation:*`
+  - `runtime_failure:*`
+  - true `model_output_mismatch:structured`
+- this keeps the architecture-explainer structured row truthful:
+  - if the model emits the wrong JSON values, it still fails as a model error
+  - if the bridge or schema path is the problem, the receipt now says so
+
 On 2026-03-15, GitHub issue `#3657` tightened the Apple runtime-validation
 layer around that same run:
 

@@ -15,6 +15,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::WindowId;
 
 mod app_state;
+mod apple_adapter_eval_contract;
 mod apple_adapter_training_control;
 pub mod apple_architecture_explainer_reference_run;
 mod apple_fm_bridge;
