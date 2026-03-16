@@ -450,9 +450,11 @@ It is important to separate current repo truth from older planning language:
   inference, GPT-OSS embeddings descriptors, sandbox execution descriptors, a
   narrow Apple FM adapter-hosting family, and a gated decentralized
   adapter-training contributor family
-- the retained desktop operator truth now includes repo-native Apple adapter
-  training launch, export, evaluation, and acceptance into canonical kernel
-  training/eval/outcome records
+- the retained desktop operator truth now includes Apple adapter training
+  launch, export, evaluation, and acceptance into canonical kernel
+  training/eval/outcome records, with the live Apple-valid runtime asset
+  currently produced through a toolkit-backed export lane under repo-owned
+  orchestration
 - older long-horizon compute planning documents may still reference `Ollama`
   from pre-prune work; treat that as historical planning context rather than
   the current retained MVP code truth
@@ -481,7 +483,7 @@ What is real today:
 - the capability summary now carries compatible adapter digests rather than
   only a generic backend-ready bit
 - desktop control and `autopilotctl` can launch, evaluate, export, and accept
-  one repo-native Apple adapter training run
+  one Apple adapter training run through the current toolkit-backed live lane
 - the acceptance boundary registers canonical environment, benchmark,
   validator-policy, checkpoint-family, training-policy, training-run, eval-run,
   and accepted-outcome records in kernel authority

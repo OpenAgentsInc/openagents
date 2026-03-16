@@ -20,11 +20,11 @@ use openagents_kernel_core::compute::{
     ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
     ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
     ComputeAdapterPromotionDisposition, ComputeAdapterPromotionHoldReasonCode,
-    ComputeAdapterTrainingWindow, ComputeAdapterWindowGateReasonCode,
-    ComputeAdapterWindowStatus, ComputeCapabilityEnvelope, ComputeProofPosture,
-    ComputeProvisioningKind, ComputeTopologyKind, ComputeTrainingRun, ComputeTrainingRunStatus,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus, DeliveryProof,
-    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    ComputeAdapterTrainingWindow, ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus,
+    ComputeCapabilityEnvelope, ComputeProofPosture, ComputeProvisioningKind, ComputeTopologyKind,
+    ComputeTrainingRun, ComputeTrainingRunStatus, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, DeliveryProof, DeliveryProofStatus,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
@@ -3836,6 +3836,7 @@ fn launch_apple_adapter_training_action(
         description: description.to_string(),
         license: license.to_string(),
         apple_fm_base_url: apple_fm_base_url.to_string(),
+        expected_base_model_signature: None,
     }) {
         Ok(run) => training_action_payload_response(
             state,
@@ -4308,8 +4309,7 @@ fn refresh_compute_history_cache_if_due(state: &mut RenderState, force: bool) ->
                 cache.structured_capacity_instruments != loaded.structured_capacity_instruments;
             changed |= cache.training_runs != loaded.training_runs;
             changed |= cache.adapter_training_windows != loaded.adapter_training_windows;
-            changed |=
-                cache.adapter_contribution_outcomes != loaded.adapter_contribution_outcomes;
+            changed |= cache.adapter_contribution_outcomes != loaded.adapter_contribution_outcomes;
             changed |= cache.accepted_outcomes != loaded.accepted_outcomes;
             changed |= cache.validator_challenges != loaded.validator_challenges;
             changed |= cache.last_error.is_some();
@@ -4567,9 +4567,7 @@ fn adapter_window_gate_reason_label(code: ComputeAdapterWindowGateReasonCode) ->
             "held_out_eval_below_threshold"
         }
         ComputeAdapterWindowGateReasonCode::BenchmarkMissing => "benchmark_missing",
-        ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold => {
-            "benchmark_below_threshold"
-        }
+        ComputeAdapterWindowGateReasonCode::BenchmarkBelowThreshold => "benchmark_below_threshold",
         ComputeAdapterWindowGateReasonCode::RuntimeSmokeRequired => "runtime_smoke_required",
         ComputeAdapterWindowGateReasonCode::RuntimeSmokeFailed => "runtime_smoke_failed",
     }
@@ -4605,9 +4603,7 @@ fn provider_adapter_training_match_reason_label(
     code: ProviderAdapterTrainingMatchReasonCode,
 ) -> &'static str {
     match code {
-        ProviderAdapterTrainingMatchReasonCode::ContributorUnavailable => {
-            "contributor_unavailable"
-        }
+        ProviderAdapterTrainingMatchReasonCode::ContributorUnavailable => "contributor_unavailable",
         ProviderAdapterTrainingMatchReasonCode::CoordinatorMatchUnavailable => {
             "coordinator_match_unavailable"
         }
@@ -4626,9 +4622,7 @@ fn provider_adapter_training_match_reason_label(
         ProviderAdapterTrainingMatchReasonCode::ValidatorPolicyUnsupported => {
             "validator_policy_unsupported"
         }
-        ProviderAdapterTrainingMatchReasonCode::EnvironmentUnsupported => {
-            "environment_unsupported"
-        }
+        ProviderAdapterTrainingMatchReasonCode::EnvironmentUnsupported => "environment_unsupported",
         ProviderAdapterTrainingMatchReasonCode::CheckpointFamilyUnsupported => {
             "checkpoint_family_unsupported"
         }
@@ -4777,8 +4771,8 @@ fn build_training_contributor_status(
         .product_backend_ready(ProviderComputeProduct::AdapterTrainingContributor);
     let settlement_trigger = availability.settlement_trigger;
     let local_node_id = state.spacetime_presence_snapshot.node_id.trim().to_string();
-    let local_node_id = (!local_node_id.is_empty() && local_node_id != "uninitialized")
-        .then_some(local_node_id);
+    let local_node_id =
+        (!local_node_id.is_empty() && local_node_id != "uninitialized").then_some(local_node_id);
     let training_runs_by_id = training_runs
         .iter()
         .map(|run| (run.training_run_id.as_str(), run))
@@ -4789,7 +4783,9 @@ fn build_training_contributor_status(
         .collect::<BTreeMap<_, _>>();
     let latest_window = windows.first();
     let latest_match_request = latest_window.map(|window| {
-        let run = training_runs_by_id.get(window.training_run_id.as_str()).copied();
+        let run = training_runs_by_id
+            .get(window.training_run_id.as_str())
+            .copied();
         ProviderAdapterTrainingMatchRequest {
             training_run_id: window.training_run_id.clone(),
             adapter_family: window.adapter_family.clone(),
@@ -4845,8 +4841,7 @@ fn build_training_contributor_status(
     let local_quarantined_count = local_contributions
         .iter()
         .filter(|contribution| {
-            contribution.validator_disposition
-                == ComputeAdapterContributionDisposition::Quarantined
+            contribution.validator_disposition == ComputeAdapterContributionDisposition::Quarantined
         })
         .count();
     let local_rejected_count = local_contributions
@@ -4871,8 +4866,9 @@ fn build_training_contributor_status(
                     settlement_hook_from_authority(
                         window,
                         Some(contribution),
-                        settlement_trigger
-                            .unwrap_or(ProviderAdapterTrainingSettlementTrigger::AcceptedContribution),
+                        settlement_trigger.unwrap_or(
+                            ProviderAdapterTrainingSettlementTrigger::AcceptedContribution,
+                        ),
                     )
                 })
                 .is_some()
@@ -4881,9 +4877,7 @@ fn build_training_contributor_status(
     let latest_local_contribution = local_contributions.first().copied();
     let latest_payout_state = latest_local_contribution.map(|contribution| {
         adapter_contribution_payout_state(
-            windows_by_id
-                .get(contribution.window_id.as_str())
-                .copied(),
+            windows_by_id.get(contribution.window_id.as_str()).copied(),
             contribution,
             settlement_trigger,
         )
@@ -4928,7 +4922,9 @@ fn build_training_contributor_status(
     } else if local_settlement_ready_count > 0 {
         Some("Accepted local contribution is ready for settlement".to_string())
     } else if latest_window.is_some() {
-        Some("Contributor prerequisites satisfy the latest decentralized adapter window".to_string())
+        Some(
+            "Contributor prerequisites satisfy the latest decentralized adapter window".to_string(),
+        )
     } else {
         state.provider_runtime.apple_fm.readiness_block_reason()
     };
@@ -5055,18 +5051,15 @@ fn desktop_control_training_status(state: &RenderState) -> DesktopControlTrainin
         .filter(|outcome| outcome.outcome_kind == ComputeAcceptedOutcomeKind::TrainingRun)
         .map(|outcome| (outcome.source_run_id.as_str(), outcome))
         .collect::<BTreeMap<_, _>>();
-    let window_contributions = cache
-        .adapter_contribution_outcomes
-        .iter()
-        .fold(
-            BTreeMap::<&str, Vec<&ComputeAdapterContributionOutcome>>::new(),
-            |mut acc, contribution| {
-                acc.entry(contribution.window_id.as_str())
-                    .or_default()
-                    .push(contribution);
-                acc
-            },
-        );
+    let window_contributions = cache.adapter_contribution_outcomes.iter().fold(
+        BTreeMap::<&str, Vec<&ComputeAdapterContributionOutcome>>::new(),
+        |mut acc, contribution| {
+            acc.entry(contribution.window_id.as_str())
+                .or_default()
+                .push(contribution);
+            acc
+        },
+    );
     let windows_by_id = cache
         .adapter_training_windows
         .iter()

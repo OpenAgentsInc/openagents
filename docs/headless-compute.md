@@ -178,7 +178,8 @@ For the Apple adapter lane, the training command group is now an operator
 workflow rather than a status-only surface:
 
 - `autopilotctl training launch ...` imports train and held-out datasets, runs
-  repo-native Apple adapter SFT, stages the `.fmadapter`, and records local
+  the current repo-owned Apple operator flow, invokes the Apple toolkit-backed
+  training/export lane to stage an Apple-valid `.fmadapter`, and records local
   held-out plus runtime-smoke results, including the bridge-reported runtime
   compatibility state used during validation
 - `autopilotctl training export ...` materializes the staged package at an

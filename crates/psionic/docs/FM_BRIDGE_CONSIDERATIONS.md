@@ -67,8 +67,9 @@ What the bridge does **not** own:
 
 The current Apple adapter training path lives elsewhere in the repo:
 
-- `psionic-train` owns the repo-native Apple adapter execution backend and the
-  fixed-budget SFT/export lane
+- `psionic-train` owns the Apple operator-side training/export wrappers plus
+  the older repo-native reference backend, but the live Apple-valid `.fmadapter`
+  path currently goes through the local Apple toolkit wrapper
 - `psionic-data`, `psionic-environments`, and `psionic-eval` own the dataset,
   environment, and held-out/runtime-smoke contracts that surround that lane
 - `apps/autopilot-desktop` owns the operator flow exposed through
@@ -76,14 +77,17 @@ The current Apple adapter training path lives elsewhere in the repo:
 
 That means the honest integration story is:
 
-1. the repo trains a LoRA-style Apple adapter patch in Rust
-2. the repo exports a valid `.fmadapter`
+1. the repo owns the operator contract, dataset/env/eval surfaces, and package
+   lineage for the Apple adapter lane
+2. the current live Apple-valid export path uses the Apple toolkit-backed
+   training/export wrapper in `psionic-train`
 3. the bridge loads and attaches that exported package for live Apple runtime
    usage
 
 So yes, the Apple FM integration now reaches real adapter training and local
 usage, but the bridge participates as the runtime consumer and runtime-smoke
-validator, not as the trainer.
+validator, not as the trainer, and the current live runtime-asset export is
+not yet a pure Rust-native Psionic exporter.
 
 ## 4. Contract (URL, endpoints, readiness)
 
