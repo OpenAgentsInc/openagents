@@ -537,7 +537,7 @@ This roadmap is organized into seven epics.
 | Epic 5 | ARC-ML over Psionic | ARC-specific model work with explicit substrate gates |
 | Epic 6 | Evidence, regression, and operator use | capability matrices, fixture corpora, docs, and non-Python operator workflows |
 
-Epics 0 through 3 now have live GitHub issue blocks:
+Epics 0 through 4 now have live GitHub issue blocks:
 
 - Epic 0 master:
   [#3737](https://github.com/OpenAgentsInc/openagents/issues/3737)
@@ -547,8 +547,10 @@ Epics 0 through 3 now have live GitHub issue blocks:
   [#3739](https://github.com/OpenAgentsInc/openagents/issues/3739)
 - Epic 3 master:
   [#3740](https://github.com/OpenAgentsInc/openagents/issues/3740)
+- Epic 4 master:
+  [#3810](https://github.com/OpenAgentsInc/openagents/issues/3810)
 
-Later epics still use roadmap-local IDs until activated.
+Epics 5 and 6 still use roadmap-local IDs until activated.
 
 ## Epic 0: Governance And Acceptance
 
