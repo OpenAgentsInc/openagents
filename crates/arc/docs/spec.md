@@ -262,7 +262,9 @@ of scope for this crate and stay in higher ARC packages. Canonically serialized
 contract digests and derived task IDs now also live at this layer so fixture
 and replay identifiers stay stable across refactors. Dynamic
 `available_actions`, game-state enums, operation modes, score-policy IDs, and
-recording-envelope identifiers also live here as benchmark contracts.
+recording-envelope identifiers also live here as benchmark contracts. Task-wide
+color normalization, canonicalized grid metadata, and train/test dimension
+summaries now also start in this layer.
 
 ## 4. Shared domain model
 

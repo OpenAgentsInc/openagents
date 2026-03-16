@@ -1,0 +1,24 @@
+{
+  "id": "color-remap-demo",
+  "train": [
+    {
+      "input": {
+        "width": 2,
+        "height": 2,
+        "cells": [0, 7, 3, 7]
+      },
+      "output": {
+        "width": 3,
+        "height": 1,
+        "cells": [7, 5, 0]
+      }
+    }
+  ],
+  "test": [
+    {
+      "width": 1,
+      "height": 3,
+      "cells": [3, 0, 7]
+    }
+  ]
+}
