@@ -385,7 +385,9 @@ Applications / Operators / Authority
      execution-plan representation
 3. `psionic-compiler`
    - lowering, schedule-formation, fusion-policy, memory-plan, and
-     plan-cache-identity boundaries over IR
+     plan-cache-identity boundaries over IR, plus the first public
+     compile-transform surface with explicit purity, cache, trace, and
+     plan-debug posture
    - compiler replay fixtures now guard deterministic lowering, explicit
      schedule/fusion/memory/cache artifacts, and topology-bound program
      identity through
