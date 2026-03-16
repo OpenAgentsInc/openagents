@@ -314,6 +314,18 @@ That now includes one intentionally narrow executor-training answer:
   `6875` bps first-32 exactness, and `0/2` exact validation traces, so the
   promotion gate remains red and the companion human-readable audit is
   `docs/audits/2026-03-16-tassadar-phase-14-blocker-audit.md`
+- the Phase 14 teacher-forced continuation now also exists beside that
+  baseline: `psionic-train` can execute the separate preserved config under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2`, keeping the
+  same lookup-family surface and Phase 14 gate while removing greedy-rollout
+  refinement and extending teacher-forced 16-/32-token supervision; the
+  resulting selected checkpoint `epoch_0008` reproduces but does not beat the
+  prior best (`10000` bps first-target, `7500` bps first-8, `6875` bps
+  first-32, `0/2` exact traces), and later 32-token epochs still regress, so
+  that bundle closes the “maybe this was just a schedule problem” question
+  without pretending the learned 4x4 gate is any closer to green; the
+  companion audit is
+  `docs/audits/2026-03-16-tassadar-promotion-v2-teacher-forced-audit.md`
 - the Phase 15 executor-attention comparison now also exists beside that
   baseline: `psionic-models` now carries a distinct bounded
   `TassadarExecutorAttentionTransformer` family with layered causal hard-max

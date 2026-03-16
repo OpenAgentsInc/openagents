@@ -1,0 +1,330 @@
+{
+  "run_id": "tassadar-executor-transformer-sudoku-v0-promotion-v2",
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "e71f1538d567d65656a2ca4a5ea6db6cdb444e9bfd80244347e691bba894a2af",
+  "trained_model_descriptor_digest": "016ccf3b6894fa6662bfbe8f1926842a12133ae41073bb7478edd9d4d2bba48d",
+  "checkpoint_manifest_digest": "cfc4e473b862a93a63c8a749517521fee62381cca506dcc7f01dd27376c1b7a4",
+  "samples": [
+    {
+      "case_id": "sudoku_v0_train_a",
+      "split": "train",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7452,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_validation_a",
+      "split": "validation",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7589,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_test_a",
+      "split": "test",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7612,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_train_b",
+      "split": "train",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7655,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_test_b",
+      "split": "test",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7673,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_validation_b",
+      "split": "validation",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7693,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_train_d",
+      "split": "train",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7744,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    },
+    {
+      "case_id": "sudoku_v0_train_c",
+      "split": "train",
+      "first_divergence_index": 1,
+      "target_token_exactness_bps": 7864,
+      "final_output_match": false,
+      "halt_match": false,
+      "reference_window_token_ids": [
+        7,
+        12,
+        47,
+        47,
+        47,
+        47
+      ],
+      "predicted_window_token_ids": [
+        7,
+        47,
+        47,
+        47,
+        47,
+        47
+      ],
+      "reference_window_tokens": [
+        "<step>",
+        "<step_index>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ],
+      "predicted_window_tokens": [
+        "<step>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>",
+        "<byte_00>"
+      ]
+    }
+  ],
+  "report_digest": "4f942825106ddb8baa4299557baa4db2949098933a8d39177628d561576ecaa8"
+}
