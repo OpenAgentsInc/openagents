@@ -1079,10 +1079,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The public transform layer exposes grad, value_and_grad, vjp, jvp, vmap, checkpoint, compile-as-transform, and explicit symbolic or shapeless compile boundaries with typed refusals.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, and vmap objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, and explicit cast plus backend-extension refusal for bounded vmap coverage, but checkpoint, custom_vjp, and compile-as-transform remain open.",
+                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, vmap, checkpoint, and graph-registry-backed custom_vjp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, checkpoint replay that retains only the requested output then replays backward-plan primal bindings, graph-digest plus reverse-signature keyed transform-hook registration, and explicit cast plus backend-extension refusal for the current vmap and checkpoint coverage, but jacobian and compile-as-transform remain open.",
             ),
             boundary_note: String::from(
-                "Do not infer full MLX transform closure from the first reverse-plus-forward plus bounded-vmap slice; checkpoint, custom_vjp, jacobian, and compile contracts remain open.",
+                "Do not infer full MLX transform closure from the current reverse-plus-forward plus bounded-vmap plus checkpoint slice; jacobian and compile contracts remain open, and custom_vjp is still graph-scoped rather than a broad plugin-distribution story.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1331,20 +1331,27 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 "The seeded vmap family can now point at a public single-lane-to-batched transform with explicit cast and backend-extension refusals in the capability matrix.",
             ),
             boundary_note: String::from(
-                "This is a bounded public vmap pass, not proof that checkpoint, custom_vjp, jacobian, or compile-as-transform are complete.",
+                "This is a bounded public vmap pass, not proof that jacobian or compile-as-transform are complete.",
             ),
         },
         MlxParityHarnessFamily {
             family_id: String::from("custom_vjp"),
             acceptance_category: String::from("transform-compile"),
             upstream_sources: vec![String::from("tests/custom_vjp_tests.cpp")],
-            current_outcome: MlxParityHarnessOutcome::Unsupported,
-            psionic_hook_commands: Vec::new(),
+            current_outcome: MlxParityHarnessOutcome::Pass,
+            psionic_hook_commands: vec![
+                String::from(
+                    "cargo test -p psionic-ir autodiff::tests::public_custom_vjp_transform_uses_registered_rule -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-ir autodiff::tests::custom_vjp_registry_and_transform_refuse_missing_and_duplicate_rules -- --exact --nocapture",
+                ),
+            ],
             summary: String::from(
-                "The upstream custom_vjp family remains explicitly tracked, but there is no public Psionic custom_vjp surface yet.",
+                "The upstream custom_vjp family can now point at a public graph-scoped transform-hook registry plus custom_vjp transform with explicit registration and cotangent validation.",
             ),
             boundary_note: String::from(
-                "Bounded vmap support does not imply custom_vjp or checkpoint coverage.",
+                "This is a bounded graph-scoped custom_vjp pass, not proof that jacobian or compile-as-transform are complete.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1457,11 +1464,12 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("seeded_transform_compile_export_parity_anchors"),
             matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "Seeded parity anchors now exist for autograd, vmap, compile, and export/import, with custom_vjp still tracked honestly as unsupported.",
+                "Seeded parity anchors now exist for autograd, vmap, custom_vjp, compile, and export/import.",
             ),
             evidence_refs: vec![
                 String::from("MLX parity family `autograd` = pass"),
                 String::from("MLX parity family `vmap` = pass"),
+                String::from("MLX parity family `custom_vjp` = pass"),
                 String::from("MLX parity family `compile` = pass"),
                 String::from("MLX parity family `export_import` = pass"),
             ],
@@ -1555,7 +1563,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_transform_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Convertible,
             summary: String::from(
-                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, jvp, and bounded vmap objects above AutodiffGraph, but checkpoint, custom_vjp, jacobian, and compile-as-transform are still incomplete.",
+                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, jvp, bounded vmap, checkpoint replay, and graph-scoped custom_vjp hooks above AutodiffGraph, but jacobian and compile-as-transform are still incomplete.",
             ),
             evidence_refs: vec![
                 String::from("grad"),
@@ -1563,17 +1571,18 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("vjp"),
                 String::from("jvp"),
                 String::from("vmap"),
+                String::from("checkpoint"),
+                String::from("custom_vjp"),
                 String::from("MlxParityHarnessReport"),
                 String::from("MlxAcceptanceMatrixReport::transform-compile = partial"),
                 String::from("ProgramTransformCapabilityMatrixReport"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-204 (#3843)"),
                 String::from("PMLX-205 (#3844)"),
                 String::from("PMLX-206 (#3845)"),
             ],
             boundary_note: String::from(
-                "The first public reverse-plus-forward slice is not yet the same thing as full supported MLX transform closure.",
+                "The first public reverse-plus-forward plus bounded-vmap plus checkpoint slice is not yet the same thing as full supported MLX transform closure.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2131,11 +2140,8 @@ mod tests {
             .iter()
             .find(|family| family.family_id == "custom_vjp")
             .expect("missing custom_vjp family");
-        assert_eq!(
-            custom_vjp.current_outcome,
-            MlxParityHarnessOutcome::Unsupported
-        );
-        assert!(custom_vjp.psionic_hook_commands.is_empty());
+        assert_eq!(custom_vjp.current_outcome, MlxParityHarnessOutcome::Pass);
+        assert!(!custom_vjp.psionic_hook_commands.is_empty());
 
         let distributed = report
             .families

@@ -443,7 +443,7 @@ Turn current graph and autodiff substrate into MLX-class public transforms.
 | `PMLX-201` / [#3840](https://github.com/OpenAgentsInc/openagents/issues/3840) | done (2026-03-16) | `Psionic MLX: expose grad, value_and_grad, and vjp as first-class public transforms` | `psionic-ir` now exposes first-class public reverse-mode `grad`, `value_and_grad`, and `vjp` transform objects above `AutodiffGraph`, with typed target validation, explicit singleton-output rules for scalar transforms, disconnected-target zero cotangents, and public tests that anchor the MLX autograd parity family without overclaiming higher-order or compile closure. |
 | `PMLX-202` / [#3841](https://github.com/OpenAgentsInc/openagents/issues/3841) | done (2026-03-16) | `Psionic MLX: add jvp and forward-mode autodiff to the public transform surface` | `psionic-ir` now exposes a first-class public `jvp` transform object above `AutodiffGraph`, with explicit tangent-target validation, dense `f32` tangent propagation over the current primitive graph family, typed refusal for cast or backend-extension barriers, and a lower transform-capability matrix that no longer treats `jvp` as a pure future placeholder. |
 | `PMLX-203` / [#3842](https://github.com/OpenAgentsInc/openagents/issues/3842) | done (2026-03-16) | `Psionic MLX: add vmap with explicit unsupported-op refusals and parity fixtures` | `psionic-ir` now exposes a first-class public `vmap` transform above `AutodiffGraph`, treating the existing graph as the single-lane function, batching selected graph inputs at runtime, stacking one requested output, publishing an explicit cast/backend-extension support matrix, and seeding the MLX parity harness with a bounded `vmap` pass without implying `custom_vjp`, checkpoint, or compile-as-transform closure. |
-| `PMLX-204` | planned | `Psionic MLX: add checkpoint, custom_vjp, and custom transform registration hooks` | Expose gradient checkpointing and user-defined transform overrides in a reusable contract above IR internals. |
+| `PMLX-204` / [#3843](https://github.com/OpenAgentsInc/openagents/issues/3843) | done (2026-03-16) | `Psionic MLX: add checkpoint, custom_vjp, and custom transform registration hooks` | `psionic-ir` now exposes a first-class public `checkpoint` transform with explicit forward replay of backward-plan primal bindings, a graph-scoped transform-hook registry keyed by graph digest plus reverse-mode signature, and a public `custom_vjp` transform with typed registration and cotangent validation, while the lower program-transform capability matrix now treats checkpoint as a bounded supported family and still leaves jacobian plus compile work explicit. |
 | `PMLX-205` | planned | `Psionic MLX: expose compile as a transform with purity, cache, and debug controls` | Turn current compiler substrate into MLX-class compiled-function behavior with explicit disable, trace, purity, and cache invalidation rules. |
 | `PMLX-206` | planned | `Psionic MLX: add shapeless or symbolic compile behavior and trace-family cache identity` | Make shape-polymorphic compile and export rules explicit so later export or compatibility claims do not overpromise what compiled traces actually support. |
 
@@ -608,7 +608,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 - `PMLX-201` done 2026-03-16
 - `PMLX-202` done 2026-03-16
 - `PMLX-203` done 2026-03-16
-- `PMLX-204`
+- `PMLX-204` done 2026-03-16
 - `PMLX-205`
 - `PMLX-206`
 

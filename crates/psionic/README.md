@@ -244,8 +244,8 @@ Current posture:
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types plus tensor-family capability matrices for dense,
   sparse, nested, masked, and storage-aware semantics, plus the first public
-  `grad` / `value_and_grad` / `vjp` / `jvp` transform objects above
-  `AutodiffGraph`.
+  `grad` / `value_and_grad` / `vjp` / `jvp` / `checkpoint` transform objects
+  above `AutodiffGraph`, plus graph-scoped `custom_vjp` registration hooks.
 - `psionic-array`: first public lazy-array facade above `psionic-core` and
   `psionic-ir`, including context-owned graph construction, public device and
   stream handles with honest unified-memory flags and dependency-policy truth,
@@ -394,7 +394,7 @@ patches today. The honest current scope is:
 
 - frozen-base, adapter-only training over explicit low-rank parameter groups
 - `f32` reference precision only
-- activation checkpointing disabled in the shipped Apple reference lane
+- graph-level checkpoint transforms exist in `psionic-ir`, but activation checkpointing remains disabled in the shipped Apple reference lane
 - held-out eval plus bridge-backed runtime-smoke validation before acceptance
 - app-owned operator flow through `autopilotctl training launch`,
   `autopilotctl training export`, `autopilotctl training accept`, and
@@ -615,8 +615,8 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   families.
 - **[docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md](docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md)** —
   canonical bounded capability matrix for functionalization, symbolic rewrites,
-  export-safe graphs, bounded public `vmap` / `jvp`, and explicit remaining
-  higher-order transform refusal.
+  export-safe graphs, bounded public `checkpoint` / `vmap` / `jvp`, and
+  explicit remaining higher-order transform refusal.
 - **[docs/EXPORT_DEPLOYMENT_ARTIFACT_CONTRACTS.md](docs/EXPORT_DEPLOYMENT_ARTIFACT_CONTRACTS.md)** —
   canonical bounded exportable-graph and deployment-artifact contract surface
   for graph-first packaging independent of raw checkpoints.
