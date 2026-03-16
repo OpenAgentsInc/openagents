@@ -602,7 +602,7 @@ Master issue:
 | `ARC-105` / [#3674](https://github.com/OpenAgentsInc/openagents/issues/3674) | landed | Implement canonicalization, color normalization, and train/test dimension summaries. |
 | `ARC-106` / [#3675](https://github.com/OpenAgentsInc/openagents/issues/3675) | landed | Implement connected components, holes, bounding boxes, symmetry signatures, and relation graphs. |
 | `ARC-107` / [#3676](https://github.com/OpenAgentsInc/openagents/issues/3676) | landed | Add correspondence-candidate extraction between train inputs and outputs. |
-| `ARC-108` / [#3677](https://github.com/OpenAgentsInc/openagents/issues/3677) | planned | Add deterministic parser/objectization fixture corpora over sampled ARC-AGI-1 and ARC-AGI-2 tasks. |
+| `ARC-108` / [#3677](https://github.com/OpenAgentsInc/openagents/issues/3677) | landed | Add deterministic parser/objectization fixture corpora over sampled ARC-AGI-1 and ARC-AGI-2 tasks. |
 
 #### Datasets And Synthetic Lineage
 
