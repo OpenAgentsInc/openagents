@@ -2279,6 +2279,12 @@ fn find_bridge_binary() -> Option<PathBuf> {
         }
     }
 
+    // Packaged apps should prefer their embedded helper bundle even when the
+    // current working directory happens to be a repo checkout.
+    if let Some(candidate) = find_bundled_bridge_binary() {
+        return Some(candidate);
+    }
+
     // CWD-relative (e.g. when run from repo root).
     let cwd_candidates = [
         PathBuf::from("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge"),
@@ -2311,6 +2317,10 @@ fn find_bridge_binary() -> Option<PathBuf> {
         }
     }
 
+    None
+}
+
+fn find_bundled_bridge_binary() -> Option<PathBuf> {
     // Bundled with the app: next to executable (e.g. MyApp.app/Contents/MacOS/foundation-bridge)
     // or in Resources (e.g. MyApp.app/Contents/Resources/foundation-bridge).
     if let Ok(exe) = std::env::current_exe() {

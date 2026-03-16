@@ -11,6 +11,7 @@ APP_NAME="Autopilot"
 APP_PACKAGE="autopilot-desktop"
 FOUNDATION_BRIDGE_BUILD_SCRIPT="swift/foundation-bridge/build.sh"
 FOUNDATION_BRIDGE_BINARY="bin/foundation-bridge"
+FOUNDATION_BRIDGE_APP="bin/FoundationBridge.app"
 
 PUBLISH=false
 ALLOW_UNSIGNED=false
@@ -176,22 +177,27 @@ build_foundation_bridge() {
   [[ -x "$FOUNDATION_BRIDGE_BUILD_SCRIPT" ]] || die "Missing bridge build script: $FOUNDATION_BRIDGE_BUILD_SCRIPT"
 
   log "Building Foundation Models bridge"
-  "./$FOUNDATION_BRIDGE_BUILD_SCRIPT"
+  if [[ "$ALLOW_UNSIGNED" == false ]]; then
+    OPENAGENTS_APPLE_FM_BRIDGE_SIGN_IDENTITY="$MACOS_SIGNING_IDENTITY" "./$FOUNDATION_BRIDGE_BUILD_SCRIPT"
+  else
+    "./$FOUNDATION_BRIDGE_BUILD_SCRIPT"
+  fi
 
   [[ -x "$FOUNDATION_BRIDGE_BINARY" ]] || die "Bridge build did not produce executable binary at $FOUNDATION_BRIDGE_BINARY"
+  [[ -d "$FOUNDATION_BRIDGE_APP" ]] || die "Bridge build did not produce helper app bundle at $FOUNDATION_BRIDGE_APP"
 }
 
 bundle_foundation_bridge() {
   local app_path="$1"
-  local dest_dir="${app_path}/Contents/MacOS"
-  local dest_path="${dest_dir}/foundation-bridge"
+  local dest_dir="${app_path}/Contents/Helpers"
+  local dest_path="${dest_dir}/FoundationBridge.app"
 
-  [[ -d "$dest_dir" ]] || die "App bundle is missing MacOS directory: $dest_dir"
-  [[ -x "$FOUNDATION_BRIDGE_BINARY" ]] || die "Bridge binary is missing: $FOUNDATION_BRIDGE_BINARY"
+  mkdir -p "$dest_dir"
+  [[ -d "$FOUNDATION_BRIDGE_APP" ]] || die "Bridge helper app is missing: $FOUNDATION_BRIDGE_APP"
 
   log "Bundling Foundation Models bridge into app"
-  cp "$FOUNDATION_BRIDGE_BINARY" "$dest_path"
-  chmod +x "$dest_path"
+  rm -rf "$dest_path"
+  cp -R "$FOUNDATION_BRIDGE_APP" "$dest_path"
 }
 
 sign_binary() {
@@ -203,9 +209,22 @@ sign_binary() {
 
 sign_app_bundle() {
   local app_path="$1"
+  local nested_app
   local nested_binary
 
   [[ -d "$app_path" ]] || die "Cannot sign missing app bundle: $app_path"
+
+  if [[ -d "${app_path}/Contents/Helpers" ]]; then
+    log "Code-signing nested helper bundles"
+    for nested_app in "${app_path}/Contents/Helpers/"*.app; do
+      [[ -d "$nested_app" ]] || continue
+      for nested_binary in "${nested_app}/Contents/MacOS/"*; do
+        [[ -f "$nested_binary" && -x "$nested_binary" ]] || continue
+        sign_binary "$nested_binary"
+      done
+      sign_binary "$nested_app"
+    done
+  fi
 
   log "Code-signing app executables"
   for nested_binary in "${app_path}/Contents/MacOS/"*; do

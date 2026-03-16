@@ -20,7 +20,7 @@ RUNTIME_SETTINGS_PATH="${RUNTIME_HOME}/.openagents/autopilot-settings-v1.conf"
 APP_BUNDLE_PATH="${OPENAGENTS_AUTOPILOTCTL_APP_BUNDLE:-$ROOT_DIR/target/release/bundle/osx/Autopilot.app}"
 BUNDLE_EXECUTABLE="${APP_BUNDLE_PATH}/Contents/MacOS/autopilot-desktop"
 RUNTIME_EXECUTABLE="${OPENAGENTS_AUTOPILOTCTL_RUNTIME_EXECUTABLE:-$ROOT_DIR/target/release/autopilot-desktop}"
-BRIDGE_BINARY="${APP_BUNDLE_PATH}/Contents/MacOS/foundation-bridge"
+BRIDGE_APP="${APP_BUNDLE_PATH}/Contents/Helpers/FoundationBridge.app"
 AUTOPILOTCTL_BIN="${OPENAGENTS_AUTOPILOTCTL_BIN:-$ROOT_DIR/target/release/autopilotctl}"
 HEADLESS_BIN="${OPENAGENTS_AUTOPILOTCTL_HEADLESS_BIN:-$ROOT_DIR/target/release/autopilot-headless-compute}"
 SPARK_BIN="${OPENAGENTS_AUTOPILOTCTL_SPARK_BIN:-$ROOT_DIR/target/release/spark-wallet-cli}"
@@ -36,7 +36,7 @@ BUY_TIMEOUT_MS="${OPENAGENTS_AUTOPILOTCTL_BUY_TIMEOUT_MS:-240000}"
 SKIP_BUILD="${OPENAGENTS_AUTOPILOTCTL_SKIP_BUILD:-0}"
 SKIP_TEST_GATES="${OPENAGENTS_AUTOPILOTCTL_SKIP_TEST_GATES:-0}"
 
-BRIDGE_PID=""
+BRIDGE_STARTED_BY_SCRIPT=0
 RELAY_PID=""
 BUNDLE_PID=""
 RUNTIME_PID=""
@@ -563,9 +563,8 @@ cleanup() {
     kill "$RELAY_PID" 2>/dev/null || true
     wait "$RELAY_PID" 2>/dev/null || true
   fi
-  if [[ -n "$BRIDGE_PID" ]]; then
-    kill "$BRIDGE_PID" 2>/dev/null || true
-    wait "$BRIDGE_PID" 2>/dev/null || true
+  if [[ "$BRIDGE_STARTED_BY_SCRIPT" == "1" ]]; then
+    curl -sf -X POST http://127.0.0.1:11435/control/shutdown >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -605,9 +604,9 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
       "$CARGO_BUNDLE_BIN" --release --bin autopilot-desktop --format osx
     )
   fi
-  mkdir -p "${APP_BUNDLE_PATH}/Contents/MacOS"
-  cp bin/foundation-bridge "$BRIDGE_BINARY"
-  chmod +x "$BRIDGE_BINARY"
+  mkdir -p "${APP_BUNDLE_PATH}/Contents/Helpers"
+  rm -rf "$BRIDGE_APP"
+  cp -R bin/FoundationBridge.app "$BRIDGE_APP"
 fi
 
 [[ -x "$BUNDLE_EXECUTABLE" ]] || die "Missing bundled app executable at ${BUNDLE_EXECUTABLE}"
@@ -633,8 +632,8 @@ fi
 
 if ! curl -sf http://127.0.0.1:11435/health >/dev/null 2>&1; then
   log "Starting Foundation Models bridge"
-  "$BRIDGE_BINARY" >"${RUN_DIR}/foundation-bridge.stdout.log" 2>"${RUN_DIR}/foundation-bridge.stderr.log" &
-  BRIDGE_PID=$!
+  open -n -g "$BRIDGE_APP" --args 11435 >/dev/null 2>&1
+  BRIDGE_STARTED_BY_SCRIPT=1
 fi
 wait_for_http_health 30 || die "Apple FM bridge did not become healthy on 127.0.0.1:11435"
 
