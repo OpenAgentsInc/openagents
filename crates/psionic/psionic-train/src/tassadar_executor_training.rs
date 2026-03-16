@@ -2,10 +2,10 @@ use std::{collections::BTreeMap, env, time::Instant};
 
 use psionic_data::{TassadarSequenceExample, TassadarSequenceSplit};
 use psionic_eval::{
-    TassadarExecutorEvalError, TassadarExecutorEvalReport, TassadarExecutorLinearBenchmarkError,
-    TassadarExecutorLinearBenchmarkReport, TassadarSequenceEvalError, TassadarSequenceWorkload,
     benchmark_tassadar_executor_linear_decode, build_tassadar_sequence_dataset,
-    evaluate_tassadar_executor_transformer_with_target_cap,
+    evaluate_tassadar_executor_transformer_with_target_cap_and_progress, TassadarExecutorEvalError,
+    TassadarExecutorEvalReport, TassadarExecutorLinearBenchmarkError,
+    TassadarExecutorLinearBenchmarkReport, TassadarSequenceEvalError, TassadarSequenceWorkload,
 };
 use psionic_models::{
     TassadarExecutorTrainableSurface, TassadarExecutorTransformer,
@@ -16,8 +16,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    TassadarSequenceTrainingError, TassadarSequenceTrainingManifest,
-    build_tassadar_sequence_training_manifest,
+    build_tassadar_sequence_training_manifest, TassadarSequenceTrainingError,
+    TassadarSequenceTrainingManifest,
 };
 
 fn default_tassadar_sequence_workload() -> TassadarSequenceWorkload {
@@ -545,6 +545,30 @@ pub fn train_tassadar_executor_transformer(
                     .map(|sequence| sequence.sequence_id.clone())
                     .collect::<Vec<_>>();
                 let sequence_count = sequence_ids.len();
+                let estimated_target_tokens = sequence_ids
+                    .iter()
+                    .map(|sequence_id| {
+                        examples_by_id
+                            .get(sequence_id.as_str())
+                            .expect("frozen train plan should reference known examples")
+                    })
+                    .map(|example| stage_target_token_count(example, &stage))
+                    .sum::<usize>();
+                emit_tassadar_progress(format!(
+                    "tassadar_progress phase=batch_start run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} batch={}/{} batch_id={} sequences={} estimated_target_tokens={} elapsed_ms={}",
+                    config.run_id,
+                    stage.stage_id,
+                    stage_epoch_index + 1,
+                    stage.epochs,
+                    global_epoch_index + 1,
+                    total_epoch_count,
+                    batch_index + 1,
+                    batches_per_epoch,
+                    batch.batch_id,
+                    sequence_count,
+                    estimated_target_tokens,
+                    run_started_at.elapsed().as_millis(),
+                ));
                 let mut projection_grad = vec![0.0; hidden_width * vocab_size];
                 let mut bias_grad = vec![0.0; vocab_size];
                 let mut token_embedding_grad = config
@@ -566,10 +590,33 @@ pub fn train_tassadar_executor_transformer(
                 let mut total_loss = 0.0_f32;
                 let mut target_token_count = 0_u32;
 
-                for sequence_id in &sequence_ids {
+                for (sequence_index, sequence_id) in sequence_ids.iter().enumerate() {
                     let example = examples_by_id
                         .get(sequence_id.as_str())
                         .expect("frozen train plan should reference known examples");
+                    let stage_target_tokens = stage_target_token_count(example, &stage);
+                    emit_tassadar_progress(format!(
+                        "tassadar_progress phase=sequence_start run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} batch={}/{} batch_id={} sequence={}/{} sequence_id={} case_id={} prompt_tokens={} target_tokens={} prefix_mode={} batch_ms={} epoch_ms={} elapsed_ms={}",
+                        config.run_id,
+                        stage.stage_id,
+                        stage_epoch_index + 1,
+                        stage.epochs,
+                        global_epoch_index + 1,
+                        total_epoch_count,
+                        batch_index + 1,
+                        batches_per_epoch,
+                        batch.batch_id,
+                        sequence_index + 1,
+                        sequence_count,
+                        example.sequence_id,
+                        example.metadata.case_id,
+                        example.metadata.prompt_token_count,
+                        stage_target_tokens,
+                        stage.prefix_mode.label(),
+                        batch_started_at.elapsed().as_millis(),
+                        epoch_started_at.elapsed().as_millis(),
+                        run_started_at.elapsed().as_millis(),
+                    ));
                     let (sequence_loss, sequence_target_token_count) =
                         accumulate_sequence_gradients(
                             &current_model,
@@ -585,6 +632,32 @@ pub fn train_tassadar_executor_transformer(
                     total_loss += sequence_loss;
                     target_token_count =
                         target_token_count.saturating_add(sequence_target_token_count);
+                    emit_tassadar_progress(format!(
+                        "tassadar_progress phase=sequence_complete run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} batch={}/{} batch_id={} sequence={}/{} sequence_id={} case_id={} target_tokens={} sequence_mean_loss={:.6} cumulative_target_tokens={} batch_ms={} epoch_ms={} elapsed_ms={}",
+                        config.run_id,
+                        stage.stage_id,
+                        stage_epoch_index + 1,
+                        stage.epochs,
+                        global_epoch_index + 1,
+                        total_epoch_count,
+                        batch_index + 1,
+                        batches_per_epoch,
+                        batch.batch_id,
+                        sequence_index + 1,
+                        sequence_count,
+                        example.sequence_id,
+                        example.metadata.case_id,
+                        sequence_target_token_count,
+                        if sequence_target_token_count == 0 {
+                            0.0
+                        } else {
+                            sequence_loss / sequence_target_token_count as f32
+                        },
+                        target_token_count,
+                        batch_started_at.elapsed().as_millis(),
+                        epoch_started_at.elapsed().as_millis(),
+                        run_started_at.elapsed().as_millis(),
+                    ));
                 }
 
                 if target_token_count > 0 {
@@ -691,19 +764,88 @@ pub fn train_tassadar_executor_transformer(
                 ));
             }
 
+            let validation_case_count = bundle
+                .dataset
+                .split_examples(TassadarSequenceSplit::Validation)
+                .len();
+            emit_tassadar_progress(format!(
+                "tassadar_progress phase=validation_start run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} cases={} target_cap={} elapsed_ms={}",
+                config.run_id,
+                stage.stage_id,
+                stage_epoch_index + 1,
+                stage.epochs,
+                global_epoch_index + 1,
+                total_epoch_count,
+                validation_case_count,
+                config
+                    .max_eval_target_tokens_per_example
+                    .map_or_else(|| String::from("full"), |value| value.to_string()),
+                run_started_at.elapsed().as_millis(),
+            ));
+            let validation_started_at = Instant::now();
             let evaluation = if config.validate_every_epoch {
-                evaluate_tassadar_executor_transformer_with_target_cap(
+                evaluate_tassadar_executor_transformer_with_target_cap_and_progress(
                     &current_model,
                     &bundle.dataset,
                     TassadarSequenceSplit::Validation,
                     config.max_eval_target_tokens_per_example,
+                    |progress| {
+                        emit_tassadar_progress(format!(
+                            "tassadar_progress phase=validation_case_complete run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} case={}/{} sequence_id={} case_id={} target_tokens={} matched_tokens={} first_divergence={} exact_trace={} final_output_match={} halt_match={} validation_ms={} elapsed_ms={}",
+                            config.run_id,
+                            stage.stage_id,
+                            stage_epoch_index + 1,
+                            stage.epochs,
+                            global_epoch_index + 1,
+                            total_epoch_count,
+                            progress.case_index,
+                            progress.case_count,
+                            progress.sequence_id,
+                            progress.case_id,
+                            progress.evaluated_target_token_count,
+                            progress.matched_target_token_count,
+                            progress
+                                .first_divergence_index
+                                .map_or_else(|| String::from("none"), |value| value.to_string()),
+                            progress.exact_trace_match,
+                            progress.final_output_match,
+                            progress.halt_match,
+                            validation_started_at.elapsed().as_millis(),
+                            run_started_at.elapsed().as_millis(),
+                        ));
+                    },
                 )?
             } else {
-                evaluate_tassadar_executor_transformer_with_target_cap(
+                evaluate_tassadar_executor_transformer_with_target_cap_and_progress(
                     &current_model,
                     &bundle.dataset,
                     TassadarSequenceSplit::Validation,
                     config.max_eval_target_tokens_per_example,
+                    |progress| {
+                        emit_tassadar_progress(format!(
+                            "tassadar_progress phase=validation_case_complete run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} case={}/{} sequence_id={} case_id={} target_tokens={} matched_tokens={} first_divergence={} exact_trace={} final_output_match={} halt_match={} validation_ms={} elapsed_ms={}",
+                            config.run_id,
+                            stage.stage_id,
+                            stage_epoch_index + 1,
+                            stage.epochs,
+                            global_epoch_index + 1,
+                            total_epoch_count,
+                            progress.case_index,
+                            progress.case_count,
+                            progress.sequence_id,
+                            progress.case_id,
+                            progress.evaluated_target_token_count,
+                            progress.matched_target_token_count,
+                            progress
+                                .first_divergence_index
+                                .map_or_else(|| String::from("none"), |value| value.to_string()),
+                            progress.exact_trace_match,
+                            progress.final_output_match,
+                            progress.halt_match,
+                            validation_started_at.elapsed().as_millis(),
+                            run_started_at.elapsed().as_millis(),
+                        ));
+                    },
                 )?
             };
             emit_tassadar_progress(format!(
@@ -1084,6 +1226,17 @@ fn greedy_token_from_logits(logits: &[f32]) -> TokenId {
         .max_by(|(_, left), (_, right)| left.partial_cmp(right).unwrap())
         .expect("vocabulary logits should be non-empty");
     TokenId(best_index as u32)
+}
+
+fn stage_target_token_count(
+    example: &TassadarSequenceExample,
+    stage: &TassadarExecutorCurriculumStage,
+) -> usize {
+    let full_target_tokens = example.metadata.target_token_count as usize;
+    stage
+        .max_train_target_tokens_per_example
+        .unwrap_or(full_target_tokens)
+        .min(full_target_tokens)
 }
 
 fn checkpoint_rank_tuple(
