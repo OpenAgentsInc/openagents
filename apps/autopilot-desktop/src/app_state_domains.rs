@@ -891,7 +891,9 @@ impl Default for AppleAdapterTrainingPaneState {
             accept_confirmation_armed: false,
             last_handoff_summary: None,
             log_tail_run_id: None,
-            log_tail: TerminalPane::new().title("\\\\ TRAINING LOG"),
+            log_tail: TerminalPane::new()
+                .title("\\\\ TRAINING LOG")
+                .max_lines(256),
         }
     }
 }

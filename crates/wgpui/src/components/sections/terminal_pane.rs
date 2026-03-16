@@ -70,6 +70,11 @@ impl TerminalPane {
         self
     }
 
+    pub fn max_lines(mut self, max_lines: usize) -> Self {
+        self.max_lines = max_lines.max(1);
+        self
+    }
+
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.title = title.into();
     }
