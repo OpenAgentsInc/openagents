@@ -1157,13 +1157,27 @@ fn score_sample(
         .last()
         .map(|message| message.content.as_str())
         .unwrap_or_default();
-    let text_match =
-        normalized_text(expected_text) == normalized_text(observed.output_text.as_str());
     let runtime_failure_reasons = metadata_failure_reasons(
         observed,
         "apple_adapter.runtime_failures",
         "runtime_failure",
     );
+    let structured_contract_failure_reasons = metadata_failure_reasons(
+        observed,
+        "apple_adapter.structured_contract_failures",
+        "harness_contract_failure:structured_generation",
+    );
+    let effective_structured_output = effective_structured_output(observed);
+    let text_match = if let Some(expected_structured) = sample.structured_assistant_output.as_ref()
+    {
+        structured_text_match(
+            expected_structured,
+            effective_structured_output.as_ref(),
+            observed.output_text.as_str(),
+        )
+    } else {
+        normalized_text(expected_text) == normalized_text(observed.output_text.as_str())
+    };
     let mut metrics = vec![
         EvalMetric::new(
             "apple_adapter.text_match",
@@ -1172,17 +1186,18 @@ fn score_sample(
         .with_unit("fraction"),
     ];
     let mut failure_reasons = runtime_failure_reasons.clone();
+    failure_reasons.extend(structured_contract_failure_reasons);
 
     if sample.structured_assistant_output.is_some() {
         let expected_structured = sample
             .structured_assistant_output
             .as_ref()
             .unwrap_or(&Value::Null);
-        let structured_match = match observed.structured_output.as_ref() {
+        let structured_match = match effective_structured_output.as_ref() {
             Some(structured_output) => structured_output == expected_structured,
             None => false,
         };
-        if !structured_match && runtime_failure_reasons.is_empty() {
+        if !structured_match && runtime_failure_reasons.is_empty() && failure_reasons.is_empty() {
             failure_reasons.push(String::from("model_output_mismatch:structured"));
         }
         metrics.push(
@@ -1194,7 +1209,7 @@ fn score_sample(
         );
     }
 
-    if !text_match && runtime_failure_reasons.is_empty() {
+    if !text_match && runtime_failure_reasons.is_empty() && failure_reasons.is_empty() {
         failure_reasons.push(String::from("model_output_mismatch:text"));
     }
 
@@ -1267,7 +1282,7 @@ fn score_sample(
             "sample_kind": sample.sample_kind,
             "expected_output": expected_text,
             "observed_output": observed.output_text,
-            "structured_output": observed.structured_output,
+            "structured_output": effective_structured_output,
             "observed_tool_calls": observed.observed_tool_calls,
             "score_bps": score_bps,
         }))
@@ -1292,7 +1307,7 @@ fn score_sample(
         String::from("apple_adapter.expected_digest"),
         Value::String(sample.stable_digest.clone()),
     );
-    if let Some(structured_output) = observed.structured_output.as_ref() {
+    if let Some(structured_output) = effective_structured_output.as_ref() {
         metadata.insert(
             String::from("apple_adapter.observed_structured_output"),
             structured_output.clone(),
@@ -1334,6 +1349,48 @@ fn average_metric_score_bps(metrics: &[EvalMetric]) -> u32 {
 
 fn normalized_text(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn effective_structured_output(observed: &AppleAdapterObservedSampleOutput) -> Option<Value> {
+    observed
+        .structured_output
+        .clone()
+        .or_else(|| serde_json::from_str::<Value>(observed.output_text.as_str()).ok())
+}
+
+fn structured_text_match(
+    expected_structured: &Value,
+    observed_structured: Option<&Value>,
+    observed_output_text: &str,
+) -> bool {
+    if let Some(observed_structured) = observed_structured {
+        return canonical_json_text(expected_structured)
+            == canonical_json_text(observed_structured);
+    }
+    normalized_text(&canonical_json_text(expected_structured))
+        == normalized_text(observed_output_text)
+}
+
+fn canonical_json_text(value: &Value) -> String {
+    serde_json::to_string(&canonical_json_value(value)).unwrap_or_else(|_| value.to_string())
+}
+
+fn canonical_json_value(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut keys = map.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            let mut normalized = serde_json::Map::new();
+            for key in keys {
+                if let Some(inner) = map.get(&key) {
+                    normalized.insert(key, canonical_json_value(inner));
+                }
+            }
+            Value::Object(normalized)
+        }
+        Value::Array(values) => Value::Array(values.iter().map(canonical_json_value).collect()),
+        _ => value.clone(),
+    }
 }
 
 fn metadata_failure_reasons(
@@ -2027,7 +2084,7 @@ mod tests {
         assert_eq!(structured.status, EvalSampleStatus::Failed);
         assert_eq!(
             structured.error_reason.as_deref(),
-            Some("model_output_mismatch:structured; model_output_mismatch:text")
+            Some("model_output_mismatch:structured")
         );
         let tool = held_out
             .samples
@@ -2038,6 +2095,171 @@ mod tests {
         assert_eq!(
             tool.error_reason.as_deref(),
             Some("model_behavior:tool_missing:lookup_stock")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_eval_harness_accepts_semantically_equal_structured_json()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let bundle = environment_bundle();
+        let harness = AppleAdapterEvalHarness::new(bundle)?;
+        let dataset = dataset_contract();
+        let observed = vec![
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[0].sample_id.clone(),
+                dataset.samples[0]
+                    .messages
+                    .last()
+                    .expect("assistant")
+                    .content
+                    .clone(),
+            ),
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[1].sample_id.clone(),
+                String::from("{\"response\":{\"day\":1,\"month\":4,\"year\":1976}}"),
+            ),
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[2].sample_id.clone(),
+                dataset.samples[2]
+                    .messages
+                    .last()
+                    .expect("assistant")
+                    .content
+                    .clone(),
+            )
+            .with_tool_calls(vec![
+                AppleAdapterObservedToolCall {
+                    tool_name: String::from("get_current_weather"),
+                    succeeded: true,
+                    arguments: None,
+                },
+                AppleAdapterObservedToolCall {
+                    tool_name: String::from("lookup_stock"),
+                    succeeded: true,
+                    arguments: None,
+                },
+            ]),
+        ];
+
+        let held_out = harness.run_held_out_eval(
+            "eval.apple.structured_semantic_json",
+            &dataset,
+            observed,
+            1,
+            2,
+        )?;
+        let structured = held_out
+            .samples
+            .iter()
+            .find(|sample| sample.sample_id == dataset.samples[1].sample_id)
+            .expect("structured sample present");
+        assert_eq!(structured.status, EvalSampleStatus::Passed);
+        assert_eq!(
+            structured
+                .metrics
+                .iter()
+                .find(|metric| metric.metric_id == "apple_adapter.text_match")
+                .map(|metric| metric.metric_value),
+            Some(1.0)
+        );
+        assert_eq!(
+            structured
+                .metrics
+                .iter()
+                .find(|metric| metric.metric_id == "apple_adapter.structured_output_match")
+                .map(|metric| metric.metric_value),
+            Some(1.0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_eval_harness_classifies_structured_contract_failures_without_model_blur()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let bundle = environment_bundle();
+        let harness = AppleAdapterEvalHarness::new(bundle)?;
+        let dataset = dataset_contract();
+        let mut structured = AppleAdapterObservedSampleOutput::from_text(
+            dataset.samples[1].sample_id.clone(),
+            String::from(
+                "runtime_error:Foundation Models structured request failed: Failed to deserialize a Generable type from model output",
+            ),
+        );
+        structured.metadata.insert(
+            String::from("apple_adapter.runtime_failures"),
+            serde_json::json!([{
+                "failure_code": "bridge_request_failed",
+                "detail": "Foundation Models structured request failed: Failed to deserialize a Generable type from model output",
+            }]),
+        );
+        structured.metadata.insert(
+            String::from("apple_adapter.structured_contract_failures"),
+            serde_json::json!([{
+                "failure_class": "harness_contract",
+                "failure_code": "typed_deserialization_failed",
+                "detail": "Foundation Models structured request failed: Failed to deserialize a Generable type from model output",
+            }]),
+        );
+        let observed = vec![
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[0].sample_id.clone(),
+                dataset.samples[0]
+                    .messages
+                    .last()
+                    .expect("assistant")
+                    .content
+                    .clone(),
+            ),
+            structured,
+            AppleAdapterObservedSampleOutput::from_text(
+                dataset.samples[2].sample_id.clone(),
+                dataset.samples[2]
+                    .messages
+                    .last()
+                    .expect("assistant")
+                    .content
+                    .clone(),
+            )
+            .with_tool_calls(vec![
+                AppleAdapterObservedToolCall {
+                    tool_name: String::from("get_current_weather"),
+                    succeeded: true,
+                    arguments: None,
+                },
+                AppleAdapterObservedToolCall {
+                    tool_name: String::from("lookup_stock"),
+                    succeeded: true,
+                    arguments: None,
+                },
+            ]),
+        ];
+
+        let held_out = harness.run_held_out_eval(
+            "eval.apple.structured_contract_failure",
+            &dataset,
+            observed,
+            1,
+            2,
+        )?;
+        let structured = held_out
+            .samples
+            .iter()
+            .find(|sample| sample.sample_id == dataset.samples[1].sample_id)
+            .expect("structured sample present");
+        assert_eq!(structured.status, EvalSampleStatus::Failed);
+        assert_eq!(
+            structured.error_reason.as_deref(),
+            Some(
+                "runtime_failure:bridge_request_failed; harness_contract_failure:structured_generation:typed_deserialization_failed",
+            )
+        );
+        assert!(
+            !structured
+                .error_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("model_output_mismatch")
         );
         Ok(())
     }

@@ -70,6 +70,7 @@ use psionic_train::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::apple_adapter_eval_contract::runtime_error_observed_output;
 use crate::apple_repo_lookup_tools::{AppleRepoLookupRecorder, build_repo_lookup_tools};
 
 const APPLE_TRAINING_SCHEMA_VERSION: u16 = 1;
@@ -4260,35 +4261,6 @@ fn collect_runtime_negative_target_features(
         );
     }
     Ok(negative_target_features)
-}
-
-fn runtime_error_observed_output(
-    sample_id: &str,
-    error: String,
-    structured: bool,
-) -> AppleAdapterObservedSampleOutput {
-    let mut observed = AppleAdapterObservedSampleOutput::from_text(
-        sample_id.to_string(),
-        format!("runtime_error:{error}"),
-    );
-    observed
-        .metadata
-        .insert(String::from("runtime_error"), Value::String(error));
-    observed.metadata.insert(
-        String::from("apple_adapter.runtime_failures"),
-        json!([{
-            "failure_code": "bridge_request_failed",
-            "detail": observed
-                .metadata
-                .get("runtime_error")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-        }]),
-    );
-    if structured {
-        observed = observed.with_structured_output(Value::Null);
-    }
-    observed
 }
 
 pub(crate) fn apple_eval_generation_options() -> Option<AppleFmGenerationOptions> {

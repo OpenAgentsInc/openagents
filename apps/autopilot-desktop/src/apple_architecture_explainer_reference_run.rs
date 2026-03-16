@@ -28,6 +28,7 @@ use psionic_train::{
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
+use crate::apple_adapter_eval_contract::runtime_error_observed_output;
 use crate::apple_adapter_training_control::{
     AppleAdapterOperatorLaunchRequest, AppleAdapterOperatorRunStatus, accept_run,
     apple_eval_generation_options, build_environment_bundle, export_run, launch_run, load_dataset,
@@ -702,36 +703,6 @@ fn reference_benchmark_verification(elapsed_ms: u64) -> EvalVerificationFacts {
             scheduler_posture: Some(String::from("single_host")),
         }),
     }
-}
-
-fn runtime_error_observed_output(
-    sample_id: &str,
-    error: String,
-    structured: bool,
-) -> AppleAdapterObservedSampleOutput {
-    let mut observed = AppleAdapterObservedSampleOutput::from_text(
-        sample_id.to_string(),
-        format!("runtime_error:{error}"),
-    );
-    observed.metadata.insert(
-        String::from("runtime_error"),
-        serde_json::Value::String(error),
-    );
-    observed.metadata.insert(
-        String::from("apple_adapter.runtime_failures"),
-        serde_json::json!([{
-            "failure_code": "bridge_request_failed",
-            "detail": observed
-                .metadata
-                .get("runtime_error")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-        }]),
-    );
-    if structured {
-        observed = observed.with_structured_output(serde_json::Value::Null);
-    }
-    observed
 }
 
 fn final_runtime_smoke_passed(run: &AppleAdapterOperatorRunStatus) -> bool {
