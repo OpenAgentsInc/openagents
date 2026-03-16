@@ -170,6 +170,11 @@ That now includes one intentionally narrow executor-training answer:
 - the resulting claim is intentionally scoped to the validation corpus only; it
   is not a claim that larger learned executors, broader Wasm coverage, or
   compile-to-weights work are already complete in Psionic
+- the runtime side now does carry the first honest broader-executor substrate
+  for later training work: `tassadar.wasm.sudoku_v0_search.v1` can represent a
+  real 4x4 backtracking Sudoku program on the CPU reference lane, but that is
+  still substrate for later corpus/model/training issues rather than a claim
+  that the trained executor already exists
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

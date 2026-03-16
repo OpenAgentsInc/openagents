@@ -1,12 +1,11 @@
 use psionic_core::{DType, QuantizationMode, Shape};
 use psionic_runtime::{
-    TassadarExecutionEvidenceBundle, TassadarExecutorDecodeMode,
-    TassadarExecutorExecutionReport, TassadarExecutorSelectionDiagnostic,
-    TassadarFixtureWeights as RuntimeTassadarFixtureWeights, TassadarProgram,
-    TassadarProgramArtifact, TassadarRuntimeCapabilityReport, TassadarTraceAbi,
-    TassadarWasmProfile, build_tassadar_execution_evidence_bundle,
-    diagnose_tassadar_executor_request, execute_tassadar_executor_request,
-    tassadar_runtime_capability_report,
+    build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
+    execute_tassadar_executor_request, tassadar_runtime_capability_report,
+    TassadarExecutionEvidenceBundle, TassadarExecutorDecodeMode, TassadarExecutorExecutionReport,
+    TassadarExecutorSelectionDiagnostic, TassadarFixtureWeights as RuntimeTassadarFixtureWeights,
+    TassadarProgram, TassadarProgramArtifact, TassadarRuntimeCapabilityReport, TassadarTraceAbi,
+    TassadarWasmProfile,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -377,6 +376,8 @@ impl TassadarExecutorFixture {
     pub const MODEL_ID: &str = "tassadar-executor-fixture-v0";
     /// Stable model identifier for the widened article-class fixture.
     pub const ARTICLE_CLASS_MODEL_ID: &str = "tassadar-executor-article-class-v0";
+    /// Stable model identifier for the honest Sudoku-v0 search fixture.
+    pub const SUDOKU_V0_SEARCH_MODEL_ID: &str = "tassadar-executor-sudoku-v0-search-v0";
     /// Stable model family for the Phase 1 fixture.
     pub const MODEL_FAMILY: &str = "tassadar_executor";
 
@@ -409,6 +410,20 @@ impl TassadarExecutorFixture {
         )
     }
 
+    /// Creates the honest Sudoku-v0 search executor fixture.
+    #[must_use]
+    pub fn sudoku_v0_search_v1() -> Self {
+        let profile = TassadarWasmProfile::sudoku_v0_search_v1();
+        let trace_abi = TassadarTraceAbi::sudoku_v0_search_v1();
+        let runtime_weights = RuntimeTassadarFixtureWeights::sudoku_v0_search_v1();
+        Self::from_parts(
+            Self::SUDOKU_V0_SEARCH_MODEL_ID,
+            profile,
+            trace_abi,
+            runtime_weights,
+        )
+    }
+
     /// Returns the canonical fixture for one supported Wasm profile id.
     #[must_use]
     pub fn for_profile_id(profile_id: &str) -> Option<Self> {
@@ -418,6 +433,9 @@ impl TassadarExecutorFixture {
             }
             value if value == TassadarWasmProfile::core_i32_v2().profile_id => {
                 Some(Self::core_i32_v2())
+            }
+            value if value == TassadarWasmProfile::sudoku_v0_search_v1().profile_id => {
+                Some(Self::sudoku_v0_search_v1())
             }
             _ => None,
         }
@@ -636,7 +654,10 @@ impl TassadarCompiledProgramWeightArtifact {
             compiled_weight_artifact_sha256: primary_artifact.sha256,
             compiled_weight_artifact_bytes: primary_artifact.byte_length,
             compiled_behavior_digest: compiled_behavior_digest.into(),
-            compile_runtime_manifest_digest: evidence_bundle.runtime_manifest.manifest_digest.clone(),
+            compile_runtime_manifest_digest: evidence_bundle
+                .runtime_manifest
+                .manifest_digest
+                .clone(),
             compile_trace_proof_digest: evidence_bundle.trace_proof.proof_digest.clone(),
             compile_execution_proof_bundle_digest: evidence_bundle.proof_bundle.stable_digest(),
         };
@@ -645,10 +666,8 @@ impl TassadarCompiledProgramWeightArtifact {
     }
 
     fn refresh_digest(&mut self) {
-        self.artifact_digest = stable_serialized_digest(
-            b"tassadar_compiled_program_weight_artifact|",
-            self,
-        );
+        self.artifact_digest =
+            stable_serialized_digest(b"tassadar_compiled_program_weight_artifact|", self);
     }
 }
 
@@ -722,10 +741,8 @@ impl TassadarCompiledProgramRuntimeContract {
     }
 
     fn refresh_digest(&mut self) {
-        self.contract_digest = stable_serialized_digest(
-            b"tassadar_compiled_program_runtime_contract|",
-            self,
-        );
+        self.contract_digest =
+            stable_serialized_digest(b"tassadar_compiled_program_runtime_contract|", self);
     }
 }
 
@@ -748,7 +765,10 @@ impl TassadarCompiledProgramExecutor {
     ) -> Result<Self, TassadarCompiledProgramError> {
         base_fixture
             .descriptor()
-            .validate_program_artifact(program_artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .validate_program_artifact(
+                program_artifact,
+                TassadarExecutorDecodeMode::ReferenceLinear,
+            )
             .map_err(|error| TassadarCompiledProgramError::DescriptorContract {
                 message: error.to_string(),
             })?;
@@ -777,9 +797,11 @@ impl TassadarCompiledProgramExecutor {
             descriptor.trace_abi.schema_version,
             Some(descriptor.compatibility.supported_decode_modes.as_slice()),
         )
-        .map_err(|diagnostic| TassadarCompiledProgramError::SelectionRefused {
-            detail: diagnostic.detail,
-        })?;
+        .map_err(
+            |diagnostic| TassadarCompiledProgramError::SelectionRefused {
+                detail: diagnostic.detail,
+            },
+        )?;
         let effective_decode_mode = execution_report
             .selection
             .effective_decode_mode
@@ -865,10 +887,12 @@ impl TassadarCompiledProgramExecutor {
                 message: error.to_string(),
             })?;
         if artifact.artifact_digest != self.runtime_contract.program_artifact_digest {
-            return Err(TassadarCompiledProgramError::ProgramArtifactDigestMismatch {
-                expected: self.runtime_contract.program_artifact_digest.clone(),
-                actual: artifact.artifact_digest.clone(),
-            });
+            return Err(
+                TassadarCompiledProgramError::ProgramArtifactDigestMismatch {
+                    expected: self.runtime_contract.program_artifact_digest.clone(),
+                    actual: artifact.artifact_digest.clone(),
+                },
+            );
         }
         if artifact.validated_program_digest != self.runtime_contract.program_digest {
             return Err(TassadarCompiledProgramError::ProgramDigestMismatch {
@@ -890,11 +914,18 @@ impl TassadarCompiledProgramExecutor {
             &artifact.validated_program,
             requested_decode_mode,
             self.descriptor.trace_abi.schema_version,
-            Some(self.descriptor.compatibility.supported_decode_modes.as_slice()),
+            Some(
+                self.descriptor
+                    .compatibility
+                    .supported_decode_modes
+                    .as_slice(),
+            ),
         )
-        .map_err(|diagnostic| TassadarCompiledProgramError::SelectionRefused {
-            detail: diagnostic.detail,
-        })?;
+        .map_err(
+            |diagnostic| TassadarCompiledProgramError::SelectionRefused {
+                detail: diagnostic.detail,
+            },
+        )?;
         let effective_decode_mode = execution_report
             .selection
             .effective_decode_mode
@@ -909,7 +940,10 @@ impl TassadarCompiledProgramExecutor {
             "psionic.tassadar.compiled_executor",
             self.descriptor.model.model_id.clone(),
             self.descriptor.stable_digest(),
-            vec![format!("compiled://{}", self.compiled_weight_artifact.artifact_id)],
+            vec![format!(
+                "compiled://{}",
+                self.compiled_weight_artifact.artifact_id
+            )],
             artifact,
             effective_decode_mode,
             &execution_report.execution,
@@ -986,10 +1020,8 @@ impl TassadarCompiledProgramSuiteArtifact {
     }
 
     fn refresh_digest(&mut self) {
-        self.artifact_digest = stable_serialized_digest(
-            b"tassadar_compiled_program_suite_artifact|",
-            self,
-        );
+        self.artifact_digest =
+            stable_serialized_digest(b"tassadar_compiled_program_suite_artifact|", self);
     }
 }
 
@@ -1326,11 +1358,7 @@ fn build_compiled_program_weight_bundle(
         artifact_bytes.len() as u64,
         hex::encode(Sha256::digest(artifact_bytes)),
     )];
-    let metadata = build_metadata(
-        &entries,
-        WeightSource::ExternalArtifact,
-        artifact_metadata,
-    );
+    let metadata = build_metadata(&entries, WeightSource::ExternalArtifact, artifact_metadata);
     TassadarCompiledProgramWeightBundle {
         metadata,
         compiled_program_header,
@@ -1412,9 +1440,9 @@ struct CompiledWeightArtifactEncoding<'a> {
 #[cfg(test)]
 mod tests {
     use psionic_runtime::{
-        TassadarExecutorDecodeMode, TassadarFixtureRunner, TassadarProgramArtifact,
-        TassadarTraceAbi, run_tassadar_exact_parity, tassadar_article_class_corpus,
-        tassadar_validation_corpus,
+        run_tassadar_exact_parity, tassadar_article_class_corpus,
+        tassadar_sudoku_v0_search_program, tassadar_validation_corpus, TassadarExecutorDecodeMode,
+        TassadarFixtureRunner, TassadarProgramArtifact, TassadarTraceAbi,
     };
 
     use super::{
@@ -1538,6 +1566,44 @@ mod tests {
             );
             run_tassadar_exact_parity(&case.program).expect("exact parity should hold");
         }
+    }
+
+    #[test]
+    fn tassadar_sudoku_v0_search_fixture_accepts_real_search_program_artifact() {
+        let fixture = TassadarExecutorFixture::sudoku_v0_search_v1();
+        let program = tassadar_sudoku_v0_search_program(
+            "tassadar.sudoku_v0.models_fixture",
+            [
+                0, 1, 0, 0, //
+                0, 4, 1, 0, //
+                1, 0, 0, 4, //
+                0, 3, 0, 0,
+            ],
+        );
+        let artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.sudoku_v0.models_fixture.artifact",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            program.clone(),
+        )
+        .expect("Sudoku-v0 search artifact should assemble");
+        fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .expect("Sudoku-v0 search artifact should validate against the fixture");
+        let execution = TassadarFixtureRunner::for_profile(fixture.descriptor().profile.clone())
+            .expect("Sudoku-v0 fixture runner")
+            .execute(&program)
+            .expect("Sudoku-v0 program should execute through the fixture runner");
+        assert_eq!(
+            execution.outputs,
+            vec![
+                2, 1, 4, 3, //
+                3, 4, 1, 2, //
+                1, 2, 3, 4, //
+                4, 3, 2, 1,
+            ]
+        );
     }
 
     #[test]
@@ -1761,7 +1827,10 @@ mod tests {
             compiled.descriptor().interop_boundary().ingress_surface,
             ModelIngressSurface::DirectArtifactImport
         );
-        assert_eq!(compiled.weight_bundle().metadata().source, WeightSource::ExternalArtifact);
+        assert_eq!(
+            compiled.weight_bundle().metadata().source,
+            WeightSource::ExternalArtifact
+        );
         assert_eq!(
             compiled.weight_bundle().metadata().format,
             WeightFormat::ProgrammaticFixture
@@ -1785,14 +1854,15 @@ mod tests {
         let execution = compiled
             .execute(&artifact, TassadarExecutorDecodeMode::HullCache)
             .expect("matching program should execute");
-        assert_eq!(execution.execution_report.execution.outputs, expected.outputs);
-        assert!(
-            !execution
-                .evidence_bundle
-                .trace_proof
-                .proof_digest
-                .is_empty()
+        assert_eq!(
+            execution.execution_report.execution.outputs,
+            expected.outputs
         );
+        assert!(!execution
+            .evidence_bundle
+            .trace_proof
+            .proof_digest
+            .is_empty());
         assert_eq!(
             execution
                 .evidence_bundle

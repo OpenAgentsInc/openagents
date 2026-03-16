@@ -512,6 +512,11 @@ Its declared scope is:
   `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching` with exact
   CPU/reference-linear/hull-cache parity plus published speedup and CPU-gap
   metrics
+- landed trained-executor Phase 1 bar from the post-audit issue spine:
+  `tassadar.wasm.sudoku_v0_search.v1` now exists as a larger honest search
+  profile with a real 4x4 backtracking Sudoku program representation on the
+  CPU reference lane, while hull-cache and sparse-top-k still fall back
+  explicitly on that general backward-branch control-flow envelope
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
@@ -691,6 +696,13 @@ Tassadar executor-phase issues from that March 15 audit:
 
 - hybrid learned-plus-compiled and learned-circuit executor research:
   [#3767](https://github.com/OpenAgentsInc/openagents/issues/3767)
+
+The separate trained-executor gap issue spine remains open after that earlier
+executor-substrate work. Its first follow-on runtime/profile issue is now
+implemented:
+
+- Phase 1 widen the Wasm subset for real Sudoku search:
+  [#3777](https://github.com/OpenAgentsInc/openagents/issues/3777)
 
 ## Epic 0: Governance And Acceptance
 
