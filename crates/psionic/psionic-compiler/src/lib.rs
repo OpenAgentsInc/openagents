@@ -2056,7 +2056,9 @@ fn classify_schedule_phase(op: &ExecutionOp) -> SchedulePhase {
         | ExecutionOp::Slice { .. }
         | ExecutionOp::Select { .. }
         | ExecutionOp::Expand { .. } => SchedulePhase::View,
-        ExecutionOp::Add | ExecutionOp::Mul => SchedulePhase::Elementwise,
+        ExecutionOp::Add | ExecutionOp::Mul | ExecutionOp::Cast { .. } => {
+            SchedulePhase::Elementwise
+        }
         ExecutionOp::ReduceSum { .. } => SchedulePhase::Reduction,
         ExecutionOp::BackendExtension { .. } => SchedulePhase::BackendExtension,
         ExecutionOp::Matmul | ExecutionOp::Concat { .. } => SchedulePhase::Compute,

@@ -2665,6 +2665,8 @@ pub enum LazyOp {
     Concat { axis: usize },
     /// Tensor expand/broadcast.
     Expand { shape: Shape },
+    /// Tensor dtype cast.
+    Cast { dtype: DType },
     /// Full or axis-specific reduction.
     ReduceSum { axis: Option<usize> },
     /// Typed backend-extension operation kept separate from primitive ops.

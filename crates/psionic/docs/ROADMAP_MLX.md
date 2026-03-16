@@ -2,8 +2,8 @@
 
 > Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`,
 > `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, `PMLX-005` / `#3833`,
-> `PMLX-101` / `#3834`, `PMLX-102` / `#3835`, `PMLX-103` / `#3836`, and
-> `PMLX-104` / `#3837`,
+> `PMLX-101` / `#3834`, `PMLX-102` / `#3835`, `PMLX-103` / `#3836`,
+> `PMLX-104` / `#3837`, and `PMLX-105` / `#3838`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -420,7 +420,7 @@ Expose a real MLX-class lazy array surface above current Psionic core crates.
 | `PMLX-102` / [#3835](https://github.com/OpenAgentsInc/openagents/issues/3835) | done (2026-03-16) | `Psionic MLX: define explicit eval and async_eval semantics plus materialization boundaries` | `psionic-array` now exposes explicit `eval` and deferred `async_eval(...).wait()` entrypoints, emits replay-stable `EvalReceipt` records over graph-snapshot digests, and publishes an explicit-only implicit-materialization policy; device-stream scheduling, broader host interop, and MLX-class runtime breadth remain in later Epic 1 issues. |
 | `PMLX-103` / [#3836](https://github.com/OpenAgentsInc/openagents/issues/3836) | done (2026-03-16) | `Psionic MLX: publish device and stream APIs with unified-memory capability flags` | `psionic-array` now publishes `ArrayDevice` and `ArrayStream`, can lift runtime-owned `DeviceDescriptor` truth into the public array layer, exposes honest unified-memory capability flags plus stream-dependency policy, and binds contexts and eval receipts to explicit device/stream identity; broader array/runtime breadth remains in `PMLX-104` through `PMLX-106`. |
 | `PMLX-104` / [#3837](https://github.com/OpenAgentsInc/openagents/issues/3837) | done (2026-03-16) | `Psionic MLX: widen array creation, indexing, view, reshape, slice, concat, and broadcast families` | `psionic-array` now exposes scalar, zero, one, and filled-array construction helpers plus `reshape`, `permute`, `transpose`, `slice`, `select`, `concat`, and `broadcast_to` families with bounded CPU-reference explicit-eval coverage; deterministic random, dtype-cast, and host-interop boundaries remain in `PMLX-105` and `PMLX-106`. |
-| `PMLX-105` | planned | `Psionic MLX: add random, dtype-cast, and common creation families with deterministic policy` | Expose MLX-class random and creation APIs above the current deterministic RNG substrate, keeping seeded replay and device-scoped determinism explicit. |
+| `PMLX-105` / [#3838](https://github.com/OpenAgentsInc/openagents/issues/3838) | done (2026-03-16) | `Psionic MLX: add random, dtype-cast, and common creation families with deterministic policy` | `psionic-array` now exposes seeded or best-effort random-uniform and random-normal helpers over explicit runtime determinism contracts, logical `cast` support, and common `arange` / `linspace` / `eye` creation helpers; host interop, scalar extraction, and tree boundaries remain in `PMLX-106`. |
 | `PMLX-106` | planned | `Psionic MLX: define host interop, scalar item access, and tree utility boundaries` | Add safe host-materialization, scalar extraction, and tree utility contracts so higher layers can preserve lazy semantics without hidden eager fallbacks. |
 
 ## Epic 2: Transforms And Compile

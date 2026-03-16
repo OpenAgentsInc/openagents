@@ -1057,10 +1057,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "A public lazy array type exists with explicit eval and async_eval posture, public device and stream handles, creation and view families, deterministic random and cast behavior, and safe host materialization boundaries.",
             ),
             current_repo_truth: String::from(
-                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, scalar and filled-array creation helpers, and reshape/permute/transpose/slice/select/concat/broadcast_to view families, but deterministic random, dtype-cast, and host-materialization boundaries remain open.",
+                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, scalar and filled-array creation helpers, reshape/permute/transpose/slice/select/concat/broadcast_to view families, explicit seeded or best-effort random-uniform and random-normal creation, logical dtype casts, and arange/linspace/eye helpers, but host-materialization boundaries remain open.",
             ),
             boundary_note: String::from(
-                "Do not claim MLX-class array closure from the first public facade plus creation/view coverage alone; the category stays open until PMLX-105 and PMLX-106 land too.",
+                "Do not claim MLX-class array closure from the first public facade plus random/cast coverage alone; the category stays open until PMLX-106 lands too.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1203,12 +1203,15 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-array tests::public_lazy_array_creation_and_view_families_materialize -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_random_cast_and_common_creation_families_stay_seeded -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "The upstream array-core family is still tracked as unsupported, but psionic-array now provides the first public lazy-array entrypoint plus standard creation and view families for later parity work.",
+                "The upstream array-core family is still tracked as unsupported, but psionic-array now provides the first public lazy-array entrypoint plus standard creation, deterministic random, cast, and view families for later parity work.",
             ),
             boundary_note: String::from(
-                "A first public array facade with creation and view coverage exists, but that is still not enough to call the upstream array-core family ported.",
+                "A first public array facade with random/cast coverage exists, but that is still not enough to call the upstream array-core family ported.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1233,12 +1236,15 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-array tests::public_lazy_array_creation_and_view_families_materialize -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_random_cast_and_common_creation_families_stay_seeded -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "The numeric-op and creation families remain tracked but unsupported even though psionic-array now exposes graph-backed arithmetic plus the first public creation and view families.",
+                "The numeric-op and creation families remain tracked but unsupported even though psionic-array now exposes graph-backed arithmetic plus common creation, deterministic random, and logical dtype-cast coverage.",
             ),
             boundary_note: String::from(
-                "The first public numeric ops plus bounded creation/view coverage are still not the same thing as a seeded upstream MLX numeric parity family.",
+                "The first public numeric ops plus random/cast coverage are still not the same thing as a seeded upstream MLX numeric parity family.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1490,7 +1496,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_array_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Convertible,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, and bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, but deterministic random, dtype-cast, and host interop are still incomplete.",
+                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, and arange/linspace/eye helpers, but host interop is still incomplete.",
             ),
             evidence_refs: vec![
                 String::from("ArrayDevice"),
@@ -1502,11 +1508,10 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("MlxAcceptanceMatrixReport::array-runtime-surface = partial"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-105 (#3838)"),
                 String::from("PMLX-106 (#3839)"),
             ],
             boundary_note: String::from(
-                "Public creation and view coverage are still not the same thing as full supported MLX array closure.",
+                "Public random and cast coverage are still not the same thing as full supported MLX array closure.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -1876,10 +1881,10 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, MlxCompatibilityMatrixStatus,
-        MlxParityHarnessOutcome, SemanticsClaimPosture, builtin_mlx_acceptance_matrix_report,
-        builtin_mlx_compatibility_matrix_report, builtin_mlx_compatibility_scope_report,
-        builtin_mlx_parity_harness_report, builtin_semantics_claim_report,
+        builtin_mlx_acceptance_matrix_report, builtin_mlx_compatibility_matrix_report,
+        builtin_mlx_compatibility_scope_report, builtin_mlx_parity_harness_report,
+        builtin_semantics_claim_report, MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture,
+        MlxCompatibilityMatrixStatus, MlxParityHarnessOutcome, SemanticsClaimPosture,
     };
 
     #[test]
@@ -1911,66 +1916,52 @@ mod tests {
             report.upstream_version_window.review_checkout_date,
             "2026-03-16"
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("report_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
 
         let mlx_class = report
             .compatibility_terms
             .iter()
             .find(|term| term.term_id == "mlx_class")
             .expect("missing mlx_class term");
-        assert!(
-            mlx_class
-                .required_properties
-                .iter()
-                .any(|property| property.contains("implemented natively"))
-        );
-        assert!(
-            mlx_class
-                .forbidden_shortcuts
-                .iter()
-                .any(|shortcut| shortcut.contains("unversioned claims"))
-        );
+        assert!(mlx_class
+            .required_properties
+            .iter()
+            .any(|property| property.contains("implemented natively")));
+        assert!(mlx_class
+            .forbidden_shortcuts
+            .iter()
+            .any(|shortcut| shortcut.contains("unversioned claims")));
 
         let mlx_compatible = report
             .compatibility_terms
             .iter()
             .find(|term| term.term_id == "mlx_compatible")
             .expect("missing mlx_compatible term");
-        assert!(
-            mlx_compatible
-                .required_properties
-                .iter()
-                .any(|property| property.contains("supported, convertible, and unsupported"))
-        );
-        assert!(
-            mlx_compatible
-                .forbidden_shortcuts
-                .iter()
-                .any(|shortcut| shortcut.contains("tip-of-tree MLX coverage"))
-        );
+        assert!(mlx_compatible
+            .required_properties
+            .iter()
+            .any(|property| property.contains("supported, convertible, and unsupported")));
+        assert!(mlx_compatible
+            .forbidden_shortcuts
+            .iter()
+            .any(|shortcut| shortcut.contains("tip-of-tree MLX coverage")));
 
-        assert!(
-            report
-                .explicit_rules
-                .iter()
-                .any(|rule| rule.contains("inclusive v0.31.0 through v0.31.1"))
-        );
-        assert!(
-            report
-                .explicit_rules
-                .iter()
-                .any(|rule| rule.contains("does not widen the supported release window"))
-        );
+        assert!(report
+            .explicit_rules
+            .iter()
+            .any(|rule| rule.contains("inclusive v0.31.0 through v0.31.1")));
+        assert!(report
+            .explicit_rules
+            .iter()
+            .any(|rule| rule.contains("does not widen the supported release window")));
     }
 
     #[test]
-    fn mlx_acceptance_matrix_report_declares_all_named_closure_categories_and_filtering()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_acceptance_matrix_report_declares_all_named_closure_categories_and_filtering(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_mlx_acceptance_matrix_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(
@@ -1985,12 +1976,10 @@ mod tests {
             report.report_posture,
             MlxAcceptanceMatrixPosture::TrackingOnly
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("report_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
 
         for category_id in [
             "array-runtime-surface",
@@ -2042,8 +2031,8 @@ mod tests {
     }
 
     #[test]
-    fn mlx_parity_harness_report_tracks_seeded_pass_refusal_and_unsupported_families()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_parity_harness_report_tracks_seeded_pass_refusal_and_unsupported_families(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_mlx_parity_harness_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(
@@ -2058,12 +2047,10 @@ mod tests {
             report.oracle_window,
             "ml-explore/mlx:v0.31.0..v0.31.1:seed_v0"
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("report_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
 
         let autograd = report
             .families
@@ -2120,8 +2107,8 @@ mod tests {
     }
 
     #[test]
-    fn mlx_compatibility_matrix_report_tracks_supported_convertible_and_unsupported_rows()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_compatibility_matrix_report_tracks_supported_convertible_and_unsupported_rows(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_mlx_compatibility_matrix_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(
@@ -2136,12 +2123,10 @@ mod tests {
             report.oracle_window,
             "ml-explore/mlx:v0.31.0..v0.31.1:matrix_v0"
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("report_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
 
         let governance = report
             .surfaces
@@ -2198,8 +2183,8 @@ mod tests {
     }
 
     #[test]
-    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_semantics_claim_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.claim_vocabulary_version, "pytorch_claim_v1");
@@ -2207,12 +2192,10 @@ mod tests {
             report.overall_posture,
             SemanticsClaimPosture::SeededEvidenceOnly
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("report_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
 
         for area_id in [
             "operator_semantics",
