@@ -300,8 +300,8 @@ Applications / Operators / Authority
 ### Layering By Crate
 
 1. `psionic-core`
-   - foundational tensor, dtype, shape, device, layout, and view-semantics
-     types
+   - foundational tensor, dtype, shape, device, layout, view-semantics, and
+     cross-library refusal-taxonomy types
 2. `psionic-ir`
    - canonical graph, built-in operator registry, fake/meta execution and plan
      validation contracts, detach/no-grad/autodiff tracking, symbolic backward
@@ -425,6 +425,7 @@ training subsystems.
 | `DatasetManifest` | `psionic-data` | versioned dataset, tokenizer, split, and shard-lineage contract | `implemented_early` |
 | `DatasetIterationContract` | `psionic-data` | resume-safe split iteration over datastream-backed shards | `implemented_early` |
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
+| `PsionicRefusal` | `psionic-core` | canonical cross-library refusal taxonomy for unsupported op, gradient, layout, capability, serialization, sandbox-policy, and topology boundaries | `implemented_early` |
 | `BufferStorageContract` | `psionic-runtime` | backend-visible storage identity and logical view posture for one realized buffer | `implemented_early` |
 | `RuntimeManifest` | `psionic-runtime` proof layer | digest-bound package for artifact, static-config, mutable-variable, and runtime lineage used at execution time | `implemented_early` |
 | `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | `implemented` |

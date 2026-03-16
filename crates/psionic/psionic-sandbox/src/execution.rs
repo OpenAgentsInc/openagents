@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use psionic_core::{PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -111,6 +112,26 @@ pub struct ProviderSandboxExecutionReceipt {
     pub compute_product_id: String,
     pub final_state: ProviderSandboxExecutionState,
     pub evidence: ProviderSandboxDeliveryEvidence,
+}
+
+impl ProviderSandboxExecutionReceipt {
+    /// Returns the canonical refusal when sandbox policy denied the job before
+    /// execution.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        (self.final_state == ProviderSandboxExecutionState::Rejected
+            && self.evidence.termination_reason == ProviderSandboxTerminationReason::PolicyRejected)
+            .then(|| {
+                let refusal = PsionicRefusal::new(
+                    PsionicRefusalCode::SandboxPolicyDenied,
+                    PsionicRefusalScope::Sandbox,
+                    self.evidence.policy_detail.clone().unwrap_or_else(|| {
+                        String::from("sandbox policy rejected execution before runtime start")
+                    }),
+                );
+                refusal.with_subject(self.compute_product_id.clone())
+            })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -912,6 +933,8 @@ fn now_epoch_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use psionic_core::{PsionicRefusalCode, PsionicRefusalScope};
+
     use super::{
         ProviderSandboxEntrypointType, ProviderSandboxExecutionControls,
         ProviderSandboxExecutionState, ProviderSandboxJobRequest, ProviderSandboxResourceRequest,
@@ -1227,6 +1250,55 @@ mod tests {
             result.receipt.evidence.termination_reason
                 == ProviderSandboxTerminationReason::PolicyRejected,
             "sandbox rejection should be receipted as policy rejected",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_rejection_receipt_maps_into_refusal_taxonomy()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let runtime = fake_binary(
+            temp.path(),
+            "runtime",
+            "#!/bin/sh\nscript=\"$1\"\nshift\n/bin/sh \"$script\" \"$@\"\n",
+        )?;
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace)?;
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
+        let mut request = request(&workspace, ProviderSandboxExecutionClass::PythonExec);
+        request
+            .environment
+            .push(super::ProviderSandboxEnvironmentVar {
+                key: "SECRET_TOKEN".to_string(),
+                value: "shh".to_string(),
+            });
+
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
+        let refusal = result.receipt.refusal();
+        ensure(
+            refusal.is_some(),
+            "policy rejection should map into refusal taxonomy",
+        )?;
+        let Some(refusal) = refusal else {
+            return Ok(());
+        };
+        ensure(
+            refusal.code == PsionicRefusalCode::SandboxPolicyDenied,
+            "sandbox refusal should use sandbox policy denial code",
+        )?;
+        ensure(
+            refusal.scope == PsionicRefusalScope::Sandbox,
+            "sandbox refusal should stay in sandbox scope",
+        )?;
+        ensure(
+            refusal.subject.as_deref() == Some(request.compute_product_id.as_str()),
+            "sandbox refusal should carry compute product subject",
         )?;
         Ok(())
     }

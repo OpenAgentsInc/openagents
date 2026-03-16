@@ -85,6 +85,11 @@ first.
 - `partial`: some of the category is real, but one or more central framework
   pieces remain open and must stay explicit.
 
+Cross-library refusal truth is now explicit too: `psionic-core` owns the
+canonical `PsionicRefusal` taxonomy, and graph, autodiff, runtime, topology,
+and sandbox seams now adapt into that shared type instead of inventing new
+shadow refusal records for the same unsupported families.
+
 ## Matrix
 
 | Category | Current status | What a green category would mean | Current repo truth | Canonical hooks | Open gap / refusal discipline |
@@ -119,6 +124,9 @@ Current shipped foundation:
 - quantized tensor payload containers exist as typed data, not log-only blobs
 - backend-visible storage identity is explicit in `psionic-runtime` and the CPU
   reference backend preserves it through dense views and allocator reuse
+- graph/autodiff/runtime/topology/sandbox seams now share one canonical refusal
+  taxonomy for unsupported op, gradient, layout, capability, serialization, and
+  policy-denial boundaries
 
 Canonical hooks:
 
@@ -128,12 +136,18 @@ Canonical hooks:
 - `cargo test -p psionic-core tests::dtype_contracts_mark_current_quantized_and_dense_surface -- --exact`
 - `cargo test -p psionic-core tests::derived_views_remain_alias_preserving_transforms -- --exact`
 - `cargo test -p psionic-core tests::layout_alias_relation_tracks_dense_and_broadcast_views -- --exact`
+- `cargo test -p psionic-core tests::psionic_refusal_builder_keeps_code_scope_and_subject -- --exact`
 - `cargo test -p psionic-core tests::layout_expand_uses_zero_strides -- --exact`
 - `cargo test -p psionic-core tests::layout_permute_updates_shape_and_strides -- --exact`
 - `cargo test -p psionic-backend-cpu --lib tests::cpu_buffer_views_preserve_storage_identity_and_view_semantics -- --exact`
 - `cargo test -p psionic-backend-cpu --lib tests::cpu_allocator_pool_reuses_dense_storage_identity -- --exact`
+- `cargo test -p psionic-ir --lib tests::graph_error_refusal_taxonomy_maps_layout_capability_and_serialization_boundaries -- --exact`
+- `cargo test -p psionic-ir --lib autodiff::tests::autodiff_refusal_taxonomy_maps_unsupported_gradient_family -- --exact`
 - `cargo test -p psionic-ir --lib tests::binary_ops_broadcast_inputs_through_explicit_expand_views -- --exact`
 - `cargo test -p psionic-backend-cpu --lib tests::cpu_backend_executes_broadcast_add_over_index_views -- --exact`
+- `cargo test -p psionic-runtime --lib tests::runtime_refusal_taxonomy_maps_capability_and_serialization_boundaries -- --exact`
+- `cargo test -p psionic-runtime --lib local_multi_device::tests::local_sharding_contract_refusal_taxonomy_surfaces_topology_mismatch -- --exact`
+- `cargo test -p psionic-sandbox --lib execution::tests::policy_rejection_receipt_maps_into_refusal_taxonomy -- --exact`
 
 ### 2. Autodiff and optimizer behavior
 

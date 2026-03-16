@@ -313,6 +313,7 @@ name = "arc-solvers"
 version = "0.1.0"
 dependencies = [
  "arc-core",
+ "psionic-serve",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -6727,6 +6728,9 @@ name = "psionic-research"
 version = "0.1.1"
 dependencies = [
  "hex",
+ "psionic-eval",
+ "psionic-models",
+ "psionic-train",
  "serde",
  "serde_json",
  "sha2",
@@ -6767,6 +6771,7 @@ name = "psionic-sandbox"
 version = "0.1.1"
 dependencies = [
  "hex",
+ "psionic-core",
  "serde",
  "serde_json",
  "sha2",

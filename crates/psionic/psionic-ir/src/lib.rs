@@ -5,8 +5,9 @@ mod autodiff;
 use std::collections::{BTreeMap, BTreeSet};
 
 use psionic_core::{
-    BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, QuantizedTensorData, Shape,
-    Tensor, TensorData, TensorId, TensorSpec,
+    BackendExtensionOp, DType, Device, LazyOp, PsionicRefusal, PsionicRefusalCode,
+    PsionicRefusalScope, QuantizationMode, QuantizedTensorData, Shape, Tensor, TensorData,
+    TensorId, TensorSpec,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -170,6 +171,61 @@ pub enum GraphError {
         /// Meta-derived step spec.
         actual: String,
     },
+}
+
+impl GraphError {
+    /// Returns the canonical refusal when this graph error belongs to one
+    /// explicit unsupported or incompatibility family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::ConstantLengthMismatch { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::SerializationIncompatibility,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )),
+            Self::InvalidQuantizedConstant { mode, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::SerializationIncompatibility,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(format!("{mode:?}")),
+            ),
+            Self::InvalidOperatorArity { op, .. }
+            | Self::InvalidOperatorInputs { op, .. }
+            | Self::InvalidBackendExtension { op, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(op.clone()),
+            ),
+            Self::UnsupportedOperatorCapability { op, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(op.clone()),
+            ),
+            Self::BinaryShapeMismatch { .. }
+            | Self::InvalidMatmulShapes { .. }
+            | Self::InvalidReshape { .. }
+            | Self::InvalidPermute { .. }
+            | Self::InvalidSlice { .. }
+            | Self::InvalidSelect { .. }
+            | Self::InvalidConcat { .. }
+            | Self::InvalidExpand { .. }
+            | Self::InvalidReduceAxis { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedLayout,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )),
+            Self::BinaryDTypeMismatch { .. } | Self::MetaExecutionMismatch { .. } => None,
+        }
+    }
 }
 
 /// Operation kind recorded in the canonical graph.
@@ -2026,11 +2082,12 @@ fn digest_lines(lines: Vec<String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use psionic_core::{Device, QuantizationMode};
+    use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
-        DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, MetaCapabilityProfile,
-        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry, Shape, TensorSpec,
+        DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, GraphError,
+        MetaCapabilityProfile, OperatorImplementationKind, OperatorMetaExecutionKind,
+        OperatorRegistry, Shape, TensorSpec,
     };
 
     #[test]
@@ -2146,6 +2203,52 @@ mod tests {
             error,
             Err(super::GraphError::BinaryShapeMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn graph_error_refusal_taxonomy_maps_layout_capability_and_serialization_boundaries() {
+        let layout = GraphError::InvalidExpand {
+            from: Shape::new(vec![2, 2]),
+            to: Shape::new(vec![3, 2]),
+        }
+        .refusal();
+        assert!(layout.is_some());
+        let Some(layout) = layout else {
+            return;
+        };
+        assert_eq!(layout.code, PsionicRefusalCode::UnsupportedLayout);
+        assert_eq!(layout.scope, PsionicRefusalScope::Graph);
+
+        let capability = GraphError::UnsupportedOperatorCapability {
+            op: String::from("quantized_matmul"),
+            message: String::from("backend profile does not expose grouped-block kernels"),
+        }
+        .refusal();
+        assert!(capability.is_some());
+        let Some(capability) = capability else {
+            return;
+        };
+        assert_eq!(
+            capability.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(capability.subject.as_deref(), Some("quantized_matmul"));
+
+        let serialization = GraphError::InvalidQuantizedConstant {
+            mode: QuantizationMode::GgmlQ4_0,
+            shape: Shape::new(vec![1, 32]),
+            message: String::from("block payload length mismatch"),
+        }
+        .refusal();
+        assert!(serialization.is_some());
+        let Some(serialization) = serialization else {
+            return;
+        };
+        assert_eq!(
+            serialization.code,
+            PsionicRefusalCode::SerializationIncompatibility
+        );
+        assert_eq!(serialization.scope, PsionicRefusalScope::Graph);
     }
 
     #[test]
