@@ -46,6 +46,17 @@ const APPLE_RUNTIME_BLOB_ALIGNMENT_BYTES: usize = 64;
 const APPLE_RUNTIME_BLOB_VERSION: u32 = 2;
 const APPLE_RUNTIME_BLOB_KIND_FP16: u32 = 1;
 const APPLE_RUNTIME_BLOB_ENTRY_MAGIC: u32 = 0xDEAD_BEEF;
+const APPLE_TARGET_ALIGNMENT_LOGIT_SCALE: f32 = 12.0;
+const APPLE_TARGET_ALIGNMENT_LOSS_WEIGHT: f32 = 1.5;
+const APPLE_RUNTIME_NEGATIVE_MARGIN: f32 = 0.2;
+const APPLE_RUNTIME_NEGATIVE_LOSS_WEIGHT: f32 = 1.0;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct AppleAdapterTargetPrototype {
+    sample_id: String,
+    target_features: Vec<f32>,
+    feature_digest: String,
+}
 
 /// Precision posture for the first repo-owned Apple reference backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -332,6 +343,8 @@ pub struct AppleAdapterExecutionProvenance {
     pub activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy,
     /// Explicit first-real-run fidelity statement for this backend.
     pub fidelity_plan: AppleAdapterExecutionFidelityPlan,
+    /// Whether runtime-derived negative anchors participated in training.
+    pub negative_target_posture: String,
 }
 
 /// Gradient-production artifact emitted by the repo-owned Apple backend.
@@ -368,6 +381,9 @@ pub struct AppleAdapterTrainingExecutionBackend {
     provenance: AppleAdapterExecutionProvenance,
     batches: Vec<AppleAdapterPackedTrainingBatch>,
     frozen_base_projection: Vec<f32>,
+    target_prototypes: Vec<AppleAdapterTargetPrototype>,
+    target_prototype_index: BTreeMap<String, usize>,
+    negative_target_features_by_sample: BTreeMap<String, Vec<f32>>,
 }
 
 impl AppleAdapterTrainingExecutionBackend {
@@ -377,6 +393,17 @@ impl AppleAdapterTrainingExecutionBackend {
         dataset: &AppleAdapterDatasetContract,
         captures: &[AppleAdapterSampleTokenCapture],
         environment: &AppleAdapterEnvironmentBundle,
+    ) -> Result<Self, AppleAdapterTrainingExecutionError> {
+        Self::new_with_negative_targets(config, dataset, captures, environment, BTreeMap::new())
+    }
+
+    /// Builds the backend and seeds optional runtime-derived negative targets.
+    pub fn new_with_negative_targets(
+        config: AppleAdapterExecutionConfig,
+        dataset: &AppleAdapterDatasetContract,
+        captures: &[AppleAdapterSampleTokenCapture],
+        environment: &AppleAdapterEnvironmentBundle,
+        negative_target_features_by_sample: BTreeMap<String, Vec<f32>>,
     ) -> Result<Self, AppleAdapterTrainingExecutionError> {
         config.validate()?;
         dataset.validate()?;
@@ -411,6 +438,13 @@ impl AppleAdapterTrainingExecutionBackend {
             config.model.input_width,
             config.model.output_width,
         )?;
+        let target_prototypes =
+            build_target_prototypes(dataset, captures, config.model.output_width);
+        let target_prototype_index = target_prototypes
+            .iter()
+            .enumerate()
+            .map(|(index, prototype)| (prototype.sample_id.clone(), index))
+            .collect::<BTreeMap<_, _>>();
         let frozen_base_projection = seeded_matrix(
             format!(
                 "{}|base_projection|{}x{}",
@@ -432,10 +466,18 @@ impl AppleAdapterTrainingExecutionBackend {
                 precision_policy: config.precision_policy,
                 activation_checkpoint_policy: config.activation_checkpoint_policy,
                 fidelity_plan: apple_adapter_execution_fidelity_plan(),
+                negative_target_posture: if negative_target_features_by_sample.is_empty() {
+                    String::from("none")
+                } else {
+                    String::from("runtime_base_output_feature_anchors")
+                },
             },
             config,
             batches,
             frozen_base_projection,
+            target_prototypes,
+            target_prototype_index,
+            negative_target_features_by_sample,
         })
     }
 
@@ -575,7 +617,7 @@ impl AppleAdapterTrainingExecutionBackend {
                     b_values,
                     target,
                     &record.prompt_features,
-                    forward.residual.as_slice(),
+                    forward.prediction_gradient.as_slice(),
                 );
             }
 
@@ -698,19 +740,134 @@ impl AppleAdapterTrainingExecutionBackend {
             .zip(record.target_features.as_slice())
             .map(|(prediction_value, target_value)| prediction_value - target_value)
             .collect::<Vec<_>>();
-        let loss = 0.5 * residual.iter().map(|value| value * value).sum::<f32>();
+        let reconstruction_loss = 0.5 * residual.iter().map(|value| value * value).sum::<f32>()
+            / self.config.model.output_width.max(1) as f32;
+        let mut prediction_gradient = residual
+            .iter()
+            .map(|value| *value / self.config.model.output_width.max(1) as f32)
+            .collect::<Vec<_>>();
+        let alignment = self.target_alignment_objective(record.sample_id.as_str(), &prediction)?;
+        add_scaled(
+            prediction_gradient.as_mut_slice(),
+            alignment.gradient.as_slice(),
+            APPLE_TARGET_ALIGNMENT_LOSS_WEIGHT,
+        );
+        let negative_margin = self.negative_target_margin_objective(
+            record.sample_id.as_str(),
+            &prediction,
+            record.target_features.as_slice(),
+        );
+        add_scaled(
+            prediction_gradient.as_mut_slice(),
+            negative_margin.gradient.as_slice(),
+            APPLE_RUNTIME_NEGATIVE_LOSS_WEIGHT,
+        );
+        let loss = reconstruction_loss
+            + alignment.loss * APPLE_TARGET_ALIGNMENT_LOSS_WEIGHT
+            + negative_margin.loss * APPLE_RUNTIME_NEGATIVE_LOSS_WEIGHT;
         Ok(ForwardRecord {
             prediction,
-            residual,
+            prediction_gradient,
             loss,
         })
+    }
+
+    fn target_alignment_objective(
+        &self,
+        sample_id: &str,
+        prediction: &[f32],
+    ) -> Result<TargetAlignmentObjective, AppleAdapterTrainingExecutionError> {
+        let correct_index = *self.target_prototype_index.get(sample_id).ok_or_else(|| {
+            AppleAdapterTrainingExecutionError::MissingTargetPrototype {
+                sample_id: sample_id.to_string(),
+            }
+        })?;
+        let logits = self
+            .target_prototypes
+            .iter()
+            .map(|prototype| {
+                dot(prediction, prototype.target_features.as_slice())
+                    * APPLE_TARGET_ALIGNMENT_LOGIT_SCALE
+            })
+            .collect::<Vec<_>>();
+        let max_logit = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let exp_logits = logits
+            .iter()
+            .map(|logit| (logit - max_logit).exp())
+            .collect::<Vec<_>>();
+        let normalizer = exp_logits.iter().sum::<f32>().max(f32::EPSILON);
+        let correct_probability =
+            exp_logits.get(correct_index).copied().unwrap_or(0.0) / normalizer;
+        let mut gradient = vec![0.0_f32; prediction.len()];
+        for (prototype, exp_logit) in self.target_prototypes.iter().zip(exp_logits.iter()) {
+            let probability = *exp_logit / normalizer;
+            add_scaled(
+                gradient.as_mut_slice(),
+                prototype.target_features.as_slice(),
+                probability,
+            );
+        }
+        add_scaled(
+            gradient.as_mut_slice(),
+            self.target_prototypes[correct_index]
+                .target_features
+                .as_slice(),
+            -1.0,
+        );
+        for value in &mut gradient {
+            *value *= APPLE_TARGET_ALIGNMENT_LOGIT_SCALE;
+        }
+        Ok(TargetAlignmentObjective {
+            gradient,
+            loss: -correct_probability.max(f32::EPSILON).ln(),
+            correct_probability,
+        })
+    }
+
+    fn negative_target_margin_objective(
+        &self,
+        sample_id: &str,
+        prediction: &[f32],
+        positive_target_features: &[f32],
+    ) -> NegativeTargetMarginObjective {
+        let Some(negative_target_features) = self.negative_target_features_by_sample.get(sample_id)
+        else {
+            return NegativeTargetMarginObjective::default();
+        };
+        let positive_score = dot(prediction, positive_target_features);
+        let negative_score = dot(prediction, negative_target_features.as_slice());
+        let margin_loss =
+            (APPLE_RUNTIME_NEGATIVE_MARGIN + negative_score - positive_score).max(0.0);
+        if margin_loss == 0.0 {
+            return NegativeTargetMarginObjective::default();
+        }
+        let mut gradient = negative_target_features.clone();
+        add_scaled(gradient.as_mut_slice(), positive_target_features, -1.0);
+        NegativeTargetMarginObjective {
+            gradient,
+            loss: margin_loss,
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 struct ForwardRecord {
     prediction: Vec<f32>,
-    residual: Vec<f32>,
+    prediction_gradient: Vec<f32>,
+    loss: f32,
+}
+
+#[derive(Clone, Debug)]
+struct TargetAlignmentObjective {
+    gradient: Vec<f32>,
+    loss: f32,
+    #[cfg_attr(not(test), allow(dead_code))]
+    correct_probability: f32,
+}
+
+#[derive(Clone, Debug, Default)]
+struct NegativeTargetMarginObjective {
+    gradient: Vec<f32>,
     loss: f32,
 }
 
@@ -2540,6 +2697,8 @@ pub enum AppleAdapterTrainingExecutionError {
     UnknownBatchIndex { batch_index: usize },
     #[error("Apple adapter execution is missing parameter group `{group_id}`")]
     MissingParameterGroup { group_id: String },
+    #[error("Apple adapter execution is missing target prototype for sample `{sample_id}`")]
+    MissingTargetPrototype { sample_id: String },
     #[error("Apple adapter parameter group `{group_id}` must use dense `f32` values")]
     NonDenseGroup { group_id: String },
     #[error(transparent)]
@@ -2619,6 +2778,35 @@ fn build_packed_batches(
     Ok(batches)
 }
 
+fn build_target_prototypes(
+    dataset: &AppleAdapterDatasetContract,
+    captures: &[AppleAdapterSampleTokenCapture],
+    output_width: usize,
+) -> Vec<AppleAdapterTargetPrototype> {
+    let capture_by_id = captures
+        .iter()
+        .map(|capture| (capture.sample_id.as_str(), capture))
+        .collect::<BTreeMap<_, _>>();
+    dataset
+        .samples
+        .iter()
+        .filter_map(|sample| {
+            capture_by_id.get(sample.sample_id.as_str()).map(|capture| {
+                AppleAdapterTargetPrototype {
+                    sample_id: sample.sample_id.clone(),
+                    target_features: target_feature_vector(sample, capture, output_width),
+                    feature_digest: stable_feature_digest(
+                        sample,
+                        capture,
+                        output_width,
+                        output_width,
+                    ),
+                }
+            })
+        })
+        .collect()
+}
+
 fn apple_adapter_execution_fidelity_plan() -> AppleAdapterExecutionFidelityPlan {
     AppleAdapterExecutionFidelityPlan {
         plan_id: APPLE_ADAPTER_FIDELITY_PLAN_ID.to_string(),
@@ -2627,7 +2815,7 @@ fn apple_adapter_execution_fidelity_plan() -> AppleAdapterExecutionFidelityPlan 
             "turn-aware position-weighted pooling with explicit role, tool, and schema boundaries",
         ),
         target_supervision: String::from(
-            "assistant token-sequence regression over pooled completion traces",
+            "assistant token-sequence mean-squared regression plus contrastive sample-to-target alignment",
         ),
         faithful_components: vec![
             String::from("multi_turn_prompt_context"),
@@ -2635,11 +2823,14 @@ fn apple_adapter_execution_fidelity_plan() -> AppleAdapterExecutionFidelityPlan 
             String::from("tool_and_schema_attachment_encoding"),
             String::from("position_sensitive_token_pooling"),
             String::from("assistant_completion_token_supervision"),
+            String::from("global_target_bank_alignment"),
+            String::from("runtime_negative_anchor_rejection"),
         ],
         bounded_components: vec![
             String::from("repo_owned_lexical_tokenizer_not_apple_exact"),
             String::from("hashed_token_embeddings_not_native_hidden_states"),
-            String::from("pooled_sequence_regression_not_full_decoder_loss"),
+            String::from("contrastive_target_alignment_not_full_decoder_loss"),
+            String::from("runtime_negative_anchors_not_hidden_states"),
             String::from("single_host_f32_reference_execution"),
         ],
     }
@@ -2707,26 +2898,24 @@ fn prompt_feature_vector(
     features
 }
 
-fn target_feature_vector(
-    sample: &psionic_data::AppleAdapterTrainingSample,
+pub fn apple_adapter_response_feature_vector(
+    response_text: &str,
+    structured_output: Option<&serde_json::Value>,
+    sample_kind: AppleAdapterSampleKind,
     capture: &AppleAdapterSampleTokenCapture,
     width: usize,
 ) -> Vec<f32> {
     let mut features = vec![0.0_f32; width];
-    let assistant = sample
-        .messages
-        .last()
-        .expect("validated Apple samples always end with assistant");
     let scale = 1.0_f32 / capture.completion_tokens.max(1) as f32;
     let total_tokens = capture.total_tokens().max(1) as f32;
     accumulate_sequence_text(
         features.as_mut_slice(),
-        assistant.content.as_str(),
+        response_text,
         scale,
         0,
         "assistant_target",
     );
-    if let Some(structured) = &sample.structured_assistant_output {
+    if let Some(structured) = structured_output {
         accumulate_sequence_text(
             features.as_mut_slice(),
             canonical_json(structured).as_str(),
@@ -2740,9 +2929,27 @@ fn target_feature_vector(
         "completion_token_ratio",
         capture.completion_tokens as f32 / total_tokens,
     );
-    features[sample_kind_bucket(sample.sample_kind, width)] += 0.75;
+    features[sample_kind_bucket(sample_kind, width)] += 0.75;
     normalize_unit(features.as_mut_slice());
     features
+}
+
+fn target_feature_vector(
+    sample: &psionic_data::AppleAdapterTrainingSample,
+    capture: &AppleAdapterSampleTokenCapture,
+    width: usize,
+) -> Vec<f32> {
+    let assistant = sample
+        .messages
+        .last()
+        .expect("validated Apple samples always end with assistant");
+    apple_adapter_response_feature_vector(
+        assistant.content.as_str(),
+        sample.structured_assistant_output.as_ref(),
+        sample.sample_kind,
+        capture,
+        width,
+    )
 }
 
 fn prompt_messages(sample: &psionic_data::AppleAdapterTrainingSample) -> Vec<&AppleAdapterMessage> {
@@ -2844,6 +3051,10 @@ fn mat_vec(matrix: &[f32], rows: usize, cols: usize, vector: &[f32]) -> Vec<f32>
         out[row] = total;
     }
     out
+}
+
+fn dot(left: &[f32], right: &[f32]) -> f32 {
+    left.iter().zip(right).map(|(a, b)| a * b).sum::<f32>()
 }
 
 fn add_scaled(dst: &mut [f32], src: &[f32], scale: f32) {
@@ -3425,6 +3636,53 @@ mod tests {
         let left_features = prompt_feature_vector(&left.samples[0], &left_capture[0], 24);
         let right_features = prompt_feature_vector(&right.samples[0], &right_capture[0], 24);
         assert_ne!(left_features, right_features);
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_target_alignment_signal_improves_correct_probability()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = dataset();
+        let environment = environment_bundle();
+        let mut overfit_config = config();
+        overfit_config.budget = TrainingLoopBudget::new(8, 1, 1)?;
+        for target in &mut overfit_config.model.targets {
+            target.optimizer =
+                TrainingOptimizerConfig::adamw(0.05, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0);
+        }
+        let backend = AppleAdapterTrainingExecutionBackend::new(
+            overfit_config,
+            &dataset,
+            captures(&dataset).as_slice(),
+            &environment,
+        )?;
+        let mut run = backend.initialize_run()?;
+        let record = &backend.batches()[0].records[0];
+        let before_forward = backend.forward_sample(record, &run)?;
+        let before = backend
+            .target_alignment_objective(
+                record.sample_id.as_str(),
+                before_forward.prediction.as_slice(),
+            )?
+            .correct_probability;
+
+        for step_index in 0..backend.config().budget.max_steps {
+            let batch_index = step_index as usize % backend.batches().len().max(1);
+            let (step_input, _) = backend.produce_step_input(&run, batch_index, 1_000, 1_040)?;
+            run.apply_step(step_input)?;
+        }
+
+        let after_forward = backend.forward_sample(record, &run)?;
+        let after = backend
+            .target_alignment_objective(
+                record.sample_id.as_str(),
+                after_forward.prediction.as_slice(),
+            )?
+            .correct_probability;
+        assert!(
+            after > before,
+            "target alignment should improve after training: before={before} after={after}"
+        );
         Ok(())
     }
 

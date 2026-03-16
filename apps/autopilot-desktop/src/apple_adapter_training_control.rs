@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -62,7 +63,8 @@ use psionic_train::{
     AppleAdapterReferenceModel, AppleAdapterSftProgressEvent, AppleAdapterSftRunOutcome,
     AppleAdapterSftRunRequest, AppleAdapterTrainingExecutionBackend, TrainingLoopBudget,
     TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
-    apple_live_reference_trainable_targets, run_apple_adapter_sft_export_with_progress,
+    apple_adapter_response_feature_vector, apple_live_reference_trainable_targets,
+    run_apple_adapter_sft_export_with_progress,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1078,11 +1080,19 @@ fn execute_launch_pipeline(
         )
     })?;
     let training_started = Instant::now();
-    let backend = AppleAdapterTrainingExecutionBackend::new(
+    let negative_target_features = collect_runtime_negative_target_features(
+        request.apple_fm_base_url.as_str(),
+        &train_dataset,
+        captures.as_slice(),
+        execution_config.model.output_width,
+    )
+    .map_err(|error| format!("Failed to collect runtime negative anchors: {error}"))?;
+    let backend = AppleAdapterTrainingExecutionBackend::new_with_negative_targets(
         execution_config,
         &train_dataset,
         captures.as_slice(),
         &environment,
+        negative_target_features,
     )
     .map_err(|error| format!("Failed to build Psionic Apple training backend: {error}"))?;
     let mut progress_error = None;
@@ -3629,6 +3639,121 @@ fn run_local_held_out_eval(
             current_epoch_ms() + 10,
         )
         .map_err(Into::into)
+}
+
+fn collect_runtime_negative_target_features(
+    apple_fm_base_url: &str,
+    dataset: &AppleAdapterDatasetContract,
+    captures: &[AppleAdapterSampleTokenCapture],
+    output_width: usize,
+) -> Result<BTreeMap<String, Vec<f32>>> {
+    let client = AppleFmBridgeClient::new(apple_fm_base_url).with_context(|| {
+        format!("Failed to build Apple FM bridge client for {apple_fm_base_url}")
+    })?;
+    let capture_by_id = captures
+        .iter()
+        .map(|capture| (capture.sample_id.as_str(), capture))
+        .collect::<BTreeMap<_, _>>();
+    let mut negative_target_features = BTreeMap::new();
+    for sample in &dataset.samples {
+        let instructions = sample
+            .messages
+            .iter()
+            .find(|message| message.role == AppleAdapterMessageRole::System)
+            .map(|message| message.content.clone());
+        let prompt = sample
+            .messages
+            .iter()
+            .find(|message| message.role == AppleAdapterMessageRole::User)
+            .map(|message| message.content.clone())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Apple adapter train sample `{}` is missing a user prompt",
+                    sample.sample_id
+                )
+            })?;
+        let tool_recorder = AppleRepoLookupRecorder::default();
+        let tools = build_repo_lookup_tools(sample.tools.as_slice(), tool_recorder.clone())?;
+        let session = client
+            .create_session_with_tools(
+                &AppleFmSessionCreateRequest {
+                    instructions,
+                    model: None,
+                    tools: Vec::new(),
+                    adapter: None,
+                    tool_callback: None,
+                    transcript_json: None,
+                    transcript: None,
+                },
+                tools,
+            )
+            .context("Failed to create Apple FM negative-anchor session")?;
+        let observed_output = if let Some(response_format) = sample.response_format.as_ref() {
+            match client.respond_structured_in_session(
+                session.id.as_str(),
+                &AppleFmSessionStructuredGenerationRequest {
+                    prompt,
+                    schema: AppleFmGenerationSchema::with_title_hint(
+                        response_format.json_schema.schema.clone(),
+                        Some(response_format.json_schema.name.as_str()),
+                    )?,
+                    options: apple_eval_generation_options(),
+                    adapter: None,
+                },
+            ) {
+                Ok(response) => AppleAdapterObservedSampleOutput::from_text(
+                    sample.sample_id.clone(),
+                    response.content.to_json_string().unwrap_or_default(),
+                )
+                .with_structured_output(response.content.content),
+                Err(error) => runtime_error_observed_output(
+                    sample.sample_id.as_str(),
+                    error.to_string(),
+                    true,
+                ),
+            }
+        } else {
+            match client.respond_in_session(
+                session.id.as_str(),
+                &AppleFmSessionRespondRequest {
+                    prompt,
+                    options: apple_eval_generation_options(),
+                    adapter: None,
+                },
+            ) {
+                Ok(response) => AppleAdapterObservedSampleOutput::from_text(
+                    sample.sample_id.clone(),
+                    response.output,
+                ),
+                Err(error) => runtime_error_observed_output(
+                    sample.sample_id.as_str(),
+                    error.to_string(),
+                    false,
+                ),
+            }
+        };
+        let observed_output = tool_recorder.attach_to_output(observed_output)?;
+        let _ = client.delete_session(session.id.as_str());
+        let capture = capture_by_id
+            .get(sample.sample_id.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Apple adapter train sample `{}` is missing token capture for negative anchors",
+                    sample.sample_id
+                )
+            })?;
+        negative_target_features.insert(
+            sample.sample_id.clone(),
+            apple_adapter_response_feature_vector(
+                observed_output.output_text.as_str(),
+                observed_output.structured_output.as_ref(),
+                sample.sample_kind,
+                capture,
+                output_width,
+            ),
+        );
+    }
+    Ok(negative_target_features)
 }
 
 fn runtime_error_observed_output(
