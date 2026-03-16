@@ -45,6 +45,22 @@ impl DType {
             Self::I8 => 1,
         }
     }
+
+    /// Returns the promoted dtype for a binary op when Psionic has an explicit
+    /// rule for the pair.
+    #[must_use]
+    pub fn promote_binary(self, other: Self) -> Option<Self> {
+        match (self, other) {
+            (Self::F32, Self::F32) => Some(Self::F32),
+            (Self::F16, Self::F16) => Some(Self::F16),
+            (Self::BF16, Self::BF16) => Some(Self::BF16),
+            (Self::I8, Self::I8) => Some(Self::I8),
+            (Self::F32, _) | (_, Self::F32) => Some(Self::F32),
+            (Self::BF16, Self::F16) | (Self::F16, Self::BF16) => Some(Self::F32),
+            (Self::BF16, Self::I8) | (Self::I8, Self::BF16) => Some(Self::BF16),
+            (Self::F16, Self::I8) | (Self::I8, Self::F16) => Some(Self::F16),
+        }
+    }
 }
 
 /// Quantization mode for stored model weights.
@@ -393,6 +409,37 @@ impl Shape {
         dims.remove(axis);
         Some(Self::new(dims))
     }
+
+    /// Returns the broadcast-compatible shape for two tensors when one exists.
+    #[must_use]
+    pub fn broadcast_with(&self, other: &Self) -> Option<Self> {
+        let rank = self.rank().max(other.rank());
+        let left_padding = rank.saturating_sub(self.rank());
+        let right_padding = rank.saturating_sub(other.rank());
+        let mut dims = Vec::with_capacity(rank);
+
+        for axis in 0..rank {
+            let left = if axis < left_padding {
+                1
+            } else {
+                self.dims[axis - left_padding]
+            };
+            let right = if axis < right_padding {
+                1
+            } else {
+                other.dims[axis - right_padding]
+            };
+            if left == right || left == 1 {
+                dims.push(right);
+            } else if right == 1 {
+                dims.push(left);
+            } else {
+                return None;
+            }
+        }
+
+        Some(Self::new(dims))
+    }
 }
 
 impl fmt::Display for Shape {
@@ -471,6 +518,24 @@ impl Layout {
     #[must_use]
     pub fn is_contiguous(&self) -> bool {
         *self == Self::contiguous(self.shape.clone())
+    }
+
+    /// Returns whether the layout is a zero-stride broadcast view over a
+    /// smaller source span.
+    #[must_use]
+    pub fn is_broadcast_view(&self) -> bool {
+        self.shape
+            .dims()
+            .iter()
+            .zip(self.strides.iter())
+            .any(|(&dim, &stride)| dim > 1 && stride == 0)
+    }
+
+    /// Returns whether this layout can be realized as an alias-preserving view
+    /// over `source` storage.
+    #[must_use]
+    pub fn is_alias_preserving_transform_of(&self, source: &Self) -> bool {
+        self.offset >= source.offset && self.storage_size() <= source.storage_size()
     }
 
     /// Returns a permuted layout if `order` is valid.
@@ -825,6 +890,7 @@ mod tests {
 
         assert_eq!(expanded.shape().dims(), &[4, 3]);
         assert_eq!(expanded.strides(), &[0, 1]);
+        assert!(expanded.is_broadcast_view());
     }
 
     #[test]
@@ -851,5 +917,56 @@ mod tests {
 
         assert_eq!(spec.element_count(), 12);
         assert_eq!(spec.storage_size(), 3);
+    }
+
+    #[test]
+    fn shape_broadcast_merges_trailing_singleton_axes() {
+        let shape = Shape::new(vec![2, 1, 3]).broadcast_with(&Shape::new(vec![1, 4, 3]));
+        assert_eq!(shape, Some(Shape::new(vec![2, 4, 3])));
+    }
+
+    #[test]
+    fn shape_broadcast_refuses_incompatible_axes() {
+        let shape = Shape::new(vec![2, 3]).broadcast_with(&Shape::new(vec![2, 2]));
+        assert!(shape.is_none());
+    }
+
+    #[test]
+    fn dtype_promotion_prefers_widest_supported_representation() {
+        assert_eq!(DType::I8.promote_binary(DType::I8), Some(DType::I8));
+        assert_eq!(DType::I8.promote_binary(DType::F16), Some(DType::F16));
+        assert_eq!(DType::I8.promote_binary(DType::BF16), Some(DType::BF16));
+        assert_eq!(DType::F16.promote_binary(DType::BF16), Some(DType::F32));
+        assert_eq!(DType::BF16.promote_binary(DType::F32), Some(DType::F32));
+    }
+
+    #[test]
+    fn derived_views_remain_alias_preserving_transforms() {
+        let source = Layout::contiguous(Shape::new(vec![2, 3]));
+        let permuted = source.permuted(&[1, 0]);
+        assert!(permuted.is_some());
+        let Some(permuted) = permuted else {
+            return;
+        };
+        let sliced = permuted.sliced(0, 1, 3);
+        assert!(sliced.is_some());
+        let Some(sliced) = sliced else {
+            return;
+        };
+        let selected = sliced.selected(1, 0);
+        assert!(selected.is_some());
+        let Some(selected) = selected else {
+            return;
+        };
+        let expanded = selected.expanded(&Shape::new(vec![2, 2]));
+        assert!(expanded.is_some());
+        let Some(expanded) = expanded else {
+            return;
+        };
+
+        assert!(permuted.is_alias_preserving_transform_of(&source));
+        assert!(sliced.is_alias_preserving_transform_of(&source));
+        assert!(selected.is_alias_preserving_transform_of(&source));
+        assert!(expanded.is_alias_preserving_transform_of(&source));
     }
 }

@@ -1688,6 +1688,48 @@ mod tests {
     }
 
     #[test]
+    fn cpu_backend_executes_broadcast_add_over_index_views() -> Result<(), RuntimeError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+        let row = builder
+            .select(&input, 0, 0)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let shifted = builder
+            .add(&input, &row)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let reduced = builder.reduce_sum_axis(&shifted, 1).map_err(|error| {
+            RuntimeError::Backend(format!("axis reduction should remain valid: {error}"))
+        })?;
+        let graph = builder.finish(vec![shifted.clone(), reduced.clone()]);
+
+        let mut backend = CpuBackend::new();
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![2, 3]), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let Some(shifted_output) = result.outputs.get(&shifted.id()) else {
+            return Err(RuntimeError::Backend(String::from(
+                "missing shifted output",
+            )));
+        };
+        let Some(reduced_output) = result.outputs.get(&reduced.id()) else {
+            return Err(RuntimeError::Backend(String::from(
+                "missing reduced output",
+            )));
+        };
+
+        assert_eq!(
+            shifted_output.as_f32_slice(),
+            Some(&[2.0, 4.0, 6.0, 5.0, 7.0, 9.0][..])
+        );
+        assert_eq!(reduced_output.as_f32_slice(), Some(&[12.0, 21.0][..]));
+        Ok(())
+    }
+
+    #[test]
     fn cpu_allocator_creates_zeroed_buffer() -> Result<(), psionic_runtime::RuntimeError> {
         let mut backend = CpuBackend::new();
         let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
