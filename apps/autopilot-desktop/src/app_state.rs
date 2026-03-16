@@ -1303,6 +1303,7 @@ pub struct MissionControlPaneState {
     pub withdraw_invoice: TextInput,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
+    dismissed_alert_signature: Option<String>,
     wallet_refresh_icon_clicked_at_epoch_ms: u64,
     sell_scroll_offset_px: f32,
     earnings_scroll_offset_px: f32,
@@ -1345,6 +1346,7 @@ impl Default for MissionControlPaneState {
                 .placeholder_color(wgpui::Hsla::from_hex(0x7F776D)),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
+            dismissed_alert_signature: None,
             wallet_refresh_icon_clicked_at_epoch_ms: 0,
             sell_scroll_offset_px: 0.0,
             earnings_scroll_offset_px: 0.0,
@@ -1438,6 +1440,25 @@ impl MissionControlPaneState {
 
     pub fn load_funds_scroll_offset(&self) -> f32 {
         self.load_funds_scroll_offset_px
+    }
+
+    pub fn dismiss_alert(&mut self, signature: impl Into<String>) {
+        self.dismissed_alert_signature = Some(signature.into());
+    }
+
+    pub fn alert_is_dismissed(&self, signature: &str) -> bool {
+        self.dismissed_alert_signature.as_deref() == Some(signature)
+    }
+
+    pub fn should_show_alert(&mut self, signature: &str) -> bool {
+        if self
+            .dismissed_alert_signature
+            .as_deref()
+            .is_some_and(|dismissed| dismissed != signature)
+        {
+            self.dismissed_alert_signature = None;
+        }
+        self.dismissed_alert_signature.as_deref() != Some(signature)
     }
 
     pub fn record_action(&mut self, action: impl Into<String>) {
@@ -10830,13 +10851,14 @@ mod tests {
         EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
         JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, LogStreamPaneState, NetworkAggregateCountersState,
-        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
-        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
-        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
-        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+        JobInboxValidation, JobLifecycleStage, LogStreamPaneState, MissionControlPaneState,
+        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
+        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
+        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
+        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
+        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase,
     };
     use chrono::TimeZone;
     use wgpui::components::sections::TerminalStream;
@@ -10846,6 +10868,17 @@ mod tests {
         let sidebar = SidebarState::default();
         assert!(!sidebar.is_open);
         assert_eq!(sidebar.width, 300.0);
+    }
+
+    #[test]
+    fn mission_control_alert_dismissal_clears_when_signature_changes() {
+        let mut mission_control = MissionControlPaneState::default();
+
+        mission_control.dismiss_alert("alert:a");
+        assert!(mission_control.alert_is_dismissed("alert:a"));
+        assert!(!mission_control.should_show_alert("alert:a"));
+        assert!(mission_control.should_show_alert("alert:b"));
+        assert!(mission_control.should_show_alert("alert:a"));
     }
 
     fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {

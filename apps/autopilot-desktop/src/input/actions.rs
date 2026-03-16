@@ -10,6 +10,7 @@ use crate::local_runtime_capabilities::{
     active_local_runtime_capability_surface, mission_control_local_runtime_workbench_action,
     mission_control_preflight_action_label, mission_control_preflight_workbench_action,
 };
+use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction,
     CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction, LogStreamPaneAction,
@@ -9545,6 +9546,19 @@ pub(super) fn run_mission_control_action(
     action: MissionControlPaneAction,
 ) -> bool {
     match action {
+        MissionControlPaneAction::DismissAlert => {
+            let provider_blockers = state.provider_blockers();
+            let signature = mission_control_current_alert_signature(
+                &state.mission_control,
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+                provider_blockers.as_slice(),
+                &state.spark_wallet,
+            );
+            state.mission_control.dismiss_alert(signature);
+            true
+        }
         MissionControlPaneAction::RefreshWallet => {
             state.mission_control.mark_wallet_refresh_icon_clicked();
             queue_spark_command(state, SparkWalletCommand::Reload);
