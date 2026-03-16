@@ -20,6 +20,7 @@ mod conformance;
 mod gguf;
 mod gpt_oss;
 mod openai_http;
+mod tassadar;
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -84,6 +85,7 @@ use psionic_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+pub use tassadar::*;
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.

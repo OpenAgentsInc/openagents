@@ -78,16 +78,22 @@ Current posture:
   direct/fallback/refused decode selection diagnostics for hull-cache,
   approximate sparse-top-k fallback, unsupported ABI/profile requests, and
   model-effective decode mismatches
+- its Phase 7A served product surface now exists in `psionic-serve`, with an
+  explicit `psionic.executor_trace` request/stream/terminal contract, typed
+  refusal responses, trace-step streaming, final output extraction helpers, and
+  served evidence bundles that preserve decode selection, trace proof, and
+  runtime-manifest lineage
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4/5/6 issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5/6/7A issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
   [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746) and
   [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747) and
   [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748) and
-  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749) and
+  [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760)
 
 ## Crate Map
 

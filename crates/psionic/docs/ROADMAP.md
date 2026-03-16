@@ -502,12 +502,18 @@ Its declared scope is:
   direct/fallback/refused decode selection diagnostics covering hull-cache,
   approximate sparse-top-k fallback, unsupported ABI/profile requests, and
   model-effective decode mismatches
+- landed Phase 7A bar: explicit served `psionic.executor_trace` product
+  semantics in `psionic-serve`, including typed request/response contracts,
+  pull-driven trace streaming, final output extraction helpers, typed refusal
+  responses, and served evidence bundles that preserve decode selection, trace
+  proof, and runtime-manifest lineage
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
   - `psionic-environments::TassadarEnvironmentBundle`
   - `psionic-eval::run_tassadar_reference_fixture_benchmark`
   - `psionic-runtime::build_tassadar_execution_evidence_bundle`
+  - `psionic-serve::LocalTassadarExecutorService`
 - strategic value: inner exact-computation substrate for larger reasoning
   systems
 - non-goals: current MVP product scope, kernel authority, or replacement of
@@ -529,6 +535,8 @@ The current issue spine is:
   [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 - Phase 6 typed runtime capability and fallback diagnostics:
   [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
+- Phase 7A dedicated executor serving surface and trace product:
+  [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760)
 
 What Phases 1 through 6 now concretely provide:
 
@@ -564,11 +572,18 @@ What Phases 1 through 6 now concretely provide:
   emitted trace artifact
 - canonical `ExecutionProofBundle` integration for replay-stable executor
   evidence
+- one explicit `psionic.executor_trace` served product family in
+  `psionic-serve`
+- one typed `TassadarExecutorRequest` / `TassadarExecutorOutcome` contract
+- one pull-driven trace stream that can emit capability, selection, trace-step,
+  output, and terminal events without pretending to be chat completion
+- one local reference service that preserves exact refusal, fallback, proof,
+  and lineage truth through the serving boundary
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
 
-- dedicated executor serving where useful
+- widened Wasm profile and article-class benchmark coverage
 - hybrid planner-plus-executor routing
 
 ## Epic 0: Governance And Acceptance
