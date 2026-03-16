@@ -136,6 +136,9 @@ It already has real substrate for:
 - environment package ABI and deterministic runtime sessions
 - held-out eval runtime, benchmark packages, repeat-run aggregation, and local
   validator simulation
+- bounded `Tassadar` small-executor training over the validation benchmark
+  package, using the fixed-budget training core plus proof-aware exactness
+  comparison against the handcrafted reference lane
 - adapter lineage
 
 It does not yet implement the full distributed trainer-orchestrator-RL runtime.
@@ -154,6 +157,19 @@ The honest description today is:
 > Psionic already owns real training-class truth surfaces plus a bounded
 > training-core reference loop, but it does not yet own the full distributed
 > train system.
+
+That now includes one intentionally narrow executor-training answer:
+
+- `psionic-train::train_tassadar_small_executor(...)` can train a bounded small
+  Tassadar model over package-backed validation-corpus supervision
+- the learned lane uses the same fixed-budget training receipts as the rest of
+  the train substrate rather than a sidecar research script
+- evaluation remains proof-aware and baseline-aware: trained traces, outputs,
+  and halt posture are checked against the handcrafted reference lane and keep
+  the reference proof-bundle digests visible in the resulting report
+- the resulting claim is intentionally scoped to the validation corpus only; it
+  is not a claim that larger learned executors, broader Wasm coverage, or
+  compile-to-weights work are already complete in Psionic
 
 ## Apple Adapter Reality
 
