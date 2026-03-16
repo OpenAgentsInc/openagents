@@ -311,6 +311,11 @@ Current posture:
   boundaries, explicit host-owned typed buffer export, singleton `item()`
   extraction, deterministic tree flatten/map/unflatten utilities, and snapshot
   graph export for the current output set.
+- `psionic-array-io`: public array artifact import/export companion above
+  `psionic-array`, with stable receipts, explicit dtype and quantization truth,
+  single-array `npy`, multi-array `npz`, multi-array `safetensors`, and a
+  bounded dense GGUF import/export bridge that dequantizes GGUF block storage
+  to logical `f32` on import instead of hiding storage changes.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

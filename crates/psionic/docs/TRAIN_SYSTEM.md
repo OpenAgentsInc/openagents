@@ -2929,6 +2929,12 @@ currently import-focused rather than full re-export. That is still a material
 shift: trained or served artifacts are now portable through one Rust-owned
 contract instead of bespoke scripts or disconnected side files.
 
+General-purpose array artifact IO now lives separately in `psionic-array-io`.
+That split is intentional: `psionic-train::model_io` still owns checkpoint,
+tokenizer, state-dict, and model-family portability, while `psionic-array-io`
+owns public framework-facing `npy` / `npz` / `safetensors` plus bounded GGUF
+array save/load semantics above the lazy-array surface.
+
 ### 25. `Training Truth: add deterministic replay and reproducibility guarantees`
 
 Implemented on Saturday, March 14, 2026.

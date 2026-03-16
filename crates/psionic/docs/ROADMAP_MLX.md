@@ -492,7 +492,7 @@ from an MLX-class framework.
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
-| `PMLX-401` | planned | `Psionic MLX: add general array save and load APIs for npy, npz, safetensors, and gguf families` | Expose general array serialization above the current model- and checkpoint-focused IO surfaces, keeping dtype and layout truth explicit. |
+| `PMLX-401` / [#3853](https://github.com/OpenAgentsInc/openagents/issues/3853) | done (2026-03-16) | `Psionic MLX: add general array save and load APIs for npy, npz, safetensors, and gguf families` | `psionic-array-io` now owns bounded public array artifact IO above `psionic-array`, with stable receipts, explicit dtype and quantization truth, `npy` / `npz` / `safetensors` save/load, and dense GGUF import/export that discloses quantized GGUF dequantization on import instead of hiding it inside model-local loaders. |
 | `PMLX-402` | planned | `Psionic MLX: add a Psionic-native function export and import artifact above the IR` | Build the native graph or function export story first, with stable signatures, trace families, and replay identity. |
 | `PMLX-403` | planned | `Psionic MLX: add bounded mlxfn import and export compatibility on top of the native function artifact` | Only after the native function artifact exists, add optional `.mlxfn` interoperability with explicit supported and unsupported boundaries. |
 | `PMLX-404` | planned | `Psionic MLX: expose memory-reporting and cache-control APIs to the public framework surface` | Publish active, peak, and cache memory counters plus cache-limit and reset controls above the current runtime diagnostics. |
