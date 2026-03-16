@@ -15,12 +15,23 @@
 
 pub mod dsl;
 pub mod interpreter;
+pub mod model;
 
 pub use dsl::{
     ARC_SOLVER_BOUNDARY_SUMMARY, ArcDslTier, ArcGridBinding, ArcGridExpr, ArcObjectSelector,
     ArcObjectTransform, ArcProgram, ArcProgramMetadata, ArcSymbol, ArcSymbolError,
 };
 pub use interpreter::{ArcInterpreter, ArcInterpreterError};
+pub use model::{
+    ArcDigest, ArcDigestError, BudgetCounterDelta, BudgetCounterKind, BudgetCounterSummary,
+    BudgetLedger, BudgetLedgerError, CandidateDeduplicationDecision, CandidateDeduplicationStatus,
+    CandidateDeduplicator, CandidateIdentity, CandidateIdentityError, Hypothesis, HypothesisError,
+    HypothesisId, HypothesisKind, PlannedActionStep, RefusalEnvelope, RefusalEnvelopeError,
+    SOLVER_MODEL_BOUNDARY_SUMMARY, SecondAttemptDistinctness, SecondAttemptDistinctnessField,
+    SolveAttemptEnvelope, SolveAttemptEnvelopeError, SolveAttemptStatus,
+    SolveAttemptVerificationSummary, SolverIdError, SolverLaneId, SolverPhase, SolverRefusalCode,
+    TaskBudget,
+};
 
 /// Stable role summary for downstream ARC crates.
 pub const CRATE_ROLE: &str =

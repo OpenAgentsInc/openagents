@@ -846,6 +846,17 @@ pub trait SolverLane {
 The solver object model below is normative.
 Local crates must not invent alternate proposal or verification shapes.
 
+Current bounded landing:
+
+- `ARC-302` implements the first normative model slice in
+  `arc-solvers::model`
+- the landed surface now includes typed digests and ids, solver refusal
+  envelopes, `TaskBudget` plus `BudgetLedger`, `CandidateIdentity`,
+  `Hypothesis`, candidate deduplication, second-attempt distinctness checks,
+  and `SolveAttemptEnvelope`
+- later issues extend this same model with verifier reports, lane proposal
+  batches, and trace-bundle manifests rather than redefining shadow types
+
 ```rust
 pub struct HypothesisId(pub String);
 
