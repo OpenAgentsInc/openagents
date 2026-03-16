@@ -457,6 +457,8 @@ Applications / Operators / Authority
      compile-transform surface with explicit purity, concrete-plan cache
      identity, bounded shapeless trace-family identity, trace capture, and
      plan-debug posture
+   - public array-debug capture in `psionic-array` now reuses compiler
+     trace/debug configuration instead of inventing a lane-local debug path
    - compiler replay fixtures now guard deterministic lowering, explicit
      schedule/fusion/memory/cache artifacts, and topology-bound program
      identity through

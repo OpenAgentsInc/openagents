@@ -9,22 +9,32 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, VecDeque},
+    fs,
+    path::PathBuf,
     rc::Rc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
+use psionic_compiler::{
+    CompileTransformConfig, CompileTransformDebugMode, CompileTransformError,
+    CompileTransformResult, CompileTransformTraceMode, compile_transform,
+};
 use psionic_core::{
     DType, Device, DeviceKind, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec,
 };
 use psionic_ir::{Graph, GraphBuilder, GraphError, OpKind};
 use psionic_runtime::{
-    default_cache_invalidation_policy, AllocatorPoolPolicy, AllocatorPoolReport,
-    AllocatorPoolState, BackendRuntimeResources, CacheInvalidationPolicy, DeterminismContractError,
-    DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
-    ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState, GeneratorState,
+    AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendHealthTracker,
+    BackendProbeState, BackendRuntimeResources, BackendToolchainIdentity, CacheInvalidationPolicy,
+    DeterminismContractError, DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryBudget,
+    DeviceMemoryClass, ExecutionCapabilityProfile, ExecutionPlanCachePolicy,
+    ExecutionPlanCacheReport, ExecutionPlanCacheState, GeneratorState, HealthStatus,
     IsolationResetScope, KernelCachePolicy, KernelCacheReport, KernelCacheState,
-    RuntimeDeterminismContract,
+    LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+    RuntimeDeterminismContract, RuntimeHealth, default_cache_invalidation_policy,
 };
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use serde::Serialize;
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -36,14 +46,18 @@ const DEFAULT_ALLOCATOR_POOL_BUFFERS: usize = 16;
 const DEFAULT_ALLOCATOR_POOL_BYTES: u64 = 512 * 1024;
 const DEFAULT_KERNEL_CACHE_ENTRIES: usize = 16;
 const DEFAULT_KERNEL_CACHE_BYTES: u64 = 256 * 1024;
+const DEFAULT_DEBUG_LOG_HISTORY_LIMIT: usize = 32;
+const DEFAULT_DEBUG_CAPTURE_HISTORY_LIMIT: usize = 8;
 
 #[derive(Debug)]
 struct ArrayContextInner {
     device: ArrayDevice,
+    backend_identity: BackendToolchainIdentity,
     builder: RefCell<GraphBuilder>,
     determinism: RefCell<RuntimeDeterminismContract>,
     next_stream_id: RefCell<u32>,
     runtime_state: RefCell<ArrayRuntimeState>,
+    debug_state: RefCell<ArrayDebugState>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,8 +84,212 @@ struct ArrayAllocatorEntry {
     bytes: u64,
 }
 
+#[derive(Debug)]
+struct ArrayDebugState {
+    backend_health: BackendHealthTracker,
+    recent_logs: VecDeque<ArrayBackendDebugLogEvent>,
+    recent_captures: VecDeque<ArrayBackendCaptureSummary>,
+    next_capture_sequence: u64,
+}
+
+/// Public backend lane for the bounded array debug surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArrayBackendDebugLane {
+    /// CPU or host-only reference lane.
+    Cpu,
+    /// Metal-labeled accelerator lane.
+    Metal,
+    /// CUDA-labeled accelerator lane.
+    Cuda,
+    /// One other backend family outside the seeded matrix.
+    Other,
+}
+
+/// Public debug-capture artifact format for one backend lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArrayBackendCaptureFormat {
+    /// Stable Psionic JSON bundle for the current reference lane.
+    PsionicDebugJson,
+    /// Stable Metal-labeled Psionic JSON bundle.
+    MetalDebugJson,
+    /// Stable CUDA-labeled Psionic JSON bundle.
+    CudaDebugJson,
+}
+
+/// Public support matrix for the bounded backend debug surface.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayBackendDebugSupport {
+    /// Backend lane represented by the current context.
+    pub lane: ArrayBackendDebugLane,
+    /// Trace modes admitted by the public compiler-backed debug hook.
+    pub supported_trace_modes: Vec<CompileTransformTraceMode>,
+    /// Debug modes admitted by the public compiler-backed debug hook.
+    pub supported_debug_modes: Vec<CompileTransformDebugMode>,
+    /// Artifact formats the current backend lane can emit.
+    pub capture_formats: Vec<ArrayBackendCaptureFormat>,
+    /// Whether runtime log events are retained on this surface.
+    pub supports_runtime_logging: bool,
+    /// Whether runtime observability snapshots are retained on this surface.
+    pub supports_runtime_observability: bool,
+    /// Whether the current bounded surface exposes vendor-native profiler capture.
+    pub supports_vendor_native_capture: bool,
+}
+
+/// One public backend debug log event retained by the array context.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayBackendDebugLogEvent {
+    /// High-level event family.
+    pub kind: ArrayBackendLogKind,
+    /// Stable backend label that emitted the event.
+    pub backend: String,
+    /// Plain-language event detail.
+    pub message: String,
+    /// Stable graph digest involved in the event, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_digest: Option<String>,
+    /// Stable capture identifier when the event belongs to one capture.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture_id: Option<String>,
+    /// Timestamp when the event was observed.
+    pub observed_at_millis: u64,
+}
+
+/// Stable log-event family for one public backend debug event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArrayBackendLogKind {
+    /// One explicit materialization boundary completed.
+    Materialize,
+    /// One backend debug capture completed.
+    Capture,
+    /// Runtime cache policies changed.
+    CachePolicyUpdated,
+    /// Runtime cache families were reset explicitly.
+    CachesReset,
+}
+
+/// Stable summary retained for one recent backend debug capture.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayBackendCaptureSummary {
+    /// Stable capture identifier.
+    pub capture_id: String,
+    /// Stable backend label that produced the capture.
+    pub backend: String,
+    /// Graph digest captured by the request.
+    pub graph_digest: String,
+    /// Compiler trace mode used for the capture.
+    pub trace_mode: CompileTransformTraceMode,
+    /// Compiler debug mode used for the capture.
+    pub debug_mode: CompileTransformDebugMode,
+    /// Stable emitted artifact when the capture wrote one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<ArrayBackendCaptureArtifact>,
+    /// Timestamp when the capture completed.
+    pub observed_at_millis: u64,
+}
+
+/// Snapshot of backend debug state for the current array context.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayBackendDebugSnapshot {
+    /// Stable backend/toolchain identity for the context.
+    pub backend: BackendToolchainIdentity,
+    /// Support matrix for the current backend lane.
+    pub support: ArrayBackendDebugSupport,
+    /// Current bounded runtime observability snapshot.
+    pub runtime_observability: LocalRuntimeObservability,
+    /// Current bounded runtime resource snapshot.
+    pub runtime_resources: ArrayRuntimeResourceReport,
+    /// Recent retained backend log events in chronological order.
+    pub recent_logs: Vec<ArrayBackendDebugLogEvent>,
+    /// Recent retained captures in chronological order.
+    pub recent_captures: Vec<ArrayBackendCaptureSummary>,
+}
+
+/// Explicit request to write one backend debug artifact.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayBackendCaptureArtifactRequest {
+    /// Destination path for the emitted capture bundle.
+    pub path: PathBuf,
+    /// Optional explicit artifact format; defaults to the backend lane default.
+    pub format: Option<ArrayBackendCaptureFormat>,
+}
+
+/// Stable emitted artifact for one backend debug capture.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayBackendCaptureArtifact {
+    /// Artifact path written by the capture.
+    pub path: PathBuf,
+    /// Artifact format emitted at that path.
+    pub format: ArrayBackendCaptureFormat,
+    /// Artifact size in bytes.
+    pub bytes: u64,
+}
+
+/// Public configuration for one explicit backend debug capture.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArrayBackendCaptureConfig {
+    /// Compiler-backed trace/debug posture for the captured graph.
+    pub compile: CompileTransformConfig,
+    /// Whether to snapshot runtime observability and resources before/after capture.
+    pub include_runtime_snapshot: bool,
+    /// Optional on-disk capture artifact request.
+    pub artifact: Option<ArrayBackendCaptureArtifactRequest>,
+    /// Optional plain-language label carried into the capture receipt.
+    pub label: Option<String>,
+}
+
+impl Default for ArrayBackendCaptureConfig {
+    fn default() -> Self {
+        Self {
+            compile: CompileTransformConfig::default(),
+            include_runtime_snapshot: true,
+            artifact: None,
+            label: None,
+        }
+    }
+}
+
+/// Public receipt for one explicit backend debug capture.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ArrayBackendCaptureReceipt {
+    /// Stable capture identifier.
+    pub capture_id: String,
+    /// Stable graph digest captured by the request.
+    pub graph_digest: String,
+    /// Stable backend/toolchain identity for the captured lane.
+    pub backend: BackendToolchainIdentity,
+    /// Support matrix for the captured lane.
+    pub support: ArrayBackendDebugSupport,
+    /// Optional caller-supplied capture label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Compiler trace/debug result captured for the graph.
+    pub compile: CompileTransformResult,
+    /// Runtime observability snapshot before capture, when requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_observability_before: Option<LocalRuntimeObservability>,
+    /// Runtime observability snapshot after capture, when requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_observability_after: Option<LocalRuntimeObservability>,
+    /// Runtime resource snapshot before capture, when requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_resources_before: Option<ArrayRuntimeResourceReport>,
+    /// Runtime resource snapshot after capture, when requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_resources_after: Option<ArrayRuntimeResourceReport>,
+    /// Eval receipts emitted by the capture materialization.
+    pub eval_receipts: Vec<EvalReceipt>,
+    /// Recent log events retained for the context after capture.
+    pub recent_logs: Vec<ArrayBackendDebugLogEvent>,
+    /// Emitted capture artifact when the caller requested one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<ArrayBackendCaptureArtifact>,
+}
+
 /// Public active, peak, and cached-memory counters for the bounded array surface.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct ArrayMemoryCounters {
     /// Bytes currently owned by the graph-backed array context.
     pub active_bytes: u64,
@@ -120,7 +338,7 @@ impl Default for ArrayCacheLimitControl {
 }
 
 /// Public runtime-resource report for the bounded array surface.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ArrayRuntimeResourceReport {
     /// Active, peak, and cached-memory counters.
     pub memory: ArrayMemoryCounters,
@@ -196,7 +414,9 @@ pub enum ArrayError {
         stddev: f32,
     },
     /// One arange request used a zero or non-progressing step.
-    #[error("arange requires a non-zero step that progresses from start={start} toward stop={stop}; found step={step}")]
+    #[error(
+        "arange requires a non-zero step that progresses from start={start} toward stop={stop}; found step={step}"
+    )]
     InvalidArangeStep {
         /// Start value.
         start: f32,
@@ -227,9 +447,7 @@ pub enum ArrayError {
         shape: Shape,
     },
     /// One stream belongs to a different device than the owning context.
-    #[error(
-        "stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`"
-    )]
+    #[error("stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`")]
     StreamDeviceMismatch {
         /// Stream identifier.
         stream_id: u32,
@@ -267,6 +485,108 @@ pub enum ArrayError {
     /// The lower graph builder rejected the requested operation.
     #[error(transparent)]
     Graph(#[from] GraphError),
+    /// The public compile-transform debug surface refused or failed.
+    #[error(transparent)]
+    CompileTransform(#[from] CompileTransformError),
+    /// One requested capture artifact format does not belong to the active backend lane.
+    #[error("backend debug format {format:?} is unsupported for backend `{backend}`")]
+    UnsupportedBackendDebugFormat {
+        /// Active backend label.
+        backend: String,
+        /// Unsupported requested artifact format.
+        format: ArrayBackendCaptureFormat,
+    },
+    /// One on-disk debug capture bundle could not be written.
+    #[error("cannot write backend debug capture artifact at `{path}`: {detail}")]
+    DebugCaptureArtifactWrite {
+        /// Artifact path that failed.
+        path: PathBuf,
+        /// Plain-language write failure detail.
+        detail: String,
+    },
+}
+
+impl ArrayBackendDebugSupport {
+    fn for_backend(backend: &str) -> Self {
+        let lane = backend_debug_lane(backend);
+        let capture_formats = match lane {
+            ArrayBackendDebugLane::Metal => vec![
+                ArrayBackendCaptureFormat::MetalDebugJson,
+                ArrayBackendCaptureFormat::PsionicDebugJson,
+            ],
+            ArrayBackendDebugLane::Cuda => vec![
+                ArrayBackendCaptureFormat::CudaDebugJson,
+                ArrayBackendCaptureFormat::PsionicDebugJson,
+            ],
+            ArrayBackendDebugLane::Cpu | ArrayBackendDebugLane::Other => {
+                vec![ArrayBackendCaptureFormat::PsionicDebugJson]
+            }
+        };
+        Self {
+            lane,
+            supported_trace_modes: vec![
+                CompileTransformTraceMode::Disabled,
+                CompileTransformTraceMode::CacheIdentity,
+                CompileTransformTraceMode::TraceFamilyIdentity,
+                CompileTransformTraceMode::FullArtifacts,
+            ],
+            supported_debug_modes: vec![
+                CompileTransformDebugMode::Disabled,
+                CompileTransformDebugMode::PlanDebug,
+                CompileTransformDebugMode::DisableCompile,
+            ],
+            capture_formats,
+            supports_runtime_logging: true,
+            supports_runtime_observability: true,
+            supports_vendor_native_capture: false,
+        }
+    }
+
+    fn default_capture_format(&self) -> ArrayBackendCaptureFormat {
+        self.capture_formats
+            .first()
+            .copied()
+            .unwrap_or(ArrayBackendCaptureFormat::PsionicDebugJson)
+    }
+
+    fn supports_format(&self, format: ArrayBackendCaptureFormat) -> bool {
+        self.capture_formats.contains(&format)
+    }
+}
+
+impl ArrayDebugState {
+    fn new(backend: &str, health: RuntimeHealth) -> Self {
+        let observed_at_millis = current_time_millis();
+        let mut backend_health =
+            BackendHealthTracker::with_history_limit(DEFAULT_DEBUG_LOG_HISTORY_LIMIT);
+        backend_health.observe(backend.to_string(), health, observed_at_millis);
+        Self {
+            backend_health,
+            recent_logs: VecDeque::new(),
+            recent_captures: VecDeque::new(),
+            next_capture_sequence: 1,
+        }
+    }
+
+    fn next_capture_id(&mut self, backend: &str) -> String {
+        let capture_id = format!("{backend}-capture-{:04}", self.next_capture_sequence);
+        self.next_capture_sequence = self.next_capture_sequence.saturating_add(1);
+        capture_id
+    }
+
+    fn record_log(&mut self, event: ArrayBackendDebugLogEvent) {
+        if self.recent_logs.len() == DEFAULT_DEBUG_LOG_HISTORY_LIMIT {
+            self.recent_logs.pop_front();
+        }
+        self.recent_logs.push_back(event);
+    }
+
+    fn record_capture(&mut self, summary: ArrayBackendCaptureSummary) {
+        if self.recent_captures.len() == DEFAULT_DEBUG_CAPTURE_HISTORY_LIMIT {
+            self.recent_captures.pop_front();
+        }
+        self.recent_captures.push_back(summary);
+    }
 }
 
 impl ArrayRuntimeState {
@@ -556,6 +876,151 @@ impl ArrayRuntimeState {
     }
 }
 
+impl ArrayContextInner {
+    fn backend_debug_support(&self) -> ArrayBackendDebugSupport {
+        ArrayBackendDebugSupport::for_backend(self.device.backend())
+    }
+
+    fn runtime_observability_snapshot(&self) -> LocalRuntimeObservability {
+        let runtime_state = self.runtime_state.borrow();
+        let resident_host_bytes = runtime_state
+            .total_bytes
+            .saturating_add(runtime_state.cached_bytes());
+        let debug_state = self.debug_state.borrow();
+        LocalRuntimeObservability {
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+            cache_invalidation_policy: runtime_state.cache_invalidation_policy.clone(),
+            execution_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
+            queue_depth: 0,
+            queue_capacity: Some(1),
+            active_sessions: 0,
+            active_requests: 0,
+            memory_footprint: MemoryResidencySnapshot {
+                loaded_models: 0,
+                resident_host_bytes,
+                resident_device_bytes: 0,
+            },
+            backend_health: debug_state.backend_health.snapshot(),
+            recent_transitions: debug_state.backend_health.recent_changes(),
+        }
+    }
+
+    fn debug_snapshot(&self) -> ArrayBackendDebugSnapshot {
+        let debug_state = self.debug_state.borrow();
+        ArrayBackendDebugSnapshot {
+            backend: self.backend_identity.clone(),
+            support: self.backend_debug_support(),
+            runtime_observability: self.runtime_observability_snapshot(),
+            runtime_resources: self.runtime_state.borrow().report(),
+            recent_logs: debug_state.recent_logs.iter().cloned().collect(),
+            recent_captures: debug_state.recent_captures.iter().cloned().collect(),
+        }
+    }
+
+    fn record_backend_log(
+        &self,
+        kind: ArrayBackendLogKind,
+        message: impl Into<String>,
+        graph_digest: Option<String>,
+        capture_id: Option<String>,
+    ) {
+        self.debug_state
+            .borrow_mut()
+            .record_log(ArrayBackendDebugLogEvent {
+                kind,
+                backend: self.device.backend().to_string(),
+                message: message.into(),
+                graph_digest,
+                capture_id,
+                observed_at_millis: current_time_millis(),
+            });
+    }
+}
+
+fn backend_debug_lane(backend: &str) -> ArrayBackendDebugLane {
+    match backend {
+        "cpu" => ArrayBackendDebugLane::Cpu,
+        "metal" => ArrayBackendDebugLane::Metal,
+        "cuda" => ArrayBackendDebugLane::Cuda,
+        _ => ArrayBackendDebugLane::Other,
+    }
+}
+
+fn backend_identity_for_device(device: &ArrayDevice) -> BackendToolchainIdentity {
+    let features = device.descriptor().feature_flags.clone();
+    let identity = BackendToolchainIdentity::new(
+        device.backend(),
+        format!("psionic-array-reference@{}", env!("CARGO_PKG_VERSION")),
+        features.clone(),
+    );
+    if device.descriptor().device_name.is_some()
+        || device.descriptor().memory_capacity_bytes.is_some()
+        || !features.is_empty()
+    {
+        identity.with_probe(BackendProbeState::CompiledAndProbed, features)
+    } else {
+        identity
+    }
+}
+
+fn initial_backend_health(device: &ArrayDevice) -> RuntimeHealth {
+    match backend_debug_lane(device.backend()) {
+        ArrayBackendDebugLane::Cpu => RuntimeHealth {
+            status: HealthStatus::Ready,
+            message: String::from("cpu reference runtime and debug hooks ready"),
+        },
+        ArrayBackendDebugLane::Metal => RuntimeHealth {
+            status: HealthStatus::Degraded,
+            message: String::from(
+                "metal debug hooks route through the reference runtime; vendor-native capture remains unavailable",
+            ),
+        },
+        ArrayBackendDebugLane::Cuda => RuntimeHealth {
+            status: HealthStatus::Degraded,
+            message: String::from(
+                "cuda debug hooks route through the reference runtime; vendor-native capture remains unavailable",
+            ),
+        },
+        ArrayBackendDebugLane::Other => RuntimeHealth {
+            status: HealthStatus::Degraded,
+            message: format!(
+                "backend `{}` debug hooks route through the reference runtime only",
+                device.backend()
+            ),
+        },
+    }
+}
+
+fn current_time_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
+fn write_backend_capture_artifact(
+    request: &ArrayBackendCaptureArtifactRequest,
+    format: ArrayBackendCaptureFormat,
+    receipt: &ArrayBackendCaptureReceipt,
+) -> Result<ArrayBackendCaptureArtifact, ArrayError> {
+    let payload = serde_json::to_vec_pretty(receipt).map_err(|error| {
+        ArrayError::DebugCaptureArtifactWrite {
+            path: request.path.clone(),
+            detail: format!("serialize capture receipt: {error}"),
+        }
+    })?;
+    fs::write(&request.path, &payload).map_err(|error| ArrayError::DebugCaptureArtifactWrite {
+        path: request.path.clone(),
+        detail: error.to_string(),
+    })?;
+    Ok(ArrayBackendCaptureArtifact {
+        path: request.path.clone(),
+        format,
+        bytes: payload.len() as u64,
+    })
+}
+
 fn tensor_bytes(spec: &TensorSpec) -> u64 {
     (spec.shape().element_count() as u64).saturating_mul(spec.dtype().element_size_bytes() as u64)
 }
@@ -782,34 +1247,48 @@ impl ArrayStream {
 }
 
 /// Explicit materialization trigger for the current lazy-array surface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum MaterializationTrigger {
     /// Synchronous explicit materialization through `eval`.
     Eval,
     /// Deferred explicit materialization through `async_eval(...).wait()`.
     AsyncEvalWait,
+    /// Explicit backend debug capture through `capture_backend_debug`.
+    DebugCapture,
     /// Explicit host-data export through `to_host_data`.
     ToHostData,
     /// Explicit singleton scalar extraction through `item`.
     Item,
 }
 
+impl MaterializationTrigger {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Eval => "eval",
+            Self::AsyncEvalWait => "async_eval_wait",
+            Self::DebugCapture => "debug_capture",
+            Self::ToHostData => "to_host_data",
+            Self::Item => "item",
+        }
+    }
+}
+
 /// Current policy for implicit host or display materialization.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum ImplicitMaterializationPolicy {
     /// Only explicit eval entrypoints may materialize values today.
     ExplicitOnly,
 }
 
 /// Replay boundary for one public materialization contract.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum ReplayBoundary {
     /// Evaluation replays against the captured graph snapshot digest.
     GraphSnapshot,
 }
 
 /// Public materialization boundary report for one lazy array.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct MaterializationBoundary {
     /// Explicit materialization triggers available on the current surface.
     pub explicit_triggers: Vec<MaterializationTrigger>,
@@ -825,6 +1304,7 @@ impl MaterializationBoundary {
             explicit_triggers: vec![
                 MaterializationTrigger::Eval,
                 MaterializationTrigger::AsyncEvalWait,
+                MaterializationTrigger::DebugCapture,
                 MaterializationTrigger::ToHostData,
                 MaterializationTrigger::Item,
             ],
@@ -835,7 +1315,7 @@ impl MaterializationBoundary {
 }
 
 /// Receipt emitted for one explicit lazy-array evaluation boundary.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct EvalReceipt {
     /// Stable digest of the graph snapshot that was evaluated.
     pub graph_digest: String,
@@ -1270,6 +1750,17 @@ impl PendingAsyncEval {
             .runtime_state
             .borrow_mut()
             .record_eval(&self.graph, self.outputs.as_slice());
+        self.context.record_backend_log(
+            ArrayBackendLogKind::Materialize,
+            format!(
+                "materialized graph {} via {} on stream {}",
+                self.graph.stable_digest(),
+                MaterializationTrigger::AsyncEvalWait.label(),
+                self.stream.stream_id()
+            ),
+            Some(self.graph.stable_digest()),
+            None,
+        );
         Ok(outputs)
     }
 }
@@ -1355,10 +1846,14 @@ impl ArrayContext {
         };
         let stream = ArrayStream::default_for(device.clone());
         let runtime_state = ArrayRuntimeState::new(&device);
+        let backend_identity = backend_identity_for_device(&device);
+        let debug_state = ArrayDebugState::new(device.backend(), initial_backend_health(&device));
         Ok(Self {
             inner: Rc::new(ArrayContextInner {
                 builder: RefCell::new(GraphBuilder::new(device.device().clone())),
+                backend_identity,
                 determinism: RefCell::new(determinism),
+                debug_state: RefCell::new(debug_state),
                 device,
                 next_stream_id: RefCell::new(1),
                 runtime_state: RefCell::new(runtime_state),
@@ -1409,6 +1904,18 @@ impl ArrayContext {
         self.inner.runtime_state.borrow().report()
     }
 
+    /// Returns the stable support matrix for backend debug hooks on this context.
+    #[must_use]
+    pub fn backend_debug_support(&self) -> ArrayBackendDebugSupport {
+        self.inner.backend_debug_support()
+    }
+
+    /// Returns the current backend debug snapshot for this context.
+    #[must_use]
+    pub fn backend_debug_snapshot(&self) -> ArrayBackendDebugSnapshot {
+        self.inner.debug_snapshot()
+    }
+
     /// Applies explicit cache limits to the bounded runtime surface.
     pub fn configure_cache_limits(
         &self,
@@ -1417,12 +1924,34 @@ impl ArrayContext {
         let memory_capacity_bytes = self.inner.device.descriptor().memory_capacity_bytes;
         let mut runtime_state = self.inner.runtime_state.borrow_mut();
         runtime_state.apply_cache_limits(limits, memory_capacity_bytes);
-        runtime_state.report()
+        let report = runtime_state.report();
+        drop(runtime_state);
+        self.inner.record_backend_log(
+            ArrayBackendLogKind::CachePolicyUpdated,
+            format!(
+                "updated runtime cache limits for backend `{}`",
+                self.inner.device.backend()
+            ),
+            None,
+            None,
+        );
+        report
     }
 
     /// Explicitly resets one or more bounded runtime cache families.
     pub fn reset_runtime_caches(&self, scopes: &[ArrayCacheResetScope]) -> ArrayCacheResetReceipt {
-        self.inner.runtime_state.borrow_mut().reset_caches(scopes)
+        let receipt = self.inner.runtime_state.borrow_mut().reset_caches(scopes);
+        self.inner.record_backend_log(
+            ArrayBackendLogKind::CachesReset,
+            format!(
+                "reset runtime caches for backend `{}` across {} scope(s)",
+                self.inner.device.backend(),
+                scopes.len()
+            ),
+            None,
+            None,
+        );
+        receipt
     }
 
     /// Allocates a new explicit stream handle on the current device.
@@ -1645,6 +2174,17 @@ impl ArrayContext {
             .runtime_state
             .borrow_mut()
             .record_eval(&graph, outputs);
+        self.inner.record_backend_log(
+            ArrayBackendLogKind::Materialize,
+            format!(
+                "materialized graph {} via {} on stream {}",
+                graph.stable_digest(),
+                MaterializationTrigger::Eval.label(),
+                self.stream.stream_id()
+            ),
+            Some(graph.stable_digest()),
+            None,
+        );
         Ok(evaluated)
     }
 
@@ -1658,6 +2198,111 @@ impl ArrayContext {
             outputs: outputs.to_vec(),
             stream: self.stream.clone(),
         })
+    }
+
+    /// Captures compiler-backed debug artifacts plus bounded runtime snapshots
+    /// for the requested outputs.
+    pub fn capture_backend_debug(
+        &self,
+        outputs: &[Array],
+        config: ArrayBackendCaptureConfig,
+    ) -> Result<ArrayBackendCaptureReceipt, ArrayError> {
+        let graph = self.graph_for(outputs)?;
+        let graph_digest = graph.stable_digest();
+        let runtime_observability_before = config
+            .include_runtime_snapshot
+            .then(|| self.inner.runtime_observability_snapshot());
+        let runtime_resources_before = config
+            .include_runtime_snapshot
+            .then(|| self.inner.runtime_state.borrow().report());
+        let mut transform = compile_transform(&graph, config.compile.clone());
+        let compile = transform.apply()?;
+        let evaluated = evaluate_graph_snapshot(
+            &graph,
+            outputs,
+            MaterializationTrigger::DebugCapture,
+            &self.stream,
+        )?;
+        self.inner
+            .runtime_state
+            .borrow_mut()
+            .record_eval(&graph, outputs);
+
+        let support = self.backend_debug_support();
+        let capture_id = {
+            self.inner
+                .debug_state
+                .borrow_mut()
+                .next_capture_id(self.inner.device.backend())
+        };
+        let runtime_observability_after = config
+            .include_runtime_snapshot
+            .then(|| self.inner.runtime_observability_snapshot());
+        let runtime_resources_after = config
+            .include_runtime_snapshot
+            .then(|| self.inner.runtime_state.borrow().report());
+
+        let mut receipt = ArrayBackendCaptureReceipt {
+            capture_id: capture_id.clone(),
+            graph_digest: graph_digest.clone(),
+            backend: self.inner.backend_identity.clone(),
+            support: support.clone(),
+            label: config.label.clone(),
+            compile,
+            runtime_observability_before,
+            runtime_observability_after,
+            runtime_resources_before,
+            runtime_resources_after,
+            eval_receipts: evaluated
+                .iter()
+                .map(|evaluated| evaluated.receipt().clone())
+                .collect(),
+            recent_logs: Vec::new(),
+            artifact: None,
+        };
+        if let Some(request) = &config.artifact {
+            let format = request
+                .format
+                .unwrap_or_else(|| support.default_capture_format());
+            if !support.supports_format(format) {
+                return Err(ArrayError::UnsupportedBackendDebugFormat {
+                    backend: self.inner.device.backend().to_string(),
+                    format,
+                });
+            }
+            receipt.artifact = Some(write_backend_capture_artifact(request, format, &receipt)?);
+        }
+        self.inner.record_backend_log(
+            ArrayBackendLogKind::Capture,
+            format!(
+                "captured backend debug bundle for graph {} on stream {}",
+                graph_digest,
+                self.stream.stream_id()
+            ),
+            Some(graph_digest.clone()),
+            Some(capture_id.clone()),
+        );
+        self.inner
+            .debug_state
+            .borrow_mut()
+            .record_capture(ArrayBackendCaptureSummary {
+                capture_id,
+                backend: self.inner.device.backend().to_string(),
+                graph_digest,
+                trace_mode: config.compile.trace_mode,
+                debug_mode: config.compile.debug_mode,
+                artifact: receipt.artifact.clone(),
+                observed_at_millis: current_time_millis(),
+            });
+        receipt.recent_logs = self
+            .inner
+            .debug_state
+            .borrow()
+            .recent_logs
+            .iter()
+            .cloned()
+            .collect();
+        Ok(receipt)
     }
 }
 
@@ -1810,6 +2455,17 @@ impl Array {
             .runtime_state
             .borrow_mut()
             .record_eval(&graph, std::slice::from_ref(self));
+        self.context.record_backend_log(
+            ArrayBackendLogKind::Materialize,
+            format!(
+                "materialized graph {} via {} on stream {}",
+                graph.stable_digest(),
+                trigger.label(),
+                self.stream.stream_id()
+            ),
+            Some(graph.stable_digest()),
+            None,
+        );
         Ok(outputs.remove(0))
     }
 
@@ -2220,7 +2876,9 @@ where
         return Err(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
             op: String::from("binary"),
-            detail: String::from("bounded explicit eval expects binary inputs to be shape-aligned after graph expansion"),
+            detail: String::from(
+                "bounded explicit eval expects binary inputs to be shape-aligned after graph expansion",
+            ),
         });
     }
     let output = left
@@ -2655,14 +3313,20 @@ fn ravel_index(indices: &[usize], dims: &[usize]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        Array, ArrayCacheLimitControl, ArrayCacheResetScope, ArrayContext, ArrayError, ArrayScalar,
-        AsyncEvalStatus, ImplicitMaterializationPolicy, MaterializationTrigger, ReplayBoundary,
-        StreamDependencyPolicy, StreamKind, Tree, TreeError, TreeSpec, UnifiedMemoryCapability,
+        Array, ArrayBackendCaptureArtifact, ArrayBackendCaptureArtifactRequest,
+        ArrayBackendCaptureConfig, ArrayBackendCaptureFormat, ArrayBackendDebugLane,
+        ArrayBackendLogKind, ArrayCacheLimitControl, ArrayCacheResetScope, ArrayContext,
+        ArrayError, ArrayScalar, AsyncEvalStatus, ImplicitMaterializationPolicy,
+        MaterializationTrigger, ReplayBoundary, StreamDependencyPolicy, StreamKind, Tree,
+        TreeError, TreeSpec, UnifiedMemoryCapability, current_time_millis,
+    };
+    use psionic_compiler::{
+        CompileTransformConfig, CompileTransformDebugMode, CompileTransformTraceMode,
     };
     use psionic_core::{DType, Device, DeviceKind, Shape};
     use psionic_runtime::{
         AllocatorPoolPolicy, DeviceDescriptor, ExecutionPlanCachePolicy, GeneratorScope,
-        KernelCachePolicy,
+        HealthStatus, KernelCachePolicy,
     };
     use std::collections::BTreeMap;
 
@@ -2758,6 +3422,7 @@ mod tests {
             vec![
                 MaterializationTrigger::Eval,
                 MaterializationTrigger::AsyncEvalWait,
+                MaterializationTrigger::DebugCapture,
                 MaterializationTrigger::ToHostData,
                 MaterializationTrigger::Item,
             ]
@@ -2810,8 +3475,8 @@ mod tests {
     }
 
     #[test]
-    fn public_lazy_array_runtime_resource_report_tracks_active_peak_and_cache_counters(
-    ) -> Result<(), ArrayError> {
+    fn public_lazy_array_runtime_resource_report_tracks_active_peak_and_cache_counters()
+    -> Result<(), ArrayError> {
         let context = ArrayContext::cpu();
         let left = context.ones_f32(Shape::new(vec![2, 2]))?;
         let right = context.full_f32(Shape::new(vec![2, 2]), 2.0)?;
@@ -2900,8 +3565,8 @@ mod tests {
     }
 
     #[test]
-    fn public_lazy_array_cache_limit_controls_clamp_and_reset_runtime_resources(
-    ) -> Result<(), ArrayError> {
+    fn public_lazy_array_cache_limit_controls_clamp_and_reset_runtime_resources()
+    -> Result<(), ArrayError> {
         let context = ArrayContext::cpu();
         let _ = context.configure_cache_limits(ArrayCacheLimitControl {
             execution_plan_cache: ExecutionPlanCachePolicy::bounded(1, Some(512)),
@@ -3094,8 +3759,8 @@ mod tests {
     }
 
     #[test]
-    fn public_lazy_array_random_cast_and_common_creation_families_stay_seeded(
-    ) -> Result<(), ArrayError> {
+    fn public_lazy_array_random_cast_and_common_creation_families_stay_seeded()
+    -> Result<(), ArrayError> {
         let left = ArrayContext::cpu_seeded(7)?;
         let right = ArrayContext::cpu_seeded(7)?;
         let initial_generator = left
@@ -3262,6 +3927,7 @@ mod tests {
             vec![
                 MaterializationTrigger::Eval,
                 MaterializationTrigger::AsyncEvalWait,
+                MaterializationTrigger::DebugCapture,
                 MaterializationTrigger::ToHostData,
                 MaterializationTrigger::Item,
             ]
@@ -3271,8 +3937,171 @@ mod tests {
     }
 
     #[test]
-    fn public_lazy_array_tree_utilities_preserve_structure_and_refuse_bad_unflatten(
-    ) -> Result<(), ArrayError> {
+    fn public_lazy_array_backend_debug_support_and_snapshot_track_seeded_lanes() {
+        let cpu = ArrayContext::cpu();
+        let cpu_support = cpu.backend_debug_support();
+        assert_eq!(cpu_support.lane, ArrayBackendDebugLane::Cpu);
+        assert_eq!(
+            cpu_support.capture_formats,
+            vec![ArrayBackendCaptureFormat::PsionicDebugJson]
+        );
+        assert!(!cpu_support.supports_vendor_native_capture);
+        let cpu_snapshot = cpu.backend_debug_snapshot();
+        assert_eq!(cpu_snapshot.backend.effective_backend, "cpu");
+        assert_eq!(
+            cpu_snapshot.runtime_observability.backend_health[0].status,
+            HealthStatus::Ready
+        );
+
+        let metal = ArrayContext::from_device_descriptor(DeviceDescriptor {
+            backend: String::from("metal"),
+            device: Device::new(DeviceKind::Metal, 0, Some(String::from("metal:0"))),
+            device_name: Some(String::from("Apple GPU")),
+            supported_dtypes: vec![DType::F32, DType::F16],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(24 * 1024 * 1024 * 1024),
+            unified_memory: Some(true),
+            feature_flags: vec![String::from("unified_memory")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        });
+        let metal_support = metal.backend_debug_support();
+        assert_eq!(metal_support.lane, ArrayBackendDebugLane::Metal);
+        assert_eq!(
+            metal_support.capture_formats,
+            vec![
+                ArrayBackendCaptureFormat::MetalDebugJson,
+                ArrayBackendCaptureFormat::PsionicDebugJson,
+            ]
+        );
+        let metal_snapshot = metal.backend_debug_snapshot();
+        assert_eq!(metal_snapshot.backend.effective_backend, "metal");
+        assert_eq!(
+            metal_snapshot.runtime_observability.backend_health[0].status,
+            HealthStatus::Degraded
+        );
+
+        let cuda = ArrayContext::from_device_descriptor(DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("CUDA GPU")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        });
+        let cuda_support = cuda.backend_debug_support();
+        assert_eq!(cuda_support.lane, ArrayBackendDebugLane::Cuda);
+        assert_eq!(
+            cuda_support.capture_formats,
+            vec![
+                ArrayBackendCaptureFormat::CudaDebugJson,
+                ArrayBackendCaptureFormat::PsionicDebugJson,
+            ]
+        );
+        let cuda_snapshot = cuda.backend_debug_snapshot();
+        assert_eq!(cuda_snapshot.backend.effective_backend, "cuda");
+        assert_eq!(
+            cuda_snapshot.runtime_observability.backend_health[0].status,
+            HealthStatus::Degraded
+        );
+    }
+
+    #[test]
+    fn public_lazy_array_backend_debug_capture_emits_receipt_logs_and_artifact()
+    -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let left = context.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+        let right = context.constant_f32(Shape::new(vec![2, 2]), vec![4.0, 3.0, 2.0, 1.0])?;
+        let output = left.add(&right)?.sum();
+        let artifact_path = std::env::temp_dir().join(format!(
+            "psionic-array-debug-capture-{}-{}.json",
+            std::process::id(),
+            current_time_millis()
+        ));
+
+        let receipt = context.capture_backend_debug(
+            std::slice::from_ref(&output),
+            ArrayBackendCaptureConfig {
+                compile: CompileTransformConfig {
+                    trace_mode: CompileTransformTraceMode::FullArtifacts,
+                    debug_mode: CompileTransformDebugMode::PlanDebug,
+                    ..CompileTransformConfig::default()
+                },
+                artifact: Some(ArrayBackendCaptureArtifactRequest {
+                    path: artifact_path.clone(),
+                    format: None,
+                }),
+                label: Some(String::from("unit_test_capture")),
+                ..ArrayBackendCaptureConfig::default()
+            },
+        )?;
+
+        assert!(receipt.capture_id.starts_with("cpu-capture-"));
+        assert_eq!(receipt.graph_digest, output.graph().stable_digest());
+        assert_eq!(
+            receipt.compile.trace.mode,
+            CompileTransformTraceMode::FullArtifacts
+        );
+        assert!(receipt.compile.plan_debug.is_some());
+        assert_eq!(
+            receipt.eval_receipts[0].trigger,
+            MaterializationTrigger::DebugCapture
+        );
+        assert_eq!(
+            receipt.artifact,
+            Some(ArrayBackendCaptureArtifact {
+                path: artifact_path.clone(),
+                format: ArrayBackendCaptureFormat::PsionicDebugJson,
+                bytes: receipt
+                    .artifact
+                    .as_ref()
+                    .map_or(0, |artifact| artifact.bytes),
+            })
+        );
+        let snapshot = context.backend_debug_snapshot();
+        assert_eq!(snapshot.recent_captures.len(), 1);
+        assert_eq!(snapshot.recent_captures[0].capture_id, receipt.capture_id);
+        assert_eq!(
+            snapshot.recent_logs.last().map(|event| event.kind),
+            Some(ArrayBackendLogKind::Capture)
+        );
+        let artifact_json = std::fs::read_to_string(&artifact_path)
+            .expect("debug capture artifact should be readable");
+        assert!(artifact_json.contains(&receipt.capture_id));
+        assert!(artifact_json.contains("unit_test_capture"));
+        std::fs::remove_file(&artifact_path)
+            .expect("debug capture artifact cleanup should succeed");
+
+        let error = context
+            .capture_backend_debug(
+                std::slice::from_ref(&output),
+                ArrayBackendCaptureConfig {
+                    artifact: Some(ArrayBackendCaptureArtifactRequest {
+                        path: artifact_path,
+                        format: Some(ArrayBackendCaptureFormat::CudaDebugJson),
+                    }),
+                    ..ArrayBackendCaptureConfig::default()
+                },
+            )
+            .expect_err("cpu context should refuse cuda-only capture format");
+        assert_eq!(
+            error,
+            ArrayError::UnsupportedBackendDebugFormat {
+                backend: String::from("cpu"),
+                format: ArrayBackendCaptureFormat::CudaDebugJson,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_tree_utilities_preserve_structure_and_refuse_bad_unflatten()
+    -> Result<(), ArrayError> {
         let context = ArrayContext::cpu();
         let left = context.scalar_f32(1.0)?;
         let right = context.scalar_f32(2.0)?.cast(DType::I8)?;
