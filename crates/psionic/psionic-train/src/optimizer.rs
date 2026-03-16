@@ -7,7 +7,7 @@ use crate::core_loop::{
 };
 
 /// Error returned by the reusable optimizer surface.
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrainingOptimizerError {
     /// Parameter and gradient vectors had different lengths.
     #[error(
@@ -49,6 +49,121 @@ pub enum TrainingOptimizerError {
         /// Human-readable reason.
         message: String,
     },
+}
+
+/// Outcome status for one optimizer parity case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OptimizerParityStatus {
+    /// The optimizer matched the bounded expected contract.
+    Supported,
+    /// The optimizer refused explicitly under the bounded contract.
+    Refused,
+}
+
+/// Compact typed snapshot of optimizer state after one parity case.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizerParityStateSnapshot {
+    /// Optimizer family this state belongs to.
+    pub optimizer: TrainingOptimizerKind,
+    /// Optional momentum buffer for SGD or LARS.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub momentum_buffer: Option<Vec<f32>>,
+    /// First-moment state for Adam-family optimizers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_moment: Option<Vec<f32>>,
+    /// Second-moment state for Adam-family optimizers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub second_moment: Option<Vec<f32>>,
+}
+
+/// One machine-readable seeded optimizer parity case result.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizerParityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable oracle family label.
+    pub oracle_family: String,
+    /// Stable optimizer label.
+    pub optimizer: TrainingOptimizerKind,
+    /// Stable capability-profile label.
+    pub capability_profile: String,
+    /// One-based step number used by the case.
+    pub step_number: u64,
+    /// Initial parameter values used for the case.
+    pub initial_parameters: Vec<f32>,
+    /// Gradient values used for the case.
+    pub gradients: Vec<f32>,
+    /// Expected parameter values after the step when supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_parameters_after: Option<Vec<f32>>,
+    /// Actual parameter values after the step when supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_parameters_after: Option<Vec<f32>>,
+    /// Expected step report when the case is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_report: Option<TrainingOptimizerStepReport>,
+    /// Actual step report when the case is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_report: Option<TrainingOptimizerStepReport>,
+    /// Expected optimizer-state snapshot after the step when supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_state_after: Option<OptimizerParityStateSnapshot>,
+    /// Actual optimizer-state snapshot after the step when supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_state_after: Option<OptimizerParityStateSnapshot>,
+    /// Expected refusal for intentionally unsupported behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_refusal: Option<TrainingOptimizerError>,
+    /// Actual refusal surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_refusal: Option<TrainingOptimizerError>,
+    /// Stable parity outcome status.
+    pub status: OptimizerParityStatus,
+}
+
+/// Machine-readable seeded optimizer parity matrix.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizerParityMatrixReport {
+    /// Stable schema version for the parity matrix report.
+    pub schema_version: u32,
+    /// Stable oracle family window label.
+    pub oracle_family_window: String,
+    /// Seeded parity case results.
+    pub cases: Vec<OptimizerParityCaseResult>,
+    /// Stable digest over the report contents.
+    pub matrix_digest: String,
+}
+
+impl OptimizerParityMatrixReport {
+    fn new(oracle_family_window: impl Into<String>, cases: Vec<OptimizerParityCaseResult>) -> Self {
+        let oracle_family_window = oracle_family_window.into();
+        let matrix_digest =
+            stable_optimizer_parity_matrix_digest(oracle_family_window.as_str(), cases.as_slice());
+        Self {
+            schema_version: 1,
+            oracle_family_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("oracle_family_window={}", self.oracle_family_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{:?}|{:?}",
+                case.case_id, case.optimizer, case.status
+            ));
+        }
+        lines
+    }
 }
 
 /// Inspectable result of one reusable optimizer step.
@@ -126,6 +241,164 @@ impl TrainingOptimizerConfig {
             step_number,
         )
     }
+}
+
+/// Returns the seeded optimizer parity matrix report for the reusable Psionic
+/// training optimizer surface.
+pub fn builtin_optimizer_parity_matrix_report()
+-> Result<OptimizerParityMatrixReport, TrainingOptimizerError> {
+    let cases = vec![
+        run_optimizer_parity_supported_case(
+            "pytorch.sgd.momentum_step1",
+            "single_tensor_step",
+            TrainingOptimizerConfig::sgd(0.1).with_momentum(0.9),
+            vec![1.0, -1.0],
+            vec![0.25, -0.25],
+            1,
+            vec![0.975, -0.975],
+            TrainingOptimizerStepReport {
+                optimizer: TrainingOptimizerKind::Sgd,
+                step_number: 1,
+                effective_learning_rate: 0.1,
+                effective_weight_decay: 0.0,
+                update_values: vec![0.025, -0.025],
+                update_norm_l2: 0.03535534,
+                parameter_norm_l2_before: 1.4142135,
+                parameter_norm_l2_after: 1.3788582,
+                trust_ratio: None,
+            },
+            OptimizerParityStateSnapshot {
+                optimizer: TrainingOptimizerKind::Sgd,
+                momentum_buffer: Some(vec![0.25, -0.25]),
+                first_moment: None,
+                second_moment: None,
+            },
+        )?,
+        run_optimizer_parity_supported_case(
+            "pytorch.adam.step1",
+            "single_tensor_step",
+            TrainingOptimizerConfig::adam(0.05, 0.9, 0.999, 1e-8),
+            vec![1.0, -1.0],
+            vec![0.2, -0.2],
+            1,
+            vec![0.95, -0.95],
+            TrainingOptimizerStepReport {
+                optimizer: TrainingOptimizerKind::Adam,
+                step_number: 1,
+                effective_learning_rate: 0.05,
+                effective_weight_decay: 0.0,
+                update_values: vec![0.05, -0.05],
+                update_norm_l2: 0.070710675,
+                parameter_norm_l2_before: 1.4142135,
+                parameter_norm_l2_after: 1.3435029,
+                trust_ratio: None,
+            },
+            OptimizerParityStateSnapshot {
+                optimizer: TrainingOptimizerKind::Adam,
+                momentum_buffer: None,
+                first_moment: Some(vec![0.02, -0.02]),
+                second_moment: Some(vec![0.00004, 0.00004]),
+            },
+        )?,
+        run_optimizer_parity_supported_case(
+            "pytorch.adamw.decoupled_weight_decay_step1",
+            "single_tensor_step",
+            TrainingOptimizerConfig::adamw(0.05, 0.9, 0.999, 1e-8).with_weight_decay(0.01),
+            vec![1.0, -1.0],
+            vec![0.2, -0.2],
+            1,
+            vec![0.9495, -0.9495],
+            TrainingOptimizerStepReport {
+                optimizer: TrainingOptimizerKind::AdamW,
+                step_number: 1,
+                effective_learning_rate: 0.05,
+                effective_weight_decay: 0.01,
+                update_values: vec![0.0505, -0.0505],
+                update_norm_l2: 0.07141778,
+                parameter_norm_l2_before: 1.4142135,
+                parameter_norm_l2_after: 1.3427957,
+                trust_ratio: None,
+            },
+            OptimizerParityStateSnapshot {
+                optimizer: TrainingOptimizerKind::AdamW,
+                momentum_buffer: None,
+                first_moment: Some(vec![0.02, -0.02]),
+                second_moment: Some(vec![0.00004, 0.00004]),
+            },
+        )?,
+        run_optimizer_parity_supported_case(
+            "pytorch.lars.trust_ratio_step1",
+            "trust_ratio_step",
+            TrainingOptimizerConfig::lars(0.1, 0.9, 0.001, 1e-8).with_weight_decay(0.01),
+            vec![1.0, -1.0],
+            vec![0.2, -0.2],
+            1,
+            vec![0.9999, -0.9999],
+            TrainingOptimizerStepReport {
+                optimizer: TrainingOptimizerKind::Lars,
+                step_number: 1,
+                effective_learning_rate: 0.1,
+                effective_weight_decay: 0.01,
+                update_values: vec![0.0001, -0.0001],
+                update_norm_l2: 0.00014142135,
+                parameter_norm_l2_before: 1.4142135,
+                parameter_norm_l2_after: 1.4140722,
+                trust_ratio: Some(0.0047619046),
+            },
+            OptimizerParityStateSnapshot {
+                optimizer: TrainingOptimizerKind::Lars,
+                momentum_buffer: Some(vec![0.001, -0.001]),
+                first_moment: None,
+                second_moment: None,
+            },
+        )?,
+        run_optimizer_parity_supported_case(
+            "pytorch.lamb.trust_ratio_step1",
+            "trust_ratio_step",
+            TrainingOptimizerConfig::lamb(0.05, 0.9, 0.999, 1e-6).with_weight_decay(0.01),
+            vec![1.0, -1.0],
+            vec![0.2, -0.2],
+            1,
+            vec![0.95, -0.95],
+            TrainingOptimizerStepReport {
+                optimizer: TrainingOptimizerKind::Lamb,
+                step_number: 1,
+                effective_learning_rate: 0.05,
+                effective_weight_decay: 0.01,
+                update_values: vec![0.05, -0.05],
+                update_norm_l2: 0.07071063,
+                parameter_norm_l2_before: 1.4142135,
+                parameter_norm_l2_after: 1.3435029,
+                trust_ratio: Some(0.99010324),
+            },
+            OptimizerParityStateSnapshot {
+                optimizer: TrainingOptimizerKind::Lamb,
+                momentum_buffer: None,
+                first_moment: Some(vec![0.02, -0.02]),
+                second_moment: Some(vec![0.00004, 0.00004]),
+            },
+        )?,
+        run_optimizer_parity_refusal_case(
+            "pytorch.adamw.state_kind_mismatch",
+            "state_kind_match_required",
+            TrainingOptimizerConfig::adamw(0.05, 0.9, 0.999, 1e-8).with_weight_decay(0.01),
+            vec![1.0, -1.0],
+            vec![0.2, -0.2],
+            TrainingOptimizerState::Sgd {
+                momentum_buffer: None,
+            },
+            1,
+            TrainingOptimizerError::StateKindMismatch {
+                optimizer: TrainingOptimizerKind::AdamW,
+                state_kind: TrainingOptimizerKind::Sgd,
+            },
+        ),
+    ];
+
+    Ok(OptimizerParityMatrixReport::new(
+        "pytorch_optim_db_seed_v0",
+        cases,
+    ))
 }
 
 /// Applies one reusable optimizer step over canonical Psionic parameter/gradient buffers.
@@ -510,6 +783,261 @@ fn norm_l2(values: &[f32]) -> f32 {
     values.iter().map(|value| value * value).sum::<f32>().sqrt()
 }
 
+fn run_optimizer_parity_supported_case(
+    case_id: &str,
+    capability_profile: &str,
+    optimizer: TrainingOptimizerConfig,
+    initial_parameters: Vec<f32>,
+    gradients: Vec<f32>,
+    step_number: u64,
+    expected_parameters_after: Vec<f32>,
+    expected_report: TrainingOptimizerStepReport,
+    expected_state_after: OptimizerParityStateSnapshot,
+) -> Result<OptimizerParityCaseResult, TrainingOptimizerError> {
+    let mut parameters = initial_parameters.clone();
+    let mut state = optimizer.initialize_state(parameters.len());
+    let actual_report = optimizer.apply_step(
+        parameters.as_mut_slice(),
+        gradients.as_slice(),
+        &mut state,
+        step_number,
+    )?;
+    Ok(OptimizerParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_optim_db_seed"),
+        optimizer: optimizer.kind,
+        capability_profile: String::from(capability_profile),
+        step_number,
+        initial_parameters,
+        gradients,
+        expected_parameters_after: Some(expected_parameters_after),
+        actual_parameters_after: Some(parameters),
+        expected_report: Some(expected_report),
+        actual_report: Some(actual_report),
+        expected_state_after: Some(expected_state_after),
+        actual_state_after: Some(snapshot_optimizer_state(&state)),
+        expected_refusal: None,
+        actual_refusal: None,
+        status: OptimizerParityStatus::Supported,
+    })
+}
+
+fn run_optimizer_parity_refusal_case(
+    case_id: &str,
+    capability_profile: &str,
+    optimizer: TrainingOptimizerConfig,
+    initial_parameters: Vec<f32>,
+    gradients: Vec<f32>,
+    mut state: TrainingOptimizerState,
+    step_number: u64,
+    expected_refusal: TrainingOptimizerError,
+) -> OptimizerParityCaseResult {
+    let mut parameters = initial_parameters.clone();
+    let actual_refusal = optimizer
+        .apply_step(
+            parameters.as_mut_slice(),
+            gradients.as_slice(),
+            &mut state,
+            step_number,
+        )
+        .err();
+    let status = if actual_refusal.is_some() {
+        OptimizerParityStatus::Refused
+    } else {
+        OptimizerParityStatus::Supported
+    };
+    OptimizerParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_optim_db_seed"),
+        optimizer: optimizer.kind,
+        capability_profile: String::from(capability_profile),
+        step_number,
+        initial_parameters,
+        gradients,
+        expected_parameters_after: None,
+        actual_parameters_after: None,
+        expected_report: None,
+        actual_report: None,
+        expected_state_after: None,
+        actual_state_after: None,
+        expected_refusal: Some(expected_refusal),
+        actual_refusal,
+        status,
+    }
+}
+
+fn snapshot_optimizer_state(state: &TrainingOptimizerState) -> OptimizerParityStateSnapshot {
+    match state {
+        TrainingOptimizerState::Sgd { momentum_buffer } => OptimizerParityStateSnapshot {
+            optimizer: TrainingOptimizerKind::Sgd,
+            momentum_buffer: momentum_buffer.clone(),
+            first_moment: None,
+            second_moment: None,
+        },
+        TrainingOptimizerState::Adam {
+            first_moment,
+            second_moment,
+        } => OptimizerParityStateSnapshot {
+            optimizer: TrainingOptimizerKind::Adam,
+            momentum_buffer: None,
+            first_moment: Some(first_moment.clone()),
+            second_moment: Some(second_moment.clone()),
+        },
+        TrainingOptimizerState::AdamW {
+            first_moment,
+            second_moment,
+        } => OptimizerParityStateSnapshot {
+            optimizer: TrainingOptimizerKind::AdamW,
+            momentum_buffer: None,
+            first_moment: Some(first_moment.clone()),
+            second_moment: Some(second_moment.clone()),
+        },
+        TrainingOptimizerState::Lars { momentum_buffer } => OptimizerParityStateSnapshot {
+            optimizer: TrainingOptimizerKind::Lars,
+            momentum_buffer: momentum_buffer.clone(),
+            first_moment: None,
+            second_moment: None,
+        },
+        TrainingOptimizerState::Lamb {
+            first_moment,
+            second_moment,
+        } => OptimizerParityStateSnapshot {
+            optimizer: TrainingOptimizerKind::Lamb,
+            momentum_buffer: None,
+            first_moment: Some(first_moment.clone()),
+            second_moment: Some(second_moment.clone()),
+        },
+    }
+}
+
+fn stable_optimizer_parity_matrix_digest(
+    oracle_family_window: &str,
+    cases: &[OptimizerParityCaseResult],
+) -> String {
+    let mut lines = vec![format!("oracle_family_window={oracle_family_window}")];
+    for case in cases {
+        lines.push(format!(
+            "{}|{:?}|{}|{}|{:?}",
+            case.case_id, case.optimizer, case.capability_profile, case.step_number, case.status
+        ));
+        lines.push(format!(
+            "initial_parameters={}",
+            format_float_slice(case.initial_parameters.as_slice())
+        ));
+        lines.push(format!(
+            "gradients={}",
+            format_float_slice(case.gradients.as_slice())
+        ));
+        if let Some(parameters) = &case.expected_parameters_after {
+            lines.push(format!(
+                "expected_parameters_after={}",
+                format_float_slice(parameters.as_slice())
+            ));
+        }
+        if let Some(parameters) = &case.actual_parameters_after {
+            lines.push(format!(
+                "actual_parameters_after={}",
+                format_float_slice(parameters.as_slice())
+            ));
+        }
+        if let Some(report) = &case.expected_report {
+            push_report_lines("expected_report", report, &mut lines);
+        }
+        if let Some(report) = &case.actual_report {
+            push_report_lines("actual_report", report, &mut lines);
+        }
+        if let Some(state) = &case.expected_state_after {
+            push_state_lines("expected_state", state, &mut lines);
+        }
+        if let Some(state) = &case.actual_state_after {
+            push_state_lines("actual_state", state, &mut lines);
+        }
+        if let Some(refusal) = &case.expected_refusal {
+            lines.push(format!("expected_refusal={:?}", refusal));
+        }
+        if let Some(refusal) = &case.actual_refusal {
+            lines.push(format!("actual_refusal={:?}", refusal));
+        }
+    }
+    lines.sort();
+    let mut hasher = sha2::Sha256::new();
+    use sha2::Digest;
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn push_report_lines(prefix: &str, report: &TrainingOptimizerStepReport, lines: &mut Vec<String>) {
+    lines.push(format!("{prefix}.optimizer={:?}", report.optimizer));
+    lines.push(format!("{prefix}.step_number={}", report.step_number));
+    lines.push(format!(
+        "{prefix}.effective_learning_rate={}",
+        format_float(report.effective_learning_rate)
+    ));
+    lines.push(format!(
+        "{prefix}.effective_weight_decay={}",
+        format_float(report.effective_weight_decay)
+    ));
+    lines.push(format!(
+        "{prefix}.update_values={}",
+        format_float_slice(report.update_values.as_slice())
+    ));
+    lines.push(format!(
+        "{prefix}.update_norm_l2={}",
+        format_float(report.update_norm_l2)
+    ));
+    lines.push(format!(
+        "{prefix}.parameter_norm_l2_before={}",
+        format_float(report.parameter_norm_l2_before)
+    ));
+    lines.push(format!(
+        "{prefix}.parameter_norm_l2_after={}",
+        format_float(report.parameter_norm_l2_after)
+    ));
+    if let Some(trust_ratio) = report.trust_ratio {
+        lines.push(format!(
+            "{prefix}.trust_ratio={}",
+            format_float(trust_ratio)
+        ));
+    }
+}
+
+fn push_state_lines(prefix: &str, state: &OptimizerParityStateSnapshot, lines: &mut Vec<String>) {
+    lines.push(format!("{prefix}.optimizer={:?}", state.optimizer));
+    if let Some(buffer) = &state.momentum_buffer {
+        lines.push(format!(
+            "{prefix}.momentum_buffer={}",
+            format_float_slice(buffer.as_slice())
+        ));
+    }
+    if let Some(first_moment) = &state.first_moment {
+        lines.push(format!(
+            "{prefix}.first_moment={}",
+            format_float_slice(first_moment.as_slice())
+        ));
+    }
+    if let Some(second_moment) = &state.second_moment {
+        lines.push(format!(
+            "{prefix}.second_moment={}",
+            format_float_slice(second_moment.as_slice())
+        ));
+    }
+}
+
+fn format_float_slice(values: &[f32]) -> String {
+    values
+        .iter()
+        .map(|value| format_float(*value))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn format_float(value: f32) -> String {
+    format!("{value:.8}")
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -517,14 +1045,14 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        apply_training_optimizer_step, TrainingOptimizerConfig, TrainingOptimizerKind,
-        TrainingOptimizerState, TrainingSchedulerBinding, TrainingSchedulerConfig,
-        TrainingSchedulerKind,
+        TrainingOptimizerConfig, TrainingOptimizerKind, TrainingOptimizerState,
+        TrainingSchedulerBinding, TrainingSchedulerConfig, TrainingSchedulerKind,
+        apply_training_optimizer_step, builtin_optimizer_parity_matrix_report,
     };
 
     #[test]
-    fn reusable_optimizer_surface_advances_small_model_with_sgd_and_adam(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn reusable_optimizer_surface_advances_small_model_with_sgd_and_adam()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut sgd_parameters = vec![1.0_f32, -1.0];
         let sgd_gradients = vec![0.25_f32, -0.25];
         let sgd_optimizer = TrainingOptimizerConfig::sgd(0.1).with_momentum(0.9);
@@ -577,8 +1105,8 @@ mod tests {
     }
 
     #[test]
-    fn reusable_optimizer_surface_supports_all_declared_optimizer_families(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn reusable_optimizer_surface_supports_all_declared_optimizer_families()
+    -> Result<(), Box<dyn std::error::Error>> {
         let cases = vec![
             TrainingOptimizerConfig::sgd(0.1).with_momentum(0.9),
             TrainingOptimizerConfig::adam(0.05, 0.9, 0.999, 1e-8),
@@ -643,8 +1171,8 @@ mod tests {
     }
 
     #[test]
-    fn reusable_optimizer_scheduler_surface_tracks_state_and_refuses_invalid_configs(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn reusable_optimizer_scheduler_surface_tracks_state_and_refuses_invalid_configs()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut step_lr = TrainingSchedulerBinding::new(TrainingSchedulerConfig::step_lr(2, 0.5));
         let step_one = super::scheduled_learning_rate(&mut step_lr, 0.1, 1)?;
         let step_three = super::scheduled_learning_rate(&mut step_lr, 0.1, 3)?;
@@ -664,5 +1192,141 @@ mod tests {
             }
         );
         Ok(())
+    }
+
+    #[test]
+    fn optimizer_parity_matrix_report_tracks_seeded_supported_and_refusal_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_optimizer_parity_matrix_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.oracle_family_window, "pytorch_optim_db_seed_v0");
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
+
+        for case in report
+            .cases
+            .iter()
+            .filter(|case| case.status == super::OptimizerParityStatus::Supported)
+        {
+            let expected_parameters = case
+                .expected_parameters_after
+                .as_ref()
+                .expect("supported case should publish expected parameters");
+            let actual_parameters = case
+                .actual_parameters_after
+                .as_ref()
+                .expect("supported case should publish actual parameters");
+            assert_float_slice_close(expected_parameters, actual_parameters);
+
+            let expected_report = case
+                .expected_report
+                .as_ref()
+                .expect("supported case should publish expected report");
+            let actual_report = case
+                .actual_report
+                .as_ref()
+                .expect("supported case should publish actual report");
+            assert_step_report_close(expected_report, actual_report);
+
+            let expected_state = case
+                .expected_state_after
+                .as_ref()
+                .expect("supported case should publish expected state");
+            let actual_state = case
+                .actual_state_after
+                .as_ref()
+                .expect("supported case should publish actual state");
+            assert_state_snapshot_close(expected_state, actual_state);
+        }
+
+        let refusal_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.adamw.state_kind_mismatch")
+            .expect("missing optimizer refusal case");
+        assert_eq!(refusal_case.status, super::OptimizerParityStatus::Refused);
+        assert_eq!(refusal_case.expected_refusal, refusal_case.actual_refusal);
+
+        Ok(())
+    }
+
+    fn assert_step_report_close(
+        expected: &super::TrainingOptimizerStepReport,
+        actual: &super::TrainingOptimizerStepReport,
+    ) {
+        assert_eq!(expected.optimizer, actual.optimizer);
+        assert_eq!(expected.step_number, actual.step_number);
+        assert_float_close(
+            expected.effective_learning_rate,
+            actual.effective_learning_rate,
+        );
+        assert_float_close(
+            expected.effective_weight_decay,
+            actual.effective_weight_decay,
+        );
+        assert_float_slice_close(
+            expected.update_values.as_slice(),
+            actual.update_values.as_slice(),
+        );
+        assert_float_close(expected.update_norm_l2, actual.update_norm_l2);
+        assert_float_close(
+            expected.parameter_norm_l2_before,
+            actual.parameter_norm_l2_before,
+        );
+        assert_float_close(
+            expected.parameter_norm_l2_after,
+            actual.parameter_norm_l2_after,
+        );
+        match (expected.trust_ratio, actual.trust_ratio) {
+            (Some(expected), Some(actual)) => assert_float_close(expected, actual),
+            (None, None) => {}
+            mismatch => panic!("trust-ratio mismatch: {mismatch:?}"),
+        }
+    }
+
+    fn assert_state_snapshot_close(
+        expected: &super::OptimizerParityStateSnapshot,
+        actual: &super::OptimizerParityStateSnapshot,
+    ) {
+        assert_eq!(expected.optimizer, actual.optimizer);
+        match (
+            expected.momentum_buffer.as_ref(),
+            actual.momentum_buffer.as_ref(),
+        ) {
+            (Some(expected), Some(actual)) => assert_float_slice_close(expected, actual),
+            (None, None) => {}
+            mismatch => panic!("momentum-buffer mismatch: {mismatch:?}"),
+        }
+        match (expected.first_moment.as_ref(), actual.first_moment.as_ref()) {
+            (Some(expected), Some(actual)) => assert_float_slice_close(expected, actual),
+            (None, None) => {}
+            mismatch => panic!("first-moment mismatch: {mismatch:?}"),
+        }
+        match (
+            expected.second_moment.as_ref(),
+            actual.second_moment.as_ref(),
+        ) {
+            (Some(expected), Some(actual)) => assert_float_slice_close(expected, actual),
+            (None, None) => {}
+            mismatch => panic!("second-moment mismatch: {mismatch:?}"),
+        }
+    }
+
+    fn assert_float_slice_close(expected: &[f32], actual: &[f32]) {
+        assert_eq!(expected.len(), actual.len());
+        for (expected, actual) in expected.iter().zip(actual.iter()) {
+            assert_float_close(*expected, *actual);
+        }
+    }
+
+    fn assert_float_close(expected: f32, actual: f32) {
+        assert!(
+            (expected - actual).abs() <= 1e-5,
+            "expected {expected}, found {actual}"
+        );
     }
 }

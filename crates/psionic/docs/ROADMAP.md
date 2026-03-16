@@ -413,9 +413,9 @@ Psionic already owns meaningful system-truth substrate for:
 The largest open gaps are now more architectural than existential:
 
 - framework-core breadth is still much thinner than PyTorch or Tinygrad
-- operator and module parity now have first seeded matrices in `psionic-ir`
-  and `psionic-nn`, but optimizer parity and compiler-hygiene harnesses are
-  still too sparse
+- operator, module, and optimizer parity now have first seeded matrices in
+  `psionic-ir`, `psionic-nn`, and `psionic-train`, but compiler-hygiene
+  harnesses and broader capability-scope truth are still too sparse
 - module/state-tree and keyed `state_dict` load semantics now exist in
   `psionic-nn`, but checkpoint interoperability and parity breadth are still
   underdeveloped
@@ -885,7 +885,7 @@ Master issue:
 | --- | --- | --- |
 | `PLIB-205` / [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720) | done (2026-03-16) | `psionic-ir` now publishes a machine-readable seeded operator parity matrix report with PyTorch-derived support cases for `add`, `mul`, `matmul`, `reshape`, `permute`, `concat`, and `scaled_dot_product_attention`, plus an explicit backend-capability refusal proof for `rms_norm`, and the harness is wired through a repo-owned release script instead of ad hoc notes. |
 | `PLIB-206` / [#3721](https://github.com/OpenAgentsInc/openagents/issues/3721) | done (2026-03-16) | `psionic-nn` now publishes a machine-readable seeded module parity matrix report with normalized module-tree and `state_dict` parity cases for `linear`, `batch_norm1d`, and a nested `transformer_encoder_layer`-style fixture, plus an explicit refusal proof for PyTorch registration-order-preserving `state_dict` keys so bounded scope remains honest instead of silently skipped. |
-| `PLIB-207` / [#3722](https://github.com/OpenAgentsInc/openagents/issues/3722) | planned | Add a PyTorch-derived optimizer parity matrix analogous to `optim_db`. |
+| `PLIB-207` / [#3722](https://github.com/OpenAgentsInc/openagents/issues/3722) | done (2026-03-16) | `psionic-train` now publishes a machine-readable seeded optimizer parity matrix report with single-step PyTorch-derived cases for SGD, Adam, AdamW, LARS, and LAMB, plus an explicit refusal proof for optimizer-state kind mismatch so bounded scope stays machine-legible rather than hiding behind generic test failure. |
 | `PLIB-208` / [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723) | planned | Add symbolic-shape, fake-tensor, and compiler-hygiene parity harnesses informed by modern PyTorch compiler tests. |
 | `PLIB-209` / [#3724](https://github.com/OpenAgentsInc/openagents/issues/3724) | planned | Make the semantics layer honest about what is `PyTorch-credible` versus what remains `PyTorch-compatible later`. |
 

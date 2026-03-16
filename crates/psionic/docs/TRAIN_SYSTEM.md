@@ -124,6 +124,9 @@ It already has real substrate for:
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity
+- a seeded PyTorch-derived optimizer parity matrix for SGD, Adam, AdamW,
+  LARS, and LAMB single-step behavior in `psionic-train`, with an explicit
+  refusal proof for state-kind mismatch
 - training recovery posture
 - checkpoint lineage
 - elastic membership truth
