@@ -8,6 +8,7 @@
 > This is now the canonical roadmap for `crates/arc/*`.
 > `crates/arc/spec.md` remains the canonical architecture and ownership spec.
 > `crates/arc/docs/CLAIMS.md` remains the canonical claim-vocabulary doc.
+> `crates/arc/docs/INDEX.md` remains the compact ARC docs entrypoint.
 > The audit remains the port-source and upstream-mapping reference.
 
 ## Executive Summary
