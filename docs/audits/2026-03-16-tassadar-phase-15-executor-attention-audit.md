@@ -30,6 +30,11 @@ The decisive artifact is:
 
 - `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/architecture_comparison_report.json`
 
+This audit intentionally stays about the seeded Phase 15 landing. The later
+trained follow-on is recorded separately in:
+
+- `docs/audits/2026-03-16-tassadar-trained-attention-follow-on-audit.md`
+
 ## What Landed
 
 Phase 15 adds a real second family:

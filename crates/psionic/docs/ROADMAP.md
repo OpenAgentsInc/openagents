@@ -634,6 +634,16 @@ Its declared scope is:
   target tok/s, with hull fallback) than the preserved lookup baseline
   (`10000` / `6563` bps and `32000` target tok/s, with direct hull decode), so
   this phase lands as a research-candidate result rather than a promotion bar
+- landed trained-executor Phase 15A follow-on bar:
+  `psionic-research` now owns a bounded attention-family training loop and a
+  second same-corpus comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`;
+  the trained attention family now improves materially over the seeded Phase
+  15 candidate on bounded suffix accuracy (`6563` bps aggregate and first-32
+  exactness instead of `0`), but it still fails the first-token boundary (`0`
+  bps first-target), still yields `0/2` exact bounded traces, and therefore
+  still does not beat the preserved lookup baseline on the open Phase 14 gate
 - landed trained-executor Phase 17 bar from the post-audit issue spine:
   `psionic-models` now carries a bounded typed
   `TassadarCompiledProgramExecutor` surface with persisted compile-evidence

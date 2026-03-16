@@ -341,6 +341,18 @@ That now includes one intentionally narrow executor-training answer:
   than the lookup baseline (`10000` / `6563` bps, `32000` target tok/s, direct
   hull decode), so this phase is a research-family landing rather than a
   promotion or parity result
+- the post-Phase-15 trained-attention follow-on now also exists beside that
+  seeded comparison: `psionic-research` now runs a bounded attention-family
+  output-head training loop and persists its artifacts under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1`,
+  while a trained-family comparison is now preserved under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`;
+  the resulting artifacts show real learning progress off the seeded
+  attention-family floor (`6563` bps aggregate and first-32 exactness instead
+  of `0`), but they also show the same remaining blocker plainly: the trained
+  attention family still gets the first target token wrong (`0` bps
+  first-target), still yields `0/2` exact bounded traces, and therefore still
+  does not clear the open Phase 14 gate
 - the separate Phase 17 compiled lane now also exists beside that learned
   stack: `psionic-models` now exposes a bounded typed
   `TassadarCompiledProgramExecutor` with compile-evidence bundles,
