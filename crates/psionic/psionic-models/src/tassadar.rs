@@ -61,7 +61,7 @@ impl TassadarAttentionGeometryContract {
     pub fn reference_fixture() -> Self {
         Self {
             constrained_lookup_head_dim: None,
-            hull_cache_eligible: false,
+            hull_cache_eligible: true,
         }
     }
 }
@@ -99,7 +99,10 @@ impl TassadarExecutorCompatibility {
             trace_abi_version: trace_abi.schema_version,
             wasm_profile_id: profile.profile_id.clone(),
             opcode_vocabulary_digest: profile.opcode_vocabulary_digest(),
-            supported_decode_modes: vec![TassadarExecutorDecodeMode::ReferenceLinear],
+            supported_decode_modes: vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ],
             attention_mode: TassadarExecutorAttentionMode::ReferenceFixture,
             attention_geometry: TassadarAttentionGeometryContract::reference_fixture(),
             exactness_posture: TassadarExecutorExactnessPosture::ExactTraceAndOutput,
@@ -715,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn tassadar_descriptor_rejects_unsupported_decode_mode() {
+    fn tassadar_descriptor_accepts_hull_cache_decode_mode() {
         let fixture = TassadarExecutorFixture::new();
         let case = tassadar_validation_corpus()
             .into_iter()
@@ -728,16 +731,16 @@ mod tests {
             case.program,
         )
         .expect("artifact should assemble");
-        let error = fixture
+        fixture
             .descriptor()
             .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::HullCache)
-            .expect_err("unsupported decode mode should refuse");
-        assert_eq!(
-            error,
-            TassadarExecutorContractError::DecodeModeUnsupported {
-                requested: TassadarExecutorDecodeMode::HullCache,
-                supported: vec![TassadarExecutorDecodeMode::ReferenceLinear],
-            }
+            .expect("hull-cache decode mode should validate");
+        assert!(
+            fixture
+                .descriptor()
+                .compatibility
+                .attention_geometry
+                .hull_cache_eligible
         );
     }
 

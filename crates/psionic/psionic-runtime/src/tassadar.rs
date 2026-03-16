@@ -15,6 +15,8 @@ pub const TASSADAR_TRACE_ABI_VERSION: u16 = 1;
 pub const TASSADAR_CPU_REFERENCE_RUNNER_ID: &str = "tassadar.cpu_reference.v1";
 /// Stable fixture runner identifier for the Phase 1 lane.
 pub const TASSADAR_FIXTURE_RUNNER_ID: &str = "tassadar.fixture_runner.v1";
+/// Stable hull-cache runner identifier for the Phase 5 lane.
+pub const TASSADAR_HULL_CACHE_RUNNER_ID: &str = "tassadar.hull_cache_runner.v1";
 /// Stable opcode-vocabulary family identifier for the Phase 2 artifact lane.
 pub const TASSADAR_OPCODE_VOCABULARY_ID: &str = "tassadar.opcodes.v1";
 /// Current schema version for emitted Tassadar trace artifacts.
@@ -1721,6 +1723,18 @@ pub enum TassadarExecutionRefusal {
         /// Opcode that could not be resolved in the fixture table.
         opcode: TassadarOpcode,
     },
+    /// The Phase 5 hull-cache path does not yet support this control-flow shape.
+    #[error(
+        "hull-cache fast path does not support backward branch target {} at pc {}",
+        target_pc,
+        pc
+    )]
+    HullCacheBackwardBranchUnsupported {
+        /// Program counter of the unsupported branch instruction.
+        pc: usize,
+        /// Unsupported backward target pc.
+        target_pc: usize,
+    },
     /// The fixture table and execution behavior diverged.
     #[error(
         "fixture rule mismatch for `{}`: expected pops={} pushes={}, got pops={} pushes={}",
@@ -1761,6 +1775,20 @@ pub enum TassadarExecutionRefusal {
         expected_digest: String,
         /// Actual runner-independent behavior digest.
         actual_digest: String,
+    },
+    /// The direct, linear, and hull-cache paths diverged on a validated workload.
+    #[error(
+        "exact equivalence mismatch for program `{program_id}`: cpu={cpu_reference_digest} linear={reference_linear_digest} hull={hull_cache_digest}"
+    )]
+    ExactEquivalenceMismatch {
+        /// Program identifier being compared.
+        program_id: String,
+        /// Behavior digest from the direct CPU reference path.
+        cpu_reference_digest: String,
+        /// Behavior digest from the reference-linear path.
+        reference_linear_digest: String,
+        /// Behavior digest from the hull-cache fast path.
+        hull_cache_digest: String,
     },
 }
 
@@ -1812,7 +1840,7 @@ impl TassadarCpuReferenceRunner {
         &self,
         program: &TassadarProgram,
     ) -> Result<TassadarExecution, TassadarExecutionRefusal> {
-        execute_program(
+        execute_program_direct(
             program,
             &self.profile,
             &self.trace_abi,
@@ -1852,7 +1880,7 @@ impl TassadarFixtureRunner {
         &self,
         program: &TassadarProgram,
     ) -> Result<TassadarExecution, TassadarExecutionRefusal> {
-        execute_program(
+        execute_program_linear_decode(
             program,
             &self.profile,
             &self.trace_abi,
@@ -1862,7 +1890,93 @@ impl TassadarFixtureRunner {
     }
 }
 
-/// Replays one program through both runners and checks exact parity.
+/// Hull-cache fast-path runner for the validated Phase 5 subset.
+#[derive(Clone, Debug, Default)]
+pub struct TassadarHullCacheRunner {
+    profile: TassadarWasmProfile,
+    trace_abi: TassadarTraceAbi,
+    weights: TassadarFixtureWeights,
+}
+
+impl TassadarHullCacheRunner {
+    /// Creates the canonical hull-cache runner.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            profile: TassadarWasmProfile::core_i32_v1(),
+            trace_abi: TassadarTraceAbi::core_i32_v1(),
+            weights: TassadarFixtureWeights::core_i32_v1(),
+        }
+    }
+
+    /// Executes one validated Tassadar program against the hull-cache fast path.
+    pub fn execute(
+        &self,
+        program: &TassadarProgram,
+    ) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+        execute_program_hull_cache(
+            program,
+            &self.profile,
+            &self.trace_abi,
+            TASSADAR_HULL_CACHE_RUNNER_ID,
+            Some(&self.weights),
+        )
+    }
+}
+
+/// Exact-equivalence report across CPU, linear, and hull-cache execution paths.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExactEquivalenceReport {
+    /// Stable program identifier.
+    pub program_id: String,
+    /// Direct CPU Wasm-reference execution.
+    pub cpu_reference: TassadarExecution,
+    /// Linear executor-decode execution.
+    pub reference_linear: TassadarExecution,
+    /// Hull-cache fast-path execution.
+    pub hull_cache: TassadarExecution,
+}
+
+impl TassadarExactEquivalenceReport {
+    /// Returns whether trace digests match exactly across all paths.
+    #[must_use]
+    pub fn trace_digest_equal(&self) -> bool {
+        self.cpu_reference.trace_digest() == self.reference_linear.trace_digest()
+            && self.cpu_reference.trace_digest() == self.hull_cache.trace_digest()
+    }
+
+    /// Returns whether outputs match exactly across all paths.
+    #[must_use]
+    pub fn outputs_equal(&self) -> bool {
+        self.cpu_reference.outputs == self.reference_linear.outputs
+            && self.cpu_reference.outputs == self.hull_cache.outputs
+    }
+
+    /// Returns whether halt reasons match exactly across all paths.
+    #[must_use]
+    pub fn halt_equal(&self) -> bool {
+        self.cpu_reference.halt_reason == self.reference_linear.halt_reason
+            && self.cpu_reference.halt_reason == self.hull_cache.halt_reason
+    }
+
+    /// Ensures trace, outputs, and halt reason all match across the three paths.
+    pub fn require_exact(&self) -> Result<(), TassadarExecutionRefusal> {
+        if self.cpu_reference.behavior_digest() == self.reference_linear.behavior_digest()
+            && self.cpu_reference.behavior_digest() == self.hull_cache.behavior_digest()
+        {
+            Ok(())
+        } else {
+            Err(TassadarExecutionRefusal::ExactEquivalenceMismatch {
+                program_id: self.program_id.clone(),
+                cpu_reference_digest: self.cpu_reference.behavior_digest(),
+                reference_linear_digest: self.reference_linear.behavior_digest(),
+                hull_cache_digest: self.hull_cache.behavior_digest(),
+            })
+        }
+    }
+}
+
+/// Replays one program through the CPU and linear runners and checks exact parity.
 pub fn run_tassadar_exact_parity(
     program: &TassadarProgram,
 ) -> Result<TassadarParityReport, TassadarExecutionRefusal> {
@@ -1872,6 +1986,20 @@ pub fn run_tassadar_exact_parity(
         program_id: program.program_id.clone(),
         reference,
         fixture,
+    };
+    report.require_exact()?;
+    Ok(report)
+}
+
+/// Replays one program through CPU, linear, and hull-cache runners and checks exact equivalence.
+pub fn run_tassadar_exact_equivalence(
+    program: &TassadarProgram,
+) -> Result<TassadarExactEquivalenceReport, TassadarExecutionRefusal> {
+    let report = TassadarExactEquivalenceReport {
+        program_id: program.program_id.clone(),
+        cpu_reference: TassadarCpuReferenceRunner::new().execute(program)?,
+        reference_linear: TassadarFixtureRunner::new().execute(program)?,
+        hull_cache: TassadarHullCacheRunner::new().execute(program)?,
     };
     report.require_exact()?;
     Ok(report)
@@ -1919,7 +2047,7 @@ pub fn tassadar_validation_corpus() -> Vec<TassadarValidationCase> {
     ]
 }
 
-fn execute_program(
+fn execute_program_direct(
     program: &TassadarProgram,
     profile: &TassadarWasmProfile,
     trace_abi: &TassadarTraceAbi,
@@ -2092,6 +2220,465 @@ fn execute_program(
         final_memory: memory,
         final_stack: stack,
         halt_reason,
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TassadarDecodedState {
+    stack: Vec<i32>,
+    locals: Vec<i32>,
+    memory: Vec<i32>,
+    outputs: Vec<i32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TassadarHullCacheState {
+    stack: Vec<i32>,
+    locals: Vec<i32>,
+    memory: Vec<i32>,
+    outputs: Vec<i32>,
+    local_last_write_step: Vec<Option<usize>>,
+    memory_last_write_step: Vec<Option<usize>>,
+}
+
+fn execute_program_linear_decode(
+    program: &TassadarProgram,
+    profile: &TassadarWasmProfile,
+    trace_abi: &TassadarTraceAbi,
+    runner_id: &str,
+    fixture_weights: Option<&TassadarFixtureWeights>,
+) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+    program.validate_against(profile)?;
+
+    let mut pc = 0usize;
+    let mut steps = Vec::new();
+    let mut final_state = TassadarDecodedState {
+        stack: Vec::new(),
+        locals: vec![0; program.local_count],
+        memory: program.initial_memory.clone(),
+        outputs: Vec::new(),
+    };
+    let mut step_index = 0usize;
+    let mut halt_reason = TassadarHaltReason::FellOffEnd;
+
+    while pc < program.instructions.len() {
+        if step_index >= profile.max_steps {
+            return Err(TassadarExecutionRefusal::StepLimitExceeded {
+                max_steps: profile.max_steps,
+            });
+        }
+
+        let mut state = replay_decoded_state(
+            steps.as_slice(),
+            program.local_count,
+            program.initial_memory.as_slice(),
+        );
+        let instruction = program.instructions[pc].clone();
+        let stack_before = state.stack.clone();
+        let opcode = instruction.opcode();
+        let rule = match fixture_weights {
+            Some(weights) => Some(
+                weights
+                    .rule_for(opcode)
+                    .ok_or(TassadarExecutionRefusal::FixtureRuleMissing { opcode })?,
+            ),
+            None => None,
+        };
+        let mut next_pc = pc + 1;
+        let event = execute_instruction(
+            &instruction,
+            pc,
+            &mut next_pc,
+            &mut state.stack,
+            &mut state.locals,
+            &mut state.memory,
+            &mut state.outputs,
+            &mut halt_reason,
+        )?;
+
+        if let Some(rule) = rule {
+            let observed = observed_rule_signature(&instruction, &event);
+            if rule.pops != observed.pops || rule.pushes != observed.pushes {
+                return Err(TassadarExecutionRefusal::FixtureRuleMismatch {
+                    opcode,
+                    expected_pops: rule.pops,
+                    expected_pushes: rule.pushes,
+                    actual_pops: observed.pops,
+                    actual_pushes: observed.pushes,
+                });
+            }
+        }
+
+        steps.push(TassadarTraceStep {
+            step_index,
+            pc,
+            next_pc,
+            instruction: instruction.clone(),
+            event,
+            stack_before,
+            stack_after: state.stack.clone(),
+            locals_after: state.locals.clone(),
+            memory_after: state.memory.clone(),
+        });
+
+        final_state = state;
+        step_index += 1;
+        if matches!(instruction, TassadarInstruction::Return) {
+            return Ok(build_tassadar_execution(
+                program,
+                trace_abi,
+                runner_id,
+                steps,
+                final_state.outputs,
+                final_state.locals,
+                final_state.memory,
+                final_state.stack,
+                halt_reason,
+            ));
+        }
+
+        pc = next_pc;
+    }
+
+    Ok(build_tassadar_execution(
+        program,
+        trace_abi,
+        runner_id,
+        steps,
+        final_state.outputs,
+        final_state.locals,
+        final_state.memory,
+        final_state.stack,
+        halt_reason,
+    ))
+}
+
+fn execute_program_hull_cache(
+    program: &TassadarProgram,
+    profile: &TassadarWasmProfile,
+    trace_abi: &TassadarTraceAbi,
+    runner_id: &str,
+    fixture_weights: Option<&TassadarFixtureWeights>,
+) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+    program.validate_against(profile)?;
+    validate_hull_cache_program(program)?;
+
+    let mut pc = 0usize;
+    let mut steps = Vec::new();
+    let mut state = TassadarHullCacheState {
+        stack: Vec::new(),
+        locals: vec![0; program.local_count],
+        memory: program.initial_memory.clone(),
+        outputs: Vec::new(),
+        local_last_write_step: vec![None; program.local_count],
+        memory_last_write_step: vec![None; program.initial_memory.len()],
+    };
+    let mut step_index = 0usize;
+    let mut halt_reason = TassadarHaltReason::FellOffEnd;
+
+    while pc < program.instructions.len() {
+        if step_index >= profile.max_steps {
+            return Err(TassadarExecutionRefusal::StepLimitExceeded {
+                max_steps: profile.max_steps,
+            });
+        }
+
+        let instruction = program.instructions[pc].clone();
+        let stack_before = state.stack.clone();
+        let opcode = instruction.opcode();
+        let rule = match fixture_weights {
+            Some(weights) => Some(
+                weights
+                    .rule_for(opcode)
+                    .ok_or(TassadarExecutionRefusal::FixtureRuleMissing { opcode })?,
+            ),
+            None => None,
+        };
+        let mut next_pc = pc + 1;
+        let event = match instruction.clone() {
+            TassadarInstruction::LocalGet { local } => {
+                let value = hull_cache_local_value(
+                    usize::from(local),
+                    steps.as_slice(),
+                    &state.local_last_write_step,
+                    &state.locals,
+                );
+                state.stack.push(value);
+                TassadarTraceEvent::LocalGet { local, value }
+            }
+            TassadarInstruction::I32Load { slot } => {
+                let value = hull_cache_memory_value(
+                    usize::from(slot),
+                    program.initial_memory.as_slice(),
+                    steps.as_slice(),
+                    &state.memory_last_write_step,
+                    &state.memory,
+                );
+                state.stack.push(value);
+                TassadarTraceEvent::Load { slot, value }
+            }
+            _ => execute_instruction(
+                &instruction,
+                pc,
+                &mut next_pc,
+                &mut state.stack,
+                &mut state.locals,
+                &mut state.memory,
+                &mut state.outputs,
+                &mut halt_reason,
+            )?,
+        };
+
+        if let Some(rule) = rule {
+            let observed = observed_rule_signature(&instruction, &event);
+            if rule.pops != observed.pops || rule.pushes != observed.pushes {
+                return Err(TassadarExecutionRefusal::FixtureRuleMismatch {
+                    opcode,
+                    expected_pops: rule.pops,
+                    expected_pushes: rule.pushes,
+                    actual_pops: observed.pops,
+                    actual_pushes: observed.pushes,
+                });
+            }
+        }
+        match event {
+            TassadarTraceEvent::LocalSet { local, .. } => {
+                state.local_last_write_step[usize::from(local)] = Some(step_index);
+            }
+            TassadarTraceEvent::Store { slot, .. } => {
+                state.memory_last_write_step[usize::from(slot)] = Some(step_index);
+            }
+            _ => {}
+        }
+
+        steps.push(TassadarTraceStep {
+            step_index,
+            pc,
+            next_pc,
+            instruction: instruction.clone(),
+            event,
+            stack_before,
+            stack_after: state.stack.clone(),
+            locals_after: state.locals.clone(),
+            memory_after: state.memory.clone(),
+        });
+
+        step_index += 1;
+        if matches!(instruction, TassadarInstruction::Return) {
+            return Ok(build_tassadar_execution(
+                program,
+                trace_abi,
+                runner_id,
+                steps,
+                state.outputs,
+                state.locals,
+                state.memory,
+                state.stack,
+                halt_reason,
+            ));
+        }
+
+        pc = next_pc;
+    }
+
+    Ok(build_tassadar_execution(
+        program,
+        trace_abi,
+        runner_id,
+        steps,
+        state.outputs,
+        state.locals,
+        state.memory,
+        state.stack,
+        halt_reason,
+    ))
+}
+
+fn validate_hull_cache_program(program: &TassadarProgram) -> Result<(), TassadarExecutionRefusal> {
+    for (pc, instruction) in program.instructions.iter().enumerate() {
+        if let TassadarInstruction::BrIf { target_pc } = instruction {
+            if usize::from(*target_pc) <= pc {
+                return Err(
+                    TassadarExecutionRefusal::HullCacheBackwardBranchUnsupported {
+                        pc,
+                        target_pc: usize::from(*target_pc),
+                    },
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn hull_cache_local_value(
+    local: usize,
+    steps: &[TassadarTraceStep],
+    last_write_step: &[Option<usize>],
+    locals: &[i32],
+) -> i32 {
+    last_write_step[local]
+        .and_then(
+            |index| match steps.get(index).map(|step| step.event.clone()) {
+                Some(TassadarTraceEvent::LocalSet { value, .. }) => Some(value),
+                _ => None,
+            },
+        )
+        .unwrap_or(locals[local])
+}
+
+fn hull_cache_memory_value(
+    slot: usize,
+    initial_memory: &[i32],
+    steps: &[TassadarTraceStep],
+    last_write_step: &[Option<usize>],
+    memory: &[i32],
+) -> i32 {
+    last_write_step[slot]
+        .and_then(
+            |index| match steps.get(index).map(|step| step.event.clone()) {
+                Some(TassadarTraceEvent::Store { value, .. }) => Some(value),
+                _ => None,
+            },
+        )
+        .unwrap_or_else(|| initial_memory.get(slot).copied().unwrap_or(memory[slot]))
+}
+
+fn replay_decoded_state(
+    steps: &[TassadarTraceStep],
+    local_count: usize,
+    initial_memory: &[i32],
+) -> TassadarDecodedState {
+    let mut state = TassadarDecodedState {
+        stack: Vec::new(),
+        locals: vec![0; local_count],
+        memory: initial_memory.to_vec(),
+        outputs: Vec::new(),
+    };
+    for step in steps {
+        state.stack = step.stack_after.clone();
+        state.locals = step.locals_after.clone();
+        state.memory = step.memory_after.clone();
+        if let TassadarTraceEvent::Output { value } = step.event {
+            state.outputs.push(value);
+        }
+    }
+    state
+}
+
+fn build_tassadar_execution(
+    program: &TassadarProgram,
+    trace_abi: &TassadarTraceAbi,
+    runner_id: &str,
+    steps: Vec<TassadarTraceStep>,
+    outputs: Vec<i32>,
+    final_locals: Vec<i32>,
+    final_memory: Vec<i32>,
+    final_stack: Vec<i32>,
+    halt_reason: TassadarHaltReason,
+) -> TassadarExecution {
+    TassadarExecution {
+        program_id: program.program_id.clone(),
+        profile_id: program.profile_id.clone(),
+        runner_id: String::from(runner_id),
+        trace_abi: trace_abi.clone(),
+        steps,
+        outputs,
+        final_locals,
+        final_memory,
+        final_stack,
+        halt_reason,
+    }
+}
+
+fn execute_instruction(
+    instruction: &TassadarInstruction,
+    pc: usize,
+    next_pc: &mut usize,
+    stack: &mut Vec<i32>,
+    locals: &mut [i32],
+    memory: &mut [i32],
+    outputs: &mut Vec<i32>,
+    halt_reason: &mut TassadarHaltReason,
+) -> Result<TassadarTraceEvent, TassadarExecutionRefusal> {
+    Ok(match instruction.clone() {
+        TassadarInstruction::I32Const { value } => {
+            stack.push(value);
+            TassadarTraceEvent::ConstPush { value }
+        }
+        TassadarInstruction::LocalGet { local } => {
+            let value = locals[usize::from(local)];
+            stack.push(value);
+            TassadarTraceEvent::LocalGet { local, value }
+        }
+        TassadarInstruction::LocalSet { local } => {
+            let value = pop_value(stack, pc, 1)?;
+            locals[usize::from(local)] = value;
+            TassadarTraceEvent::LocalSet { local, value }
+        }
+        TassadarInstruction::I32Add => {
+            let (left, right) = pop_binary_operands(stack, pc)?;
+            let result = left + right;
+            stack.push(result);
+            TassadarTraceEvent::BinaryOp {
+                op: TassadarArithmeticOp::Add,
+                left,
+                right,
+                result,
+            }
+        }
+        TassadarInstruction::I32Sub => {
+            let (left, right) = pop_binary_operands(stack, pc)?;
+            let result = left - right;
+            stack.push(result);
+            TassadarTraceEvent::BinaryOp {
+                op: TassadarArithmeticOp::Sub,
+                left,
+                right,
+                result,
+            }
+        }
+        TassadarInstruction::I32Mul => {
+            let (left, right) = pop_binary_operands(stack, pc)?;
+            let result = left * right;
+            stack.push(result);
+            TassadarTraceEvent::BinaryOp {
+                op: TassadarArithmeticOp::Mul,
+                left,
+                right,
+                result,
+            }
+        }
+        TassadarInstruction::I32Load { slot } => {
+            let value = memory[usize::from(slot)];
+            stack.push(value);
+            TassadarTraceEvent::Load { slot, value }
+        }
+        TassadarInstruction::I32Store { slot } => {
+            let value = pop_value(stack, pc, 1)?;
+            memory[usize::from(slot)] = value;
+            TassadarTraceEvent::Store { slot, value }
+        }
+        TassadarInstruction::BrIf { target_pc } => {
+            let condition = pop_value(stack, pc, 1)?;
+            let taken = condition != 0;
+            if taken {
+                *next_pc = usize::from(target_pc);
+            }
+            TassadarTraceEvent::Branch {
+                condition,
+                taken,
+                target_pc: usize::from(target_pc),
+            }
+        }
+        TassadarInstruction::Output => {
+            let value = pop_value(stack, pc, 1)?;
+            outputs.push(value);
+            TassadarTraceEvent::Output { value }
+        }
+        TassadarInstruction::Return => {
+            *halt_reason = TassadarHaltReason::Returned;
+            TassadarTraceEvent::Return
+        }
     })
 }
 
@@ -2712,9 +3299,10 @@ fn stable_bytes_digest(bytes: &[u8]) -> String {
 mod tests {
     use super::{
         build_tassadar_execution_evidence_bundle, replay_tassadar_execution,
-        run_tassadar_exact_parity, tassadar_validation_corpus, TassadarCompilerToolchainIdentity,
-        TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
-        TassadarFixtureRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
+        run_tassadar_exact_equivalence, run_tassadar_exact_parity, tassadar_validation_corpus,
+        TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
+        TassadarExecutorDecodeMode, TassadarFixtureRunner, TassadarHullCacheRunner,
+        TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
         TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
         TassadarTraceAbi, TassadarWasmProfile,
     };
@@ -2756,10 +3344,40 @@ mod tests {
     }
 
     #[test]
+    fn hull_cache_runner_matches_exact_trace_fixtures() {
+        let runner = TassadarHullCacheRunner::new();
+        for case in tassadar_validation_corpus() {
+            let execution = runner.execute(&case.program).expect("case should run");
+            assert_eq!(
+                execution.steps, case.expected_trace,
+                "case={}",
+                case.case_id
+            );
+            assert_eq!(
+                execution.outputs, case.expected_outputs,
+                "case={}",
+                case.case_id
+            );
+        }
+    }
+
+    #[test]
     fn parity_harness_is_exact_on_validation_corpus() {
         for case in tassadar_validation_corpus() {
             let report = run_tassadar_exact_parity(&case.program).expect("parity should hold");
             report.require_exact().expect("report should be exact");
+        }
+    }
+
+    #[test]
+    fn exact_equivalence_holds_on_validation_corpus() {
+        for case in tassadar_validation_corpus() {
+            let report =
+                run_tassadar_exact_equivalence(&case.program).expect("equivalence should hold");
+            report.require_exact().expect("report should be exact");
+            assert!(report.trace_digest_equal(), "case={}", case.case_id);
+            assert!(report.outputs_equal(), "case={}", case.case_id);
+            assert!(report.halt_equal(), "case={}", case.case_id);
         }
     }
 
@@ -2818,6 +3436,32 @@ mod tests {
                 pc: 0,
                 needed: 2,
                 available: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn hull_cache_refuses_backward_branch_programs() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let program = TassadarProgram::new(
+            "tassadar.backward_branch.v1",
+            &profile,
+            0,
+            0,
+            vec![
+                TassadarInstruction::I32Const { value: 1 },
+                TassadarInstruction::BrIf { target_pc: 0 },
+                TassadarInstruction::Return,
+            ],
+        );
+        let error = TassadarHullCacheRunner::new()
+            .execute(&program)
+            .expect_err("backward branch should refuse");
+        assert_eq!(
+            error,
+            TassadarExecutionRefusal::HullCacheBackwardBranchUnsupported {
+                pc: 1,
+                target_pc: 0,
             }
         );
     }
