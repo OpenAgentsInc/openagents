@@ -17,6 +17,7 @@ pub mod arbiter;
 pub mod dsl;
 pub mod interactive;
 pub mod interactive_baselines;
+pub mod interactive_context;
 pub mod interactive_parity;
 pub mod interpreter;
 pub mod mdl;
@@ -47,6 +48,14 @@ pub use interactive_baselines::{
     ArcRandomBaselineAgent, ArcRandomBaselineConfig, ArcRandomBaselineConfigError,
     ArcScriptedBaselineAgent, ArcScriptedBaselineConfigError, ArcScriptedBaselineProgram,
     ArcScriptedFallbackPolicy, INTERACTIVE_BASELINES_BOUNDARY_SUMMARY,
+};
+pub use interactive_context::{
+    ArcInteractiveContextCheckpointState, ArcInteractiveContextFrame,
+    ArcInteractiveContextPolicyError, ArcInteractiveContextRetentionPolicy,
+    ArcInteractiveMemoryEntry, ArcInteractiveProgressState, ArcInteractivePromptPlan,
+    ArcInteractivePromptPolicy, ArcInteractivePromptResumeSummary, ArcInteractivePromptSection,
+    ArcInteractivePromptSectionView, ArcInteractiveResumeContextMode, ArcInteractiveSessionMemory,
+    INTERACTIVE_CONTEXT_BOUNDARY_SUMMARY,
 };
 pub use interactive_parity::{
     compare_interactive_run_artifacts, ArcInteractiveRunnerExpectedDifference,

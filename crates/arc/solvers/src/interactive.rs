@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arc_benchmark::{
-    ArcBenchmarkError, ArcBenchmarkUsageTotals, ArcInteractiveCheckpointBundle,
-    ArcInteractiveRunReport, score_interactive_recording,
+    score_interactive_recording, ArcBenchmarkError, ArcBenchmarkUsageTotals,
+    ArcInteractiveCheckpointBundle, ArcInteractiveRunReport,
 };
 use arc_client::{
     ArcClientError, ArcEnvironmentInfo, ArcScorecardSummary, ArcSessionFrame, LocalArcEnvironment,
@@ -20,6 +20,14 @@ use arc_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+
+use crate::interactive_context::{
+    append_history_frame, append_memory_entry, build_progress_state, build_prompt_plan,
+    ArcInteractiveContextCheckpointState, ArcInteractiveContextFrame,
+    ArcInteractiveContextRetentionPolicy, ArcInteractiveMemoryEntry, ArcInteractiveProgressState,
+    ArcInteractivePromptPlan, ArcInteractivePromptPolicy, ArcInteractivePromptResumeSummary,
+    ArcInteractiveSessionMemory,
+};
 
 /// Shared role summary for the interactive ARC-AGI-3 agent runtime.
 pub const INTERACTIVE_RUNNER_BOUNDARY_SUMMARY: &str = "arc-solvers owns interactive ARC-AGI-3 agent contracts, agent registry, runner state, and typed local/remote runner orchestration while delegating transport to arc-client and benchmark truth to arc-benchmark";
@@ -79,6 +87,9 @@ pub struct ArcInteractiveCheckpointHandoff {
     /// Agent-owned resumable state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_state: Option<Value>,
+    /// Runner-owned retained context for prompt and memory continuity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_state: Option<ArcInteractiveContextCheckpointState>,
 }
 
 /// Read-only typed context given to each agent step.
@@ -105,11 +116,24 @@ pub struct ArcInteractiveSessionContext {
     pub remaining_actions: u32,
     /// Typed budget state for the current runner step.
     pub budget: ArcInteractiveBudgetState,
+    /// Current progress summary derived from the latest frame and action budget.
+    pub progress: ArcInteractiveProgressState,
     /// Latest typed observation frame.
     pub latest_frame: ArcSessionFrame,
-    /// Full typed history accumulated so far.
+    /// Retained typed history accumulated so far under the configured context policy.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub history: Vec<ArcSessionFrame>,
+    pub history: Vec<ArcInteractiveContextFrame>,
+    /// Count of earlier history entries omitted from `history`.
+    #[serde(default)]
+    pub omitted_history_steps: u32,
+    /// Inspectable context-retention policy for the current run.
+    pub context_retention: ArcInteractiveContextRetentionPolicy,
+    /// Inspectable prompt/context policy for the current run.
+    pub prompt_policy: ArcInteractivePromptPolicy,
+    /// Bounded session memory preserved across turns and checkpoint resume.
+    pub memory: ArcInteractiveSessionMemory,
+    /// Structured prompt/context plan derived from typed policy and retained state.
+    pub prompt_plan: ArcInteractivePromptPlan,
     /// Optional resume handoff that seeded the current run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_state: Option<ArcInteractiveCheckpointHandoff>,
@@ -431,6 +455,10 @@ pub struct ArcInteractiveRunnerConfig {
     pub checkpoint_timestamp_unix_s: u64,
     /// Whether the runner should close the scorecard before returning.
     pub close_scorecard_on_finish: bool,
+    /// Bounded retained context policy exposed to baseline agents.
+    pub context_retention: ArcInteractiveContextRetentionPolicy,
+    /// Versioned prompt/context policy exposed to baseline agents.
+    pub prompt_policy: ArcInteractivePromptPolicy,
     /// Optional machine-readable resume handoff for agent state restoration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_state: Option<ArcInteractiveCheckpointHandoff>,
@@ -457,6 +485,8 @@ impl ArcInteractiveRunnerConfig {
             },
             checkpoint_timestamp_unix_s: unix_timestamp_seconds(),
             close_scorecard_on_finish: false,
+            context_retention: ArcInteractiveContextRetentionPolicy::default(),
+            prompt_policy: ArcInteractivePromptPolicy::default(),
             resume_state: None,
         })
     }
@@ -528,6 +558,12 @@ pub enum ArcInteractiveRunnerError {
         /// Environment task id.
         game_id: ArcTaskId,
     },
+    /// Resume context and configured policy are incompatible.
+    #[error("interactive ARC resume context is incompatible: {detail}")]
+    IncompatibleResumeContext {
+        /// Human-readable compatibility detail.
+        detail: String,
+    },
 }
 
 /// Bounded typed runner over a local or remote ARC environment.
@@ -578,23 +614,64 @@ where
             agent.restore_checkpoint_state(resume_state.agent_state.as_ref())?;
         }
 
-        let mut history = Vec::new();
         let initial = match self.environment.observation().cloned() {
             Some(frame) => frame,
             None => self.environment.reset()?,
         };
-        history.push(initial);
+        let (
+            mut context_history,
+            mut omitted_history_steps,
+            mut memory,
+            resumed_actions_taken,
+            resumed_step_index,
+        ) = initialize_context_state(
+            &self.config,
+            &initial,
+            self.environment.info().game_id.as_str(),
+        )?;
         let mut turn_results = Vec::new();
         let mut terminal_reached_during_run = false;
+        let mut executed_steps_this_run = 0_u32;
+        let mut counted_actions_this_run = 0_u32;
         let execution_outcome = loop {
-            let latest = history.last().cloned().ok_or(
+            let latest = self
+                .environment
+                .observation()
+                .cloned()
+                .unwrap_or_else(|| initial.clone());
+            let actions_taken_total =
+                resumed_actions_taken.saturating_add(counted_actions_this_run);
+            let current_budget = budget_state(budget, actions_taken_total);
+            let step_index = resumed_step_index.saturating_add(executed_steps_this_run);
+            let progress = build_progress_state(&latest, current_budget);
+            let resume_summary = self.config.resume_state.as_ref().map(prompt_resume_summary);
+            let prompt_plan = build_prompt_plan(
+                &self.config.prompt_policy,
+                progress.clone(),
+                &latest,
+                context_history.as_slice(),
+                omitted_history_steps,
+                &memory,
+                resume_summary.as_ref(),
+            );
+
+            let latest_context_frame = ArcInteractiveContextFrame::from(&latest);
+            if !context_history
+                .last()
+                .is_some_and(|frame| frame == &latest_context_frame)
+            {
+                append_history_frame(
+                    &mut context_history,
+                    &mut omitted_history_steps,
+                    latest_context_frame,
+                    &self.config.context_retention,
+                );
+            }
+            let latest = self.environment.observation().cloned().ok_or(
                 ArcInteractiveRunnerError::MissingInitialObservation {
                     game_id: self.environment.info().game_id.clone(),
                 },
             )?;
-            let actions_taken = counted_actions(history.as_slice());
-            let current_budget = budget_state(budget, actions_taken);
-            let step_index = u32::try_from(history.len()).unwrap_or(u32::MAX);
 
             if is_terminal(latest.game_state) {
                 break if terminal_reached_during_run {
@@ -642,8 +719,14 @@ where
                 actions_taken: current_budget.actions_taken,
                 remaining_actions: current_budget.remaining_actions,
                 budget: current_budget,
+                progress,
                 latest_frame: latest,
-                history: history.clone(),
+                history: context_history.clone(),
+                omitted_history_steps,
+                context_retention: self.config.context_retention.clone(),
+                prompt_policy: self.config.prompt_policy.clone(),
+                memory: memory.clone(),
+                prompt_plan,
                 resume_state: self.config.resume_state.clone(),
             };
             let step = match agent.step(&context) {
@@ -713,27 +796,63 @@ where
             };
 
             terminal_reached_during_run = is_terminal(next.game_state);
-            history.push(next);
-            let latest = history
-                .last()
-                .expect("history contains the frame that was just appended");
+            executed_steps_this_run = executed_steps_this_run.saturating_add(1);
+            if !next.full_reset {
+                counted_actions_this_run = counted_actions_this_run.saturating_add(1);
+            }
+            let latest = next.clone();
+            let latest_context_frame = ArcInteractiveContextFrame::from(&latest);
+            append_history_frame(
+                &mut context_history,
+                &mut omitted_history_steps,
+                latest_context_frame.clone(),
+                &self.config.context_retention,
+            );
             turn_results.push(ArcInteractiveTurnResult {
                 step_index,
                 requested_action: step.action.clone(),
-                budget: budget_state(budget, counted_actions(history.as_slice())),
+                budget: budget_state(
+                    budget,
+                    resumed_actions_taken.saturating_add(counted_actions_this_run),
+                ),
                 result: ArcInteractiveActionResult::Executed {
                     game_state: latest.game_state,
                     levels_completed: latest.levels_completed,
                     win_levels: latest.win_levels,
-                    reset: (step.action == ArcAction::Reset).then_some(classify_reset_kind(latest)),
+                    reset: (step.action == ArcAction::Reset)
+                        .then_some(classify_reset_kind(&latest)),
                     terminal: terminal_reached_during_run,
                 },
             });
+            let memory_result = turn_results
+                .last()
+                .expect("turn results contains the entry that was just appended")
+                .result
+                .clone();
+            append_memory_entry(
+                &mut memory,
+                ArcInteractiveMemoryEntry {
+                    step_index,
+                    requested_action: step.action.clone(),
+                    result: memory_result,
+                    observation: latest_context_frame,
+                    reasoning: self
+                        .config
+                        .context_retention
+                        .retain_reasoning
+                        .then_some(step.reasoning.clone())
+                        .flatten(),
+                },
+                &self.config.context_retention,
+            );
 
             if terminal_reached_during_run {
                 break ArcInteractiveExecutionOutcome::Completed {
                     final_state: latest.game_state,
-                    budget: budget_state(budget, counted_actions(history.as_slice())),
+                    budget: budget_state(
+                        budget,
+                        resumed_actions_taken.saturating_add(counted_actions_this_run),
+                    ),
                 };
             }
         };
@@ -775,6 +894,13 @@ where
             },
             agent_name: agent.agent_name().to_owned(),
             agent_state: agent.checkpoint_state()?,
+            context_state: Some(ArcInteractiveContextCheckpointState {
+                retention_policy: self.config.context_retention.clone(),
+                prompt_policy: self.config.prompt_policy.clone(),
+                history: context_history,
+                omitted_history_steps,
+                memory,
+            }),
         };
         let scorecard_summary = if self.config.close_scorecard_on_finish {
             self.environment.close_scorecard()?
@@ -818,23 +944,14 @@ fn normalize_runner_field(
     Ok(trimmed.to_owned())
 }
 
-fn counted_actions(history: &[ArcSessionFrame]) -> u32 {
-    history
-        .iter()
-        .skip(1)
-        .filter(|frame| !frame.full_reset)
-        .count()
-        .try_into()
-        .unwrap_or(u32::MAX)
-}
-
 fn budget_state(budget: ArcInteractiveBudget, actions_taken: u32) -> ArcInteractiveBudgetState {
-    debug_assert!(actions_taken <= budget.max_actions);
-    ArcInteractiveBudgetState {
-        max_actions: budget.max_actions,
-        actions_taken,
-        remaining_actions: budget.max_actions.saturating_sub(actions_taken),
-    }
+    budget
+        .state(actions_taken.min(budget.max_actions))
+        .unwrap_or(ArcInteractiveBudgetState {
+            max_actions: budget.max_actions,
+            actions_taken: budget.max_actions,
+            remaining_actions: 0,
+        })
 }
 
 fn classify_reset_kind(frame: &ArcSessionFrame) -> ArcInteractiveResetKind {
@@ -920,6 +1037,114 @@ fn unix_timestamp_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+fn initialize_context_state(
+    config: &ArcInteractiveRunnerConfig,
+    initial: &ArcSessionFrame,
+    game_id: &str,
+) -> Result<
+    (
+        Vec<ArcInteractiveContextFrame>,
+        u32,
+        ArcInteractiveSessionMemory,
+        u32,
+        u32,
+    ),
+    ArcInteractiveRunnerError,
+> {
+    let mut history = Vec::new();
+    let mut omitted_history_steps = 0;
+    let memory = if let Some(resume_state) = &config.resume_state {
+        let Some(context_state) = resume_state.context_state.as_ref() else {
+            return match config.context_retention.resume_context_mode {
+                crate::interactive_context::ArcInteractiveResumeContextMode::AllowEmptyContext => {
+                    append_history_frame(
+                        &mut history,
+                        &mut omitted_history_steps,
+                        ArcInteractiveContextFrame::from(initial),
+                        &config.context_retention,
+                    );
+                    Ok((
+                        history,
+                        omitted_history_steps,
+                        ArcInteractiveSessionMemory::empty(&config.context_retention),
+                        resume_state.actions_taken,
+                        resume_state.next_step_index,
+                    ))
+                }
+                crate::interactive_context::ArcInteractiveResumeContextMode::RequireMatchingContext => {
+                    Err(ArcInteractiveRunnerError::IncompatibleResumeContext {
+                        detail: format!(
+                            "resume handoff for `{game_id}` is missing context_state while policy `{}` requires matching retained context",
+                            config.context_retention.policy_id
+                        ),
+                    })
+                }
+            };
+        };
+        if context_state.retention_policy != config.context_retention {
+            return Err(ArcInteractiveRunnerError::IncompatibleResumeContext {
+                detail: format!(
+                    "resume handoff retention policy `{}` does not match configured policy `{}`",
+                    context_state.retention_policy.policy_id, config.context_retention.policy_id
+                ),
+            });
+        }
+        if context_state.prompt_policy != config.prompt_policy {
+            return Err(ArcInteractiveRunnerError::IncompatibleResumeContext {
+                detail: format!(
+                    "resume handoff prompt policy `{}` does not match configured policy `{}`",
+                    context_state.prompt_policy.policy_id, config.prompt_policy.policy_id
+                ),
+            });
+        }
+        history = context_state.history.clone();
+        omitted_history_steps = context_state.omitted_history_steps;
+        let current = ArcInteractiveContextFrame::from(initial);
+        if !history.last().is_some_and(|frame| frame == &current) {
+            append_history_frame(
+                &mut history,
+                &mut omitted_history_steps,
+                current,
+                &config.context_retention,
+            );
+        }
+        (
+            history,
+            omitted_history_steps,
+            context_state.memory.clone(),
+            resume_state.actions_taken,
+            resume_state.next_step_index,
+        )
+    } else {
+        append_history_frame(
+            &mut history,
+            &mut omitted_history_steps,
+            ArcInteractiveContextFrame::from(initial),
+            &config.context_retention,
+        );
+        (
+            history,
+            omitted_history_steps,
+            ArcInteractiveSessionMemory::empty(&config.context_retention),
+            0,
+            1,
+        )
+    };
+    Ok(memory)
+}
+
+fn prompt_resume_summary(
+    handoff: &ArcInteractiveCheckpointHandoff,
+) -> ArcInteractivePromptResumeSummary {
+    ArcInteractivePromptResumeSummary {
+        checkpoint_id: handoff.checkpoint_id.clone(),
+        next_step_index: handoff.next_step_index,
+        actions_taken: handoff.actions_taken,
+        terminal: handoff.terminal,
+        agent_name: handoff.agent_name.clone(),
+    }
 }
 
 #[cfg(test)]

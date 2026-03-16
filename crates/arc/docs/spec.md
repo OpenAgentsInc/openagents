@@ -1322,8 +1322,9 @@ The system must already expose:
 - `arc-core` owns shared interactive budget, reset-kind, refusal, per-turn,
   and execution-outcome envelopes.
 - `arc-solvers` owns action-selection policy, the typed interactive runner,
-  agent registry, checkpoint handoff contracts, and the mapping from
-  environment/client errors into the shared interactive refusal taxonomy.
+  agent registry, checkpoint handoff contracts, bounded context-retention and
+  prompt-policy surfaces, and the mapping from environment/client errors into
+  the shared interactive refusal taxonomy.
 - `arc-benchmark` owns RHAE scoring, recordings, scorecards, and episode
   summaries.
 
@@ -1722,7 +1723,12 @@ divergences explicitly instead of treating them as incidental mismatches.
 checkpointable seeded-random baseline plus a deterministic scripted-program
 baseline that both run through the shared interactive runner and emit typed
 recordings, checkpoint bundles, turn results, execution outcomes, and remote
-scorecard summaries rather than ad hoc logs.
+scorecard summaries rather than ad hoc logs. `ARC-408` is now also landed in
+bounded form: the runner exposes typed retained history, versioned
+context-retention and prompt-policy contracts, structured prompt-plan sections,
+and bounded session memory that survives checkpoint resume through
+runner-owned context handoff state while refusing resume explicitly when the
+configured policy no longer matches the retained checkpoint context.
 
 ### Phase 5: Psionic primitive expansion
 
