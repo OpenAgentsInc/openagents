@@ -1,7 +1,8 @@
 # Model IO Reference
 
-> Status: canonical `PSI-282` / `#3587` reference record, updated 2026-03-14
-> after landing the first typed model-IO portability layer in
+> Status: canonical `PSI-282` / `#3587` plus `PLIB-204` / `#3719` reference
+> record, updated 2026-03-16 after landing the typed model-IO portability and
+> compatibility-boundary layer in
 > `crates/psionic/psionic-train/src/model_io.rs`.
 
 This document records the first explicit Rust-native model-IO contract for the
@@ -27,6 +28,7 @@ The new typed surfaces include:
 - `ModelStateTensorManifest`
 - `PortableTokenizerBinding`
 - `PortableModelBundle`
+- `ModelIoCompatibilityContract`
 - `ModelIoArtifactReceipt`
 - `ModelAdapterDelta`
 
@@ -57,13 +59,19 @@ makes all of the following typed and inspectable:
 
 ## Current Interop Boundaries
 
-The current portable layer is intentionally specific about what it supports:
+The current portable layer is intentionally specific about what it supports,
+and it now exposes that scope as a machine-readable compatibility contract
+instead of only prose:
 
+- Psionic-native typed state dict ownership is the canonical import/export path
 - safetensors export and import are for dense `f32` training-state artifacts
+  that carry the embedded Psionic manifest metadata
 - the torch-compatible surface is a typed JSON artifact, not a Python pickle
   or opaque `.pt` loader
 - GGUF support is currently import-focused, because that is the relevant
   train-to-serve portability seam in the retained stack
+- opaque Python pickle or legacy opaque checkpoint archives are intentionally
+  unsupported and called out as such by the typed compatibility contract
 - GGUF-imported quantized tensors are preserved in portable state, but they are
   not re-emitted as safetensors without an explicit dequantization or conversion
   step

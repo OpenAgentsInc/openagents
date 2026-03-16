@@ -221,6 +221,115 @@ pub enum ModelArtifactFormat {
     Gguf,
 }
 
+/// Explicit interoperability surface tracked by the portable model-IO layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelInteropSurface {
+    /// Psionic-native typed state ownership.
+    PsionicStateDict,
+    /// Dense safetensors carrying the embedded Psionic manifest metadata.
+    PsionicManifestSafetensors,
+    /// JSON torch-style state-dict compatibility artifact.
+    TorchStateDictJson,
+    /// GGUF import path into portable state.
+    Gguf,
+    /// Opaque Python pickle or `.pt` checkpoint payloads.
+    TorchPickle,
+    /// Other historical opaque checkpoint archives.
+    LegacyOpaqueCheckpoint,
+}
+
+/// Boundary status for one interop surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelInteropStatus {
+    /// The portable layer directly supports the boundary.
+    Supported,
+    /// The portable layer explicitly does not support the boundary.
+    Unsupported,
+}
+
+/// Compatibility contract for one interop surface.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelInteropSurfaceCompatibility {
+    /// Surface being described.
+    pub surface: ModelInteropSurface,
+    /// Whether the surface supports import into Psionic portable state.
+    pub import_status: ModelInteropStatus,
+    /// Plain-language import boundary explanation.
+    pub import_detail: String,
+    /// Whether the surface supports export from Psionic portable state.
+    pub export_status: ModelInteropStatus,
+    /// Plain-language export boundary explanation.
+    pub export_detail: String,
+    /// Whether one bundle can roundtrip through the surface without ad hoc glue.
+    pub roundtrip_status: ModelInteropStatus,
+    /// Plain-language roundtrip boundary explanation.
+    pub roundtrip_detail: String,
+}
+
+/// Machine-readable compatibility statement for one portable bundle.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelIoCompatibilityContract {
+    /// Stable model family label.
+    pub model_family: String,
+    /// Stable model revision.
+    pub revision: String,
+    /// Stable state-dict digest this contract describes.
+    pub state_dict_digest: String,
+    /// Surface-by-surface compatibility boundary statements.
+    pub surfaces: Vec<ModelInteropSurfaceCompatibility>,
+    /// Stable digest over the compatibility contract contents.
+    pub contract_digest: String,
+}
+
+impl ModelIoCompatibilityContract {
+    fn new(
+        model_family: impl Into<String>,
+        revision: impl Into<String>,
+        state_dict_digest: impl Into<String>,
+        surfaces: Vec<ModelInteropSurfaceCompatibility>,
+    ) -> Self {
+        let model_family = model_family.into();
+        let revision = revision.into();
+        let state_dict_digest = state_dict_digest.into();
+        let contract_digest = stable_model_io_compatibility_digest(
+            model_family.as_str(),
+            revision.as_str(),
+            state_dict_digest.as_str(),
+            surfaces.as_slice(),
+        );
+        Self {
+            model_family,
+            revision,
+            state_dict_digest,
+            surfaces,
+            contract_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("model_family={}", self.model_family),
+            format!("revision={}", self.revision),
+            format!("state_dict_digest={}", self.state_dict_digest),
+            format!("contract_digest={}", self.contract_digest),
+        ];
+        for surface in &self.surfaces {
+            lines.push(format!(
+                "{:?}|import={:?}|export={:?}|roundtrip={:?}",
+                surface.surface,
+                surface.import_status,
+                surface.export_status,
+                surface.roundtrip_status
+            ));
+        }
+        lines
+    }
+}
+
 /// Tokenizer asset family tracked by the portable bundle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1043,6 +1152,94 @@ impl PortableModelBundle {
         self.state_dict.to_training_groups()
     }
 
+    /// Returns the explicit compatibility boundary contract for this bundle.
+    #[must_use]
+    pub fn compatibility_contract(&self) -> ModelIoCompatibilityContract {
+        ModelIoCompatibilityContract::new(
+            self.state_dict.model_family.clone(),
+            self.state_dict.revision.clone(),
+            self.state_dict.digest.clone(),
+            vec![
+                ModelInteropSurfaceCompatibility {
+                    surface: ModelInteropSurface::PsionicStateDict,
+                    import_status: ModelInteropStatus::Supported,
+                    import_detail: String::from(
+                        "native typed Psionic state-dict ownership is the canonical import surface",
+                    ),
+                    export_status: ModelInteropStatus::Supported,
+                    export_detail: String::from(
+                        "native typed Psionic state-dict ownership is the canonical export surface",
+                    ),
+                    roundtrip_status: ModelInteropStatus::Supported,
+                    roundtrip_detail: String::from(
+                        "Psionic-native state dicts roundtrip without format conversion",
+                    ),
+                },
+                safetensors_surface_compatibility(&self.state_dict),
+                ModelInteropSurfaceCompatibility {
+                    surface: ModelInteropSurface::TorchStateDictJson,
+                    import_status: ModelInteropStatus::Supported,
+                    import_detail: String::from(
+                        "supported as a typed JSON state-dict compatibility shell rather than Python pickle",
+                    ),
+                    export_status: ModelInteropStatus::Supported,
+                    export_detail: String::from(
+                        "supported as a typed JSON state-dict compatibility shell rather than Python pickle",
+                    ),
+                    roundtrip_status: ModelInteropStatus::Supported,
+                    roundtrip_detail: String::from(
+                        "typed JSON compatibility artifacts can roundtrip through the portable bundle",
+                    ),
+                },
+                ModelInteropSurfaceCompatibility {
+                    surface: ModelInteropSurface::Gguf,
+                    import_status: ModelInteropStatus::Supported,
+                    import_detail: String::from(
+                        "supported through the explicit GGUF import path into portable Psionic state",
+                    ),
+                    export_status: ModelInteropStatus::Unsupported,
+                    export_detail: String::from(
+                        "GGUF export is intentionally unsupported in the current boundary",
+                    ),
+                    roundtrip_status: ModelInteropStatus::Unsupported,
+                    roundtrip_detail: String::from(
+                        "GGUF roundtrip is unsupported because export is intentionally absent",
+                    ),
+                },
+                ModelInteropSurfaceCompatibility {
+                    surface: ModelInteropSurface::TorchPickle,
+                    import_status: ModelInteropStatus::Unsupported,
+                    import_detail: String::from(
+                        "opaque Python pickle or `.pt` checkpoint decoding is intentionally unsupported",
+                    ),
+                    export_status: ModelInteropStatus::Unsupported,
+                    export_detail: String::from(
+                        "Psionic does not emit opaque Python pickle checkpoints",
+                    ),
+                    roundtrip_status: ModelInteropStatus::Unsupported,
+                    roundtrip_detail: String::from(
+                        "opaque Python pickle roundtrip is intentionally unsupported",
+                    ),
+                },
+                ModelInteropSurfaceCompatibility {
+                    surface: ModelInteropSurface::LegacyOpaqueCheckpoint,
+                    import_status: ModelInteropStatus::Unsupported,
+                    import_detail: String::from(
+                        "legacy opaque checkpoint archives are outside the current bounded compatibility contract",
+                    ),
+                    export_status: ModelInteropStatus::Unsupported,
+                    export_detail: String::from(
+                        "legacy opaque checkpoint archives are not a Psionic export target",
+                    ),
+                    roundtrip_status: ModelInteropStatus::Unsupported,
+                    roundtrip_detail: String::from(
+                        "legacy opaque checkpoint roundtrip is intentionally unsupported",
+                    ),
+                },
+            ],
+        )
+    }
+
     /// Exports the bundle as a JSON torch-style state-dict compatibility artifact.
     pub fn export_torch_state_dict_json(
         &self,
@@ -1096,24 +1293,14 @@ impl PortableModelBundle {
 
         let mut raw_buffers = Vec::with_capacity(self.state_dict.tensors.len());
         for (state_key, entry) in &self.state_dict.tensors {
-            let spec = &entry.manifest.spec;
-            if spec.storage_size() != spec.element_count() {
-                return Err(ModelIoError::NonContiguousSafetensorsTensor {
-                    state_key: state_key.clone(),
-                });
-            }
-            let values = match &entry.data {
-                TensorData::F32(values) if spec.dtype() == DType::F32 => values,
-                _ => {
-                    return Err(ModelIoError::UnsupportedSafetensorsTensor {
-                        state_key: state_key.clone(),
-                    });
-                }
+            validate_safetensors_export_entry(state_key.as_str(), entry)?;
+            let TensorData::F32(values) = &entry.data else {
+                unreachable!("validated safetensors export entry must be dense f32");
             };
             raw_buffers.push((
                 state_key.clone(),
                 encode_f32_bytes(values),
-                spec.shape().dims().to_vec(),
+                entry.manifest.spec.shape().dims().to_vec(),
             ));
         }
 
@@ -1627,6 +1814,83 @@ fn tensor_payload_digest(data: &TensorData) -> String {
     hex::encode(hasher.finalize())
 }
 
+fn safetensors_surface_compatibility(
+    state_dict: &PortableModelStateDict,
+) -> ModelInteropSurfaceCompatibility {
+    match state_dict
+        .tensors
+        .iter()
+        .try_for_each(|(state_key, entry)| validate_safetensors_export_entry(state_key, entry))
+    {
+        Ok(()) => ModelInteropSurfaceCompatibility {
+            surface: ModelInteropSurface::PsionicManifestSafetensors,
+            import_status: ModelInteropStatus::Supported,
+            import_detail: String::from(
+                "supported for dense `f32` safetensors artifacts that carry the embedded Psionic manifest",
+            ),
+            export_status: ModelInteropStatus::Supported,
+            export_detail: String::from(
+                "supported for dense `f32` contiguous state dicts with embedded Psionic manifest metadata",
+            ),
+            roundtrip_status: ModelInteropStatus::Supported,
+            roundtrip_detail: String::from(
+                "dense `f32` manifest-carrying safetensors can roundtrip through the portable bundle",
+            ),
+        },
+        Err(error) => {
+            let detail = format!(
+                "unsupported for this bundle because dense `f32` manifest-carrying safetensors require current tensor constraints: {error}"
+            );
+            ModelInteropSurfaceCompatibility {
+                surface: ModelInteropSurface::PsionicManifestSafetensors,
+                import_status: ModelInteropStatus::Unsupported,
+                import_detail: detail.clone(),
+                export_status: ModelInteropStatus::Unsupported,
+                export_detail: detail.clone(),
+                roundtrip_status: ModelInteropStatus::Unsupported,
+                roundtrip_detail: detail,
+            }
+        }
+    }
+}
+
+fn validate_safetensors_export_entry(
+    state_key: &str,
+    entry: &ModelStateTensorEntry,
+) -> Result<(), ModelIoError> {
+    let spec = &entry.manifest.spec;
+    if spec.storage_size() != spec.element_count() {
+        return Err(ModelIoError::NonContiguousSafetensorsTensor {
+            state_key: String::from(state_key),
+        });
+    }
+    match &entry.data {
+        TensorData::F32(_) if spec.dtype() == DType::F32 => Ok(()),
+        _ => Err(ModelIoError::UnsupportedSafetensorsTensor {
+            state_key: String::from(state_key),
+        }),
+    }
+}
+
+fn stable_model_io_compatibility_digest(
+    model_family: &str,
+    revision: &str,
+    state_dict_digest: &str,
+    surfaces: &[ModelInteropSurfaceCompatibility],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_model_io_compatibility|");
+    hasher.update(model_family.as_bytes());
+    hasher.update(b"|");
+    hasher.update(revision.as_bytes());
+    hasher.update(b"|");
+    hasher.update(state_dict_digest.as_bytes());
+    for surface in surfaces {
+        hasher.update(stable_json_bytes(surface));
+    }
+    hex::encode(hasher.finalize())
+}
+
 fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
     values
         .iter()
@@ -1705,7 +1969,7 @@ fn serialization_error(context: &'static str, message: String) -> ModelIoError {
 mod tests {
     use std::{error::Error, fs};
 
-    use psionic_core::Shape;
+    use psionic_core::{QuantizationMode, QuantizedBlockLayout, Shape};
     use tempfile::tempdir;
 
     use super::*;
@@ -1778,6 +2042,109 @@ mod tests {
         assert_eq!(imported.to_training_groups()?, groups);
         assert_eq!(imported.tokenizer, bundle.tokenizer);
         assert_eq!(imported.chat_template_digest, bundle.chat_template_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn portable_model_bundle_publishes_explicit_compatibility_boundaries(
+    ) -> Result<(), Box<dyn Error>> {
+        let groups = sample_training_groups()?;
+        let bundle = PortableModelBundle::from_training_groups(
+            "weather-agent",
+            "compat-r1",
+            "weather-checkpoints",
+            Some(String::from("checkpoint://weather/compat")),
+            groups.as_slice(),
+            sample_tokenizer_binding(),
+            Some(String::from("chat-template-digest")),
+        )?;
+
+        let contract = bundle.compatibility_contract();
+        assert_eq!(contract.model_family, "weather-agent");
+        assert_eq!(contract.revision, "compat-r1");
+        assert_eq!(contract.state_dict_digest, bundle.state_dict.digest);
+        assert!(contract
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("contract_digest=")));
+
+        let safetensors = contract
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface == ModelInteropSurface::PsionicManifestSafetensors)
+            .expect("missing safetensors surface");
+        assert_eq!(safetensors.export_status, ModelInteropStatus::Supported);
+        assert_eq!(safetensors.roundtrip_status, ModelInteropStatus::Supported);
+
+        let gguf = contract
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface == ModelInteropSurface::Gguf)
+            .expect("missing gguf surface");
+        assert_eq!(gguf.import_status, ModelInteropStatus::Supported);
+        assert_eq!(gguf.export_status, ModelInteropStatus::Unsupported);
+
+        let pickle = contract
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface == ModelInteropSurface::TorchPickle)
+            .expect("missing pickle surface");
+        assert_eq!(pickle.import_status, ModelInteropStatus::Unsupported);
+        assert!(pickle.import_detail.contains("opaque Python pickle"));
+        Ok(())
+    }
+
+    #[test]
+    fn quantized_portable_bundle_marks_safetensors_boundary_unsupported(
+    ) -> Result<(), Box<dyn Error>> {
+        let state_key = String::from("model.quantized.weight");
+        let spec = TensorSpec::new(Shape::new(vec![32]), DType::F32, Device::cpu());
+        let quantized = QuantizedTensorData::new(
+            QuantizationMode::GgmlQ4_0,
+            QuantizedBlockLayout::new(32, 18, 1),
+            vec![0_u8; 18],
+        );
+        let tensors = BTreeMap::from([(
+            state_key.clone(),
+            ModelStateTensorEntry {
+                manifest: ModelStateTensorManifest::new(
+                    state_key.clone(),
+                    vec![
+                        String::from("model"),
+                        String::from("quantized"),
+                        String::from("weight"),
+                    ],
+                    ModelStateTensorRole::Parameter,
+                    spec,
+                ),
+                data: TensorData::QuantizedBlocks(quantized),
+            },
+        )]);
+        let state_dict = PortableModelStateDict::new(
+            "quantized-agent",
+            "q1",
+            "quant-checkpoints",
+            None,
+            ModelArtifactFormat::PsionicStateDict,
+            Vec::new(),
+            tensors,
+        )?;
+        let bundle = PortableModelBundle {
+            state_dict,
+            tokenizer: sample_tokenizer_binding(),
+            chat_template_digest: None,
+            preferred_serving_formats: vec![ModelArtifactFormat::TorchStateDictJson],
+        };
+
+        let contract = bundle.compatibility_contract();
+        let safetensors = contract
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface == ModelInteropSurface::PsionicManifestSafetensors)
+            .expect("missing safetensors surface");
+        assert_eq!(safetensors.import_status, ModelInteropStatus::Unsupported);
+        assert_eq!(safetensors.export_status, ModelInteropStatus::Unsupported);
+        assert!(safetensors.export_detail.contains("dense `f32`"));
         Ok(())
     }
 
