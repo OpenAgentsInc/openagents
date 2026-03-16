@@ -120,6 +120,7 @@ pub enum SemanticsClaimError {
 /// PyTorch-facing posture.
 pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, SemanticsClaimError> {
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
+    let advanced_operator_programs = psionic_ir::builtin_advanced_operator_program_matrix_report()?;
     let extensions = psionic_ir::builtin_extension_contract_semantics_report();
     let program_transforms = psionic_ir::builtin_program_transform_capability_matrix_report();
     let data_ingress = psionic_data::builtin_data_ingress_semantics_report();
@@ -149,10 +150,20 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                     "prove runtime numerical parity beyond meta-execution shape contracts",
                 ),
             ],
+            vec![String::from("#3726")],
+        ),
+        seeded_area(
+            "advanced_operator_family_semantics",
+            "Current claim is bounded to reusable linalg gram-matrix, signal Fourier-projection, and rotary-attention residual programs above the compact core plus explicit refusal for distribution and special-function families that still require broader normalization, sampling, or special-function primitives.",
+            vec![SemanticsEvidenceRef::new(
+                "advanced_operator_program_matrix",
+                advanced_operator_programs.matrix_digest,
+            )],
             vec![
-                String::from("#3735"),
-                String::from("#3726"),
+                String::from("broaden advanced operator-family coverage beyond the current linalg, signal, and attention seed programs"),
+                String::from("land concrete distribution and special-function primitives instead of refusal-only family placeholders"),
             ],
+            Vec::new(),
         ),
         seeded_area(
             "program_transform_semantics",
@@ -221,7 +232,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                     "connect broader operator-family and export semantics to these non-dense families",
                 ),
             ],
-            vec![String::from("#3735"), String::from("#3736")],
+            vec![String::from("#3736")],
         ),
         seeded_area(
             "advanced_dtype_semantics",
@@ -237,7 +248,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 ),
                 String::from("materialize additional dtypes beyond the compact runtime-core subset"),
             ],
-            vec![String::from("#3735")],
+            Vec::new(),
         ),
         seeded_area(
             "reproducibility_semantics",
@@ -270,7 +281,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 ),
                 String::from("extend backend capability truth beyond the current bounded runtime-vs-meta split"),
             ],
-            vec![String::from("#3735")],
+            Vec::new(),
         ),
         seeded_area(
             "quantization_semantics",
@@ -284,11 +295,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("connect quantization capability to extension and plugin contracts"),
                 String::from("land deployment-facing export artifacts on top of the export-aware quantization surface"),
             ],
-            vec![
-                String::from("#3732"),
-                String::from("#3735"),
-                String::from("#3736"),
-            ],
+            vec![String::from("#3736")],
         ),
         seeded_area(
             "module_and_state_semantics",
@@ -369,14 +376,6 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 "connect extension contracts to deployment and distribution surfaces",
             )],
             vec![String::from("#3736")],
-        ),
-        future_area(
-            "advanced_operator_families",
-            "Advanced linalg, signal, distributions, special-function, and attention-family semantics remain future compatibility targets rather than current credibility claims.",
-            vec![String::from(
-                "land advanced operator-family programs beyond the current seeded subset",
-            )],
-            vec![String::from("#3735")],
         ),
     ]))
 }
@@ -469,6 +468,7 @@ mod tests {
 
         for area_id in [
             "operator_semantics",
+            "advanced_operator_family_semantics",
             "program_transform_semantics",
             "extension_contract_semantics",
             "data_ingress_semantics",
@@ -499,7 +499,6 @@ mod tests {
             "advanced_tensor_dtype_and_precision",
             "quantization_and_export",
             "extensions_and_plugins",
-            "advanced_operator_families",
         ] {
             let area = report
                 .areas

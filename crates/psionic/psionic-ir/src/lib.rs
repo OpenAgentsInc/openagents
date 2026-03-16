@@ -2895,6 +2895,112 @@ impl OperatorParityMatrixReport {
     }
 }
 
+/// Bounded advanced operator-program families above the compact operator core.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdvancedOperatorProgramFamily {
+    /// Matrix or tensor algebra programs.
+    Linalg,
+    /// Signal or FFT-style programs.
+    Signal,
+    /// Distribution-family programs.
+    Distribution,
+    /// Special-function-family programs.
+    SpecialFunction,
+    /// Attention-family programs.
+    Attention,
+}
+
+/// Outcome status for one advanced operator-program case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdvancedOperatorProgramStatus {
+    /// The bounded program matched its expected output contract.
+    Supported,
+    /// The program refused explicitly under the bounded capability profile.
+    Refused,
+}
+
+/// One machine-readable advanced operator-program case result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdvancedOperatorProgramCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable oracle family label.
+    pub oracle_family: String,
+    /// Stable family label.
+    pub family: AdvancedOperatorProgramFamily,
+    /// Stable program label.
+    pub program: String,
+    /// Stable capability-profile label.
+    pub capability_profile: String,
+    /// Stable input tensor specs used for the case.
+    pub input_specs: Vec<TensorSpec>,
+    /// Expected output spec when the case is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_output: Option<TensorSpec>,
+    /// Actual output spec when the case succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_output: Option<TensorSpec>,
+    /// Expected refusal when the case is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_refusal: Option<PsionicRefusal>,
+    /// Actual refusal surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_refusal: Option<PsionicRefusal>,
+    /// Stable program outcome status.
+    pub status: AdvancedOperatorProgramStatus,
+}
+
+/// Machine-readable bounded advanced operator-program matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdvancedOperatorProgramMatrixReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Stable oracle family window label.
+    pub oracle_family_window: String,
+    /// Seeded program case results.
+    pub cases: Vec<AdvancedOperatorProgramCaseResult>,
+    /// Stable digest over the report contents.
+    pub matrix_digest: String,
+}
+
+impl AdvancedOperatorProgramMatrixReport {
+    fn new(
+        oracle_family_window: impl Into<String>,
+        cases: Vec<AdvancedOperatorProgramCaseResult>,
+    ) -> Self {
+        let oracle_family_window = oracle_family_window.into();
+        let matrix_digest = stable_advanced_operator_program_matrix_digest(
+            oracle_family_window.as_str(),
+            cases.as_slice(),
+        );
+        Self {
+            schema_version: 1,
+            oracle_family_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("oracle_family_window={}", self.oracle_family_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{:?}",
+                case.case_id, case.program, case.status
+            ));
+        }
+        lines
+    }
+}
+
 /// Capability profile used to answer whether a fake or meta execution target
 /// claims support for one backend-kernel surface.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -4252,6 +4358,80 @@ impl GraphBuilder {
         Ok(self.register_backend_extension(op, vec![left.id(), right.id()], spec))
     }
 
+    /// Builds a simple linalg-family gram-matrix program `X^T @ X`.
+    pub fn linalg_gram_matrix(&mut self, input: &Tensor) -> Result<Tensor, GraphError> {
+        if input.spec().shape().rank() != 2 {
+            return Err(GraphError::InvalidOperatorInputs {
+                op: String::from("linalg_gram_matrix"),
+                message: format!("input shape {} must be rank-2", input.spec().shape()),
+            });
+        }
+        let transposed = self.permute(input, vec![1, 0])?;
+        self.matmul(&transposed, input)
+    }
+
+    /// Builds a simple signal-family Fourier projection `signal @ basis`.
+    pub fn signal_naive_dft(
+        &mut self,
+        signal: &Tensor,
+        basis: &Tensor,
+    ) -> Result<Tensor, GraphError> {
+        if signal.spec().shape().rank() != 2 || basis.spec().shape().rank() != 2 {
+            return Err(GraphError::InvalidOperatorInputs {
+                op: String::from("signal_naive_dft"),
+                message: format!(
+                    "signal shape {} and basis shape {} must both be rank-2",
+                    signal.spec().shape(),
+                    basis.spec().shape()
+                ),
+            });
+        }
+        self.matmul(signal, basis)
+    }
+
+    /// Builds a simple attention-family block with RoPE, SDPA, and a residual add.
+    pub fn attention_rotary_residual_block(
+        &mut self,
+        query: &Tensor,
+        key: &Tensor,
+        value: &Tensor,
+        cos: &Tensor,
+        sin: &Tensor,
+        residual: &Tensor,
+        scale: f32,
+        causal: bool,
+    ) -> Result<Tensor, GraphError> {
+        let rotated_query = self.rope(query, cos, sin, false)?;
+        let rotated_key = self.rope(key, cos, sin, false)?;
+        let attended =
+            self.scaled_dot_product_attention(&rotated_query, &rotated_key, value, scale, causal)?;
+        self.add(&attended, residual)
+    }
+
+    /// Records the current bounded refusal for categorical distribution-family programs.
+    pub fn distribution_categorical_program(
+        &mut self,
+        _logits: &Tensor,
+        _values: &Tensor,
+    ) -> Result<Tensor, GraphError> {
+        Err(GraphError::InvalidOperatorInputs {
+            op: String::from("distribution_categorical_program"),
+            message: String::from(
+                "bounded core does not yet expose softmax/logsumexp or sampling primitives required for distribution-family programs",
+            ),
+        })
+    }
+
+    /// Records the current bounded refusal for special-function-family programs.
+    pub fn special_function_program(&mut self, _input: &Tensor) -> Result<Tensor, GraphError> {
+        Err(GraphError::InvalidOperatorInputs {
+            op: String::from("special_function_program"),
+            message: String::from(
+                "bounded core does not yet expose erf, gelu, or broader special-function primitives required for this family",
+            ),
+        })
+    }
+
     /// Finishes the graph with the provided outputs.
     #[must_use]
     pub fn finish(self, outputs: Vec<Tensor>) -> Graph {
@@ -4600,6 +4780,199 @@ pub fn builtin_operator_parity_matrix_report() -> Result<OperatorParityMatrixRep
     ))
 }
 
+/// Returns the seeded advanced operator-program matrix report for the current
+/// bounded Psionic semantics surface.
+pub fn builtin_advanced_operator_program_matrix_report(
+) -> Result<AdvancedOperatorProgramMatrixReport, GraphError> {
+    let mut cases = Vec::new();
+
+    cases.push(run_advanced_operator_program_supported_case(
+        "pytorch.linalg.gram_matrix.rank2",
+        AdvancedOperatorProgramFamily::Linalg,
+        "linalg_gram_matrix",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let input = builder.input("input", Shape::new(vec![4, 8]), DType::F32);
+            builder.linalg_gram_matrix(&input)
+        },
+        TensorSpec::new(Shape::new(vec![8, 8]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_advanced_operator_program_supported_case(
+        "pytorch.signal.naive_dft.rank2",
+        AdvancedOperatorProgramFamily::Signal,
+        "signal_naive_dft",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let signal = builder.input("signal", Shape::new(vec![2, 8]), DType::F32);
+            let basis = builder.input("basis", Shape::new(vec![8, 4]), DType::F32);
+            builder.signal_naive_dft(&signal, &basis)
+        },
+        TensorSpec::new(Shape::new(vec![2, 4]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_advanced_operator_program_supported_case(
+        "pytorch.attention.rotary_residual_block.rank4",
+        AdvancedOperatorProgramFamily::Attention,
+        "attention_rotary_residual_block",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let query = builder.input("query", Shape::new(vec![1, 2, 4, 8]), DType::F32);
+            let key = builder.input("key", Shape::new(vec![1, 2, 4, 8]), DType::F32);
+            let value = builder.input("value", Shape::new(vec![1, 2, 4, 16]), DType::F32);
+            let cos = builder.input("cos", Shape::new(vec![4, 4]), DType::F32);
+            let sin = builder.input("sin", Shape::new(vec![4, 4]), DType::F32);
+            let residual = builder.input("residual", Shape::new(vec![1, 2, 4, 16]), DType::F32);
+            builder.attention_rotary_residual_block(
+                &query, &key, &value, &cos, &sin, &residual, 0.5, true,
+            )
+        },
+        TensorSpec::new(Shape::new(vec![1, 2, 4, 16]), DType::F32, Device::cpu()),
+    )?);
+    cases.push(run_advanced_operator_program_refusal_case(
+        "pytorch.attention.rotary_residual_block.backend_missing",
+        AdvancedOperatorProgramFamily::Attention,
+        "attention_rotary_residual_block",
+        "add_only",
+        MetaCapabilityProfile::empty().with_supported_backend_kernels(["add"]),
+        |builder| {
+            let query = builder.input("query", Shape::new(vec![1, 2, 4, 8]), DType::F32);
+            let key = builder.input("key", Shape::new(vec![1, 2, 4, 8]), DType::F32);
+            let value = builder.input("value", Shape::new(vec![1, 2, 4, 16]), DType::F32);
+            let cos = builder.input("cos", Shape::new(vec![4, 4]), DType::F32);
+            let sin = builder.input("sin", Shape::new(vec![4, 4]), DType::F32);
+            let residual = builder.input("residual", Shape::new(vec![1, 2, 4, 16]), DType::F32);
+            builder.attention_rotary_residual_block(
+                &query, &key, &value, &cos, &sin, &residual, 0.5, true,
+            )
+        },
+        PsionicRefusal::new(
+            PsionicRefusalCode::UnsupportedBackendCapability,
+            PsionicRefusalScope::Graph,
+            "meta capability profile does not declare backend kernel `rotary_embedding`",
+        )
+        .with_subject("rotary_embedding"),
+    )?);
+    cases.push(run_advanced_operator_program_refusal_case(
+        "pytorch.distributions.categorical.future_surface",
+        AdvancedOperatorProgramFamily::Distribution,
+        "distribution_categorical_program",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let logits = builder.input("logits", Shape::new(vec![2, 4]), DType::F32);
+            let values = builder.input("values", Shape::new(vec![2, 4]), DType::F32);
+            builder.distribution_categorical_program(&logits, &values)
+        },
+        PsionicRefusal::new(
+            PsionicRefusalCode::UnsupportedOp,
+            PsionicRefusalScope::Graph,
+            "invalid operator inputs for `distribution_categorical_program`: bounded core does not yet expose softmax/logsumexp or sampling primitives required for distribution-family programs",
+        )
+        .with_subject("distribution_categorical_program"),
+    )?);
+    cases.push(run_advanced_operator_program_refusal_case(
+        "pytorch.special.erf_like.future_surface",
+        AdvancedOperatorProgramFamily::SpecialFunction,
+        "special_function_program",
+        "all_builtin",
+        MetaCapabilityProfile::all_builtin(),
+        |builder| {
+            let input = builder.input("input", Shape::new(vec![2, 8]), DType::F32);
+            builder.special_function_program(&input)
+        },
+        PsionicRefusal::new(
+            PsionicRefusalCode::UnsupportedOp,
+            PsionicRefusalScope::Graph,
+            "invalid operator inputs for `special_function_program`: bounded core does not yet expose erf, gelu, or broader special-function primitives required for this family",
+        )
+        .with_subject("special_function_program"),
+    )?);
+
+    Ok(AdvancedOperatorProgramMatrixReport::new(
+        "pytorch_advanced_program_seed_v0",
+        cases,
+    ))
+}
+
+fn run_advanced_operator_program_supported_case(
+    case_id: &str,
+    family: AdvancedOperatorProgramFamily,
+    program: &str,
+    capability_profile: &str,
+    profile: MetaCapabilityProfile,
+    build: impl FnOnce(&mut GraphBuilder) -> Result<Tensor, GraphError>,
+    expected_output: TensorSpec,
+) -> Result<AdvancedOperatorProgramCaseResult, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let output = build(&mut builder)?;
+    let graph = builder.finish(vec![output.clone()]);
+    let input_specs = graph_input_specs(&graph);
+    let report = OperatorRegistry::builtin().meta_execute_graph(&graph, Some(&profile))?;
+    let actual_output = report.output(output.id()).map(|tensor| tensor.spec.clone());
+    Ok(AdvancedOperatorProgramCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_advanced_program_seed"),
+        family,
+        program: String::from(program),
+        capability_profile: String::from(capability_profile),
+        input_specs,
+        expected_output: Some(expected_output),
+        actual_output,
+        expected_refusal: None,
+        actual_refusal: None,
+        status: AdvancedOperatorProgramStatus::Supported,
+    })
+}
+
+fn run_advanced_operator_program_refusal_case(
+    case_id: &str,
+    family: AdvancedOperatorProgramFamily,
+    program: &str,
+    capability_profile: &str,
+    profile: MetaCapabilityProfile,
+    build: impl FnOnce(&mut GraphBuilder) -> Result<Tensor, GraphError>,
+    expected_refusal: PsionicRefusal,
+) -> Result<AdvancedOperatorProgramCaseResult, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let build_result = build(&mut builder);
+    let (input_specs, actual_refusal) = match build_result {
+        Ok(output) => {
+            let graph = builder.finish(vec![output]);
+            let input_specs = graph_input_specs(&graph);
+            let error = OperatorRegistry::builtin()
+                .meta_execute_graph(&graph, Some(&profile))
+                .expect_err("advanced operator refusal case must refuse");
+            let actual_refusal = error
+                .refusal()
+                .expect("advanced operator refusal case must map into taxonomy");
+            (input_specs, actual_refusal)
+        }
+        Err(error) => {
+            let graph = builder.finish(Vec::new());
+            let input_specs = graph_input_specs(&graph);
+            let actual_refusal = error
+                .refusal()
+                .expect("advanced operator refusal case must map into taxonomy");
+            (input_specs, actual_refusal)
+        }
+    };
+    Ok(AdvancedOperatorProgramCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_advanced_program_seed"),
+        family,
+        program: String::from(program),
+        capability_profile: String::from(capability_profile),
+        input_specs,
+        expected_output: None,
+        actual_output: None,
+        expected_refusal: Some(expected_refusal),
+        actual_refusal: Some(actual_refusal),
+        status: AdvancedOperatorProgramStatus::Refused,
+    })
+}
+
 fn run_operator_parity_supported_case(
     case_id: &str,
     operator: &str,
@@ -4689,6 +5062,49 @@ fn stable_operator_parity_matrix_digest(
     digest_lines(lines)
 }
 
+fn advanced_operator_program_family_label(family: AdvancedOperatorProgramFamily) -> &'static str {
+    match family {
+        AdvancedOperatorProgramFamily::Linalg => "linalg",
+        AdvancedOperatorProgramFamily::Signal => "signal",
+        AdvancedOperatorProgramFamily::Distribution => "distribution",
+        AdvancedOperatorProgramFamily::SpecialFunction => "special_function",
+        AdvancedOperatorProgramFamily::Attention => "attention",
+    }
+}
+
+fn stable_advanced_operator_program_matrix_digest(
+    oracle_family_window: &str,
+    cases: &[AdvancedOperatorProgramCaseResult],
+) -> String {
+    let mut lines = vec![format!("oracle_family_window={oracle_family_window}")];
+    for case in cases {
+        lines.push(format!(
+            "{}|{}|{}|{}|{:?}",
+            case.case_id,
+            advanced_operator_program_family_label(case.family),
+            case.program,
+            case.capability_profile,
+            case.status
+        ));
+        for spec in &case.input_specs {
+            lines.push(format!("input={}", format_spec(spec)));
+        }
+        if let Some(output) = &case.expected_output {
+            lines.push(format!("expected_output={}", format_spec(output)));
+        }
+        if let Some(refusal) = &case.expected_refusal {
+            lines.push(format!(
+                "expected_refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or(""),
+                refusal.detail
+            ));
+        }
+    }
+    digest_lines(lines)
+}
+
 fn graph_input_specs(graph: &Graph) -> Vec<TensorSpec> {
     graph
         .nodes()
@@ -4705,17 +5121,19 @@ mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
+        builtin_advanced_operator_program_matrix_report,
         builtin_extension_contract_semantics_report, builtin_operator_parity_matrix_report,
         builtin_program_transform_capability_matrix_report,
-        builtin_tensor_family_capability_matrix_report, DType, ExecutionOp, ExecutionPlan,
-        ExecutionStep, ExtensionContractKind, FunctionalTensorKind, FunctionalizationPolicy,
-        GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind, KernelRegistration,
-        MaskedMetaContract, MetaCapabilityProfile, MetaTensor, MetaTensorFamily,
-        MetaTensorFamilyKind, NestedMetaContract, OperatorArity, OperatorImplementationKind,
-        OperatorMetaExecutionKind, OperatorParityStatus, OperatorRegistry, ProgramTransformFamily,
-        RegisteredOperatorSchema, RegistryExtensionError, Shape, SparseMetaContract,
-        SparseMetaLayout, StorageAwareMetaContract, TensorFamilyCapabilityStatus,
-        TensorFamilyCapabilitySurface, TensorSpec, TransformBarrierKind,
+        builtin_tensor_family_capability_matrix_report, AdvancedOperatorProgramStatus, DType,
+        ExecutionOp, ExecutionPlan, ExecutionStep, ExtensionContractKind, FunctionalTensorKind,
+        FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
+        KernelRegistration, MaskedMetaContract, MetaCapabilityProfile, MetaTensor,
+        MetaTensorFamily, MetaTensorFamilyKind, NestedMetaContract, OperatorArity,
+        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorParityStatus,
+        OperatorRegistry, ProgramTransformFamily, RegisteredOperatorSchema, RegistryExtensionError,
+        Shape, SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract,
+        TensorFamilyCapabilityStatus, TensorFamilyCapabilitySurface, TensorSpec,
+        TransformBarrierKind,
     };
 
     #[test]
@@ -5534,6 +5952,68 @@ mod tests {
                 .and_then(|refusal| refusal.subject.as_deref()),
             Some("rms_norm")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn advanced_operator_program_matrix_tracks_supported_and_refused_families(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_advanced_operator_program_matrix_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.oracle_family_window,
+            "pytorch_advanced_program_seed_v0"
+        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("matrix_digest=")));
+
+        let linalg_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.linalg.gram_matrix.rank2")
+            .expect("missing linalg program case");
+        assert_eq!(linalg_case.status, AdvancedOperatorProgramStatus::Supported);
+        assert_eq!(linalg_case.expected_output, linalg_case.actual_output);
+
+        let attention_refusal = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.attention.rotary_residual_block.backend_missing")
+            .expect("missing attention backend refusal");
+        assert_eq!(
+            attention_refusal.status,
+            AdvancedOperatorProgramStatus::Refused
+        );
+        assert_eq!(
+            attention_refusal
+                .expected_refusal
+                .as_ref()
+                .map(|refusal| refusal.code),
+            attention_refusal
+                .actual_refusal
+                .as_ref()
+                .map(|refusal| refusal.code)
+        );
+
+        let distribution_refusal = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.distributions.categorical.future_surface")
+            .expect("missing distribution refusal");
+        assert_eq!(
+            distribution_refusal.status,
+            AdvancedOperatorProgramStatus::Refused
+        );
+        assert_eq!(
+            distribution_refusal
+                .actual_refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("distribution_categorical_program")
+        );
+
         Ok(())
     }
 

@@ -560,6 +560,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/OPERATOR_PARITY_MATRIX.md](docs/OPERATOR_PARITY_MATRIX.md)** —
   canonical seeded operator parity artifact for the current PyTorch-derived
   `OpInfo`-style coverage slice.
+- **[docs/ADVANCED_OPERATOR_PROGRAM_MATRIX.md](docs/ADVANCED_OPERATOR_PROGRAM_MATRIX.md)** —
+  canonical bounded advanced-operator program matrix for linalg, signal,
+  attention, and explicit refusal posture for distribution and special-function
+  families.
 - **[docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md](docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md)** —
   canonical bounded capability matrix for functionalization, symbolic rewrites,
   export-safe graphs, and explicit future higher-order transform refusal.
