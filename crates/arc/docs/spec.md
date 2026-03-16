@@ -1475,6 +1475,13 @@ Acceptance:
 - score-policy fixtures for current methodology/competition semantics
 - competition-mode policy fixtures
 
+This phase has now started in bounded form. `ARC-206` landed the first live
+`arc-benchmark` crate with a typed static answer-key/submission/report surface,
+an exact-match scorer for ARC-AGI-1 and ARC-AGI-2, and a fixture-backed
+summary harness. Interactive RHAE, scorecard lifecycle, recordings,
+checkpoints, resume behavior, and repeated-run aggregation remain follow-on
+benchmark work.
+
 ### Phase 4: solver layer
 
 Build:

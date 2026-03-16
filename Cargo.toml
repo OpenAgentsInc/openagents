@@ -8,6 +8,7 @@ members = [
     "crates/arc/datasets",
     "crates/arc/engine",
     "crates/arc/client",
+    "crates/arc/benchmark",
     "crates/cad",
     "crates/autopilot-spacetime",
     "crates/codex-client",

@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "These fixtures pin the first Rust-native exact-match scorer for ARC-AGI-1 and ARC-AGI-2. They cover perfect match, multi-attempt success, missing-pair zero scoring, and summary aggregation, but they do not claim checkpoint, retry, provider-cost, or interactive RHAE parity.",
+  "cases": [
+    {
+      "id": "agi1-perfect-match",
+      "benchmark": "arc_agi1",
+      "task": {
+        "id": "demo_exact_agi1",
+        "train": [
+          {
+            "input": { "width": 1, "height": 1, "cells": [1] },
+            "output": { "width": 2, "height": 1, "cells": [1, 1] }
+          }
+        ],
+        "test": [
+          { "width": 1, "height": 1, "cells": [2] },
+          { "width": 1, "height": 1, "cells": [3] }
+        ]
+      },
+      "answer_key": {
+        "task_id": "demo_exact_agi1",
+        "outputs": [
+          { "width": 2, "height": 1, "cells": [2, 2] },
+          { "width": 3, "height": 1, "cells": [3, 3, 3] }
+        ]
+      },
+      "submission": {
+        "task_id": "demo_exact_agi1",
+        "test_pairs": [
+          {
+            "attempts": [
+              { "width": 2, "height": 1, "cells": [2, 2] }
+            ]
+          },
+          {
+            "attempts": [
+              { "width": 3, "height": 1, "cells": [3, 3, 3] }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "pairs_correct": 2,
+        "total_pairs": 2,
+        "score": 1.0,
+        "matched_attempt_indices": [0, 0]
+      }
+    },
+    {
+      "id": "agi2-multi-attempt-partial",
+      "benchmark": "arc_agi2",
+      "task": {
+        "id": "demo_exact_agi2_multi",
+        "train": [
+          {
+            "input": { "width": 1, "height": 1, "cells": [4] },
+            "output": { "width": 2, "height": 2, "cells": [4, 4, 4, 4] }
+          }
+        ],
+        "test": [
+          { "width": 1, "height": 1, "cells": [5] },
+          { "width": 1, "height": 1, "cells": [6] }
+        ]
+      },
+      "answer_key": {
+        "task_id": "demo_exact_agi2_multi",
+        "outputs": [
+          { "width": 2, "height": 2, "cells": [5, 5, 5, 5] },
+          { "width": 1, "height": 1, "cells": [6] }
+        ]
+      },
+      "submission": {
+        "task_id": "demo_exact_agi2_multi",
+        "test_pairs": [
+          {
+            "attempts": [
+              { "width": 2, "height": 2, "cells": [0, 0, 0, 0] },
+              { "width": 2, "height": 2, "cells": [5, 5, 5, 5] }
+            ]
+          },
+          {
+            "attempts": [
+              { "width": 1, "height": 1, "cells": [9] }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "pairs_correct": 1,
+        "total_pairs": 2,
+        "score": 0.5,
+        "matched_attempt_indices": [1, null]
+      }
+    },
+    {
+      "id": "agi2-missing-pair-scores-zero",
+      "benchmark": "arc_agi2",
+      "task": {
+        "id": "demo_exact_agi2_missing",
+        "train": [
+          {
+            "input": { "width": 1, "height": 1, "cells": [7] },
+            "output": { "width": 1, "height": 1, "cells": [7] }
+          }
+        ],
+        "test": [
+          { "width": 1, "height": 1, "cells": [8] },
+          { "width": 1, "height": 1, "cells": [9] }
+        ]
+      },
+      "answer_key": {
+        "task_id": "demo_exact_agi2_missing",
+        "outputs": [
+          { "width": 1, "height": 1, "cells": [8] },
+          { "width": 2, "height": 1, "cells": [9, 9] }
+        ]
+      },
+      "submission": {
+        "task_id": "demo_exact_agi2_missing",
+        "test_pairs": [
+          {
+            "attempts": [
+              { "width": 1, "height": 1, "cells": [8] }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "pairs_correct": 1,
+        "total_pairs": 2,
+        "score": 0.5,
+        "matched_attempt_indices": [0, null]
+      }
+    }
+  ]
+}
