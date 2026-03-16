@@ -1497,7 +1497,11 @@ landed in bounded form: `arc-benchmark` can derive ARC-owned run summaries
 from exact-match and interactive reports, aggregate repeated runs into
 `psionic-eval::BenchmarkAggregateSummary`, and emit `psionic-research`
 experiment/evaluation views for regression and comparison workflows. Scorecard
-lifecycle and JSONL compatibility remain follow-on benchmark work.
+lifecycle and JSONL compatibility remain follow-on benchmark work. `ARC-210`
+is now also landed in bounded form: the crate ships one fixture-backed parity
+bundle that exercises exact-match aggregation, task checkpoint persistence,
+interactive methodology scoring, interactive checkpoint bundle layout,
+recording reload, deterministic replay, and corrupted-checkpoint refusal.
 
 ### Phase 4: solver layer
 
