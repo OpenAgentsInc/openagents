@@ -83,6 +83,10 @@ Current posture:
   refusal responses, trace-step streaming, final output extraction helpers, and
   served evidence bundles that preserve decode selection, trace proof, and
   runtime-manifest lineage
+- its Phase 7B widened executor envelope now exists in `psionic-runtime`,
+  `psionic-models`, and `psionic-eval`, with the `core_i32_v2` Wasm profile,
+  profile-aware runner construction, and article-class exact benchmark
+  coverage for `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching`
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
 - its landed Phase 0/1/2/3/4/5/6/7A issue spine is tracked in
@@ -93,7 +97,8 @@ Current posture:
   [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747) and
   [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748) and
   [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749) and
-  [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760)
+  [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760) and
+  [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761)
 
 ## Crate Map
 
