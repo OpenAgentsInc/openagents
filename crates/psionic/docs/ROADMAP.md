@@ -38,8 +38,8 @@
   is real, not before.
 - An implemented-early executor-class reference lane codenamed `Tassadar` now
   exists as WebAssembly-first, CPU-reference-first, library-owned work rather
-  than MVP product scope, with Phase 3 benchmark/environment package support
-  now landed above it.
+  than MVP product scope, with Phase 3 benchmark/environment packages and
+  Phase 4 proof/lineage surfaces now landed above it.
 
 ## Why This Doc Exists
 
@@ -473,7 +473,7 @@ Epic 0 and later epics beyond 2 still use roadmap-local IDs until activated.
 ### Tassadar Executor-Class Reference Lane
 
 This track is now implemented early as a Psionic-owned reference lane and
-remains dependency-ordered beyond Phase 3.
+remains dependency-ordered beyond Phase 4.
 
 It is a cross-epic lane that depends on:
 
@@ -490,11 +490,14 @@ Its declared scope is:
   model/program compatibility contracts
 - landed Phase 3 bar: typed environment bundle plus package-driven exactness
   benchmark suite with CPU and reference-linear baselines
+- landed Phase 4 bar: emitted trace artifacts, runtime-manifest lineage, and
+  proof-bundle integration for replay-stable executor evidence
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
   - `psionic-environments::TassadarEnvironmentBundle`
   - `psionic-eval::run_tassadar_reference_fixture_benchmark`
+  - `psionic-runtime::build_tassadar_execution_evidence_bundle`
 - strategic value: inner exact-computation substrate for larger reasoning
   systems
 - non-goals: current MVP product scope, kernel authority, or replacement of
@@ -510,8 +513,10 @@ The current issue spine is:
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
 - Phase 3 benchmark and environment packages:
   [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
+- Phase 4 executor trace proof bundles and manifest lineage:
+  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 
-What Phases 1 through 3 now concretely provide:
+What Phases 1 through 4 now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -530,12 +535,15 @@ What Phases 1 through 3 now concretely provide:
   throughput metrics
 - declared future hull-cache metric ids so later fast-path work widens the
   same package family instead of replacing it
+- one emitted `TassadarTraceArtifact` plus `TassadarTraceProofArtifact`
+- runtime-manifest lineage from source program through model descriptor and
+  emitted trace artifact
+- canonical `ExecutionProofBundle` integration for replay-stable executor
+  evidence
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
 
-- executor-trace proof bundles:
-  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 - hull-cache or geometric retrieval decoding:
   [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 - typed runtime capability and refusal surfaces:

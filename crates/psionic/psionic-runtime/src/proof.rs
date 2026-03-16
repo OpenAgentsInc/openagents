@@ -109,6 +109,10 @@ impl ExecutionProofRuntimeIdentity {
 pub enum RuntimeManifestArtifactKind {
     /// Environment package or alias resolved at execution time.
     EnvironmentPackage,
+    /// Digest-bound executor or program artifact.
+    ProgramArtifact,
+    /// Executed model descriptor or equivalent runtime descriptor.
+    ModelDescriptor,
     /// Served model or weight artifact.
     ServedArtifact,
     /// Checkpoint or recoverable train-state artifact.
@@ -119,6 +123,8 @@ pub enum RuntimeManifestArtifactKind {
     SandboxProfile,
     /// Sharded model manifest constraining clustered execution.
     ShardedModelManifest,
+    /// Emitted execution trace artifact.
+    ExecutionTrace,
     /// Generic datastream-backed execution artifact.
     DatastreamArtifact,
 }

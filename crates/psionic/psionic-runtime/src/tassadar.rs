@@ -1,3 +1,10 @@
+use crate::{
+    BackendProbeState, BackendToolchainIdentity, ExecutionProofArtifactResidency,
+    ExecutionProofAugmentationPosture, ExecutionProofBundle, ExecutionProofBundleKind,
+    ExecutionProofBundleStatus, ExecutionProofRuntimeIdentity, RuntimeManifest,
+    RuntimeManifestArtifactBinding, RuntimeManifestArtifactKind,
+    RuntimeManifestStaticConfigBinding, ValidationMatrixReference,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -10,6 +17,12 @@ pub const TASSADAR_CPU_REFERENCE_RUNNER_ID: &str = "tassadar.cpu_reference.v1";
 pub const TASSADAR_FIXTURE_RUNNER_ID: &str = "tassadar.fixture_runner.v1";
 /// Stable opcode-vocabulary family identifier for the Phase 2 artifact lane.
 pub const TASSADAR_OPCODE_VOCABULARY_ID: &str = "tassadar.opcodes.v1";
+/// Current schema version for emitted Tassadar trace artifacts.
+pub const TASSADAR_TRACE_ARTIFACT_SCHEMA_VERSION: u16 = 1;
+/// Current schema version for emitted Tassadar trace-proof artifacts.
+pub const TASSADAR_TRACE_PROOF_SCHEMA_VERSION: u16 = 1;
+/// Stable claims-profile identifier for the Tassadar proof lane.
+pub const TASSADAR_PROOF_CLAIMS_PROFILE_ID: &str = "tassadar.executor_trace.proof.v1";
 
 /// Stable decode modes for the Tassadar executor lane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,6 +32,47 @@ pub enum TassadarExecutorDecodeMode {
     ReferenceLinear,
     /// Future hull-cache geometric fast path.
     HullCache,
+}
+
+impl TassadarExecutorDecodeMode {
+    /// Returns the stable decode-mode identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReferenceLinear => "tassadar.decode.reference_linear.v1",
+            Self::HullCache => "tassadar.decode.hull_cache.v1",
+        }
+    }
+
+    /// Returns the cache algorithm paired with this decode mode.
+    #[must_use]
+    pub const fn cache_algorithm(self) -> TassadarExecutorCacheAlgorithm {
+        match self {
+            Self::ReferenceLinear => TassadarExecutorCacheAlgorithm::LinearScanKvCache,
+            Self::HullCache => TassadarExecutorCacheAlgorithm::HullSupportCache,
+        }
+    }
+}
+
+/// Stable cache-algorithm identifiers for Tassadar decoding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorCacheAlgorithm {
+    /// Prefix-linear cache lookups over the trace.
+    LinearScanKvCache,
+    /// Future hull-backed geometric cache.
+    HullSupportCache,
+}
+
+impl TassadarExecutorCacheAlgorithm {
+    /// Returns the stable cache-algorithm identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LinearScanKvCache => "tassadar.cache.linear_scan_kv.v1",
+            Self::HullSupportCache => "tassadar.cache.hull_support.v1",
+        }
+    }
 }
 
 /// Machine-legible supported WebAssembly-first profile for the Phase 1 lane.
@@ -602,6 +656,12 @@ impl TassadarProgramSourceIdentity {
             source_digest: program.program_digest(),
         }
     }
+
+    /// Returns a stable digest over the source-identity record.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_serialized_digest(b"tassadar_program_source_identity|", self)
+    }
 }
 
 /// Compiler/toolchain identity for one digest-bound Tassadar program artifact.
@@ -641,6 +701,12 @@ impl TassadarCompilerToolchainIdentity {
         pipeline_features.dedup();
         self.pipeline_features = pipeline_features;
         self
+    }
+
+    /// Returns a stable digest over the compiler/toolchain identity.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_serialized_digest(b"tassadar_compiler_toolchain_identity|", self)
     }
 }
 
@@ -1177,6 +1243,362 @@ impl TassadarExecution {
     pub fn trace_digest(&self) -> String {
         let bytes = serde_json::to_vec(&self.steps).unwrap_or_default();
         hex::encode(Sha256::digest(bytes))
+    }
+}
+
+/// Emitted trace artifact for one realized Tassadar execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarTraceArtifact {
+    /// Stable schema version.
+    pub schema_version: u16,
+    /// Stable artifact identifier.
+    pub artifact_id: String,
+    /// Stable digest over the trace artifact.
+    pub artifact_digest: String,
+    /// Stable program identifier.
+    pub program_id: String,
+    /// Stable runner identifier.
+    pub runner_id: String,
+    /// Stable trace ABI identifier.
+    pub trace_abi_id: String,
+    /// Stable trace ABI schema version.
+    pub trace_abi_version: u16,
+    /// Stable digest over the append-only trace.
+    pub trace_digest: String,
+    /// Stable digest over the behavior-relevant result.
+    pub behavior_digest: String,
+    /// Number of emitted steps.
+    pub step_count: u64,
+    /// Ordered append-only steps.
+    pub steps: Vec<TassadarTraceStep>,
+}
+
+impl TassadarTraceArtifact {
+    /// Builds a trace artifact from one execution.
+    #[must_use]
+    pub fn from_execution(artifact_id: impl Into<String>, execution: &TassadarExecution) -> Self {
+        let mut artifact = Self {
+            schema_version: TASSADAR_TRACE_ARTIFACT_SCHEMA_VERSION,
+            artifact_id: artifact_id.into(),
+            artifact_digest: String::new(),
+            program_id: execution.program_id.clone(),
+            runner_id: execution.runner_id.clone(),
+            trace_abi_id: execution.trace_abi.abi_id.clone(),
+            trace_abi_version: execution.trace_abi.schema_version,
+            trace_digest: execution.trace_digest(),
+            behavior_digest: execution.behavior_digest(),
+            step_count: execution.steps.len() as u64,
+            steps: execution.steps.clone(),
+        };
+        artifact.refresh_digest();
+        artifact
+    }
+
+    fn refresh_digest(&mut self) {
+        self.artifact_digest = self.compute_digest();
+    }
+
+    fn compute_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"tassadar_trace_artifact|");
+        hasher.update(self.schema_version.to_be_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.artifact_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.program_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.runner_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_abi_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_abi_version.to_be_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.behavior_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.step_count.to_be_bytes());
+        hasher.update(b"\n");
+        hasher.update(serde_json::to_vec(&self.steps).unwrap_or_default());
+        hex::encode(hasher.finalize())
+    }
+}
+
+/// Proof-bearing trace artifact for one realized Tassadar execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarTraceProofArtifact {
+    /// Stable schema version.
+    pub schema_version: u16,
+    /// Stable proof-artifact identifier.
+    pub proof_artifact_id: String,
+    /// Stable digest over the trace proof.
+    pub proof_digest: String,
+    /// Stable trace-artifact reference.
+    pub trace_artifact_ref: String,
+    /// Stable trace-artifact digest.
+    pub trace_artifact_digest: String,
+    /// Stable trace digest.
+    pub trace_digest: String,
+    /// Stable validated-program digest.
+    pub program_digest: String,
+    /// Stable program-artifact digest.
+    pub program_artifact_digest: String,
+    /// Stable Wasm profile identifier.
+    pub wasm_profile_id: String,
+    /// Stable model-descriptor digest.
+    pub model_descriptor_digest: String,
+    /// Decode mode used for the execution.
+    pub decode_mode: TassadarExecutorDecodeMode,
+    /// Stable cache-algorithm identifier.
+    pub cache_algorithm_id: String,
+    /// Runtime backend that realized the trace.
+    pub runtime_backend: String,
+    /// Reference-runner identity.
+    pub reference_runner_id: String,
+    /// Validation reference carried with the proof.
+    pub validation: ValidationMatrixReference,
+    /// Stable runtime-manifest identity digest.
+    pub runtime_manifest_identity_digest: String,
+    /// Stable runtime-manifest digest.
+    pub runtime_manifest_digest: String,
+}
+
+impl TassadarTraceProofArtifact {
+    /// Builds a trace-proof artifact from explicit lineage inputs.
+    #[must_use]
+    pub fn new(
+        proof_artifact_id: impl Into<String>,
+        trace_artifact: &TassadarTraceArtifact,
+        program_artifact: &TassadarProgramArtifact,
+        model_descriptor_digest: impl Into<String>,
+        decode_mode: TassadarExecutorDecodeMode,
+        runtime_backend: impl Into<String>,
+        reference_runner_id: impl Into<String>,
+        validation: ValidationMatrixReference,
+        runtime_manifest: &RuntimeManifest,
+    ) -> Self {
+        let mut artifact = Self {
+            schema_version: TASSADAR_TRACE_PROOF_SCHEMA_VERSION,
+            proof_artifact_id: proof_artifact_id.into(),
+            proof_digest: String::new(),
+            trace_artifact_ref: trace_artifact.artifact_id.clone(),
+            trace_artifact_digest: trace_artifact.artifact_digest.clone(),
+            trace_digest: trace_artifact.trace_digest.clone(),
+            program_digest: program_artifact.validated_program_digest.clone(),
+            program_artifact_digest: program_artifact.artifact_digest.clone(),
+            wasm_profile_id: program_artifact.wasm_profile_id.clone(),
+            model_descriptor_digest: model_descriptor_digest.into(),
+            decode_mode,
+            cache_algorithm_id: String::from(decode_mode.cache_algorithm().as_str()),
+            runtime_backend: runtime_backend.into(),
+            reference_runner_id: reference_runner_id.into(),
+            validation,
+            runtime_manifest_identity_digest: runtime_manifest.identity_digest.clone(),
+            runtime_manifest_digest: runtime_manifest.manifest_digest.clone(),
+        };
+        artifact.refresh_digest();
+        artifact
+    }
+
+    fn refresh_digest(&mut self) {
+        self.proof_digest = self.compute_digest();
+    }
+
+    fn compute_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"tassadar_trace_proof_artifact|");
+        hasher.update(self.schema_version.to_be_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.proof_artifact_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_artifact_ref.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_artifact_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.program_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.program_artifact_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.wasm_profile_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.model_descriptor_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.decode_mode.as_str().as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.cache_algorithm_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.runtime_backend.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.reference_runner_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(serde_json::to_vec(&self.validation).unwrap_or_default());
+        hasher.update(b"\n");
+        hasher.update(self.runtime_manifest_identity_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.runtime_manifest_digest.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+}
+
+/// Runtime-manifest and proof-bundle evidence for one Tassadar execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutionEvidenceBundle {
+    /// Digest-bound runtime manifest for the execution lane.
+    pub runtime_manifest: RuntimeManifest,
+    /// Emitted trace artifact.
+    pub trace_artifact: TassadarTraceArtifact,
+    /// Proof-bearing trace artifact.
+    pub trace_proof: TassadarTraceProofArtifact,
+    /// Canonical Psionic proof bundle carrying the execution identity.
+    pub proof_bundle: ExecutionProofBundle,
+}
+
+/// Returns the current validation reference for the Tassadar proof lane.
+#[must_use]
+pub fn tassadar_validation_reference() -> ValidationMatrixReference {
+    ValidationMatrixReference::not_yet_validated("tassadar.executor_trace.phase4")
+}
+
+/// Builds runtime-manifest and proof-bundle evidence for one Tassadar execution.
+#[must_use]
+pub fn build_tassadar_execution_evidence_bundle(
+    request_id: impl Into<String>,
+    request_digest: impl Into<String>,
+    product_id: impl Into<String>,
+    model_id: impl Into<String>,
+    model_descriptor_digest: impl Into<String>,
+    environment_refs: Vec<String>,
+    program_artifact: &TassadarProgramArtifact,
+    decode_mode: TassadarExecutorDecodeMode,
+    execution: &TassadarExecution,
+) -> TassadarExecutionEvidenceBundle {
+    let request_id = request_id.into();
+    let request_digest = request_digest.into();
+    let product_id = product_id.into();
+    let model_id = model_id.into();
+    let model_descriptor_digest = model_descriptor_digest.into();
+    let validation = tassadar_validation_reference();
+    let trace_artifact = TassadarTraceArtifact::from_execution(
+        format!("tassadar://trace/{request_id}/{}", execution.trace_digest()),
+        execution,
+    );
+    let runtime_identity = ExecutionProofRuntimeIdentity::new(
+        "cpu",
+        BackendToolchainIdentity::new(
+            "cpu",
+            execution.runner_id.clone(),
+            vec![
+                String::from("tassadar_executor"),
+                String::from(decode_mode.as_str()),
+                execution.profile_id.clone(),
+            ],
+        )
+        .with_probe(BackendProbeState::CompiledOnly, Vec::new()),
+    );
+    let mut runtime_manifest = RuntimeManifest::new(
+        format!("tassadar-runtime-manifest-{request_id}"),
+        runtime_identity.clone(),
+    )
+    .with_validation(validation.clone())
+    .with_claims_profile_id(TASSADAR_PROOF_CLAIMS_PROFILE_ID)
+    .with_artifact_binding(RuntimeManifestArtifactBinding::new(
+        RuntimeManifestArtifactKind::ProgramArtifact,
+        program_artifact.artifact_id.clone(),
+        program_artifact.artifact_digest.clone(),
+    ))
+    .with_artifact_binding(RuntimeManifestArtifactBinding::new(
+        RuntimeManifestArtifactKind::ModelDescriptor,
+        model_id.clone(),
+        model_descriptor_digest.clone(),
+    ))
+    .with_artifact_binding(RuntimeManifestArtifactBinding::new(
+        RuntimeManifestArtifactKind::ExecutionTrace,
+        trace_artifact.artifact_id.clone(),
+        trace_artifact.artifact_digest.clone(),
+    ))
+    .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+        "tassadar.source_program_digest",
+        program_artifact.source_identity.stable_digest(),
+    ))
+    .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+        "tassadar.compile_toolchain_digest",
+        program_artifact.toolchain_identity.stable_digest(),
+    ))
+    .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+        "tassadar.program_digest",
+        program_artifact.validated_program_digest.clone(),
+    ))
+    .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+        "tassadar.decode_mode",
+        stable_bytes_digest(decode_mode.as_str().as_bytes()),
+    ))
+    .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+        "tassadar.cache_algorithm",
+        stable_bytes_digest(decode_mode.cache_algorithm().as_str().as_bytes()),
+    ))
+    .with_static_config_binding(RuntimeManifestStaticConfigBinding::new(
+        "tassadar.reference_runner",
+        stable_bytes_digest(execution.runner_id.as_bytes()),
+    ));
+    for environment_ref in environment_refs {
+        runtime_manifest = runtime_manifest.with_environment_ref(environment_ref);
+    }
+
+    let trace_proof = TassadarTraceProofArtifact::new(
+        format!(
+            "tassadar://trace_proof/{request_id}/{}",
+            trace_artifact.trace_digest
+        ),
+        &trace_artifact,
+        program_artifact,
+        model_descriptor_digest.clone(),
+        decode_mode,
+        runtime_identity.runtime_backend.clone(),
+        execution.runner_id.clone(),
+        validation.clone(),
+        &runtime_manifest,
+    );
+
+    let mut proof_bundle = ExecutionProofBundle::new(
+        ExecutionProofBundleKind::Local,
+        if execution.halt_reason == TassadarHaltReason::Returned {
+            ExecutionProofBundleStatus::Succeeded
+        } else {
+            ExecutionProofBundleStatus::Failed
+        },
+        request_id,
+        request_digest,
+        product_id,
+        runtime_identity,
+    )
+    .with_model_id(model_id)
+    .with_validation(validation)
+    .with_activation_fingerprint_posture(ExecutionProofAugmentationPosture::Unavailable);
+    proof_bundle.artifact_residency = Some(ExecutionProofArtifactResidency {
+        served_artifact_digest: None,
+        weight_bundle_digest: Some(model_descriptor_digest),
+        cluster_artifact_residency_digest: None,
+        sharded_model_manifest_digest: None,
+        input_artifact_digests: vec![program_artifact.artifact_digest.clone()],
+        output_artifact_digests: vec![
+            trace_artifact.artifact_digest.clone(),
+            trace_proof.proof_digest.clone(),
+        ],
+        stdout_sha256: None,
+        stderr_sha256: None,
+    });
+    if execution.halt_reason != TassadarHaltReason::Returned {
+        proof_bundle =
+            proof_bundle.with_failure_reason(format!("tassadar_halt={:?}", execution.halt_reason));
+    }
+
+    TassadarExecutionEvidenceBundle {
+        runtime_manifest,
+        trace_artifact,
+        trace_proof,
+        proof_bundle,
     }
 }
 
@@ -2275,11 +2697,23 @@ fn observed_rule_signature(
     }
 }
 
+fn stable_serialized_digest<T: Serialize>(prefix: &[u8], value: &T) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(prefix);
+    hasher.update(serde_json::to_vec(value).unwrap_or_default());
+    hex::encode(hasher.finalize())
+}
+
+fn stable_bytes_digest(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        replay_tassadar_execution, run_tassadar_exact_parity, tassadar_validation_corpus,
-        TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
+        build_tassadar_execution_evidence_bundle, replay_tassadar_execution,
+        run_tassadar_exact_parity, tassadar_validation_corpus, TassadarCompilerToolchainIdentity,
+        TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
         TassadarFixtureRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
         TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
         TassadarTraceAbi, TassadarWasmProfile,
@@ -2442,6 +2876,132 @@ mod tests {
                 expected: profile.profile_id,
                 actual: String::from("tassadar.wasm.other.v1"),
             }
+        );
+    }
+
+    #[test]
+    fn tassadar_execution_evidence_bundle_is_replay_stable_on_validation_corpus() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let trace_abi = TassadarTraceAbi::core_i32_v1();
+        let runner = TassadarFixtureRunner::new();
+
+        for case in tassadar_validation_corpus() {
+            let artifact = TassadarProgramArtifact::fixture_reference(
+                format!("tassadar://artifact/test/{}", case.case_id),
+                &profile,
+                &trace_abi,
+                case.program.clone(),
+            )
+            .expect("fixture artifact should build");
+            let execution = runner
+                .execute(&case.program)
+                .expect("fixture execution should pass");
+            replay_tassadar_execution(&case.program, &execution)
+                .expect("replay should match fixture execution");
+            let replayed = runner
+                .execute(&case.program)
+                .expect("replayed execution should pass");
+
+            let first = build_tassadar_execution_evidence_bundle(
+                format!("request-{}", case.case_id),
+                format!("digest-{}", case.case_id),
+                "tassadar_reference_fixture",
+                "tassadar-executor-fixture-v0",
+                "model-descriptor-digest",
+                vec![String::from("env.openagents.tassadar.benchmark@2026.03.15")],
+                &artifact,
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                &execution,
+            );
+            let second = build_tassadar_execution_evidence_bundle(
+                format!("request-{}", case.case_id),
+                format!("digest-{}", case.case_id),
+                "tassadar_reference_fixture",
+                "tassadar-executor-fixture-v0",
+                "model-descriptor-digest",
+                vec![String::from("env.openagents.tassadar.benchmark@2026.03.15")],
+                &artifact,
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                &replayed,
+            );
+
+            assert_eq!(
+                first.runtime_manifest.identity_digest,
+                second.runtime_manifest.identity_digest
+            );
+            assert_eq!(
+                first.runtime_manifest.manifest_digest,
+                second.runtime_manifest.manifest_digest
+            );
+            assert_eq!(
+                first.trace_artifact.artifact_digest,
+                second.trace_artifact.artifact_digest
+            );
+            assert_eq!(
+                first.trace_proof.proof_digest,
+                second.trace_proof.proof_digest
+            );
+            assert_eq!(
+                first.proof_bundle.stable_digest(),
+                second.proof_bundle.stable_digest()
+            );
+        }
+    }
+
+    #[test]
+    fn tassadar_trace_proof_artifact_carries_required_identity_fields() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let trace_abi = TassadarTraceAbi::core_i32_v1();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar://artifact/test/proof_fields",
+            &profile,
+            &trace_abi,
+            case.program.clone(),
+        )
+        .expect("fixture artifact should build");
+        let execution = TassadarFixtureRunner::new()
+            .execute(&case.program)
+            .expect("fixture execution should pass");
+        let evidence = build_tassadar_execution_evidence_bundle(
+            "request-proof-fields",
+            "digest-proof-fields",
+            "tassadar_reference_fixture",
+            "tassadar-executor-fixture-v0",
+            "model-descriptor-digest",
+            vec![String::from("env.openagents.tassadar.benchmark@2026.03.15")],
+            &artifact,
+            TassadarExecutorDecodeMode::ReferenceLinear,
+            &execution,
+        );
+
+        assert_eq!(
+            evidence.trace_proof.trace_digest,
+            evidence.trace_artifact.trace_digest
+        );
+        assert_eq!(
+            evidence.trace_proof.program_digest,
+            artifact.validated_program_digest
+        );
+        assert_eq!(
+            evidence.trace_proof.wasm_profile_id,
+            artifact.wasm_profile_id
+        );
+        assert_eq!(
+            evidence.trace_proof.cache_algorithm_id,
+            "tassadar.cache.linear_scan_kv.v1"
+        );
+        assert_eq!(evidence.trace_proof.runtime_backend, "cpu");
+        assert_eq!(
+            evidence.trace_proof.reference_runner_id,
+            execution.runner_id
+        );
+        assert_eq!(
+            evidence.trace_proof.runtime_manifest_identity_digest,
+            evidence.runtime_manifest.identity_digest
         );
     }
 }

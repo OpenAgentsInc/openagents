@@ -9,12 +9,13 @@ use psionic_environments::{
 };
 use psionic_models::{TassadarExecutorContractError, TassadarExecutorFixture};
 use psionic_runtime::{
+    build_tassadar_execution_evidence_bundle, tassadar_validation_corpus,
     TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
     TassadarFixtureRunner, TassadarProgramArtifact, TassadarProgramArtifactError, TassadarTraceAbi,
-    TassadarWasmProfile, tassadar_validation_corpus,
+    TassadarWasmProfile,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::Digest;
 use thiserror::Error;
 
@@ -168,6 +169,7 @@ pub fn run_tassadar_reference_fixture_benchmark(
 
     let fixture = TassadarExecutorFixture::new();
     let descriptor = fixture.descriptor();
+    let model_descriptor_digest = descriptor.stable_digest();
     let cpu_runner = TassadarCpuReferenceRunner::new();
     let reference_linear_runner = TassadarFixtureRunner::new();
 
@@ -227,12 +229,24 @@ pub fn run_tassadar_reference_fixture_benchmark(
         let reference_linear_steps_per_second =
             throughput_steps_per_second(trace_steps, reference_elapsed.as_secs_f64());
 
+        let evidence = build_tassadar_execution_evidence_bundle(
+            format!("tassadar-case-{}", case.case_id),
+            stable_corpus_digest(std::slice::from_ref(artifact)),
+            "tassadar_reference_fixture",
+            descriptor.model.model_id.clone(),
+            model_descriptor_digest.clone(),
+            vec![suite.environment_bundle.benchmark_package.storage_key()],
+            artifact,
+            TassadarExecutorDecodeMode::ReferenceLinear,
+            &reference_execution,
+        );
         let sample_artifacts = build_case_artifacts(
             version,
             &case.case_id,
             artifact,
             &reference_execution,
             &case,
+            &evidence,
         )?;
         let sample = EvalSampleRecord {
             sample_id: case.case_id.clone(),
@@ -609,6 +623,7 @@ fn build_case_artifacts(
     artifact: &TassadarProgramArtifact,
     execution: &psionic_runtime::TassadarExecution,
     case: &psionic_runtime::TassadarValidationCase,
+    evidence: &psionic_runtime::TassadarExecutionEvidenceBundle,
 ) -> Result<Vec<EvalArtifact>, TassadarBenchmarkError> {
     Ok(vec![
         EvalArtifact::new(
@@ -626,6 +641,21 @@ fn build_case_artifacts(
             format!("artifact://tassadar/{version}/{case_id}/expected_trace"),
             &serde_json::to_vec(&case.expected_trace).unwrap_or_default(),
         ),
+        EvalArtifact::new(
+            "tassadar_runtime_manifest.json",
+            format!("artifact://tassadar/{version}/{case_id}/runtime_manifest"),
+            &serde_json::to_vec(&evidence.runtime_manifest).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_trace_proof.json",
+            format!("artifact://tassadar/{version}/{case_id}/trace_proof"),
+            &serde_json::to_vec(&evidence.trace_proof).unwrap_or_default(),
+        ),
+        EvalArtifact::new(
+            "tassadar_execution_proof_bundle.json",
+            format!("artifact://tassadar/{version}/{case_id}/execution_proof_bundle"),
+            &serde_json::to_vec(&evidence.proof_bundle).unwrap_or_default(),
+        ),
     ])
 }
 
@@ -634,8 +664,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tassadar_reference_fixture_suite_builds_package_and_environment_contracts()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn tassadar_reference_fixture_suite_builds_package_and_environment_contracts(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let suite = build_tassadar_reference_fixture_suite("2026.03.15")?;
         assert_eq!(suite.artifacts.len(), 3);
         assert_eq!(suite.benchmark_package.cases.len(), 3);
@@ -660,31 +690,43 @@ mod tests {
     }
 
     #[test]
-    fn tassadar_reference_fixture_benchmark_is_exact_on_current_validation_corpus()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn tassadar_reference_fixture_benchmark_is_exact_on_current_validation_corpus(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = run_tassadar_reference_fixture_benchmark("2026.03.15")?;
         assert_eq!(report.aggregate_summary.round_count, 1);
         assert_eq!(report.aggregate_summary.aggregate_score_bps, Some(10_000));
         assert_eq!(report.aggregate_summary.aggregate_pass_rate_bps, 10_000);
         assert_eq!(report.eval_run.status, crate::EvalRunStatus::Finalized);
-        assert!(
-            report
-                .case_reports
+        assert!(report
+            .case_reports
+            .iter()
+            .all(|case| case.status == EvalSampleStatus::Passed));
+        assert!(report
+            .case_reports
+            .iter()
+            .all(|case| case.cpu_reference_steps_per_second > 0.0));
+        assert!(report
+            .case_reports
+            .iter()
+            .all(|case| case.reference_linear_steps_per_second > 0.0));
+        assert!(report.eval_run.samples.iter().all(|sample| {
+            sample
+                .artifacts
                 .iter()
-                .all(|case| case.status == EvalSampleStatus::Passed)
-        );
-        assert!(
-            report
-                .case_reports
+                .any(|artifact| artifact.artifact_kind == "tassadar_trace_proof.json")
+        }));
+        assert!(report.eval_run.samples.iter().all(|sample| {
+            sample
+                .artifacts
                 .iter()
-                .all(|case| case.cpu_reference_steps_per_second > 0.0)
-        );
-        assert!(
-            report
-                .case_reports
+                .any(|artifact| artifact.artifact_kind == "tassadar_runtime_manifest.json")
+        }));
+        assert!(report.eval_run.samples.iter().all(|sample| {
+            sample
+                .artifacts
                 .iter()
-                .all(|case| case.reference_linear_steps_per_second > 0.0)
-        );
+                .any(|artifact| artifact.artifact_kind == "tassadar_execution_proof_bundle.json")
+        }));
         Ok(())
     }
 }
