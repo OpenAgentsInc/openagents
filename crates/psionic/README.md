@@ -117,6 +117,11 @@ Current posture:
   sequence corpus, and validation reports now expose exact-trace,
   final-output, and halt-correctness metrics against the same CPU-reference
   sequences used to build the dataset
+- the sixth trained-executor follow-on bar now also exists in `psionic-eval`
+  and `psionic-train`: trained-model neural linear decode can now be benchmarked
+  directly against CPU reference execution on the Sudoku-v0 corpus, with
+  explicit decode-mode identity, explicit no-KV-cache prefix-recompute identity,
+  and per-case exactness facts instead of only aggregate scores
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

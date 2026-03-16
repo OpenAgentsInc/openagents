@@ -129,6 +129,9 @@ These issues track the executor-specific work that is still missing:
     `psionic-train` plus exact-trace, final-output, and halt evaluation in
     `psionic-eval` against the frozen CPU-reference sequence corpus
 - `#3782` Phase 6: benchmark real neural linear decode against CPU reference
+  - implemented March 16, 2026: neural linear decode benchmark in
+    `psionic-eval`, with explicit decode-mode and KV-cache identity plus
+    per-case exactness facts against direct CPU reference execution
 - `#3783` Phase 7: execute the first Psionic-only Sudoku-v0 training run
 - `#3784` Phase 8: add telemetry, trace logging, and failure-analysis artifacts
 - `#3785` Phase 9: review the first run and land the next-run plan

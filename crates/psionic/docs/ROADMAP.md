@@ -537,6 +537,11 @@ Its declared scope is:
   frozen sequence manifest, and `psionic-eval` now reports exact-trace,
   final-output, and halt correctness for the trained executor model against the
   CPU-reference sequence corpus
+- landed trained-executor Phase 6 bar from the post-audit issue spine:
+  `psionic-eval` now benchmarks neural linear decode for the executor
+  transformer against direct CPU reference execution, with explicit
+  decode-mode and KV-cache identity plus case-level exactness instead of only
+  aggregate scores
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
