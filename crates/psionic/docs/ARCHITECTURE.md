@@ -495,6 +495,7 @@ training subsystems.
 | `DatasetIterationContract` | `psionic-data` | resume-safe split iteration over datastream-backed shards | `implemented_early` |
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
 | `DataIngressSemanticsReport` | `psionic-data` | machine-readable bounded local data-ingress capability report over dataset source, sampler, batch-sampler, and host-device staging contracts | `implemented` |
+| `DistributedDataFeedSemanticsReport` | `psionic-data` | machine-readable bounded fixed-world-size distributed data-feed report over shard partitioning, worker coordination, and replay-safe per-rank ordering contracts | `implemented` |
 | `PsionicRefusal` | `psionic-core` | canonical cross-library refusal taxonomy for unsupported op, gradient, layout, capability, serialization, sandbox-policy, and topology boundaries | `implemented_early` |
 | `AdvancedDTypeSemanticsReport` | `psionic-core` | machine-readable bounded promotion, cast, and backend-capability matrix for complex, float8, wider integer, and higher-precision real dtype semantics above the compact runtime-core subset | `implemented` |
 | `AutocastPolicyMatrixReport` | `psionic-core` | machine-readable bounded autocast-style precision-policy matrix over backend family, preferred low-precision dtype, operator family, numerics diagnostics, and typed refusal posture | `implemented` |

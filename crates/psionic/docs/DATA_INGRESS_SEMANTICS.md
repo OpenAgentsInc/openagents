@@ -50,3 +50,6 @@ This report prevents two failure modes:
 
 The point of this issue is to make local data ingress a reusable library
 contract that later distributed feed work can extend honestly.
+
+The distributed follow-on now lives in
+`crates/psionic/docs/DISTRIBUTED_DATA_FEED_SEMANTICS.md`.

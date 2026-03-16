@@ -6632,6 +6632,7 @@ version = "0.1.1"
 dependencies = [
  "hex",
  "psionic-datastream",
+ "psionic-runtime",
  "serde",
  "serde_json",
  "sha2",
