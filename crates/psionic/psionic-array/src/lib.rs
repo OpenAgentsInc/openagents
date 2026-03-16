@@ -20,9 +20,16 @@ use psionic_compiler::{
     CompileTransformResult, CompileTransformTraceMode, compile_transform,
 };
 use psionic_core::{
-    DType, Device, DeviceKind, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec,
+    DType, Device, DeviceKind, LazyOp, PsionicRefusal, Shape, Tensor, TensorData, TensorId,
+    TensorSpec,
 };
-use psionic_ir::{Graph, GraphBuilder, GraphError, OpKind};
+use psionic_ir::{
+    BackendPluginExtensionContract, CustomKernelExtensionContract, CustomOpExtensionContract,
+    ExtensibleOperatorRegistry, ExtensionContractKind, ExtensionContractSemanticsReport, Graph,
+    GraphBuilder, GraphError, KernelRegistration, MetaTensor, OpKind, OperatorDispatchContract,
+    QuantizerPluginExtensionContract, RegisteredOperatorSchema, RegistryExtensionError,
+    builtin_extension_contract_semantics_report,
+};
 use psionic_runtime::{
     AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendHealthTracker,
     BackendProbeState, BackendRuntimeResources, BackendToolchainIdentity, CacheInvalidationPolicy,
@@ -55,6 +62,7 @@ struct ArrayContextInner {
     backend_identity: BackendToolchainIdentity,
     builder: RefCell<GraphBuilder>,
     determinism: RefCell<RuntimeDeterminismContract>,
+    extension_state: RefCell<ArrayExtensionState>,
     next_stream_id: RefCell<u32>,
     runtime_state: RefCell<ArrayRuntimeState>,
     debug_state: RefCell<ArrayDebugState>,
@@ -82,6 +90,12 @@ struct ArrayCacheEntry {
 struct ArrayAllocatorEntry {
     signature: String,
     bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ArrayExtensionState {
+    registry: ExtensibleOperatorRegistry,
+    quantizer_plugins: BTreeMap<String, QuantizerPluginExtensionContract>,
 }
 
 #[derive(Debug)]
@@ -288,6 +302,35 @@ pub struct ArrayBackendCaptureReceipt {
     pub artifact: Option<ArrayBackendCaptureArtifact>,
 }
 
+/// Snapshot of the bounded public extension-authoring surface for one array
+/// context.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayExtensionRegistrySnapshot {
+    /// Stable backend label that owns the current authoring surface.
+    pub backend: String,
+    /// Registered built-in plus custom schemas in stable name order.
+    pub schemas: Vec<RegisteredOperatorSchema>,
+    /// Registered kernel contracts in stable operator/backend order.
+    pub kernel_registrations: Vec<KernelRegistration>,
+    /// Registered quantizer-plugin contracts in stable plugin-id order.
+    pub quantizer_plugins: Vec<QuantizerPluginExtensionContract>,
+    /// Canonical bounded extension-contract semantics report for the current scope.
+    pub semantics: ExtensionContractSemanticsReport,
+}
+
+/// Receipt for one successful public extension-contract registration.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ArrayExtensionRegistrationReceipt {
+    /// Contract family that was registered.
+    pub kind: ExtensionContractKind,
+    /// Stable subject identifier such as an op or plugin id.
+    pub subject: String,
+    /// Backend label used when resolving dispatch receipts.
+    pub backend: String,
+    /// Resolved dispatch contracts emitted by the registration when applicable.
+    pub dispatch_contracts: Vec<OperatorDispatchContract>,
+}
+
 /// Public active, peak, and cached-memory counters for the bounded array surface.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct ArrayMemoryCounters {
@@ -485,9 +528,24 @@ pub enum ArrayError {
     /// The lower graph builder rejected the requested operation.
     #[error(transparent)]
     Graph(#[from] GraphError),
+    /// The lower extensible-operator registry rejected one authoring request.
+    #[error(transparent)]
+    RegistryExtension(#[from] RegistryExtensionError),
     /// The public compile-transform debug surface refused or failed.
     #[error(transparent)]
     CompileTransform(#[from] CompileTransformError),
+    /// One public extension contract was refused under the bounded current scope.
+    #[error("extension contract refused: {refusal:?}")]
+    ExtensionContractRefusal {
+        /// Canonical refusal returned by the lower extension contract.
+        refusal: PsionicRefusal,
+    },
+    /// One quantizer-plugin id was already registered on the context.
+    #[error("quantizer plugin `{plugin_id}` is already registered on this context")]
+    DuplicateQuantizerPlugin {
+        /// Duplicate plugin id.
+        plugin_id: String,
+    },
     /// One requested capture artifact format does not belong to the active backend lane.
     #[error("backend debug format {format:?} is unsupported for backend `{backend}`")]
     UnsupportedBackendDebugFormat {
@@ -586,6 +644,36 @@ impl ArrayDebugState {
             self.recent_captures.pop_front();
         }
         self.recent_captures.push_back(summary);
+    }
+}
+
+impl ArrayExtensionState {
+    fn new() -> Self {
+        Self {
+            registry: ExtensibleOperatorRegistry::with_builtin(),
+            quantizer_plugins: BTreeMap::new(),
+        }
+    }
+
+    fn snapshot(&self, backend: &str) -> ArrayExtensionRegistrySnapshot {
+        ArrayExtensionRegistrySnapshot {
+            backend: backend.to_string(),
+            schemas: self.registry.schemas(),
+            kernel_registrations: self.registry.kernel_registrations(),
+            quantizer_plugins: self.quantizer_plugins.values().cloned().collect(),
+            semantics: builtin_extension_contract_semantics_report(),
+        }
+    }
+
+    fn ensure_custom_schema(
+        &mut self,
+        schema: RegisteredOperatorSchema,
+    ) -> Result<(), RegistryExtensionError> {
+        match self.registry.schema(schema.name.as_str()) {
+            Some(existing) if existing == &schema => Ok(()),
+            Some(_) => Err(RegistryExtensionError::DuplicateSchema { name: schema.name }),
+            None => self.registry.register_custom_schema(schema),
+        }
     }
 }
 
@@ -1855,6 +1943,7 @@ impl ArrayContext {
                 determinism: RefCell::new(determinism),
                 debug_state: RefCell::new(debug_state),
                 device,
+                extension_state: RefCell::new(ArrayExtensionState::new()),
                 next_stream_id: RefCell::new(1),
                 runtime_state: RefCell::new(runtime_state),
             }),
@@ -1914,6 +2003,165 @@ impl ArrayContext {
     #[must_use]
     pub fn backend_debug_snapshot(&self) -> ArrayBackendDebugSnapshot {
         self.inner.debug_snapshot()
+    }
+
+    /// Returns the current public extension-authoring snapshot for this context.
+    #[must_use]
+    pub fn extension_registry_snapshot(&self) -> ArrayExtensionRegistrySnapshot {
+        self.inner
+            .extension_state
+            .borrow()
+            .snapshot(self.inner.device.backend())
+    }
+
+    /// Registers one custom-op extension contract on the current context.
+    pub fn register_custom_op_extension(
+        &self,
+        contract: CustomOpExtensionContract,
+    ) -> Result<ArrayExtensionRegistrationReceipt, ArrayError> {
+        contract
+            .validate()
+            .map_err(|refusal| ArrayError::ExtensionContractRefusal { refusal })?;
+        let subject = contract.schema.name.clone();
+        self.inner
+            .extension_state
+            .borrow_mut()
+            .ensure_custom_schema(contract.schema)?;
+        Ok(ArrayExtensionRegistrationReceipt {
+            kind: ExtensionContractKind::CustomOp,
+            subject,
+            backend: self.inner.device.backend().to_string(),
+            dispatch_contracts: Vec::new(),
+        })
+    }
+
+    /// Registers one custom-kernel extension contract on the current context
+    /// and resolves its dispatch for the current backend lane.
+    pub fn register_custom_kernel_extension(
+        &self,
+        contract: CustomKernelExtensionContract,
+    ) -> Result<ArrayExtensionRegistrationReceipt, ArrayError> {
+        contract
+            .validate()
+            .map_err(|refusal| ArrayError::ExtensionContractRefusal { refusal })?;
+        let backend = self.inner.device.backend().to_string();
+        let mut extension_state = self.inner.extension_state.borrow_mut();
+        extension_state.ensure_custom_schema(contract.schema.clone())?;
+        extension_state
+            .registry
+            .register_kernel(contract.registration.clone())?;
+        let dispatch = extension_state
+            .registry
+            .resolve_dispatch(contract.schema.name.as_str(), backend.as_str())?;
+        Ok(ArrayExtensionRegistrationReceipt {
+            kind: ExtensionContractKind::CustomKernel,
+            subject: contract.schema.name,
+            backend,
+            dispatch_contracts: vec![dispatch],
+        })
+    }
+
+    /// Registers one backend-plugin extension contract on the current context.
+    pub fn register_backend_plugin_extension(
+        &self,
+        contract: BackendPluginExtensionContract,
+    ) -> Result<ArrayExtensionRegistrationReceipt, ArrayError> {
+        contract
+            .validate()
+            .map_err(|refusal| ArrayError::ExtensionContractRefusal { refusal })?;
+        let mut extension_state = self.inner.extension_state.borrow_mut();
+        for schema in &contract.custom_schemas {
+            extension_state.ensure_custom_schema(schema.clone())?;
+        }
+        for registration in &contract.kernel_registrations {
+            extension_state
+                .registry
+                .register_kernel(registration.clone())?;
+        }
+        let dispatch_contracts = contract
+            .kernel_registrations
+            .iter()
+            .map(|registration| {
+                extension_state
+                    .registry
+                    .resolve_dispatch(registration.name.as_str(), contract.backend_label.as_str())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ArrayExtensionRegistrationReceipt {
+            kind: ExtensionContractKind::BackendPlugin,
+            subject: contract.plugin_id,
+            backend: contract.backend_label,
+            dispatch_contracts,
+        })
+    }
+
+    /// Registers one quantizer-plugin extension contract on the current context.
+    pub fn register_quantizer_plugin_extension(
+        &self,
+        contract: QuantizerPluginExtensionContract,
+    ) -> Result<ArrayExtensionRegistrationReceipt, ArrayError> {
+        contract
+            .validate()
+            .map_err(|refusal| ArrayError::ExtensionContractRefusal { refusal })?;
+        let plugin_id = contract.plugin_id.clone();
+        let mut extension_state = self.inner.extension_state.borrow_mut();
+        if extension_state
+            .quantizer_plugins
+            .insert(plugin_id.clone(), contract)
+            .is_some()
+        {
+            return Err(ArrayError::DuplicateQuantizerPlugin { plugin_id });
+        }
+        Ok(ArrayExtensionRegistrationReceipt {
+            kind: ExtensionContractKind::QuantizerPlugin,
+            subject: plugin_id,
+            backend: self.inner.device.backend().to_string(),
+            dispatch_contracts: Vec::new(),
+        })
+    }
+
+    /// Resolves one custom or built-in operator dispatch contract against the
+    /// current backend lane.
+    pub fn resolve_extension_dispatch(
+        &self,
+        name: &str,
+    ) -> Result<OperatorDispatchContract, ArrayError> {
+        self.inner
+            .extension_state
+            .borrow()
+            .registry
+            .resolve_dispatch(name, self.inner.device.backend())
+            .map_err(ArrayError::from)
+    }
+
+    /// Validates one declared dense custom output against the current extension registry.
+    pub fn validate_declared_custom_output(
+        &self,
+        name: &str,
+        input_count: usize,
+        declared_output: Option<&TensorSpec>,
+    ) -> Result<TensorSpec, ArrayError> {
+        self.inner
+            .extension_state
+            .borrow()
+            .registry
+            .validate_declared_custom_output(name, input_count, declared_output)
+            .map_err(ArrayError::from)
+    }
+
+    /// Validates one declared meta custom output against the current extension registry.
+    pub fn validate_declared_custom_meta_output(
+        &self,
+        name: &str,
+        input_count: usize,
+        declared_output: Option<&MetaTensor>,
+    ) -> Result<MetaTensor, ArrayError> {
+        self.inner
+            .extension_state
+            .borrow()
+            .registry
+            .validate_declared_custom_meta_output(name, input_count, declared_output)
+            .map_err(ArrayError::from)
     }
 
     /// Applies explicit cache limits to the bounded runtime surface.
@@ -3323,7 +3571,13 @@ mod tests {
     use psionic_compiler::{
         CompileTransformConfig, CompileTransformDebugMode, CompileTransformTraceMode,
     };
-    use psionic_core::{DType, Device, DeviceKind, Shape};
+    use psionic_core::{DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec};
+    use psionic_ir::{
+        BackendPluginExtensionContract, CustomKernelExtensionContract, CustomOpExtensionContract,
+        ExtensionContractKind, KernelDispatchKind, KernelRegistration, OperatorArity,
+        OperatorImplementationKind, OperatorMetaExecutionKind, QuantizerPluginExtensionContract,
+        RegisteredOperatorSchema,
+    };
     use psionic_runtime::{
         AllocatorPoolPolicy, DeviceDescriptor, ExecutionPlanCachePolicy, GeneratorScope,
         HealthStatus, KernelCachePolicy,
@@ -4093,6 +4347,157 @@ mod tests {
             ArrayError::UnsupportedBackendDebugFormat {
                 backend: String::from("cpu"),
                 format: ArrayBackendCaptureFormat::CudaDebugJson,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_extension_authoring_surface_registers_custom_ops_and_kernels()
+    -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let schema = RegisteredOperatorSchema::custom(
+            "x.example.masked_scale",
+            1,
+            OperatorArity::Fixed(2),
+            OperatorImplementationKind::BackendKernel,
+            OperatorMetaExecutionKind::DeclaredOutput,
+        );
+
+        let op_receipt = context.register_custom_op_extension(CustomOpExtensionContract {
+            schema: schema.clone(),
+            declared_output_required: true,
+        })?;
+        assert_eq!(op_receipt.kind, ExtensionContractKind::CustomOp);
+        assert_eq!(op_receipt.subject, "x.example.masked_scale");
+        assert!(op_receipt.dispatch_contracts.is_empty());
+
+        let declared_output = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
+        let validated = context.validate_declared_custom_output(
+            "x.example.masked_scale",
+            2,
+            Some(&declared_output),
+        )?;
+        assert_eq!(validated, declared_output);
+
+        let kernel_receipt =
+            context.register_custom_kernel_extension(CustomKernelExtensionContract {
+                schema: schema.clone(),
+                registration: KernelRegistration::backend_specific(
+                    "x.example.masked_scale",
+                    "cpu",
+                    "masked_scale_cpu",
+                ),
+            })?;
+        assert_eq!(kernel_receipt.kind, ExtensionContractKind::CustomKernel);
+        assert_eq!(
+            kernel_receipt.dispatch_contracts[0].dispatch_kind,
+            KernelDispatchKind::BackendSpecific
+        );
+        assert_eq!(
+            kernel_receipt.dispatch_contracts[0]
+                .resolved_backend
+                .as_deref(),
+            Some("cpu")
+        );
+        assert_eq!(
+            kernel_receipt.dispatch_contracts[0]
+                .kernel_symbol
+                .as_deref(),
+            Some("masked_scale_cpu")
+        );
+
+        let resolved = context.resolve_extension_dispatch("x.example.masked_scale")?;
+        assert_eq!(resolved.dispatch_kind, KernelDispatchKind::BackendSpecific);
+        let snapshot = context.extension_registry_snapshot();
+        assert!(
+            snapshot
+                .schemas
+                .iter()
+                .any(|registered| registered.name == "x.example.masked_scale")
+        );
+        assert!(snapshot.kernel_registrations.iter().any(|registration| {
+            registration.name == "x.example.masked_scale"
+                && registration.kernel_symbol == "masked_scale_cpu"
+        }));
+        assert_eq!(
+            snapshot.semantics.current_scope_window,
+            "psionic_extension_contracts_v1"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_extension_authoring_surface_registers_plugins_and_refuses_duplicates()
+    -> Result<(), ArrayError> {
+        let context = ArrayContext::from_device_descriptor(DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("CUDA GPU")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        });
+        let plugin_schema = RegisteredOperatorSchema::custom(
+            "x.example.flash_mask",
+            1,
+            OperatorArity::Fixed(3),
+            OperatorImplementationKind::BackendKernel,
+            OperatorMetaExecutionKind::DeclaredOutput,
+        );
+        let plugin_receipt =
+            context.register_backend_plugin_extension(BackendPluginExtensionContract {
+                plugin_id: String::from("cuda.flash"),
+                backend_label: String::from("cuda"),
+                custom_schemas: vec![plugin_schema.clone()],
+                kernel_registrations: vec![KernelRegistration::backend_specific(
+                    "x.example.flash_mask",
+                    "cuda",
+                    "flash_mask_cuda",
+                )],
+            })?;
+        assert_eq!(plugin_receipt.kind, ExtensionContractKind::BackendPlugin);
+        assert_eq!(plugin_receipt.backend, "cuda");
+        assert_eq!(
+            plugin_receipt.dispatch_contracts[0]
+                .resolved_backend
+                .as_deref(),
+            Some("cuda")
+        );
+
+        let quantizer_receipt =
+            context.register_quantizer_plugin_extension(QuantizerPluginExtensionContract {
+                plugin_id: String::from("cuda.int8"),
+                supported_weight_modes: vec![QuantizationMode::Int8Symmetric],
+                export_aware: true,
+                requires_observer_contracts: false,
+            })?;
+        assert_eq!(
+            quantizer_receipt.kind,
+            ExtensionContractKind::QuantizerPlugin
+        );
+        let snapshot = context.extension_registry_snapshot();
+        assert_eq!(snapshot.quantizer_plugins.len(), 1);
+        assert_eq!(snapshot.quantizer_plugins[0].plugin_id, "cuda.int8");
+
+        let duplicate = context
+            .register_quantizer_plugin_extension(QuantizerPluginExtensionContract {
+                plugin_id: String::from("cuda.int8"),
+                supported_weight_modes: vec![QuantizationMode::Int8Symmetric],
+                export_aware: true,
+                requires_observer_contracts: false,
+            })
+            .expect_err("duplicate quantizer plugins should refuse");
+        assert_eq!(
+            duplicate,
+            ArrayError::DuplicateQuantizerPlugin {
+                plugin_id: String::from("cuda.int8"),
             }
         );
 

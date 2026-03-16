@@ -3527,6 +3527,18 @@ impl ExtensibleOperatorRegistry {
         self.schemas.get(name)
     }
 
+    /// Returns all registered schemas in stable name order.
+    #[must_use]
+    pub fn schemas(&self) -> Vec<RegisteredOperatorSchema> {
+        self.schemas.values().cloned().collect()
+    }
+
+    /// Returns all kernel registrations in stable operator/backend order.
+    #[must_use]
+    pub fn kernel_registrations(&self) -> Vec<KernelRegistration> {
+        self.kernel_registrations.values().cloned().collect()
+    }
+
     /// Registers one custom operator schema above the built-in registry.
     pub fn register_custom_schema(
         &mut self,

@@ -312,8 +312,9 @@ Current posture:
   extraction, deterministic tree flatten/map/unflatten utilities, bounded
   runtime resource reporting with active/peak/cache counters plus cache-limit
   and reset controls, bounded backend debug snapshots/captures above
-  `psionic-compiler` and `psionic-runtime`, and snapshot graph export for the
-  current output set.
+  `psionic-compiler` and `psionic-runtime`, bounded extension authoring and
+  dispatch-resolution above `psionic-ir`'s extensible operator registry, and
+  snapshot graph export for the current output set.
 - `psionic-array-io`: public array artifact import/export companion above
   `psionic-array`, with stable receipts, explicit dtype and quantization truth,
   single-array `npy`, multi-array `npz`, multi-array `safetensors`, and a
