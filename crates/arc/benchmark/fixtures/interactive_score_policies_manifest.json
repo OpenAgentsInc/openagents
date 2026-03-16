@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "ARC-211 pins versioned interactive score-policy behavior for the currently landed Rust scorer. It covers methodology-v1 weighted scoring, competition-v1 weighted scoring under competition mode, preview-compatibility-v1 unweighted aggregation for the older preview docs, and explicit policy-mode mismatch refusal. Scorecard lifecycle, one-scorecard enforcement, and JSONL recording compatibility remain follow-on issues.",
+  "success_cases": [
+    {
+      "id": "methodology-default-partial",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" }
+      ],
+      "operation_mode": "offline",
+      "metadata": {
+        "source_url": "https://example.com/arc-211-methodology-default",
+        "tags": ["arc-211", "methodology"],
+        "opaque": { "fixture": "methodology-default-partial" }
+      },
+      "baseline_actions": [7, 5],
+      "expected": {
+        "score_policy_id": "arc_agi3_methodology_v1",
+        "overall_score": 0.33333334,
+        "total_actions": 7,
+        "levels_completed": 1,
+        "final_state": "not_finished"
+      }
+    },
+    {
+      "id": "competition-default-perfect",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION5" }
+      ],
+      "operation_mode": "competition",
+      "metadata": {
+        "source_url": "https://example.com/arc-211-competition-default",
+        "tags": ["arc-211", "competition"],
+        "opaque": { "fixture": "competition-default-perfect" }
+      },
+      "baseline_actions": [7, 5],
+      "expected": {
+        "score_policy_id": "arc_agi3_competition_v1",
+        "overall_score": 1.0,
+        "total_actions": 12,
+        "levels_completed": 2,
+        "final_state": "win"
+      }
+    },
+    {
+      "id": "preview-compatibility-partial",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" }
+      ],
+      "operation_mode": "online",
+      "score_policy_id": "arc_agi3_preview_compatibility_v1",
+      "metadata": {
+        "source_url": "https://example.com/arc-211-preview-compatibility",
+        "tags": ["arc-211", "preview"],
+        "opaque": { "fixture": "preview-compatibility-partial" }
+      },
+      "baseline_actions": [7, 5],
+      "expected": {
+        "score_policy_id": "arc_agi3_preview_compatibility_v1",
+        "overall_score": 0.5,
+        "total_actions": 7,
+        "levels_completed": 1,
+        "final_state": "not_finished"
+      }
+    }
+  ],
+  "refusal_cases": [
+    {
+      "id": "competition-mismatched-methodology",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" }
+      ],
+      "operation_mode": "competition",
+      "score_policy_id": "arc_agi3_methodology_v1",
+      "metadata": {
+        "source_url": "https://example.com/arc-211-competition-mismatch",
+        "tags": ["arc-211", "refusal"],
+        "opaque": { "fixture": "competition-mismatched-methodology" }
+      },
+      "baseline_actions": [7, 5],
+      "expected_error": {
+        "kind": "policy_mode_mismatch",
+        "score_policy_id": "arc_agi3_methodology_v1",
+        "operation_mode": "competition"
+      }
+    },
+    {
+      "id": "offline-mismatched-competition",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" }
+      ],
+      "operation_mode": "offline",
+      "score_policy_id": "arc_agi3_competition_v1",
+      "metadata": {
+        "source_url": "https://example.com/arc-211-offline-mismatch",
+        "tags": ["arc-211", "refusal"],
+        "opaque": { "fixture": "offline-mismatched-competition" }
+      },
+      "baseline_actions": [7, 5],
+      "expected_error": {
+        "kind": "policy_mode_mismatch",
+        "score_policy_id": "arc_agi3_competition_v1",
+        "operation_mode": "offline"
+      }
+    }
+  ]
+}

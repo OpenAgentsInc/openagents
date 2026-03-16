@@ -1496,12 +1496,17 @@ next-step cursor recovery from saved ARC-AGI-3 runs. `ARC-209` is now also
 landed in bounded form: `arc-benchmark` can derive ARC-owned run summaries
 from exact-match and interactive reports, aggregate repeated runs into
 `psionic-eval::BenchmarkAggregateSummary`, and emit `psionic-research`
-experiment/evaluation views for regression and comparison workflows. Scorecard
-lifecycle and JSONL compatibility remain follow-on benchmark work. `ARC-210`
+experiment/evaluation views for regression and comparison workflows. `ARC-210`
 is now also landed in bounded form: the crate ships one fixture-backed parity
 bundle that exercises exact-match aggregation, task checkpoint persistence,
 interactive methodology scoring, interactive checkpoint bundle layout,
 recording reload, deterministic replay, and corrupted-checkpoint refusal.
+`ARC-211` is now also landed in bounded form: `arc-benchmark` resolves
+versioned interactive score policies explicitly, including methodology-v1 and
+competition-v1 weighted-by-level-index scoring plus
+preview-compatibility-v1 for the earlier unweighted preview story, with
+policy-mode mismatch refusal kept machine-legible. Scorecard lifecycle and
+JSONL compatibility remain follow-on benchmark work.
 
 ### Phase 4: solver layer
 
