@@ -385,6 +385,78 @@ pub enum ArcBenchmarkError {
         task_id: ArcTaskId,
         state: ArcGameState,
     },
+    #[error("unsupported task checkpoint schema version: {version}")]
+    UnsupportedTaskCheckpointSchemaVersion { version: u16 },
+    #[error("unsupported run manifest schema version: {version}")]
+    UnsupportedRunManifestSchemaVersion { version: u16 },
+    #[error("unsupported interactive checkpoint schema version: {version}")]
+    UnsupportedInteractiveCheckpointSchemaVersion { version: u16 },
+    #[error("task checkpoint expected task `{expected}` but loaded checkpoint for `{actual}`")]
+    TaskCheckpointTaskMismatch {
+        expected: ArcTaskId,
+        actual: ArcTaskId,
+    },
+    #[error(
+        "task checkpoint for `{task_id}` expected benchmark `{expected:?}` but loaded `{actual:?}`"
+    )]
+    TaskCheckpointBenchmarkMismatch {
+        task_id: ArcTaskId,
+        expected: ArcBenchmark,
+        actual: ArcBenchmark,
+    },
+    #[error(
+        "task checkpoint for `{task_id}` already contains attempt {attempt_index} for test pair {test_pair_index}"
+    )]
+    DuplicateCheckpointAttempt {
+        task_id: ArcTaskId,
+        test_pair_index: u16,
+        attempt_index: u16,
+    },
+    #[error("run manifest expected run id `{expected}` but loaded manifest for `{actual}`")]
+    RunManifestRunIdMismatch { expected: String, actual: String },
+    #[error("run manifest expected benchmark `{expected:?}` but loaded `{actual:?}`")]
+    RunManifestBenchmarkMismatch {
+        expected: ArcBenchmark,
+        actual: ArcBenchmark,
+    },
+    #[error("run manifest task `{task_id}` is not initialized")]
+    UnknownRunTask { task_id: ArcTaskId },
+    #[error(
+        "interactive checkpoint `{checkpoint_id}` expected task `{expected}` but loaded `{actual}`"
+    )]
+    InteractiveCheckpointTaskMismatch {
+        checkpoint_id: String,
+        expected: ArcTaskId,
+        actual: ArcTaskId,
+    },
+    #[error(
+        "interactive checkpoint `{checkpoint_id}` expected benchmark `{expected:?}` but loaded `{actual:?}`"
+    )]
+    InteractiveCheckpointBenchmarkMismatch {
+        checkpoint_id: String,
+        expected: ArcBenchmark,
+        actual: ArcBenchmark,
+    },
+    #[error(
+        "interactive checkpoint `{checkpoint_id}` expected recording digest `{expected}` but loaded `{actual}`"
+    )]
+    InteractiveCheckpointRecordingDigestMismatch {
+        checkpoint_id: String,
+        expected: String,
+        actual: String,
+    },
+    #[error(
+        "interactive checkpoint `{checkpoint_id}` expected {expected} step summaries but loaded {actual}"
+    )]
+    InteractiveCheckpointStepCountMismatch {
+        checkpoint_id: String,
+        expected: usize,
+        actual: usize,
+    },
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
     #[error(transparent)]
     Serialization(#[from] ContractSerializationError),
 }

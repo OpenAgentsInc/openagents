@@ -464,9 +464,9 @@ The current baseline is intentionally thin.
 
 - `arc-solvers` and `arc-ml` still do not exist
 - `arc-benchmark` now covers exact-match static scoring plus bounded
-  methodology-based interactive RHAE scoring, but checkpoint/resume,
-  scorecard lifecycle, JSONL compatibility, and repeated-run summaries remain
-  open
+  methodology-based interactive RHAE scoring plus bounded checkpoint/resume
+  surfaces, but scorecard lifecycle, JSONL compatibility, and repeated-run
+  summaries remain open
 - there is not yet a benchmark-truthful REST/runtime parity layer for
   local/remote ARC-AGI-3 flows; the bounded local compatibility server is now
   in-tree, the wrapper-level local-vs-remote parity harness is now in-tree,
@@ -657,7 +657,7 @@ Master issue:
 | --- | --- | --- |
 | `ARC-206` / [#3685](https://github.com/OpenAgentsInc/openagents/issues/3685) | landed | Create `crates/arc/benchmark` and implement exact-match static scoring for ARC-AGI-1 and ARC-AGI-2. |
 | `ARC-207` / [#3686](https://github.com/OpenAgentsInc/openagents/issues/3686) | landed | Implement interactive RHAE scoring, scorecards, recordings, and per-step summaries for ARC-AGI-3. |
-| `ARC-208` / [#3687](https://github.com/OpenAgentsInc/openagents/issues/3687) | planned | Port checkpoint, resume, and run-manifest behavior from the benchmarking repos. |
+| `ARC-208` / [#3687](https://github.com/OpenAgentsInc/openagents/issues/3687) | landed | Port checkpoint, resume, and run-manifest behavior from the benchmarking repos. |
 | `ARC-209` / [#3688](https://github.com/OpenAgentsInc/openagents/issues/3688) | planned | Add typed benchmark summaries and repeated-run aggregation over `psionic-eval` and `psionic-research`. |
 | `ARC-210` / [#3689](https://github.com/OpenAgentsInc/openagents/issues/3689) | planned | Publish benchmark parity fixtures covering exact-match, RHAE, checkpoints, recordings, and replay. |
 

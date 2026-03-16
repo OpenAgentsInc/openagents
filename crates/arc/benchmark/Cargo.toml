@@ -13,8 +13,8 @@ workspace = true
 [dependencies]
 arc-core = { path = "../core" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 arc-engine = { path = "../engine" }
-serde_json = { workspace = true }
