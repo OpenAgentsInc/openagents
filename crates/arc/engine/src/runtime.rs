@@ -220,7 +220,7 @@ impl ArcEngine {
         } else {
             vec![observation.frame.clone()]
         };
-        self.record_step(step_index, action.clone(), &observation);
+        self.record_step(step_index, action.clone(), &observation, full_reset);
 
         Ok(ArcEngineStepOutcome {
             step_index,
@@ -590,11 +590,20 @@ impl ArcEngine {
             .collect()
     }
 
-    fn record_step(&mut self, step_index: u32, action: ArcAction, observation: &ArcObservation) {
+    fn record_step(
+        &mut self,
+        step_index: u32,
+        action: ArcAction,
+        observation: &ArcObservation,
+        full_reset: bool,
+    ) {
         self.recorded_steps.push(ArcEpisodeStep {
             step_index,
             action,
             observation: observation.clone(),
+            levels_completed: self.state.levels_completed,
+            win_levels: self.state.win_levels,
+            full_reset,
             terminal: matches!(
                 self.state.game_state,
                 ArcEngineGameState::Win | ArcEngineGameState::GameOver

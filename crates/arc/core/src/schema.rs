@@ -635,6 +635,12 @@ pub struct ArcEpisodeStep {
     pub step_index: u32,
     pub action: ArcAction,
     pub observation: ArcObservation,
+    #[serde(default, skip_serializing_if = "u16_is_zero")]
+    pub levels_completed: u16,
+    #[serde(default, skip_serializing_if = "u16_is_zero")]
+    pub win_levels: u16,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub full_reset: bool,
     pub terminal: bool,
 }
 
@@ -766,6 +772,10 @@ fn reject_unexpected_coordinates(action: &ArcActionWire) -> Result<(), ArcAction
 
 fn arc_game_state_is_default(state: &ArcGameState) -> bool {
     *state == ArcGameState::NotFinished
+}
+
+fn u16_is_zero(value: &u16) -> bool {
+    *value == 0
 }
 
 pub fn canonical_json_string<T>(value: &T) -> Result<String, ContractSerializationError>

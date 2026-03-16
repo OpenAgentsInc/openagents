@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "ARC-207 covers bounded offline/local methodology scoring for deterministic ARC-AGI-3 recordings. Competition policy, scorecard lifecycle, JSONL compatibility, and checkpoint/resume remain follow-on issues.",
+  "cases": [
+    {
+      "id": "demo-perfect-win",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        {
+          "kind": "ACTION6",
+          "x": 22,
+          "y": 22
+        },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION5" }
+      ],
+      "metadata": {
+        "source_url": "https://example.com/demo-perfect-win",
+        "tags": ["arc-207", "methodology"],
+        "opaque": {
+          "fixture": "demo-perfect-win"
+        }
+      },
+      "baseline_actions": [7, 5],
+      "expected": {
+        "total_actions": 12,
+        "resets": 0,
+        "levels_completed": 2,
+        "win_levels": 2,
+        "overall_score": 1.0,
+        "final_state": "win",
+        "level_scores": [1.0, 1.0],
+        "level_actions": [7, 5],
+        "step_count": 13,
+        "completed": true
+      }
+    },
+    {
+      "id": "demo-partial-run",
+      "package_path": "../engine/fixtures/demo_game.json",
+      "actions": [
+        { "kind": "RESET" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        {
+          "kind": "ACTION6",
+          "x": 22,
+          "y": 22
+        },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" }
+      ],
+      "metadata": {
+        "source_url": "https://example.com/demo-partial-run",
+        "tags": ["arc-207", "methodology"],
+        "opaque": {
+          "fixture": "demo-partial-run"
+        }
+      },
+      "baseline_actions": [7, 5],
+      "expected": {
+        "total_actions": 7,
+        "resets": 0,
+        "levels_completed": 1,
+        "win_levels": 2,
+        "overall_score": 0.33333334,
+        "final_state": "not_finished",
+        "level_scores": [1.0, 0.0],
+        "level_actions": [7, 0],
+        "step_count": 8,
+        "completed": false
+      }
+    }
+  ]
+}

@@ -10,16 +10,21 @@
 //! ARC benchmark scoring and benchmark-facing report contracts.
 //!
 //! `arc-benchmark` owns benchmark truth for ARC-specific scoring and reporting.
-//! The first landed slice is exact-match static scoring for ARC-AGI-1 and
-//! ARC-AGI-2. Interactive RHAE, scorecard lifecycle policy, recordings,
-//! checkpoints, and run manifests land here later.
+//! The first landed slices are exact-match static scoring for ARC-AGI-1 and
+//! ARC-AGI-2 plus bounded interactive RHAE scoring for deterministic
+//! ARC-AGI-3 recordings. Scorecard lifecycle policy, checkpoints, resume
+//! behavior, and JSONL parity remain follow-on work.
 
 mod exact_match;
+mod interactive;
 
 pub use exact_match::{
     ArcBenchmarkError, ArcExactMatchAttemptReport, ArcExactMatchBenchmarkSummary,
     ArcExactMatchPairReport, ArcExactMatchTaskReport, ArcStaticAnswerKey, ArcStaticPairSubmission,
     ArcStaticTaskSubmission, score_exact_match_task,
+};
+pub use interactive::{
+    ArcInteractiveRunReport, ArcInteractiveStepSummary, score_interactive_recording,
 };
 
 /// Human-readable ownership summary for this crate.
