@@ -1,0 +1,13 @@
+{
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
+  "split": "validation",
+  "exact_trace_case_count": 0,
+  "buckets": [
+    {
+      "first_divergence_index": 1,
+      "case_count": 2
+    }
+  ],
+  "report_digest": "20170dff74f44eeff26c5848a454d6af562c3fc172bc1d76c7edb684108c2d64"
+}

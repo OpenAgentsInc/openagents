@@ -17,7 +17,8 @@ use psionic_eval::{
     build_tassadar_executor_first_token_confusion_report, build_tassadar_sequence_dataset,
 };
 use psionic_models::{
-    TassadarExecutorTransformer, TassadarExecutorTransformerDescriptor,
+    TassadarExecutorTrainableSurface, TassadarExecutorTransformer,
+    TassadarExecutorTransformerDescriptor,
     TassadarExecutorTransformerError,
 };
 use serde::{Deserialize, Serialize};
@@ -62,6 +63,19 @@ const CHECKPOINT_MANIFEST_FILE: &str = "checkpoint_manifest.json";
 const MODEL_ARTIFACT_FILE: &str = "model_artifact.json";
 const RUN_BUNDLE_FILE: &str = "run_bundle.json";
 
+fn default_trainable_surface() -> TassadarExecutorTrainableSurface {
+    TassadarExecutorTrainableSurface::OutputHeadOnly
+}
+
+/// One sparse embedding row override persisted inside a checkpoint.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TassadarExecutorEmbeddingRowOverride {
+    /// Zero-based row index.
+    pub row_index: u32,
+    /// Full row values.
+    pub values: Vec<f32>,
+}
+
 /// Frozen checkpoint payload for the first trained neural executor run.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TassadarExecutorCheckpointState {
@@ -77,14 +91,41 @@ pub struct TassadarExecutorCheckpointState {
     pub trained_weight_digest: String,
     /// Frozen training-manifest digest.
     pub training_manifest_digest: String,
+    /// Active trainable surface for the checkpoint.
+    #[serde(default = "default_trainable_surface")]
+    pub trainable_surface: TassadarExecutorTrainableSurface,
     /// Digest over the trained output projection only.
     pub output_projection_digest: String,
     /// Digest over the trained output bias only.
     pub output_bias_digest: String,
+    /// Digest over the trained token embeddings when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_embeddings_digest: Option<String>,
+    /// Digest over the trained position rows when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position_embedding_rows_digest: Option<String>,
+    /// Digest over the learned mixer projection when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub small_learned_mixer_projection_digest: Option<String>,
+    /// Digest over the learned mixer bias when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub small_learned_mixer_bias_digest: Option<String>,
     /// Trained output projection.
     pub output_projection: Vec<f32>,
     /// Trained output bias.
     pub output_bias: Vec<f32>,
+    /// Trained token embeddings when the surface enables them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_embeddings: Option<Vec<f32>>,
+    /// Sparse trained position-embedding rows when the surface enables them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub position_embedding_rows: Vec<TassadarExecutorEmbeddingRowOverride>,
+    /// Learned mixer projection when the surface enables it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub small_learned_mixer_projection: Option<Vec<f32>>,
+    /// Learned mixer bias when the surface enables it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub small_learned_mixer_bias: Option<Vec<f32>>,
     /// Stable digest over the full checkpoint payload.
     pub state_digest: String,
 }
@@ -95,15 +136,52 @@ impl TassadarExecutorCheckpointState {
         run_id: &str,
         training_manifest: &TassadarSequenceTrainingManifest,
         model: &TassadarExecutorTransformer,
+        observed_position_count: usize,
     ) -> Self {
         let output_projection = model.weights().output_projection().to_vec();
         let output_bias = model.weights().output_bias().to_vec();
+        let token_embeddings = model
+            .trainable_surface()
+            .trains_token_embeddings()
+            .then(|| model.weights().token_embeddings().to_vec());
+        let position_embedding_rows = if model.trainable_surface().trains_position_embeddings() {
+            capture_position_embedding_rows(model, observed_position_count)
+        } else {
+            Vec::new()
+        };
+        let small_learned_mixer_projection = model
+            .trainable_surface()
+            .trains_small_learned_mixer()
+            .then(|| model.weights().small_learned_mixer_projection().to_vec());
+        let small_learned_mixer_bias = model
+            .trainable_surface()
+            .trains_small_learned_mixer()
+            .then(|| model.weights().small_learned_mixer_bias().to_vec());
         let output_projection_digest = stable_digest(
             b"psionic_tassadar_executor_output_projection|",
             &output_projection,
         );
         let output_bias_digest =
             stable_digest(b"psionic_tassadar_executor_output_bias|", &output_bias);
+        let token_embeddings_digest = token_embeddings.as_ref().map(|tensor| {
+            stable_digest(b"psionic_tassadar_executor_token_embeddings|", tensor)
+        });
+        let position_embedding_rows_digest = (!position_embedding_rows.is_empty()).then(|| {
+            stable_digest(
+                b"psionic_tassadar_executor_position_embedding_rows|",
+                &position_embedding_rows,
+            )
+        });
+        let small_learned_mixer_projection_digest =
+            small_learned_mixer_projection.as_ref().map(|tensor| {
+                stable_digest(
+                    b"psionic_tassadar_executor_small_learned_mixer_projection|",
+                    tensor,
+                )
+            });
+        let small_learned_mixer_bias_digest = small_learned_mixer_bias.as_ref().map(|tensor| {
+            stable_digest(b"psionic_tassadar_executor_small_learned_mixer_bias|", tensor)
+        });
         let mut checkpoint = Self {
             checkpoint_id: checkpoint_id.to_string(),
             run_id: run_id.to_string(),
@@ -111,10 +189,19 @@ impl TassadarExecutorCheckpointState {
             trained_model_descriptor_digest: model.descriptor().stable_digest(),
             trained_weight_digest: model.descriptor().weights.digest.clone(),
             training_manifest_digest: training_manifest.manifest_digest.clone(),
+            trainable_surface: model.trainable_surface(),
             output_projection_digest,
             output_bias_digest,
+            token_embeddings_digest,
+            position_embedding_rows_digest,
+            small_learned_mixer_projection_digest,
+            small_learned_mixer_bias_digest,
             output_projection,
             output_bias,
+            token_embeddings,
+            position_embedding_rows,
+            small_learned_mixer_projection,
+            small_learned_mixer_bias,
             state_digest: String::new(),
         };
         checkpoint.state_digest =
@@ -127,9 +214,11 @@ impl TassadarExecutorCheckpointState {
         &self,
     ) -> Result<TassadarExecutorTransformer, TassadarExecutorRunError> {
         let mut model = match self.base_model_id.as_str() {
-            TassadarExecutorTransformer::MODEL_ID => TassadarExecutorTransformer::sudoku_v0(),
+            TassadarExecutorTransformer::MODEL_ID => {
+                TassadarExecutorTransformer::sudoku_v0_with_surface(self.trainable_surface)
+            }
             TassadarExecutorTransformer::SUDOKU_9X9_MODEL_ID => {
-                TassadarExecutorTransformer::sudoku_9x9()
+                TassadarExecutorTransformer::sudoku_9x9_with_surface(self.trainable_surface)
             }
             actual => {
                 return Err(TassadarExecutorRunError::UnexpectedBaseModel {
@@ -146,6 +235,71 @@ impl TassadarExecutorCheckpointState {
             self.output_projection.as_slice(),
             self.output_bias.as_slice(),
         )?;
+        if let Some(token_embeddings) = self.token_embeddings.as_ref() {
+            if token_embeddings.len() != model.weights().token_embeddings().len() {
+                return Err(TassadarExecutorRunError::Model(
+                    TassadarExecutorTransformerError::WeightLengthMismatch {
+                        tensor: String::from("token_embeddings"),
+                        expected: model.weights().token_embeddings().len(),
+                        actual: token_embeddings.len(),
+                    },
+                ));
+            }
+            model
+                .weights_mut()
+                .token_embeddings_mut()
+                .copy_from_slice(token_embeddings.as_slice());
+        }
+        if !self.position_embedding_rows.is_empty() {
+            let embedding_dim = model.descriptor().config.embedding_dim;
+            let max_rows = model.descriptor().config.max_sequence_tokens;
+            for row in &self.position_embedding_rows {
+                let row_index = row.row_index as usize;
+                if row.values.len() != embedding_dim || row_index >= max_rows {
+                    return Err(TassadarExecutorRunError::Model(
+                        TassadarExecutorTransformerError::WeightLengthMismatch {
+                            tensor: String::from("position_embedding_row"),
+                            expected: embedding_dim,
+                            actual: row.values.len(),
+                        },
+                    ));
+                }
+                let start = row_index * embedding_dim;
+                model.weights_mut().position_embeddings_mut()[start..start + embedding_dim]
+                    .copy_from_slice(row.values.as_slice());
+            }
+        }
+        if let Some(mixer_projection) = self.small_learned_mixer_projection.as_ref() {
+            if mixer_projection.len() != model.weights().small_learned_mixer_projection().len() {
+                return Err(TassadarExecutorRunError::Model(
+                    TassadarExecutorTransformerError::WeightLengthMismatch {
+                        tensor: String::from("small_learned_mixer_projection"),
+                        expected: model.weights().small_learned_mixer_projection().len(),
+                        actual: mixer_projection.len(),
+                    },
+                ));
+            }
+            model
+                .weights_mut()
+                .small_learned_mixer_projection_mut()
+                .copy_from_slice(mixer_projection.as_slice());
+        }
+        if let Some(mixer_bias) = self.small_learned_mixer_bias.as_ref() {
+            if mixer_bias.len() != model.weights().small_learned_mixer_bias().len() {
+                return Err(TassadarExecutorRunError::Model(
+                    TassadarExecutorTransformerError::WeightLengthMismatch {
+                        tensor: String::from("small_learned_mixer_bias"),
+                        expected: model.weights().small_learned_mixer_bias().len(),
+                        actual: mixer_bias.len(),
+                    },
+                ));
+            }
+            model
+                .weights_mut()
+                .small_learned_mixer_bias_mut()
+                .copy_from_slice(mixer_bias.as_slice());
+        }
+        model.refresh_after_training();
         if model.descriptor().stable_digest() != self.trained_model_descriptor_digest {
             return Err(TassadarExecutorRunError::DescriptorDigestMismatch {
                 expected: self.trained_model_descriptor_digest.clone(),
@@ -259,6 +413,9 @@ pub struct TassadarExecutorReferenceRunBundle {
     pub schema_version: u16,
     /// Stable run identifier.
     pub run_id: String,
+    /// Active trainable surface for the run.
+    #[serde(default = "default_trainable_surface")]
+    pub trainable_surface: TassadarExecutorTrainableSurface,
     /// Frozen dataset version.
     pub dataset_version: String,
     /// Frozen dataset storage key.
@@ -324,6 +481,7 @@ impl TassadarExecutorReferenceRunBundle {
         let mut bundle = Self {
             schema_version: TASSADAR_EXECUTOR_REFERENCE_RUN_SCHEMA_VERSION,
             run_id: config.run_id.clone(),
+            trainable_surface: config.trainable_surface,
             dataset_version: config.dataset_version.clone(),
             dataset_storage_key: training_manifest.dataset_storage_key.clone(),
             dataset_digest: training_manifest.dataset_digest.clone(),
@@ -464,6 +622,7 @@ pub fn execute_tassadar_training_run(
     let training_manifest = build_tassadar_sequence_training_manifest(
         config.workload,
         config.dataset_version.as_str(),
+        config.trainable_surface,
     )?;
     let outcome = train_tassadar_executor_transformer(config)?;
     let dataset_bundle =
@@ -486,6 +645,13 @@ pub fn execute_tassadar_training_run(
         config.run_id.as_str(),
         &training_manifest,
         &outcome.model,
+        dataset_bundle
+            .dataset
+            .examples
+            .iter()
+            .map(|example| example.token_ids.len())
+            .max()
+            .unwrap_or(1),
     );
     let checkpoint_state_bytes =
         serialize_json("tassadar_executor_checkpoint_state", &checkpoint_state)?;
@@ -603,6 +769,23 @@ pub fn execute_tassadar_training_run(
         "tassadar_reference_run_bundle",
     )?;
     Ok(bundle)
+}
+
+fn capture_position_embedding_rows(
+    model: &TassadarExecutorTransformer,
+    observed_position_count: usize,
+) -> Vec<TassadarExecutorEmbeddingRowOverride> {
+    let embedding_dim = model.descriptor().config.embedding_dim;
+    let row_count = observed_position_count.min(model.descriptor().config.max_sequence_tokens);
+    (0..row_count)
+        .map(|row_index| {
+            let start = row_index * embedding_dim;
+            TassadarExecutorEmbeddingRowOverride {
+                row_index: row_index as u32,
+                values: model.weights().position_embeddings()[start..start + embedding_dim].to_vec(),
+            }
+        })
+        .collect()
 }
 
 fn write_json_artifact<T>(

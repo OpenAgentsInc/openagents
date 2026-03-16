@@ -268,6 +268,21 @@ That now includes one intentionally narrow executor-training answer:
   target index `1`) while still failing the later gates (`5000` bps first-32
   exactness, `0/2` exact traces); `docs/audits/2026-03-16-tassadar-phase-12-boundary-audit.md`
   is the human-readable companion note for that run
+- the Phase 13 trainable-surface ablation now also exists above that baseline:
+  the lookup-style executor family now records a stable trainable surface in
+  descriptors, manifests, checkpoints, and run bundles; `psionic-train` can
+  update the output head alone, the output head plus token embeddings, the
+  output head plus token and position embeddings, or those plus one small
+  learned residual mixer; and `psionic-research` now materializes a
+  same-corpus ablation root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1`
+  with a machine-readable `trainable_surface_ablation.json`; that report keeps
+  `output_head_only` as the preserved baseline and recommends only
+  `output_head_embeddings_and_small_learned_mixer`, which improves the
+  selected checkpoint to `3750` bps first-8 exactness and `5625` bps first-32
+  exactness while still leaving `0/2` exact validation traces and the first
+  divergence bucket at target index `1`; the companion human-readable audit is
+  `docs/audits/2026-03-16-tassadar-phase-13-trainable-surface-audit.md`
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

@@ -177,6 +177,20 @@ Current posture:
   divergence moved to target index `1` on both validation cases); it still has
   `0/2` exact traces and only `5000` bps first-32 exactness, so this is
   honest boundary progress rather than an exact learned-executor claim
+- the thirteenth trained-executor follow-on bar from the post-audit issue
+  spine now also exists in `psionic-models`, `psionic-train`,
+  `psionic-research`, `docs/audits/`, and a new same-corpus ablation root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1`:
+  the lookup-family executor now records a stable trainable surface in model
+  descriptors, training manifests, checkpoints, and run bundles, and
+  `psionic-research` now persists a machine-readable
+  `trainable_surface_ablation.json` across four controlled surfaces; the only
+  surface that beats the preserved `output_head_only` baseline is
+  `output_head_embeddings_and_small_learned_mixer`, which improves boundary
+  exactness to `3750` bps over the first `8` target tokens and `5625` bps over
+  the first `32`, but still leaves `0/2` exact validation traces and the first
+  divergence bucket at target index `1`, so this is a truthful next-surface
+  recommendation rather than a promotion claim
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

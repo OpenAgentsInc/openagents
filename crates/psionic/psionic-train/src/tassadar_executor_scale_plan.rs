@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use psionic_data::TassadarSequenceSplit;
 use psionic_eval::{TassadarSequenceEvalError, build_tassadar_sudoku_9x9_sequence_dataset};
-use psionic_models::TassadarExecutorTransformer;
+use psionic_models::{TassadarExecutorTrainableSurface, TassadarExecutorTransformer};
 use psionic_runtime::tassadar_sudoku_9x9_corpus;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
@@ -138,6 +138,7 @@ impl TassadarExecutorSudoku9x9ScalePlan {
                 learning_rate: 0.05,
                 max_train_target_tokens_per_example: Some(256),
                 max_eval_target_tokens_per_example: None,
+                trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
                 curriculum_stages: Vec::new(),
                 validate_every_epoch: true,
                 select_best_checkpoint_by_boundary: true,
@@ -463,6 +464,7 @@ mod tests {
     use std::{fs, path::Path};
 
     use psionic_data::TassadarSequenceSplit;
+    use psionic_models::TassadarExecutorTrainableSurface;
     use tempfile::tempdir;
 
     use super::{
@@ -480,6 +482,7 @@ mod tests {
         let run_bundle = TassadarExecutorReferenceRunBundle {
             schema_version: 1,
             run_id: String::from("tassadar-executor-transformer-sudoku-v0-reference-run-v0"),
+            trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             dataset_version: String::from("train-v0"),
             dataset_storage_key: String::from("oa.tassadar.sudoku_v0.sequence@train-v0"),
             dataset_digest: String::from("dataset-digest"),

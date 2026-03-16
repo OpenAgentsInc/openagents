@@ -13,8 +13,10 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 mod runner;
+mod tassadar_surface_ablation;
 
 pub use runner::*;
+pub use tassadar_surface_ablation::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str =

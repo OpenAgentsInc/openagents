@@ -606,6 +606,20 @@ Its declared scope is:
   empty token-zero confusion report) while still remaining below promotion
   bars (`5000` bps first-32 exactness, `0/2` exact traces); the companion
   audit is `docs/audits/2026-03-16-tassadar-phase-12-boundary-audit.md`
+- landed trained-executor Phase 13 bar from the post-audit issue spine:
+  `psionic-models` now carries a stable trainable-surface contract for the
+  lookup-family executor, `psionic-train` now persists that surface through
+  manifests, checkpoints, and run bundles while supporting controlled updates
+  over the output head, embeddings, and one small residual mixer, and
+  `psionic-research` now materializes a same-corpus ablation root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1`
+  plus a machine-readable `trainable_surface_ablation.json`; that ablation
+  keeps `output_head_only` as the preserved baseline and finds that only
+  `output_head_embeddings_and_small_learned_mixer` materially improves the
+  selected checkpoint (`3750` bps first-8 exactness, `5625` bps first-32
+  exactness, `7439` bps aggregate exactness), while still leaving `0/2` exact
+  traces and the first-divergence bucket at target index `1`; the companion
+  audit is `docs/audits/2026-03-16-tassadar-phase-13-trainable-surface-audit.md`
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

@@ -5,6 +5,7 @@ use psionic_data::{
 use psionic_eval::{
     TassadarSequenceEvalError, TassadarSequenceWorkload, build_tassadar_sequence_dataset,
 };
+use psionic_models::TassadarExecutorTrainableSurface;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -20,6 +21,9 @@ pub struct TassadarSequenceTrainingManifest {
     pub tokenizer_digest: String,
     /// Stable vocabulary digest.
     pub vocabulary_digest: String,
+    /// Active trainable surface for the run that materialized this manifest.
+    #[serde(default = "default_trainable_surface")]
+    pub trainable_surface: TassadarExecutorTrainableSurface,
     /// Shared packing policy used for the first training run.
     pub packing_policy: DatasetPackingPolicy,
     /// Packed train split.
@@ -37,6 +41,7 @@ impl TassadarSequenceTrainingManifest {
         dataset: &TassadarSequenceDatasetContract,
         tokenizer_digest: &str,
         vocabulary_digest: &str,
+        trainable_surface: TassadarExecutorTrainableSurface,
         packing_policy: DatasetPackingPolicy,
         train_plan: DatasetPackingPlan,
         validation_plan: DatasetPackingPlan,
@@ -47,6 +52,7 @@ impl TassadarSequenceTrainingManifest {
             dataset_digest: dataset.stable_digest(),
             tokenizer_digest: tokenizer_digest.to_string(),
             vocabulary_digest: vocabulary_digest.to_string(),
+            trainable_surface,
             packing_policy,
             train_plan,
             validation_plan,
@@ -70,10 +76,15 @@ pub enum TassadarSequenceTrainingError {
     Dataset(#[from] TassadarSequenceDatasetError),
 }
 
+fn default_trainable_surface() -> TassadarExecutorTrainableSurface {
+    TassadarExecutorTrainableSurface::OutputHeadOnly
+}
+
 /// Builds the frozen sequence dataset plus generic packing plans for one Tassadar workload.
 pub fn build_tassadar_sequence_training_manifest(
     workload: TassadarSequenceWorkload,
     version: &str,
+    trainable_surface: TassadarExecutorTrainableSurface,
 ) -> Result<TassadarSequenceTrainingManifest, TassadarSequenceTrainingError> {
     let bundle = build_tassadar_sequence_dataset(workload, version)?;
     let dataset = bundle.dataset;
@@ -97,6 +108,7 @@ pub fn build_tassadar_sequence_training_manifest(
         &dataset,
         bundle.tokenizer_digest.stable_digest().as_str(),
         bundle.vocabulary_digest.as_str(),
+        trainable_surface,
         packing_policy,
         train_plan,
         validation_plan,
@@ -108,14 +120,22 @@ pub fn build_tassadar_sequence_training_manifest(
 pub fn build_tassadar_sudoku_v0_sequence_training_manifest(
     version: &str,
 ) -> Result<TassadarSequenceTrainingManifest, TassadarSequenceTrainingError> {
-    build_tassadar_sequence_training_manifest(TassadarSequenceWorkload::SudokuV0, version)
+    build_tassadar_sequence_training_manifest(
+        TassadarSequenceWorkload::SudokuV0,
+        version,
+        TassadarExecutorTrainableSurface::OutputHeadOnly,
+    )
 }
 
 /// Builds the frozen sequence dataset plus generic packing plans for the 9x9 scale-out run.
 pub fn build_tassadar_sudoku_9x9_sequence_training_manifest(
     version: &str,
 ) -> Result<TassadarSequenceTrainingManifest, TassadarSequenceTrainingError> {
-    build_tassadar_sequence_training_manifest(TassadarSequenceWorkload::Sudoku9x9, version)
+    build_tassadar_sequence_training_manifest(
+        TassadarSequenceWorkload::Sudoku9x9,
+        version,
+        TassadarExecutorTrainableSurface::OutputHeadOnly,
+    )
 }
 
 fn stable_digest<T>(prefix: &[u8], value: &T) -> String

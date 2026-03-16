@@ -1,0 +1,25 @@
+{
+  "checkpoint_id": "tassadar-executor-transformer-sudoku-v0-surface-output_head_embeddings_and_small_learned_mixer-v1.checkpoint.epoch_0005",
+  "checkpoint_family": "train.tassadar.executor_transformer",
+  "checkpoint_ref": "checkpoint://tassadar-executor-transformer-sudoku-v0-surface-output_head_embeddings_and_small_learned_mixer-v1.checkpoint.epoch_0005",
+  "checkpoint_state_file": "checkpoint_state.json",
+  "checkpoint_manifest": {
+    "stream_id": "checkpoint://tassadar-executor-transformer-sudoku-v0-surface-output_head_embeddings_and_small_learned_mixer-v1.checkpoint.epoch_0005",
+    "manifest_digest": "12f3759b5975638c35069fd4688eb9fedc4d161a5f353bb8d9b460c91ab9cb0a",
+    "subject": "checkpoint",
+    "object_digest": "23f1cd7389b6e86185ccfe127a46fa5f27b6064878dcd67b9db3d20184db7052",
+    "total_bytes": 85200499,
+    "chunk_count": 20801,
+    "chunk_bytes": 4096,
+    "encoding": "raw_binary",
+    "provenance_digest": "9ca67c46939cbd459204a18168a6f3640cc39c39019b94f253c5e106e333a987",
+    "checkpoint_binding": {
+      "checkpoint_family": "train.tassadar.executor_transformer",
+      "checkpoint_ref": "checkpoint://tassadar-executor-transformer-sudoku-v0-surface-output_head_embeddings_and_small_learned_mixer-v1.checkpoint.epoch_0005",
+      "step": 1
+    }
+  },
+  "trained_model_descriptor_digest": "a75c4d1653d6f3c2e1ae8248a0ac05216ff4b05695ee24ec2acdc38679ee7793",
+  "trained_weight_digest": "20518a553a62b5c8de9c83367c9979e4a5b4c852b23fec2dc9b2d4d05768b7f2",
+  "artifact_digest": "933499475c669a34403f38e5abf484d8ef5dffb17cb4483ba7997100068cd151"
+}
