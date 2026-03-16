@@ -517,6 +517,11 @@ Its declared scope is:
   profile with a real 4x4 backtracking Sudoku program representation on the
   CPU reference lane, while hull-cache and sparse-top-k still fall back
   explicitly on that general backward-branch control-flow envelope
+- landed trained-executor Phase 2 bar from the post-audit issue spine: the
+  fake `SudokuClass` placeholder has been replaced by a real multi-case 4x4
+  Sudoku-v0 corpus with stable train/validation/test splits, exact
+  CPU-reference traces for every puzzle instance, and fallback-aware
+  article-class benchmark reporting over the honest backtracking cases
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
@@ -703,6 +708,8 @@ implemented:
 
 - Phase 1 widen the Wasm subset for real Sudoku search:
   [#3777](https://github.com/OpenAgentsInc/openagents/issues/3777)
+- Phase 2 replace the placeholder Sudoku benchmark with a real 4x4 solver
+  corpus: [#3778](https://github.com/OpenAgentsInc/openagents/issues/3778)
 
 ## Epic 0: Governance And Acceptance
 

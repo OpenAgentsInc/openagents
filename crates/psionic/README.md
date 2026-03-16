@@ -92,6 +92,13 @@ Current posture:
   `tassadar.wasm.sudoku_v0_search.v1` profile plus a real 4x4 backtracking
   Sudoku search program representation that is exact on the CPU reference lane
   and explicitly outside the current hull/sparse validated fast-path subset
+- the second trained-executor follow-on bar now also exists in
+  `psionic-runtime` and `psionic-eval`: the fake `SudokuClass` placeholder has
+  been replaced by a real multi-case 4x4 Sudoku-v0 corpus with stable
+  train/validation/test split metadata, exact CPU-reference traces per puzzle,
+  and truthful article-class benchmark reporting that surfaces hull/sparse
+  fallback on those backtracking workloads instead of pretending they remain
+  direct fast-path cases
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

@@ -1542,13 +1542,9 @@ mod tests {
 
     #[test]
     fn tassadar_article_class_fixture_aligns_with_runtime_article_corpus() {
-        let fixture = TassadarExecutorFixture::core_i32_v2();
+        let fixture = TassadarExecutorFixture::sudoku_v0_search_v1();
         let runner = TassadarFixtureRunner::for_profile(fixture.descriptor().profile.clone())
             .expect("article-class fixture runner");
-        assert_eq!(
-            fixture.descriptor().model.model_id,
-            TassadarExecutorFixture::ARTICLE_CLASS_MODEL_ID
-        );
         assert_eq!(
             fixture.descriptor().profile.profile_id,
             fixture.runtime_weights().profile_id
