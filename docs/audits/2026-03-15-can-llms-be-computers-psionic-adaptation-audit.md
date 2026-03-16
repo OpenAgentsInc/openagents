@@ -1,5 +1,8 @@
 # 2026-03-15 "Can LLMs Be Computers?" Psionic Adaptation Audit
 
+> Updated 2026-03-15 after landing the `Tassadar` Phase 1 reference substrate
+> and opening dedicated follow-on issues for phases 2 through 6.
+
 ## Intent
 
 This audit answers a specific implementation question:
@@ -69,7 +72,9 @@ OpenAgents sources reviewed:
 - `crates/psionic/psionic-runtime/src/validation.rs`
 - `crates/psionic/psionic-runtime/src/gpt_oss.rs`
 - `crates/psionic/psionic-runtime/src/activation_fingerprint.rs`
+- `crates/psionic/psionic-runtime/src/tassadar.rs`
 - `crates/psionic/psionic-models/src/lib.rs`
+- `crates/psionic/psionic-models/src/tassadar.rs`
 - `crates/psionic/psionic-models/src/sharding.rs`
 - `crates/psionic/psionic-serve/src/lib.rs`
 - `crates/psionic/psionic-serve/src/conformance.rs`
@@ -86,12 +91,22 @@ Relevant prior audits reviewed:
 - `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
 - `docs/audits/2026-03-15-rlm-psionic-economy-kernel-integration-audit.md`
 
-Live GitHub open issues reviewed on March 15, 2026:
+Live GitHub issue state reviewed on March 15, 2026:
 
+- [OpenAgentsInc/openagents#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
+  - `Psionic Tassadar Phase 6: add typed runtime capabilities and fallback diagnostics`
+- [OpenAgentsInc/openagents#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
+  - `Psionic Tassadar Phase 5: implement hull-cache fast path behind exact equivalence`
+- [OpenAgentsInc/openagents#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
+  - `Psionic Tassadar Phase 4: add executor trace proof bundles and manifest lineage`
+- [OpenAgentsInc/openagents#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
+  - `Psionic Tassadar Phase 3: add benchmark and environment packages for exact executor evaluation`
+- [OpenAgentsInc/openagents#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
+  - `Psionic Tassadar Phase 2: define executor model and program artifact contracts`
 - [OpenAgentsInc/openagents#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
-  - `Psionic Executor Lane Phase 1: land CPU reference WebAssembly executor fixture and exact parity harness`
+  - `Psionic Executor Lane Phase 1: land CPU reference WebAssembly executor fixture and exact parity harness` (closed)
 - [OpenAgentsInc/openagents#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
-  - `Psionic Executor Lane Phase 0: declare WebAssembly-first executor lane scope, ownership, and issue spine`
+  - `Psionic Executor Lane Phase 0: declare WebAssembly-first executor lane scope, ownership, and issue spine` (closed)
 - [OpenAgentsInc/openagents#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
   - `Psionic Epic 2 Master: semantics and compatibility`
 - [OpenAgentsInc/openagents#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
@@ -122,6 +137,17 @@ Live GitHub open issues reviewed on March 15, 2026:
 The Percepta article is a strong fit for Psionic, but only if OpenAgents reads
 it as a new execution lane rather than as a drop-in improvement to current
 general LLM serving.
+
+That is no longer just a proposal. As of this update:
+
+- Phase 0 is closed under
+  [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
+- Phase 1 is closed under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- the landed reference substrate is now codenamed `Tassadar`
+- the next active issue spine is
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) through
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 
 The most important architectural reading is:
 
@@ -399,16 +425,21 @@ The important distinction is:
 
 - some open issues are real prerequisites
 - some only partially overlap
-- several executor-lane requirements in this audit still do **not** appear to
-  have dedicated open issues yet
+- a smaller remainder of later executor-lane requirements still do **not**
+  appear to have dedicated open issues yet
 
 ### Issue Coverage Already In Flight
 
-As of March 15, 2026, the closest matching open-issue dependencies are:
+As of March 15, 2026, the closest matching issue dependencies are:
 
 - direct executor-lane tracking:
-  - [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
-  - [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+  - [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) (closed)
+  - [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) (closed)
+  - [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
+  - [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
+  - [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
+  - [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
+  - [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - framework-core and semantics umbrella:
   - [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
   - [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
@@ -429,8 +460,6 @@ As of March 15, 2026, the closest matching open-issue dependencies are:
 
 No currently-open issue reviewed here appears to directly cover:
 
-- hull-cache or geometric retrieval decoding
-- executor-trace proof bundles
 - a dedicated `psionic.executor_trace` served surface
 
 ### 1. Psionic does not yet model executor-class attention semantics
@@ -458,8 +487,11 @@ describe this executor lane.
 
 Closest existing prerequisite issues:
 
-- direct executor-lane tracking under
+- landed executor-lane foundation under
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- active contract and runtime tracking under
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
+  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 - [#3713](https://github.com/OpenAgentsInc/openagents/issues/3713)
 - [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732)
 - [#3735](https://github.com/OpenAgentsInc/openagents/issues/3735)
@@ -488,17 +520,15 @@ But this lane needs more explicit model-family truth:
 
 Closest existing prerequisite issues:
 
-- direct executor-lane tracking under
+- landed executor-lane foundation under
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- direct implementation tracking under
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
 - [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
 - [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
 - umbrella tracking under [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
 
-Still missing as dedicated issue work, based on the reviewed tracker:
-
-- executor trace ABI contracts
-- WebAssembly profile compatibility descriptors
-- executor-vs-ordinary-decoder family identity
+This gap is now directly tracked rather than only implied by umbrella issues.
 
 ### 3. Psionic runtime does not yet have a hull-style decode path
 
@@ -520,18 +550,18 @@ That is a real runtime gap, not just a performance gap.
 
 Closest existing prerequisite issues:
 
-- direct executor-lane tracking under
+- landed executor-lane foundation under
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- direct implementation tracking under
+  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748) and
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707)
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
 - umbrella tracking under [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
   and [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
 
-Still missing as dedicated issue work, based on the reviewed tracker:
-
-- hull-cache or geometric retrieval runtime support
-- exact linear-vs-hull trace parity
-- runtime-visible executor decode-mode identity
+This runtime gap now has direct issue coverage rather than only substrate
+adjacency.
 
 ### 4. Psionic serve is built around ordinary served products
 
@@ -577,19 +607,18 @@ This lane needs different green bars:
 
 Closest existing prerequisite issues:
 
-- direct executor-lane tracking under
+- landed executor-lane foundation under
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- direct implementation tracking under
+  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746) and
+  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
 - [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
 - [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
 - umbrella tracking under [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
 
-Still missing as dedicated issue work, based on the reviewed tracker:
-
-- exact trace-digest parity
-- exact halt/output parity against a Wasm runner
-- executor-specific benchmark packages and validation references
+The benchmark and proof pieces of this gap are now directly tracked.
 
 ### 6. Psionic train is not yet ready for the article's training story
 
@@ -972,6 +1001,11 @@ The path below is intentionally dependency-ordered.
 
 ### Phase 0: Declare the lane and keep it out of current MVP scope
 
+Status:
+
+- completed under
+  [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
+
 Goals:
 
 - name the lane honestly
@@ -992,11 +1026,22 @@ Existing tracker dependency posture:
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
 - the implementation spine now begins with
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- the next active implementation spine is
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) through
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - the lane still sits under the umbrella planning already represented by
   [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741) and
   [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
 
 ### Phase 1: Land a CPU reference executor fixture
+
+Status:
+
+- completed under
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- landed as the `Tassadar` reference substrate in:
+  - `psionic-runtime::tassadar`
+  - `psionic-models::TassadarExecutorFixture`
 
 Goals:
 
@@ -1030,7 +1075,7 @@ Success bar:
 
 Closest existing prerequisite issues:
 
-- direct implementation tracking under
+- landed direct implementation under
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709) for
   fixture-backed replay and failure coverage
@@ -1067,7 +1112,7 @@ Psionic artifact path.
 Closest existing prerequisite issues:
 
 - direct implementation tracking under
-  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
 - [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
 - [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
 
@@ -1104,7 +1149,7 @@ Metrics should include:
 Closest existing prerequisite issues:
 
 - direct implementation tracking under
-  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
 - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
 - [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
 - [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
@@ -1136,8 +1181,9 @@ Concretely:
 
 This should extend existing proof-bundle discipline, not replace it.
 
-No dedicated open issue reviewed here appears to cover executor-trace proof
-bundles yet.
+Direct implementation tracking:
+
+- [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 
 ### Phase 5: Implement the hull-cache fast path behind exact equivalence
 
@@ -1168,13 +1214,12 @@ This is where the article's main technical claim should be tested.
 
 Closest existing prerequisite issues:
 
+- direct implementation tracking under
+  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 - [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707) for cache
   identity and compile-cache evidence
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710) for honest
   fallback and refusal semantics
-
-No dedicated open issue reviewed here appears to cover hull-cache decoding
-itself yet.
 
 ### Phase 6: Add typed runtime capabilities instead of silent fast-path fallback
 
@@ -1196,8 +1241,10 @@ Concretely:
 
 This keeps Psionic's refusal discipline intact.
 
-Closest existing prerequisite issue:
+Closest existing prerequisite issues:
 
+- direct implementation tracking under
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
 
 ### Phase 7: Add a dedicated served executor product
@@ -1342,14 +1389,21 @@ If OpenAgents wants to pursue this article's ideas without destabilizing the
 current tree, the order should be:
 
 1. CPU executor fixture plus minimal WebAssembly-first trace ABI
+   - landed under [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 2. executor model and Wasm program artifact contracts
+   - tracked under [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
 3. environment and benchmark packages with direct CPU baselines
+   - tracked under [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
 4. executor proof bundles and trace digests
+   - tracked under [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 5. hull-cache fast path with exact equivalence checks
-6. research families for architecture and cache variants
-7. dedicated served executor product where useful
-8. hybrid planner-plus-executor routing
-9. larger training program, compile-to-weights exploration, and learned-circuit
+   - tracked under [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
+6. runtime capabilities and fallback diagnostics
+   - tracked under [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
+7. research families for architecture and cache variants
+8. dedicated served executor product where useful
+9. hybrid planner-plus-executor routing
+10. larger training program, compile-to-weights exploration, and learned-circuit
    follow-ons
 
 Do not start with:
