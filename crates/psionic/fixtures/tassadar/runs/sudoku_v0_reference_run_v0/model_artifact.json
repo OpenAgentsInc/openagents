@@ -1,0 +1,146 @@
+{
+  "artifact_id": "tassadar-executor-transformer-sudoku-v0-v0.model_artifact",
+  "run_id": "tassadar-executor-transformer-sudoku-v0-reference-run-v0",
+  "descriptor": {
+    "model": {
+      "model_id": "tassadar-executor-transformer-sudoku-v0-v0",
+      "family": "tassadar_executor_transformer",
+      "revision": "v0"
+    },
+    "executor_family": "wasm_trace_executor",
+    "profile": {
+      "profile_id": "tassadar.wasm.sudoku_v0_search.v1",
+      "allowed_opcodes": [
+        "i32_const",
+        "local_get",
+        "local_set",
+        "i32_add",
+        "i32_sub",
+        "i32_mul",
+        "i32_load",
+        "i32_store",
+        "br_if",
+        "output",
+        "return"
+      ],
+      "max_locals": 8,
+      "max_memory_slots": 32,
+      "max_program_len": 2048,
+      "max_steps": 32768,
+      "branch_mode": "br_if_non_zero",
+      "host_output_opcode": true
+    },
+    "trace_abi": {
+      "abi_id": "tassadar.trace.v1",
+      "schema_version": 1,
+      "profile_id": "tassadar.wasm.sudoku_v0_search.v1",
+      "append_only": true,
+      "includes_stack_snapshots": true,
+      "includes_local_snapshots": true,
+      "includes_memory_snapshots": true
+    },
+    "supported_decode_modes": [
+      "reference_linear"
+    ],
+    "attention_mode": "hard_max_lookup",
+    "attention_geometry": {
+      "constrained_lookup_head_dim": 2,
+      "hull_cache_eligible": true
+    },
+    "claim_boundary": "greedy_decode_unvalidated",
+    "config": {
+      "vocab_size": 301,
+      "max_sequence_tokens": 262144,
+      "embedding_dim": 16,
+      "context_offsets": [
+        1,
+        2,
+        4,
+        8,
+        16
+      ],
+      "constrained_lookup_head_dim": 2
+    },
+    "weights": {
+      "format": "ProgrammaticFixture",
+      "source": "Fixture",
+      "quantization": "none",
+      "digest": "e2ee063f7eb7eff8d0d294d4030ce6b9c18cb0ca5ad23f9d58d67e0e50d0b32b",
+      "tensors": [
+        {
+          "name": "head_offsets",
+          "shape": {
+            "dims": [
+              5
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        },
+        {
+          "name": "output_bias",
+          "shape": {
+            "dims": [
+              301
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        },
+        {
+          "name": "output_projection",
+          "shape": {
+            "dims": [
+              96,
+              301
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        },
+        {
+          "name": "position_embeddings",
+          "shape": {
+            "dims": [
+              262144,
+              16
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        },
+        {
+          "name": "token_embeddings",
+          "shape": {
+            "dims": [
+              301,
+              16
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        }
+      ],
+      "artifacts": []
+    }
+  },
+  "training_report_digest": "aaf760743d82a19333604d36a61c3d1cba92463acefb6000412f75c3b7c18078",
+  "linear_benchmark_report_digest": "707ba6bec45587dafa1cd811146d6777bd0e4b7d6195abb7c6428041449a133f",
+  "checkpoint_manifest": {
+    "stream_id": "checkpoint://tassadar-executor-transformer-sudoku-v0-reference-run-v0.checkpoint.epoch_0001",
+    "manifest_digest": "73b4e1f7cdedf902eb2aa66782baac696178bb749c85870b1c0607d91e01e8c8",
+    "subject": "checkpoint",
+    "object_digest": "03683052c89797fd3ea29c513562f5d0f56751e24f0a02812fc6bd7067b65edc",
+    "total_bytes": 503549,
+    "chunk_count": 123,
+    "chunk_bytes": 4096,
+    "encoding": "raw_binary",
+    "provenance_digest": "a3ce787f925c9e7b16308bd6e05ec716ee0cca580631dc5e5e1a23bae9200a50",
+    "checkpoint_binding": {
+      "checkpoint_family": "train.tassadar.executor_transformer",
+      "checkpoint_ref": "checkpoint://tassadar-executor-transformer-sudoku-v0-reference-run-v0.checkpoint.epoch_0001",
+      "step": 1
+    }
+  },
+  "artifact_digest": "6296d111b6e458b1642458c4910d234a4409a3bc717d8d5bf8113163486dd204"
+}

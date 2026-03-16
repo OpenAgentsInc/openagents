@@ -122,6 +122,16 @@ Current posture:
   directly against CPU reference execution on the Sudoku-v0 corpus, with
   explicit decode-mode identity, explicit no-KV-cache prefix-recompute identity,
   and per-case exactness facts instead of only aggregate scores
+- the seventh trained-executor follow-on bar now also exists in
+  `psionic-train` and `crates/psionic/fixtures/tassadar/runs/`: the first
+  Psionic-only Sudoku-v0 reference run now persists a frozen training
+  manifest, training report, linear benchmark report, checkpoint state plus
+  checkpoint manifest, and a trained-model artifact bundle under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0`; the
+  current run is intentionally honest about still being weak
+  (`validation_exact_trace_case_count = 0/2`, aggregate target exactness
+  `13` bps), so this is a reproducible first-run artifact lane rather than a
+  claim that Sudoku is already solved in-model
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

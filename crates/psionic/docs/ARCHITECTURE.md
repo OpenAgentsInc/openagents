@@ -199,6 +199,15 @@ The current scope is:
   reference execution on Sudoku-v0, with explicit decode-mode and KV-cache
   identity plus per-case exactness/fallback truth rather than only aggregate
   benchmark theater
+- landed trained-executor Phase 7 follow-on bar: `psionic-train` now exposes a
+  persisted first-run surface for the Sudoku-v0 neural executor lane, and the
+  repo now carries one canonical run bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0` with the
+  frozen training manifest, training report, linear benchmark report,
+  checkpoint payload plus manifest, and trained-model artifact; the recorded
+  run remains explicitly low-exactness (`0/2` validation exact-trace cases,
+  `13` bps aggregate target exactness), so the claim stays at "first honest
+  trained run exists" rather than "the trained executor already works"
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

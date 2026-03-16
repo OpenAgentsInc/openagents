@@ -194,9 +194,21 @@ impl TassadarExecutorTransformerWeightBundle {
         &mut self.output_projection
     }
 
+    /// Returns the trained output projection.
+    #[must_use]
+    pub fn output_projection(&self) -> &[f32] {
+        &self.output_projection
+    }
+
     /// Returns mutable output bias weights for later training updates.
     pub fn output_bias_mut(&mut self) -> &mut [f32] {
         &mut self.output_bias
+    }
+
+    /// Returns the trained output bias.
+    #[must_use]
+    pub fn output_bias(&self) -> &[f32] {
+        &self.output_bias
     }
 
     fn refresh_metadata(&mut self, config: &TassadarExecutorTransformerConfig) {
@@ -335,6 +347,34 @@ impl TassadarExecutorTransformer {
         self.descriptor.weights = self.weights.metadata().clone();
         self.descriptor.claim_boundary =
             TassadarExecutorTransformerClaimBoundary::GreedyDecodeUnvalidated;
+    }
+
+    /// Applies a trained output head onto the deterministic base model.
+    pub fn apply_trained_output_head(
+        &mut self,
+        output_projection: &[f32],
+        output_bias: &[f32],
+    ) -> Result<(), TassadarExecutorTransformerError> {
+        if output_projection.len() != self.weights.output_projection.len() {
+            return Err(TassadarExecutorTransformerError::WeightLengthMismatch {
+                tensor: String::from("output_projection"),
+                expected: self.weights.output_projection.len(),
+                actual: output_projection.len(),
+            });
+        }
+        if output_bias.len() != self.weights.output_bias.len() {
+            return Err(TassadarExecutorTransformerError::WeightLengthMismatch {
+                tensor: String::from("output_bias"),
+                expected: self.weights.output_bias.len(),
+                actual: output_bias.len(),
+            });
+        }
+        self.weights
+            .output_projection
+            .copy_from_slice(output_projection);
+        self.weights.output_bias.copy_from_slice(output_bias);
+        self.refresh_after_training();
+        Ok(())
     }
 
     /// Runs a next-token forward pass over one tokenized executor sequence.
@@ -502,6 +542,16 @@ pub enum TassadarExecutorTransformerError {
         /// Actual hidden width.
         actual: usize,
     },
+    /// One checkpoint or trained output head supplied the wrong tensor length.
+    #[error("trained tensor `{tensor}` has wrong length: expected {expected}, found {actual}")]
+    WeightLengthMismatch {
+        /// Tensor name.
+        tensor: String,
+        /// Expected length.
+        expected: usize,
+        /// Actual length.
+        actual: usize,
+    },
 }
 
 fn seeded_values(label: &str, len: usize, scale: f32) -> Vec<f32> {
@@ -647,6 +697,29 @@ mod tests {
         let next = model.greedy_next_token(&state)?;
 
         assert!((next.as_u32() as usize) < config.vocab_size);
+        Ok(())
+    }
+
+    #[test]
+    fn applying_a_trained_output_head_reconstructs_the_same_descriptor_digest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut trained = TassadarExecutorTransformer::sudoku_v0();
+        trained.refresh_after_training();
+        let mut restored = TassadarExecutorTransformer::sudoku_v0();
+
+        restored.apply_trained_output_head(
+            trained.weights().output_projection(),
+            trained.weights().output_bias(),
+        )?;
+
+        assert_eq!(
+            restored.descriptor().stable_digest(),
+            trained.descriptor().stable_digest()
+        );
+        assert_eq!(
+            restored.descriptor().weights.digest,
+            trained.descriptor().weights.digest
+        );
         Ok(())
     }
 }

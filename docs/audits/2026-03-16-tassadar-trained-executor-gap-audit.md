@@ -133,6 +133,13 @@ These issues track the executor-specific work that is still missing:
     `psionic-eval`, with explicit decode-mode and KV-cache identity plus
     per-case exactness facts against direct CPU reference execution
 - `#3783` Phase 7: execute the first Psionic-only Sudoku-v0 training run
+  - implemented March 16, 2026: first persisted Sudoku-v0 reference run under
+    `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0`, with a
+    frozen training manifest, training report, linear benchmark report,
+    checkpoint state plus checkpoint manifest, and trained-model artifact; the
+    current run remains intentionally weak (`0/2` validation exact-trace
+    cases, `13` bps aggregate target exactness), so the repo now has a real
+    first-run baseline rather than a false success claim
 - `#3784` Phase 8: add telemetry, trace logging, and failure-analysis artifacts
 - `#3785` Phase 9: review the first run and land the next-run plan
 - `#3786` Phase 10: add neural hull-cache decode for the trained executor model
@@ -547,10 +554,11 @@ Do this fourth:
 
 Do this fifth:
 
-- freeze the first honest Sudoku-v0 corpus and model config
-- execute the first full Psionic-only training run
-- persist receipts, checkpoints, eval outputs, telemetry, and failure samples
-- publish the first postmortem and next-run plan from observed failure modes
+- `#3783` is now done: the first honest Sudoku-v0 corpus and model config are
+  frozen in one committed reference run bundle, including a persisted
+  checkpoint and trained-model artifact
+- `#3784` and `#3785` are still next: add the telemetry/failure artifacts and
+  publish the postmortem plus next-run plan from the observed weak first run
 
 ### Phase F: Only then test the neural fast path and scale (`#3786`, `#3787`)
 
