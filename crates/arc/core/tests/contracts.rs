@@ -11,7 +11,7 @@ use arc_core::{
     ArcAction, ArcActionKind, ArcBenchmark, ArcGameState, ArcOperationMode, ArcRecording,
     ArcRecordingEnvelopeId, ArcRefusalCode, ArcScorePolicyId, ArcScorecard, ArcSolveOutcome,
     ArcSolveRefusal, ArcSolveResultEnvelope, ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget,
-    TraceLocator, summarize_grid,
+    TraceLocator, canonicalize_task, summarize_grid, summarize_task_dimensions,
 };
 
 #[test]
@@ -240,4 +240,65 @@ fn policy_contracts_round_trip_without_breaking_base_recordings() {
         ArcGameState::NotFinished
     );
     assert_eq!(recording.steps[0].action.kind(), ArcActionKind::Reset);
+}
+
+#[test]
+fn canonicalization_normalizes_colors_and_dimension_summaries() {
+    let fixture = fs::read_to_string("fixtures/canonicalization_task.json")
+        .expect("canonicalization fixture should be readable from the crate root");
+    let task: ArcTask = serde_json::from_str(&fixture).expect("fixture should deserialize");
+
+    let dimension_summary =
+        summarize_task_dimensions(&task).expect("dimension summary should compute");
+    assert_eq!(dimension_summary.max_width, 3);
+    assert_eq!(dimension_summary.max_height, 3);
+    assert_eq!(dimension_summary.train_inputs[0].width, 2);
+    assert_eq!(dimension_summary.train_outputs[0].width, 3);
+    assert_eq!(dimension_summary.test_inputs[0].height, 3);
+
+    let canonical = canonicalize_task(&task).expect("task should canonicalize");
+    assert_eq!(
+        canonical.color_normalization,
+        vec![
+            arc_core::ArcColorNormalization {
+                original: 0,
+                normalized: 0
+            },
+            arc_core::ArcColorNormalization {
+                original: 7,
+                normalized: 1
+            },
+            arc_core::ArcColorNormalization {
+                original: 3,
+                normalized: 2
+            },
+            arc_core::ArcColorNormalization {
+                original: 5,
+                normalized: 3
+            },
+        ]
+    );
+    assert_eq!(
+        canonical.normalized_train[0].input.grid.cells(),
+        &[0, 1, 2, 1]
+    );
+    assert_eq!(
+        canonical.normalized_train[0]
+            .input
+            .padding_to_task_max
+            .right,
+        1
+    );
+    assert_eq!(
+        canonical.normalized_train[0]
+            .input
+            .padding_to_task_max
+            .bottom,
+        1
+    );
+    assert_eq!(
+        canonical.normalized_train[0].output.grid.cells(),
+        &[1, 3, 0]
+    );
+    assert_eq!(canonical.normalized_test_inputs[0].grid.cells(), &[2, 0, 1]);
 }
