@@ -1132,7 +1132,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
         },
         MlxAcceptanceCategory {
             category_id: String::from("distributed-semantics"),
-            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            matrix_status: MlxAcceptanceCategoryStatus::Partial,
             epic_id: String::from("PMLX-E5"),
             issue_refs: vec![
                 String::from("PMLX-501 (#3859)"),
@@ -1147,10 +1147,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane publishes distributed group, collective, gradient-reduction, tensor-parallel, FSDP-style update, and launch/topology helpers above Psionic collectives and cluster truth.",
             ),
             current_repo_truth: String::from(
-                "Psionic owns collectives, cluster, and distributed optimizer substrate, but it does not yet expose framework-level MLX distributed helpers or launch contracts.",
+                "Psionic now exposes a first bounded public distributed-group layer in psionic-distributed above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, and explicit-plan subgroup split semantics, while collective helpers, gradient helpers, tensor-parallel helpers, FSDP-style helpers, and launch/topology tooling remain open.",
             ),
             boundary_note: String::from(
-                "Do not infer MLX distributed closure from lower-level collectives or cluster internals until the framework-visible group and helper APIs are real.",
+                "Do not infer MLX distributed closure from the new group layer alone; the public collective/helper family is still incomplete.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1490,12 +1490,22 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("python/tests/mlx_distributed_tests.py"),
             ],
             current_outcome: MlxParityHarnessOutcome::Unsupported,
-            psionic_hook_commands: Vec::new(),
+            psionic_hook_commands: vec![
+                String::from(
+                    "cargo test -p psionic-distributed tests::init_bootstraps_one_group_and_reuses_it_as_the_global_group -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::split_uses_one_explicit_plan_and_reassigns_rank_by_key -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::split_refuses_missing_plan_singleton_and_local_assignment_mismatch -- --exact --nocapture",
+                ),
+            ],
             summary: String::from(
-                "The upstream distributed families are seeded into the harness, but the MLX framework-distributed API does not exist in Psionic yet.",
+                "psionic-distributed now exposes a first bounded public group surface with init/rank/size/split semantics, but the seeded upstream distributed family still lacks the collective helpers and backend-family breadth needed for a parity pass.",
             ),
             boundary_note: String::from(
-                "Current collectives and cluster substrate are not enough to claim an upstream distributed family port.",
+                "Current group semantics are necessary but not sufficient; seeded upstream distributed parity still requires collective helpers, backend-family mapping, and broader helper closure.",
             ),
         },
     ])
@@ -1746,14 +1756,16 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_distributed_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
             summary: String::from(
-                "There is no public MLX-class distributed group and helper API in Psionic today.",
+                "psionic-distributed now exposes a bounded public distributed-group API, but the broader MLX distributed helper surface remains unsupported.",
             ),
             evidence_refs: vec![
-                String::from("MlxAcceptanceMatrixReport::distributed-semantics = planned"),
+                String::from("MlxAcceptanceMatrixReport::distributed-semantics = partial"),
+                String::from(
+                    "cargo test -p psionic-distributed init/split/rank/size coverage now exists",
+                ),
                 String::from("MLX parity family `distributed` = unsupported"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-501 (#3859)"),
                 String::from("PMLX-502 (#3860)"),
                 String::from("PMLX-503 (#3861)"),
                 String::from("PMLX-504 (#3862)"),
@@ -1762,7 +1774,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("PMLX-507 (#3865)"),
             ],
             boundary_note: String::from(
-                "Current collectives and cluster internals are not themselves a supported MLX public distributed surface.",
+                "Current collectives and cluster internals are not themselves a supported MLX public distributed surface, and the new group layer alone is not enough to claim full MLX distributed support.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2163,6 +2175,7 @@ mod tests {
                 "transform-compile" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "nn-optimizer" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "export-serialization-tooling" => MlxAcceptanceCategoryStatus::ImplementedEarly,
+                "distributed-semantics" => MlxAcceptanceCategoryStatus::Partial,
                 _ => MlxAcceptanceCategoryStatus::Planned,
             };
             assert_eq!(category.matrix_status, expected_status);
@@ -2253,7 +2266,7 @@ mod tests {
             distributed.current_outcome,
             MlxParityHarnessOutcome::Unsupported
         );
-        assert!(distributed.psionic_hook_commands.is_empty());
+        assert!(!distributed.psionic_hook_commands.is_empty());
 
         let eval = report
             .families

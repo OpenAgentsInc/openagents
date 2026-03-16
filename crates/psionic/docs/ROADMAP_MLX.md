@@ -4,7 +4,7 @@
 > `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, `PMLX-005` / `#3833`,
 > `PMLX-101` / `#3834`, `PMLX-102` / `#3835`, `PMLX-103` / `#3836`,
 > `PMLX-104` / `#3837`, `PMLX-105` / `#3838`, `PMLX-401` / `#3853`, and
-> `PMLX-402` / `#3854`,
+> `PMLX-402` / `#3854`, plus `PMLX-501` / `#3859`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -519,7 +519,7 @@ collectives, cluster, and train substrate.
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
-| `PMLX-501` | planned | `Psionic MLX: add a public distributed group API with init, split, rank, and size semantics` | Expose framework-visible process-group semantics above current collectives and cluster layers, including explicit singleton behavior. |
+| `PMLX-501` / [#3859](https://github.com/OpenAgentsInc/openagents/issues/3859) | done (2026-03-16) | `Psionic MLX: add a public distributed group API with init, split, rank, and size semantics` | `psionic-distributed` now exposes the first bounded public framework-distributed group layer above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, and explicit-plan subgroup split semantics while leaving collective helpers and backend-family mapping to `PMLX-502` through `PMLX-507`. |
 | `PMLX-502` | planned | `Psionic MLX: expose all_sum, all_gather, reduce_scatter, send, and recv above the distributed group surface` | Publish the core collective helper layer with typed refusal and backend-capability reporting rather than forcing callers into low-level cluster APIs. |
 | `PMLX-503` | planned | `Psionic MLX: add a framework launch and distributed-config surface mapped onto Psionic cluster truth` | Build the MLX-analogue of launch and hostfile tooling without bypassing Psionic cluster, sandbox, or evidence contracts. |
 | `PMLX-504` | planned | `Psionic MLX: add average_gradients and grouped all-reduce helpers` | Expose tree-aware gradient reduction helpers for data-parallel training above the lower-level collectives layer. |
@@ -643,7 +643,7 @@ track in parallel.
 
 ### Phase 6: land framework-distributed semantics above collectives and cluster truth
 
-- `PMLX-501`
+- `PMLX-501` done 2026-03-16
 - `PMLX-502`
 - `PMLX-503`
 - `PMLX-504`
