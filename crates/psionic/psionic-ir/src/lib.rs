@@ -1223,11 +1223,143 @@ pub struct ExtensibleOperatorRegistry {
     kernel_registrations: BTreeMap<(String, String), KernelRegistration>,
 }
 
+/// Coarse tensor-family class carried through meta execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetaTensorFamilyKind {
+    /// Dense contiguous or view-backed tensor semantics.
+    Dense,
+    /// Sparse tensor semantics.
+    Sparse,
+    /// Nested or ragged tensor semantics.
+    Nested,
+    /// Masked tensor semantics.
+    Masked,
+    /// Storage-aware tensor semantics carried above raw dense layout alone.
+    StorageAware,
+}
+
+impl MetaTensorFamilyKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Dense => "dense",
+            Self::Sparse => "sparse",
+            Self::Nested => "nested",
+            Self::Masked => "masked",
+            Self::StorageAware => "storage_aware",
+        }
+    }
+}
+
+/// Sparse storage layout carried through meta execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SparseMetaLayout {
+    /// Coordinate list sparse layout.
+    Coo,
+    /// Compressed sparse row layout.
+    Csr,
+    /// Compressed sparse column layout.
+    Csc,
+}
+
+/// Sparse tensor metadata carried through meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SparseMetaContract {
+    /// Sparse storage layout.
+    pub layout: SparseMetaLayout,
+    /// Upper bound on stored non-zero entries when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_nonzero_entries: Option<usize>,
+}
+
+/// Nested tensor metadata carried through meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NestedMetaContract {
+    /// Number of ragged dimensions.
+    pub ragged_rank: usize,
+}
+
+/// Masked tensor metadata carried through meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaskedMetaContract {
+    /// Rank of the mask tensor applied to the logical value tensor.
+    pub mask_rank: usize,
+}
+
+/// Storage-aware metadata carried through meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageAwareMetaContract {
+    /// Whether the tensor is an alias-preserving storage view.
+    pub alias_preserving: bool,
+}
+
+/// Tensor family carried through fake or meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum MetaTensorFamily {
+    /// Dense tensor family.
+    Dense,
+    /// Sparse tensor family with explicit layout metadata.
+    Sparse {
+        /// Sparse layout and bounds metadata.
+        contract: SparseMetaContract,
+    },
+    /// Nested tensor family with ragged-rank metadata.
+    Nested {
+        /// Nested metadata.
+        contract: NestedMetaContract,
+    },
+    /// Masked tensor family with mask metadata.
+    Masked {
+        /// Mask metadata.
+        contract: MaskedMetaContract,
+    },
+    /// Storage-aware tensor family above raw dense layout alone.
+    StorageAware {
+        /// Storage-awareness metadata.
+        contract: StorageAwareMetaContract,
+    },
+}
+
+impl MetaTensorFamily {
+    /// Returns the coarse family class.
+    #[must_use]
+    pub const fn kind(&self) -> MetaTensorFamilyKind {
+        match self {
+            Self::Dense => MetaTensorFamilyKind::Dense,
+            Self::Sparse { .. } => MetaTensorFamilyKind::Sparse,
+            Self::Nested { .. } => MetaTensorFamilyKind::Nested,
+            Self::Masked { .. } => MetaTensorFamilyKind::Masked,
+            Self::StorageAware { .. } => MetaTensorFamilyKind::StorageAware,
+        }
+    }
+}
+
 /// Shape-only tensor record emitted by fake or meta execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetaTensor {
     /// Logical tensor spec proven by meta execution.
     pub spec: TensorSpec,
+    /// Tensor family carried alongside the shape/type/device contract.
+    pub family: MetaTensorFamily,
+}
+
+impl MetaTensor {
+    /// Creates one dense meta tensor.
+    #[must_use]
+    pub fn dense(spec: TensorSpec) -> Self {
+        Self {
+            spec,
+            family: MetaTensorFamily::Dense,
+        }
+    }
+
+    /// Creates one meta tensor with an explicit non-dense or storage-aware family.
+    #[must_use]
+    pub fn with_family(spec: TensorSpec, family: MetaTensorFamily) -> Self {
+        Self { spec, family }
+    }
 }
 
 /// One step traced during fake or meta execution.
@@ -1241,6 +1373,8 @@ pub struct MetaExecutionStep {
     pub implementation: OperatorImplementationKind,
     /// Meta-derived tensor spec.
     pub spec: TensorSpec,
+    /// Meta-derived tensor family.
+    pub family: MetaTensorFamily,
 }
 
 /// Report emitted by fake or meta execution over a graph or plan.
@@ -1266,6 +1400,8 @@ impl MetaExecutionReport {
 pub struct MetaCapabilityProfile {
     /// Stable backend-kernel labels declared as supported.
     pub supported_backend_kernels: BTreeSet<String>,
+    /// Tensor families the target claims it can carry through meta execution.
+    pub supported_tensor_families: BTreeSet<MetaTensorFamilyKind>,
 }
 
 impl MetaCapabilityProfile {
@@ -1274,6 +1410,7 @@ impl MetaCapabilityProfile {
     pub fn empty() -> Self {
         Self {
             supported_backend_kernels: BTreeSet::new(),
+            supported_tensor_families: [MetaTensorFamilyKind::Dense].into_iter().collect(),
         }
     }
 
@@ -1288,6 +1425,7 @@ impl MetaCapabilityProfile {
             .collect();
         Self {
             supported_backend_kernels,
+            supported_tensor_families: [MetaTensorFamilyKind::Dense].into_iter().collect(),
         }
     }
 
@@ -1301,12 +1439,41 @@ impl MetaCapabilityProfile {
         self
     }
 
+    /// Replaces the declared tensor-family capability set.
+    #[must_use]
+    pub fn with_supported_tensor_families(
+        mut self,
+        families: impl IntoIterator<Item = MetaTensorFamilyKind>,
+    ) -> Self {
+        self.supported_tensor_families = families.into_iter().collect();
+        self
+    }
+
     fn supports(&self, schema: &OperatorSchema) -> bool {
         match schema.implementation {
             OperatorImplementationKind::SchemaOnly | OperatorImplementationKind::Composite => true,
             OperatorImplementationKind::BackendKernel => {
                 self.supported_backend_kernels.contains(schema.name)
             }
+        }
+    }
+
+    fn supports_tensor_family(&self, family: MetaTensorFamilyKind) -> bool {
+        self.supported_tensor_families.contains(&family)
+    }
+
+    fn validate_tensor_family(&self, op: &str, tensor: &MetaTensor) -> Result<(), GraphError> {
+        let family = tensor.family.kind();
+        if self.supports_tensor_family(family) {
+            Ok(())
+        } else {
+            Err(GraphError::UnsupportedOperatorCapability {
+                op: op.to_string(),
+                message: format!(
+                    "meta capability profile does not declare tensor family `{}`",
+                    family.label()
+                ),
+            })
         }
     }
 }
@@ -1481,6 +1648,22 @@ impl ExtensibleOperatorRegistry {
         input_count: usize,
         declared_output: Option<&TensorSpec>,
     ) -> Result<TensorSpec, GraphError> {
+        self.validate_declared_custom_meta_output(
+            name,
+            input_count,
+            declared_output.cloned().map(MetaTensor::dense).as_ref(),
+        )
+        .map(|tensor| tensor.spec)
+    }
+
+    /// Validates one declared-output custom operator invocation carrying a
+    /// dense, sparse, nested, masked, or storage-aware meta tensor contract.
+    pub fn validate_declared_custom_meta_output(
+        &self,
+        name: &str,
+        input_count: usize,
+        declared_output: Option<&MetaTensor>,
+    ) -> Result<MetaTensor, GraphError> {
         let Some(schema) = self.schemas.get(name) else {
             return Err(GraphError::InvalidOperatorInputs {
                 op: name.to_string(),
@@ -1509,7 +1692,7 @@ impl ExtensibleOperatorRegistry {
                     .ok_or_else(|| GraphError::InvalidOperatorInputs {
                         op: name.to_string(),
                         message: String::from(
-                            "declared output spec is required for custom operator",
+                            "declared output meta tensor is required for custom operator",
                         ),
                     })
             }
@@ -1820,12 +2003,17 @@ impl OperatorRegistry {
                 input_specs.as_slice(),
                 Some(&step.declared_output),
             )?;
-            tensors.insert(step.output, MetaTensor { spec: spec.clone() });
+            let tensor = MetaTensor::dense(spec.clone());
+            if let Some(profile) = capabilities {
+                profile.validate_tensor_family(schema.name, &tensor)?;
+            }
+            tensors.insert(step.output, tensor.clone());
             trace.push(MetaExecutionStep {
                 output: step.output,
                 op: schema.name.to_string(),
                 implementation: schema.implementation,
                 spec,
+                family: tensor.family.clone(),
             });
         }
 
@@ -2806,9 +2994,11 @@ mod tests {
     use super::{
         DType, ExecutionOp, ExecutionPlan, ExecutionStep, FunctionalTensorKind,
         FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
-        KernelRegistration, MetaCapabilityProfile, OperatorArity, OperatorImplementationKind,
+        KernelRegistration, MaskedMetaContract, MetaCapabilityProfile, MetaTensor,
+        MetaTensorFamily, MetaTensorFamilyKind, OperatorArity, OperatorImplementationKind,
         OperatorMetaExecutionKind, OperatorRegistry, RegisteredOperatorSchema,
-        RegistryExtensionError, Shape, TensorSpec, TransformBarrierKind,
+        RegistryExtensionError, Shape, SparseMetaContract, SparseMetaLayout,
+        StorageAwareMetaContract, TensorSpec, TransformBarrierKind,
     };
 
     #[test]
@@ -3152,6 +3342,84 @@ mod tests {
             missing_output,
             Err(GraphError::InvalidOperatorInputs { .. })
         ));
+    }
+
+    #[test]
+    fn custom_meta_tensor_contract_accepts_non_dense_and_storage_aware_families() {
+        let mut registry = OperatorRegistry::builtin().extensible();
+        let register_schema = registry.register_custom_schema(RegisteredOperatorSchema::custom(
+            "custom_sparse_adapter",
+            1,
+            OperatorArity::Fixed(1),
+            OperatorImplementationKind::BackendKernel,
+            OperatorMetaExecutionKind::DeclaredOutput,
+        ));
+        assert!(register_schema.is_ok());
+
+        let sparse_spec = TensorSpec::new(Shape::new(vec![4, 4]), DType::F32, Device::cpu());
+        let sparse = registry.validate_declared_custom_meta_output(
+            "custom_sparse_adapter",
+            1,
+            Some(&MetaTensor::with_family(
+                sparse_spec.clone(),
+                MetaTensorFamily::Sparse {
+                    contract: SparseMetaContract {
+                        layout: SparseMetaLayout::Csr,
+                        max_nonzero_entries: Some(8),
+                    },
+                },
+            )),
+        );
+        assert!(sparse.is_ok());
+        let Ok(sparse) = sparse else {
+            return;
+        };
+        assert_eq!(sparse.spec, sparse_spec);
+        assert_eq!(sparse.family.kind(), MetaTensorFamilyKind::Sparse);
+
+        let storage_aware = registry.validate_declared_custom_meta_output(
+            "custom_sparse_adapter",
+            1,
+            Some(&MetaTensor::with_family(
+                TensorSpec::new(Shape::new(vec![4, 4]), DType::F32, Device::cpu()),
+                MetaTensorFamily::StorageAware {
+                    contract: StorageAwareMetaContract {
+                        alias_preserving: true,
+                    },
+                },
+            )),
+        );
+        assert!(storage_aware.is_ok());
+        let Ok(storage_aware) = storage_aware else {
+            return;
+        };
+        assert_eq!(
+            storage_aware.family.kind(),
+            MetaTensorFamilyKind::StorageAware
+        );
+    }
+
+    #[test]
+    fn meta_capability_profile_refuses_unsupported_non_dense_family_contract() {
+        let profile = MetaCapabilityProfile::empty();
+        let masked = MetaTensor::with_family(
+            TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu()),
+            MetaTensorFamily::Masked {
+                contract: MaskedMetaContract { mask_rank: 2 },
+            },
+        );
+        let result = profile.validate_tensor_family("custom_masked", &masked);
+        assert!(matches!(
+            result,
+            Err(GraphError::UnsupportedOperatorCapability { .. })
+        ));
+
+        let enabled = MetaCapabilityProfile::empty().with_supported_tensor_families([
+            MetaTensorFamilyKind::Dense,
+            MetaTensorFamilyKind::Masked,
+        ]);
+        let supported = enabled.validate_tensor_family("custom_masked", &masked);
+        assert!(supported.is_ok());
     }
 
     #[test]
