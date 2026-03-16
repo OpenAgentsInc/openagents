@@ -635,7 +635,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-201` / [#3680](https://github.com/OpenAgentsInc/openagents/issues/3680) | planned | Create `crates/arc/engine` and port deterministic game execution, including sprites, level logic, and action transitions. |
+| `ARC-201` / [#3680](https://github.com/OpenAgentsInc/openagents/issues/3680) | landed | Create `crates/arc/engine` and port deterministic game execution, including sprites, level logic, and action transitions. |
 | `ARC-202` / [#3681](https://github.com/OpenAgentsInc/openagents/issues/3681) | planned | Add fixture-driven parity against the upstream `ARC-AGI/test_environment_files` samples. |
 | `ARC-203` / [#3682](https://github.com/OpenAgentsInc/openagents/issues/3682) | planned | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
 | `ARC-204` / [#3683](https://github.com/OpenAgentsInc/openagents/issues/3683) | planned | Port the local compatibility server against the ARC docs schema and local-vs-online behavior docs. |

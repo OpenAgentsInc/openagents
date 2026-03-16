@@ -32,13 +32,13 @@ pub use envelopes::{
     SolveBudgetError, TraceLocator, TraceLocatorError,
 };
 pub use schema::{
-    ARC_ACTION6_COORDINATE_MAX, ARC_CORE_SCHEMA_VERSION, ARC_FRAME_MAX_EDGE, ARC_GRID_MAX_EDGE,
-    ARC_PALETTE_SIZE, ArcAction, ArcActionError, ArcActionKind, ArcBenchmark, ArcEpisodeStep,
-    ArcExample, ArcFrameData, ArcFrameDataError, ArcGameState, ArcGrid, ArcGridError,
-    ArcLevelScore, ArcObservation, ArcOperationMode, ArcRecording, ArcRecordingEnvelopeId,
-    ArcRecordingEnvelopeIdError, ArcRecordingError, ArcScorePolicyId, ArcScorecard,
-    ArcScorecardMetadata, ArcTask, ArcTaskError, ArcTaskId, ArcTaskIdError,
-    ContractSerializationError, SCHEMA_BOUNDARY_SUMMARY, canonical_json_string,
+    ARC_ACTION6_COORDINATE_MAX, ARC_CORE_SCHEMA_VERSION, ARC_FRAME_MAX_EDGE,
+    ARC_FRAME_PALETTE_SIZE, ARC_GRID_MAX_EDGE, ARC_PALETTE_SIZE, ArcAction, ArcActionError,
+    ArcActionKind, ArcBenchmark, ArcEpisodeStep, ArcExample, ArcFrameData, ArcFrameDataError,
+    ArcGameState, ArcGrid, ArcGridError, ArcLevelScore, ArcObservation, ArcOperationMode,
+    ArcRecording, ArcRecordingEnvelopeId, ArcRecordingEnvelopeIdError, ArcRecordingError,
+    ArcScorePolicyId, ArcScorecard, ArcScorecardMetadata, ArcTask, ArcTaskError, ArcTaskId,
+    ArcTaskIdError, ContractSerializationError, SCHEMA_BOUNDARY_SUMMARY, canonical_json_string,
     canonical_sha256_hex,
 };
 

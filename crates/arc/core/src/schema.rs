@@ -16,8 +16,10 @@ pub const SCHEMA_BOUNDARY_SUMMARY: &str = "Own ARC task/grid/example value types
 pub const ARC_GRID_MAX_EDGE: u8 = 30;
 /// ARC-AGI-3 frame rasters are bounded by the 64x64 interaction surface.
 pub const ARC_FRAME_MAX_EDGE: u8 = 64;
-/// ARC palette values stay in the canonical 0..=9 range.
+/// Static ARC task grids use the canonical 0..=9 palette.
 pub const ARC_PALETTE_SIZE: u8 = 10;
+/// Interactive ARC-AGI-3 frame rasters use the 0..=15 palette.
+pub const ARC_FRAME_PALETTE_SIZE: u8 = 16;
 /// `ACTION6` coordinates stay inside the 0..=63 grid advertised upstream.
 pub const ARC_ACTION6_COORDINATE_MAX: u8 = 63;
 
@@ -546,7 +548,7 @@ impl ArcFrameData {
         if let Some(color) = pixels
             .iter()
             .copied()
-            .find(|cell| *cell >= ARC_PALETTE_SIZE)
+            .find(|cell| *cell >= ARC_FRAME_PALETTE_SIZE)
         {
             return Err(ArcFrameDataError::InvalidColor(color));
         }
@@ -614,7 +616,7 @@ pub enum ArcFrameDataError {
     InvalidHeight(u8),
     #[error("ARC frame pixel count mismatch: expected {expected}, got {actual}")]
     MismatchedPixelCount { expected: usize, actual: usize },
-    #[error("ARC frame color must be in the 0..=9 range, got {0}")]
+    #[error("ARC frame color must be in the 0..=15 range, got {0}")]
     InvalidColor(u8),
 }
 
