@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "name": "Deterministic ARC Engine Demo",
+  "task_id": "arc-engine-demo",
+  "version": "2026.03.15",
+  "sprites": [
+    {
+      "id": "player",
+      "width": 1,
+      "height": 1,
+      "pixels": [14],
+      "blocking": "pixel_perfect",
+      "interaction": "tangible",
+      "z_index": 10
+    },
+    {
+      "id": "goal",
+      "width": 1,
+      "height": 1,
+      "pixels": [8],
+      "blocking": "not_blocked",
+      "interaction": "intangible",
+      "z_index": 2
+    },
+    {
+      "id": "switch",
+      "width": 1,
+      "height": 1,
+      "pixels": [5],
+      "blocking": "not_blocked",
+      "interaction": "intangible",
+      "z_index": 2
+    },
+    {
+      "id": "door",
+      "width": 1,
+      "height": 1,
+      "pixels": [12],
+      "blocking": "pixel_perfect",
+      "interaction": "tangible",
+      "z_index": 4
+    },
+    {
+      "id": "beacon",
+      "width": 1,
+      "height": 1,
+      "pixels": [10],
+      "blocking": "not_blocked",
+      "interaction": "intangible",
+      "z_index": 2
+    }
+  ],
+  "levels": [
+    {
+      "id": "door_course",
+      "background": {
+        "width": 6,
+        "height": 6,
+        "cells": [
+          1, 1, 1, 1, 1, 1,
+          1, 0, 0, 1, 1, 1,
+          1, 1, 0, 0, 0, 1,
+          1, 1, 1, 1, 0, 1,
+          1, 1, 1, 1, 0, 1,
+          1, 1, 1, 1, 1, 1
+        ]
+      },
+      "camera": {
+        "x": 0,
+        "y": 0,
+        "width": 6,
+        "height": 6,
+        "background": 5,
+        "letter_box": 3
+      },
+      "available_actions": ["ACTION1", "ACTION2", "ACTION3", "ACTION4", "ACTION6", "ACTION7"],
+      "player_spawn": { "x": 1, "y": 1 },
+      "player_sprite_id": "player",
+      "static_sprites": [
+        {
+          "sprite_id": "switch",
+          "position": { "x": 2, "y": 2 }
+        },
+        {
+          "sprite_id": "door",
+          "position": { "x": 3, "y": 2 },
+          "state_gate": {
+            "kind": "flag_unset",
+            "flag_id": "door_open"
+          }
+        },
+        {
+          "sprite_id": "goal",
+          "position": { "x": 4, "y": 4 }
+        }
+      ],
+      "targets": [
+        {
+          "id": "door-switch",
+          "trigger": "action6",
+          "position": { "x": 2, "y": 2 },
+          "effect": {
+            "kind": "toggle_flag",
+            "flag_id": "door_open"
+          }
+        },
+        {
+          "id": "level-one-goal",
+          "trigger": "on_enter",
+          "position": { "x": 4, "y": 4 },
+          "effect": {
+            "kind": "complete_level"
+          }
+        }
+      ],
+      "solid_background_colors": [1],
+      "max_actions": 12
+    },
+    {
+      "id": "activation_room",
+      "background": {
+        "width": 5,
+        "height": 5,
+        "cells": [
+          1, 1, 1, 1, 1,
+          1, 0, 0, 0, 1,
+          1, 0, 0, 0, 1,
+          1, 0, 0, 0, 1,
+          1, 1, 1, 1, 1
+        ]
+      },
+      "camera": {
+        "x": 0,
+        "y": 0,
+        "width": 5,
+        "height": 5,
+        "background": 5,
+        "letter_box": 3
+      },
+      "available_actions": ["ACTION1", "ACTION2", "ACTION3", "ACTION4", "ACTION5", "ACTION7"],
+      "player_spawn": { "x": 1, "y": 1 },
+      "player_sprite_id": "player",
+      "static_sprites": [
+        {
+          "sprite_id": "beacon",
+          "position": { "x": 3, "y": 3 }
+        }
+      ],
+      "targets": [
+        {
+          "id": "activate-finish",
+          "trigger": "action5",
+          "position": { "x": 3, "y": 3 },
+          "effect": {
+            "kind": "complete_level"
+          }
+        }
+      ],
+      "solid_background_colors": [1],
+      "max_actions": 8
+    }
+  ]
+}

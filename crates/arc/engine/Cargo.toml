@@ -1,0 +1,17 @@
+[package]
+name = "arc-engine"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Deterministic ARC game execution, package loading, and replay-safe stepping"
+
+[lints]
+workspace = true
+
+[dependencies]
+arc-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

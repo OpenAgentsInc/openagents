@@ -6,6 +6,7 @@ members = [
     "apps/pylon",
     "crates/arc/core",
     "crates/arc/datasets",
+    "crates/arc/engine",
     "crates/cad",
     "crates/autopilot-spacetime",
     "crates/codex-client",

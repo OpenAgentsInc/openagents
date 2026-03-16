@@ -275,6 +275,11 @@ The current parser/objectization acceptance corpus now lives in
 ARC-AGI-1/2 task fixtures.
 `arc-datasets` now also owns the first augmentation-builder surface plus
 synthetic-task lineage and trace-derived Psionic dataset packaging.
+`crates/arc/engine` now exists as the owner for the first deterministic local
+ARC runtime surface: typed sprite/level/camera/package contracts, 64x64
+letterboxed frame rendering, display-space `ACTION6` coordinate handling,
+full-vs-level reset semantics, replay-safe stepping, and a fixture-backed
+sample game package.
 
 ## 4. Shared domain model
 
@@ -352,7 +357,8 @@ Static ARC task grids MUST satisfy:
 
 - `height in 1..=30`
 - `width in 1..=30`
-- `color in 0..=9`
+- static task grid color in `0..=9`
+- interactive frame color in `0..=15`
 
 These limits apply to ARC task grids.
 Interactive ARC-AGI-3 frame rasters remain governed by their frame and engine
@@ -1405,6 +1411,12 @@ Acceptance:
 - one local sample game loaded and executed in Rust
 - one REST compatibility test against the ARC docs schema
 - one cookie-affine remote-session fixture with typed 429/backoff handling
+
+The local-engine half of this phase is now live: `arc-engine` can load a
+fixture game package, render ARCEngine-style 64x64 letterboxed frames, execute
+typed actions deterministically, and replay the same action trace into a stable
+recording digest. Upstream `ARC-AGI/test_environment_files` fixture parity
+remains the next explicit follow-on in `ARC-202`.
 
 ### Phase 3: benchmark runtime
 
