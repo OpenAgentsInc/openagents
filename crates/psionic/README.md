@@ -274,7 +274,8 @@ Current posture:
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and
   the seeded MLX parity-harness report plus the MLX compatibility matrix.
-- `psionic-nn`: reusable module, parameter, buffer, and deterministic
+- `psionic-nn`: reusable public `Module` tree, parameter, buffer, explicit
+  freeze posture, filtered recursive parameter discovery, and deterministic
   state-dict/state-tree semantics above `psionic-core`, including strict and
   non-strict keyed load behavior.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity,
