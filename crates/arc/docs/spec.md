@@ -1467,9 +1467,14 @@ form: `arc-client` exposes `ArcRemoteArcade` for default-scorecard reuse, the
 compatibility server auto-closes stale scorecards, closed cards continue to
 refuse follow-on actions explicitly, and competition-mode scorecards now
 enforce one-open-card-per-key, one-open-environment-per-card, no inflight
-reads, and close-time materialization of untouched environments. Typed
-429/backoff handling and recording-format parity remain the next explicit
-follow-on in `ARC-213`.
+reads, and close-time materialization of untouched environments. `ARC-213` is
+now also landed in bounded form: `ArcRemoteClient` retries 408/425/429/5xx
+responses under an explicit backoff policy with `Retry-After` support,
+cookie-affine session behavior remains stable across retries, local and remote
+wrappers can now export canonical `ArcRecording` traces, and `arc-client`
+ships a JSONL codec that round-trips frame-complete upstream-compatible step
+logs into `ArcRecording` while refusing sparse frame-less imports
+explicitly.
 
 ### Phase 3: benchmark runtime
 

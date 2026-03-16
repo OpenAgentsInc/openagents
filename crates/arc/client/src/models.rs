@@ -364,7 +364,7 @@ pub(crate) fn flatten_remote_frame(
     ArcFrameData::new(width, height, pixels).map_err(Into::into)
 }
 
-fn expand_frame(frame: ArcFrameData) -> Vec<Vec<u8>> {
+pub(crate) fn expand_frame(frame: ArcFrameData) -> Vec<Vec<u8>> {
     frame
         .pixels()
         .chunks(usize::from(frame.width()))

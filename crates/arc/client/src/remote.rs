@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
-use arc_core::{ArcAction, ArcActionKind, ArcOperationMode};
+use arc_core::{ArcAction, ArcActionKind, ArcOperationMode, ArcRecording};
 use reqwest::blocking::Client;
+use reqwest::header::HeaderMap as ReqwestHeaderMap;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -11,27 +13,51 @@ use crate::models::{
     ArcEnvironmentInfo, ArcOpenScorecardRequest, ArcOpenScorecardResponse, ArcRemoteSession,
     ArcResetCommand, ArcScorecardSummary, ArcSessionFrame, ArcSimpleActionCommand,
 };
+use crate::recording::session_frames_to_recording;
 
 #[derive(Clone)]
 pub struct ArcRemoteClient {
     base_url: String,
     api_key: String,
     http: Client,
+    retry_policy: ArcRemoteRetryPolicy,
 }
 
 pub struct RemoteArcEnvironment {
     client: ArcRemoteClient,
     info: ArcEnvironmentInfo,
     scorecard_id: String,
+    operation_mode: ArcOperationMode,
     session: Option<ArcRemoteSession>,
     last_response: Option<ArcSessionFrame>,
+    history: Vec<ArcSessionFrame>,
 }
 
 #[derive(Clone)]
 pub struct ArcRemoteArcade {
     client: ArcRemoteClient,
+    operation_mode: ArcOperationMode,
     default_open_request: ArcOpenScorecardRequest,
     default_scorecard_id: Arc<Mutex<Option<String>>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ArcRemoteRetryPolicy {
+    pub max_retries: u8,
+    pub initial_delay: Duration,
+    pub backoff_factor: f64,
+    pub max_delay: Duration,
+}
+
+impl Default for ArcRemoteRetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay: Duration::from_secs(1),
+            backoff_factor: 2.0,
+            max_delay: Duration::from_secs(60),
+        }
+    }
 }
 
 impl ArcRemoteClient {
@@ -47,12 +73,24 @@ impl ArcRemoteClient {
             base_url: base_url.into().trim_end_matches('/').to_owned(),
             api_key: api_key.into(),
             http,
+            retry_policy: ArcRemoteRetryPolicy::default(),
         })
     }
 
     #[must_use]
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    #[must_use]
+    pub fn retry_policy(&self) -> ArcRemoteRetryPolicy {
+        self.retry_policy
+    }
+
+    #[must_use]
+    pub fn with_retry_policy(mut self, retry_policy: ArcRemoteRetryPolicy) -> Self {
+        self.retry_policy = retry_policy;
+        self
     }
 
     pub fn list_games(&self) -> Result<Vec<ArcEnvironmentInfo>, ArcClientError> {
@@ -153,11 +191,12 @@ impl ArcRemoteClient {
         T: DeserializeOwned,
     {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .http
-            .get(url)
-            .header("X-Api-Key", &self.api_key)
-            .send()?;
+        let response = self.send_with_retry(path, || {
+            self.http
+                .get(&url)
+                .header("X-Api-Key", &self.api_key)
+                .send()
+        })?;
         Self::decode_response(path, response)
     }
 
@@ -167,13 +206,60 @@ impl ArcRemoteClient {
         Response: DeserializeOwned,
     {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .http
-            .post(url)
-            .header("X-Api-Key", &self.api_key)
-            .json(body)
-            .send()?;
+        let response = self.send_with_retry(path, || {
+            self.http
+                .post(&url)
+                .header("X-Api-Key", &self.api_key)
+                .json(body)
+                .send()
+        })?;
         Self::decode_response(path, response)
+    }
+
+    fn send_with_retry<F>(
+        &self,
+        path: &str,
+        mut send: F,
+    ) -> Result<reqwest::blocking::Response, ArcClientError>
+    where
+        F: FnMut() -> Result<reqwest::blocking::Response, reqwest::Error>,
+    {
+        let mut delay = self.retry_policy.initial_delay;
+        let max_retries = usize::from(self.retry_policy.max_retries);
+
+        for attempt in 0..=max_retries {
+            match send() {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.is_success() || !is_retryable_status(status) {
+                        return Ok(response);
+                    }
+
+                    let retry_after = retry_after_delay(response.headers());
+                    let body = response.text()?;
+                    if attempt == max_retries {
+                        return Err(ArcClientError::RetryBudgetExhausted {
+                            path: path.to_owned(),
+                            attempts: u32::try_from(attempt + 1).unwrap_or(u32::MAX),
+                            status,
+                            body,
+                        });
+                    }
+
+                    std::thread::sleep(retry_after.unwrap_or(delay));
+                    delay = next_delay(delay, self.retry_policy);
+                }
+                Err(error) => {
+                    if attempt == max_retries || !(error.is_connect() || error.is_timeout()) {
+                        return Err(error.into());
+                    }
+                    std::thread::sleep(delay);
+                    delay = next_delay(delay, self.retry_policy);
+                }
+            }
+        }
+
+        unreachable!("retry loop should return or error before exhaustion")
     }
 
     fn decode_response<T>(
@@ -205,6 +291,7 @@ impl ArcRemoteArcade {
         }
         Self {
             client,
+            operation_mode,
             default_open_request,
             default_scorecard_id: Arc::new(Mutex::new(None)),
         }
@@ -289,10 +376,11 @@ impl ArcRemoteArcade {
             Some(scorecard_id) => scorecard_id.to_owned(),
             None => self.ensure_default_scorecard()?,
         };
-        Ok(RemoteArcEnvironment::new(
+        Ok(RemoteArcEnvironment::new_with_operation_mode(
             self.client.clone(),
             info,
             scorecard_id,
+            self.operation_mode,
         ))
     }
 
@@ -312,13 +400,31 @@ impl RemoteArcEnvironment {
         info: ArcEnvironmentInfo,
         scorecard_id: impl Into<String>,
     ) -> Self {
+        Self::new_with_operation_mode(client, info, scorecard_id, ArcOperationMode::Online)
+    }
+
+    #[must_use]
+    pub fn new_with_operation_mode(
+        client: ArcRemoteClient,
+        info: ArcEnvironmentInfo,
+        scorecard_id: impl Into<String>,
+        operation_mode: ArcOperationMode,
+    ) -> Self {
         Self {
             client,
             info,
             scorecard_id: scorecard_id.into(),
+            operation_mode,
             session: None,
             last_response: None,
+            history: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_operation_mode(mut self, operation_mode: ArcOperationMode) -> Self {
+        self.operation_mode = operation_mode;
+        self
     }
 
     #[must_use]
@@ -334,6 +440,11 @@ impl RemoteArcEnvironment {
     #[must_use]
     pub fn scorecard_id(&self) -> &str {
         &self.scorecard_id
+    }
+
+    #[must_use]
+    pub fn operation_mode(&self) -> ArcOperationMode {
+        self.operation_mode
     }
 
     #[must_use]
@@ -353,6 +464,18 @@ impl RemoteArcEnvironment {
             .map(|response| response.available_actions.as_slice())
     }
 
+    pub fn recording(&self) -> Result<Option<ArcRecording>, ArcClientError> {
+        if self.history.is_empty() {
+            return Ok(None);
+        }
+        session_frames_to_recording(
+            self.info.game_id.clone(),
+            self.operation_mode,
+            &self.history,
+        )
+        .map(Some)
+    }
+
     pub fn reset(&mut self) -> Result<ArcSessionFrame, ArcClientError> {
         let guid = self.session.as_ref().map(|session| session.guid.as_str());
         let (session, response) = self.client.reset_session(
@@ -362,6 +485,7 @@ impl RemoteArcEnvironment {
         )?;
         self.session = Some(session);
         self.last_response = Some(response.clone());
+        self.history.push(response.clone());
         Ok(response)
     }
 
@@ -373,7 +497,29 @@ impl RemoteArcEnvironment {
         };
         let response = self.client.execute_action(session, &action, None)?;
         self.last_response = Some(response.clone());
+        self.history.push(response.clone());
         Ok(response)
+    }
+}
+
+fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 408 | 425 | 429 | 500 | 502 | 503 | 504)
+}
+
+fn retry_after_delay(headers: &ReqwestHeaderMap) -> Option<Duration> {
+    headers
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<f64>().ok())
+        .map(Duration::from_secs_f64)
+}
+
+fn next_delay(current: Duration, policy: ArcRemoteRetryPolicy) -> Duration {
+    let scaled = current.mul_f64(policy.backoff_factor);
+    if scaled > policy.max_delay {
+        policy.max_delay
+    } else {
+        scaled
     }
 }
 
