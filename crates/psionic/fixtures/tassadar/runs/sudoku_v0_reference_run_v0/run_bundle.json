@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "run_id": "tassadar-executor-transformer-sudoku-v0-reference-run-v0",
+  "dataset_version": "train-v0",
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
+  "tokenizer_digest": "1c9a6e64cc81a028756ff1ed8cf507b0f69bbd9f7da7ef7293cb85a30ec5d857",
+  "vocabulary_digest": "a1ee06319f535f18ad9d0e43e6dcca7a1ba94413f5995fa3823215e36b795af7",
+  "training_manifest_digest": "d77cc0a8fdf53536e875d385756b48f999f08aad6c49d116db25a7dfb8d538af",
+  "trained_model_descriptor_digest": "f7e5b03300db4a8388edcee2967068e59be07be8189f6555b9517a678e826b2d",
+  "trained_weight_digest": "e2ee063f7eb7eff8d0d294d4030ce6b9c18cb0ca5ad23f9d58d67e0e50d0b32b",
+  "training_report_digest": "aaf760743d82a19333604d36a61c3d1cba92463acefb6000412f75c3b7c18078",
+  "linear_benchmark_report_digest": "707ba6bec45587dafa1cd811146d6777bd0e4b7d6195abb7c6428041449a133f",
+  "checkpoint_artifact_digest": "e45fe31c282e7a0e1f6674714058e0b1da87d45054799e608f8c29b7169b3948",
+  "model_artifact_digest": "6296d111b6e458b1642458c4910d234a4409a3bc717d8d5bf8113163486dd204",
+  "artifacts": [
+    {
+      "artifact_kind": "tassadar_training_manifest",
+      "artifact_ref": "training_manifest.json",
+      "artifact_digest": "6d6cabbce1899bed85af0c1b3e55c7207ad71e43bed0cd15a7c3c49d5bd7e336"
+    },
+    {
+      "artifact_kind": "tassadar_training_report",
+      "artifact_ref": "training_report.json",
+      "artifact_digest": "8bda161bfdbe9db15078d9183b31a0e2fc5a136a64be9492ebbbbdd39942e950"
+    },
+    {
+      "artifact_kind": "tassadar_linear_benchmark_report",
+      "artifact_ref": "linear_benchmark_report.json",
+      "artifact_digest": "3b15158f2c43cd6092ec58579770fb24a7223e4e3f9190452b5692ca24422eed"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_artifact",
+      "artifact_ref": "checkpoint_artifact.json",
+      "artifact_digest": "d1fcf558ca7c65010132c5cfcb4081ebcbc29f925027aef6641817446e4cccab"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_state",
+      "artifact_ref": "checkpoint_state.json",
+      "artifact_digest": "c9aede016ad03a742ab8b9a8c62c94c8a8d390b24721d44eaebf2068d6eb7a34"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_manifest",
+      "artifact_ref": "checkpoint_manifest.json",
+      "artifact_digest": "88b4e3d9faebbb2570d5a9d41a126f77080c34a92de7a95dfa8c04736e615185"
+    },
+    {
+      "artifact_kind": "tassadar_model_artifact",
+      "artifact_ref": "model_artifact.json",
+      "artifact_digest": "f71885712d82a1ec10e6c89351d6c63ae879b62832ff0372c2970470bd749e40"
+    }
+  ],
+  "bundle_digest": "d95838729a77eaf55fda43277aa7457c5c535229fd715cf3ac2460d1c7873e90"
+}

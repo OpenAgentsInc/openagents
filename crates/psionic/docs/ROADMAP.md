@@ -542,6 +542,16 @@ Its declared scope is:
   transformer against direct CPU reference execution, with explicit
   decode-mode and KV-cache identity plus case-level exactness instead of only
   aggregate scores
+- landed trained-executor Phase 7 bar from the post-audit issue spine:
+  `psionic-train` now executes and persists the first Psionic-only Sudoku-v0
+  reference run, with a committed run bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0`
+  containing the frozen training manifest, training report, linear benchmark
+  report, checkpoint state plus checkpoint manifest, and trained-model
+  artifact; the recorded outcome is intentionally still weak (`0/2`
+  validation exact-trace cases, `13` bps aggregate target exactness), which is
+  precisely why the next phases are telemetry and postmortem rather than claim
+  expansion
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

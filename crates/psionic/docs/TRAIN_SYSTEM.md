@@ -200,6 +200,15 @@ That now includes one intentionally narrow executor-training answer:
   execution with explicit decode-mode and KV-cache identity so the remaining
   performance and exactness gap is visible instead of being hidden behind the
   handcrafted runtime lanes
+- the first persisted trained-run surface now also exists for that same lane:
+  `psionic-train` can execute a canonical Sudoku-v0 reference run and persist
+  the frozen training manifest, training report, linear benchmark report,
+  checkpoint payload plus checkpoint manifest, and trained-model artifact under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0`; the
+  current committed run is intentionally recorded as low exactness
+  (`validation_exact_trace_case_count = 0/2`, aggregate target exactness
+  `13` bps), which makes it useful as a real learning baseline rather than as
+  benchmark theater
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim
