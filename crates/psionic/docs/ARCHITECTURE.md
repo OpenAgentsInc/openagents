@@ -499,6 +499,7 @@ training subsystems.
 | `TrainingRecoveryContext` | `psionic-runtime` | runtime-visible recovery posture for training-class execution | `implemented` |
 | `TrainingDeviceMeshContext` | `psionic-runtime` | runtime-visible elastic device-mesh posture | `implemented` |
 | `TrainingCollectiveContext` | `psionic-runtime` | runtime-visible collective posture and benchmark evidence | `implemented` |
+| `ModelIoCompatibilityContract` | `psionic-train` | machine-readable boundary contract for supported and unsupported checkpoint/model portability surfaces | `implemented` |
 | `AdapterArtifactIdentity` | `psionic-adapters` | stable identity for one adapter artifact | `implemented` |
 | `AdapterPackageManifest` | `psionic-adapters` | package manifest for adapter bytes tied to datastream | `implemented` |
 | `ProviderSandboxExecutionReceipt` | `psionic-sandbox` | receipt for one bounded sandbox run | `implemented` |

@@ -6,7 +6,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/release/check-psionic-model-io-contracts.sh
 
-Runs the canonical Psionic model-IO portability harness for #3587.
+Runs the canonical Psionic model-IO portability and compatibility harness.
 EOF
 }
 

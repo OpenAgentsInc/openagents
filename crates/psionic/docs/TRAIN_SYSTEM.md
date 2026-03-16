@@ -2549,6 +2549,9 @@ The new layer makes these train-to-serve seams explicit:
 
 - named state-dict traversal and assignment contracts
 - portable training-group reconstruction from state-dict artifacts
+- machine-readable compatibility boundaries for Psionic-native state dicts,
+  manifest-carrying safetensors, typed JSON state dicts, GGUF import, and
+  intentionally unsupported opaque checkpoint families
 - tokenizer family, digest, special-token, and version binding
 - dense safetensors export and import with embedded Psionic manifest metadata
 - JSON torch-style state-dict artifacts for Rust-native portability
