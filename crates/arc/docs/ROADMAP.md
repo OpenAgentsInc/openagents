@@ -510,9 +510,18 @@ This roadmap is organized into seven epics.
 | Epic 5 | ARC-ML over Psionic | ARC-specific model work with explicit substrate gates |
 | Epic 6 | Evidence, regression, and operator use | capability matrices, fixture corpora, docs, and non-Python operator workflows |
 
-The issue IDs below are roadmap-local IDs.
-Open matching GitHub issues when an epic becomes active rather than mass-opening
-the entire future program now.
+Epics 0 through 3 now have live GitHub issue blocks:
+
+- Epic 0 master:
+  [#3737](https://github.com/OpenAgentsInc/openagents/issues/3737)
+- Epic 1 master:
+  [#3738](https://github.com/OpenAgentsInc/openagents/issues/3738)
+- Epic 2 master:
+  [#3739](https://github.com/OpenAgentsInc/openagents/issues/3739)
+- Epic 3 master:
+  [#3740](https://github.com/OpenAgentsInc/openagents/issues/3740)
+
+Later epics still use roadmap-local IDs until activated.
 
 ## Epic 0: Governance And Acceptance
 
@@ -528,15 +537,18 @@ benchmark truth rather than on isolated solver demos.
 - `spec.md`, roadmap, and audit stay aligned
 - execution order is anchored on benchmark and replay truth, not model hype
 
+Master issue:
+[#3737](https://github.com/OpenAgentsInc/openagents/issues/3737)
+
 ### Issues
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `ARC-001` | landed | Write the canonical ARC subtree roadmap. This document closes that issue. |
-| `ARC-002` | planned | Freeze the ARC claim vocabulary: `contracts-real`, `benchmark-real`, `solver-real`, `interactive-real`, and `research-credible`. |
-| `ARC-003` | planned | Add one compact index linking `crates/arc/spec.md`, this roadmap, the audit, and future acceptance matrices. |
-| `ARC-004` | planned | Freeze the supported upstream benchmark and protocol versions this subtree targets first. |
-| `ARC-005` | planned | Publish the public-eval hygiene rule as explicit harness, artifact-labeling, and operator policy, not only as prose. |
+| `ARC-002` / [#3665](https://github.com/OpenAgentsInc/openagents/issues/3665) | planned | Freeze the ARC claim vocabulary: `contracts-real`, `benchmark-real`, `solver-real`, `interactive-real`, and `research-credible`. |
+| `ARC-003` / [#3666](https://github.com/OpenAgentsInc/openagents/issues/3666) | planned | Add one compact index linking `crates/arc/spec.md`, this roadmap, the audit, and future acceptance matrices. |
+| `ARC-004` / [#3667](https://github.com/OpenAgentsInc/openagents/issues/3667) | planned | Freeze the supported upstream benchmark and protocol versions this subtree targets first. |
+| `ARC-005` / [#3668](https://github.com/OpenAgentsInc/openagents/issues/3668) | planned | Publish the public-eval hygiene rule as explicit harness, artifact-labeling, and operator policy, not only as prose. |
 
 ## Epic 1: Contracts And Dataset Core
 
@@ -553,33 +565,36 @@ depend on one stable source of truth.
 - budgets, results, and refusal envelopes are shared across solver and
   benchmark crates
 
+Master issue:
+[#3738](https://github.com/OpenAgentsInc/openagents/issues/3738)
+
 ### Issues
 
 #### Shared Contracts
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-101` | planned | Create `crates/arc/core` as package `arc-core`. |
-| `ARC-102` | planned | Add `ArcGrid`, `ArcTask`, and ARC-AGI-3 action/frame/recording/scorecard contracts. |
-| `ARC-103` | planned | Add budget, solve-result, refusal, and trace-locator envelopes used across benchmark and solver layers. |
-| `ARC-104` | planned | Freeze deterministic task IDs, hashes, and serialization contracts so fixtures survive refactors. |
-| `ARC-111` | planned | Add interactive benchmark policy contracts: dynamic `available_actions`, game-state enums, operation modes, score-policy IDs, and recording-envelope identifiers. |
+| `ARC-101` / [#3669](https://github.com/OpenAgentsInc/openagents/issues/3669) | planned | Create `crates/arc/core` as package `arc-core`. |
+| `ARC-102` / [#3670](https://github.com/OpenAgentsInc/openagents/issues/3670) | planned | Add `ArcGrid`, `ArcTask`, and ARC-AGI-3 action/frame/recording/scorecard contracts. |
+| `ARC-103` / [#3671](https://github.com/OpenAgentsInc/openagents/issues/3671) | planned | Add budget, solve-result, refusal, and trace-locator envelopes used across benchmark and solver layers. |
+| `ARC-104` / [#3672](https://github.com/OpenAgentsInc/openagents/issues/3672) | planned | Freeze deterministic task IDs, hashes, and serialization contracts so fixtures survive refactors. |
+| `ARC-111` / [#3673](https://github.com/OpenAgentsInc/openagents/issues/3673) | planned | Add interactive benchmark policy contracts: dynamic `available_actions`, game-state enums, operation modes, score-policy IDs, and recording-envelope identifiers. |
 
 #### Canonicalization And Objectization
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-105` | planned | Implement canonicalization, color normalization, and train/test dimension summaries. |
-| `ARC-106` | planned | Implement connected components, holes, bounding boxes, symmetry signatures, and relation graphs. |
-| `ARC-107` | planned | Add correspondence-candidate extraction between train inputs and outputs. |
-| `ARC-108` | planned | Add deterministic parser/objectization fixture corpora over sampled ARC-AGI-1 and ARC-AGI-2 tasks. |
+| `ARC-105` / [#3674](https://github.com/OpenAgentsInc/openagents/issues/3674) | planned | Implement canonicalization, color normalization, and train/test dimension summaries. |
+| `ARC-106` / [#3675](https://github.com/OpenAgentsInc/openagents/issues/3675) | planned | Implement connected components, holes, bounding boxes, symmetry signatures, and relation graphs. |
+| `ARC-107` / [#3676](https://github.com/OpenAgentsInc/openagents/issues/3676) | planned | Add correspondence-candidate extraction between train inputs and outputs. |
+| `ARC-108` / [#3677](https://github.com/OpenAgentsInc/openagents/issues/3677) | planned | Add deterministic parser/objectization fixture corpora over sampled ARC-AGI-1 and ARC-AGI-2 tasks. |
 
 #### Datasets And Synthetic Lineage
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-109` | planned | Create `crates/arc/datasets` with ARC-AGI-1/2 loaders and split metadata export through `psionic-data`. |
-| `ARC-110` | planned | Port augmentation builders, synthetic-task lineage metadata, and trace-derived dataset packaging. |
+| `ARC-109` / [#3678](https://github.com/OpenAgentsInc/openagents/issues/3678) | planned | Create `crates/arc/datasets` with ARC-AGI-1/2 loaders and split metadata export through `psionic-data`. |
+| `ARC-110` / [#3679](https://github.com/OpenAgentsInc/openagents/issues/3679) | planned | Port augmentation builders, synthetic-task lineage metadata, and trace-derived dataset packaging. |
 
 ## Epic 2: Engine, Client, And Benchmark Truth
 
@@ -596,30 +611,33 @@ solver or model progress.
 - recordings, scorecards, checkpoints, replay bundles, and online-session
   semantics survive restart and resume
 
+Master issue:
+[#3739](https://github.com/OpenAgentsInc/openagents/issues/3739)
+
 ### Issues
 
 #### Engine And Compatibility Runtime
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-201` | planned | Create `crates/arc/engine` and port deterministic game execution, including sprites, level logic, and action transitions. |
-| `ARC-202` | planned | Add fixture-driven parity against the upstream `ARC-AGI/test_environment_files` samples. |
-| `ARC-203` | planned | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
-| `ARC-204` | planned | Port the local compatibility server against the ARC docs schema and local-vs-online behavior docs. |
-| `ARC-205` | planned | Add local-vs-remote parity harnesses so game-client behavior is explicitly comparable across modes. |
-| `ARC-211` | planned | Implement versioned interactive score policies, including the current weighted-and-squared methodology/competition policy and any required compatibility fixtures for upstream preview behavior. |
-| `ARC-212` | planned | Implement scorecard lifecycle and operation-mode policy surfaces: default-scorecard reuse, auto-close behavior, closed-card refusal, and competition-mode restrictions. |
-| `ARC-213` | planned | Implement cookie-affine remote sessions, 429/backoff handling, and local-vs-online recording policy with JSONL recording compatibility. |
+| `ARC-201` / [#3680](https://github.com/OpenAgentsInc/openagents/issues/3680) | planned | Create `crates/arc/engine` and port deterministic game execution, including sprites, level logic, and action transitions. |
+| `ARC-202` / [#3681](https://github.com/OpenAgentsInc/openagents/issues/3681) | planned | Add fixture-driven parity against the upstream `ARC-AGI/test_environment_files` samples. |
+| `ARC-203` / [#3682](https://github.com/OpenAgentsInc/openagents/issues/3682) | planned | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
+| `ARC-204` / [#3683](https://github.com/OpenAgentsInc/openagents/issues/3683) | planned | Port the local compatibility server against the ARC docs schema and local-vs-online behavior docs. |
+| `ARC-205` / [#3684](https://github.com/OpenAgentsInc/openagents/issues/3684) | planned | Add local-vs-remote parity harnesses so game-client behavior is explicitly comparable across modes. |
+| `ARC-211` / [#3690](https://github.com/OpenAgentsInc/openagents/issues/3690) | planned | Implement versioned interactive score policies, including the current weighted-and-squared methodology/competition policy and any required compatibility fixtures for upstream preview behavior. |
+| `ARC-212` / [#3691](https://github.com/OpenAgentsInc/openagents/issues/3691) | planned | Implement scorecard lifecycle and operation-mode policy surfaces: default-scorecard reuse, auto-close behavior, closed-card refusal, and competition-mode restrictions. |
+| `ARC-213` / [#3692](https://github.com/OpenAgentsInc/openagents/issues/3692) | planned | Implement cookie-affine remote sessions, 429/backoff handling, and local-vs-online recording policy with JSONL recording compatibility. |
 
 #### Benchmark Truth
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-206` | planned | Create `crates/arc/benchmark` and implement exact-match static scoring for ARC-AGI-1 and ARC-AGI-2. |
-| `ARC-207` | planned | Implement interactive RHAE scoring, scorecards, recordings, and per-step summaries for ARC-AGI-3. |
-| `ARC-208` | planned | Port checkpoint, resume, and run-manifest behavior from the benchmarking repos. |
-| `ARC-209` | planned | Add typed benchmark summaries and repeated-run aggregation over `psionic-eval` and `psionic-research`. |
-| `ARC-210` | planned | Publish benchmark parity fixtures covering exact-match, RHAE, checkpoints, recordings, and replay. |
+| `ARC-206` / [#3685](https://github.com/OpenAgentsInc/openagents/issues/3685) | planned | Create `crates/arc/benchmark` and implement exact-match static scoring for ARC-AGI-1 and ARC-AGI-2. |
+| `ARC-207` / [#3686](https://github.com/OpenAgentsInc/openagents/issues/3686) | planned | Implement interactive RHAE scoring, scorecards, recordings, and per-step summaries for ARC-AGI-3. |
+| `ARC-208` / [#3687](https://github.com/OpenAgentsInc/openagents/issues/3687) | planned | Port checkpoint, resume, and run-manifest behavior from the benchmarking repos. |
+| `ARC-209` / [#3688](https://github.com/OpenAgentsInc/openagents/issues/3688) | planned | Add typed benchmark summaries and repeated-run aggregation over `psionic-eval` and `psionic-research`. |
+| `ARC-210` / [#3689](https://github.com/OpenAgentsInc/openagents/issues/3689) | planned | Publish benchmark parity fixtures covering exact-match, RHAE, checkpoints, recordings, and replay. |
 
 ## Epic 3: Static Solver Program
 
@@ -648,32 +666,35 @@ Solver architecture rule:
 - search implementations enforce bounded candidate growth under `TaskBudget`
 - portfolio performance on internal holdout beats the best single lane
 
+Master issue:
+[#3740](https://github.com/OpenAgentsInc/openagents/issues/3740)
+
 ### Issues
 
 #### Solver Core
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-301` | planned | Create `crates/arc/solvers` and define the typed ARC DSL with Tier A scope first plus a pure interpreter. |
-| `ARC-302` | planned | Add the normative solver object model: typed refusal taxonomy, candidate identity and deduplication, budget accounting, solve-attempt envelopes, and second-attempt distinctness rules. |
-| `ARC-303` | planned | Build the common verifier and falsifier, including augmentation stability and holdout-on-train checks. |
-| `ARC-304` | planned | Add trace-bundle writing and replay fixtures for proposal, verification, refinement, and arbiter decisions. |
+| `ARC-301` / [#3693](https://github.com/OpenAgentsInc/openagents/issues/3693) | planned | Create `crates/arc/solvers` and define the typed ARC DSL with Tier A scope first plus a pure interpreter. |
+| `ARC-302` / [#3694](https://github.com/OpenAgentsInc/openagents/issues/3694) | planned | Add the normative solver object model: typed refusal taxonomy, candidate identity and deduplication, budget accounting, solve-attempt envelopes, and second-attempt distinctness rules. |
+| `ARC-303` / [#3695](https://github.com/OpenAgentsInc/openagents/issues/3695) | planned | Build the common verifier and falsifier, including augmentation stability and holdout-on-train checks. |
+| `ARC-304` / [#3696](https://github.com/OpenAgentsInc/openagents/issues/3696) | planned | Add trace-bundle writing and replay fixtures for proposal, verification, refinement, and arbiter decisions. |
 
 #### Lanes
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-305` | planned | Implement the symbolic induction lane with typed program search and repair operators. |
-| `ARC-306` | planned | Implement the first transductive lane with a Psionic-backed local model adapter. |
-| `ARC-307` | planned | Implement the recursive tiny-model lane interface and bounded step tracing, even if the first model remains small. |
-| `ARC-308` | planned | Implement the MDL/compression lane and simplicity-aware ranking signal. |
-| `ARC-309` | planned | Implement the portfolio arbiter, second-attempt policy, and cross-lane agreement features. |
+| `ARC-305` / [#3697](https://github.com/OpenAgentsInc/openagents/issues/3697) | planned | Implement the symbolic induction lane with typed program search and repair operators. |
+| `ARC-306` / [#3698](https://github.com/OpenAgentsInc/openagents/issues/3698) | planned | Implement the first transductive lane with a Psionic-backed local model adapter. |
+| `ARC-307` / [#3699](https://github.com/OpenAgentsInc/openagents/issues/3699) | planned | Implement the recursive tiny-model lane interface and bounded step tracing, even if the first model remains small. |
+| `ARC-308` / [#3700](https://github.com/OpenAgentsInc/openagents/issues/3700) | planned | Implement the MDL/compression lane and simplicity-aware ranking signal. |
+| `ARC-309` / [#3701](https://github.com/OpenAgentsInc/openagents/issues/3701) | planned | Implement the portfolio arbiter, second-attempt policy, and cross-lane agreement features. |
 
 #### Evaluation Hygiene
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-310` | planned | Build internal hidden holdout, synthetic regression, concept-slice reporting, and explicit public-eval hygiene enforcement so solver progress cannot depend on public-eval leakage. |
+| `ARC-310` / [#3702](https://github.com/OpenAgentsInc/openagents/issues/3702) | planned | Build internal hidden holdout, synthetic regression, concept-slice reporting, and explicit public-eval hygiene enforcement so solver progress cannot depend on public-eval leakage. |
 
 ## Epic 4: Interactive ARC-AGI-3 Agents
 
