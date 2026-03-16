@@ -2606,6 +2606,12 @@ determinism contracts, proves stable local-device and distributed-rank
 generator derivation, proves checkpoint-stable RNG restore, and carries typed
 refusal for missing strict generators or invalid distributed-rank bounds.
 
+`PLIB-213` / `#3728` now complements that replay truth with one bounded
+autocast-style `AutocastPolicyMatrixReport` in `psionic-core`. The report
+keeps backend-aware low-precision policy, stability-preserving no-downcast
+rules, float8 meta-only posture, and explicit unsupported mixed-precision
+requests machine-legible before train-class grad scaling lands.
+
 This is still not the claim that the full train system can be re-executed from
 one receipt without more runtime work. It is the claim that replay-compatible
 inputs, pins, and verification are now explicit enough to support "same

@@ -1,7 +1,7 @@
 # Semantics Claim Report
 
 > Status: canonical `PLIB-209` / `#3724` reference record, updated 2026-03-16
-> after adding the tensor-family capability evidence from `PLIB-210` / `#3725`
+> after adding autocast precision-policy evidence from `PLIB-213` / `#3728`
 > into `crates/psionic/psionic-compat/src/lib.rs`.
 
 This document records the current honest claim boundary for Psionic's
@@ -42,6 +42,7 @@ machine-readable evidence for:
 - tensor-family capability and refusal coverage
 - advanced dtype promotion, cast, and backend-capability coverage
 - reproducibility seed, generator-derivation, and checkpoint-restore coverage
+- autocast-style precision-policy coverage with numerics diagnostics
 - module and `state_dict` parity
 - optimizer step parity
 - fake-tensor and compiler-hygiene parity
@@ -51,7 +52,7 @@ But those artifacts are still seed-sized and explicitly bounded.
 The report keeps broader future targets marked `pytorch_compatible_later`,
 including:
 
-- precision policy, gradient scaling, and broader mixed-precision runtime systems
+- gradient scaling and broader mixed-precision runtime systems
 - quantization and export-safe graph compatibility
 - dataset and distributed-training semantics
 - extension and plugin contracts

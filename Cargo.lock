@@ -6589,6 +6589,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-compat"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "psionic-compiler",
+ "psionic-core",
+ "psionic-ir",
+ "psionic-nn",
+ "psionic-train",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-compiler"
 version = "0.1.1"
 dependencies = [
@@ -6605,7 +6620,9 @@ dependencies = [
 name = "psionic-core"
 version = "0.1.1"
 dependencies = [
+ "hex",
  "serde",
+ "sha2",
 ]
 
 [[package]]

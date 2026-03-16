@@ -1011,6 +1011,428 @@ fn stable_advanced_dtype_semantics_digest(
     hex::encode(hasher.finalize())
 }
 
+/// Operation family used by the bounded autocast-policy surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutocastOperationFamily {
+    /// Matrix multiply or GEMM-style kernels.
+    Matmul,
+    /// Pointwise arithmetic kernels.
+    Pointwise,
+    /// Reductions that may require a wider accumulator.
+    Reduction,
+    /// Attention-family kernels.
+    Attention,
+}
+
+impl AutocastOperationFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Matmul => "matmul",
+            Self::Pointwise => "pointwise",
+            Self::Reduction => "reduction",
+            Self::Attention => "attention",
+        }
+    }
+}
+
+/// One bounded autocast precision policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutocastPrecisionPolicy {
+    /// Backend family against which the policy is evaluated.
+    pub backend: DTypeBackendFamily,
+    /// Preferred low-precision compute dtype.
+    pub preferred_low_precision: ExtendedDType,
+}
+
+impl AutocastPrecisionPolicy {
+    /// Creates a bounded autocast precision policy.
+    #[must_use]
+    pub const fn new(backend: DTypeBackendFamily, preferred_low_precision: ExtendedDType) -> Self {
+        Self {
+            backend,
+            preferred_low_precision,
+        }
+    }
+
+    /// Resolves one operation/input pair through the canonical bounded
+    /// autocast matrix.
+    pub fn resolve(
+        &self,
+        operation: AutocastOperationFamily,
+        input_dtype: ExtendedDType,
+    ) -> Result<AutocastPolicyResolution, PsionicRefusal> {
+        builtin_autocast_policy_matrix_report().resolve(self, operation, input_dtype)
+    }
+}
+
+/// Numerics diagnostic emitted by one bounded autocast rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutocastNumericsDiagnostic {
+    /// Mantissa width is reduced relative to the input dtype.
+    ReducedMantissa,
+    /// Dynamic range is reduced relative to the input dtype.
+    ReducedDynamicRange,
+    /// The rule keeps an FP32 accumulator even while lowering compute dtype.
+    Fp32Accumulator,
+    /// The rule preserves the original dtype for numerical stability.
+    PreservedForStability,
+    /// The rule relies on an explicitly experimental low-precision posture.
+    ExperimentalLowPrecision,
+}
+
+/// Status for one bounded autocast rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutocastPolicyStatus {
+    /// The policy lowers compute dtype on the bounded surface.
+    Applied,
+    /// The policy preserves the higher-precision input dtype.
+    Preserved,
+    /// The policy is explicitly refused.
+    Refused,
+}
+
+/// One bounded autocast policy resolution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutocastPolicyResolution {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Policy under test.
+    pub policy: AutocastPrecisionPolicy,
+    /// Operation family under test.
+    pub operation: AutocastOperationFamily,
+    /// Input dtype observed by the policy.
+    pub input_dtype: ExtendedDType,
+    /// Current status for the resolution.
+    pub status: AutocastPolicyStatus,
+    /// Compute dtype selected by the policy when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compute_dtype: Option<ExtendedDType>,
+    /// Accumulator dtype selected by the policy when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accumulator_dtype: Option<ExtendedDType>,
+    /// Output dtype selected by the policy when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_dtype: Option<ExtendedDType>,
+    /// Numerics diagnostics attached to the rule.
+    pub diagnostics: Vec<AutocastNumericsDiagnostic>,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the policy is intentionally unsupported today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable bounded autocast policy matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutocastPolicyMatrixReport {
+    /// Stable schema version.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Resolution cases carried by the report.
+    pub cases: Vec<AutocastPolicyResolution>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl AutocastPolicyMatrixReport {
+    fn new(current_scope_window: impl Into<String>, cases: Vec<AutocastPolicyResolution>) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest =
+            stable_autocast_policy_matrix_digest(current_scope_window.as_str(), cases.as_slice());
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{}|{:?}",
+                case.case_id,
+                case.policy.backend.label(),
+                case.policy.preferred_low_precision.label(),
+                case.operation.label(),
+                case.status
+            ));
+        }
+        lines
+    }
+
+    /// Resolves one policy request against the bounded matrix.
+    pub fn resolve(
+        &self,
+        policy: &AutocastPrecisionPolicy,
+        operation: AutocastOperationFamily,
+        input_dtype: ExtendedDType,
+    ) -> Result<AutocastPolicyResolution, PsionicRefusal> {
+        let Some(case) = self.cases.iter().find(|case| {
+            case.policy == *policy && case.operation == operation && case.input_dtype == input_dtype
+        }) else {
+            return Err(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "autocast policy matrix does not declare a bounded rule for backend `{}`, preferred `{}`, op `{}`, input `{}`",
+                        policy.backend.label(),
+                        policy.preferred_low_precision.label(),
+                        operation.label(),
+                        input_dtype.label()
+                    ),
+                )
+                .with_subject(format!(
+                    "{}:{}:{}:{}",
+                    policy.backend.label(),
+                    policy.preferred_low_precision.label(),
+                    operation.label(),
+                    input_dtype.label()
+                )),
+            );
+        };
+        match case.status {
+            AutocastPolicyStatus::Applied | AutocastPolicyStatus::Preserved => Ok(case.clone()),
+            AutocastPolicyStatus::Refused => Err(case.refusal.clone().unwrap_or_else(|| {
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    format!(
+                        "autocast policy `{}` / `{}` / `{}` / `{}` is intentionally refused in the current scope",
+                        policy.backend.label(),
+                        policy.preferred_low_precision.label(),
+                        operation.label(),
+                        input_dtype.label()
+                    ),
+                )
+                .with_subject(format!(
+                    "{}:{}:{}:{}",
+                    policy.backend.label(),
+                    policy.preferred_low_precision.label(),
+                    operation.label(),
+                    input_dtype.label()
+                ))
+            })),
+        }
+    }
+}
+
+/// Builds the canonical bounded autocast policy matrix.
+#[must_use]
+pub fn builtin_autocast_policy_matrix_report() -> AutocastPolicyMatrixReport {
+    AutocastPolicyMatrixReport::new(
+        String::from("psionic_autocast_v1"),
+        vec![
+            supported_autocast_case(
+                "current_runtime_backends.bf16.matmul.f32",
+                AutocastPrecisionPolicy::new(
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    ExtendedDType::BF16,
+                ),
+                AutocastOperationFamily::Matmul,
+                ExtendedDType::F32,
+                AutocastPolicyStatus::Applied,
+                ExtendedDType::BF16,
+                ExtendedDType::F32,
+                ExtendedDType::BF16,
+                vec![
+                    AutocastNumericsDiagnostic::ReducedMantissa,
+                    AutocastNumericsDiagnostic::Fp32Accumulator,
+                ],
+                "Current runtime backends may lower `f32` matmul inputs into `bf16` compute while keeping an `f32` accumulator.",
+            ),
+            supported_autocast_case(
+                "current_runtime_backends.f16.pointwise.f32",
+                AutocastPrecisionPolicy::new(
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    ExtendedDType::F16,
+                ),
+                AutocastOperationFamily::Pointwise,
+                ExtendedDType::F32,
+                AutocastPolicyStatus::Applied,
+                ExtendedDType::F16,
+                ExtendedDType::F16,
+                ExtendedDType::F16,
+                vec![AutocastNumericsDiagnostic::ReducedMantissa],
+                "Current runtime backends may lower seeded pointwise `f32` work into `f16` when the bounded policy explicitly prefers it.",
+            ),
+            supported_autocast_case(
+                "current_runtime_backends.f16.reduction.f32",
+                AutocastPrecisionPolicy::new(
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    ExtendedDType::F16,
+                ),
+                AutocastOperationFamily::Reduction,
+                ExtendedDType::F32,
+                AutocastPolicyStatus::Preserved,
+                ExtendedDType::F32,
+                ExtendedDType::F32,
+                ExtendedDType::F32,
+                vec![AutocastNumericsDiagnostic::PreservedForStability],
+                "Reductions stay at `f32` in the current bounded policy instead of silently downcasting numerically sensitive accumulations.",
+            ),
+            supported_autocast_case(
+                "meta_execution.f8_e4m3fn.matmul.f32",
+                AutocastPrecisionPolicy::new(
+                    DTypeBackendFamily::MetaExecution,
+                    ExtendedDType::F8E4M3Fn,
+                ),
+                AutocastOperationFamily::Matmul,
+                ExtendedDType::F32,
+                AutocastPolicyStatus::Applied,
+                ExtendedDType::F8E4M3Fn,
+                ExtendedDType::F16,
+                ExtendedDType::F16,
+                vec![
+                    AutocastNumericsDiagnostic::ExperimentalLowPrecision,
+                    AutocastNumericsDiagnostic::ReducedDynamicRange,
+                ],
+                "Meta execution may carry an experimental float8 autocast rule even though current runtime backends do not materialize that path yet.",
+            ),
+            refused_autocast_case(
+                "current_runtime_backends.bf16.pointwise.complex64",
+                AutocastPrecisionPolicy::new(
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    ExtendedDType::BF16,
+                ),
+                AutocastOperationFamily::Pointwise,
+                ExtendedDType::Complex64,
+                "Current runtime backends do not yet autocast complex inputs through the bounded precision-policy surface.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends do not autocast `complex64` inputs",
+                )
+                .with_subject("current_runtime_backends:bf16:pointwise:complex64"),
+            ),
+            refused_autocast_case(
+                "current_runtime_backends.f8_e5m2.matmul.f32",
+                AutocastPrecisionPolicy::new(
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    ExtendedDType::F8E5M2,
+                ),
+                AutocastOperationFamily::Matmul,
+                ExtendedDType::F32,
+                "Current runtime backends do not yet materialize `f8_e5m2` autocast compute, so that preference is explicitly refused instead of silently ignored.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends do not materialize `f8_e5m2` autocast compute",
+                )
+                .with_subject("current_runtime_backends:f8_e5m2:matmul:f32"),
+            ),
+        ],
+    )
+}
+
+fn supported_autocast_case(
+    case_id: &str,
+    policy: AutocastPrecisionPolicy,
+    operation: AutocastOperationFamily,
+    input_dtype: ExtendedDType,
+    status: AutocastPolicyStatus,
+    compute_dtype: ExtendedDType,
+    accumulator_dtype: ExtendedDType,
+    output_dtype: ExtendedDType,
+    diagnostics: Vec<AutocastNumericsDiagnostic>,
+    bounded_scope: &str,
+) -> AutocastPolicyResolution {
+    AutocastPolicyResolution {
+        case_id: String::from(case_id),
+        policy,
+        operation,
+        input_dtype,
+        status,
+        compute_dtype: Some(compute_dtype),
+        accumulator_dtype: Some(accumulator_dtype),
+        output_dtype: Some(output_dtype),
+        diagnostics,
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_autocast_case(
+    case_id: &str,
+    policy: AutocastPrecisionPolicy,
+    operation: AutocastOperationFamily,
+    input_dtype: ExtendedDType,
+    bounded_scope: &str,
+    refusal: PsionicRefusal,
+) -> AutocastPolicyResolution {
+    AutocastPolicyResolution {
+        case_id: String::from(case_id),
+        policy,
+        operation,
+        input_dtype,
+        status: AutocastPolicyStatus::Refused,
+        compute_dtype: None,
+        accumulator_dtype: None,
+        output_dtype: None,
+        diagnostics: Vec::new(),
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_autocast_policy_matrix_digest(
+    current_scope_window: &str,
+    cases: &[AutocastPolicyResolution],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("backend={}", case.policy.backend.label()));
+        lines.push(format!(
+            "preferred_low_precision={}",
+            case.policy.preferred_low_precision.label()
+        ));
+        lines.push(format!("operation={}", case.operation.label()));
+        lines.push(format!("input_dtype={}", case.input_dtype.label()));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!("bounded_scope={}", case.bounded_scope));
+        if let Some(compute_dtype) = case.compute_dtype {
+            lines.push(format!("compute_dtype={}", compute_dtype.label()));
+        }
+        if let Some(accumulator_dtype) = case.accumulator_dtype {
+            lines.push(format!("accumulator_dtype={}", accumulator_dtype.label()));
+        }
+        if let Some(output_dtype) = case.output_dtype {
+            lines.push(format!("output_dtype={}", output_dtype.label()));
+        }
+        for diagnostic in &case.diagnostics {
+            lines.push(format!("diagnostic={diagnostic:?}"));
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("refusal_code={:?}", refusal.code));
+            lines.push(format!("refusal_scope={:?}", refusal.scope));
+            lines.push(format!("refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
 /// Quantization mode for stored model weights.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1866,9 +2288,11 @@ fn is_permutation(order: &[usize]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        builtin_advanced_dtype_semantics_report, DType, DTypeBackendFamily, DTypeCastKind,
-        DTypeClass, Device, DeviceKind, ExtendedDType, ExtendedDTypeClass, Layout, PsionicRefusal,
-        PsionicRefusalCode, PsionicRefusalScope, Shape, TensorSpec, ViewSemantics,
+        builtin_advanced_dtype_semantics_report, builtin_autocast_policy_matrix_report,
+        AutocastNumericsDiagnostic, AutocastOperationFamily, AutocastPolicyStatus,
+        AutocastPrecisionPolicy, DType, DTypeBackendFamily, DTypeCastKind, DTypeClass, Device,
+        DeviceKind, ExtendedDType, ExtendedDTypeClass, Layout, PsionicRefusal, PsionicRefusalCode,
+        PsionicRefusalScope, Shape, TensorSpec, ViewSemantics,
     };
 
     #[test]
@@ -2128,6 +2552,74 @@ mod tests {
         );
         assert_eq!(refused_core.scope, PsionicRefusalScope::Runtime);
         assert_eq!(refused_core.subject.as_deref(), Some("complex64"));
+    }
+
+    #[test]
+    fn autocast_policy_matrix_tracks_seeded_backend_rules_and_diagnostics() {
+        let report = builtin_autocast_policy_matrix_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_autocast_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let bf16_matmul = AutocastPrecisionPolicy::new(
+            DTypeBackendFamily::CurrentRuntimeBackends,
+            ExtendedDType::BF16,
+        )
+        .resolve(AutocastOperationFamily::Matmul, ExtendedDType::F32)
+        .expect("missing seeded bf16 matmul rule");
+        assert_eq!(bf16_matmul.status, AutocastPolicyStatus::Applied);
+        assert_eq!(bf16_matmul.compute_dtype, Some(ExtendedDType::BF16));
+        assert_eq!(bf16_matmul.accumulator_dtype, Some(ExtendedDType::F32));
+        assert!(bf16_matmul
+            .diagnostics
+            .contains(&AutocastNumericsDiagnostic::Fp32Accumulator));
+
+        let preserved_reduction = AutocastPrecisionPolicy::new(
+            DTypeBackendFamily::CurrentRuntimeBackends,
+            ExtendedDType::F16,
+        )
+        .resolve(AutocastOperationFamily::Reduction, ExtendedDType::F32)
+        .expect("missing seeded preserved reduction rule");
+        assert_eq!(preserved_reduction.status, AutocastPolicyStatus::Preserved);
+        assert_eq!(preserved_reduction.compute_dtype, Some(ExtendedDType::F32));
+        assert!(preserved_reduction
+            .diagnostics
+            .contains(&AutocastNumericsDiagnostic::PreservedForStability));
+
+        let experimental_float8 = AutocastPrecisionPolicy::new(
+            DTypeBackendFamily::MetaExecution,
+            ExtendedDType::F8E4M3Fn,
+        )
+        .resolve(AutocastOperationFamily::Matmul, ExtendedDType::F32)
+        .expect("missing seeded meta float8 rule");
+        assert_eq!(experimental_float8.status, AutocastPolicyStatus::Applied);
+        assert!(experimental_float8
+            .diagnostics
+            .contains(&AutocastNumericsDiagnostic::ExperimentalLowPrecision));
+
+        let complex_refusal = AutocastPrecisionPolicy::new(
+            DTypeBackendFamily::CurrentRuntimeBackends,
+            ExtendedDType::BF16,
+        )
+        .resolve(AutocastOperationFamily::Pointwise, ExtendedDType::Complex64)
+        .expect_err("complex autocast should refuse");
+        assert_eq!(
+            complex_refusal.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(complex_refusal.scope, PsionicRefusalScope::Runtime);
+
+        let missing_rule = AutocastPrecisionPolicy::new(
+            DTypeBackendFamily::CurrentRuntimeBackends,
+            ExtendedDType::BF16,
+        )
+        .resolve(AutocastOperationFamily::Attention, ExtendedDType::F32)
+        .expect_err("missing attention rule should refuse");
+        assert_eq!(missing_rule.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(missing_rule.scope, PsionicRefusalScope::Graph);
     }
 
     #[test]
