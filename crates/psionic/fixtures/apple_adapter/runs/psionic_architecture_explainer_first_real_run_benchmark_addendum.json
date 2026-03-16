@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "run_id": "psionic-architecture-explainer-first-real-run-1773636619824",
+  "source_report_path": "crates/psionic/fixtures/apple_adapter/runs/psionic_architecture_explainer_first_real_run_report.json",
+  "host": {
+    "model_name": "MacBook Pro",
+    "model_identifier": "Mac14,10",
+    "chip": "Apple M2 Pro",
+    "total_cpu_cores": 12,
+    "memory_bytes": 17179869184,
+    "macos_version": "26.1",
+    "kernel_version": "Darwin 25.1.0",
+    "xcode_version": "26.3",
+    "xcode_build": "17C529",
+    "macos_sdk_version": "26.2",
+    "macos_sdk_build": "25C58"
+  },
+  "dataset": {
+    "train_samples": 9,
+    "held_out_samples": 6,
+    "benchmark_samples": 7,
+    "train_bytes": 4463,
+    "held_out_bytes": 2478,
+    "benchmark_bytes": 3610,
+    "corpus_manifest_bytes": 8702
+  },
+  "phase_timings_ms": {
+    "setup_and_dataset_import": 9,
+    "toolkit_training_logged": 822355,
+    "toolkit_training_wall_clock_observed": 822437,
+    "toolkit_export_logged": 2216,
+    "toolkit_export_wall_clock_observed": 2602,
+    "held_out_and_runtime_smoke_until_failure": 8692,
+    "export_copy_to_target": 3,
+    "benchmark_and_report_after_export": 19087,
+    "total_run_to_export": 834208,
+    "total_run_to_report": 853295
+  },
+  "artifact_sizes": {
+    "checkpoint_bytes": 266799379,
+    "toolkit_runtime_asset_bytes": 133312320,
+    "staged_runtime_asset_bytes": 133312320,
+    "exported_runtime_asset_bytes": 133312320,
+    "run_directory_kib": 796572,
+    "exported_package_kib": 130192,
+    "report_json_bytes": 18062,
+    "report_markdown_bytes": 1601
+  },
+  "bottlenecks": [
+    {
+      "phase": "toolkit_training",
+      "share_of_total_percent": 96.38,
+      "note": "Dominant cost by far; almost the entire run is inside the Apple toolkit training subprocess."
+    },
+    {
+      "phase": "benchmark_and_report_after_export",
+      "share_of_total_percent": 2.24,
+      "note": "Second-largest phase; mostly live bridge calls over the benchmark set plus report materialization."
+    },
+    {
+      "phase": "held_out_and_runtime_smoke_until_failure",
+      "share_of_total_percent": 1.02,
+      "note": "Short compared with training; ended in tokenizer-lineage drift before local summary persistence."
+    },
+    {
+      "phase": "toolkit_export",
+      "share_of_total_percent": 0.3,
+      "note": "Minor cost on this host relative to training."
+    }
+  ],
+  "outcome": {
+    "disposition": "rejected_benchmark",
+    "benchmark_accepted": false,
+    "base_score_bps": 0,
+    "adapted_score_bps": 0,
+    "improved_case_count": 0,
+    "launch_error": "Apple adapter runtime smoke failed: Apple adapter runtime expected tokenizer digest `2e0575bd61810e1dc9c266d5a92799ce920814806dd039e7363482ecbf2485db` but observed ``"
+  },
+  "minimum_repeatable_profile": {
+    "platform": "Apple Silicon Mac with Apple Intelligence enabled",
+    "recommended_memory_bytes": 17179869184,
+    "recommended_free_disk_bytes": 1073741824,
+    "bridge_requirement": "Local FoundationBridge on 127.0.0.1:11435",
+    "toolkit_requirement": "Current dev path still requires the local Apple adapter toolkit for the live train/export phase"
+  },
+  "notes": [
+    "The repeated Apple Intelligence compatibility popup still appeared during live attempts, but it did not prevent this run from finishing training, export, benchmark, and report generation.",
+    "The bottleneck profile is specific to the current toolkit-backed reference lane; it is not evidence about future pure-Rust or clustered Apple training.",
+    "Because runtime smoke failed before local summary persistence, the addendum relies on run-log timings and file sizes instead of one already-persisted summary object."
+  ]
+}
