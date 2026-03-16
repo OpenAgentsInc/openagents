@@ -269,7 +269,11 @@ The current path is:
    desktop-control instead of waiting for one buffered child-process exit. The
    legacy toolkit compatibility wrapper in `psionic-train` now also streams
    stdout/stderr lines before returning its final receipt, so even non-live-path
-   toolkit invocations no longer depend on `Command::output()` buffering.
+   toolkit invocations no longer depend on `Command::output()` buffering. The
+   packaged Apple release checks now run
+   `scripts/release/check-psionic-apple-rust-only-gate.sh`, which fails if the
+   shipped Apple operator path regresses back to toolkit-root discovery,
+   Python-interpreter discovery, or authoritative toolkit shell-outs.
 
 That last bridge-backed load step is the authoritative export-validity gate.
 

@@ -4030,3 +4030,33 @@ impl FinalizeComputeEvaluationRunRequestExt for FinalizeComputeEvaluationRunRequ
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        APPLE_PSIONIC_EXPORT_BACKEND_ID, APPLE_PSIONIC_TRAINING_BACKEND_ID,
+        APPLE_TOOLKIT_EXPORT_BACKEND_ID, APPLE_TOOLKIT_TRAINING_BACKEND_ID,
+    };
+
+    #[test]
+    fn apple_operator_authoritative_backends_are_rust_only() {
+        for backend in [APPLE_PSIONIC_TRAINING_BACKEND_ID, APPLE_PSIONIC_EXPORT_BACKEND_ID] {
+            assert!(
+                !backend.contains("toolkit"),
+                "authoritative live backend should not reference toolkit: {backend}"
+            );
+            assert!(
+                !backend.contains("python"),
+                "authoritative live backend should not reference python: {backend}"
+            );
+        }
+        assert_ne!(
+            APPLE_PSIONIC_TRAINING_BACKEND_ID,
+            APPLE_TOOLKIT_TRAINING_BACKEND_ID
+        );
+        assert_ne!(
+            APPLE_PSIONIC_EXPORT_BACKEND_ID,
+            APPLE_TOOLKIT_EXPORT_BACKEND_ID
+        );
+    }
+}

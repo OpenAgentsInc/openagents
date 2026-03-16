@@ -575,6 +575,8 @@ require_command python3
 
 if [[ "$SKIP_TEST_GATES" != "1" ]]; then
   run_release_regression_gates
+  log "Running Psionic Apple Rust-only gate"
+  ./scripts/release/check-psionic-apple-rust-only-gate.sh
 fi
 
 if [[ -f "$ROOT_DIR/.env.local" ]]; then

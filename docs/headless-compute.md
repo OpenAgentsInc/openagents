@@ -178,7 +178,7 @@ For the Apple adapter lane, the training command group is now an operator
 workflow rather than a status-only surface:
 
 - `autopilotctl training launch ...` imports train and held-out datasets, runs
-  the current repo-owned Apple operator flow, invokes the Apple toolkit-backed
+  the current repo-owned Apple operator flow, runs the Rust-native Psionic
   training/export lane to stage an Apple-valid `.fmadapter`, and records local
   held-out plus runtime-smoke results, including the bridge-reported runtime
   compatibility state used during validation
@@ -213,6 +213,12 @@ operator run is created. The long-running train/eval/export/runtime-smoke work
 continues in the background, and the status/event surfaces above are the
 supported way to follow progress without waiting for the original launch command
 to exit.
+
+The packaged Apple-lane release checks now also run
+`scripts/release/check-psionic-apple-rust-only-gate.sh` before claiming Apple
+training readiness. That gate fails if the shipped Apple operator path regresses
+back to toolkit-root discovery, Python-interpreter discovery, or authoritative
+toolkit shell-outs.
 
 `autopilotctl proof status` now drills into recent delivery proofs instead of
 stopping at a count. The payload includes proof posture, topology and

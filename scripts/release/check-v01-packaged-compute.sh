@@ -253,6 +253,9 @@ trap cleanup EXIT
 require_command cargo
 require_command python3
 
+log "Running Psionic Apple Rust-only gate"
+./scripts/release/check-psionic-apple-rust-only-gate.sh
+
 export OPENAGENTS_SPARK_API_KEY="${OPENAGENTS_SPARK_API_KEY:-$(resolve_default_spark_api_key)}"
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
