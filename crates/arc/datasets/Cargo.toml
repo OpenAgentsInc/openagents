@@ -1,0 +1,19 @@
+[package]
+name = "arc-datasets"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "ARC-AGI-1/2 dataset loaders and Psionic split metadata export"
+
+[lints]
+workspace = true
+
+[dependencies]
+arc-core = { path = "../core" }
+psionic-data = { path = "../../psionic/psionic-data" }
+psionic-datastream = { path = "../../psionic/psionic-datastream" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
