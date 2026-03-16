@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     BackendProbeState, BackendToolchainIdentity, ExecutionProofArtifactResidency,
     ExecutionProofAugmentationPosture, ExecutionProofBundle, ExecutionProofBundleKind,
@@ -137,6 +139,7 @@ impl TassadarRuntimeCapabilityReport {
             supported_wasm_profiles: vec![
                 String::from(TassadarWasmProfileId::CoreI32V1.as_str()),
                 String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
+                String::from(TassadarWasmProfileId::SudokuV0SearchV1.as_str()),
             ],
             supported_attention_modes: vec![
                 TassadarRuntimeAttentionMode::ReferenceLinear,
@@ -248,6 +251,8 @@ pub enum TassadarWasmProfileId {
     CoreI32V1,
     /// Widened i32-only profile for article-class exact executor benchmarks.
     CoreI32V2,
+    /// Larger i32-only profile for real 4x4 Sudoku-v0 search programs.
+    SudokuV0SearchV1,
 }
 
 impl TassadarWasmProfileId {
@@ -257,6 +262,7 @@ impl TassadarWasmProfileId {
         match self {
             Self::CoreI32V1 => "tassadar.wasm.core_i32.v1",
             Self::CoreI32V2 => "tassadar.wasm.core_i32.v2",
+            Self::SudokuV0SearchV1 => "tassadar.wasm.sudoku_v0_search.v1",
         }
     }
 }
@@ -506,6 +512,21 @@ impl TassadarWasmProfile {
         }
     }
 
+    /// Returns the larger search-oriented profile used for honest 4x4 Sudoku-v0 programs.
+    #[must_use]
+    pub fn sudoku_v0_search_v1() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::SudokuV0SearchV1.as_str()),
+            allowed_opcodes: TassadarOpcode::ALL.to_vec(),
+            max_locals: 8,
+            max_memory_slots: 32,
+            max_program_len: 2_048,
+            max_steps: 32_768,
+            branch_mode: TassadarBranchMode::BrIfNonZero,
+            host_output_opcode: true,
+        }
+    }
+
     /// Returns whether the profile explicitly supports one opcode.
     #[must_use]
     pub fn supports(&self, opcode: TassadarOpcode) -> bool {
@@ -543,6 +564,9 @@ pub fn tassadar_wasm_profile_for_id(profile_id: &str) -> Option<TassadarWasmProf
         }
         value if value == TassadarWasmProfileId::CoreI32V2.as_str() => {
             Some(TassadarWasmProfile::core_i32_v2())
+        }
+        value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
+            Some(TassadarWasmProfile::sudoku_v0_search_v1())
         }
         _ => None,
     }
@@ -596,6 +620,20 @@ impl TassadarTraceAbi {
         }
     }
 
+    /// Returns the search-oriented trace ABI for the honest Sudoku-v0 profile.
+    #[must_use]
+    pub fn sudoku_v0_search_v1() -> Self {
+        Self {
+            abi_id: String::from("tassadar.trace.v1"),
+            schema_version: TASSADAR_TRACE_ABI_VERSION,
+            profile_id: String::from(TassadarWasmProfileId::SudokuV0SearchV1.as_str()),
+            append_only: true,
+            includes_stack_snapshots: true,
+            includes_local_snapshots: true,
+            includes_memory_snapshots: true,
+        }
+    }
+
     /// Returns a stable digest over the ABI compatibility surface.
     #[must_use]
     pub fn compatibility_digest(&self) -> String {
@@ -631,6 +669,9 @@ pub fn tassadar_trace_abi_for_profile_id(profile_id: &str) -> Option<TassadarTra
         }
         value if value == TassadarWasmProfileId::CoreI32V2.as_str() => {
             Some(TassadarTraceAbi::core_i32_v2())
+        }
+        value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
+            Some(TassadarTraceAbi::sudoku_v0_search_v1())
         }
         _ => None,
     }
@@ -1313,6 +1354,16 @@ impl TassadarFixtureWeights {
         }
     }
 
+    /// Returns the larger search-profile handcrafted fixture table.
+    #[must_use]
+    pub fn sudoku_v0_search_v1() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::SudokuV0SearchV1.as_str()),
+            trace_abi_id: String::from("tassadar.trace.v1"),
+            opcode_rules: Self::core_i32_v1().opcode_rules,
+        }
+    }
+
     /// Returns one rule by opcode.
     #[must_use]
     pub fn rule_for(&self, opcode: TassadarOpcode) -> Option<&TassadarOpcodeRule> {
@@ -1335,6 +1386,9 @@ pub fn tassadar_fixture_weights_for_profile_id(profile_id: &str) -> Option<Tassa
         }
         value if value == TassadarWasmProfileId::CoreI32V2.as_str() => {
             Some(TassadarFixtureWeights::core_i32_v2())
+        }
+        value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
+            Some(TassadarFixtureWeights::sudoku_v0_search_v1())
         }
         _ => None,
     }
@@ -2806,6 +2860,215 @@ pub struct TassadarValidationCase {
     pub expected_trace: Vec<TassadarTraceStep>,
     /// Exact expected output values.
     pub expected_outputs: Vec<i32>,
+}
+
+const TASSADAR_SUDOKU_V0_CELL_COUNT: usize = 16;
+const TASSADAR_SUDOKU_V0_GIVEN_OFFSET: usize = 16;
+const TASSADAR_SUDOKU_V0_MEMORY_SLOTS: usize = 32;
+const TASSADAR_SUDOKU_V0_GRID_WIDTH: usize = 4;
+const TASSADAR_SUDOKU_V0_BOX_WIDTH: usize = 2;
+
+/// Builds a real 4x4 Sudoku-v0 backtracking search program in the widened Wasm-first lane.
+#[must_use]
+pub fn tassadar_sudoku_v0_search_program(
+    program_id: impl Into<String>,
+    puzzle_cells: [i32; TASSADAR_SUDOKU_V0_CELL_COUNT],
+) -> TassadarProgram {
+    debug_assert!(puzzle_cells.iter().all(|value| (0..=4).contains(value)));
+    let profile = TassadarWasmProfile::sudoku_v0_search_v1();
+    let mut initial_memory = vec![0; TASSADAR_SUDOKU_V0_MEMORY_SLOTS];
+    for (index, value) in puzzle_cells.into_iter().enumerate() {
+        initial_memory[index] = value;
+        initial_memory[TASSADAR_SUDOKU_V0_GIVEN_OFFSET + index] = i32::from(value != 0);
+    }
+    TassadarProgram::new(
+        program_id,
+        &profile,
+        0,
+        TASSADAR_SUDOKU_V0_MEMORY_SLOTS,
+        build_tassadar_sudoku_v0_search_instructions(),
+    )
+    .with_initial_memory(initial_memory)
+}
+
+fn build_tassadar_sudoku_v0_search_instructions() -> Vec<TassadarInstruction> {
+    let mut assembler = TassadarLabelAssembler::default();
+    for cell in 0..TASSADAR_SUDOKU_V0_CELL_COUNT {
+        let stage_label = sudoku_v0_stage_label(cell);
+        let search_label = sudoku_v0_search_label(cell);
+        let valid_label = sudoku_v0_candidate_valid_label(cell);
+        let invalid_label = sudoku_v0_candidate_invalid_label(cell);
+        let backtrack_label = sudoku_v0_backtrack_label(cell);
+        let next_stage_label = if cell + 1 == TASSADAR_SUDOKU_V0_CELL_COUNT {
+            String::from("sudoku_v0_solved")
+        } else {
+            sudoku_v0_stage_label(cell + 1)
+        };
+        let previous_backtrack_label = if cell == 0 {
+            String::from("sudoku_v0_unsolved")
+        } else {
+            sudoku_v0_backtrack_label(cell - 1)
+        };
+
+        assembler.label(stage_label.as_str());
+        assembler.emit(TassadarInstruction::I32Load {
+            slot: (TASSADAR_SUDOKU_V0_GIVEN_OFFSET + cell) as u8,
+        });
+        assembler.branch_if(next_stage_label.as_str());
+
+        assembler.label(search_label.as_str());
+        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::I32Const { value: 1 });
+        assembler.emit(TassadarInstruction::I32Add);
+        assembler.emit(TassadarInstruction::I32Store { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::I32Const { value: 5 });
+        assembler.emit(TassadarInstruction::I32Sub);
+        assembler.branch_if(valid_label.as_str());
+        assembler.emit(TassadarInstruction::I32Const { value: 0 });
+        assembler.emit(TassadarInstruction::I32Store { slot: cell as u8 });
+        assembler.branch_always(previous_backtrack_label.as_str());
+
+        assembler.label(valid_label.as_str());
+        for (peer_index, peer_slot) in sudoku_v0_peer_slots(cell).into_iter().enumerate() {
+            let next_check_label = format!("sudoku_v0_cell_{cell}_peer_{peer_index}_next");
+            assembler.emit(TassadarInstruction::I32Load { slot: peer_slot });
+            assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+            assembler.emit(TassadarInstruction::I32Sub);
+            assembler.branch_if(next_check_label.as_str());
+            assembler.branch_always(invalid_label.as_str());
+            assembler.label(next_check_label.as_str());
+        }
+        assembler.branch_always(next_stage_label.as_str());
+
+        assembler.label(invalid_label.as_str());
+        assembler.branch_always(search_label.as_str());
+
+        assembler.label(backtrack_label.as_str());
+        assembler.emit(TassadarInstruction::I32Load {
+            slot: (TASSADAR_SUDOKU_V0_GIVEN_OFFSET + cell) as u8,
+        });
+        assembler.branch_if(previous_backtrack_label.as_str());
+        assembler.branch_always(search_label.as_str());
+    }
+
+    assembler.label("sudoku_v0_solved");
+    for cell in 0..TASSADAR_SUDOKU_V0_CELL_COUNT {
+        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::Output);
+    }
+    assembler.emit(TassadarInstruction::Return);
+
+    assembler.label("sudoku_v0_unsolved");
+    assembler.emit(TassadarInstruction::Return);
+
+    assembler.finalize()
+}
+
+fn sudoku_v0_stage_label(cell: usize) -> String {
+    format!("sudoku_v0_cell_{cell}_stage")
+}
+
+fn sudoku_v0_search_label(cell: usize) -> String {
+    format!("sudoku_v0_cell_{cell}_search")
+}
+
+fn sudoku_v0_candidate_valid_label(cell: usize) -> String {
+    format!("sudoku_v0_cell_{cell}_candidate_valid")
+}
+
+fn sudoku_v0_candidate_invalid_label(cell: usize) -> String {
+    format!("sudoku_v0_cell_{cell}_candidate_invalid")
+}
+
+fn sudoku_v0_backtrack_label(cell: usize) -> String {
+    format!("sudoku_v0_cell_{cell}_backtrack")
+}
+
+fn sudoku_v0_peer_slots(cell: usize) -> Vec<u8> {
+    let row = cell / TASSADAR_SUDOKU_V0_GRID_WIDTH;
+    let col = cell % TASSADAR_SUDOKU_V0_GRID_WIDTH;
+    let row_base = row * TASSADAR_SUDOKU_V0_GRID_WIDTH;
+    let col_base = col;
+    let box_row = (row / TASSADAR_SUDOKU_V0_BOX_WIDTH) * TASSADAR_SUDOKU_V0_BOX_WIDTH;
+    let box_col = (col / TASSADAR_SUDOKU_V0_BOX_WIDTH) * TASSADAR_SUDOKU_V0_BOX_WIDTH;
+    let mut peers = BTreeMap::new();
+
+    for row_offset in 0..TASSADAR_SUDOKU_V0_GRID_WIDTH {
+        let slot = row_base + row_offset;
+        if slot != cell {
+            peers.insert(slot, ());
+        }
+    }
+    for row_index in 0..TASSADAR_SUDOKU_V0_GRID_WIDTH {
+        let slot = row_index * TASSADAR_SUDOKU_V0_GRID_WIDTH + col_base;
+        if slot != cell {
+            peers.insert(slot, ());
+        }
+    }
+    for box_row_offset in 0..TASSADAR_SUDOKU_V0_BOX_WIDTH {
+        for box_col_offset in 0..TASSADAR_SUDOKU_V0_BOX_WIDTH {
+            let slot = (box_row + box_row_offset) * TASSADAR_SUDOKU_V0_GRID_WIDTH
+                + box_col
+                + box_col_offset;
+            if slot != cell {
+                peers.insert(slot, ());
+            }
+        }
+    }
+
+    peers.into_keys().map(|slot| slot as u8).collect()
+}
+
+#[derive(Default)]
+struct TassadarLabelAssembler {
+    instructions: Vec<TassadarInstruction>,
+    labels: BTreeMap<String, usize>,
+    branch_fixups: Vec<(usize, String)>,
+}
+
+impl TassadarLabelAssembler {
+    fn emit(&mut self, instruction: TassadarInstruction) {
+        self.instructions.push(instruction);
+    }
+
+    fn label(&mut self, label: &str) {
+        let previous = self
+            .labels
+            .insert(String::from(label), self.instructions.len());
+        assert!(previous.is_none(), "duplicate label `{label}`");
+    }
+
+    fn branch_if(&mut self, label: &str) {
+        let branch_index = self.instructions.len();
+        self.instructions
+            .push(TassadarInstruction::BrIf { target_pc: 0 });
+        self.branch_fixups.push((branch_index, String::from(label)));
+    }
+
+    fn branch_always(&mut self, label: &str) {
+        self.emit(TassadarInstruction::I32Const { value: 1 });
+        self.branch_if(label);
+    }
+
+    fn finalize(mut self) -> Vec<TassadarInstruction> {
+        for (instruction_index, label) in self.branch_fixups {
+            let target_pc = *self
+                .labels
+                .get(label.as_str())
+                .unwrap_or_else(|| panic!("unknown label `{label}`"));
+            match self.instructions.get_mut(instruction_index) {
+                Some(TassadarInstruction::BrIf {
+                    target_pc: branch_target,
+                }) => {
+                    *branch_target = u16::try_from(target_pc)
+                        .expect("Sudoku-v0 search program target pc should fit in u16");
+                }
+                _ => panic!("branch fixup at instruction {instruction_index} was not a BrIf"),
+            }
+        }
+        self.instructions
+    }
 }
 
 /// Returns the canonical Phase 1 validation corpus.
@@ -4475,17 +4738,17 @@ fn stable_bytes_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        TASSADAR_FIXTURE_RUNNER_ID, TASSADAR_RUNTIME_BACKEND_ID, TassadarCompilerToolchainIdentity,
-        TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
-        TassadarExecutorSelectionReason, TassadarExecutorSelectionState, TassadarFixtureRunner,
-        TassadarHullCacheRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
-        TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
-        TassadarSparseTopKRunner, TassadarTraceAbi, TassadarWasmProfile,
-        TassadarWasmProfileId,
         build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
         execute_tassadar_executor_request, replay_tassadar_execution,
         run_tassadar_exact_equivalence, run_tassadar_exact_parity, tassadar_article_class_corpus,
-        tassadar_runtime_capability_report, tassadar_validation_corpus,
+        tassadar_runtime_capability_report, tassadar_sudoku_v0_search_program,
+        tassadar_validation_corpus, TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner,
+        TassadarExecutionRefusal, TassadarExecutorDecodeMode, TassadarExecutorSelectionReason,
+        TassadarExecutorSelectionState, TassadarFixtureRunner, TassadarHullCacheRunner,
+        TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
+        TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
+        TassadarSparseTopKRunner, TassadarTraceAbi, TassadarTraceEvent, TassadarWasmProfile,
+        TassadarWasmProfileId, TASSADAR_FIXTURE_RUNNER_ID, TASSADAR_RUNTIME_BACKEND_ID,
     };
 
     #[test]
@@ -4585,6 +4848,7 @@ mod tests {
             vec![
                 String::from(TassadarWasmProfile::core_i32_v1().profile_id),
                 String::from(TassadarWasmProfile::core_i32_v2().profile_id),
+                String::from(TassadarWasmProfile::sudoku_v0_search_v1().profile_id),
             ]
         );
         assert_eq!(capability.validated_trace_abi_versions, vec![1]);
@@ -4615,6 +4879,147 @@ mod tests {
             TassadarSparseTopKRunner::for_program(&case.program)
                 .expect("article-class sparse runner should resolve");
         }
+    }
+
+    #[test]
+    fn sudoku_v0_search_profile_resolves_to_runtime_builders() {
+        let program = tassadar_sudoku_v0_search_program(
+            "tassadar.sudoku_v0.runtime_builder_test",
+            [
+                0, 1, 0, 0, //
+                0, 4, 1, 0, //
+                1, 0, 0, 4, //
+                0, 3, 0, 0,
+            ],
+        );
+        assert_eq!(
+            program.profile_id,
+            TassadarWasmProfileId::SudokuV0SearchV1.as_str()
+        );
+        TassadarCpuReferenceRunner::for_program(&program).expect("Sudoku-v0 CPU runner");
+        TassadarFixtureRunner::for_program(&program).expect("Sudoku-v0 fixture runner");
+        TassadarHullCacheRunner::for_program(&program).expect("Sudoku-v0 hull runner");
+        TassadarSparseTopKRunner::for_program(&program).expect("Sudoku-v0 sparse runner");
+    }
+
+    #[test]
+    fn sudoku_v0_search_program_solves_real_4x4_puzzles_with_looping_search() {
+        let puzzles = vec![
+            (
+                "sudoku_v0_case_a",
+                [
+                    1, 0, 0, 4, //
+                    0, 4, 1, 0, //
+                    0, 1, 0, 3, //
+                    4, 0, 2, 0,
+                ],
+                vec![
+                    1, 2, 3, 4, //
+                    3, 4, 1, 2, //
+                    2, 1, 4, 3, //
+                    4, 3, 2, 1,
+                ],
+            ),
+            (
+                "sudoku_v0_case_b",
+                [
+                    0, 1, 0, 0, //
+                    0, 4, 1, 0, //
+                    1, 0, 0, 4, //
+                    0, 3, 0, 0,
+                ],
+                vec![
+                    2, 1, 4, 3, //
+                    3, 4, 1, 2, //
+                    1, 2, 3, 4, //
+                    4, 3, 2, 1,
+                ],
+            ),
+            (
+                "sudoku_v0_case_c",
+                [
+                    0, 0, 0, 0, //
+                    3, 0, 0, 0, //
+                    0, 0, 0, 4, //
+                    0, 0, 1, 0,
+                ],
+                vec![
+                    1, 2, 4, 3, //
+                    3, 4, 2, 1, //
+                    2, 1, 3, 4, //
+                    4, 3, 1, 2,
+                ],
+            ),
+        ];
+
+        let mut saw_taken_backward_branch = false;
+        for (program_id, puzzle, expected_outputs) in puzzles {
+            let program = tassadar_sudoku_v0_search_program(program_id, puzzle);
+            let execution = TassadarCpuReferenceRunner::for_program(&program)
+                .expect("Sudoku-v0 CPU runner")
+                .execute(&program)
+                .expect("Sudoku-v0 program should solve the puzzle");
+            assert_eq!(execution.outputs, expected_outputs, "program={program_id}");
+            if execution.steps.iter().any(|step| {
+                matches!(
+                    step.event,
+                    TassadarTraceEvent::Branch {
+                        taken: true,
+                        target_pc,
+                        ..
+                    } if target_pc < step.pc
+                )
+            }) {
+                saw_taken_backward_branch = true;
+            }
+        }
+
+        assert!(
+            saw_taken_backward_branch,
+            "expected at least one real 4x4 Sudoku-v0 search case to use a taken backward branch"
+        );
+    }
+
+    #[test]
+    fn sudoku_v0_search_selection_surfaces_documented_fast_path_fallbacks() {
+        let program = tassadar_sudoku_v0_search_program(
+            "tassadar.sudoku_v0.fast_path_boundary",
+            [
+                0, 1, 0, 0, //
+                0, 4, 1, 0, //
+                1, 0, 0, 4, //
+                0, 3, 0, 0,
+            ],
+        );
+        let hull_diagnostic = diagnose_tassadar_executor_request(
+            &program,
+            TassadarExecutorDecodeMode::HullCache,
+            TassadarTraceAbi::sudoku_v0_search_v1().schema_version,
+            Some(&[
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ]),
+        );
+        assert!(hull_diagnostic.is_fallback());
+        assert_eq!(
+            hull_diagnostic.selection_reason,
+            Some(TassadarExecutorSelectionReason::HullCacheControlFlowUnsupported)
+        );
+
+        let sparse_diagnostic = diagnose_tassadar_executor_request(
+            &program,
+            TassadarExecutorDecodeMode::SparseTopK,
+            TassadarTraceAbi::sudoku_v0_search_v1().schema_version,
+            Some(&[
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::SparseTopK,
+            ]),
+        );
+        assert!(sparse_diagnostic.is_fallback());
+        assert_eq!(
+            sparse_diagnostic.selection_reason,
+            Some(TassadarExecutorSelectionReason::SparseTopKValidationUnsupported)
+        );
     }
 
     #[test]

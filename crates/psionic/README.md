@@ -87,6 +87,11 @@ Current posture:
   `psionic-models`, and `psionic-eval`, with the `core_i32_v2` Wasm profile,
   profile-aware runner construction, and article-class exact benchmark
   coverage for `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching`
+- the first trained-executor follow-on bar now also exists in
+  `psionic-runtime` and `psionic-models`: a dedicated
+  `tassadar.wasm.sudoku_v0_search.v1` profile plus a real 4x4 backtracking
+  Sudoku search program representation that is exact on the CPU reference lane
+  and explicitly outside the current hull/sparse validated fast-path subset
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons
