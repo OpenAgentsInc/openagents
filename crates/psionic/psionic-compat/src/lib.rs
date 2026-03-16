@@ -7,6 +7,107 @@ use thiserror::Error;
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "compatibility claim vocabulary and semantics evidence aggregation";
 
+/// Frozen upstream MLX release window used for Psionic MLX parity claims.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxUpstreamVersionWindow {
+    /// Canonical upstream repository name for the bounded oracle window.
+    pub upstream_repository: String,
+    /// Lowest upstream release tag included in the current window.
+    pub minimum_inclusive_tag: String,
+    /// Highest upstream release tag included in the current window.
+    pub maximum_inclusive_tag: String,
+    /// Informational local checkout commit used during the initial roadmap review.
+    pub review_checkout_commit: String,
+    /// Human-readable `git describe` string for that review checkout.
+    pub review_checkout_describe: String,
+    /// Date the informative review checkout was inspected.
+    pub review_checkout_date: String,
+}
+
+/// One machine-readable MLX claim-language term and its required boundaries.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxCompatibilityTerm {
+    /// Stable claim-language identifier.
+    pub term_id: String,
+    /// Plain-language summary of what the term means inside Psionic.
+    pub summary: String,
+    /// Properties the term requires before the language is allowed in docs or review.
+    pub required_properties: Vec<String>,
+    /// Shortcuts the term explicitly forbids.
+    pub forbidden_shortcuts: Vec<String>,
+}
+
+/// Aggregate machine-readable contract for Psionic's bounded MLX claim language.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxCompatibilityScopeReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Versioned MLX claim vocabulary window.
+    pub claim_vocabulary_version: String,
+    /// Frozen upstream MLX release window for current parity claims.
+    pub upstream_version_window: MlxUpstreamVersionWindow,
+    /// Allowed MLX claim-language terms and their required boundaries.
+    pub compatibility_terms: Vec<MlxCompatibilityTerm>,
+    /// Global rules that keep later parity or compatibility work version-bounded.
+    pub explicit_rules: Vec<String>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl MlxCompatibilityScopeReport {
+    fn new(
+        upstream_version_window: MlxUpstreamVersionWindow,
+        compatibility_terms: Vec<MlxCompatibilityTerm>,
+        explicit_rules: Vec<String>,
+    ) -> Self {
+        let claim_vocabulary_version = String::from("mlx_claim_v1");
+        let report_digest = stable_mlx_compatibility_scope_report_digest(
+            claim_vocabulary_version.as_str(),
+            &upstream_version_window,
+            &compatibility_terms,
+            &explicit_rules,
+        );
+        Self {
+            schema_version: 1,
+            claim_vocabulary_version,
+            upstream_version_window,
+            compatibility_terms,
+            explicit_rules,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("claim_vocabulary_version={}", self.claim_vocabulary_version),
+            format!(
+                "upstream_repository={}",
+                self.upstream_version_window.upstream_repository
+            ),
+            format!(
+                "minimum_inclusive_tag={}",
+                self.upstream_version_window.minimum_inclusive_tag
+            ),
+            format!(
+                "maximum_inclusive_tag={}",
+                self.upstream_version_window.maximum_inclusive_tag
+            ),
+            format!(
+                "review_checkout_commit={}",
+                self.upstream_version_window.review_checkout_commit
+            ),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for term in &self.compatibility_terms {
+            lines.push(format!("term={}", term.term_id));
+        }
+        lines
+    }
+}
+
 /// Stable claim posture for one PyTorch-facing semantics area.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -165,8 +266,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 advanced_operator_programs.matrix_digest,
             )],
             vec![
-                String::from("broaden advanced operator-family coverage beyond the current linalg, signal, and attention seed programs"),
-                String::from("land concrete distribution and special-function primitives instead of refusal-only family placeholders"),
+                String::from(
+                    "broaden advanced operator-family coverage beyond the current linalg, signal, and attention seed programs",
+                ),
+                String::from(
+                    "land concrete distribution and special-function primitives instead of refusal-only family placeholders",
+                ),
             ],
             Vec::new(),
         ),
@@ -178,8 +283,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 program_transforms.matrix_digest,
             )],
             vec![
-                String::from("broaden transform capability beyond functionalization and export-safe graph readiness"),
-                String::from("connect export-safe graph capability to deployment artifact contracts"),
+                String::from(
+                    "broaden transform capability beyond functionalization and export-safe graph readiness",
+                ),
+                String::from(
+                    "connect export-safe graph capability to deployment artifact contracts",
+                ),
             ],
             Vec::new(),
         ),
@@ -191,8 +300,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 export_deployment.report_digest,
             )],
             vec![
-                String::from("broaden export and deployment semantics beyond the current execution-plan and topology-aware bundle window"),
-                String::from("connect checkpoint migration and broader plugin distribution to the graph-first deployment contracts"),
+                String::from(
+                    "broaden export and deployment semantics beyond the current execution-plan and topology-aware bundle window",
+                ),
+                String::from(
+                    "connect checkpoint migration and broader plugin distribution to the graph-first deployment contracts",
+                ),
             ],
             Vec::new(),
         ),
@@ -204,7 +317,9 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 extensions.report_digest,
             )],
             vec![
-                String::from("broaden extension semantics beyond the current typed contract bundles"),
+                String::from(
+                    "broaden extension semantics beyond the current typed contract bundles",
+                ),
                 String::from("connect extension contracts to deployment and distribution surfaces"),
             ],
             Vec::new(),
@@ -216,9 +331,9 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 "data_ingress_semantics",
                 data_ingress.report_digest,
             )],
-            vec![
-                String::from("broaden data ingress beyond the current local source, sampler, and staging window"),
-            ],
+            vec![String::from(
+                "broaden data ingress beyond the current local source, sampler, and staging window",
+            )],
             Vec::new(),
         ),
         seeded_area(
@@ -229,8 +344,12 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 distributed_data_feed.report_digest,
             )],
             vec![
-                String::from("broaden distributed data-feed semantics beyond the current fixed-world-size shard partitioning window"),
-                String::from("connect elastic membership and topology revision to replay-safe worker ordering"),
+                String::from(
+                    "broaden distributed data-feed semantics beyond the current fixed-world-size shard partitioning window",
+                ),
+                String::from(
+                    "connect elastic membership and topology revision to replay-safe worker ordering",
+                ),
             ],
             Vec::new(),
         ),
@@ -260,11 +379,15 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 advanced_dtypes.report_digest,
             )],
             vec![
-                String::from("broaden promotion and cast coverage beyond the current seeded matrix"),
+                String::from(
+                    "broaden promotion and cast coverage beyond the current seeded matrix",
+                ),
                 String::from(
                     "connect broader operator-family semantics to the richer dtype vocabulary",
                 ),
-                String::from("materialize additional dtypes beyond the compact runtime-core subset"),
+                String::from(
+                    "materialize additional dtypes beyond the compact runtime-core subset",
+                ),
             ],
             Vec::new(),
         ),
@@ -276,9 +399,15 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 reproducibility.report_digest,
             )],
             vec![
-                String::from("broaden reproducibility coverage beyond the current seeded runtime and replay cases"),
-                String::from("connect mixed-precision and distributed data-feed semantics to the replayable RNG contract"),
-                String::from("extend checkpointed RNG restore deeper into later train-loop and export surfaces"),
+                String::from(
+                    "broaden reproducibility coverage beyond the current seeded runtime and replay cases",
+                ),
+                String::from(
+                    "connect mixed-precision and distributed data-feed semantics to the replayable RNG contract",
+                ),
+                String::from(
+                    "extend checkpointed RNG restore deeper into later train-loop and export surfaces",
+                ),
             ],
             Vec::new(),
         ),
@@ -293,11 +422,15 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 ),
             ],
             vec![
-                String::from("broaden autocast and train-class mixed-precision coverage beyond the current seeded fp16 and bf16 cases"),
+                String::from(
+                    "broaden autocast and train-class mixed-precision coverage beyond the current seeded fp16 and bf16 cases",
+                ),
                 String::from(
                     "connect distributed data-feed semantics and wider operator-family coverage to the mixed-precision surface",
                 ),
-                String::from("extend backend capability truth beyond the current bounded runtime-vs-meta split"),
+                String::from(
+                    "extend backend capability truth beyond the current bounded runtime-vs-meta split",
+                ),
             ],
             Vec::new(),
         ),
@@ -309,9 +442,13 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 quantization.report_digest,
             )],
             vec![
-                String::from("broaden quantization coverage beyond the current int8 and ggml_q4_0 seeded cases"),
+                String::from(
+                    "broaden quantization coverage beyond the current int8 and ggml_q4_0 seeded cases",
+                ),
                 String::from("connect quantization capability to extension and plugin contracts"),
-                String::from("land deployment-facing export artifacts on top of the export-aware quantization surface"),
+                String::from(
+                    "land deployment-facing export artifacts on top of the export-aware quantization surface",
+                ),
             ],
             Vec::new(),
         ),
@@ -374,9 +511,9 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         future_area(
             "advanced_tensor_dtype_and_precision",
             "Broader mixed-precision behavior and train-class precision control remain explicit future compatibility targets after landing bounded tensor-family, dtype, reproducibility, autocast, and gradient-scaling seed coverage.",
-            vec![
-                String::from("broaden mixed-precision and train-class precision control beyond the current seeded fp16/bf16 window"),
-            ],
+            vec![String::from(
+                "broaden mixed-precision and train-class precision control beyond the current seeded fp16/bf16 window",
+            )],
             Vec::new(),
         ),
         future_area(
@@ -388,6 +525,94 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             Vec::new(),
         ),
     ]))
+}
+
+/// Builds the canonical MLX compatibility scope report for the current Psionic
+/// MLX-facing program.
+#[must_use]
+pub fn builtin_mlx_compatibility_scope_report() -> MlxCompatibilityScopeReport {
+    MlxCompatibilityScopeReport::new(
+        MlxUpstreamVersionWindow {
+            upstream_repository: String::from("ml-explore/mlx"),
+            minimum_inclusive_tag: String::from("v0.31.0"),
+            maximum_inclusive_tag: String::from("v0.31.1"),
+            review_checkout_commit: String::from("ea91bd02cf0671f3fe6ddaf746812c27bf05154e"),
+            review_checkout_describe: String::from("v0.31.1-7-gea91bd02"),
+            review_checkout_date: String::from("2026-03-16"),
+        },
+        vec![
+            MlxCompatibilityTerm {
+                term_id: String::from("mlx_class"),
+                summary: String::from(
+                    "A Rust-native Psionic framework surface that targets the bounded MLX release window semantically while keeping runtime, artifact, receipt, and train truth Psionic-owned end to end.",
+                ),
+                required_properties: vec![
+                    String::from(
+                        "implemented natively inside crates/psionic/* without delegating runtime behavior to upstream MLX, Python, or FFI proxy layers",
+                    ),
+                    String::from(
+                        "cites the frozen inclusive upstream MLX release window when making parity, acceptance, or adoption claims",
+                    ),
+                    String::from(
+                        "reuses Psionic runtime, compiler, train, and artifact truth instead of bypassing them with lane-local compatibility code",
+                    ),
+                ],
+                forbidden_shortcuts: vec![
+                    String::from(
+                        "calling a thin wrapper over upstream MLX itself a Psionic MLX-class implementation",
+                    ),
+                    String::from(
+                        "using compatibility or import shells as a substitute for missing native framework semantics",
+                    ),
+                    String::from(
+                        "making unversioned claims such as MLX-like, MLX equivalent, or MLX compatible without naming the bounded window",
+                    ),
+                ],
+            },
+            MlxCompatibilityTerm {
+                term_id: String::from("mlx_compatible"),
+                summary: String::from(
+                    "A later bounded facade, import/export path, naming shim, or migration surface built on top of the native Psionic MLX-class substrate.",
+                ),
+                required_properties: vec![
+                    String::from(
+                        "ships only after a native Psionic-owned MLX-class substrate exists for the claimed area",
+                    ),
+                    String::from(
+                        "publishes explicit supported, convertible, and unsupported behavior for the same frozen upstream MLX release window",
+                    ),
+                    String::from(
+                        "keeps refusal behavior and lossy conversions machine-legible rather than implying full upstream closure",
+                    ),
+                ],
+                forbidden_shortcuts: vec![
+                    String::from(
+                        "describing a compatibility facade as proof that the underlying native semantics are complete",
+                    ),
+                    String::from(
+                        "using compatibility language to widen the bounded release window or to imply tip-of-tree MLX coverage",
+                    ),
+                    String::from(
+                        "claiming upstream test or notebook coverage without routing that evidence through the repo-owned parity harness",
+                    ),
+                ],
+            },
+        ],
+        vec![
+            String::from(
+                "The frozen upstream MLX release window is inclusive v0.31.0 through v0.31.1 from ml-explore/mlx.",
+            ),
+            String::from(
+                "The local audit checkout commit ea91bd02cf0671f3fe6ddaf746812c27bf05154e (v0.31.1-7-gea91bd02, observed 2026-03-16) informed roadmap review but does not widen the supported release window.",
+            ),
+            String::from(
+                "Every later MLX parity artifact, acceptance matrix, or compatibility shell must cite this frozen window or update this report first.",
+            ),
+            String::from(
+                "Psionic must not claim MLX-identical or unversioned MLX-compatible behavior from roadmap text, demos, or wrapper code alone.",
+            ),
+        ],
+    )
 }
 
 fn seeded_area(
@@ -455,15 +680,159 @@ fn stable_semantics_claim_report_digest(
     hex::encode(hasher.finalize())
 }
 
+fn stable_mlx_compatibility_scope_report_digest(
+    claim_vocabulary_version: &str,
+    upstream_version_window: &MlxUpstreamVersionWindow,
+    compatibility_terms: &[MlxCompatibilityTerm],
+    explicit_rules: &[String],
+) -> String {
+    let mut lines = vec![
+        format!("claim_vocabulary_version={claim_vocabulary_version}"),
+        format!(
+            "upstream_repository={}",
+            upstream_version_window.upstream_repository
+        ),
+        format!(
+            "minimum_inclusive_tag={}",
+            upstream_version_window.minimum_inclusive_tag
+        ),
+        format!(
+            "maximum_inclusive_tag={}",
+            upstream_version_window.maximum_inclusive_tag
+        ),
+        format!(
+            "review_checkout_commit={}",
+            upstream_version_window.review_checkout_commit
+        ),
+        format!(
+            "review_checkout_describe={}",
+            upstream_version_window.review_checkout_describe
+        ),
+        format!(
+            "review_checkout_date={}",
+            upstream_version_window.review_checkout_date
+        ),
+    ];
+    for term in compatibility_terms {
+        lines.push(format!("term={}", term.term_id));
+        lines.push(format!("summary={}", term.summary));
+        for property in &term.required_properties {
+            lines.push(format!("required={property}"));
+        }
+        for shortcut in &term.forbidden_shortcuts {
+            lines.push(format!("forbidden={shortcut}"));
+        }
+    }
+    for rule in explicit_rules {
+        lines.push(format!("rule={rule}"));
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use super::{builtin_semantics_claim_report, SemanticsClaimPosture};
+    use super::{
+        SemanticsClaimPosture, builtin_mlx_compatibility_scope_report,
+        builtin_semantics_claim_report,
+    };
 
     #[test]
-    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_compatibility_scope_report_freezes_upstream_version_window_and_claim_vocabulary() {
+        let report = builtin_mlx_compatibility_scope_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.claim_vocabulary_version, "mlx_claim_v1");
+        assert_eq!(
+            report.upstream_version_window.upstream_repository,
+            "ml-explore/mlx"
+        );
+        assert_eq!(
+            report.upstream_version_window.minimum_inclusive_tag,
+            "v0.31.0"
+        );
+        assert_eq!(
+            report.upstream_version_window.maximum_inclusive_tag,
+            "v0.31.1"
+        );
+        assert_eq!(
+            report.upstream_version_window.review_checkout_commit,
+            "ea91bd02cf0671f3fe6ddaf746812c27bf05154e"
+        );
+        assert_eq!(
+            report.upstream_version_window.review_checkout_describe,
+            "v0.31.1-7-gea91bd02"
+        );
+        assert_eq!(
+            report.upstream_version_window.review_checkout_date,
+            "2026-03-16"
+        );
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
+
+        let mlx_class = report
+            .compatibility_terms
+            .iter()
+            .find(|term| term.term_id == "mlx_class")
+            .expect("missing mlx_class term");
+        assert!(
+            mlx_class
+                .required_properties
+                .iter()
+                .any(|property| property.contains("implemented natively"))
+        );
+        assert!(
+            mlx_class
+                .forbidden_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("unversioned claims"))
+        );
+
+        let mlx_compatible = report
+            .compatibility_terms
+            .iter()
+            .find(|term| term.term_id == "mlx_compatible")
+            .expect("missing mlx_compatible term");
+        assert!(
+            mlx_compatible
+                .required_properties
+                .iter()
+                .any(|property| property.contains("supported, convertible, and unsupported"))
+        );
+        assert!(
+            mlx_compatible
+                .forbidden_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("tip-of-tree MLX coverage"))
+        );
+
+        assert!(
+            report
+                .explicit_rules
+                .iter()
+                .any(|rule| rule.contains("inclusive v0.31.0 through v0.31.1"))
+        );
+        assert!(
+            report
+                .explicit_rules
+                .iter()
+                .any(|rule| rule.contains("does not widen the supported release window"))
+        );
+    }
+
+    #[test]
+    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_semantics_claim_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.claim_vocabulary_version, "pytorch_claim_v1");
@@ -471,10 +840,12 @@ mod tests {
             report.overall_posture,
             SemanticsClaimPosture::SeededEvidenceOnly
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         for area_id in [
             "operator_semantics",
