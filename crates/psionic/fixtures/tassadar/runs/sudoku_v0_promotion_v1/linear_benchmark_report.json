@@ -1,0 +1,108 @@
+{
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
+  "model_descriptor_digest": "b27de422b7f5c21f20da75b44b22d5d6144c5757cc728beb417d1b66069caa2a",
+  "trained_weight_digest": "02354f61bbb2e911dbad7997661c6c8aa92460027e9b25873bdf1958dd928dd2",
+  "decode_mode": "reference_linear",
+  "kv_cache_identity": "tassadar.prefix_recompute.no_kv_cache.v1",
+  "neural_tokens_per_second": 16292,
+  "cpu_tokens_per_second": 156875125,
+  "case_reports": [
+    {
+      "case_id": "sudoku_v0_train_a",
+      "split": "train",
+      "target_token_count": 114913,
+      "neural_elapsed_ms": 7056,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16286,
+      "cpu_tokens_per_second": 114913,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_train_b",
+      "split": "train",
+      "target_token_count": 169360,
+      "neural_elapsed_ms": 10425,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16246,
+      "cpu_tokens_per_second": 169360,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_train_c",
+      "split": "train",
+      "target_token_count": 205350,
+      "neural_elapsed_ms": 12573,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16333,
+      "cpu_tokens_per_second": 205350,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_train_d",
+      "split": "train",
+      "target_token_count": 190547,
+      "neural_elapsed_ms": 11682,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16311,
+      "cpu_tokens_per_second": 190547,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_validation_a",
+      "split": "validation",
+      "target_token_count": 135387,
+      "neural_elapsed_ms": 8317,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16278,
+      "cpu_tokens_per_second": 135387,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_validation_b",
+      "split": "validation",
+      "target_token_count": 144879,
+      "neural_elapsed_ms": 8888,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16301,
+      "cpu_tokens_per_second": 144879,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_test_a",
+      "split": "test",
+      "target_token_count": 137638,
+      "neural_elapsed_ms": 8470,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16250,
+      "cpu_tokens_per_second": 137638,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    },
+    {
+      "case_id": "sudoku_v0_test_b",
+      "split": "test",
+      "target_token_count": 156927,
+      "neural_elapsed_ms": 9619,
+      "cpu_elapsed_ms": 0,
+      "neural_tokens_per_second": 16314,
+      "cpu_tokens_per_second": 156927,
+      "exact_trace_match": false,
+      "final_output_match": false,
+      "halt_match": false
+    }
+  ]
+}

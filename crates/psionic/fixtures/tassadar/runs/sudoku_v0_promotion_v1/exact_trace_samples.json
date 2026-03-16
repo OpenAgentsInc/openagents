@@ -1,0 +1,10 @@
+{
+  "run_id": "tassadar-executor-transformer-sudoku-v0-promotion-v1",
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
+  "trained_model_descriptor_digest": "b27de422b7f5c21f20da75b44b22d5d6144c5757cc728beb417d1b66069caa2a",
+  "checkpoint_manifest_digest": "9cd7771ee9976c8d421aaa91b1fc160a12d5dc8fca7ca1c7d54b48eb9cf6a38b",
+  "exact_trace_case_count": 0,
+  "samples": [],
+  "report_digest": "4e8e4d2d672e5d6a68f8172a1365409c118a05cbcbca5ee5065f934208943dc3"
+}

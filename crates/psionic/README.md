@@ -191,6 +191,18 @@ Current posture:
   the first `32`, but still leaves `0/2` exact validation traces and the first
   divergence bucket at target index `1`, so this is a truthful next-surface
   recommendation rather than a promotion claim
+- the fourteenth trained-executor follow-on bar from the post-audit issue
+  spine now also exists in `psionic-train`, `docs/audits/`, `scripts/`, and a
+  canonical promotion bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v1`: long Phase 14
+  runs now emit live stage/epoch/batch/validation/checkpoint progress, the repo
+  now persists `best_checkpoint_manifest.json` plus
+  `promotion_gate_report.json`, and the canonical promotion run records the
+  current honest ceiling at checkpoint `epoch_0006`
+  (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32,
+  `0/2` exact validation traces); the gate therefore remains red, so this
+  phase lands as promotion-truth tooling and blocker evidence rather than an
+  exact learned-trace result
 - the fifteenth trained-executor follow-on bar from the post-audit issue spine
   now also exists in `psionic-models`, `psionic-eval`, `psionic-research`,
   `docs/audits/`, and a new bounded same-corpus comparison root at
