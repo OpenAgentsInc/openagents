@@ -13,10 +13,14 @@
 //! It can export split metadata through Psionic-owned dataset contracts, but it
 //! must not absorb generic dataset infrastructure from `psionic-data`.
 
+mod synthetic;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use arc_core::{ArcTask, ArcTaskError, ArcTaskId, ArcTaskIdError, canonical_sha256_hex};
+use arc_core::{
+    ArcGridError, ArcTask, ArcTaskError, ArcTaskId, ArcTaskIdError, canonical_sha256_hex,
+};
 use psionic_data::{
     DatasetContractError, DatasetKey, DatasetManifest, DatasetRecordEncoding, DatasetShardManifest,
     DatasetSplitDeclaration, DatasetSplitKind, TokenizerDigest, TokenizerFamily,
@@ -27,6 +31,8 @@ use psionic_datastream::{
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
+
+pub use synthetic::*;
 
 /// Human-readable ownership summary for this crate.
 pub const CRATE_ROLE: &str = "ARC-AGI dataset loading, split metadata, and Psionic manifest export";
@@ -157,7 +163,7 @@ pub struct ArcDatasetCollection {
 impl ArcDatasetCollection {
     pub fn to_psionic_manifest(&self) -> Result<DatasetManifest, ArcDatasetError> {
         let dataset_key = DatasetKey::new(self.family.dataset_ref(), self.version.clone());
-        let tokenizer = TokenizerDigest::new(TokenizerFamily::Custom, "arc-grid-json-v1", 10);
+        let tokenizer = arc_tokenizer_digest();
         let mut manifest = DatasetManifest::new(
             dataset_key.clone(),
             self.family.display_name(),
@@ -334,6 +340,10 @@ fn task_sequence_tokens(task: &ArcTask) -> u32 {
     (train_tokens + test_tokens) as u32
 }
 
+fn arc_tokenizer_digest() -> TokenizerDigest {
+    TokenizerDigest::new(TokenizerFamily::Custom, "arc-grid-json-v1", 10)
+}
+
 #[derive(Deserialize)]
 struct RawArcTaskFile {
     id: Option<ArcTaskId>,
@@ -354,9 +364,21 @@ pub enum ArcDatasetError {
     #[error(transparent)]
     Task(#[from] ArcTaskError),
     #[error(transparent)]
+    Grid(#[from] ArcGridError),
+    #[error(transparent)]
     Serialization(#[from] arc_core::ContractSerializationError),
     #[error(transparent)]
     DatasetContract(#[from] DatasetContractError),
+    #[error(
+        "ARC dataset augmentation `{augmentation}` produced an out-of-range coordinate ({x}, {y}) for a {width}x{height} grid"
+    )]
+    AugmentationOutOfRange {
+        augmentation: &'static str,
+        width: u8,
+        height: u8,
+        x: u8,
+        y: u8,
+    },
     #[error("ARC dataset split `{split_name}` contained no task files")]
     SplitHasNoTasks { split_name: String },
 }
@@ -364,6 +386,7 @@ pub enum ArcDatasetError {
 #[cfg(test)]
 mod tests {
     use super::{ArcDatasetFamily, load_collection, load_split_from_dir};
+    use arc_core::{ArcTaskId, TraceLocator};
 
     fn fixture_dir(path: &str) -> std::path::PathBuf {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
@@ -423,5 +446,95 @@ mod tests {
         assert_eq!(collection.splits.len(), 2);
         assert_eq!(collection.splits[0].tasks[0].task.id.as_str(), "demo_ring");
         assert_eq!(collection.splits[1].tasks[0].task.id.as_str(), "demo_shift");
+    }
+
+    #[test]
+    fn augmentation_builder_emits_lineage_and_transformed_tasks() {
+        let collection = load_collection(
+            ArcDatasetFamily::ArcAgi2,
+            "2026.03.15",
+            fixture_dir("fixtures/arc_agi2/train"),
+            fixture_dir("fixtures/arc_agi2/evaluation"),
+        )
+        .expect("collection should load");
+        let task = &collection.splits[1].tasks[0].task;
+        let trace_locator =
+            TraceLocator::new("trace://arc-datasets/demo_shift/augment").expect("valid trace");
+
+        let synthetic = super::ArcAugmentationBuilder::new()
+            .identity()
+            .flip_horizontal()
+            .rotate_clockwise()
+            .build(task, Some(trace_locator.clone()))
+            .expect("augmentations should build");
+
+        assert_eq!(synthetic.len(), 3);
+        assert_eq!(
+            synthetic[0].lineage.derived_task_id,
+            ArcTaskId::new("demo_shift--identity").expect("valid derived id")
+        );
+        assert_eq!(synthetic[1].task.train[0].input.cells(), &[0, 4, 0, 0]);
+        assert_eq!(synthetic[1].task.train[0].output.cells(), &[4, 0, 0, 0]);
+        assert_eq!(synthetic[2].task.train[0].input.cells(), &[0, 4, 0, 0]);
+        assert_eq!(synthetic[2].lineage.trace_locator, Some(trace_locator));
+    }
+
+    #[test]
+    fn synthetic_package_exports_trace_lineage_metadata() {
+        let collection = load_collection(
+            ArcDatasetFamily::ArcAgi1,
+            "2026.03.15",
+            fixture_dir("fixtures/arc_agi1/train"),
+            fixture_dir("fixtures/arc_agi1/evaluation"),
+        )
+        .expect("collection should load");
+        let task = &collection.splits[0].tasks[0].task;
+        let synthetic = super::ArcAugmentationBuilder::new()
+            .identity()
+            .flip_vertical()
+            .build(
+                task,
+                Some(
+                    TraceLocator::new("trace://arc-datasets/demo_square/package")
+                        .expect("valid trace"),
+                ),
+            )
+            .expect("augmentations should build");
+
+        let package = super::ArcSyntheticDatasetPackage::new(
+            ArcDatasetFamily::ArcAgi1,
+            "2026.03.15-synth",
+            super::ArcDatasetSplit::Train,
+            synthetic,
+        )
+        .expect("synthetic package should validate");
+        let manifest = package
+            .to_psionic_manifest()
+            .expect("synthetic manifest should export");
+
+        manifest.validate().expect("manifest should validate");
+        assert_eq!(manifest.key.dataset_ref, "dataset://arc/synthetic/arc_agi1");
+        assert_eq!(
+            manifest.metadata.get("lineage_kind"),
+            Some(&serde_json::Value::String(String::from(
+                "synthetic_augmentation"
+            )))
+        );
+        assert_eq!(
+            manifest
+                .metadata
+                .get("augmentation_kinds")
+                .and_then(serde_json::Value::as_array)
+                .map(std::vec::Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            manifest
+                .metadata
+                .get("trace_locators")
+                .and_then(serde_json::Value::as_array)
+                .map(std::vec::Vec::len),
+            Some(1)
+        );
     }
 }

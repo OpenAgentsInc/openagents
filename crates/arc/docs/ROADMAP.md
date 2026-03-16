@@ -609,7 +609,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `ARC-109` / [#3678](https://github.com/OpenAgentsInc/openagents/issues/3678) | landed | Create `crates/arc/datasets` with ARC-AGI-1/2 loaders and split metadata export through `psionic-data`. |
-| `ARC-110` / [#3679](https://github.com/OpenAgentsInc/openagents/issues/3679) | planned | Port augmentation builders, synthetic-task lineage metadata, and trace-derived dataset packaging. |
+| `ARC-110` / [#3679](https://github.com/OpenAgentsInc/openagents/issues/3679) | landed | Port augmentation builders, synthetic-task lineage metadata, and trace-derived dataset packaging. |
 
 ## Epic 2: Engine, Client, And Benchmark Truth
 
