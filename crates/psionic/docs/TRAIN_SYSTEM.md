@@ -180,6 +180,11 @@ That now includes one intentionally narrow executor-training answer:
   per puzzle, which replaces the earlier placeholder `SudokuClass` proxy and
   gives later tokenization/training issues an honest package-backed source
   corpus
+- the tokenized-data side now also exists for that same corpus: Psionic can
+  freeze deterministic program-plus-trace token sequences with explicit
+  tokenizer/vocabulary digest lineage, split-stable dataset manifests, and
+  generic packing plans for train/validation/test instead of leaving later
+  training work to regenerate traces ad hoc
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

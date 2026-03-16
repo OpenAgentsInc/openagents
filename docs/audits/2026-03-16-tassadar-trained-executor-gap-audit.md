@@ -116,6 +116,9 @@ These issues track the executor-specific work that is still missing:
   - implemented March 16, 2026: split-aware 4x4 Sudoku-v0 corpus with exact
     CPU-reference traces and package metadata for train/validation/test splits
 - `#3779` Phase 3: add trace-token vocabulary and sequence dataset generation
+  - implemented March 16, 2026: fixed executor token vocabulary, deterministic
+    program-plus-trace tokenization, versioned tokenized dataset manifests, and
+    frozen split-aware packing plans for the Sudoku-v0 corpus
 - `#3780` Phase 4: implement a real executor transformer family
 - `#3781` Phase 5: add next-token trace training and exact-trace evaluation
 - `#3782` Phase 6: benchmark real neural linear decode against CPU reference
@@ -508,6 +511,9 @@ Do this second:
 - compile it from source into the Wasm-first lane
 - widen the opcode/profile subset enough to express it
 - create many puzzle instances and reference traces
+- freeze deterministic program-plus-trace token sequences with stable split and
+  lineage metadata so later model/train issues can use a truthful sequence
+  corpus instead of regenerating traces ad hoc
 
 ### Phase C: Add a true executor model (`#3780`, `#3781`)
 

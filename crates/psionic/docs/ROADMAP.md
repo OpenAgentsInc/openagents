@@ -522,6 +522,11 @@ Its declared scope is:
   Sudoku-v0 corpus with stable train/validation/test splits, exact
   CPU-reference traces for every puzzle instance, and fallback-aware
   article-class benchmark reporting over the honest backtracking cases
+- landed trained-executor Phase 3 bar from the post-audit issue spine: the
+  Sudoku-v0 corpus now has a fixed executor token vocabulary plus deterministic
+  program-and-trace tokenization, versioned tokenized dataset manifests, and
+  frozen split-aware packing plans that later model/training issues can depend
+  on without regenerating ad hoc traces
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

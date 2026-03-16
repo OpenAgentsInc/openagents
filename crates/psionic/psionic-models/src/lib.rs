@@ -5,6 +5,7 @@ mod harmony;
 mod runtime_tokenizer;
 mod sharding;
 mod tassadar;
+mod tassadar_sequence;
 
 use std::{
     borrow::Cow,
@@ -30,6 +31,7 @@ pub use harmony::*;
 pub use runtime_tokenizer::*;
 pub use sharding::*;
 pub use tassadar::*;
+pub use tassadar_sequence::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "reusable model definitions and metadata";
