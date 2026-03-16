@@ -17,13 +17,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::contract::{
     APPLE_FM_BRIDGE_ADAPTER_SUFFIX, APPLE_FM_BRIDGE_ADAPTERS_PATH,
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
-    APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_STREAM_SUFFIX,
-    APPLE_FM_BRIDGE_STRUCTURED_SUFFIX, APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX,
-    AppleFmAdapterAttachRequest, AppleFmAdapterInventoryEntry, AppleFmAdapterLoadRequest,
-    AppleFmAdapterLoadResponse, AppleFmAdaptersResponse, AppleFmChatCompletionRequest,
-    AppleFmChatCompletionResponse, AppleFmCompletionResult, AppleFmErrorResponse,
-    AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError, AppleFmHealthResponse,
-    AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
+    APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_SHUTDOWN_PATH,
+    APPLE_FM_BRIDGE_STREAM_SUFFIX, APPLE_FM_BRIDGE_STRUCTURED_SUFFIX,
+    APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX, AppleFmAdapterAttachRequest, AppleFmAdapterInventoryEntry,
+    AppleFmAdapterLoadRequest, AppleFmAdapterLoadResponse, AppleFmAdaptersResponse,
+    AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmCompletionResult,
+    AppleFmErrorResponse, AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError,
+    AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
     AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
     AppleFmSessionStructuredGenerationRequest, AppleFmSessionStructuredGenerationResponse,
     AppleFmStructuredGenerationRequest, AppleFmStructuredGenerationResponse,
@@ -116,6 +116,22 @@ impl AppleFmBridgeClient {
                 error: error.to_string(),
             })?;
         decode_json_response("health", response)
+    }
+
+    /// Requests a clean local bridge shutdown.
+    pub fn shutdown(&self) -> Result<(), AppleFmBridgeClientError> {
+        let response = self
+            .client
+            .post(self.endpoint(APPLE_FM_BRIDGE_SHUTDOWN_PATH)?)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "shutdown",
+                error: error.to_string(),
+            })?;
+        if !response.status().is_success() {
+            return Err(map_status_response("shutdown", response));
+        }
+        Ok(())
     }
 
     /// Fetches the full model-list response.

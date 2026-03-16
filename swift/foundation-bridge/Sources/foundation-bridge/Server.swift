@@ -15,6 +15,7 @@ actor HTTPServer {
 
     private let port: UInt16
     private var listener: NWListener?
+    private var shutdownRequested = false
     private let chatHandler: ChatHandler
 
     init(port: UInt16, chatHandler: ChatHandler) {
@@ -50,9 +51,10 @@ actor HTTPServer {
         }
 
         listener.start(queue: .main)
-        while true {
-            try? await Task.sleep(for: .seconds(3600))
+        while !shutdownRequested {
+            try? await Task.sleep(for: .milliseconds(100))
         }
+        listener.cancel()
     }
 
     private func handleConnection(_ connection: NWConnection) async {
@@ -187,6 +189,8 @@ actor HTTPServer {
         switch (request.method, request.path) {
         case ("GET", "/health"):
             return .buffered(await handleHealth())
+        case ("POST", "/control/shutdown"):
+            return .buffered(await handleShutdown())
         case ("GET", "/v1/models"), ("GET", "/models"):
             return .buffered(await handleModels())
         case ("POST", "/v1/chat/completions"), ("POST", "/chat/completions"):
@@ -207,8 +211,8 @@ actor HTTPServer {
         let health = HealthResponse(
             status: available ? "ok" : "degraded",
             modelAvailable: available,
-            version: "1.0.0",
-            platform: "macOS",
+            version: bridgeVersionString(),
+            platform: bridgePlatformString(),
             availabilityMessage: message,
             unavailableReason: reason,
             defaultUseCase: .general,
@@ -222,6 +226,47 @@ actor HTTPServer {
             loadedAdapters: adapters.adapters
         )
         return buildJSONResponse(status: 200, body: health)
+    }
+
+    private func handleShutdown() async -> Data {
+        Task {
+            try? await Task.sleep(for: .milliseconds(50))
+            self.requestShutdown()
+        }
+        return buildJSONResponse(
+            status: 202,
+            body: ShutdownResponse(status: "shutting_down", port: Int(port))
+        )
+    }
+
+    private func requestShutdown() {
+        shutdownRequested = true
+        listener?.cancel()
+    }
+
+    private func bridgeVersionString() -> String {
+        let bundle = Bundle.main
+        let shortVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+            as? String
+        let buildVersion = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        switch (
+            shortVersion?.trimmingCharacters(in: .whitespacesAndNewlines),
+            buildVersion?.trimmingCharacters(in: .whitespacesAndNewlines)
+        ) {
+        case let (.some(short), .some(build)) where !short.isEmpty && !build.isEmpty && short != build:
+            return "\(short)+\(build)"
+        case let (.some(short), _) where !short.isEmpty:
+            return short
+        case let (_, .some(build)) where !build.isEmpty:
+            return build
+        default:
+            return "1.0.0"
+        }
+    }
+
+    private func bridgePlatformString() -> String {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        return "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
     }
 
     private func handleModels() async -> Data {
@@ -1050,4 +1095,9 @@ actor HTTPServer {
             return "Unknown"
         }
     }
+}
+
+private struct ShutdownResponse: Encodable {
+    let status: String
+    let port: Int
 }

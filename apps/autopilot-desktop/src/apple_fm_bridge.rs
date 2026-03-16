@@ -388,9 +388,14 @@ impl Drop for AppleFmBridgeWorker {
     }
 }
 
+enum AppleFmLocalBridgeProcess {
+    Direct(Child),
+    Bundle { executable_path: PathBuf },
+}
+
 #[derive(Default)]
 struct AppleFmLocalBridge {
-    child: Option<Child>,
+    process: Option<AppleFmLocalBridgeProcess>,
     status: AppleFmBridgeStatus,
 }
 
@@ -505,27 +510,44 @@ impl AppleFmLocalBridge {
             return Err(snapshot.last_error.clone().unwrap_or_default());
         }
 
-        if let Some(child) = self.child.as_mut() {
-            if let Ok(Some(status)) = child.try_wait() {
-                self.child = None;
-                self.status = AppleFmBridgeStatus::Failed;
-                reset_snapshot_health(snapshot);
-                snapshot.last_error =
-                    Some(format!("Apple FM bridge exited unexpectedly: {status}"));
+        if let Some(process) = self.process.as_mut() {
+            match process {
+                AppleFmLocalBridgeProcess::Direct(child) => {
+                    if let Ok(Some(status)) = child.try_wait() {
+                        self.process = None;
+                        self.status = AppleFmBridgeStatus::Failed;
+                        reset_snapshot_health(snapshot);
+                        snapshot.last_error =
+                            Some(format!("Apple FM bridge exited unexpectedly: {status}"));
+                    }
+                }
+                AppleFmLocalBridgeProcess::Bundle { executable_path } => {
+                    if self.status != AppleFmBridgeStatus::Starting
+                        && !bridge_process_running(executable_path)
+                    {
+                        self.process = None;
+                        self.status = AppleFmBridgeStatus::Failed;
+                        reset_snapshot_health(snapshot);
+                        snapshot.last_error = Some(
+                            "Apple FM bridge bundle is no longer running; relaunch required."
+                                .to_string(),
+                        );
+                    }
+                }
             }
         }
-        if self.child.is_none() {
-            if let Ok(health) = client.health() {
-                self.status = AppleFmBridgeStatus::Running;
-                hydrate_snapshot_from_health(snapshot, &health);
-                snapshot.bridge_status = Some(self.status.label().to_string());
-                snapshot.last_action =
-                    Some("Apple FM bridge already responding on configured URL.".to_string());
-                snapshot.last_error = None;
-                emit_snapshot_if(snapshot, emit);
-                return Ok(());
-            }
+        if let Ok(health) = client.health() {
+            self.status = AppleFmBridgeStatus::Running;
+            hydrate_snapshot_from_health(snapshot, &health);
+            snapshot.bridge_status = Some(self.status.label().to_string());
+            snapshot.last_action =
+                Some("Apple FM bridge already responding on configured URL.".to_string());
+            snapshot.last_error = None;
+            emit_snapshot_if(snapshot, emit);
+            return Ok(());
+        }
 
+        if self.process.is_none() {
             snapshot.last_action = Some("Looking for Apple FM bridge binary...".to_string());
             snapshot.last_error = None;
             emit_snapshot_if(snapshot, emit);
@@ -564,21 +586,13 @@ impl AppleFmLocalBridge {
             emit_snapshot_if(snapshot, emit);
 
             let port = port_from_base_url(config.base_url.as_str()).unwrap_or(11435);
-            let child = Command::new(&binary)
-                .arg(port.to_string())
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .map_err(|error| {
-                    reset_snapshot_health(snapshot);
-                    snapshot.last_action =
-                        Some("Apple FM bridge process failed to start.".to_string());
-                    snapshot.last_error = Some(error.to_string());
-                    emit_snapshot_if(snapshot, emit);
-                    format!("failed to start Apple FM bridge: {error}")
-                })?;
-            self.child = Some(child);
+            self.process = Some(start_bridge_process(&binary, port).map_err(|error| {
+                reset_snapshot_health(snapshot);
+                snapshot.last_action = Some("Apple FM bridge process failed to start.".to_string());
+                snapshot.last_error = Some(error.clone());
+                emit_snapshot_if(snapshot, emit);
+                error
+            })?);
             self.status = AppleFmBridgeStatus::Starting;
             snapshot.bridge_status = Some(self.status.label().to_string());
             snapshot.last_action =
@@ -604,10 +618,29 @@ impl AppleFmLocalBridge {
         Ok(())
     }
 
-    fn stop(&mut self) {
-        if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+    fn stop(&mut self, client: Option<&AppleFmBridgeClient>) {
+        if let Some(client) = client {
+            let _ = client.shutdown();
+            let _ = wait_for_bridge_shutdown(client);
+        }
+        if let Some(process) = self.process.take() {
+            match process {
+                AppleFmLocalBridgeProcess::Direct(mut child) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                AppleFmLocalBridgeProcess::Bundle { executable_path } => {
+                    if bridge_process_running(&executable_path) {
+                        let _ = Command::new("/usr/bin/pkill")
+                            .arg("-f")
+                            .arg(executable_path.to_string_lossy().to_string())
+                            .stdin(Stdio::null())
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .status();
+                    }
+                }
+            }
         }
         self.status = AppleFmBridgeStatus::NotStarted;
     }
@@ -1802,7 +1835,7 @@ fn run_apple_fm_loop(
 
     loop {
         if shutdown_rx.try_recv().is_ok() {
-            state.bridge.stop();
+            state.bridge.stop(state.client.as_ref());
             return;
         }
 
@@ -1812,7 +1845,7 @@ fn run_apple_fm_loop(
                 state.handle_ensure_bridge_running(&update_tx)
             }
             Ok(AppleFmBridgeCommand::StopBridge) => {
-                state.bridge.stop();
+                state.bridge.stop(state.client.as_ref());
                 state.handle_refresh(&update_tx);
             }
             Ok(AppleFmBridgeCommand::Generate(job)) => state.handle_generate(&update_tx, job),
@@ -1824,7 +1857,7 @@ fn run_apple_fm_loop(
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
-                state.bridge.stop();
+                state.bridge.stop(state.client.as_ref());
                 return;
             }
         }
@@ -1840,6 +1873,84 @@ fn wait_for_bridge_health(client: &AppleFmBridgeClient) -> Result<(), String> {
         std::thread::sleep(BRIDGE_HEALTH_POLL);
     }
     Err("Apple FM bridge health check timed out".to_string())
+}
+
+fn wait_for_bridge_shutdown(client: &AppleFmBridgeClient) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline {
+        if client.health().is_err() {
+            return Ok(());
+        }
+        std::thread::sleep(BRIDGE_HEALTH_POLL);
+    }
+    Err("Apple FM bridge shutdown check timed out".to_string())
+}
+
+fn start_bridge_process(binary: &PathBuf, port: u16) -> Result<AppleFmLocalBridgeProcess, String> {
+    if let Some(bundle) = bridge_bundle_path(binary) {
+        let status = Command::new("/usr/bin/open")
+            .arg("-n")
+            .arg("-g")
+            .arg(bundle.as_os_str())
+            .arg("--args")
+            .arg(port.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|error| format!("failed to launch Apple FM bridge bundle: {error}"))?;
+        if !status.success() {
+            return Err(format!(
+                "failed to launch Apple FM bridge bundle: open exited with {status}"
+            ));
+        }
+        return Ok(AppleFmLocalBridgeProcess::Bundle {
+            executable_path: binary.clone(),
+        });
+    }
+
+    let child = Command::new(binary)
+        .arg(port.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("failed to start Apple FM bridge: {error}"))?;
+    Ok(AppleFmLocalBridgeProcess::Direct(child))
+}
+
+fn bridge_bundle_path(binary: &PathBuf) -> Option<PathBuf> {
+    let macos_dir = binary.parent()?;
+    if macos_dir.file_name()?.to_str()? != "MacOS" {
+        return None;
+    }
+    let contents_dir = macos_dir.parent()?;
+    if contents_dir.file_name()?.to_str()? != "Contents" {
+        return None;
+    }
+    let bundle = contents_dir.parent()?;
+    (bundle.extension()?.to_str()? == "app").then(|| bundle.to_path_buf())
+}
+
+fn bridge_process_running(executable_path: &PathBuf) -> bool {
+    let output = Command::new("/bin/ps")
+        .arg("-axo")
+        .arg("command=")
+        .stdin(Stdio::null())
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let executable = executable_path.to_string_lossy();
+    String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+        line.split_whitespace()
+            .next()
+            .map(|command| command == executable)
+            .unwrap_or(false)
+    })
 }
 
 fn required_prompt(command: &AppleFmWorkbenchCommand) -> Result<String, String> {
@@ -2117,7 +2228,10 @@ fn find_repo_root_from_exe() -> Option<PathBuf> {
     loop {
         if !dir.as_os_str().is_empty()
             && (dir.join("swift/foundation-bridge").exists()
-                || dir.join("bin/foundation-bridge").exists())
+                || dir.join("bin/foundation-bridge").exists()
+                || dir
+                    .join("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge")
+                    .exists())
         {
             return Some(dir);
         }
@@ -2160,14 +2274,14 @@ fn try_build_bridge(snapshot: &mut AppleFmBridgeSnapshot) -> bool {
 
 fn find_bridge_binary() -> Option<PathBuf> {
     if let Ok(path) = std::env::var(ENV_APPLE_FM_BRIDGE_BIN) {
-        let candidate = PathBuf::from(path);
-        if candidate.exists() {
+        if let Some(candidate) = normalize_bridge_binary_candidate(PathBuf::from(path)) {
             return Some(candidate);
         }
     }
 
     // CWD-relative (e.g. when run from repo root).
     let cwd_candidates = [
+        PathBuf::from("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge"),
         PathBuf::from("bin/foundation-bridge"),
         PathBuf::from("swift/foundation-bridge/.build/release/foundation-bridge"),
         PathBuf::from(
@@ -2175,14 +2289,15 @@ fn find_bridge_binary() -> Option<PathBuf> {
         ),
     ];
     for candidate in &cwd_candidates {
-        if candidate.exists() {
-            return Some(candidate.clone());
+        if let Some(candidate) = normalize_bridge_binary_candidate(candidate.clone()) {
+            return Some(candidate);
         }
     }
 
     // Exe-relative repo root (works when run from target/debug or anywhere under repo).
     if let Some(root) = find_repo_root_from_exe() {
         let repo_candidates = [
+            root.join("bin/FoundationBridge.app/Contents/MacOS/foundation-bridge"),
             root.join("bin/foundation-bridge"),
             root.join("swift/foundation-bridge/.build/release/foundation-bridge"),
             root.join(
@@ -2190,8 +2305,8 @@ fn find_bridge_binary() -> Option<PathBuf> {
             ),
         ];
         for candidate in &repo_candidates {
-            if candidate.exists() {
-                return Some(candidate.clone());
+            if let Some(candidate) = normalize_bridge_binary_candidate(candidate.clone()) {
+                return Some(candidate);
             }
         }
     }
@@ -2200,19 +2315,50 @@ fn find_bridge_binary() -> Option<PathBuf> {
     // or in Resources (e.g. MyApp.app/Contents/Resources/foundation-bridge).
     if let Ok(exe) = std::env::current_exe() {
         if let Some(macos_dir) = exe.parent() {
+            if let Some(contents_dir) = macos_dir.parent() {
+                let app_helper = contents_dir
+                    .join("Helpers")
+                    .join("FoundationBridge.app")
+                    .join("Contents")
+                    .join("MacOS")
+                    .join("foundation-bridge");
+                if let Some(candidate) = normalize_bridge_binary_candidate(app_helper) {
+                    return Some(candidate);
+                }
+            }
             let next_to_exe = macos_dir.join("foundation-bridge");
-            if next_to_exe.exists() {
-                return Some(next_to_exe);
+            if let Some(candidate) = normalize_bridge_binary_candidate(next_to_exe) {
+                return Some(candidate);
             }
             if let Some(contents_dir) = macos_dir.parent() {
+                let bundled_helper = contents_dir
+                    .join("Resources")
+                    .join("FoundationBridge.app")
+                    .join("Contents")
+                    .join("MacOS")
+                    .join("foundation-bridge");
+                if let Some(candidate) = normalize_bridge_binary_candidate(bundled_helper) {
+                    return Some(candidate);
+                }
                 let in_resources = contents_dir.join("Resources").join("foundation-bridge");
-                if in_resources.exists() {
-                    return Some(in_resources);
+                if let Some(candidate) = normalize_bridge_binary_candidate(in_resources) {
+                    return Some(candidate);
                 }
             }
         }
     }
     None
+}
+
+fn normalize_bridge_binary_candidate(candidate: PathBuf) -> Option<PathBuf> {
+    if candidate.is_dir() && candidate.extension().and_then(|value| value.to_str()) == Some("app") {
+        let bundled_executable = candidate
+            .join("Contents")
+            .join("MacOS")
+            .join("foundation-bridge");
+        return bundled_executable.exists().then_some(bundled_executable);
+    }
+    candidate.exists().then_some(candidate)
 }
 
 #[cfg(test)]
