@@ -421,7 +421,7 @@ Expose a real MLX-class lazy array surface above current Psionic core crates.
 | `PMLX-103` / [#3836](https://github.com/OpenAgentsInc/openagents/issues/3836) | done (2026-03-16) | `Psionic MLX: publish device and stream APIs with unified-memory capability flags` | `psionic-array` now publishes `ArrayDevice` and `ArrayStream`, can lift runtime-owned `DeviceDescriptor` truth into the public array layer, exposes honest unified-memory capability flags plus stream-dependency policy, and binds contexts and eval receipts to explicit device/stream identity; broader array/runtime breadth remains in `PMLX-104` through `PMLX-106`. |
 | `PMLX-104` / [#3837](https://github.com/OpenAgentsInc/openagents/issues/3837) | done (2026-03-16) | `Psionic MLX: widen array creation, indexing, view, reshape, slice, concat, and broadcast families` | `psionic-array` now exposes scalar, zero, one, and filled-array construction helpers plus `reshape`, `permute`, `transpose`, `slice`, `select`, `concat`, and `broadcast_to` families with bounded CPU-reference explicit-eval coverage; deterministic random, dtype-cast, and host-interop boundaries remain in `PMLX-105` and `PMLX-106`. |
 | `PMLX-105` / [#3838](https://github.com/OpenAgentsInc/openagents/issues/3838) | done (2026-03-16) | `Psionic MLX: add random, dtype-cast, and common creation families with deterministic policy` | `psionic-array` now exposes seeded or best-effort random-uniform and random-normal helpers over explicit runtime determinism contracts, logical `cast` support, and common `arange` / `linspace` / `eye` creation helpers; host interop, scalar extraction, and tree boundaries remain in `PMLX-106`. |
-| `PMLX-106` | planned | `Psionic MLX: define host interop, scalar item access, and tree utility boundaries` | Add safe host-materialization, scalar extraction, and tree utility contracts so higher layers can preserve lazy semantics without hidden eager fallbacks. |
+| `PMLX-106` / [#3839](https://github.com/OpenAgentsInc/openagents/issues/3839) | done (2026-03-16) | `Psionic MLX: define host interop, scalar item access, and tree utility boundaries` | `psionic-array` now exposes explicit host-owned typed buffer export, singleton `item()` extraction, and deterministic tree flatten/map/unflatten utilities over lazy arrays and evaluated arrays, closing the bounded host-interop slice for Epic 1 without introducing implicit eager fallbacks. |
 
 ## Epic 2: Transforms And Compile
 
@@ -599,9 +599,9 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 - `PMLX-101` done 2026-03-16
 - `PMLX-102` done 2026-03-16
 - `PMLX-103` done 2026-03-16
-- `PMLX-104`
-- `PMLX-105`
-- `PMLX-106`
+- `PMLX-104` done 2026-03-16
+- `PMLX-105` done 2026-03-16
+- `PMLX-106` done 2026-03-16
 
 ### Phase 3: land public transforms and compile
 

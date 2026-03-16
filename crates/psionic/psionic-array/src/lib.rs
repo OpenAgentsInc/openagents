@@ -69,6 +69,24 @@ pub enum ArrayError {
     /// One linspace request used a zero sample count.
     #[error("linspace requires count > 0")]
     InvalidLinspaceCount,
+    /// One host-interop request could not convert the bounded reference payload.
+    #[error("cannot export tensor {tensor} with dtype {dtype:?} to host data: {detail}")]
+    HostInteropRefusal {
+        /// Tensor identifier that could not be exported.
+        tensor: TensorId,
+        /// Logical dtype requested by the public array surface.
+        dtype: DType,
+        /// Plain-language refusal detail.
+        detail: String,
+    },
+    /// One scalar-access request targeted an array with more than one element.
+    #[error("item access requires exactly one logical element; tensor {tensor} has shape {shape}")]
+    NonSingletonItem {
+        /// Tensor identifier that was requested as a scalar.
+        tensor: TensorId,
+        /// Logical shape that refused scalar extraction.
+        shape: Shape,
+    },
     /// One stream belongs to a different device than the owning context.
     #[error(
         "stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`"
@@ -307,6 +325,10 @@ pub enum MaterializationTrigger {
     Eval,
     /// Deferred explicit materialization through `async_eval(...).wait()`.
     AsyncEvalWait,
+    /// Explicit host-data export through `to_host_data`.
+    ToHostData,
+    /// Explicit singleton scalar extraction through `item`.
+    Item,
 }
 
 /// Current policy for implicit host or display materialization.
@@ -340,6 +362,8 @@ impl MaterializationBoundary {
             explicit_triggers: vec![
                 MaterializationTrigger::Eval,
                 MaterializationTrigger::AsyncEvalWait,
+                MaterializationTrigger::ToHostData,
+                MaterializationTrigger::Item,
             ],
             implicit_policy: ImplicitMaterializationPolicy::ExplicitOnly,
             replay_boundary: ReplayBoundary::GraphSnapshot,
@@ -414,6 +438,332 @@ impl EvaluatedArray {
     #[must_use]
     pub fn boundary(&self) -> &MaterializationBoundary {
         &self.boundary
+    }
+
+    /// Exports the evaluated payload into an explicit host-owned typed buffer.
+    pub fn to_host_data(&self) -> Result<HostArrayData, ArrayError> {
+        host_array_data_from_evaluated(self.tensor_id(), self.dtype(), &self.data)
+    }
+
+    /// Extracts one explicit singleton scalar from the evaluated payload.
+    pub fn item(&self) -> Result<ArrayScalar, ArrayError> {
+        scalar_from_evaluated(self.tensor_id(), self.shape(), self.dtype(), &self.data)
+    }
+}
+
+/// Bounded host-visible element storage family for one evaluated array.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HostArrayStorage {
+    /// Host-visible `f32` values used for logical `f32`, `f16`, and `bf16`.
+    F32(Vec<f32>),
+    /// Host-visible `i8` values for logical `i8`.
+    I8(Vec<i8>),
+}
+
+/// Explicit host-owned data export for one evaluated array.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostArrayData {
+    dtype: DType,
+    values: HostArrayStorage,
+}
+
+impl HostArrayData {
+    fn new(dtype: DType, values: HostArrayStorage) -> Self {
+        Self { dtype, values }
+    }
+
+    /// Returns the logical dtype preserved by the host export.
+    #[must_use]
+    pub const fn dtype(&self) -> DType {
+        self.dtype
+    }
+
+    /// Returns the number of exported elements.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match &self.values {
+            HostArrayStorage::F32(values) => values.len(),
+            HostArrayStorage::I8(values) => values.len(),
+        }
+    }
+
+    /// Returns whether the exported payload is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the host payload as `f32` values when that family applies.
+    #[must_use]
+    pub fn as_f32_slice(&self) -> Option<&[f32]> {
+        match &self.values {
+            HostArrayStorage::F32(values) => Some(values.as_slice()),
+            HostArrayStorage::I8(_) => None,
+        }
+    }
+
+    /// Returns the host payload as `i8` values when that family applies.
+    #[must_use]
+    pub fn as_i8_slice(&self) -> Option<&[i8]> {
+        match &self.values {
+            HostArrayStorage::F32(_) => None,
+            HostArrayStorage::I8(values) => Some(values.as_slice()),
+        }
+    }
+}
+
+/// Host-visible scalar value exported from a singleton array.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HostScalarValue {
+    /// Floating-point scalar used for logical `f32`, `f16`, and `bf16`.
+    F32(f32),
+    /// Integer scalar used for logical `i8`.
+    I8(i8),
+}
+
+/// Explicit singleton scalar exported from a public array.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ArrayScalar {
+    dtype: DType,
+    value: HostScalarValue,
+}
+
+impl ArrayScalar {
+    fn new(dtype: DType, value: HostScalarValue) -> Self {
+        Self { dtype, value }
+    }
+
+    /// Returns the logical dtype preserved by the scalar export.
+    #[must_use]
+    pub const fn dtype(&self) -> DType {
+        self.dtype
+    }
+
+    /// Returns the scalar as `f32` when the logical dtype is floating-point.
+    #[must_use]
+    pub fn as_f32(&self) -> Option<f32> {
+        match self.value {
+            HostScalarValue::F32(value) => Some(value),
+            HostScalarValue::I8(_) => None,
+        }
+    }
+
+    /// Returns the scalar as `i8` when the logical dtype is integer.
+    #[must_use]
+    pub fn as_i8(&self) -> Option<i8> {
+        match self.value {
+            HostScalarValue::F32(_) => None,
+            HostScalarValue::I8(value) => Some(value),
+        }
+    }
+}
+
+/// Generic tree container used to preserve array structure explicitly.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Tree<T> {
+    /// One leaf value.
+    Leaf(T),
+    /// One list-like sequence with stable positional order.
+    List(Vec<Tree<T>>),
+    /// One tuple-like sequence with stable positional order.
+    Tuple(Vec<Tree<T>>),
+    /// One mapping with stable key order.
+    Dict(BTreeMap<String, Tree<T>>),
+}
+
+/// Shape-only tree description used for deterministic flatten or unflatten.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TreeSpec {
+    /// One leaf slot.
+    Leaf,
+    /// One list-like sequence.
+    List(Vec<TreeSpec>),
+    /// One tuple-like sequence.
+    Tuple(Vec<TreeSpec>),
+    /// One mapping with stable key order.
+    Dict(BTreeMap<String, TreeSpec>),
+}
+
+/// Flattened leaves plus deterministic structure for one tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FlattenedTree<T> {
+    /// Flattened leaves in deterministic traversal order.
+    pub leaves: Vec<T>,
+    /// Structure needed to rebuild the original tree.
+    pub spec: TreeSpec,
+}
+
+/// Error raised while rebuilding a tree from flattened leaves.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum TreeError {
+    /// The provided leaves did not match the requested tree structure.
+    #[error("tree spec expected {expected} leaves but received {actual}")]
+    LeafCountMismatch {
+        /// Number of leaves required by the structure.
+        expected: usize,
+        /// Number of leaves actually provided.
+        actual: usize,
+    },
+}
+
+impl<T> Tree<T> {
+    /// Returns the number of leaves in the tree.
+    #[must_use]
+    pub fn leaf_count(&self) -> usize {
+        match self {
+            Self::Leaf(_) => 1,
+            Self::List(values) | Self::Tuple(values) => values.iter().map(Self::leaf_count).sum(),
+            Self::Dict(values) => values.values().map(Self::leaf_count).sum(),
+        }
+    }
+
+    /// Returns the shape-only tree specification.
+    #[must_use]
+    pub fn spec(&self) -> TreeSpec {
+        match self {
+            Self::Leaf(_) => TreeSpec::Leaf,
+            Self::List(values) => TreeSpec::List(values.iter().map(Self::spec).collect()),
+            Self::Tuple(values) => TreeSpec::Tuple(values.iter().map(Self::spec).collect()),
+            Self::Dict(values) => TreeSpec::Dict(
+                values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.spec()))
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Applies one fallible closure to every leaf while preserving structure.
+    pub fn map_leaves<U, E, F>(&self, f: &mut F) -> Result<Tree<U>, E>
+    where
+        F: FnMut(&T) -> Result<U, E>,
+    {
+        match self {
+            Self::Leaf(value) => f(value).map(Tree::Leaf),
+            Self::List(values) => values
+                .iter()
+                .map(|value| value.map_leaves(f))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Tree::List),
+            Self::Tuple(values) => values
+                .iter()
+                .map(|value| value.map_leaves(f))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Tree::Tuple),
+            Self::Dict(values) => values
+                .iter()
+                .map(|(key, value)| value.map_leaves(f).map(|mapped| (key.clone(), mapped)))
+                .collect::<Result<BTreeMap<_, _>, _>>()
+                .map(Tree::Dict),
+        }
+    }
+
+    /// Consumes the tree into deterministic flattened leaves plus structure.
+    #[must_use]
+    pub fn flatten(self) -> FlattenedTree<T> {
+        let spec = self.spec();
+        let mut leaves = Vec::with_capacity(spec.leaf_count());
+        self.into_flattened_leaves(&mut leaves);
+        FlattenedTree { leaves, spec }
+    }
+
+    fn into_flattened_leaves(self, leaves: &mut Vec<T>) {
+        match self {
+            Self::Leaf(value) => leaves.push(value),
+            Self::List(values) | Self::Tuple(values) => {
+                for value in values {
+                    value.into_flattened_leaves(leaves);
+                }
+            }
+            Self::Dict(values) => {
+                for (_, value) in values {
+                    value.into_flattened_leaves(leaves);
+                }
+            }
+        }
+    }
+}
+
+impl<T: Clone> Tree<T> {
+    /// Returns cloned leaves in deterministic traversal order.
+    #[must_use]
+    pub fn leaves(&self) -> Vec<T> {
+        let mut leaves = Vec::with_capacity(self.leaf_count());
+        self.collect_leaves(&mut leaves);
+        leaves
+    }
+
+    fn collect_leaves(&self, leaves: &mut Vec<T>) {
+        match self {
+            Self::Leaf(value) => leaves.push(value.clone()),
+            Self::List(values) | Self::Tuple(values) => {
+                for value in values {
+                    value.collect_leaves(leaves);
+                }
+            }
+            Self::Dict(values) => {
+                for value in values.values() {
+                    value.collect_leaves(leaves);
+                }
+            }
+        }
+    }
+}
+
+impl<T> FlattenedTree<T> {
+    /// Rebuilds one tree from the stored leaves and structure.
+    pub fn unflatten(self) -> Result<Tree<T>, TreeError> {
+        self.spec.unflatten(self.leaves)
+    }
+}
+
+impl TreeSpec {
+    /// Returns the number of leaves required by the structure.
+    #[must_use]
+    pub fn leaf_count(&self) -> usize {
+        match self {
+            Self::Leaf => 1,
+            Self::List(values) | Self::Tuple(values) => values.iter().map(Self::leaf_count).sum(),
+            Self::Dict(values) => values.values().map(Self::leaf_count).sum(),
+        }
+    }
+
+    /// Rebuilds one tree from deterministic flattened leaves.
+    pub fn unflatten<T>(&self, leaves: Vec<T>) -> Result<Tree<T>, TreeError> {
+        let expected = self.leaf_count();
+        let actual = leaves.len();
+        if actual != expected {
+            return Err(TreeError::LeafCountMismatch { expected, actual });
+        }
+        let mut leaves = leaves.into_iter();
+        Ok(self.unflatten_from_iter(&mut leaves))
+    }
+
+    fn unflatten_from_iter<T, I>(&self, leaves: &mut I) -> Tree<T>
+    where
+        I: Iterator<Item = T>,
+    {
+        match self {
+            Self::Leaf => Tree::Leaf(leaves.next().expect("leaf count already validated")),
+            Self::List(values) => Tree::List(
+                values
+                    .iter()
+                    .map(|value| value.unflatten_from_iter(leaves))
+                    .collect(),
+            ),
+            Self::Tuple(values) => Tree::Tuple(
+                values
+                    .iter()
+                    .map(|value| value.unflatten_from_iter(leaves))
+                    .collect(),
+            ),
+            Self::Dict(values) => Tree::Dict(
+                values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.unflatten_from_iter(leaves)))
+                    .collect(),
+            ),
+        }
     }
 }
 
@@ -811,6 +1161,18 @@ pub struct Array {
     graph: Graph,
 }
 
+/// Convenience alias for trees of lazy arrays.
+pub type ArrayTree = Tree<Array>;
+
+/// Convenience alias for trees of evaluated arrays.
+pub type EvaluatedArrayTree = Tree<EvaluatedArray>;
+
+/// Convenience alias for trees of host-owned array data.
+pub type HostArrayTree = Tree<HostArrayData>;
+
+/// Convenience alias for trees of exported scalar values.
+pub type ScalarTree = Tree<ArrayScalar>;
+
 impl Array {
     fn from_tensor(context: Rc<ArrayContextInner>, stream: ArrayStream, tensor: Tensor) -> Self {
         let graph = context
@@ -927,16 +1289,36 @@ impl Array {
         MaterializationBoundary::explicit_only()
     }
 
+    fn materialize_with_trigger(
+        &self,
+        trigger: MaterializationTrigger,
+    ) -> Result<EvaluatedArray, ArrayError> {
+        let graph = self.context().graph_for(&[self.clone()])?;
+        let mut outputs = evaluate_graph_snapshot(&graph, &[self.clone()], trigger, self.stream())?;
+        Ok(outputs.remove(0))
+    }
+
     /// Explicitly materializes this array through the bounded CPU-reference
     /// path.
     pub fn eval(&self) -> Result<EvaluatedArray, ArrayError> {
-        let mut outputs = self.context().eval(&[self.clone()])?;
-        Ok(outputs.remove(0))
+        self.materialize_with_trigger(MaterializationTrigger::Eval)
     }
 
     /// Captures a replay-stable deferred evaluation ticket for this array.
     pub fn async_eval(&self) -> Result<PendingAsyncEval, ArrayError> {
         self.context().async_eval(&[self.clone()])
+    }
+
+    /// Explicitly exports this array into one host-owned typed buffer.
+    pub fn to_host_data(&self) -> Result<HostArrayData, ArrayError> {
+        self.materialize_with_trigger(MaterializationTrigger::ToHostData)?
+            .to_host_data()
+    }
+
+    /// Explicitly extracts one singleton scalar from this array.
+    pub fn item(&self) -> Result<ArrayScalar, ArrayError> {
+        self.materialize_with_trigger(MaterializationTrigger::Item)?
+            .item()
     }
 
     /// Returns the dependency policy for using this array after `upstream`.
@@ -1084,6 +1466,35 @@ impl Array {
     }
 }
 
+impl Tree<Array> {
+    /// Explicitly evaluates every array leaf while preserving structure.
+    pub fn eval(&self) -> Result<EvaluatedArrayTree, ArrayError> {
+        self.map_leaves(&mut Array::eval)
+    }
+
+    /// Explicitly exports every array leaf into host-owned buffers.
+    pub fn to_host_data(&self) -> Result<HostArrayTree, ArrayError> {
+        self.map_leaves(&mut Array::to_host_data)
+    }
+
+    /// Explicitly extracts one scalar from every singleton array leaf.
+    pub fn item(&self) -> Result<ScalarTree, ArrayError> {
+        self.map_leaves(&mut Array::item)
+    }
+}
+
+impl Tree<EvaluatedArray> {
+    /// Exports every evaluated leaf into host-owned buffers while preserving structure.
+    pub fn to_host_data(&self) -> Result<HostArrayTree, ArrayError> {
+        self.map_leaves(&mut EvaluatedArray::to_host_data)
+    }
+
+    /// Extracts one scalar from every singleton evaluated leaf.
+    pub fn item(&self) -> Result<ScalarTree, ArrayError> {
+        self.map_leaves(&mut EvaluatedArray::item)
+    }
+}
+
 fn evaluate_graph_snapshot(
     graph: &Graph,
     requested_outputs: &[Array],
@@ -1169,6 +1580,56 @@ fn evaluate_graph_snapshot(
             })
         })
         .collect()
+}
+
+fn host_array_data_from_evaluated(
+    tensor: TensorId,
+    dtype: DType,
+    data: &TensorData,
+) -> Result<HostArrayData, ArrayError> {
+    let Some(values) = data.as_f32_slice() else {
+        return Err(ArrayError::HostInteropRefusal {
+            tensor,
+            dtype,
+            detail: String::from(
+                "bounded explicit host interop currently exports only dense CPU-reference payloads",
+            ),
+        });
+    };
+    let host_values = match dtype {
+        DType::F32 | DType::F16 | DType::BF16 => HostArrayStorage::F32(values.to_vec()),
+        DType::I8 => HostArrayStorage::I8(
+            values
+                .iter()
+                .map(|value| value.round().clamp(i8::MIN as f32, i8::MAX as f32) as i8)
+                .collect(),
+        ),
+    };
+    Ok(HostArrayData::new(dtype, host_values))
+}
+
+fn scalar_from_evaluated(
+    tensor: TensorId,
+    shape: &Shape,
+    dtype: DType,
+    data: &TensorData,
+) -> Result<ArrayScalar, ArrayError> {
+    if shape.element_count() != 1 {
+        return Err(ArrayError::NonSingletonItem {
+            tensor,
+            shape: shape.clone(),
+        });
+    }
+    let host = host_array_data_from_evaluated(tensor, dtype, data)?;
+    let value = match &host.values {
+        HostArrayStorage::F32(values) => {
+            HostScalarValue::F32(*values.first().expect("singleton check already validated"))
+        }
+        HostArrayStorage::I8(values) => {
+            HostScalarValue::I8(*values.first().expect("singleton check already validated"))
+        }
+    };
+    Ok(ArrayScalar::new(dtype, value))
 }
 
 fn dense_constant_values(tensor: TensorId, data: &TensorData) -> Result<Vec<f32>, ArrayError> {
@@ -1673,12 +2134,13 @@ fn ravel_index(indices: &[usize], dims: &[usize]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        Array, ArrayContext, ArrayError, AsyncEvalStatus, ImplicitMaterializationPolicy,
-        MaterializationTrigger, ReplayBoundary, StreamDependencyPolicy, StreamKind,
-        UnifiedMemoryCapability,
+        Array, ArrayContext, ArrayError, ArrayScalar, AsyncEvalStatus,
+        ImplicitMaterializationPolicy, MaterializationTrigger, ReplayBoundary,
+        StreamDependencyPolicy, StreamKind, Tree, TreeError, TreeSpec, UnifiedMemoryCapability,
     };
     use psionic_core::{DType, Device, DeviceKind, Shape};
     use psionic_runtime::{DeviceDescriptor, GeneratorScope};
+    use std::collections::BTreeMap;
 
     #[test]
     fn public_lazy_array_surface_builds_graph_backed_arithmetic() -> Result<(), ArrayError> {
@@ -1771,7 +2233,9 @@ mod tests {
             boundary.explicit_triggers,
             vec![
                 MaterializationTrigger::Eval,
-                MaterializationTrigger::AsyncEvalWait
+                MaterializationTrigger::AsyncEvalWait,
+                MaterializationTrigger::ToHostData,
+                MaterializationTrigger::Item,
             ]
         );
         assert_eq!(
@@ -2065,5 +2529,152 @@ mod tests {
             linspace.expect_err("zero-count linspace should refuse"),
             ArrayError::InvalidLinspaceCount
         );
+    }
+
+    #[test]
+    fn public_lazy_array_host_interop_and_item_access_stay_explicit() -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let scalar = context.scalar_f32(3.5)?;
+        let singleton = context.ones_f32(Shape::new(vec![1]))?;
+        let vector = context.arange_f32(0.0, 3.0, 1.0)?;
+        let integer = context.scalar_f32(3.6)?.cast(DType::I8)?;
+
+        assert_eq!(
+            scalar.item()?,
+            ArrayScalar::new(DType::F32, super::HostScalarValue::F32(3.5))
+        );
+        assert_eq!(
+            singleton.item()?,
+            ArrayScalar::new(DType::F32, super::HostScalarValue::F32(1.0))
+        );
+        assert_eq!(
+            integer.item()?,
+            ArrayScalar::new(DType::I8, super::HostScalarValue::I8(4))
+        );
+
+        let vector_host = vector.to_host_data()?;
+        assert_eq!(vector_host.dtype(), DType::F32);
+        assert_eq!(vector_host.as_f32_slice(), Some(&[0.0, 1.0, 2.0][..]));
+        assert_eq!(vector_host.as_i8_slice(), None);
+
+        let integer_host = integer.eval()?.to_host_data()?;
+        assert_eq!(integer_host.dtype(), DType::I8);
+        assert_eq!(integer_host.as_i8_slice(), Some(&[4][..]));
+        assert_eq!(integer_host.as_f32_slice(), None);
+
+        let error = vector
+            .item()
+            .expect_err("multi-element arrays should refuse item");
+        assert_eq!(
+            error,
+            ArrayError::NonSingletonItem {
+                tensor: vector.tensor_id(),
+                shape: Shape::new(vec![3]),
+            }
+        );
+
+        assert_eq!(
+            scalar.materialization_boundary().explicit_triggers,
+            vec![
+                MaterializationTrigger::Eval,
+                MaterializationTrigger::AsyncEvalWait,
+                MaterializationTrigger::ToHostData,
+                MaterializationTrigger::Item,
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_tree_utilities_preserve_structure_and_refuse_bad_unflatten(
+    ) -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let left = context.scalar_f32(1.0)?;
+        let right = context.scalar_f32(2.0)?.cast(DType::I8)?;
+        let tree = Tree::Dict(BTreeMap::from([
+            (
+                String::from("pair"),
+                Tree::Tuple(vec![Tree::Leaf(left.clone()), Tree::Leaf(right.clone())]),
+            ),
+            (
+                String::from("list"),
+                Tree::List(vec![Tree::Leaf(context.ones_f32(Shape::new(vec![1]))?)]),
+            ),
+        ]));
+
+        let flattened = tree.clone().flatten();
+        assert_eq!(flattened.spec.leaf_count(), 3);
+        assert_eq!(flattened.leaves.len(), 3);
+        let rebuilt = flattened
+            .clone()
+            .unflatten()
+            .expect("tree should round-trip");
+        assert_eq!(rebuilt.spec(), tree.spec());
+
+        let evaluated = tree.eval()?;
+        let host_tree = evaluated.to_host_data()?;
+        let scalar_tree = tree.item()?;
+
+        match host_tree {
+            Tree::Dict(values) => {
+                assert_eq!(values.len(), 2);
+                let pair = values.get("pair").expect("pair entry");
+                match pair {
+                    Tree::Tuple(values) => {
+                        assert_eq!(values.len(), 2);
+                        let first = match &values[0] {
+                            Tree::Leaf(value) => value,
+                            _ => panic!("first pair leaf should be a leaf"),
+                        };
+                        assert_eq!(first.dtype(), DType::F32);
+                        assert_eq!(first.as_f32_slice(), Some(&[1.0][..]));
+                        let second = match &values[1] {
+                            Tree::Leaf(value) => value,
+                            _ => panic!("second pair leaf should be a leaf"),
+                        };
+                        assert_eq!(second.dtype(), DType::I8);
+                        assert_eq!(second.as_i8_slice(), Some(&[2][..]));
+                    }
+                    _ => panic!("pair entry should stay a tuple"),
+                }
+            }
+            _ => panic!("host tree should stay a dict"),
+        }
+
+        match scalar_tree {
+            Tree::Dict(values) => {
+                let pair = values.get("pair").expect("pair entry");
+                match pair {
+                    Tree::Tuple(values) => {
+                        let first = match &values[0] {
+                            Tree::Leaf(value) => value,
+                            _ => panic!("first scalar leaf should be a leaf"),
+                        };
+                        assert_eq!(first.as_f32(), Some(1.0));
+                        let second = match &values[1] {
+                            Tree::Leaf(value) => value,
+                            _ => panic!("second scalar leaf should be a leaf"),
+                        };
+                        assert_eq!(second.as_i8(), Some(2));
+                    }
+                    _ => panic!("pair entry should stay a tuple"),
+                }
+            }
+            _ => panic!("scalar tree should stay a dict"),
+        }
+
+        let tree_error = TreeSpec::Tuple(vec![TreeSpec::Leaf, TreeSpec::Leaf])
+            .unflatten(vec![left.clone()])
+            .expect_err("short leaf list should refuse");
+        assert_eq!(
+            tree_error,
+            TreeError::LeafCountMismatch {
+                expected: 2,
+                actual: 1,
+            }
+        );
+
+        Ok(())
     }
 }

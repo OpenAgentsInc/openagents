@@ -251,7 +251,9 @@ Current posture:
   reshape/permute/transpose/slice/select/concat/broadcast view families,
   seeded or best-effort random uniform/normal creation, dtype casts,
   `arange`/`linspace`/`eye` helpers, explicit `eval` / `async_eval`
-  boundaries, and snapshot graph export for the current output set.
+  boundaries, explicit host-owned typed buffer export, singleton `item()`
+  extraction, deterministic tree flatten/map/unflatten utilities, and snapshot
+  graph export for the current output set.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and
