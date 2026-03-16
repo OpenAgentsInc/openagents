@@ -1212,8 +1212,14 @@ The currently landed `arc-client` compatibility server is intentionally a local
 development surface, not benchmark authority. It already exposes docs-shaped
 `/api/games`, scorecard, command, and healthcheck routes with in-memory
 scorecard/session state and optional cookie injection for local parity testing,
-but its score fields remain bounded placeholders until `arc-benchmark`,
-versioned RHAE policy, and lifecycle-policy issues land.
+and the first bounded lifecycle-policy surface is now in-tree: the Rust remote
+convenience client can reuse one default scorecard until close, the
+compatibility server auto-closes stale scorecards, follow-on actions still
+refuse explicitly once a card closes, and competition mode now enforces one
+open scorecard per key, one open environment per card, no inflight reads, and
+close-time materialization of untouched environments. Its score fields still
+remain bounded placeholders until `arc-benchmark` and the remaining
+online/runtime parity issues land.
 
 Competition-mode semantics must be modeled explicitly:
 
@@ -1456,7 +1462,14 @@ parity report surface plus a manifest-driven harness that compares
 `LocalArcEnvironment` traces against the compatibility server step by step for
 translated `bt11` and `bt33` scripts. Checkpoint/resume behavior, lifecycle
 policy, and online/runtime policy remain the next explicit follow-on in
-`ARC-211`, `ARC-212`, and `ARC-213`.
+`ARC-211`, `ARC-212`, and `ARC-213`. `ARC-212` is now also landed in bounded
+form: `arc-client` exposes `ArcRemoteArcade` for default-scorecard reuse, the
+compatibility server auto-closes stale scorecards, closed cards continue to
+refuse follow-on actions explicitly, and competition-mode scorecards now
+enforce one-open-card-per-key, one-open-environment-per-card, no inflight
+reads, and close-time materialization of untouched environments. Typed
+429/backoff handling and recording-format parity remain the next explicit
+follow-on in `ARC-213`.
 
 ### Phase 3: benchmark runtime
 

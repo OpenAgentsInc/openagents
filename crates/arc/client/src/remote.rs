@@ -1,4 +1,6 @@
-use arc_core::{ArcAction, ArcActionKind};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use arc_core::{ArcAction, ArcActionKind, ArcOperationMode};
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -23,6 +25,13 @@ pub struct RemoteArcEnvironment {
     scorecard_id: String,
     session: Option<ArcRemoteSession>,
     last_response: Option<ArcSessionFrame>,
+}
+
+#[derive(Clone)]
+pub struct ArcRemoteArcade {
+    client: ArcRemoteClient,
+    default_open_request: ArcOpenScorecardRequest,
+    default_scorecard_id: Arc<Mutex<Option<String>>>,
 }
 
 impl ArcRemoteClient {
@@ -184,6 +193,115 @@ impl ArcRemoteClient {
             });
         }
         response.json().map_err(Into::into)
+    }
+}
+
+impl ArcRemoteArcade {
+    #[must_use]
+    pub fn new(client: ArcRemoteClient, operation_mode: ArcOperationMode) -> Self {
+        let mut default_open_request = ArcOpenScorecardRequest::default();
+        if operation_mode == ArcOperationMode::Competition {
+            default_open_request.competition_mode = Some(true);
+        }
+        Self {
+            client,
+            default_open_request,
+            default_scorecard_id: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    #[must_use]
+    pub fn with_default_open_request(mut self, request: ArcOpenScorecardRequest) -> Self {
+        self.default_open_request = request;
+        self
+    }
+
+    #[must_use]
+    pub fn client(&self) -> &ArcRemoteClient {
+        &self.client
+    }
+
+    #[must_use]
+    pub fn default_open_request(&self) -> &ArcOpenScorecardRequest {
+        &self.default_open_request
+    }
+
+    pub fn default_scorecard_id(&self) -> Result<Option<String>, ArcClientError> {
+        Ok(self.default_scorecard_lock()?.clone())
+    }
+
+    pub fn open_scorecard(
+        &self,
+        request: &ArcOpenScorecardRequest,
+    ) -> Result<ArcOpenScorecardResponse, ArcClientError> {
+        self.client.open_scorecard(request)
+    }
+
+    pub fn ensure_default_scorecard(&self) -> Result<String, ArcClientError> {
+        if let Some(card_id) = self.default_scorecard_id()? {
+            return Ok(card_id);
+        }
+
+        let response = self.client.open_scorecard(&self.default_open_request)?;
+        *self.default_scorecard_lock()? = Some(response.card_id.clone());
+        Ok(response.card_id)
+    }
+
+    pub fn get_scorecard(
+        &self,
+        card_id: Option<&str>,
+        game_id: Option<&arc_core::ArcTaskId>,
+    ) -> Result<ArcScorecardSummary, ArcClientError> {
+        let card_id = match card_id {
+            Some(card_id) => card_id.to_owned(),
+            None => self.ensure_default_scorecard()?,
+        };
+        self.client.get_scorecard(&card_id, game_id)
+    }
+
+    pub fn close_scorecard(
+        &self,
+        card_id: Option<&str>,
+    ) -> Result<Option<ArcScorecardSummary>, ArcClientError> {
+        let Some(card_id) = card_id
+            .map(ToOwned::to_owned)
+            .or(self.default_scorecard_id()?)
+        else {
+            return Ok(None);
+        };
+
+        let summary = self.client.close_scorecard(&ArcCloseScorecardRequest {
+            card_id: card_id.clone(),
+        })?;
+        let mut default_scorecard_id = self.default_scorecard_lock()?;
+        if default_scorecard_id.as_deref() == Some(card_id.as_str()) {
+            *default_scorecard_id = None;
+        }
+        Ok(Some(summary))
+    }
+
+    pub fn remote_environment(
+        &self,
+        info: ArcEnvironmentInfo,
+        scorecard_id: Option<&str>,
+    ) -> Result<RemoteArcEnvironment, ArcClientError> {
+        let scorecard_id = match scorecard_id {
+            Some(scorecard_id) => scorecard_id.to_owned(),
+            None => self.ensure_default_scorecard()?,
+        };
+        Ok(RemoteArcEnvironment::new(
+            self.client.clone(),
+            info,
+            scorecard_id,
+        ))
+    }
+
+    fn default_scorecard_lock(&self) -> Result<MutexGuard<'_, Option<String>>, ArcClientError> {
+        self.default_scorecard_id
+            .lock()
+            .map_err(|_| ArcClientError::StatePoisoned {
+                state: "arc_remote_arcade.default_scorecard_id",
+            })
     }
 }
 

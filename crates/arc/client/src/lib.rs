@@ -31,8 +31,8 @@ pub use parity::{
     ArcLocalRemoteParityField, ArcLocalRemoteParityMismatch, ArcLocalRemoteParityOutcome,
     ArcLocalRemoteParityReport, ArcParityTraceStep, compare_local_remote_traces,
 };
-pub use remote::{ArcRemoteClient, RemoteArcEnvironment};
-pub use server::{ArcCompatibilityServer, ArcRegisteredEnvironment};
+pub use remote::{ArcRemoteArcade, ArcRemoteClient, RemoteArcEnvironment};
+pub use server::{ArcCompatibilityServer, ArcCompatibilityServerConfig, ArcRegisteredEnvironment};
 
 /// Human-readable ownership summary for this crate.
 pub const CRATE_ROLE: &str =
@@ -67,6 +67,8 @@ pub enum ArcClientError {
     MissingGuid { game_id: ArcTaskId },
     #[error("ARC local environment `{game_id}` is missing a package path")]
     MissingLocalPackagePath { game_id: ArcTaskId },
+    #[error("ARC client state `{state}` lock poisoned")]
+    StatePoisoned { state: &'static str },
     #[error("ARC remote session for `{game_id}` is not initialized; call reset first")]
     MissingSessionGuid { game_id: ArcTaskId },
     #[error("ARC remote response used unsupported action id {id}")]

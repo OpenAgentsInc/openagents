@@ -33,7 +33,7 @@ impl ArcEnvironmentInfo {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ArcOpenScorecardRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_url: Option<String>,
