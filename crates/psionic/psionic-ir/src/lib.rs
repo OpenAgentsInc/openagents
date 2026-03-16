@@ -2,7 +2,7 @@
 
 mod autodiff;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use psionic_core::{
     BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, QuantizedTensorData, Shape,
@@ -71,6 +71,15 @@ pub enum GraphError {
         /// Stable operator label.
         op: String,
         /// Human-readable validation failure.
+        message: String,
+    },
+    /// A target capability profile does not support one operator that appeared
+    /// during fake or meta execution.
+    #[error("unsupported operator capability for `{op}`: {message}")]
+    UnsupportedOperatorCapability {
+        /// Stable operator label.
+        op: String,
+        /// Human-readable capability failure.
         message: String,
     },
     /// A matmul used tensors with unsupported ranks or dimensions.
@@ -641,6 +650,94 @@ pub struct OperatorSchema {
     pub meta_execution: OperatorMetaExecutionKind,
 }
 
+/// Shape-only tensor record emitted by fake or meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetaTensor {
+    /// Logical tensor spec proven by meta execution.
+    pub spec: TensorSpec,
+}
+
+/// One step traced during fake or meta execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetaExecutionStep {
+    /// Output tensor ID.
+    pub output: TensorId,
+    /// Stable operator label.
+    pub op: String,
+    /// Runtime implementation family.
+    pub implementation: OperatorImplementationKind,
+    /// Meta-derived tensor spec.
+    pub spec: TensorSpec,
+}
+
+/// Report emitted by fake or meta execution over a graph or plan.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetaExecutionReport {
+    /// Step-by-step meta execution trace.
+    pub steps: Vec<MetaExecutionStep>,
+    /// Final output tensors that were requested by the graph or plan.
+    pub outputs: BTreeMap<TensorId, MetaTensor>,
+}
+
+impl MetaExecutionReport {
+    /// Returns one output tensor by ID.
+    #[must_use]
+    pub fn output(&self, id: TensorId) -> Option<&MetaTensor> {
+        self.outputs.get(&id)
+    }
+}
+
+/// Capability profile used to answer whether a fake or meta execution target
+/// claims support for one backend-kernel surface.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetaCapabilityProfile {
+    /// Stable backend-kernel labels declared as supported.
+    pub supported_backend_kernels: BTreeSet<String>,
+}
+
+impl MetaCapabilityProfile {
+    /// Creates an empty capability profile.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            supported_backend_kernels: BTreeSet::new(),
+        }
+    }
+
+    /// Creates a profile that supports all built-in backend kernels.
+    #[must_use]
+    pub fn all_builtin() -> Self {
+        let supported_backend_kernels = OperatorRegistry::builtin()
+            .all()
+            .iter()
+            .filter(|schema| schema.implementation == OperatorImplementationKind::BackendKernel)
+            .map(|schema| schema.name.to_string())
+            .collect();
+        Self {
+            supported_backend_kernels,
+        }
+    }
+
+    /// Replaces the declared backend-kernel capability set.
+    #[must_use]
+    pub fn with_supported_backend_kernels(
+        mut self,
+        labels: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.supported_backend_kernels = labels.into_iter().map(Into::into).collect();
+        self
+    }
+
+    fn supports(&self, schema: &OperatorSchema) -> bool {
+        match schema.implementation {
+            OperatorImplementationKind::SchemaOnly | OperatorImplementationKind::Composite => true,
+            OperatorImplementationKind::BackendKernel => {
+                self.supported_backend_kernels.contains(schema.name)
+            }
+        }
+    }
+}
+
 impl OperatorSchema {
     const fn new(
         name: &'static str,
@@ -867,6 +964,123 @@ impl OperatorRegistry {
         }
         Ok(())
     }
+
+    /// Runs fake or meta execution over one graph without material tensor data.
+    pub fn meta_execute_graph(
+        &self,
+        graph: &Graph,
+        capabilities: Option<&MetaCapabilityProfile>,
+    ) -> Result<MetaExecutionReport, GraphError> {
+        let steps = graph
+            .nodes()
+            .iter()
+            .map(|node| MetaExecutionInputStep {
+                output: node.tensor().id(),
+                op: ExecutionOp::from_op_kind(node.op()),
+                declared_output: node.tensor().spec().clone(),
+                inputs: node.inputs().to_vec(),
+            })
+            .collect::<Vec<_>>();
+        self.meta_execute_steps(steps.as_slice(), graph.outputs(), capabilities)
+    }
+
+    /// Runs fake or meta execution over one execution plan without material
+    /// tensor data.
+    pub fn meta_execute_plan(
+        &self,
+        plan: &ExecutionPlan,
+        capabilities: Option<&MetaCapabilityProfile>,
+    ) -> Result<MetaExecutionReport, GraphError> {
+        let steps = plan
+            .steps
+            .iter()
+            .map(|step| MetaExecutionInputStep {
+                output: step.output,
+                op: step.op.clone(),
+                declared_output: step.spec.clone(),
+                inputs: step.inputs.clone(),
+            })
+            .collect::<Vec<_>>();
+        self.meta_execute_steps(steps.as_slice(), plan.outputs.as_slice(), capabilities)
+    }
+
+    fn meta_execute_steps(
+        &self,
+        steps: &[MetaExecutionInputStep],
+        outputs: &[TensorId],
+        capabilities: Option<&MetaCapabilityProfile>,
+    ) -> Result<MetaExecutionReport, GraphError> {
+        let mut tensors = BTreeMap::<TensorId, MetaTensor>::new();
+        let mut trace = Vec::with_capacity(steps.len());
+
+        for step in steps {
+            let schema = self.schema_for_execution_op(&step.op);
+            if let Some(profile) = capabilities {
+                if !profile.supports(schema) {
+                    return Err(GraphError::UnsupportedOperatorCapability {
+                        op: schema.name.to_string(),
+                        message: format!(
+                            "meta capability profile does not declare backend kernel `{}`",
+                            schema.name
+                        ),
+                    });
+                }
+            }
+
+            let input_specs = step
+                .inputs
+                .iter()
+                .map(|tensor_id| {
+                    tensors
+                        .get(tensor_id)
+                        .map(|tensor| tensor.spec.clone())
+                        .ok_or_else(|| GraphError::InvalidOperatorInputs {
+                            op: step.op.label().to_string(),
+                            message: format!("missing input tensor {tensor_id}"),
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let spec = self.meta_execute(
+                &step.op,
+                input_specs.as_slice(),
+                Some(&step.declared_output),
+            )?;
+            tensors.insert(step.output, MetaTensor { spec: spec.clone() });
+            trace.push(MetaExecutionStep {
+                output: step.output,
+                op: schema.name.to_string(),
+                implementation: schema.implementation,
+                spec,
+            });
+        }
+
+        let outputs = outputs
+            .iter()
+            .map(|tensor_id| {
+                tensors
+                    .get(tensor_id)
+                    .cloned()
+                    .map(|tensor| (*tensor_id, tensor))
+                    .ok_or_else(|| GraphError::InvalidOperatorInputs {
+                        op: String::from("meta_execute"),
+                        message: format!("missing output tensor {tensor_id}"),
+                    })
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+
+        Ok(MetaExecutionReport {
+            steps: trace,
+            outputs,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct MetaExecutionInputStep {
+    output: TensorId,
+    op: ExecutionOp,
+    declared_output: TensorSpec,
+    inputs: Vec<TensorId>,
 }
 
 fn meta_execute_builtin(
@@ -1815,8 +2029,8 @@ mod tests {
     use psionic_core::{Device, QuantizationMode};
 
     use super::{
-        DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, OperatorImplementationKind,
-        OperatorMetaExecutionKind, OperatorRegistry, Shape, TensorSpec,
+        DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, MetaCapabilityProfile,
+        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry, Shape, TensorSpec,
     };
 
     #[test]
@@ -2016,6 +2230,97 @@ mod tests {
         assert!(
             result.is_ok(),
             "built-in operator registry should validate plan"
+        );
+    }
+
+    #[test]
+    fn meta_executor_runs_graph_without_real_tensor_data() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+        let row = builder.select(&input, 0, 0);
+        assert!(row.is_ok());
+        let Ok(row) = row else {
+            return;
+        };
+        let shifted = builder.add(&input, &row);
+        assert!(shifted.is_ok());
+        let Ok(shifted) = shifted else {
+            return;
+        };
+        let reduced = builder.reduce_sum_axis(&shifted, 1);
+        assert!(reduced.is_ok());
+        let Ok(reduced) = reduced else {
+            return;
+        };
+        let graph = builder.finish(vec![reduced.clone()]);
+
+        let report = OperatorRegistry::builtin()
+            .meta_execute_graph(&graph, Some(&MetaCapabilityProfile::all_builtin()));
+        assert!(report.is_ok());
+        let Ok(report) = report else {
+            return;
+        };
+        let output = report.output(reduced.id());
+        assert!(output.is_some());
+        let Some(output) = output else {
+            return;
+        };
+        assert_eq!(output.spec.shape().dims(), &[2]);
+        assert_eq!(output.spec.dtype(), DType::F32);
+    }
+
+    #[test]
+    fn meta_executor_refuses_missing_backend_kernel_capability() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let left = builder.input("left", Shape::new(vec![2, 2]), DType::F32);
+        let right = builder.input("right", Shape::new(vec![2, 2]), DType::F32);
+        let product = builder.matmul(&left, &right);
+        assert!(product.is_ok());
+        let Ok(product) = product else {
+            return;
+        };
+        let graph = builder.finish(vec![product]);
+        let capabilities = MetaCapabilityProfile::empty().with_supported_backend_kernels(["add"]);
+
+        let error = OperatorRegistry::builtin().meta_execute_graph(&graph, Some(&capabilities));
+        assert!(matches!(
+            error,
+            Err(super::GraphError::UnsupportedOperatorCapability { .. })
+        ));
+    }
+
+    #[test]
+    fn meta_executor_tracks_same_outputs_for_graph_and_plan() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
+        let permuted = builder.permute(&input, vec![1, 0]);
+        assert!(permuted.is_ok());
+        let Ok(permuted) = permuted else {
+            return;
+        };
+        let reduced = builder.reduce_sum_axis(&permuted, 0);
+        assert!(reduced.is_ok());
+        let Ok(reduced) = reduced else {
+            return;
+        };
+        let graph = builder.finish(vec![reduced.clone()]);
+        let plan = graph_to_execution_plan(&graph);
+        let registry = OperatorRegistry::builtin();
+
+        let graph_report = registry.meta_execute_graph(&graph, None);
+        let plan_report = registry.meta_execute_plan(&plan, None);
+        assert!(graph_report.is_ok());
+        assert!(plan_report.is_ok());
+        let Ok(graph_report) = graph_report else {
+            return;
+        };
+        let Ok(plan_report) = plan_report else {
+            return;
+        };
+
+        assert_eq!(
+            graph_report.output(reduced.id()),
+            plan_report.output(reduced.id())
         );
     }
 

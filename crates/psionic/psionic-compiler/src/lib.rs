@@ -189,7 +189,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use psionic_core::{DType, Device, QuantizationMode, Shape};
-    use psionic_ir::GraphBuilder;
+    use psionic_ir::{GraphBuilder, MetaCapabilityProfile, OperatorRegistry};
     use psionic_runtime::ExecutionTopologyPlan;
 
     use super::{
@@ -230,6 +230,29 @@ mod tests {
         };
         assert!(plan.stable_debug().contains("matmul"));
         assert!(plan.stable_debug().contains("add"));
+    }
+
+    #[test]
+    fn compile_graph_plan_can_run_through_meta_execution_without_tensor_data() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+        let plan = compile_graph(&graph);
+        assert!(plan.is_ok());
+        let Ok(plan) = plan else {
+            return;
+        };
+
+        let report = OperatorRegistry::builtin()
+            .meta_execute_plan(&plan, Some(&MetaCapabilityProfile::all_builtin()));
+        assert!(report.is_ok());
+        let Ok(report) = report else {
+            return;
+        };
+
+        assert_eq!(report.outputs.len(), plan.outputs.len());
     }
 
     #[test]
