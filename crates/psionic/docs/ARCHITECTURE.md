@@ -496,6 +496,7 @@ training subsystems.
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
 | `PsionicRefusal` | `psionic-core` | canonical cross-library refusal taxonomy for unsupported op, gradient, layout, capability, serialization, sandbox-policy, and topology boundaries | `implemented_early` |
 | `OperatorParityMatrixReport` | `psionic-ir` | machine-readable seeded operator parity cases and refusal proofs against the current PyTorch-derived oracle window | `implemented` |
+| `TensorFamilyCapabilityMatrixReport` | `psionic-ir` | machine-readable capability and refusal matrix for dense, sparse, nested, masked, and storage-aware tensor-family semantics across meta, declared-output, alias-view, and runtime-materialization surfaces | `implemented` |
 | `CompilerHygieneParityMatrixReport` | `psionic-compiler` | machine-readable seeded symbolic-shape, fake-tensor, and compiler-hygiene parity cases plus an explicit symbolic-shape refusal proof for the current PyTorch-derived oracle window | `implemented` |
 | `SemanticsClaimReport` | `psionic-compat` | machine-readable claim vocabulary that separates seeded evidence from `PyTorch-credible` and `PyTorch-compatible later` posture across the current semantics program | `implemented` |
 | `Module` | `psionic-nn` | reusable nested module tree with deterministic parameter, buffer, and submodule traversal | `implemented` |

@@ -670,7 +670,9 @@ impl FunctionalGraph {
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum GraphTransformError {
     /// A graph contained an opaque transform barrier while export-safe-only mode was requested.
-    #[error("graph is not export-safe because `{op}` at tensor {tensor} remains an opaque transform barrier ({reason:?})")]
+    #[error(
+        "graph is not export-safe because `{op}` at tensor {tensor} remains an opaque transform barrier ({reason:?})"
+    )]
     OpaqueTransformBarrier {
         /// Tensor produced by the barrier op.
         tensor: TensorId,
@@ -1360,6 +1362,419 @@ impl MetaTensor {
     pub fn with_family(spec: TensorSpec, family: MetaTensorFamily) -> Self {
         Self { spec, family }
     }
+}
+
+/// Capability surface tracked for one tensor-family semantics claim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TensorFamilyCapabilitySurface {
+    /// Carrying the family through fake or meta execution.
+    DeclaredMetaExecution,
+    /// Declaring the family as one custom operator output contract.
+    DeclaredCustomOutput,
+    /// Serializing the family contract itself through stable serde metadata.
+    ContractSerialization,
+    /// Preserving alias-aware dense layout views when relevant.
+    LayoutAliasViews,
+    /// Materializing the family as a runtime execution buffer.
+    RuntimeMaterialization,
+}
+
+impl TensorFamilyCapabilitySurface {
+    fn label(self) -> &'static str {
+        match self {
+            Self::DeclaredMetaExecution => "declared_meta_execution",
+            Self::DeclaredCustomOutput => "declared_custom_output",
+            Self::ContractSerialization => "contract_serialization",
+            Self::LayoutAliasViews => "layout_alias_views",
+            Self::RuntimeMaterialization => "runtime_materialization",
+        }
+    }
+}
+
+/// Capability status for one tensor-family surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TensorFamilyCapabilityStatus {
+    /// The surface is explicitly supported today.
+    Supported,
+    /// The surface is explicitly refused today.
+    Refused,
+}
+
+/// One tensor-family capability case in the current bounded semantics window.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TensorFamilyCapabilityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Tensor family covered by the case.
+    pub family: MetaTensorFamilyKind,
+    /// Capability surface under test.
+    pub surface: TensorFamilyCapabilitySurface,
+    /// Current status for the surface.
+    pub status: TensorFamilyCapabilityStatus,
+    /// Representative example contract for the case.
+    pub example_family: MetaTensorFamily,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the surface is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable tensor-family capability matrix for the current semantics
+/// slice.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TensorFamilyCapabilityMatrixReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Capability cases carried by the report.
+    pub cases: Vec<TensorFamilyCapabilityCaseResult>,
+    /// Stable digest over the cases.
+    pub matrix_digest: String,
+}
+
+impl TensorFamilyCapabilityMatrixReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<TensorFamilyCapabilityCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let matrix_digest = stable_tensor_family_capability_matrix_digest(
+            current_scope_window.as_str(),
+            cases.as_slice(),
+        );
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{:?}",
+                case.case_id,
+                case.family.label(),
+                case.surface.label(),
+                case.status
+            ));
+        }
+        lines
+    }
+
+    fn surface_case(
+        &self,
+        family: MetaTensorFamilyKind,
+        surface: TensorFamilyCapabilitySurface,
+    ) -> Option<&TensorFamilyCapabilityCaseResult> {
+        self.cases
+            .iter()
+            .find(|case| case.family == family && case.surface == surface)
+    }
+
+    /// Validates whether the requested family is supported on one named surface.
+    pub fn validate_surface_support(
+        &self,
+        family: &MetaTensorFamily,
+        surface: TensorFamilyCapabilitySurface,
+    ) -> Result<(), PsionicRefusal> {
+        let family_kind = family.kind();
+        let Some(case) = self.surface_case(family_kind, surface) else {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Graph,
+                format!(
+                    "tensor-family capability matrix is missing `{}` coverage for `{}`",
+                    surface.label(),
+                    family_kind.label()
+                ),
+            )
+            .with_subject(family_kind.label()));
+        };
+        match case.status {
+            TensorFamilyCapabilityStatus::Supported => Ok(()),
+            TensorFamilyCapabilityStatus::Refused => {
+                Err(case.refusal.clone().unwrap_or_else(|| {
+                    PsionicRefusal::new(
+                        PsionicRefusalCode::UnsupportedBackendCapability,
+                        PsionicRefusalScope::Graph,
+                        format!(
+                            "tensor family `{}` is refused on `{}` in the current scope",
+                            family_kind.label(),
+                            surface.label()
+                        ),
+                    )
+                    .with_subject(family_kind.label())
+                }))
+            }
+        }
+    }
+}
+
+/// Builds the canonical tensor-family capability matrix for the current
+/// Psionic semantics scope.
+#[must_use]
+pub fn builtin_tensor_family_capability_matrix_report() -> TensorFamilyCapabilityMatrixReport {
+    let dense = MetaTensorFamily::Dense;
+    let sparse = MetaTensorFamily::Sparse {
+        contract: SparseMetaContract {
+            layout: SparseMetaLayout::Csr,
+            max_nonzero_entries: Some(12),
+        },
+    };
+    let nested = MetaTensorFamily::Nested {
+        contract: NestedMetaContract { ragged_rank: 1 },
+    };
+    let masked = MetaTensorFamily::Masked {
+        contract: MaskedMetaContract { mask_rank: 2 },
+    };
+    let storage_aware = MetaTensorFamily::StorageAware {
+        contract: StorageAwareMetaContract {
+            alias_preserving: true,
+        },
+    };
+
+    TensorFamilyCapabilityMatrixReport::new(
+        String::from("psionic_tensor_family_v1"),
+        vec![
+            supported_tensor_family_case(
+                "dense.declared_meta_execution",
+                dense.clone(),
+                TensorFamilyCapabilitySurface::DeclaredMetaExecution,
+                "Dense tensors remain the only family carried end-to-end through current built-in graph, meta, and runtime execution surfaces.",
+            ),
+            supported_tensor_family_case(
+                "dense.declared_custom_output",
+                dense.clone(),
+                TensorFamilyCapabilitySurface::DeclaredCustomOutput,
+                "Dense declared custom outputs stay supported through the current schema and meta-validation path.",
+            ),
+            supported_tensor_family_case(
+                "dense.contract_serialization",
+                dense.clone(),
+                TensorFamilyCapabilitySurface::ContractSerialization,
+                "Dense family contracts serialize through the canonical serde-backed graph and meta report surfaces.",
+            ),
+            supported_tensor_family_case(
+                "dense.layout_alias_views",
+                dense.clone(),
+                TensorFamilyCapabilitySurface::LayoutAliasViews,
+                "Dense tensors preserve alias and broadcast posture through `Layout`, storage-span, and alias-relation contracts.",
+            ),
+            supported_tensor_family_case(
+                "dense.runtime_materialization",
+                dense,
+                TensorFamilyCapabilitySurface::RuntimeMaterialization,
+                "Dense tensors remain the only family that current runtime backends materialize as execution buffers.",
+            ),
+            supported_tensor_family_case(
+                "sparse.declared_meta_execution",
+                sparse.clone(),
+                TensorFamilyCapabilitySurface::DeclaredMetaExecution,
+                "Sparse family contracts can flow through meta execution and fake-tensor traces with explicit COO/CSR/CSC metadata.",
+            ),
+            supported_tensor_family_case(
+                "sparse.declared_custom_output",
+                sparse.clone(),
+                TensorFamilyCapabilitySurface::DeclaredCustomOutput,
+                "Custom operators may declare sparse outputs explicitly instead of smuggling sparse posture through dense shadow types.",
+            ),
+            supported_tensor_family_case(
+                "sparse.contract_serialization",
+                sparse.clone(),
+                TensorFamilyCapabilitySurface::ContractSerialization,
+                "Sparse family metadata serializes as a first-class graph/meta contract even though raw sparse runtime payloads are not materialized yet.",
+            ),
+            refused_tensor_family_case(
+                "sparse.runtime_materialization",
+                sparse,
+                TensorFamilyCapabilitySurface::RuntimeMaterialization,
+                "Sparse runtime materialization is still intentionally unsupported; current backends stop at dense-buffer execution and refuse sparse families before runtime launch.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "sparse tensor families remain meta-only and cannot be materialized by current runtime backends",
+                )
+                .with_subject("sparse"),
+            ),
+            supported_tensor_family_case(
+                "nested.declared_meta_execution",
+                nested.clone(),
+                TensorFamilyCapabilitySurface::DeclaredMetaExecution,
+                "Nested tensor contracts can flow through meta execution with explicit ragged-rank metadata.",
+            ),
+            supported_tensor_family_case(
+                "nested.declared_custom_output",
+                nested.clone(),
+                TensorFamilyCapabilitySurface::DeclaredCustomOutput,
+                "Custom operators may declare nested outputs explicitly instead of flattening them into dense-only placeholders.",
+            ),
+            supported_tensor_family_case(
+                "nested.contract_serialization",
+                nested.clone(),
+                TensorFamilyCapabilitySurface::ContractSerialization,
+                "Nested family metadata serializes as a first-class graph/meta contract.",
+            ),
+            refused_tensor_family_case(
+                "nested.runtime_materialization",
+                nested,
+                TensorFamilyCapabilitySurface::RuntimeMaterialization,
+                "Nested runtime materialization is intentionally unsupported; the current runtime has no ragged-buffer executor surface.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "nested tensor families remain meta-only until a ragged runtime buffer contract exists",
+                )
+                .with_subject("nested"),
+            ),
+            supported_tensor_family_case(
+                "masked.declared_meta_execution",
+                masked.clone(),
+                TensorFamilyCapabilitySurface::DeclaredMetaExecution,
+                "Masked tensor contracts can flow through meta execution with explicit mask-rank metadata.",
+            ),
+            supported_tensor_family_case(
+                "masked.declared_custom_output",
+                masked.clone(),
+                TensorFamilyCapabilitySurface::DeclaredCustomOutput,
+                "Custom operators may declare masked outputs explicitly instead of encoding mask posture in ad hoc side channels.",
+            ),
+            supported_tensor_family_case(
+                "masked.contract_serialization",
+                masked.clone(),
+                TensorFamilyCapabilitySurface::ContractSerialization,
+                "Masked family metadata serializes as a first-class graph/meta contract.",
+            ),
+            refused_tensor_family_case(
+                "masked.runtime_materialization",
+                masked,
+                TensorFamilyCapabilitySurface::RuntimeMaterialization,
+                "Masked runtime materialization is intentionally unsupported; current backends do not own a masked-buffer execution contract.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "masked tensor families remain meta-only until a runtime masked-buffer contract exists",
+                )
+                .with_subject("masked"),
+            ),
+            supported_tensor_family_case(
+                "storage_aware.declared_meta_execution",
+                storage_aware.clone(),
+                TensorFamilyCapabilitySurface::DeclaredMetaExecution,
+                "Storage-aware contracts can flow through meta execution with explicit alias-preserving posture above raw dense layout alone.",
+            ),
+            supported_tensor_family_case(
+                "storage_aware.declared_custom_output",
+                storage_aware.clone(),
+                TensorFamilyCapabilitySurface::DeclaredCustomOutput,
+                "Custom operators may declare storage-aware outputs explicitly instead of relying on implicit backend-local alias assumptions.",
+            ),
+            supported_tensor_family_case(
+                "storage_aware.contract_serialization",
+                storage_aware.clone(),
+                TensorFamilyCapabilitySurface::ContractSerialization,
+                "Storage-aware family metadata serializes as a first-class graph/meta contract.",
+            ),
+            supported_tensor_family_case(
+                "storage_aware.layout_alias_views",
+                storage_aware.clone(),
+                TensorFamilyCapabilitySurface::LayoutAliasViews,
+                "Storage-aware posture is currently bounded to dense-layout alias and broadcast view semantics tracked by `Layout`, storage spans, and alias relations.",
+            ),
+            refused_tensor_family_case(
+                "storage_aware.runtime_materialization",
+                storage_aware,
+                TensorFamilyCapabilitySurface::RuntimeMaterialization,
+                "Storage-aware runtime materialization is intentionally unsupported beyond dense layout views; current backends do not materialize distinct storage classes.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "storage-aware tensor families stay bounded to meta contracts and dense layout aliases until runtime storage classes exist",
+                )
+                .with_subject("storage_aware"),
+            ),
+        ],
+    )
+}
+
+fn supported_tensor_family_case(
+    case_id: &str,
+    example_family: MetaTensorFamily,
+    surface: TensorFamilyCapabilitySurface,
+    bounded_scope: &str,
+) -> TensorFamilyCapabilityCaseResult {
+    TensorFamilyCapabilityCaseResult {
+        case_id: String::from(case_id),
+        family: example_family.kind(),
+        surface,
+        status: TensorFamilyCapabilityStatus::Supported,
+        example_family,
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_tensor_family_case(
+    case_id: &str,
+    example_family: MetaTensorFamily,
+    surface: TensorFamilyCapabilitySurface,
+    bounded_scope: &str,
+    refusal: PsionicRefusal,
+) -> TensorFamilyCapabilityCaseResult {
+    TensorFamilyCapabilityCaseResult {
+        case_id: String::from(case_id),
+        family: example_family.kind(),
+        surface,
+        status: TensorFamilyCapabilityStatus::Refused,
+        example_family,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_tensor_family_capability_matrix_digest(
+    current_scope_window: &str,
+    cases: &[TensorFamilyCapabilityCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("family={}", case.family.label()));
+        lines.push(format!("surface={}", case.surface.label()));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!("scope={}", case.bounded_scope));
+        lines.push(format!(
+            "example_kind={}",
+            case.example_family.kind().label()
+        ));
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("refusal_code={:?}", refusal.code));
+            lines.push(format!("refusal_scope={:?}", refusal.scope));
+            lines.push(format!("refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
 }
 
 /// One step traced during fake or meta execution.
@@ -3287,13 +3702,15 @@ mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
-        builtin_operator_parity_matrix_report, DType, ExecutionOp, ExecutionPlan, ExecutionStep,
-        FunctionalTensorKind, FunctionalizationPolicy, GraphBuilder, GraphError,
-        GraphTransformError, KernelDispatchKind, KernelRegistration, MaskedMetaContract,
-        MetaCapabilityProfile, MetaTensor, MetaTensorFamily, MetaTensorFamilyKind, OperatorArity,
+        builtin_operator_parity_matrix_report, builtin_tensor_family_capability_matrix_report,
+        DType, ExecutionOp, ExecutionPlan, ExecutionStep, FunctionalTensorKind,
+        FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
+        KernelRegistration, MaskedMetaContract, MetaCapabilityProfile, MetaTensor,
+        MetaTensorFamily, MetaTensorFamilyKind, NestedMetaContract, OperatorArity,
         OperatorImplementationKind, OperatorMetaExecutionKind, OperatorParityStatus,
         OperatorRegistry, RegisteredOperatorSchema, RegistryExtensionError, Shape,
-        SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract, TensorSpec,
+        SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract,
+        TensorFamilyCapabilityStatus, TensorFamilyCapabilitySurface, TensorSpec,
         TransformBarrierKind,
     };
 
@@ -3716,6 +4133,74 @@ mod tests {
         ]);
         let supported = enabled.validate_tensor_family("custom_masked", &masked);
         assert!(supported.is_ok());
+    }
+
+    #[test]
+    fn tensor_family_capability_matrix_tracks_supported_and_refused_surfaces() {
+        let report = builtin_tensor_family_capability_matrix_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_tensor_family_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("matrix_digest=")));
+
+        let sparse_meta = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "sparse.declared_custom_output")
+            .expect("missing sparse declared-custom-output case");
+        assert_eq!(sparse_meta.status, TensorFamilyCapabilityStatus::Supported);
+        assert_eq!(sparse_meta.family, MetaTensorFamilyKind::Sparse);
+
+        let storage_alias = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "storage_aware.layout_alias_views")
+            .expect("missing storage-aware alias-view case");
+        assert_eq!(
+            storage_alias.status,
+            TensorFamilyCapabilityStatus::Supported
+        );
+        assert_eq!(storage_alias.family, MetaTensorFamilyKind::StorageAware);
+
+        let sparse_runtime = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "sparse.runtime_materialization")
+            .expect("missing sparse runtime refusal");
+        assert_eq!(sparse_runtime.status, TensorFamilyCapabilityStatus::Refused);
+        assert_eq!(
+            sparse_runtime.refusal.as_ref().map(|refusal| refusal.code),
+            Some(PsionicRefusalCode::UnsupportedBackendCapability)
+        );
+        assert_eq!(
+            sparse_runtime.refusal.as_ref().map(|refusal| refusal.scope),
+            Some(PsionicRefusalScope::Runtime)
+        );
+
+        let nested_runtime = report
+            .validate_surface_support(
+                &MetaTensorFamily::Nested {
+                    contract: NestedMetaContract { ragged_rank: 1 },
+                },
+                TensorFamilyCapabilitySurface::RuntimeMaterialization,
+            )
+            .expect_err("nested runtime materialization should refuse");
+        assert_eq!(
+            nested_runtime.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(nested_runtime.scope, PsionicRefusalScope::Runtime);
+        assert_eq!(nested_runtime.subject.as_deref(), Some("nested"));
+
+        let masked_meta = report.validate_surface_support(
+            &MetaTensorFamily::Masked {
+                contract: MaskedMetaContract { mask_rank: 2 },
+            },
+            TensorFamilyCapabilitySurface::DeclaredMetaExecution,
+        );
+        assert!(masked_meta.is_ok());
     }
 
     #[test]
