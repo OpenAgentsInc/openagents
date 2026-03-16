@@ -207,6 +207,8 @@ Current posture:
 - `psionic-core`: canonical tensor, shape, dtype, and device contract.
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types.
+- `psionic-compat`: machine-readable compatibility claim vocabulary and current
+  PyTorch-facing semantics posture aggregation.
 - `psionic-nn`: reusable module, parameter, buffer, and deterministic
   state-dict/state-tree semantics above `psionic-core`, including strict and
   non-strict keyed load behavior.
@@ -564,6 +566,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/COMPILER_HYGIENE_PARITY_MATRIX.md](docs/COMPILER_HYGIENE_PARITY_MATRIX.md)** —
   canonical seeded symbolic-shape, fake-tensor, and compiler-hygiene parity
   artifact for the current PyTorch-derived compiler coverage slice.
+- **[docs/SEMANTICS_CLAIM_REPORT.md](docs/SEMANTICS_CLAIM_REPORT.md)** —
+  canonical machine-readable truth source for what Psionic currently treats as
+  seeded evidence only versus `PyTorch-compatible later`.
 - **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
   inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training

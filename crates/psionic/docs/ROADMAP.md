@@ -300,6 +300,10 @@ This still does **not** mean full upstream PyTorch closure.
 All PyTorch-derived parity matrices and credibility claims must target an
 explicit bounded upstream version window, not an unversioned idea of PyTorch.
 
+The canonical machine-readable truth source for the current posture now lives
+in `crates/psionic/psionic-compat` as `SemanticsClaimReport` and is documented
+in `crates/psionic/docs/SEMANTICS_CLAIM_REPORT.md`.
+
 ### Claim 5: `PyTorch-compatible`
 
 This means bounded, explicit, separately tested interop or shell surfaces exist
@@ -887,7 +891,7 @@ Master issue:
 | `PLIB-206` / [#3721](https://github.com/OpenAgentsInc/openagents/issues/3721) | done (2026-03-16) | `psionic-nn` now publishes a machine-readable seeded module parity matrix report with normalized module-tree and `state_dict` parity cases for `linear`, `batch_norm1d`, and a nested `transformer_encoder_layer`-style fixture, plus an explicit refusal proof for PyTorch registration-order-preserving `state_dict` keys so bounded scope remains honest instead of silently skipped. |
 | `PLIB-207` / [#3722](https://github.com/OpenAgentsInc/openagents/issues/3722) | done (2026-03-16) | `psionic-train` now publishes a machine-readable seeded optimizer parity matrix report with single-step PyTorch-derived cases for SGD, Adam, AdamW, LARS, and LAMB, plus an explicit refusal proof for optimizer-state kind mismatch so bounded scope stays machine-legible rather than hiding behind generic test failure. |
 | `PLIB-208` / [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723) | done (2026-03-16) | `psionic-compiler` now publishes a machine-readable seeded compiler-hygiene parity matrix report covering fake-tensor graph-vs-plan parity, non-dense meta-tensor contracts, cache-temperature and alias-aware compiler hygiene, plus an explicit symbolic-shape refusal proof so the current lack of symbolic-dimension support is machine-legible instead of implied. |
-| `PLIB-209` / [#3724](https://github.com/OpenAgentsInc/openagents/issues/3724) | planned | Make the semantics layer honest about what is `PyTorch-credible` versus what remains `PyTorch-compatible later`. |
+| `PLIB-209` / [#3724](https://github.com/OpenAgentsInc/openagents/issues/3724) | done (2026-03-16) | `psionic-compat` now publishes a machine-readable semantics claim report that keeps the current overall posture at `seeded_evidence_only`, attaches operator/module/optimizer/compiler evidence digests to the bounded areas that now have real parity artifacts, and marks broader future areas as `PyTorch-compatible later` with explicit blockers and issue references instead of allowing fuzzy `PyTorch-credible` claims. |
 
 ### Tensor, Dtype, And Reproducibility Semantics
 
