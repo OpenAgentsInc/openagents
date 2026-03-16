@@ -6499,6 +6499,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-array"
+version = "0.1.1"
+dependencies = [
+ "psionic-core",
+ "psionic-ir",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-backend-amd-kfd"
 version = "0.1.1"
 dependencies = [

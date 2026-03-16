@@ -1,8 +1,8 @@
 # Psionic MLX Acceptance Matrix
 
 > Status: canonical `PMLX-003` / `#3831` reference record, updated 2026-03-16
-> after adding the first MLX-lane acceptance doc, machine-readable report, JSON
-> schema, and repo runner.
+> after landing `PMLX-101` / `#3834` in `psionic-array` and refreshing the
+> machine-readable report to mark the array/runtime category `partial`.
 
 This document defines the closure categories for the Psionic MLX roadmap.
 
@@ -50,7 +50,7 @@ That means:
 
 | Category | Current status | What a green category would mean | Current repo truth | Governing issues | Boundary note |
 | --- | --- | --- | --- | --- | --- |
-| `array-runtime-surface` | `planned` | Public lazy arrays exist with explicit evaluation, device and stream semantics, creation and view families, random or cast behavior, and host-materialization boundaries. | Lower-layer tensor, IR, runtime, and refusal substrate exist, but Psionic does not yet publish a user-facing MLX-class array facade. | `PMLX-101` through `PMLX-106` | Do not claim MLX array closure from internals alone. |
+| `array-runtime-surface` | `partial` | Public lazy arrays exist with explicit evaluation, device and stream semantics, creation and view families, random or cast behavior, and host-materialization boundaries. | `psionic-array` now publishes a first user-facing lazy-array facade with context-owned graph construction, graph-backed arithmetic, and snapshot graph export, but explicit `eval`, device-stream behavior, broader creation and view families, random, and host-materialization boundaries are still open. | `PMLX-101` through `PMLX-106` | Do not claim MLX array closure from the first public facade alone; the category stays open until `PMLX-102` through `PMLX-106` land too. |
 | `transform-compile` | `planned` | Public transforms cover `grad`, `value_and_grad`, `vjp`, `jvp`, `vmap`, `checkpoint`, and compile-as-transform with typed refusals and symbolic boundaries. | Autodiff and compiler substrate exist, but the coherent MLX-class transform API does not. | `PMLX-201` through `PMLX-206` | Do not infer MLX transform closure from private autodiff helpers or compiler internals. |
 | `nn-optimizer` | `planned` | Public `Module`, state save/load, core layers, losses, initializers, optimizers, schedulers, and quantized-module behavior exist above Psionic-native train primitives. | Psionic already owns module, optimizer, and checkpoint substrate, but not the MLX-class `nn` and optimizer shell. | `PMLX-301` through `PMLX-307` | Do not claim MLX `nn` closure from `psionic-nn` or `psionic-train` alone. |
 | `export-serialization-tooling` | `planned` | General array IO, native function export/import, bounded `.mlxfn` interop, memory controls, debug hooks, and extension tooling are public. | Model IO, graph export, compiler artifacts, and runtime diagnostics exist, but not the public MLX tooling shell. | `PMLX-401` through `PMLX-406` | Do not collapse internal model IO or runtime diagnostics into MLX export closure. |

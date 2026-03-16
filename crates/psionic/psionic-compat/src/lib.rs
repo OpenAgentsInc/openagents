@@ -1043,7 +1043,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
     MlxAcceptanceMatrixReport::new(vec![
         MlxAcceptanceCategory {
             category_id: String::from("array-runtime-surface"),
-            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            matrix_status: MlxAcceptanceCategoryStatus::Partial,
             epic_id: String::from("PMLX-E1"),
             issue_refs: vec![
                 String::from("PMLX-101 (#3834)"),
@@ -1057,10 +1057,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "A public lazy array type exists with explicit eval and async_eval posture, public device and stream handles, creation and view families, deterministic random and cast behavior, and safe host materialization boundaries.",
             ),
             current_repo_truth: String::from(
-                "Psionic already has lower-layer tensor, IR, runtime, and refusal substrate, but it does not yet publish a user-facing MLX-class array facade or runner contract above those crates.",
+                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with context-owned graph construction, graph-backed arithmetic, and snapshot graph export, but eval, device-stream execution, broader creation and view families, random, and host-materialization boundaries remain open.",
             ),
             boundary_note: String::from(
-                "Do not claim MLX-class array closure from psionic-core, psionic-ir, or runtime internals alone until PMLX-101 through PMLX-106 land on a public framework surface.",
+                "Do not claim MLX-class array closure from the first public facade alone; the category stays open until PMLX-102 through PMLX-106 land too.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1196,12 +1196,14 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("python/tests/test_double.py"),
             ],
             current_outcome: MlxParityHarnessOutcome::Unsupported,
-            psionic_hook_commands: Vec::new(),
+            psionic_hook_commands: vec![String::from(
+                "cargo test -p psionic-array tests::public_lazy_array_surface_builds_graph_backed_arithmetic -- --exact --nocapture",
+            )],
             summary: String::from(
-                "The upstream array-core family is tracked explicitly, but no public MLX-class array facade exists in Psionic yet.",
+                "The upstream array-core family is still tracked as unsupported, but psionic-array now provides the first public lazy-array entrypoint for later parity work.",
             ),
             boundary_note: String::from(
-                "Lower-layer tensor substrate is not enough to call the upstream array family ported.",
+                "A first public array facade exists, but that is still not enough to call the upstream array-core family ported.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1219,12 +1221,14 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("python/tests/test_random.py"),
             ],
             current_outcome: MlxParityHarnessOutcome::Unsupported,
-            psionic_hook_commands: Vec::new(),
+            psionic_hook_commands: vec![String::from(
+                "cargo test -p psionic-array tests::public_lazy_array_surface_builds_graph_backed_arithmetic -- --exact --nocapture",
+            )],
             summary: String::from(
-                "The numeric-op and creation families remain tracked but unsupported until the public MLX array layer exists.",
+                "The numeric-op and creation families remain tracked but unsupported even though psionic-array now exposes the first public graph-backed arithmetic surface.",
             ),
             boundary_note: String::from(
-                "Current lower-layer operator evidence does not yet amount to an MLX-class family port.",
+                "The first public numeric ops are still not the same thing as a seeded upstream MLX numeric parity family.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1467,13 +1471,16 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("public_mlx_array_api"),
-            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
-            summary: String::from("There is no public MLX-class lazy array API in Psionic today."),
-            evidence_refs: vec![String::from(
-                "MlxAcceptanceMatrixReport::array-runtime-surface = planned",
-            )],
+            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            summary: String::from(
+                "psionic-array now exposes a first public lazy-array facade with graph-backed arithmetic and snapshot graph export, but the broader MLX array surface is still incomplete.",
+            ),
+            evidence_refs: vec![
+                String::from("ArrayContext"),
+                String::from("Array"),
+                String::from("MlxAcceptanceMatrixReport::array-runtime-surface = partial"),
+            ],
             blocking_issue_refs: vec![
-                String::from("PMLX-101 (#3834)"),
                 String::from("PMLX-102 (#3835)"),
                 String::from("PMLX-103 (#3836)"),
                 String::from("PMLX-104 (#3837)"),
@@ -1481,7 +1488,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("PMLX-106 (#3839)"),
             ],
             boundary_note: String::from(
-                "Lower-layer tensor substrate must not be described as a supported MLX public array API.",
+                "The first public facade is not the same thing as full supported MLX array closure.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -1980,7 +1987,12 @@ mod tests {
                 .iter()
                 .find(|category| category.category_id == category_id)
                 .expect("missing MLX acceptance category");
-            assert_eq!(category.matrix_status, MlxAcceptanceCategoryStatus::Planned);
+            let expected_status = if category_id == "array-runtime-surface" {
+                MlxAcceptanceCategoryStatus::Partial
+            } else {
+                MlxAcceptanceCategoryStatus::Planned
+            };
+            assert_eq!(category.matrix_status, expected_status);
             assert!(!category.issue_refs.is_empty());
             assert!(!category.green_definition.is_empty());
             assert!(!category.current_repo_truth.is_empty());
@@ -2132,7 +2144,7 @@ mod tests {
             .expect("missing public array row");
         assert_eq!(
             array.matrix_status,
-            MlxCompatibilityMatrixStatus::Unsupported
+            MlxCompatibilityMatrixStatus::Convertible
         );
 
         let filtered = report.filter_to_surfaces(&[
