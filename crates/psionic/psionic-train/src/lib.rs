@@ -30,6 +30,7 @@ mod adapter_window;
 mod adapter_worker_protocol;
 mod apple_adapter;
 mod apple_adapter_experiment;
+#[cfg(feature = "legacy-apple-toolkit-oracle")]
 mod apple_toolkit;
 mod artifact_storage;
 mod benchmarking;
@@ -67,6 +68,7 @@ pub use adapter_window::*;
 pub use adapter_worker_protocol::*;
 pub use apple_adapter::*;
 pub use apple_adapter_experiment::*;
+#[cfg(feature = "legacy-apple-toolkit-oracle")]
 pub use apple_toolkit::*;
 pub use artifact_storage::*;
 pub use benchmarking::*;

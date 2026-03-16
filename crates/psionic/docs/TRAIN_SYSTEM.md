@@ -276,10 +276,9 @@ The current path is:
    operator flow now runs the long Apple launch pipeline in the background and
    exposes typed live phase, heartbeat, ETA, and recent-event telemetry through
    desktop-control instead of waiting for one buffered child-process exit. The
-   legacy toolkit compatibility wrapper in `psionic-train` now also streams
-   stdout/stderr lines before returning its final receipt, so even non-live-path
-   toolkit invocations no longer depend on `Command::output()` buffering. The
-   packaged Apple release checks now run
+   legacy toolkit compatibility wrapper in `psionic-train` is now quarantined
+   behind the non-default `legacy-apple-toolkit-oracle` feature, and the
+   packaged Apple release checks run
    `scripts/release/check-psionic-apple-rust-only-gate.sh`, which fails if the
    shipped Apple operator path regresses back to toolkit-root discovery,
    Python-interpreter discovery, or authoritative toolkit shell-outs.

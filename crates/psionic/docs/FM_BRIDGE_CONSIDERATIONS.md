@@ -19,8 +19,7 @@ So: Swift talks to Apple; Rust talks to the bridge over HTTP; the desktop app ow
 ┌─────────────────────────────────────────────────────────────────┐
 │  apps/autopilot-desktop                                          │
 │  - Finds or builds foundation-bridge helper                      │
-│  - Launches FoundationBridge.app via Launch Services when        │
-│    available; falls back to raw binary exec only when needed     │
+│  - Launches FoundationBridge.app via Launch Services             │
 │  - Supervises bridge health and stop/shutdown                    │
 │  - Mission Control UI, Go Online preflight, workbench            │
 │  - Uses psionic_apple_fm::AppleFmBridgeClient (HTTP)             │
@@ -68,8 +67,7 @@ What the bridge does **not** own:
 The current Apple adapter training path lives elsewhere in the repo:
 
 - `psionic-train` owns the Apple operator-side training/export wrappers plus
-  the older repo-native reference backend, but the live Apple-valid `.fmadapter`
-  path currently goes through the local Apple toolkit wrapper
+  the authoritative Rust-native training/export backend for the shipped lane
 - `psionic-data`, `psionic-environments`, and `psionic-eval` own the dataset,
   environment, and held-out/runtime-smoke contracts that surround that lane
 - `apps/autopilot-desktop` owns the operator flow exposed through
@@ -79,15 +77,14 @@ That means the honest integration story is:
 
 1. the repo owns the operator contract, dataset/env/eval surfaces, and package
    lineage for the Apple adapter lane
-2. the current live Apple-valid export path uses the Apple toolkit-backed
-   training/export wrapper in `psionic-train`
+2. the current live Apple-valid export path is the Rust-native Psionic train
+   and export path in `psionic-train`
 3. the bridge loads and attaches that exported package for live Apple runtime
    usage
 
 So yes, the Apple FM integration now reaches real adapter training and local
 usage, but the bridge participates as the runtime consumer and runtime-smoke
-validator, not as the trainer, and the current live runtime-asset export is
-not yet a pure Rust-native Psionic exporter.
+validator, not as the trainer.
 
 ## 4. Contract (URL, endpoints, readiness)
 
@@ -126,16 +123,11 @@ The desktop app looks for the bridge helper in this order:
 
 1. **`OPENAGENTS_APPLE_FM_BRIDGE_BIN`** — If set, use this path (must exist).
 2. **CWD-relative** (when run from repo root):
-   `bin/FoundationBridge.app/Contents/MacOS/foundation-bridge`,
-   `bin/foundation-bridge`,
-   `swift/foundation-bridge/.build/release/foundation-bridge`,
-   `swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge`.
-3. **Exe-relative repo root**: walk up from the current executable path until a directory contains `swift/foundation-bridge`, `bin/foundation-bridge`, or `bin/FoundationBridge.app/...`; then check the same candidates under that root. This lets the app find the helper when run from `target/debug` or elsewhere under the repo.
+   `bin/FoundationBridge.app/Contents/MacOS/foundation-bridge`.
+3. **Exe-relative repo root**: walk up from the current executable path until a directory contains `swift/foundation-bridge` or `bin/FoundationBridge.app/...`; then check the same bundle candidate under that root. This lets the app find the helper when run from `target/debug` or elsewhere under the repo.
 4. **Bundled with the app** (for shipped .app):
    - **Preferred helper bundle**: `YourApp.app/Contents/Helpers/FoundationBridge.app/Contents/MacOS/foundation-bridge`.
    - **Preferred resource bundle**: `YourApp.app/Contents/Resources/FoundationBridge.app/Contents/MacOS/foundation-bridge`.
-   - **Raw fallback next to the executable**: `YourApp.app/Contents/MacOS/foundation-bridge`.
-   - **Raw fallback in Resources**: `YourApp.app/Contents/Resources/foundation-bridge`.
 
 When the discovered helper lives inside `FoundationBridge.app`, the desktop app
 should launch the bundle through Launch Services (`open ... FoundationBridge.app
@@ -159,7 +151,9 @@ If none of these yield an existing binary, the app may try to **auto-build** onc
   needed).
 - **Run**:
   `open -n -g ./bin/FoundationBridge.app --args 11435`
-  Default port **11435**. Optional low-level debug path: `./bin/foundation-bridge 8080` for a different port (and set `OPENAGENTS_APPLE_FM_BASE_URL` accordingly).
+  Default port **11435**. The raw inner executable remains a low-level debug
+  artifact only and is not a supported normal app launch path because it can
+  trigger Apple Intelligence compatibility warnings.
 - **Test**:
   `curl -s http://127.0.0.1:11435/health`
   You should get a JSON object with system model availability. Before working on autopilot or Mission Control, **test the bridge first** (build → run → curl health), then start the desktop app. See **AGENTS.md** and the main **README.md** “Agent Install Instructions” for the canonical “test bridge first” workflow.
@@ -173,8 +167,7 @@ To ship so **users never need to build the bridge or install Xcode**:
    → produces `bin/foundation-bridge` and `bin/FoundationBridge.app`.
 2. **Include that binary in your app bundle** when you create the .app:
    - Prefer placing **`FoundationBridge.app`** in **`YourApp.app/Contents/Helpers/`** or **`YourApp.app/Contents/Resources/`** so the desktop app can launch it as a helper bundle.
-   - Raw **`foundation-bridge`** binaries in **`Contents/MacOS/`** or **`Contents/Resources/`** remain a fallback for older packaging layouts.
-   - For other layouts, set **`OPENAGENTS_APPLE_FM_BRIDGE_BIN`** to the full path of the binary in your package.
+   - For other layouts, set **`OPENAGENTS_APPLE_FM_BRIDGE_BIN`** to the full path of the helper bundle executable intentionally; raw-binary overrides are developer-only debug paths.
 3. Users then only need: **macOS 26+**, **Apple Silicon**, and **Apple Intelligence enabled**. No Xcode or build step.
 
 If you do **not** bundle the binary:

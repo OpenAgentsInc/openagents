@@ -1,3 +1,9 @@
+//! Legacy developer-only Apple toolkit oracle.
+//!
+//! This module is intentionally excluded from the default `psionic-train`
+//! build and is only compiled when the non-default
+//! `legacy-apple-toolkit-oracle` feature is enabled.
+
 use std::{
     collections::BTreeMap,
     env,
@@ -12,7 +18,7 @@ use std::{
 };
 
 use psionic_adapters::{
-    AppleFmAdapterPackageMetadata, APPLE_FM_ADAPTER_METADATA_FILE, APPLE_FM_ADAPTER_WEIGHTS_FILE,
+    APPLE_FM_ADAPTER_METADATA_FILE, APPLE_FM_ADAPTER_WEIGHTS_FILE, AppleFmAdapterPackageMetadata,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
