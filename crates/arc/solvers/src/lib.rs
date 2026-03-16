@@ -16,6 +16,7 @@
 pub mod dsl;
 pub mod interpreter;
 pub mod model;
+pub mod recursive;
 pub mod symbolic;
 pub mod trace;
 pub mod transductive;
@@ -35,6 +36,14 @@ pub use model::{
     SolveAttemptEnvelope, SolveAttemptEnvelopeError, SolveAttemptStatus,
     SolveAttemptVerificationSummary, SolverIdError, SolverLaneId, SolverPhase, SolverRefusalCode,
     TaskBudget,
+};
+pub use recursive::{
+    ArcRecursiveTinyModelBootstrap, ArcRecursiveTinyModelBootstrapMode,
+    ArcRecursiveTinyModelConfig, ArcRecursiveTinyModelLane, ArcRecursiveTinyModelLaneError,
+    ArcRecursiveTinyModelLaneRun, ArcRecursiveTinyModelState,
+    ArcRecursiveTinyModelStepDecision, ArcRecursiveTinyModelStepOutput,
+    ArcRecursiveTinyModelStepTrace, ArcRecursiveTinyModelTracePhase, ArcTinyModel,
+    RECURSIVE_TINY_MODEL_BOUNDARY_SUMMARY, RECURSIVE_TINY_MODEL_LANE_ID,
 };
 pub use symbolic::{
     SYMBOLIC_LANE_BOUNDARY_SUMMARY, SYMBOLIC_LANE_ID, SymbolicLane, SymbolicLaneConfig,
