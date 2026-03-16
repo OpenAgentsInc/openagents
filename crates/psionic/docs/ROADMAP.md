@@ -522,6 +522,10 @@ Its declared scope is:
   `psionic.planner_executor_route`, with executor preflight, replay-stable
   routing decisions, typed completed/fallback/refused outcomes, and explicit
   planner-visible policy, budget, proof, selection, and refusal truth
+- landed Phase 9B bar: bounded small-model executor training in
+  `psionic-train`, with package-backed Tassadar supervision, fixed-budget
+  training receipts, proof-aware exactness comparison against the handcrafted
+  reference lane, and explicit validation-corpus-only scope claims
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -531,6 +535,7 @@ Its declared scope is:
   - `psionic-runtime::build_tassadar_execution_evidence_bundle`
   - `psionic-serve::LocalTassadarExecutorService`
   - `psionic-serve::LocalTassadarPlannerRouter`
+  - `psionic-train::train_tassadar_small_executor`
   - `psionic-research::ExperimentFamily::ExecutorVariants`
   - `psionic-runtime::TassadarSparseTopKRunner`
 - strategic value: inner exact-computation substrate for larger reasoning
@@ -564,8 +569,10 @@ The current issue spine is:
   [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763)
 - Phase 9A hybrid planner-plus-executor routing:
   [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764)
+- Phase 9B honest small executor training in `psionic-train`:
+  [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765)
 
-What Phases 1 through 9A now concretely provide:
+What Phases 1 through 9B now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -616,6 +623,15 @@ What Phases 1 through 9A now concretely provide:
 - one typed `TassadarPlannerRoutingOutcome` that can complete, return a typed
   planner fallback, or refuse while preserving executor proof and refusal
   surfaces across the routing boundary
+- one bounded `psionic-train` small-executor lane over the Tassadar validation
+  benchmark package rather than only local synthetic fixtures
+- one fixed-budget training receipt family for learned Tassadar arithmetic
+  kernels using the existing Psionic training core
+- one proof-aware exactness comparison surface that checks trained traces,
+  outputs, and halt posture against the handcrafted reference lane and
+  preserves the reference proof-bundle digests
+- one explicit validation-corpus-only claim scope for trained Tassadar small
+  models so the learned lane does not erase the handcrafted/proved baseline
 - one widened `core_i32_v2` Wasm profile with explicit limits for article-class
   workloads
 - profile-aware CPU reference, reference-linear, and hull-cache runner
@@ -641,10 +657,8 @@ What Phases 1 through 9A now concretely provide:
   gap-vs-CPU reporting inside the same benchmark package family
 
 Later phases remain dependency-ordered by the March 15 audit and now continue
-through the open Phase 9B through 9D issues:
+through the open Phase 9C and 9D issues:
 
-- honest small executor training in `psionic-train`:
-  [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765)
 - larger 2D-head executor and program-to-weight compilation exploration:
   [#3766](https://github.com/OpenAgentsInc/openagents/issues/3766)
 - hybrid learned-plus-compiled and learned-circuit executor research:

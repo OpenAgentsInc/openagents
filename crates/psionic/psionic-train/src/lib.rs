@@ -51,6 +51,7 @@ mod scheduling_accounting;
 mod security_posture;
 mod stability;
 mod stage_program;
+mod tassadar;
 mod worker_protocol;
 
 pub use adapter_aggregation::*;
@@ -84,6 +85,7 @@ pub use scheduling_accounting::*;
 pub use security_posture::*;
 pub use stability::*;
 pub use stage_program::*;
+pub use tassadar::*;
 pub use worker_protocol::*;
 
 /// Human-readable crate ownership summary.

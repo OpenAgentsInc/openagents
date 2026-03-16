@@ -98,9 +98,13 @@ Current posture:
   explicit `psionic.planner_executor_route` contract, executor preflight,
   replay-stable routing decisions, typed completed/fallback/refused outcomes,
   and planner-visible policy, budget, proof, selection, and refusal truth
+- its Phase 9B bounded executor-training lane now exists in `psionic-train`,
+  with a small-model Tassadar trainer over package-backed supervision, a
+  fixed-budget train receipt, proof-aware exactness comparison against the
+  handcrafted reference lane, and explicit validation-corpus-only scope claims
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A/9B issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
@@ -112,7 +116,8 @@ Current posture:
   [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761) and
   [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762) and
   [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763) and
-  [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764)
+  [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764) and
+  [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765)
 
 ## Crate Map
 
@@ -181,8 +186,8 @@ Current posture:
   and exact-equivalence reporting plus runtime capability/selection artifacts.
 - `psionic-train`: checkpoint/recovery truth, elastic membership, run graphs,
   rollout-worker protocol, orchestrator control, fixed-budget training core,
-  Apple training execution, Apple SFT/export, and optional Apple draft-model
-  distillation.
+  Apple training execution, Apple SFT/export, optional Apple draft-model
+  distillation, and the bounded `Tassadar` small-executor training lane.
 - `psionic-research`: typed experiment specs, bounded run manifests, result
   summaries, promotion records, and the `Tassadar` executor-variant research
   family with machine-readable sweep records for hillclimb/research loops.
