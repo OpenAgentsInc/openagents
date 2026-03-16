@@ -180,9 +180,17 @@ The current scope is:
   `psionic-train`, with package-backed Tassadar supervision, fixed-budget
   training receipts, proof-aware exactness comparison against the handcrafted
   reference lane, and explicit validation-corpus-only scope claims
+- landed Phase 9C bar: program-specialized compiled-weight deployments in
+  `psionic-models` plus larger-2D-head family research outputs in
+  `psionic-research`, with exact program-artifact binding, explicit
+  runtime-contract truth, compile-time proof/runtime-manifest lineage,
+  deterministic head-geometry and parameter-count declarations, and first-class
+  compiled-weight suite artifacts for `program_compiled` candidates
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
+  - `psionic-models::TassadarCompiledProgramExecutor`
+  - `psionic-models::TassadarCompiledProgramSuiteArtifact`
   - `psionic-environments::TassadarEnvironmentBundle`
   - `psionic-eval::run_tassadar_reference_fixture_benchmark`
   - `psionic-eval::run_tassadar_article_class_benchmark`
@@ -191,7 +199,7 @@ The current scope is:
   - `psionic-serve::LocalTassadarPlannerRouter`
   - `psionic-train::train_tassadar_small_executor`
   - `psionic-research::ExperimentFamily::ExecutorVariants`
-  - `psionic-runtime::TassadarSparseTopKRunner`
+- `psionic-runtime::TassadarSparseTopKRunner`
 - strategic value: giving larger reasoning systems inner exact-computation
   ability
 
@@ -202,7 +210,7 @@ The current non-goals are:
 - not app-owned UX or orchestration work
 - not a claim that native CPU execution is being replaced
 
-Phase 0 through Phase 9B are now tracked in
+Phase 0 through Phase 9C are now tracked in
 [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743),
 [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744), and
 [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745), and
@@ -215,7 +223,8 @@ Phase 0 through Phase 9B are now tracked in
 [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762), and
 [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763), and
 [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764), and
-[#3765](https://github.com/OpenAgentsInc/openagents/issues/3765).
+[#3765](https://github.com/OpenAgentsInc/openagents/issues/3765), and
+[#3766](https://github.com/OpenAgentsInc/openagents/issues/3766).
 
 ## System Status At A Glance
 
@@ -237,7 +246,7 @@ Phase 0 through Phase 9B are now tracked in
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, deterministic reference sessions, digest-pinned package aliases, mixed-surface composition groups, and train/eval parity receipts, while kernel/Nexus now own environment, checkpoint-family, validator-policy, benchmark-package, and training-policy registry truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
-| Executor-class in-model compute lane | `implemented_early` | WebAssembly-first, CPU-reference-first `Tassadar` reference lane now exists in `psionic-runtime`, `psionic-models`, `psionic-environments`, `psionic-eval`, `psionic-serve`, `psionic-train`, and `psionic-research` with machine-legible `core_i32_v1` and widened `core_i32_v2` Wasm profiles, an append-only trace ABI, profile-aware CPU reference and fixture runners, explicit `HullCache` fast path for the validated acyclic subset, a validated `SparseTopK` decode path on its own bounded subset, exact CPU/reference-linear/hull-cache/sparse-top-k equivalence harnesses, typed refusal surfaces including backward-branch and sparse-shape fallback truth, machine-legible runtime capability reports, direct/fallback/refused decode selection diagnostics, digest-bound program artifacts, explicit model/program compatibility descriptors, typed environment bundles, package-driven exactness benchmark suites over both the validation corpus and the widened article-class corpus (`MicroWasmKernel`, `SudokuClass`, `HungarianMatching`) with CPU/reference-linear/hull-cache/sparse-top-k reporting and runtime capability/selection artifacts, emitted trace artifacts, runtime-manifest lineage, canonical proof-bundle integration, an explicit `psionic.executor_trace` served request/stream/terminal contract, a planner-owned `psionic.planner_executor_route` contract with preflight and replay-stable routing truth, a bounded small-model training lane with proof-aware exactness receipts over the validation corpus, and a typed research family that runs benchmark/proof/lineage-backed executor variant sweeps with machine-readable comparable results; it is still not current MVP product scope |
+| Executor-class in-model compute lane | `implemented_early` | WebAssembly-first, CPU-reference-first `Tassadar` reference lane now exists in `psionic-runtime`, `psionic-models`, `psionic-environments`, `psionic-eval`, `psionic-serve`, `psionic-train`, and `psionic-research` with machine-legible `core_i32_v1` and widened `core_i32_v2` Wasm profiles, an append-only trace ABI, profile-aware CPU reference and fixture runners, explicit `HullCache` fast path for the validated acyclic subset, a validated `SparseTopK` decode path on its own bounded subset, exact CPU/reference-linear/hull-cache/sparse-top-k equivalence harnesses, typed refusal surfaces including backward-branch and sparse-shape fallback truth, machine-legible runtime capability reports, direct/fallback/refused decode selection diagnostics, digest-bound program artifacts, explicit model/program compatibility descriptors, typed environment bundles, package-driven exactness benchmark suites over both the validation corpus and the widened article-class corpus (`MicroWasmKernel`, `SudokuClass`, `HungarianMatching`) with CPU/reference-linear/hull-cache/sparse-top-k reporting and runtime capability/selection artifacts, emitted trace artifacts, runtime-manifest lineage, canonical proof-bundle integration, an explicit `psionic.executor_trace` served request/stream/terminal contract, a planner-owned `psionic.planner_executor_route` contract with preflight and replay-stable routing truth, a bounded small-model training lane with proof-aware exactness receipts over the validation corpus, a program-specialized compiled-weight deployment path with exact program binding and compile-time proof lineage, and a typed research family that runs benchmark/proof/lineage-backed executor variant sweeps with comparable larger-2D family geometry and compiled-weight suite outputs; it is still not current MVP product scope |
 
 Recent issue closure changed one important reading of this table:
 

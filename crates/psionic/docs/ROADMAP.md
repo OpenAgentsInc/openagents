@@ -655,12 +655,25 @@ What Phases 1 through 9B now concretely provide:
   control-flow or program-size shapes
 - sparse-top-k throughput, speedup-over-reference-linear, and remaining
   gap-vs-CPU reporting inside the same benchmark package family
+- one explicit program-specialized compiled-weight deployment path in
+  `psionic-models`, with digest-bound compiled executor artifacts, exact
+  program-artifact binding, runtime-contract truth, and compile-time
+  proof/runtime-manifest lineage
+- one compiled-weight suite artifact surface for research runs so
+  `program_compiled` candidates emit first-class compiled deployment outputs
+  rather than being forced back into handcrafted-only declarations
+- explicit larger 2D-head architecture metadata in `psionic-research`,
+  including head-count, implied `d_model`, and deterministic parameter-count
+  estimates for comparable executor-family sweeps
+- compiled-weight bundle-byte and compiled-program-count metrics alongside the
+  existing exactness, speedup, and CPU-gap reporting
+- one non-handwavy program-to-weight exploration path that stays honest about
+  being program-specialized and compile-time verified rather than a generic
+  learned compile-to-weights runtime
 
 Later phases remain dependency-ordered by the March 15 audit and now continue
-through the open Phase 9C and 9D issues:
+through the open Phase 9D issue:
 
-- larger 2D-head executor and program-to-weight compilation exploration:
-  [#3766](https://github.com/OpenAgentsInc/openagents/issues/3766)
 - hybrid learned-plus-compiled and learned-circuit executor research:
   [#3767](https://github.com/OpenAgentsInc/openagents/issues/3767)
 

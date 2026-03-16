@@ -70,6 +70,7 @@ pub enum ExperimentArtifactKind {
     BenchmarkSuite,
     BenchmarkReport,
     ModelDescriptor,
+    CompiledWeightArtifact,
     ProgramArtifact,
     RuntimeManifest,
     ExecutionProofBundle,
@@ -729,15 +730,24 @@ pub enum TassadarExecutorDecodeCacheKind {
     StandardKv,
 }
 
+/// How one executor-family candidate obtains or constructs its weights.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorWeightConstruction {
+    HandcraftedInterpreter,
+    ProgramCompiled,
+}
+
 /// Architecture variant under test for one executor candidate.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExecutorArchitectureVariant {
     pub variant_id: String,
     pub model_id: String,
     pub head_dim: u16,
+    pub head_count: u16,
     pub layer_count: u16,
     pub feed_forward_width: u32,
-    pub handcrafted_weights: bool,
+    pub weight_construction: TassadarExecutorWeightConstruction,
 }
 
 impl TassadarExecutorArchitectureVariant {
@@ -747,18 +757,47 @@ impl TassadarExecutorArchitectureVariant {
         variant_id: impl Into<String>,
         model_id: impl Into<String>,
         head_dim: u16,
+        head_count: u16,
         layer_count: u16,
         feed_forward_width: u32,
-        handcrafted_weights: bool,
+        weight_construction: TassadarExecutorWeightConstruction,
     ) -> Self {
         Self {
             variant_id: variant_id.into(),
             model_id: model_id.into(),
             head_dim,
+            head_count,
             layer_count,
             feed_forward_width,
-            handcrafted_weights,
+            weight_construction,
         }
+    }
+
+    /// Returns the model width implied by the current head geometry.
+    #[must_use]
+    pub const fn d_model(&self) -> u32 {
+        (self.head_dim as u32) * (self.head_count as u32)
+    }
+
+    /// Returns whether the candidate stays inside the 2D-head executor regime.
+    #[must_use]
+    pub const fn is_two_dimensional_lookup_family(&self) -> bool {
+        self.head_dim == 2
+    }
+
+    /// Returns a deterministic parameter-count estimate for comparable research runs.
+    #[must_use]
+    pub fn estimated_parameter_count(&self) -> u64 {
+        let d_model = u64::from(self.d_model());
+        let layer_count = u64::from(self.layer_count);
+        let feed_forward_width = u64::from(self.feed_forward_width);
+        let attention_parameters = 4_u64.saturating_mul(d_model).saturating_mul(d_model);
+        let feed_forward_parameters = 3_u64
+            .saturating_mul(d_model)
+            .saturating_mul(feed_forward_width);
+        layer_count.saturating_mul(
+            attention_parameters.saturating_add(feed_forward_parameters),
+        )
     }
 }
 
