@@ -147,9 +147,9 @@ pub enum OpKind {
     },
     /// Gradient-stopping identity.
     Detach,
-    /// Binary add.
+    /// Binary add with broadcast and dtype-promotion semantics.
     Add,
-    /// Binary multiply.
+    /// Binary multiply with broadcast and dtype-promotion semantics.
     Mul,
     /// Matrix multiplication.
     Matmul,
@@ -627,7 +627,7 @@ impl GraphBuilder {
         ))
     }
 
-    /// Adds two tensors.
+    /// Adds two tensors using broadcast-compatible shape semantics.
     pub fn add(&mut self, left: &Tensor, right: &Tensor) -> Result<Tensor, GraphError> {
         self.binary_tensor_op(left, right, LazyOp::Add, OpKind::Add)
     }
@@ -642,7 +642,8 @@ impl GraphBuilder {
         )
     }
 
-    /// Multiplies two tensors elementwise.
+    /// Multiplies two tensors elementwise using broadcast-compatible shape
+    /// semantics.
     pub fn mul(&mut self, left: &Tensor, right: &Tensor) -> Result<Tensor, GraphError> {
         self.binary_tensor_op(left, right, LazyOp::Mul, OpKind::Mul)
     }
@@ -1100,24 +1101,31 @@ impl GraphBuilder {
         lazy_op: LazyOp,
         op: OpKind,
     ) -> Result<Tensor, GraphError> {
-        if left.spec().shape() != right.spec().shape() {
+        let Some(output_shape) = left.spec().shape().broadcast_with(right.spec().shape()) else {
             return Err(GraphError::BinaryShapeMismatch {
                 left: left.spec().shape().clone(),
                 right: right.spec().shape().clone(),
             });
-        }
-        if left.spec().dtype() != right.spec().dtype() {
+        };
+        let Some(output_dtype) = left.spec().dtype().promote_binary(right.spec().dtype()) else {
             return Err(GraphError::BinaryDTypeMismatch {
                 left: left.spec().dtype(),
                 right: right.spec().dtype(),
             });
-        }
+        };
 
-        let spec = TensorSpec::new(
-            left.spec().shape().clone(),
-            left.spec().dtype(),
-            left.spec().device().clone(),
-        );
+        let left = if left.spec().shape() != &output_shape {
+            self.expand(left, output_shape.clone())?
+        } else {
+            left.clone()
+        };
+        let right = if right.spec().shape() != &output_shape {
+            self.expand(right, output_shape.clone())?
+        } else {
+            right.clone()
+        };
+
+        let spec = TensorSpec::new(output_shape, output_dtype, left.spec().device().clone());
         Ok(self.register(lazy_op, op, vec![left.id(), right.id()], spec))
     }
 
@@ -1372,6 +1380,61 @@ mod tests {
         assert_eq!(sliced.spec().shape().dims(), &[2, 2]);
         assert_eq!(selected.spec().shape().dims(), &[2]);
         assert_eq!(expanded.spec().shape().dims(), &[2, 2]);
+        assert!(expanded.spec().layout().is_broadcast_view());
+    }
+
+    #[test]
+    fn binary_ops_broadcast_inputs_through_explicit_expand_views() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+        let row = builder.select(&input, 0, 0);
+        assert!(row.is_ok());
+        let Ok(row) = row else {
+            return;
+        };
+
+        let shifted = builder.add(&input, &row);
+        assert!(shifted.is_ok());
+        let Ok(shifted) = shifted else {
+            return;
+        };
+        let graph = builder.finish(vec![shifted.clone()]);
+        let debug = graph.stable_debug();
+
+        assert_eq!(shifted.spec().shape().dims(), &[2, 3]);
+        assert_eq!(shifted.spec().dtype(), DType::F32);
+        assert!(debug.contains("select:axis=0,index=0"));
+        assert!(debug.contains("expand:shape=[2, 3]"));
+        assert!(debug.contains("add"));
+    }
+
+    #[test]
+    fn binary_ops_promote_mixed_dtypes() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let half = builder.input("half", Shape::new(vec![2, 2]), DType::F16);
+        let brain = builder.input("brain", Shape::new(vec![2, 2]), DType::BF16);
+
+        let mixed = builder.mul(&half, &brain);
+        assert!(mixed.is_ok());
+        let Ok(mixed) = mixed else {
+            return;
+        };
+
+        assert_eq!(mixed.spec().dtype(), DType::F32);
+        assert_eq!(mixed.spec().shape().dims(), &[2, 2]);
+    }
+
+    #[test]
+    fn binary_ops_refuse_incompatible_broadcast_shapes() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let left = builder.input("left", Shape::new(vec![2, 3]), DType::F32);
+        let right = builder.input("right", Shape::new(vec![2, 2]), DType::F32);
+
+        let error = builder.add(&left, &right);
+        assert!(matches!(
+            error,
+            Err(super::GraphError::BinaryShapeMismatch { .. })
+        ));
     }
 
     #[test]
