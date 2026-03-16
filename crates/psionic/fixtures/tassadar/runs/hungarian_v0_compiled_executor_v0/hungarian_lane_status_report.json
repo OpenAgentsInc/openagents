@@ -1,0 +1,8 @@
+{
+  "workload_family_id": "tassadar.wasm.hungarian_v0_matching.v1.compiled_executor",
+  "learned_lane_status": "not_done",
+  "learned_lane_detail": "no learned Hungarian-v0 executor lane exists yet; Phase 14 remains blocked on Sudoku",
+  "compiled_lane_status": "exact",
+  "compiled_lane_detail": "bounded compiled/proof-backed Hungarian-v0 lane is exact on the matched corpus",
+  "report_digest": "55e7ca9f4d1ca9c26095f3988410f111c72b1a9084779781311bbbdb7011bd8a"
+}

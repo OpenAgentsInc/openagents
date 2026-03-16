@@ -342,6 +342,19 @@ That now includes one intentionally narrow executor-training answer:
   exact refusal matches), with explicit `eval_only` posture, so this does not
   close the open learned-lane promotion gate and does not unblock 9x9 by
   itself
+- the separate Phase 18 compiled Hungarian lane now also exists beside that
+  learned stack: `psionic-runtime` now carries a real bounded
+  `tassadar.wasm.hungarian_v0_matching.v1` min-cost matching workload over 4x4
+  cost matrices, `psionic-eval` now emits a real Hungarian-v0 benchmark
+  package plus machine-readable compiled exactness/refusal and learned-vs-
+  compiled lane-status reports, and `psionic-research` now persists the
+  canonical bundle root at
+  `crates/psionic/fixtures/tassadar/runs/hungarian_v0_compiled_executor_v0`;
+  the committed artifacts prove only a bounded Hungarian-class workload
+  contract plus an exact compiled/proof-backed lane on the matched corpus
+  (`8/8` exact trace matches and `32/32` exact refusal matches), so this does
+  not make the learned lane green by association and does not justify article-
+  parity language
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

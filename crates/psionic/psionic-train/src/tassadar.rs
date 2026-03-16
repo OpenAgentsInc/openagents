@@ -10,9 +10,8 @@ use psionic_models::TassadarExecutorFixture;
 use psionic_runtime::{
     TassadarArithmeticOp, TassadarExecution, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
     TassadarFixtureRunner, TassadarHaltReason, TassadarInstruction, TassadarProgram,
-    TassadarTraceEvent, TassadarTraceStep,
-    build_tassadar_execution_evidence_bundle, tassadar_validation_corpus,
-    tassadar_wasm_profile_for_id,
+    TassadarTraceEvent, TassadarTraceStep, build_tassadar_execution_evidence_bundle,
+    tassadar_validation_corpus, tassadar_wasm_profile_for_id,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -37,6 +36,7 @@ enum ArithmeticKernelKind {
     Add,
     Sub,
     Mul,
+    Lt,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -160,7 +160,10 @@ impl TassadarSmallExecutorModel {
     }
 
     /// Executes one validated Tassadar program through the bounded learned kernels.
-    pub fn execute(&self, program: &TassadarProgram) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+    pub fn execute(
+        &self,
+        program: &TassadarProgram,
+    ) -> Result<TassadarExecution, TassadarExecutionRefusal> {
         let Some(profile) = tassadar_wasm_profile_for_id(program.profile_id.as_str()) else {
             return Err(TassadarExecutionRefusal::ProfileMismatch {
                 expected: String::from("tassadar.wasm.core_i32.v1"),
@@ -192,8 +195,9 @@ impl TassadarSmallExecutorModel {
             });
         }
 
-        let trace_abi = psionic_runtime::tassadar_trace_abi_for_profile_id(program.profile_id.as_str())
-            .expect("supported profile should have a trace ABI");
+        let trace_abi =
+            psionic_runtime::tassadar_trace_abi_for_profile_id(program.profile_id.as_str())
+                .expect("supported profile should have a trace ABI");
         let mut stack = Vec::new();
         let mut locals = vec![0; program.local_count];
         let mut memory = program.initial_memory.clone();
@@ -231,11 +235,13 @@ impl TassadarSmallExecutorModel {
                 }
                 TassadarInstruction::LocalSet { local } => {
                     let local_index = usize::from(local);
-                    let value = stack.pop().ok_or(TassadarExecutionRefusal::StackUnderflow {
-                        pc,
-                        needed: 1,
-                        available: 0,
-                    })?;
+                    let value = stack
+                        .pop()
+                        .ok_or(TassadarExecutionRefusal::StackUnderflow {
+                            pc,
+                            needed: 1,
+                            available: 0,
+                        })?;
                     let destination = locals.get_mut(local_index).ok_or(
                         TassadarExecutionRefusal::LocalOutOfRange {
                             pc,
@@ -288,6 +294,20 @@ impl TassadarSmallExecutorModel {
                         pc + 1,
                     )
                 }
+                TassadarInstruction::I32Lt => {
+                    let (left, right) = pop_binary_operands(&mut stack, pc)?;
+                    let result = self.apply_kernel(ArithmeticKernelKind::Lt, left, right);
+                    stack.push(result);
+                    (
+                        TassadarTraceEvent::BinaryOp {
+                            op: TassadarArithmeticOp::Lt,
+                            left,
+                            right,
+                            result,
+                        },
+                        pc + 1,
+                    )
+                }
                 TassadarInstruction::I32Load { slot } => {
                     let slot_index = usize::from(slot);
                     let value = *memory.get(slot_index).ok_or(
@@ -302,11 +322,13 @@ impl TassadarSmallExecutorModel {
                 }
                 TassadarInstruction::I32Store { slot } => {
                     let slot_index = usize::from(slot);
-                    let value = stack.pop().ok_or(TassadarExecutionRefusal::StackUnderflow {
-                        pc,
-                        needed: 1,
-                        available: 0,
-                    })?;
+                    let value = stack
+                        .pop()
+                        .ok_or(TassadarExecutionRefusal::StackUnderflow {
+                            pc,
+                            needed: 1,
+                            available: 0,
+                        })?;
                     let destination = memory.get_mut(slot_index).ok_or(
                         TassadarExecutionRefusal::MemorySlotOutOfRange {
                             pc,
@@ -318,11 +340,14 @@ impl TassadarSmallExecutorModel {
                     (TassadarTraceEvent::Store { slot, value }, pc + 1)
                 }
                 TassadarInstruction::BrIf { target_pc } => {
-                    let condition = stack.pop().ok_or(TassadarExecutionRefusal::StackUnderflow {
-                        pc,
-                        needed: 1,
-                        available: 0,
-                    })?;
+                    let condition =
+                        stack
+                            .pop()
+                            .ok_or(TassadarExecutionRefusal::StackUnderflow {
+                                pc,
+                                needed: 1,
+                                available: 0,
+                            })?;
                     let target_pc = usize::from(target_pc);
                     if target_pc >= program.instructions.len() {
                         return Err(TassadarExecutionRefusal::InvalidBranchTarget {
@@ -342,11 +367,13 @@ impl TassadarSmallExecutorModel {
                     )
                 }
                 TassadarInstruction::Output => {
-                    let value = stack.pop().ok_or(TassadarExecutionRefusal::StackUnderflow {
-                        pc,
-                        needed: 1,
-                        available: 0,
-                    })?;
+                    let value = stack
+                        .pop()
+                        .ok_or(TassadarExecutionRefusal::StackUnderflow {
+                            pc,
+                            needed: 1,
+                            available: 0,
+                        })?;
                     outputs.push(value);
                     (TassadarTraceEvent::Output { value }, pc + 1)
                 }
@@ -403,6 +430,7 @@ impl TassadarSmallExecutorModel {
                 self.sub_kernel[0] * left as f32 + self.sub_kernel[1] * right as f32
             }
             ArithmeticKernelKind::Mul => self.mul_kernel[0] * (left * right) as f32,
+            ArithmeticKernelKind::Lt => f32::from(left < right),
         };
         prediction.round() as i32
     }
@@ -517,7 +545,8 @@ impl TassadarSmallExecutorTrainingReceipt {
             evaluation,
             receipt_digest: String::new(),
         };
-        receipt.receipt_digest = stable_digest(b"tassadar_small_executor_training_receipt|", &receipt);
+        receipt.receipt_digest =
+            stable_digest(b"tassadar_small_executor_training_receipt|", &receipt);
         receipt
     }
 }
@@ -535,7 +564,9 @@ pub enum TassadarSmallExecutorTrainingError {
     #[error(transparent)]
     ExecutionRefusal(#[from] TassadarExecutionRefusal),
     /// The benchmark suite and validation corpus no longer align.
-    #[error("Tassadar training suite artifact `{artifact_id}` does not match validation case `{case_id}`")]
+    #[error(
+        "Tassadar training suite artifact `{artifact_id}` does not match validation case `{case_id}`"
+    )]
     CaseMismatch {
         artifact_id: String,
         case_id: String,
@@ -547,7 +578,8 @@ pub fn train_tassadar_small_executor(
     config: &TassadarSmallExecutorTrainingConfig,
 ) -> Result<TassadarSmallExecutorTrainingReceipt, TassadarSmallExecutorTrainingError> {
     let suite = build_tassadar_reference_fixture_suite(config.benchmark_version.as_str())?;
-    let reference_benchmark = run_tassadar_reference_fixture_benchmark(config.benchmark_version.as_str())?;
+    let reference_benchmark =
+        run_tassadar_reference_fixture_benchmark(config.benchmark_version.as_str())?;
     let supervision = collect_supervision_examples()?;
     let mut run = FixedBudgetTrainingRun::new(
         config.run_id.clone(),
@@ -573,7 +605,8 @@ pub fn train_tassadar_small_executor(
         summary: run.summary(),
     };
     let trained_model = trained_model_from_run(&run, &suite, &reference_benchmark);
-    let evaluation = evaluate_tassadar_small_executor(&trained_model, &suite, &reference_benchmark)?;
+    let evaluation =
+        evaluate_tassadar_small_executor(&trained_model, &suite, &reference_benchmark)?;
     Ok(TassadarSmallExecutorTrainingReceipt::new(
         config.clone(),
         training_outcome,
@@ -648,7 +681,8 @@ pub fn evaluate_tassadar_small_executor(
     }
 
     let case_count = case_reports.len().max(1) as u32;
-    let aggregate_score_bps = case_reports.iter().map(|case| case.score_bps).sum::<u32>() / case_count;
+    let aggregate_score_bps =
+        case_reports.iter().map(|case| case.score_bps).sum::<u32>() / case_count;
     let final_output_exactness_bps = case_reports
         .iter()
         .map(|case| case.final_output_exactness_bps)
@@ -675,7 +709,10 @@ pub fn evaluate_tassadar_small_executor(
         corpus_digest: suite.corpus_digest.clone(),
         workload_scope_digest: trained_model.claim_scope.workload_scope_digest.clone(),
         reference_baseline_score_bps: reference_benchmark.aggregate_summary.aggregate_score_bps,
-        reference_baseline_summary_digest: reference_benchmark.aggregate_summary.summary_digest.clone(),
+        reference_baseline_summary_digest: reference_benchmark
+            .aggregate_summary
+            .summary_digest
+            .clone(),
         aggregate_score_bps,
         final_output_exactness_bps,
         step_exactness_bps,
@@ -686,7 +723,8 @@ pub fn evaluate_tassadar_small_executor(
     })
 }
 
-fn collect_supervision_examples() -> Result<ArithmeticSupervisionSet, TassadarSmallExecutorTrainingError> {
+fn collect_supervision_examples()
+-> Result<ArithmeticSupervisionSet, TassadarSmallExecutorTrainingError> {
     let runner = TassadarFixtureRunner::new();
     let mut add = Vec::new();
     let mut sub = Vec::new();
@@ -717,11 +755,13 @@ fn collect_supervision_examples() -> Result<ArithmeticSupervisionSet, TassadarSm
                         features: vec![(left * right) as f32],
                         target: result as f32,
                     },
+                    TassadarArithmeticOp::Lt => continue,
                 };
                 match op {
                     TassadarArithmeticOp::Add => add.push(example),
                     TassadarArithmeticOp::Sub => sub.push(example),
                     TassadarArithmeticOp::Mul => mul.push(example),
+                    TassadarArithmeticOp::Lt => {}
                 }
             }
         }
@@ -779,7 +819,13 @@ fn analytic_learning_rate(examples: &[ArithmeticSupervisionExample]) -> f32 {
     }
     let mean_norm_sq = examples
         .iter()
-        .map(|example| example.features.iter().map(|value| value * value).sum::<f32>())
+        .map(|example| {
+            example
+                .features
+                .iter()
+                .map(|value| value * value)
+                .sum::<f32>()
+        })
         .sum::<f32>()
         / examples.len() as f32;
     1.0 / (2.0 * mean_norm_sq.max(1.0))
@@ -796,7 +842,8 @@ fn training_batch_for_step(
     let add = gradient_for_examples(&add_weights, &supervision.add);
     let sub = gradient_for_examples(&sub_weights, &supervision.sub);
     let mul = gradient_for_examples(&mul_weights, &supervision.mul);
-    let sample_count = (supervision.add.len() + supervision.sub.len() + supervision.mul.len()) as u32;
+    let sample_count =
+        (supervision.add.len() + supervision.sub.len() + supervision.mul.len()) as u32;
     let loss = (add.loss + sub.loss + mul.loss) / 3.0;
     Ok(TrainingGradientBatch::new(
         format!("tassadar-small-executor-batch-{step_index}"),
@@ -807,7 +854,11 @@ fn training_batch_for_step(
                 String::from(ADD_GROUP_ID),
                 TrainingTensorBuffer::from_f32(
                     ADD_GROUP_ID,
-                    TensorSpec::new(Shape::new(vec![add.gradient.len()]), DType::F32, Device::cpu()),
+                    TensorSpec::new(
+                        Shape::new(vec![add.gradient.len()]),
+                        DType::F32,
+                        Device::cpu(),
+                    ),
                     add.gradient,
                 )?,
             ),
@@ -815,7 +866,11 @@ fn training_batch_for_step(
                 String::from(SUB_GROUP_ID),
                 TrainingTensorBuffer::from_f32(
                     SUB_GROUP_ID,
-                    TensorSpec::new(Shape::new(vec![sub.gradient.len()]), DType::F32, Device::cpu()),
+                    TensorSpec::new(
+                        Shape::new(vec![sub.gradient.len()]),
+                        DType::F32,
+                        Device::cpu(),
+                    ),
                     sub.gradient,
                 )?,
             ),
@@ -823,7 +878,11 @@ fn training_batch_for_step(
                 String::from(MUL_GROUP_ID),
                 TrainingTensorBuffer::from_f32(
                     MUL_GROUP_ID,
-                    TensorSpec::new(Shape::new(vec![mul.gradient.len()]), DType::F32, Device::cpu()),
+                    TensorSpec::new(
+                        Shape::new(vec![mul.gradient.len()]),
+                        DType::F32,
+                        Device::cpu(),
+                    ),
                     mul.gradient,
                 )?,
             ),
@@ -837,7 +896,10 @@ struct GradientSummary {
     gradient: Vec<f32>,
 }
 
-fn gradient_for_examples(weights: &[f32], examples: &[ArithmeticSupervisionExample]) -> GradientSummary {
+fn gradient_for_examples(
+    weights: &[f32],
+    examples: &[ArithmeticSupervisionExample],
+) -> GradientSummary {
     if examples.is_empty() {
         return GradientSummary {
             loss: 0.0,
@@ -876,9 +938,9 @@ fn current_group_weights(
         .clone()
     {
         TensorData::F32(values) => Ok(values),
-        TensorData::QuantizedBlocks(_) => panic!(
-            "group `{group_id}` used unsupported quantized tensor data"
-        ),
+        TensorData::QuantizedBlocks(_) => {
+            panic!("group `{group_id}` used unsupported quantized tensor data")
+        }
     }
 }
 
@@ -892,11 +954,7 @@ fn trained_model_from_run(
         .map(|case| case.case_id)
         .collect::<Vec<_>>();
     TassadarSmallExecutorModel {
-        model_id: format!(
-            "{}-{}",
-            TASSADAR_SMALL_EXECUTOR_MODEL_FAMILY,
-            run.run_id()
-        ),
+        model_id: format!("{}-{}", TASSADAR_SMALL_EXECUTOR_MODEL_FAMILY, run.run_id()),
         training_run_id: String::from(run.run_id()),
         checkpoint_family: String::from("train.tassadar.small_executor"),
         claim_scope: TassadarSmallExecutorClaimScope::new(
@@ -962,12 +1020,19 @@ mod tests {
     #[test]
     fn small_executor_training_runs_against_tassadar_benchmark_suite()
     -> Result<(), Box<dyn std::error::Error>> {
-        let receipt = train_tassadar_small_executor(&TassadarSmallExecutorTrainingConfig::reference())?;
+        let receipt =
+            train_tassadar_small_executor(&TassadarSmallExecutorTrainingConfig::reference())?;
 
-        assert_eq!(receipt.benchmark_ref, TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF);
+        assert_eq!(
+            receipt.benchmark_ref,
+            TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF
+        );
         assert_eq!(receipt.environment_ref, TASSADAR_BENCHMARK_ENVIRONMENT_REF);
         assert!(!receipt.training_outcome.receipts.is_empty());
-        assert_eq!(receipt.trained_model.claim_scope.boundary_label, "validation_corpus_only");
+        assert_eq!(
+            receipt.trained_model.claim_scope.boundary_label,
+            "validation_corpus_only"
+        );
         assert!(receipt.evaluation.full_envelope_exact);
         assert_eq!(receipt.evaluation.aggregate_score_bps, 10_000);
         assert_eq!(receipt.evaluation.case_reports.len(), 3);
@@ -990,12 +1055,16 @@ mod tests {
             .find(|case| case.case_id == "locals_add")
             .expect("locals_add report");
 
-        assert!(locals_add
-            .exactness_failures
-            .contains(&TassadarSmallExecutorExactnessFailure::FinalOutputMismatch));
-        assert!(locals_add
-            .exactness_failures
-            .contains(&TassadarSmallExecutorExactnessFailure::TraceMismatch));
+        assert!(
+            locals_add
+                .exactness_failures
+                .contains(&TassadarSmallExecutorExactnessFailure::FinalOutputMismatch)
+        );
+        assert!(
+            locals_add
+                .exactness_failures
+                .contains(&TassadarSmallExecutorExactnessFailure::TraceMismatch)
+        );
         Ok(())
     }
 }

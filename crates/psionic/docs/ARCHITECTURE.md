@@ -296,6 +296,20 @@ The current scope is:
   exact refusal matches on mismatched artifacts) while keeping the serving and
   claim boundary explicit (`eval_only`, not arbitrary-program closure, not
   learned-lane success, not article parity)
+- landed trained-executor Phase 18 follow-on bar: `psionic-runtime` now
+  carries a bounded real `tassadar.wasm.hungarian_v0_matching.v1` min-cost
+  matching workload over 4x4 cost matrices, `psionic-models` exposes the
+  matching compiled deployment fixture, `psionic-eval` now emits a real
+  Hungarian-v0 benchmark package together with compiled exactness,
+  compatibility/refusal, and learned-vs-compiled lane-status reports, and
+  `psionic-research` now materializes the canonical bundle root at
+  `crates/psionic/fixtures/tassadar/runs/hungarian_v0_compiled_executor_v0`;
+  the committed artifacts prove a bounded Hungarian-class workload contract
+  plus an exact compiled/proof-backed lane on that matched corpus (`8/8`
+  exact trace matches against CPU reference and `32/32` exact refusal
+  matches) while keeping the serving and claim boundary explicit (`eval_only`,
+  not a learned Hungarian lane, not arbitrary dimension/program closure, and
+  not article parity)
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
