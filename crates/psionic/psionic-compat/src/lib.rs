@@ -1124,10 +1124,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane supports general array IO, a Psionic-native function export/import artifact, bounded .mlxfn compatibility, memory and cache controls, backend debug hooks, and extension-facing tooling.",
             ),
             current_repo_truth: String::from(
-                "Psionic already has model IO, graph export, compiler artifacts, and runtime diagnostics, but not the MLX-class public export and tooling shell that ties those together.",
+                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array, while native function artifacts, .mlxfn compatibility, memory controls, debug hooks, and extension tooling remain open.",
             ),
             boundary_note: String::from(
-                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure until the public framework APIs exist.",
+                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO now exists, but the rest of the public export/tooling shell is still missing.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1404,9 +1404,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-train model_io::tests::portable_model_bundle_roundtrips_through_safetensors_manifest -- --exact --nocapture",
                 ),
+                String::from("cargo test -p psionic-array-io -- --nocapture"),
             ],
             summary: String::from(
-                "The seeded export/import family can already point at exportable-graph and portable-model-IO hooks as bounded parity anchors.",
+                "The seeded export/import family can now point at exportable-graph, portable-model-IO, and public array-IO hooks as bounded parity anchors.",
             ),
             boundary_note: String::from(
                 "This seed pass does not imply the full public MLX export or tooling shell already exists.",
@@ -1555,7 +1556,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("PortableModelBundle::import_safetensors"),
                 String::from("GGUF import inventory"),
             ],
-            blocking_issue_refs: vec![String::from("PMLX-401 (#3853)")],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
                 "Portable model IO is not the same thing as native MLX weight or module-state compatibility.",
             ),
@@ -1584,7 +1585,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_array_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, and deterministic tree flatten/map/unflatten utilities.",
+                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, and deterministic tree flatten/map/unflatten utilities, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
             ),
             evidence_refs: vec![
                 String::from("ArrayDevice"),
@@ -1596,13 +1597,18 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("ArrayScalar"),
                 String::from("Tree<Array>"),
                 String::from("PendingAsyncEval"),
+                String::from("ArrayArtifactReceipt"),
+                String::from("encode_npy"),
+                String::from("decode_npz"),
+                String::from("encode_safetensors"),
+                String::from("decode_gguf"),
                 String::from(
                     "MlxAcceptanceMatrixReport::array-runtime-surface = implemented_early",
                 ),
             ],
             blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "This is a bounded supported early array surface; it does not imply MLX transform, nn, export, or distributed support.",
+                "This is a bounded supported early array surface; it does not imply MLX transform, nn, native function export, or distributed support.",
             ),
         },
         MlxCompatibilityMatrixEntry {

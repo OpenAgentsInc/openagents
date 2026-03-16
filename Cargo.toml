@@ -28,6 +28,7 @@ members = [
     "crates/psionic/psionic-core",
     "crates/psionic/psionic-ir",
     "crates/psionic/psionic-array",
+    "crates/psionic/psionic-array-io",
     "crates/psionic/psionic-compiler",
     "crates/psionic/psionic-runtime",
     "crates/psionic/psionic-sandbox",
