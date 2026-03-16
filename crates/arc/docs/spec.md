@@ -260,7 +260,9 @@ ARC-AGI-3 action/frame/recording/scorecard contracts. Benchmark scoring,
 client/session behavior, score-policy IDs, and solver search state remain out
 of scope for this crate and stay in higher ARC packages. Canonically serialized
 contract digests and derived task IDs now also live at this layer so fixture
-and replay identifiers stay stable across refactors.
+and replay identifiers stay stable across refactors. Dynamic
+`available_actions`, game-state enums, operation modes, score-policy IDs, and
+recording-envelope identifiers also live here as benchmark contracts.
 
 ## 4. Shared domain model
 

@@ -28,11 +28,13 @@ pub use envelopes::{
 };
 pub use schema::{
     ARC_ACTION6_COORDINATE_MAX, ARC_CORE_SCHEMA_VERSION, ARC_FRAME_MAX_EDGE, ARC_GRID_MAX_EDGE,
-    ARC_PALETTE_SIZE, ArcAction, ArcActionError, ArcBenchmark, ArcEpisodeStep, ArcExample,
-    ArcFrameData, ArcFrameDataError, ArcGrid, ArcGridError, ArcLevelScore, ArcObservation,
-    ArcRecording, ArcRecordingError, ArcScorecard, ArcScorecardMetadata, ArcTask, ArcTaskError,
-    ArcTaskId, ArcTaskIdError, ContractSerializationError, SCHEMA_BOUNDARY_SUMMARY,
-    canonical_json_string, canonical_sha256_hex,
+    ARC_PALETTE_SIZE, ArcAction, ArcActionError, ArcActionKind, ArcBenchmark, ArcEpisodeStep,
+    ArcExample, ArcFrameData, ArcFrameDataError, ArcGameState, ArcGrid, ArcGridError,
+    ArcLevelScore, ArcObservation, ArcOperationMode, ArcRecording, ArcRecordingEnvelopeId,
+    ArcRecordingEnvelopeIdError, ArcRecordingError, ArcScorePolicyId, ArcScorecard,
+    ArcScorecardMetadata, ArcTask, ArcTaskError, ArcTaskId, ArcTaskIdError,
+    ContractSerializationError, SCHEMA_BOUNDARY_SUMMARY, canonical_json_string,
+    canonical_sha256_hex,
 };
 
 /// Stable internal layers that downstream ARC crates are allowed to build on.
