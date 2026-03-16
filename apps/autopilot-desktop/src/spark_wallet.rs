@@ -757,14 +757,17 @@ impl SparkPaneState {
         let Some(balance) = fetched_balance else {
             return;
         };
-
-        self.balance = Some(balance);
+        let previous_balance = self.balance.clone();
 
         let Some(payment_id) = self.pending_balance_confirmation_payment_id.clone() else {
+            self.balance = Some(balance);
             return;
         };
 
         let Some(payment) = payments.iter().find(|payment| payment.id == payment_id) else {
+            if previous_balance.is_none() {
+                self.balance = Some(balance);
+            }
             self.last_action = Some(format!(
                 "Payment sent ({payment_id}); awaiting Spark confirmation for balance refresh"
             ));
@@ -772,6 +775,9 @@ impl SparkPaneState {
         };
 
         if !is_terminal_wallet_payment_status(payment.status.as_str()) {
+            if previous_balance.is_none() {
+                self.balance = Some(balance);
+            }
             let status_detail = payment
                 .status_detail
                 .as_deref()
@@ -780,6 +786,7 @@ impl SparkPaneState {
             return;
         }
 
+        self.balance = Some(balance);
         self.pending_balance_confirmation_payment_id = None;
         if is_settled_wallet_payment_status(payment.status.as_str()) {
             self.last_action = Some(format!(
@@ -1237,13 +1244,41 @@ mod tests {
     }
 
     #[test]
-    fn balance_refresh_applies_even_while_payment_status_is_pending() {
+    fn balance_refresh_holds_confirmed_balance_while_payment_status_is_pending() {
         let mut state = SparkPaneState::with_network(Network::Regtest);
         state.balance = Some(Balance {
             spark_sats: 100,
             lightning_sats: 0,
             onchain_sats: 0,
         });
+        state.pending_balance_confirmation_payment_id = Some("pay-123".to_string());
+
+        state.apply_balance_refresh_with_payment_confirmation(
+            Some(Balance {
+                spark_sats: 80,
+                lightning_sats: 0,
+                onchain_sats: 0,
+            }),
+            &[PaymentSummary {
+                id: "pay-123".to_string(),
+                direction: "send".to_string(),
+                status: "pending".to_string(),
+                amount_sats: 20,
+                timestamp: 1,
+                ..Default::default()
+            }],
+        );
+
+        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(100));
+        assert_eq!(
+            state.pending_balance_confirmation_payment_id.as_deref(),
+            Some("pay-123")
+        );
+    }
+
+    #[test]
+    fn balance_refresh_uses_fetched_balance_when_pending_without_prior_snapshot() {
+        let mut state = SparkPaneState::with_network(Network::Regtest);
         state.pending_balance_confirmation_payment_id = Some("pay-123".to_string());
 
         state.apply_balance_refresh_with_payment_confirmation(
@@ -1300,7 +1335,7 @@ mod tests {
     }
 
     #[test]
-    fn balance_refresh_applies_when_payment_history_is_missing_entry() {
+    fn balance_refresh_holds_confirmed_balance_when_payment_history_is_missing_entry() {
         let mut state = SparkPaneState::with_network(Network::Regtest);
         state.balance = Some(Balance {
             spark_sats: 100,
@@ -1318,7 +1353,7 @@ mod tests {
             &[],
         );
 
-        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(80));
+        assert_eq!(state.balance.as_ref().map(Balance::total_sats), Some(100));
         assert_eq!(
             state.pending_balance_confirmation_payment_id.as_deref(),
             Some("pay-123")
