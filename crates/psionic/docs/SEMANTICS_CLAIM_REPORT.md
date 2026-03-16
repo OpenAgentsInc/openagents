@@ -1,8 +1,8 @@
 # Semantics Claim Report
 
 > Status: canonical `PLIB-209` / `#3724` reference record, updated 2026-03-16
-> after adding bounded distributed data-feed evidence from `PLIB-219` / `#3734`
-> into `crates/psionic/psionic-compat/src/lib.rs`.
+> after adding bounded advanced operator-family evidence from `PLIB-220` /
+> `#3735` into `crates/psionic/psionic-compat/src/lib.rs`.
 
 This document records the current honest claim boundary for Psionic's
 PyTorch-facing semantics layer.
@@ -39,6 +39,7 @@ The current overall posture is `seeded_evidence_only` because Psionic now has
 machine-readable evidence for:
 
 - operator parity
+- bounded advanced operator-family programs
 - bounded program-transform capability coverage
 - bounded extension-contract coverage
 - bounded local data-ingress coverage
@@ -61,7 +62,6 @@ including:
 - broader mixed-precision runtime systems beyond the current seeded fp16 and bf16 train window
 - export-safe graph compatibility beyond the current quantization seed coverage
 - extension and plugin distribution or deployment behavior
-- advanced operator-family breadth
 
 ## Why This Matters
 
