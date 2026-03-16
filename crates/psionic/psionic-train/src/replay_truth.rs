@@ -5,6 +5,10 @@ use psionic_environments::{
     EnvironmentRuntimeFamily, EnvironmentToolContract, EnvironmentToolInterface,
 };
 use psionic_eval::{EvalExecutionStrategyFacts, EvalRunContract, EvalRunMode, EvalRuntimeError};
+use psionic_runtime::{
+    DeterminismContractError, DeterminismMode, GeneratorState, RuntimeDeterminismContract,
+    SamplingPolicy, SamplingStrategy, TokenSampler, TrainingCheckpointReference,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -77,6 +81,388 @@ impl TrainingReplaySeedDiscipline {
             eval_seed,
         }
     }
+
+    /// Returns the seeded replay contract for assignment-time randomness.
+    #[must_use]
+    pub const fn assignment_runtime_contract(self) -> RuntimeDeterminismContract {
+        RuntimeDeterminismContract::seeded(self.assignment_seed)
+    }
+
+    /// Returns the strict deterministic contract for trainer-side randomness.
+    #[must_use]
+    pub const fn trainer_runtime_contract(self) -> RuntimeDeterminismContract {
+        RuntimeDeterminismContract::strict(self.trainer_seed)
+    }
+
+    /// Returns the strict deterministic contract for eval-time randomness.
+    #[must_use]
+    pub const fn eval_runtime_contract(self) -> RuntimeDeterminismContract {
+        RuntimeDeterminismContract::strict(self.eval_seed)
+    }
+
+    /// Derives one stable eval-time local-device generator.
+    pub fn derive_eval_local_device_generator(
+        self,
+        stable_device_id: impl Into<String>,
+    ) -> Result<GeneratorState, DeterminismContractError> {
+        self.eval_runtime_contract()
+            .derive_local_device_generator(stable_device_id)
+    }
+
+    /// Derives one stable trainer-side distributed-rank generator.
+    pub fn derive_trainer_distributed_rank_generator(
+        self,
+        replica_group: impl Into<String>,
+        rank: usize,
+        world_size: usize,
+    ) -> Result<GeneratorState, DeterminismContractError> {
+        self.trainer_runtime_contract()
+            .derive_distributed_rank_generator(replica_group, rank, world_size)
+    }
+}
+
+/// Scope covered by one reproducibility-semantics case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReproducibilitySemanticsScope {
+    /// Global assignment-time seed discipline.
+    Assignment,
+    /// Trainer-side runtime determinism.
+    Trainer,
+    /// Eval-time runtime determinism.
+    Eval,
+    /// Local-device generator derivation.
+    LocalDevice,
+    /// Distributed-rank generator derivation.
+    DistributedReplay,
+    /// Checkpoint and restore of replayable RNG state.
+    CheckpointRestore,
+}
+
+/// Status for one reproducibility-semantics case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReproducibilitySemanticsStatus {
+    /// The case is explicitly supported.
+    Supported,
+    /// The case is explicitly refused.
+    Refused,
+}
+
+/// One machine-readable reproducibility-semantics case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReproducibilitySemanticsCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Covered scope.
+    pub scope: ReproducibilitySemanticsScope,
+    /// Current status for the scope.
+    pub status: ReproducibilitySemanticsStatus,
+    /// Stable seed discipline carried by the case.
+    pub seed_discipline: TrainingReplaySeedDiscipline,
+    /// Runtime determinism contract for the case when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_contract: Option<RuntimeDeterminismContract>,
+    /// Derived generator state when the case proves local or distributed derivation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived_generator: Option<GeneratorState>,
+    /// Restored determinism contract when the case proves checkpoint-state restore.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restored_contract: Option<RuntimeDeterminismContract>,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the case is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<psionic_core::PsionicRefusal>,
+}
+
+/// Machine-readable framework-wide reproducibility semantics report.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReproducibilitySemanticsReport {
+    /// Stable schema version.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Cases carried by the report.
+    pub cases: Vec<ReproducibilitySemanticsCaseResult>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl ReproducibilitySemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<ReproducibilitySemanticsCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest = stable_reproducibility_semantics_digest(
+            current_scope_window.as_str(),
+            cases.as_slice(),
+        );
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{:?}|{:?}",
+                case.case_id, case.scope, case.status
+            ));
+        }
+        lines
+    }
+}
+
+/// Builds the canonical framework-wide reproducibility semantics report over
+/// the current training and runtime substrate.
+#[must_use]
+pub fn builtin_reproducibility_semantics_report() -> ReproducibilitySemanticsReport {
+    let seed_discipline = TrainingReplaySeedDiscipline::new(41, 77, 99);
+    let assignment_contract = seed_discipline.assignment_runtime_contract();
+    let trainer_contract = seed_discipline.trainer_runtime_contract();
+    let eval_contract = seed_discipline.eval_runtime_contract();
+    let local_eval_generator = seed_discipline
+        .derive_eval_local_device_generator("cuda:0")
+        .expect("seeded eval contract should derive a local generator");
+    let distributed_trainer_generator = seed_discipline
+        .derive_trainer_distributed_rank_generator("tensor_parallel", 1, 2)
+        .expect("strict trainer contract should derive a distributed generator");
+    let checkpoint = TrainingCheckpointReference::new(
+        "train.reproducibility",
+        "stream://reproducibility/step-7",
+        "manifest-7",
+        "object-7",
+        "trainer-a",
+        1,
+        "cluster-a",
+        "topology-a",
+        7_000,
+    )
+    .with_checkpoint_ref("checkpoint://reproducibility/7")
+    .with_step(7);
+    let sampler_policy = SamplingPolicy {
+        strategy: SamplingStrategy::Sample,
+        temperature: Some(0.7),
+        top_k: Some(2),
+        top_p: Some(0.95),
+        repeat_penalty: None,
+        presence_penalty: None,
+        frequency_penalty: None,
+        seed: None,
+    };
+    let mut sampler = TokenSampler::from_determinism_contract(&sampler_policy, &eval_contract)
+        .expect("strict eval contract should build a seeded sampler");
+    let _ = sampler.select_next_token(&[0.2, 1.4, 0.3], &[1]);
+    let checkpoint_contract = RuntimeDeterminismContract {
+        generator: sampler.generator_state(),
+        ..eval_contract.clone()
+    };
+    let restored_contract = checkpoint_contract
+        .checkpoint_state(checkpoint)
+        .expect("strict determinism contract should checkpoint")
+        .restore();
+    let missing_generator_contract = RuntimeDeterminismContract {
+        mode: DeterminismMode::Strict,
+        algorithm_policy: trainer_contract.algorithm_policy,
+        generator: None,
+    };
+    let missing_generator_refusal = missing_generator_contract
+        .validate()
+        .expect_err("strict mode without a generator should refuse")
+        .refusal();
+    let invalid_rank_refusal = seed_discipline
+        .derive_trainer_distributed_rank_generator("tensor_parallel", 2, 2)
+        .expect_err("invalid distributed rank should refuse")
+        .refusal();
+
+    ReproducibilitySemanticsReport::new(
+        String::from("psionic_reproducibility_v1"),
+        vec![
+            supported_reproducibility_case(
+                "assignment.seeded_replay_contract",
+                ReproducibilitySemanticsScope::Assignment,
+                seed_discipline,
+                Some(assignment_contract),
+                None,
+                None,
+                "Assignment-time randomness is bounded to one replayable seeded contract so worker-selection and claim derivation do not rely on lane-local seed math.",
+            ),
+            supported_reproducibility_case(
+                "trainer.strict_contract",
+                ReproducibilitySemanticsScope::Trainer,
+                seed_discipline,
+                Some(trainer_contract),
+                None,
+                None,
+                "Trainer-side randomness is bounded to one strict runtime determinism contract seeded from the trainer replay discipline.",
+            ),
+            supported_reproducibility_case(
+                "eval.strict_contract",
+                ReproducibilitySemanticsScope::Eval,
+                seed_discipline,
+                Some(eval_contract.clone()),
+                None,
+                None,
+                "Eval-time randomness is bounded to one strict runtime determinism contract seeded from the eval replay discipline.",
+            ),
+            supported_reproducibility_case(
+                "eval.local_device_generator",
+                ReproducibilitySemanticsScope::LocalDevice,
+                seed_discipline,
+                Some(eval_contract),
+                Some(local_eval_generator),
+                None,
+                "Per-device eval RNG derivation is stable and machine-legible instead of being left to host-local seed math.",
+            ),
+            supported_reproducibility_case(
+                "trainer.distributed_rank_generator",
+                ReproducibilitySemanticsScope::DistributedReplay,
+                seed_discipline,
+                Some(seed_discipline.trainer_runtime_contract()),
+                Some(distributed_trainer_generator),
+                None,
+                "Distributed trainer RNG derivation is stable across replica-group, rank, and world-size boundaries.",
+            ),
+            supported_reproducibility_case(
+                "eval.checkpoint_restore",
+                ReproducibilitySemanticsScope::CheckpointRestore,
+                seed_discipline,
+                Some(checkpoint_contract),
+                None,
+                Some(restored_contract),
+                "Replayable eval RNG state can be checkpointed after draws and restored later without silently resetting the generator stream.",
+            ),
+            refused_reproducibility_case(
+                "strict.missing_generator_state",
+                ReproducibilitySemanticsScope::Trainer,
+                seed_discipline,
+                Some(missing_generator_contract),
+                "Strict determinism without a generator is intentionally refused instead of degrading to best-effort randomness.",
+                missing_generator_refusal,
+            ),
+            refused_reproducibility_case(
+                "distributed.invalid_rank",
+                ReproducibilitySemanticsScope::DistributedReplay,
+                seed_discipline,
+                Some(seed_discipline.trainer_runtime_contract()),
+                "Distributed replay derivation is intentionally refused when rank and world-size bounds are invalid.",
+                invalid_rank_refusal,
+            ),
+        ],
+    )
+}
+
+fn supported_reproducibility_case(
+    case_id: &str,
+    scope: ReproducibilitySemanticsScope,
+    seed_discipline: TrainingReplaySeedDiscipline,
+    runtime_contract: Option<RuntimeDeterminismContract>,
+    derived_generator: Option<GeneratorState>,
+    restored_contract: Option<RuntimeDeterminismContract>,
+    bounded_scope: &str,
+) -> ReproducibilitySemanticsCaseResult {
+    ReproducibilitySemanticsCaseResult {
+        case_id: String::from(case_id),
+        scope,
+        status: ReproducibilitySemanticsStatus::Supported,
+        seed_discipline,
+        runtime_contract,
+        derived_generator,
+        restored_contract,
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_reproducibility_case(
+    case_id: &str,
+    scope: ReproducibilitySemanticsScope,
+    seed_discipline: TrainingReplaySeedDiscipline,
+    runtime_contract: Option<RuntimeDeterminismContract>,
+    bounded_scope: &str,
+    refusal: psionic_core::PsionicRefusal,
+) -> ReproducibilitySemanticsCaseResult {
+    ReproducibilitySemanticsCaseResult {
+        case_id: String::from(case_id),
+        scope,
+        status: ReproducibilitySemanticsStatus::Refused,
+        seed_discipline,
+        runtime_contract,
+        derived_generator: None,
+        restored_contract: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_reproducibility_semantics_digest(
+    current_scope_window: &str,
+    cases: &[ReproducibilitySemanticsCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("scope={:?}", case.scope));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!(
+            "seed_discipline={}/{}/{}",
+            case.seed_discipline.assignment_seed,
+            case.seed_discipline.trainer_seed,
+            case.seed_discipline.eval_seed
+        ));
+        lines.push(format!("bounded_scope={}", case.bounded_scope));
+        if let Some(contract) = &case.runtime_contract {
+            lines.push(format!("contract_mode={:?}", contract.mode));
+            lines.push(format!(
+                "contract_algorithm_policy={:?}",
+                contract.algorithm_policy
+            ));
+            if let Some(generator) = &contract.generator {
+                lines.push(format!("contract_generator_seed={}", generator.seed));
+                lines.push(format!("contract_generator_draws={}", generator.draws));
+                lines.push(format!("contract_generator_scope={:?}", generator.scope));
+            }
+        }
+        if let Some(generator) = &case.derived_generator {
+            lines.push(format!("derived_seed={}", generator.seed));
+            lines.push(format!("derived_scope={:?}", generator.scope));
+        }
+        if let Some(restored) = &case.restored_contract {
+            lines.push(format!("restored_mode={:?}", restored.mode));
+            if let Some(generator) = &restored.generator {
+                lines.push(format!("restored_seed={}", generator.seed));
+                lines.push(format!("restored_draws={}", generator.draws));
+                lines.push(format!("restored_scope={:?}", generator.scope));
+            }
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("refusal_code={:?}", refusal.code));
+            lines.push(format!("refusal_scope={:?}", refusal.scope));
+            lines.push(format!("refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
 }
 
 /// One deterministic sample-selection rule bound to replay state.
@@ -736,8 +1122,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn replay_truth_receipt_is_machine_legible_and_verifiable()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn replay_truth_receipt_is_machine_legible_and_verifiable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let package = sample_environment_package();
         let batch = sample_trainer_batch(&package.key)?;
         let seed_discipline = TrainingReplaySeedDiscipline::new(41, 77, 99);
@@ -798,8 +1184,8 @@ mod tests {
     }
 
     #[test]
-    fn replay_truth_verification_detects_seed_tool_and_order_drift()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn replay_truth_verification_detects_seed_tool_and_order_drift(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let package = sample_environment_package();
         let batch = sample_trainer_batch(&package.key)?;
         let baseline_seed_discipline = TrainingReplaySeedDiscipline::new(41, 77, 99);
@@ -849,32 +1235,27 @@ mod tests {
             verification.disposition,
             ReplayVerificationDisposition::Drifted
         );
-        assert!(
-            verification
-                .signals
-                .iter()
-                .any(|signal| signal.kind == ReplayVerificationSignalKind::TrainerSeed)
-        );
-        assert!(
-            verification
-                .signals
-                .iter()
-                .any(|signal| signal.kind == ReplayVerificationSignalKind::ToolVersion)
-        );
+        assert!(verification
+            .signals
+            .iter()
+            .any(|signal| signal.kind == ReplayVerificationSignalKind::TrainerSeed));
+        assert!(verification
+            .signals
+            .iter()
+            .any(|signal| signal.kind == ReplayVerificationSignalKind::ToolVersion));
         assert!(verification.signals.iter().any(|signal| {
             signal.kind == ReplayVerificationSignalKind::EvalSampleOrderingDigest
         }));
-        assert!(
-            verification.signals.iter().any(|signal| {
-                signal.kind == ReplayVerificationSignalKind::SampleSelectionDigest
-            })
-        );
+        assert!(verification
+            .signals
+            .iter()
+            .any(|signal| { signal.kind == ReplayVerificationSignalKind::SampleSelectionDigest }));
         Ok(())
     }
 
     #[test]
-    fn reproducible_eval_posture_requires_deterministic_scheduler()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn reproducible_eval_posture_requires_deterministic_scheduler(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let package = sample_environment_package();
         let error = ReproducibleEvalPosture::from_eval_contract(
             &sample_eval_contract(&package.key),
@@ -893,6 +1274,113 @@ mod tests {
                 if actual == "adaptive"
         ));
         Ok(())
+    }
+
+    #[test]
+    fn reproducibility_semantics_report_tracks_seeded_runtime_and_replay_cases() {
+        let report = builtin_reproducibility_semantics_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_reproducibility_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let trainer_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "trainer.strict_contract")
+            .expect("missing trainer strict contract case");
+        assert_eq!(
+            trainer_case.status,
+            ReproducibilitySemanticsStatus::Supported
+        );
+        assert_eq!(
+            trainer_case
+                .runtime_contract
+                .as_ref()
+                .map(|contract| contract.mode),
+            Some(DeterminismMode::Strict)
+        );
+
+        let distributed_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "trainer.distributed_rank_generator")
+            .expect("missing distributed replay case");
+        assert_eq!(
+            distributed_case.status,
+            ReproducibilitySemanticsStatus::Supported
+        );
+        assert_eq!(
+            distributed_case
+                .derived_generator
+                .as_ref()
+                .map(|generator| generator.draws),
+            Some(0)
+        );
+
+        let checkpoint_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "eval.checkpoint_restore")
+            .expect("missing checkpoint restore case");
+        assert_eq!(
+            checkpoint_case.status,
+            ReproducibilitySemanticsStatus::Supported
+        );
+        assert_eq!(
+            checkpoint_case
+                .restored_contract
+                .as_ref()
+                .and_then(|contract| contract.generator.as_ref())
+                .map(|generator| generator.draws),
+            Some(1)
+        );
+
+        let missing_generator_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "strict.missing_generator_state")
+            .expect("missing strict missing-generator refusal");
+        assert_eq!(
+            missing_generator_case.status,
+            ReproducibilitySemanticsStatus::Refused
+        );
+        assert_eq!(
+            missing_generator_case
+                .refusal
+                .as_ref()
+                .map(|refusal| refusal.code),
+            Some(psionic_core::PsionicRefusalCode::UnsupportedBackendCapability)
+        );
+
+        let invalid_rank_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "distributed.invalid_rank")
+            .expect("missing invalid-rank refusal");
+        assert_eq!(
+            invalid_rank_case.status,
+            ReproducibilitySemanticsStatus::Refused
+        );
+        assert_eq!(
+            invalid_rank_case
+                .refusal
+                .as_ref()
+                .map(|refusal| refusal.code),
+            Some(psionic_core::PsionicRefusalCode::TopologyMismatch)
+        );
+
+        let seed_discipline = TrainingReplaySeedDiscipline::new(41, 77, 99);
+        let eval_generator = seed_discipline
+            .derive_eval_local_device_generator("cuda:0")
+            .expect("seeded eval contract should derive a local generator");
+        assert_eq!(eval_generator.draws, 0);
+        let distributed_generator = seed_discipline
+            .derive_trainer_distributed_rank_generator("tensor_parallel", 1, 2)
+            .expect("strict trainer contract should derive a distributed generator");
+        assert_eq!(distributed_generator.draws, 0);
     }
 
     fn sample_environment_package() -> EnvironmentPackageContract {
