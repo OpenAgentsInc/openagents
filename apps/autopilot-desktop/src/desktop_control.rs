@@ -1011,6 +1011,8 @@ pub enum DesktopControlActionRequest {
         description: String,
         license: String,
         apple_fm_base_url: String,
+        experiment_manifest_path: Option<String>,
+        training_policy_override_path: Option<String>,
     },
     ExportAppleAdapterTraining {
         run_id: String,
@@ -1842,6 +1844,8 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             description,
             license,
             apple_fm_base_url,
+            experiment_manifest_path,
+            training_policy_override_path,
         } => json!({
             "command_label": action.label(),
             "train_dataset_path": train_dataset_path,
@@ -1851,6 +1855,8 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             "description_length": description.trim().len(),
             "license": license,
             "apple_fm_base_url": apple_fm_base_url,
+            "experiment_manifest_path": experiment_manifest_path,
+            "training_policy_override_path": training_policy_override_path,
         }),
         DesktopControlActionRequest::ExportAppleAdapterTraining {
             run_id,
@@ -2725,6 +2731,8 @@ fn apply_action_request(
             description,
             license,
             apple_fm_base_url,
+            experiment_manifest_path,
+            training_policy_override_path,
         } => launch_apple_adapter_training_action(
             state,
             train_dataset_path.as_str(),
@@ -2734,6 +2742,8 @@ fn apply_action_request(
             description.as_str(),
             license.as_str(),
             apple_fm_base_url.as_str(),
+            experiment_manifest_path.as_deref(),
+            training_policy_override_path.as_deref(),
         )
         .into(),
         DesktopControlActionRequest::ExportAppleAdapterTraining {
@@ -3870,6 +3880,8 @@ fn launch_apple_adapter_training_action(
     description: &str,
     license: &str,
     apple_fm_base_url: &str,
+    experiment_manifest_path: Option<&str>,
+    training_policy_override_path: Option<&str>,
 ) -> DesktopControlActionResponse {
     match crate::apple_adapter_training_control::launch_run_async(
         AppleAdapterOperatorLaunchRequest {
@@ -3881,7 +3893,8 @@ fn launch_apple_adapter_training_action(
             license: license.to_string(),
             apple_fm_base_url: apple_fm_base_url.to_string(),
             expected_base_model_signature: None,
-            experiment_manifest_path: None,
+            experiment_manifest_path: experiment_manifest_path.map(str::to_string),
+            training_policy_override_path: training_policy_override_path.map(str::to_string),
         },
     ) {
         Ok(run) => training_action_payload_response(

@@ -265,6 +265,10 @@ enum TrainingCommand {
         license: String,
         #[arg(long, default_value = DEFAULT_APPLE_FM_BASE_URL)]
         apple_fm_base_url: String,
+        #[arg(long)]
+        experiment_manifest_path: Option<PathBuf>,
+        #[arg(long)]
+        training_policy_override_path: Option<PathBuf>,
     },
     Export {
         run_id: String,
@@ -575,6 +579,8 @@ impl TrainingCommand {
                 description,
                 license,
                 apple_fm_base_url,
+                experiment_manifest_path,
+                training_policy_override_path,
             } => DesktopControlActionRequest::LaunchAppleAdapterTraining {
                 train_dataset_path: train_dataset_path.display().to_string(),
                 held_out_dataset_path: held_out_dataset_path.display().to_string(),
@@ -583,6 +589,12 @@ impl TrainingCommand {
                 description: description.clone(),
                 license: license.clone(),
                 apple_fm_base_url: apple_fm_base_url.clone(),
+                experiment_manifest_path: experiment_manifest_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
+                training_policy_override_path: training_policy_override_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
             },
             Self::Export {
                 run_id,
@@ -5252,6 +5264,8 @@ mod tests {
                 description: "Operator launch".to_string(),
                 license: "Apache-2.0".to_string(),
                 apple_fm_base_url: "http://127.0.0.1:11435".to_string(),
+                experiment_manifest_path: Some(PathBuf::from("/tmp/experiment.json")),
+                training_policy_override_path: Some(PathBuf::from("/tmp/policy.json")),
             }
             .action_request(),
             DesktopControlActionRequest::LaunchAppleAdapterTraining {
@@ -5262,6 +5276,8 @@ mod tests {
                 description: "Operator launch".to_string(),
                 license: "Apache-2.0".to_string(),
                 apple_fm_base_url: "http://127.0.0.1:11435".to_string(),
+                experiment_manifest_path: Some("/tmp/experiment.json".to_string()),
+                training_policy_override_path: Some("/tmp/policy.json".to_string()),
             }
         );
         assert_eq!(

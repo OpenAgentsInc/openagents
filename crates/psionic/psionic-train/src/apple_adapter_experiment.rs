@@ -1,10 +1,15 @@
-use psionic_data::DatasetKey;
+use psionic_data::{DatasetKey, DatasetPackingPolicy};
 use psionic_eval::{
     AppleAdapterBaseVsAdapterAcceptancePolicy, AppleAdapterBaseVsAdapterBenchmarkReport,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+use crate::{
+    AppleAdapterActivationCheckpointPolicy, AppleAdapterPrecisionPolicy, TrainingOptimizerConfig,
+    TrainingOptimizerResidencyPolicy, TrainingSchedulerConfig,
+};
 
 /// Stable ABI version for first-run Apple adapter experiment manifests.
 pub const APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION: &str =
@@ -15,6 +20,121 @@ pub const APPLE_ADAPTER_EXPERIMENT_TREND_LEDGER_ABI_VERSION: &str =
 /// Canonical experiment id for the first real architecture-explainer run.
 pub const APPLE_ARCHITECTURE_EXPLAINER_EXPERIMENT_ID: &str =
     "apple_adapter.psionic_architecture_explainer.first_real_run";
+
+fn default_gradient_accumulation_steps() -> u32 {
+    1
+}
+
+/// Frozen execution-policy block for one Apple adapter experiment manifest.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterExperimentTrainingPolicy {
+    /// Optimizer family and coefficients used by the run.
+    pub optimizer: TrainingOptimizerConfig,
+    /// Residency posture for optimizer state.
+    #[serde(default)]
+    pub optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    /// Optional scheduler binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<TrainingSchedulerConfig>,
+    /// Precision posture used by the backend.
+    pub precision_policy: AppleAdapterPrecisionPolicy,
+    /// Activation-checkpoint posture used by the backend.
+    pub activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy,
+    /// Explicit packing policy used to build batches.
+    pub packing_policy: DatasetPackingPolicy,
+    /// Explicit gradient-accumulation count.
+    #[serde(default = "default_gradient_accumulation_steps")]
+    pub gradient_accumulation_steps: u32,
+}
+
+impl AppleAdapterExperimentTrainingPolicy {
+    fn validate(&self) -> Result<(), AppleAdapterExperimentError> {
+        if self.optimizer.learning_rate <= 0.0 {
+            return Err(AppleAdapterExperimentError::InvalidTrainingPolicyField {
+                field: "training_policy.optimizer.learning_rate".to_string(),
+            });
+        }
+        if self.gradient_accumulation_steps == 0 {
+            return Err(AppleAdapterExperimentError::InvalidTrainingPolicyField {
+                field: "training_policy.gradient_accumulation_steps".to_string(),
+            });
+        }
+        self.packing_policy.plan(&[]).map_err(|_| {
+            AppleAdapterExperimentError::InvalidTrainingPolicyField {
+                field: "training_policy.packing_policy".to_string(),
+            }
+        })?;
+        Ok(())
+    }
+}
+
+/// One partial CLI override block for local Apple training sweeps.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterTrainingPolicyOverrides {
+    /// Partial optimizer override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optimizer: Option<AppleAdapterOptimizerOverrides>,
+    /// Optional residency-policy override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optimizer_residency_policy: Option<TrainingOptimizerResidencyPolicy>,
+    /// Optional scheduler override. `null` explicitly clears a manifest scheduler.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<Option<TrainingSchedulerConfig>>,
+    /// Optional precision-policy override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precision_policy: Option<AppleAdapterPrecisionPolicy>,
+    /// Optional activation-checkpoint-policy override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation_checkpoint_policy: Option<AppleAdapterActivationCheckpointPolicy>,
+    /// Optional max-step override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<u64>,
+    /// Optional gradient-accumulation override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient_accumulation_steps: Option<u32>,
+    /// Optional packing-policy override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packing_policy: Option<AppleAdapterPackingPolicyOverrides>,
+}
+
+/// One partial optimizer override.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOptimizerOverrides {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<crate::TrainingOptimizerKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_rate: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_decay: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient_clip_norm: Option<Option<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub momentum: Option<Option<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beta1: Option<Option<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beta2: Option<Option<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epsilon: Option<Option<f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_coefficient: Option<Option<f32>>,
+}
+
+/// One partial packing-policy override.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterPackingPolicyOverrides {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_row_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_batch_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_rows_per_batch: Option<usize>,
+    /// `null` explicitly clears padding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad_to_multiple_of: Option<Option<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlong_sequence_posture: Option<psionic_data::OverlongSequencePosture>,
+}
 
 /// Benchmark gate variant used when judging whether one Apple adapter is useful.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,7 +212,7 @@ impl AppleAdapterUsefulAdapterAcceptanceGate {
 }
 
 /// One frozen experiment manifest for a concrete Apple adapter training attempt.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AppleAdapterExperimentManifest {
     /// Stable manifest ABI version.
     pub abi_version: String,
@@ -132,6 +252,9 @@ pub struct AppleAdapterExperimentManifest {
     pub lora_rank: usize,
     /// Fixed-budget max step count.
     pub max_steps: u64,
+    /// Optional frozen execution-policy block for this experiment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_policy: Option<AppleAdapterExperimentTrainingPolicy>,
     /// Frozen useful-adapter contract for the run.
     pub useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate,
 }
@@ -198,6 +321,9 @@ impl AppleAdapterExperimentManifest {
         if self.max_steps == 0 {
             return Err(AppleAdapterExperimentError::InvalidMaxSteps);
         }
+        if let Some(training_policy) = &self.training_policy {
+            training_policy.validate()?;
+        }
         self.useful_adapter_gate.validate()?;
         Ok(())
     }
@@ -243,6 +369,14 @@ impl AppleAdapterExperimentManifest {
         hasher.update(self.lora_rank.to_string().as_bytes());
         hasher.update(b"|");
         hasher.update(self.max_steps.to_string().as_bytes());
+        if let Some(training_policy) = &self.training_policy {
+            hasher.update(b"|training_policy|");
+            hasher.update(
+                serde_json::to_vec(training_policy)
+                    .unwrap_or_default()
+                    .as_slice(),
+            );
+        }
         for target in &self.lora_targets {
             hasher.update(b"|target|");
             hasher.update(target.as_bytes());
@@ -505,6 +639,8 @@ pub enum AppleAdapterExperimentError {
     /// Invalid step budget.
     #[error("Apple adapter experiment manifest requires `max_steps > 0`")]
     InvalidMaxSteps,
+    #[error("Apple adapter experiment manifest field `{field}` is invalid")]
+    InvalidTrainingPolicyField { field: String },
     /// One acceptance-policy value was outside the supported range.
     #[error(
         "Apple adapter experiment manifest field `{field}` must stay within its supported benchmark-policy range"
@@ -698,6 +834,23 @@ mod tests {
             lora_targets: vec![String::from("decoder.attn.q_proj")],
             lora_rank: 32,
             max_steps: 8,
+            training_policy: Some(AppleAdapterExperimentTrainingPolicy {
+                optimizer: TrainingOptimizerConfig::adamw(0.05, 0.9, 0.99, 1e-8)
+                    .with_gradient_clip_norm(1.0),
+                optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
+                scheduler: None,
+                precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
+                activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
+                packing_policy: DatasetPackingPolicy::new(
+                    psionic_data::DatasetPackingMode::PackIntoContextWindow,
+                    256,
+                    512,
+                    2,
+                )
+                .with_pad_to_multiple_of(8)
+                .with_overlong_sequence_posture(psionic_data::OverlongSequencePosture::Refuse),
+                gradient_accumulation_steps: 1,
+            }),
             useful_adapter_gate:
                 AppleAdapterUsefulAdapterAcceptanceGate::architecture_explainer_default(),
         }
@@ -760,6 +913,22 @@ mod tests {
                 field: String::from(
                     "useful_adapter_gate.standard_benchmark_policy.minimum_adapter_score_bps"
                 ),
+            })
+        );
+    }
+
+    #[test]
+    fn manifest_training_policy_rejects_zero_gradient_accumulation() {
+        let mut manifest = sample_manifest();
+        manifest
+            .training_policy
+            .as_mut()
+            .expect("training policy")
+            .gradient_accumulation_steps = 0;
+        assert_eq!(
+            manifest.validate(),
+            Err(AppleAdapterExperimentError::InvalidTrainingPolicyField {
+                field: String::from("training_policy.gradient_accumulation_steps"),
             })
         );
     }

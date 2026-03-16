@@ -22,7 +22,8 @@ use crate::{
     PortableTokenizerAssetFormat, PortableTokenizerBinding, TrainingCoreError,
     TrainingGradientBatch, TrainingLoopBudget, TrainingOptimizerConfig,
     TrainingOptimizerResidencyPolicy, TrainingParameterClass, TrainingParameterGroupState,
-    TrainingRunSummary, TrainingStepInput, TrainingStepReceipt, TrainingTensorBuffer,
+    TrainingRunSummary, TrainingSchedulerConfig, TrainingStepInput, TrainingStepReceipt,
+    TrainingTensorBuffer,
 };
 
 const OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION: &str = "openagents.apple-fmadapter.v1";
@@ -91,6 +92,9 @@ pub struct AppleAdapterTrainableTarget {
     pub optimizer: TrainingOptimizerConfig,
     /// Residency policy reused by the fixed-budget core.
     pub optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    /// Optional scheduler binding reused by the fixed-budget core.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<TrainingSchedulerConfig>,
 }
 
 impl AppleAdapterTrainableTarget {
@@ -152,6 +156,7 @@ pub fn apple_live_reference_trainable_targets(
                 lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
                 optimizer: optimizer.clone(),
                 optimizer_residency_policy,
+                scheduler: None,
             });
         }
     }
@@ -168,6 +173,7 @@ pub fn apple_live_reference_trainable_targets(
                 lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
                 optimizer: optimizer.clone(),
                 optimizer_residency_policy,
+                scheduler: None,
             });
         }
     }
@@ -506,7 +512,7 @@ impl AppleAdapterTrainingExecutionBackend {
         let mut groups = Vec::with_capacity(self.config.model.targets.len() * 2);
         for target in &self.config.model.targets {
             let a_spec = lora_a_spec(self.config.model.output_width, target.lora_rank);
-            groups.push(TrainingParameterGroupState::new(
+            let mut lora_a = TrainingParameterGroupState::new(
                 target.lora_a_group_id(),
                 TrainingParameterClass::Matrix,
                 TrainingTensorBuffer::from_f32(
@@ -525,10 +531,14 @@ impl AppleAdapterTrainingExecutionBackend {
                 )?,
                 target.optimizer.clone(),
                 target.optimizer_residency_policy,
-            )?);
+            )?;
+            if let Some(scheduler) = &target.scheduler {
+                lora_a = lora_a.with_scheduler(scheduler.clone());
+            }
+            groups.push(lora_a);
 
             let b_spec = lora_b_spec(target.lora_rank, self.config.model.input_width);
-            groups.push(TrainingParameterGroupState::new(
+            let mut lora_b = TrainingParameterGroupState::new(
                 target.lora_b_group_id(),
                 TrainingParameterClass::Matrix,
                 TrainingTensorBuffer::from_f32(
@@ -547,7 +557,11 @@ impl AppleAdapterTrainingExecutionBackend {
                 )?,
                 target.optimizer.clone(),
                 target.optimizer_residency_policy,
-            )?);
+            )?;
+            if let Some(scheduler) = &target.scheduler {
+                lora_b = lora_b.with_scheduler(scheduler.clone());
+            }
+            groups.push(lora_b);
         }
         Ok(groups)
     }
@@ -3458,6 +3472,7 @@ mod tests {
                         optimizer: TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8)
                             .with_gradient_clip_norm(1.0),
                         optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
+                        scheduler: None,
                     },
                     AppleAdapterTrainableTarget {
                         target_id: String::from(
@@ -3468,6 +3483,7 @@ mod tests {
                         optimizer: TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8)
                             .with_gradient_clip_norm(1.0),
                         optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
+                        scheduler: None,
                     },
                 ],
             },

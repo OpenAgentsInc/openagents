@@ -68,6 +68,8 @@ struct Cli {
     benchmark_mode: CliBenchmarkMode,
     #[arg(long)]
     benchmark_only_adapter_package_path: Option<PathBuf>,
+    #[arg(long)]
+    training_policy_override_path: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -113,6 +115,7 @@ fn main() -> Result<()> {
     config.control_base_url = cli.control_base_url;
     config.control_bearer_token = cli.control_bearer_token;
     config.benchmark_mode = cli.benchmark_mode.into();
+    config.training_policy_override_path = cli.training_policy_override_path;
 
     if let Some(adapter_package_path) = cli.benchmark_only_adapter_package_path {
         let report = benchmark_architecture_explainer_adapter_package(
