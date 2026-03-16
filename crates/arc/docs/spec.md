@@ -255,7 +255,7 @@ The phased creation order is:
 
 `crates/arc/core` is now the first live ARC package in the workspace. It is the
 shared owner for ARC task IDs, grid/task contracts, deterministic analysis
-summaries, solver-facing budget/result envelopes, and the first typed
+summaries, solver-facing budget/result/trace-locator envelopes, and the first typed
 ARC-AGI-3 action/frame/recording/scorecard contracts. Benchmark scoring,
 client/session behavior, score-policy IDs, and solver search state remain out
 of scope for this crate and stay in higher ARC packages.

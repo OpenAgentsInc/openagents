@@ -22,8 +22,9 @@ pub use analysis::{
     summarize_grid,
 };
 pub use envelopes::{
-    ArcRefusalCode, ArcSolveOutcome, ArcSolveRefusal, ArcSolveResultEnvelope,
-    EXECUTION_ENVELOPE_BOUNDARY_SUMMARY, SolveBudget,
+    ArcRefusalCode, ArcSolveOutcome, ArcSolveRefusal, ArcSolveRefusalError, ArcSolveResultEnvelope,
+    ArcSolveResultEnvelopeError, EXECUTION_ENVELOPE_BOUNDARY_SUMMARY, SolveBudget,
+    SolveBudgetError, TraceLocator, TraceLocatorError,
 };
 pub use schema::{
     ARC_ACTION6_COORDINATE_MAX, ARC_CORE_SCHEMA_VERSION, ARC_FRAME_MAX_EDGE, ARC_GRID_MAX_EDGE,
