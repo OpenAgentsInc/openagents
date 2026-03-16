@@ -40,6 +40,7 @@ const OP_LOCAL_SET: &str = "<op_local_set>";
 const OP_I32_ADD: &str = "<op_i32_add>";
 const OP_I32_SUB: &str = "<op_i32_sub>";
 const OP_I32_MUL: &str = "<op_i32_mul>";
+const OP_I32_LT: &str = "<op_i32_lt>";
 const OP_I32_LOAD: &str = "<op_i32_load>";
 const OP_I32_STORE: &str = "<op_i32_store>";
 const OP_BR_IF: &str = "<op_br_if>";
@@ -52,6 +53,7 @@ const EVENT_LOCAL_SET: &str = "<event_local_set>";
 const EVENT_BINARY_ADD: &str = "<event_binary_add>";
 const EVENT_BINARY_SUB: &str = "<event_binary_sub>";
 const EVENT_BINARY_MUL: &str = "<event_binary_mul>";
+const EVENT_BINARY_LT: &str = "<event_binary_lt>";
 const EVENT_LOAD: &str = "<event_load>";
 const EVENT_STORE: &str = "<event_store>";
 const EVENT_BRANCH: &str = "<event_branch>";
@@ -159,6 +161,7 @@ impl TassadarTraceTokenizer {
             String::from(OP_I32_ADD),
             String::from(OP_I32_SUB),
             String::from(OP_I32_MUL),
+            String::from(OP_I32_LT),
             String::from(OP_I32_LOAD),
             String::from(OP_I32_STORE),
             String::from(OP_BR_IF),
@@ -170,6 +173,7 @@ impl TassadarTraceTokenizer {
             String::from(EVENT_BINARY_ADD),
             String::from(EVENT_BINARY_SUB),
             String::from(EVENT_BINARY_MUL),
+            String::from(EVENT_BINARY_LT),
             String::from(EVENT_LOAD),
             String::from(EVENT_STORE),
             String::from(EVENT_BRANCH),
@@ -333,6 +337,7 @@ impl TassadarTraceTokenizer {
             TassadarInstruction::I32Add => tokens.push(self.token_id(OP_I32_ADD)),
             TassadarInstruction::I32Sub => tokens.push(self.token_id(OP_I32_SUB)),
             TassadarInstruction::I32Mul => tokens.push(self.token_id(OP_I32_MUL)),
+            TassadarInstruction::I32Lt => tokens.push(self.token_id(OP_I32_LT)),
             TassadarInstruction::I32Load { slot } => {
                 tokens.push(self.token_id(OP_I32_LOAD));
                 self.push_u32(tokens, u32::from(*slot));
@@ -453,6 +458,7 @@ impl TassadarTraceTokenizer {
             TassadarArithmeticOp::Add => self.token_id(EVENT_BINARY_ADD),
             TassadarArithmeticOp::Sub => self.token_id(EVENT_BINARY_SUB),
             TassadarArithmeticOp::Mul => self.token_id(EVENT_BINARY_MUL),
+            TassadarArithmeticOp::Lt => self.token_id(EVENT_BINARY_LT),
         }
     }
 

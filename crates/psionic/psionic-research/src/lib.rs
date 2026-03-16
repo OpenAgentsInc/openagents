@@ -15,11 +15,13 @@ use thiserror::Error;
 mod runner;
 mod tassadar_architecture_comparison;
 mod tassadar_compiled_executor_bundle;
+mod tassadar_hungarian_compiled_executor_bundle;
 mod tassadar_surface_ablation;
 
 pub use runner::*;
 pub use tassadar_architecture_comparison::*;
 pub use tassadar_compiled_executor_bundle::*;
+pub use tassadar_hungarian_compiled_executor_bundle::*;
 pub use tassadar_surface_ablation::*;
 
 /// Human-readable crate ownership summary.
@@ -804,9 +806,7 @@ impl TassadarExecutorArchitectureVariant {
         let feed_forward_parameters = 3_u64
             .saturating_mul(d_model)
             .saturating_mul(feed_forward_width);
-        layer_count.saturating_mul(
-            attention_parameters.saturating_add(feed_forward_parameters),
-        )
+        layer_count.saturating_mul(attention_parameters.saturating_add(feed_forward_parameters))
     }
 }
 
@@ -1123,9 +1123,7 @@ impl ExperimentFamily {
             Self::ValidatorPolicy { .. } => ExperimentFamilyKind::ValidatorPolicy,
             Self::EnvironmentMix { .. } => ExperimentFamilyKind::EnvironmentMix,
             Self::ExecutorVariants { .. } => ExperimentFamilyKind::ExecutorVariants,
-            Self::ExecutorCircuitResearch { .. } => {
-                ExperimentFamilyKind::ExecutorCircuitResearch
-            }
+            Self::ExecutorCircuitResearch { .. } => ExperimentFamilyKind::ExecutorCircuitResearch,
         }
     }
 }
@@ -1985,11 +1983,11 @@ mod tests {
         ExperimentReceiptRef, ExperimentResult, ExperimentRunStatus, ExperimentScore,
         ExperimentScoreContract, ExperimentThreshold, PromotionDecision, PromotionReasonCode,
         PromotionRecord, SandboxWarmPoolPolicy, ScoreDirection, ScoreMetricSpec,
-        ServingSchedulerPolicy, TrainingPolicySpec, WeightedEnvironmentRef,
-        TassadarCircuitClaimBoundary, TassadarCircuitComparisonBaselines,
+        ServingSchedulerPolicy, TassadarCircuitClaimBoundary, TassadarCircuitComparisonBaselines,
         TassadarCircuitExecutionProxy, TassadarCircuitExperimentSpec,
         TassadarCircuitInstructionSet, TassadarCircuitProofExpectation,
-        TassadarCircuitResearchLine, TassadarExecutorBenchmarkTarget,
+        TassadarCircuitResearchLine, TassadarExecutorBenchmarkTarget, TrainingPolicySpec,
+        WeightedEnvironmentRef,
     };
 
     fn sample_serving_contract() -> ExperimentScoreContract {

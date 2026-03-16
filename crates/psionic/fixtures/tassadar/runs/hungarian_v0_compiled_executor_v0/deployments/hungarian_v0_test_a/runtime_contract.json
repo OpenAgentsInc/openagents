@@ -1,0 +1,21 @@
+{
+  "contract_id": "hungarian_v0_test_a.compiled_executor.runtime_contract",
+  "contract_digest": "e52c0bce3d77bbdb86d1de6c209ea9cf714c7e6bd815399bf9ecd7b5ac0159c6",
+  "deployment_kind": "program_specialized",
+  "model_descriptor_digest": "e648f5543c0ced2fcf9330aa35b0183a43671fbfcb732ba8c68afb1a63239cb7",
+  "program_artifact_digest": "b4c95da9f00329d6ed979cd6587871f32c7bb14fb699262bd335a7cb6106f731",
+  "program_digest": "aa4bbd1157e42247b46700884971d732ba5cbb9c4be4d8b340779ff3a496a526",
+  "runtime_backend": "cpu",
+  "reference_runner_id": "tassadar.fixture_runner.v1",
+  "supported_decode_modes": [
+    "hull_cache",
+    "reference_linear",
+    "sparse_top_k"
+  ],
+  "default_decode_mode": "reference_linear",
+  "wasm_profile_id": "tassadar.wasm.hungarian_v0_matching.v1",
+  "trace_abi_id": "tassadar.trace.v1",
+  "trace_abi_version": 1,
+  "compile_runtime_manifest_digest": "ffdd3bda04b8023e15e7e936df13ab6eaab254d2936d9919c1d39cfaffbcf152",
+  "compile_execution_proof_bundle_digest": "1f70b759e4da9fe607d1e41cefc91a047c3efa5f2a37e89df09f9d46ebf4c92d"
+}

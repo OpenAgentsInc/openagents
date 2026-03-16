@@ -378,6 +378,8 @@ impl TassadarExecutorFixture {
     pub const ARTICLE_CLASS_MODEL_ID: &str = "tassadar-executor-article-class-v0";
     /// Stable model identifier for the honest Sudoku-v0 search fixture.
     pub const SUDOKU_V0_SEARCH_MODEL_ID: &str = "tassadar-executor-sudoku-v0-search-v0";
+    /// Stable model identifier for the honest Hungarian-v0 matching fixture.
+    pub const HUNGARIAN_V0_MATCHING_MODEL_ID: &str = "tassadar-executor-hungarian-v0-matching-v0";
     /// Stable model identifier for the honest 9x9 Sudoku-class search fixture.
     pub const SUDOKU_9X9_SEARCH_MODEL_ID: &str = "tassadar-executor-sudoku-9x9-search-v0";
     /// Stable model family for the Phase 1 fixture.
@@ -426,6 +428,20 @@ impl TassadarExecutorFixture {
         )
     }
 
+    /// Creates the honest Hungarian-v0 matching executor fixture.
+    #[must_use]
+    pub fn hungarian_v0_matching_v1() -> Self {
+        let profile = TassadarWasmProfile::hungarian_v0_matching_v1();
+        let trace_abi = TassadarTraceAbi::hungarian_v0_matching_v1();
+        let runtime_weights = RuntimeTassadarFixtureWeights::hungarian_v0_matching_v1();
+        Self::from_parts(
+            Self::HUNGARIAN_V0_MATCHING_MODEL_ID,
+            profile,
+            trace_abi,
+            runtime_weights,
+        )
+    }
+
     /// Creates the honest 9x9 Sudoku-class search executor fixture.
     #[must_use]
     pub fn sudoku_9x9_search_v1() -> Self {
@@ -452,6 +468,9 @@ impl TassadarExecutorFixture {
             }
             value if value == TassadarWasmProfile::sudoku_v0_search_v1().profile_id => {
                 Some(Self::sudoku_v0_search_v1())
+            }
+            value if value == TassadarWasmProfile::hungarian_v0_matching_v1().profile_id => {
+                Some(Self::hungarian_v0_matching_v1())
             }
             value if value == TassadarWasmProfile::sudoku_9x9_search_v1().profile_id => {
                 Some(Self::sudoku_9x9_search_v1())
@@ -1410,6 +1429,7 @@ fn encode_compiled_instruction(
         TassadarInstruction::I32Add
         | TassadarInstruction::I32Sub
         | TassadarInstruction::I32Mul
+        | TassadarInstruction::I32Lt
         | TassadarInstruction::Output
         | TassadarInstruction::Return => (0.0, 0.0),
     };

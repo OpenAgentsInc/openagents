@@ -140,6 +140,7 @@ impl TassadarRuntimeCapabilityReport {
                 String::from(TassadarWasmProfileId::CoreI32V1.as_str()),
                 String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
                 String::from(TassadarWasmProfileId::SudokuV0SearchV1.as_str()),
+                String::from(TassadarWasmProfileId::HungarianV0MatchingV1.as_str()),
                 String::from(TassadarWasmProfileId::Sudoku9x9SearchV1.as_str()),
             ],
             supported_attention_modes: vec![
@@ -254,6 +255,8 @@ pub enum TassadarWasmProfileId {
     CoreI32V2,
     /// Larger i32-only profile for real 4x4 Sudoku-v0 search programs.
     SudokuV0SearchV1,
+    /// Comparison-capable i32-only profile for bounded 4x4 matching programs.
+    HungarianV0MatchingV1,
     /// Larger i32-only profile for real 9x9 Sudoku-class search programs.
     Sudoku9x9SearchV1,
 }
@@ -266,6 +269,7 @@ impl TassadarWasmProfileId {
             Self::CoreI32V1 => "tassadar.wasm.core_i32.v1",
             Self::CoreI32V2 => "tassadar.wasm.core_i32.v2",
             Self::SudokuV0SearchV1 => "tassadar.wasm.sudoku_v0_search.v1",
+            Self::HungarianV0MatchingV1 => "tassadar.wasm.hungarian_v0_matching.v1",
             Self::Sudoku9x9SearchV1 => "tassadar.wasm.sudoku_9x9_search.v1",
         }
     }
@@ -295,6 +299,8 @@ pub enum TassadarOpcode {
     I32Sub,
     /// Pop two `i32` values and push their product.
     I32Mul,
+    /// Pop two `i32` values and push `1` when `left < right`, otherwise `0`.
+    I32Lt,
     /// Load one memory slot and push it.
     I32Load,
     /// Pop one stack value into one memory slot.
@@ -323,6 +329,22 @@ impl TassadarOpcode {
         Self::Return,
     ];
 
+    /// Stable opcode ordering for the bounded Hungarian matching profile.
+    pub const HUNGARIAN_V0: [Self; 12] = [
+        Self::I32Const,
+        Self::LocalGet,
+        Self::LocalSet,
+        Self::I32Add,
+        Self::I32Sub,
+        Self::I32Mul,
+        Self::I32Lt,
+        Self::I32Load,
+        Self::I32Store,
+        Self::BrIf,
+        Self::Output,
+        Self::Return,
+    ];
+
     /// Returns the stable opcode mnemonic.
     #[must_use]
     pub const fn mnemonic(self) -> &'static str {
@@ -333,6 +355,7 @@ impl TassadarOpcode {
             Self::I32Add => "i32.add",
             Self::I32Sub => "i32.sub",
             Self::I32Mul => "i32.mul",
+            Self::I32Lt => "i32.lt",
             Self::I32Load => "i32.load",
             Self::I32Store => "i32.store",
             Self::BrIf => "br_if",
@@ -351,11 +374,12 @@ impl TassadarOpcode {
             Self::I32Add => 3,
             Self::I32Sub => 4,
             Self::I32Mul => 5,
-            Self::I32Load => 6,
-            Self::I32Store => 7,
-            Self::BrIf => 8,
-            Self::Output => 9,
-            Self::Return => 10,
+            Self::I32Lt => 6,
+            Self::I32Load => 7,
+            Self::I32Store => 8,
+            Self::BrIf => 9,
+            Self::Output => 10,
+            Self::Return => 11,
         }
     }
 }
@@ -422,6 +446,8 @@ pub enum TassadarArithmeticOp {
     Sub,
     /// Multiplication.
     Mul,
+    /// Less-than comparison returning `1` or `0`.
+    Lt,
 }
 
 impl TassadarArithmeticOp {
@@ -431,6 +457,7 @@ impl TassadarArithmeticOp {
             Self::Add => 1,
             Self::Sub => 2,
             Self::Mul => 3,
+            Self::Lt => 4,
         }
     }
 }
@@ -531,6 +558,21 @@ impl TassadarWasmProfile {
         }
     }
 
+    /// Returns the bounded comparison-capable profile used for honest 4x4 matching programs.
+    #[must_use]
+    pub fn hungarian_v0_matching_v1() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::HungarianV0MatchingV1.as_str()),
+            allowed_opcodes: TassadarOpcode::HUNGARIAN_V0.to_vec(),
+            max_locals: 8,
+            max_memory_slots: 32,
+            max_program_len: 2_048,
+            max_steps: 32_768,
+            branch_mode: TassadarBranchMode::BrIfNonZero,
+            host_output_opcode: true,
+        }
+    }
+
     /// Returns the larger search-oriented profile used for honest 9x9 Sudoku programs.
     #[must_use]
     pub fn sudoku_9x9_search_v1() -> Self {
@@ -586,6 +628,9 @@ pub fn tassadar_wasm_profile_for_id(profile_id: &str) -> Option<TassadarWasmProf
         }
         value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
             Some(TassadarWasmProfile::sudoku_v0_search_v1())
+        }
+        value if value == TassadarWasmProfileId::HungarianV0MatchingV1.as_str() => {
+            Some(TassadarWasmProfile::hungarian_v0_matching_v1())
         }
         value if value == TassadarWasmProfileId::Sudoku9x9SearchV1.as_str() => {
             Some(TassadarWasmProfile::sudoku_9x9_search_v1())
@@ -656,6 +701,20 @@ impl TassadarTraceAbi {
         }
     }
 
+    /// Returns the trace ABI for the honest bounded 4x4 Hungarian matching profile.
+    #[must_use]
+    pub fn hungarian_v0_matching_v1() -> Self {
+        Self {
+            abi_id: String::from("tassadar.trace.v1"),
+            schema_version: TASSADAR_TRACE_ABI_VERSION,
+            profile_id: String::from(TassadarWasmProfileId::HungarianV0MatchingV1.as_str()),
+            append_only: true,
+            includes_stack_snapshots: true,
+            includes_local_snapshots: true,
+            includes_memory_snapshots: true,
+        }
+    }
+
     /// Returns the search-oriented trace ABI for the honest 9x9 Sudoku profile.
     #[must_use]
     pub fn sudoku_9x9_search_v1() -> Self {
@@ -709,6 +768,9 @@ pub fn tassadar_trace_abi_for_profile_id(profile_id: &str) -> Option<TassadarTra
         value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
             Some(TassadarTraceAbi::sudoku_v0_search_v1())
         }
+        value if value == TassadarWasmProfileId::HungarianV0MatchingV1.as_str() => {
+            Some(TassadarTraceAbi::hungarian_v0_matching_v1())
+        }
         value if value == TassadarWasmProfileId::Sudoku9x9SearchV1.as_str() => {
             Some(TassadarTraceAbi::sudoku_9x9_search_v1())
         }
@@ -741,6 +803,8 @@ pub enum TassadarInstruction {
     I32Sub,
     /// Pop two `i32` values and push the product.
     I32Mul,
+    /// Pop two `i32` values and push `1` when `left < right`, otherwise `0`.
+    I32Lt,
     /// Push one memory slot onto the stack.
     I32Load {
         /// Memory slot index.
@@ -773,6 +837,7 @@ impl TassadarInstruction {
             Self::I32Add => TassadarOpcode::I32Add,
             Self::I32Sub => TassadarOpcode::I32Sub,
             Self::I32Mul => TassadarOpcode::I32Mul,
+            Self::I32Lt => TassadarOpcode::I32Lt,
             Self::I32Load { .. } => TassadarOpcode::I32Load,
             Self::I32Store { .. } => TassadarOpcode::I32Store,
             Self::BrIf { .. } => TassadarOpcode::BrIf,
@@ -1403,6 +1468,29 @@ impl TassadarFixtureWeights {
         }
     }
 
+    /// Returns the bounded comparison-capable handcrafted fixture table.
+    #[must_use]
+    pub fn hungarian_v0_matching_v1() -> Self {
+        let mut opcode_rules = Self::core_i32_v1().opcode_rules;
+        opcode_rules.insert(
+            6,
+            TassadarOpcodeRule::new(
+                TassadarOpcode::I32Lt,
+                2,
+                1,
+                TassadarImmediateKind::None,
+                TassadarAccessClass::None,
+                TassadarControlClass::Linear,
+            )
+            .with_arithmetic(TassadarArithmeticOp::Lt),
+        );
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::HungarianV0MatchingV1.as_str()),
+            trace_abi_id: String::from("tassadar.trace.v1"),
+            opcode_rules,
+        }
+    }
+
     /// Returns the larger 9x9 search-profile handcrafted fixture table.
     #[must_use]
     pub fn sudoku_9x9_search_v1() -> Self {
@@ -1438,6 +1526,9 @@ pub fn tassadar_fixture_weights_for_profile_id(profile_id: &str) -> Option<Tassa
         }
         value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
             Some(TassadarFixtureWeights::sudoku_v0_search_v1())
+        }
+        value if value == TassadarWasmProfileId::HungarianV0MatchingV1.as_str() => {
+            Some(TassadarFixtureWeights::hungarian_v0_matching_v1())
         }
         value if value == TassadarWasmProfileId::Sudoku9x9SearchV1.as_str() => {
             Some(TassadarFixtureWeights::sudoku_9x9_search_v1())
@@ -3014,12 +3105,34 @@ pub struct TassadarSudoku9x9CorpusCase {
     pub validation_case: TassadarValidationCase,
 }
 
+/// One bounded 4x4 min-cost perfect-matching corpus case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarHungarianV0CorpusCase {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable split assignment.
+    pub split: TassadarSudokuV0CorpusSplit,
+    /// Flat 4x4 cost matrix in row-major order.
+    pub cost_matrix: Vec<i32>,
+    /// Exact optimal assignment encoded as one chosen column per row.
+    pub optimal_assignment: Vec<i32>,
+    /// Exact optimal assignment cost.
+    pub optimal_cost: i32,
+    /// Exact CPU-reference-backed validation case.
+    pub validation_case: TassadarValidationCase,
+}
+
 const TASSADAR_SUDOKU_V0_CELL_COUNT: usize = 16;
 const TASSADAR_SUDOKU_V0_GRID_WIDTH: usize = 4;
 const TASSADAR_SUDOKU_V0_BOX_WIDTH: usize = 2;
 const TASSADAR_SUDOKU_9X9_CELL_COUNT: usize = 81;
 const TASSADAR_SUDOKU_9X9_GRID_WIDTH: usize = 9;
 const TASSADAR_SUDOKU_9X9_BOX_WIDTH: usize = 3;
+const TASSADAR_HUNGARIAN_V0_DIM: usize = 4;
+const TASSADAR_HUNGARIAN_V0_MATRIX_CELL_COUNT: usize = 16;
+const TASSADAR_HUNGARIAN_V0_OUTPUT_SLOT_BASE: u8 = 16;
+const TASSADAR_HUNGARIAN_V0_BEST_COST_SLOT: u8 = 20;
+const TASSADAR_HUNGARIAN_V0_MEMORY_SLOTS: usize = 21;
 const TASSADAR_SUDOKU_9X9_SOLVED_GRID: [i32; TASSADAR_SUDOKU_9X9_CELL_COUNT] = [
     5, 3, 4, 6, 7, 8, 9, 1, 2, //
     6, 7, 2, 1, 9, 5, 3, 4, 8, //
@@ -3062,6 +3175,63 @@ pub fn tassadar_sudoku_9x9_search_program(
         TASSADAR_SUDOKU_9X9_BOX_WIDTH,
         puzzle_cells.as_slice(),
     )
+}
+
+/// Builds a bounded 4x4 min-cost perfect-matching program via exact permutation enumeration.
+#[must_use]
+pub fn tassadar_hungarian_v0_matching_program(
+    program_id: impl Into<String>,
+    cost_matrix: [i32; TASSADAR_HUNGARIAN_V0_MATRIX_CELL_COUNT],
+) -> TassadarProgram {
+    let profile = TassadarWasmProfile::hungarian_v0_matching_v1();
+    let mut assembler = TassadarLabelAssembler::default();
+    let permutations = hungarian_v0_permutations();
+
+    for (index, permutation) in permutations.iter().enumerate() {
+        emit_hungarian_v0_candidate_cost(&mut assembler, permutation);
+        assembler.emit(TassadarInstruction::LocalSet { local: 0 });
+        if index == 0 {
+            emit_hungarian_v0_best_update(&mut assembler, permutation);
+            continue;
+        }
+
+        let update_label = format!("hungarian_v0_update_best_{index}");
+        let next_label = format!("hungarian_v0_next_candidate_{index}");
+        assembler.emit(TassadarInstruction::LocalGet { local: 0 });
+        assembler.emit(TassadarInstruction::I32Load {
+            slot: TASSADAR_HUNGARIAN_V0_BEST_COST_SLOT,
+        });
+        assembler.emit(TassadarInstruction::I32Lt);
+        assembler.branch_if(update_label.as_str());
+        assembler.branch_always(next_label.as_str());
+        assembler.label(update_label.as_str());
+        emit_hungarian_v0_best_update(&mut assembler, permutation);
+        assembler.label(next_label.as_str());
+    }
+
+    for slot in TASSADAR_HUNGARIAN_V0_OUTPUT_SLOT_BASE
+        ..TASSADAR_HUNGARIAN_V0_OUTPUT_SLOT_BASE + TASSADAR_HUNGARIAN_V0_DIM as u8
+    {
+        assembler.emit(TassadarInstruction::I32Load { slot });
+        assembler.emit(TassadarInstruction::Output);
+    }
+    assembler.emit(TassadarInstruction::I32Load {
+        slot: TASSADAR_HUNGARIAN_V0_BEST_COST_SLOT,
+    });
+    assembler.emit(TassadarInstruction::Output);
+    assembler.emit(TassadarInstruction::Return);
+
+    let mut initial_memory = vec![0; TASSADAR_HUNGARIAN_V0_MEMORY_SLOTS];
+    initial_memory[..TASSADAR_HUNGARIAN_V0_MATRIX_CELL_COUNT]
+        .copy_from_slice(cost_matrix.as_slice());
+    TassadarProgram::new(
+        program_id,
+        &profile,
+        1,
+        TASSADAR_HUNGARIAN_V0_MEMORY_SLOTS,
+        assembler.finalize(),
+    )
+    .with_initial_memory(initial_memory)
 }
 
 /// Returns the canonical real 4x4 Sudoku-v0 corpus with stable split assignments.
@@ -3190,6 +3360,61 @@ pub fn tassadar_sudoku_9x9_corpus() -> Vec<TassadarSudoku9x9CorpusCase> {
     ]
 }
 
+/// Returns the canonical bounded 4x4 Hungarian-v0 corpus with stable split assignments.
+#[must_use]
+pub fn tassadar_hungarian_v0_corpus() -> Vec<TassadarHungarianV0CorpusCase> {
+    vec![
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_train_a",
+            TassadarSudokuV0CorpusSplit::Train,
+            [1, 0, 3, 2],
+            0,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_train_b",
+            TassadarSudokuV0CorpusSplit::Train,
+            [2, 3, 0, 1],
+            1,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_train_c",
+            TassadarSudokuV0CorpusSplit::Train,
+            [3, 1, 2, 0],
+            2,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_train_d",
+            TassadarSudokuV0CorpusSplit::Train,
+            [0, 2, 1, 3],
+            3,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_validation_a",
+            TassadarSudokuV0CorpusSplit::Validation,
+            [2, 0, 3, 1],
+            4,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_validation_b",
+            TassadarSudokuV0CorpusSplit::Validation,
+            [3, 2, 1, 0],
+            5,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_test_a",
+            TassadarSudokuV0CorpusSplit::Test,
+            [1, 3, 0, 2],
+            6,
+        ),
+        computed_hungarian_v0_corpus_case(
+            "hungarian_v0_test_b",
+            TassadarSudokuV0CorpusSplit::Test,
+            [0, 3, 2, 1],
+            7,
+        ),
+    ]
+}
+
 fn computed_sudoku_v0_corpus_case(
     case_id: &str,
     split: TassadarSudokuV0CorpusSplit,
@@ -3273,6 +3498,170 @@ fn computed_sudoku_9x9_corpus_case(
             expected_outputs: execution.outputs,
         },
     }
+}
+
+fn computed_hungarian_v0_corpus_case(
+    case_id: &str,
+    split: TassadarSudokuV0CorpusSplit,
+    target_assignment: [usize; TASSADAR_HUNGARIAN_V0_DIM],
+    case_offset: i32,
+) -> TassadarHungarianV0CorpusCase {
+    let cost_matrix = synthetic_hungarian_v0_cost_matrix(target_assignment, case_offset);
+    let (optimal_assignment, optimal_cost, unique_optimum) =
+        brute_force_hungarian_v0_solution(&cost_matrix);
+    assert!(
+        unique_optimum,
+        "Hungarian-v0 corpus case `{case_id}` should have a unique optimum"
+    );
+    assert_eq!(
+        optimal_assignment
+            .iter()
+            .map(|value| *value as usize)
+            .collect::<Vec<_>>(),
+        target_assignment.to_vec(),
+        "Hungarian-v0 synthetic case `{case_id}` should preserve its target optimum"
+    );
+    let program =
+        tassadar_hungarian_v0_matching_program(format!("tassadar.{case_id}.v1"), cost_matrix);
+    let execution = TassadarCpuReferenceRunner::for_program(&program)
+        .expect("Hungarian-v0 profile should resolve on CPU")
+        .execute(&program)
+        .expect("Hungarian-v0 corpus program should solve exactly");
+    let expected_outputs = {
+        let mut outputs = optimal_assignment.to_vec();
+        outputs.push(optimal_cost);
+        outputs
+    };
+    assert_eq!(
+        execution.outputs, expected_outputs,
+        "Hungarian-v0 corpus case `{case_id}` should emit the exact assignment and cost"
+    );
+    let summary = format!(
+        "bounded 4x4 min-cost perfect matching case on the {} split with unique optimum cost {}",
+        split.as_str(),
+        optimal_cost
+    );
+    TassadarHungarianV0CorpusCase {
+        case_id: String::from(case_id),
+        split,
+        cost_matrix: cost_matrix.to_vec(),
+        optimal_assignment: optimal_assignment.to_vec(),
+        optimal_cost,
+        validation_case: TassadarValidationCase {
+            case_id: String::from(case_id),
+            summary,
+            program,
+            expected_trace: execution.steps,
+            expected_outputs,
+        },
+    }
+}
+
+fn emit_hungarian_v0_candidate_cost(
+    assembler: &mut TassadarLabelAssembler,
+    permutation: &[usize; TASSADAR_HUNGARIAN_V0_DIM],
+) {
+    for (row, column) in permutation.iter().enumerate() {
+        assembler.emit(TassadarInstruction::I32Load {
+            slot: hungarian_v0_matrix_slot(row, *column),
+        });
+        if row > 0 {
+            assembler.emit(TassadarInstruction::I32Add);
+        }
+    }
+}
+
+fn emit_hungarian_v0_best_update(
+    assembler: &mut TassadarLabelAssembler,
+    permutation: &[usize; TASSADAR_HUNGARIAN_V0_DIM],
+) {
+    assembler.emit(TassadarInstruction::LocalGet { local: 0 });
+    assembler.emit(TassadarInstruction::I32Store {
+        slot: TASSADAR_HUNGARIAN_V0_BEST_COST_SLOT,
+    });
+    for (row, column) in permutation.iter().enumerate() {
+        assembler.emit(TassadarInstruction::I32Const {
+            value: *column as i32,
+        });
+        assembler.emit(TassadarInstruction::I32Store {
+            slot: TASSADAR_HUNGARIAN_V0_OUTPUT_SLOT_BASE + row as u8,
+        });
+    }
+}
+
+fn hungarian_v0_matrix_slot(row: usize, column: usize) -> u8 {
+    u8::try_from(row * TASSADAR_HUNGARIAN_V0_DIM + column)
+        .expect("Hungarian-v0 matrix slot should fit in u8")
+}
+
+fn synthetic_hungarian_v0_cost_matrix(
+    target_assignment: [usize; TASSADAR_HUNGARIAN_V0_DIM],
+    case_offset: i32,
+) -> [i32; TASSADAR_HUNGARIAN_V0_MATRIX_CELL_COUNT] {
+    let mut matrix = [0; TASSADAR_HUNGARIAN_V0_MATRIX_CELL_COUNT];
+    for row in 0..TASSADAR_HUNGARIAN_V0_DIM {
+        for column in 0..TASSADAR_HUNGARIAN_V0_DIM {
+            let index = row * TASSADAR_HUNGARIAN_V0_DIM + column;
+            matrix[index] = if column == target_assignment[row] {
+                1 + case_offset + (row as i32 * 2)
+            } else {
+                20 + case_offset + (row as i32 * 5) + (column as i32 * 3)
+            };
+        }
+    }
+    matrix
+}
+
+fn hungarian_v0_permutations() -> Vec<[usize; TASSADAR_HUNGARIAN_V0_DIM]> {
+    fn build(
+        depth: usize,
+        current: &mut [usize; TASSADAR_HUNGARIAN_V0_DIM],
+        used: &mut [bool; TASSADAR_HUNGARIAN_V0_DIM],
+        permutations: &mut Vec<[usize; TASSADAR_HUNGARIAN_V0_DIM]>,
+    ) {
+        if depth == TASSADAR_HUNGARIAN_V0_DIM {
+            permutations.push(*current);
+            return;
+        }
+        for candidate in 0..TASSADAR_HUNGARIAN_V0_DIM {
+            if used[candidate] {
+                continue;
+            }
+            used[candidate] = true;
+            current[depth] = candidate;
+            build(depth + 1, current, used, permutations);
+            used[candidate] = false;
+        }
+    }
+
+    let mut permutations = Vec::new();
+    let mut current = [0; TASSADAR_HUNGARIAN_V0_DIM];
+    let mut used = [false; TASSADAR_HUNGARIAN_V0_DIM];
+    build(0, &mut current, &mut used, &mut permutations);
+    permutations
+}
+
+fn brute_force_hungarian_v0_solution(
+    cost_matrix: &[i32; TASSADAR_HUNGARIAN_V0_MATRIX_CELL_COUNT],
+) -> ([i32; TASSADAR_HUNGARIAN_V0_DIM], i32, bool) {
+    let mut best_assignment = [0; TASSADAR_HUNGARIAN_V0_DIM];
+    let mut best_cost = i32::MAX;
+    let mut unique_optimum = true;
+    for permutation in hungarian_v0_permutations() {
+        let cost = permutation
+            .iter()
+            .enumerate()
+            .map(|(row, column)| cost_matrix[row * TASSADAR_HUNGARIAN_V0_DIM + *column])
+            .sum::<i32>();
+        if cost < best_cost {
+            best_cost = cost;
+            best_assignment = permutation.map(|column| column as i32);
+            unique_optimum = true;
+        } else if cost == best_cost {
+            unique_optimum = false;
+        }
+    }
+    (best_assignment, best_cost, unique_optimum)
 }
 
 fn build_tassadar_sudoku_search_program(
@@ -3626,6 +4015,17 @@ fn execute_program_direct(
                 stack.push(result);
                 TassadarTraceEvent::BinaryOp {
                     op: TassadarArithmeticOp::Mul,
+                    left,
+                    right,
+                    result,
+                }
+            }
+            TassadarInstruction::I32Lt => {
+                let (left, right) = pop_binary_operands(&mut stack, pc)?;
+                let result = i32::from(left < right);
+                stack.push(result);
+                TassadarTraceEvent::BinaryOp {
+                    op: TassadarArithmeticOp::Lt,
                     left,
                     right,
                     result,
@@ -4374,6 +4774,17 @@ fn execute_instruction(
                 result,
             }
         }
+        TassadarInstruction::I32Lt => {
+            let (left, right) = pop_binary_operands(stack, pc)?;
+            let result = i32::from(left < right);
+            stack.push(result);
+            TassadarTraceEvent::BinaryOp {
+                op: TassadarArithmeticOp::Lt,
+                left,
+                right,
+                result,
+            }
+        }
         TassadarInstruction::I32Load { slot } => {
             let value = memory[usize::from(slot)];
             stack.push(value);
@@ -5058,6 +5469,21 @@ fn observed_rule_signature(
             TassadarControlClass::Linear,
         )
         .with_arithmetic(TassadarArithmeticOp::Mul),
+        (
+            TassadarInstruction::I32Lt,
+            TassadarTraceEvent::BinaryOp {
+                op: TassadarArithmeticOp::Lt,
+                ..
+            },
+        ) => TassadarOpcodeRule::new(
+            TassadarOpcode::I32Lt,
+            2,
+            1,
+            TassadarImmediateKind::None,
+            TassadarAccessClass::None,
+            TassadarControlClass::Linear,
+        )
+        .with_arithmetic(TassadarArithmeticOp::Lt),
         (TassadarInstruction::I32Load { .. }, TassadarTraceEvent::Load { .. }) => {
             TassadarOpcodeRule::new(
                 TassadarOpcode::I32Load,

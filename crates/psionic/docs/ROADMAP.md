@@ -647,6 +647,21 @@ Its declared scope is:
   compiled/proof-backed lane on matched Sudoku-v0 programs (`8/8` exact trace
   matches against CPU reference, `32/32` exact refusal matches, `eval_only`
   posture), not arbitrary-program closure and not learned-lane success
+- landed trained-executor Phase 18 bar from the post-audit issue spine:
+  `psionic-runtime` now carries a real bounded
+  `tassadar.wasm.hungarian_v0_matching.v1` min-cost matching workload over 4x4
+  cost matrices, `psionic-eval` now materializes a real Hungarian-v0 benchmark
+  package together with `compiled_executor_exactness_report.json`,
+  `compiled_executor_compatibility_report.json`, and
+  `hungarian_lane_status_report.json`, and `psionic-research` now writes the
+  canonical bundle root at
+  `crates/psionic/fixtures/tassadar/runs/hungarian_v0_compiled_executor_v0`
+  with the benchmark/environment contracts plus eight per-case deployment
+  bundles; the committed artifacts keep the claim boundary honest by proving
+  only a bounded Hungarian-class workload contract and a matched exact
+  compiled/proof-backed lane (`8/8` exact trace matches, `32/32` exact refusal
+  matches, `eval_only` posture), not a learned Hungarian lane, not arbitrary
+  dimension/program closure, and not article parity
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
@@ -864,6 +879,11 @@ is tracked under the post-audit umbrella
   Phase 14/16 path
 - Phase 18 land the real Hungarian-class benchmark and exact result:
   [#3818](https://github.com/OpenAgentsInc/openagents/issues/3818)
+  landed as the bounded Hungarian-v0 benchmark-plus-compiled lane at
+  `crates/psionic/fixtures/tassadar/runs/hungarian_v0_compiled_executor_v0`
+  with a real benchmark package, `8/8` exact compiled trace matches,
+  `32/32` exact refusal matches, and an explicit learned-lane status of
+  `not_done`; this remains `eval_only` and does not imply article parity
 
 ## Epic 0: Governance And Acceptance
 

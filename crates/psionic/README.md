@@ -231,6 +231,21 @@ Current posture:
   `32/32` exact refusal matches on mismatched artifacts, `eval_only`
   posture), not arbitrary-program closure, not learned-lane success, and not
   article parity
+- the separate post-audit Phase 18 bar now also exists in `psionic-runtime`,
+  `psionic-models`, `psionic-eval`, `psionic-research`, `docs/audits/`, and a
+  canonical bounded benchmark-plus-compiled bundle at
+  `crates/psionic/fixtures/tassadar/runs/hungarian_v0_compiled_executor_v0`:
+  `psionic-runtime` now carries a real bounded `tassadar.wasm.hungarian_v0_matching.v1`
+  min-cost matching program family over 4x4 cost matrices, `psionic-eval` now
+  emits a real Hungarian-v0 benchmark package plus machine-readable compiled
+  exactness/refusal reports and learned-vs-compiled lane status, and
+  `psionic-research` now persists the full run bundle plus eight per-case
+  deployments; the committed artifacts keep the claim boundary tight by
+  proving only a bounded Hungarian-class workload contract plus an exact
+  compiled/proof-backed lane on that matched corpus (`8/8` exact trace
+  matches, `32/32` exact refusal matches, `eval_only` posture), not learned
+  Hungarian execution, not general Hungarian solver parity, and not article
+  parity
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons
