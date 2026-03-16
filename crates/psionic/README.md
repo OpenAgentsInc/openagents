@@ -560,6 +560,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/OPERATOR_PARITY_MATRIX.md](docs/OPERATOR_PARITY_MATRIX.md)** —
   canonical seeded operator parity artifact for the current PyTorch-derived
   `OpInfo`-style coverage slice.
+- **[docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md](docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md)** —
+  canonical bounded capability matrix for functionalization, symbolic rewrites,
+  export-safe graphs, and explicit future higher-order transform refusal.
 - **[docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md](docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md)** —
   canonical capability and refusal matrix for dense, sparse, nested, masked,
   and storage-aware tensor-family contracts.

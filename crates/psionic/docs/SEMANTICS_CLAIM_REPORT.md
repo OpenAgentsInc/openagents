@@ -39,6 +39,7 @@ The current overall posture is `seeded_evidence_only` because Psionic now has
 machine-readable evidence for:
 
 - operator parity
+- bounded program-transform capability coverage
 - tensor-family capability and refusal coverage
 - advanced dtype promotion, cast, and backend-capability coverage
 - reproducibility seed, generator-derivation, and checkpoint-restore coverage

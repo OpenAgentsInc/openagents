@@ -908,7 +908,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `PLIB-215` / [#3730](https://github.com/OpenAgentsInc/openagents/issues/3730) | done (2026-03-16) | `psionic-core` now publishes a machine-readable bounded quantization capability report covering PTQ, QAT, quantization configuration, backend/runtime contracts, compiler-lowering posture, export-aware graph intent, and explicit refusal for unsupported block-quant QAT or broader activation-dtype closure, so quantization is a reusable library surface above raw file-format decode rather than a loader side effect. |
-| `PLIB-216` / [#3731](https://github.com/OpenAgentsInc/openagents/issues/3731) | planned | Add functionalization and program-transform capability for symbolic rewrites, export-safe graphs, and future `vmap` / `jvp` / `jacobian`-class transforms. |
+| `PLIB-216` / [#3731](https://github.com/OpenAgentsInc/openagents/issues/3731) | done (2026-03-16) | `psionic-ir` now publishes a machine-readable bounded program-transform capability matrix plus a reusable `Graph::program_transform_capability(...)` surface covering functionalization, symbolic-rewrite readiness, export-safe graph handoff, explicit opaque-barrier refusal, and explicit future refusal for `vmap`, `jvp`, and `jacobian`. |
 
 ### Extensibility And Data Systems
 
