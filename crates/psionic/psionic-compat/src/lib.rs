@@ -1124,10 +1124,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane supports general array IO, a Psionic-native function export/import artifact, bounded .mlxfn compatibility, memory and cache controls, backend debug hooks, and extension-facing tooling.",
             ),
             current_repo_truth: String::from(
-                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array, and a first native .psifn function-artifact slice in psionic-function-io with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, while .mlxfn compatibility, memory controls, debug hooks, and extension tooling remain open.",
+                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array; psionic-function-io now also exposes both a native .psifn function-artifact slice with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, and a bounded .mlxfn compatibility shell that supports one positional CPU trace over the current primitive and dtype subset while refusing shapeless, keyword, multi-trace, unsupported-device, and unsupported-primitive artifacts honestly; memory controls, debug hooks, and extension tooling remain open.",
             ),
             boundary_note: String::from(
-                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO and the native .psifn function artifact now exist, but the rest of the public export/tooling shell is still missing.",
+                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO, the native .psifn function artifact, and a bounded .mlxfn shell now exist, but memory controls, debug hooks, and extension tooling are still missing.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1408,10 +1408,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("cargo test -p psionic-function-io -- --nocapture"),
             ],
             summary: String::from(
-                "The seeded export/import family can now point at exportable-graph, native .psifn function artifacts, portable-model-IO, and public array-IO hooks as bounded parity anchors.",
+                "The seeded export/import family can now point at exportable-graph, native .psifn function artifacts, bounded .mlxfn compatibility, portable-model-IO, and public array-IO hooks as bounded parity anchors.",
             ),
             boundary_note: String::from(
-                "This seed pass does not imply the full public MLX export or tooling shell already exists.",
+                "This seed pass includes only the current bounded .mlxfn subset and does not imply the full public MLX export or tooling shell already exists.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1540,9 +1540,9 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("FunctionArtifact"),
                 String::from("FunctionArtifactReceipt"),
             ],
-            blocking_issue_refs: vec![String::from("PMLX-403 (#3855)")],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "This supported bridge is Psionic-native `.psifn`, not current `.mlxfn` support.",
+                "This supported bridge is the native `.psifn` substrate; bounded `.mlxfn` compatibility now exists separately on top of it.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -1690,19 +1690,18 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("mlxfn_interop"),
-            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "There is no `.mlxfn` import or export support in Psionic today.",
+                "psionic-function-io now exposes one bounded supported `.mlxfn` import/export shell on top of the native function artifact, including stable compatibility receipts and explicit refusal for traces that fall outside the current subset.",
             ),
-            evidence_refs: vec![String::from(
-                "ROADMAP_MLX Phase 9 compatibility work remains open",
-            )],
-            blocking_issue_refs: vec![
-                String::from("PMLX-402 (#3854)"),
-                String::from("PMLX-403 (#3855)"),
+            evidence_refs: vec![
+                String::from("MlxfnCompatibilityReceipt"),
+                String::from("encode_mlxfn_function_artifact"),
+                String::from("decode_mlxfn_function_artifact"),
             ],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "Native graph-first export substrate does not imply `.mlxfn` compatibility.",
+                "This support is intentionally narrow: one CPU positional trace only, one bounded primitive and dtype subset, no shapeless traces, no keyword inputs, and no guarantee that native compile bundles survive the `.mlxfn` boundary.",
             ),
         },
         MlxCompatibilityMatrixEntry {

@@ -1,8 +1,10 @@
-//! Public native function artifact IO above `psionic-ir` and `psionic-compiler`.
+//! Public function artifact IO above `psionic-ir` and `psionic-compiler`.
 //!
 //! This crate keeps Psionic's graph-first function export story separate from
-//! model-family checkpoint portability and later compatibility shells such as
-//! `.mlxfn`.
+//! model-family checkpoint portability, while still exposing bounded
+//! compatibility shells such as `.mlxfn` on top of the native artifact model.
+
+mod mlxfn;
 
 use std::{fs, path::Path};
 
@@ -16,9 +18,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub use mlxfn::*;
+
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str =
-    "public native function artifact IO above psionic-ir and psionic-compiler";
+pub const CRATE_ROLE: &str = "public function artifact IO above psionic-ir and psionic-compiler";
 
 /// Public native function artifact format supported by Psionic today.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

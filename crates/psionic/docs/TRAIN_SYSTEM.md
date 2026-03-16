@@ -2936,8 +2936,9 @@ still owns checkpoint, tokenizer, state-dict, and model-family portability,
 while `psionic-array-io` owns public framework-facing `npy` / `npz` /
 `safetensors` plus bounded GGUF array save/load semantics above the lazy-array
 surface, and `psionic-function-io` owns public `.psifn` export/import
-artifacts above export-safe graph and compiler contracts instead of burying
-that boundary inside train-local packaging code.
+artifacts plus a bounded `.mlxfn` compatibility shell above export-safe graph
+and compiler contracts instead of burying that boundary inside train-local
+packaging code.
 
 ### 25. `Training Truth: add deterministic replay and reproducibility guarantees`
 
