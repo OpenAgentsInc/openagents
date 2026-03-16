@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
 use openagents_kernel_core::authority::{
@@ -59,10 +59,14 @@ use psionic_eval::{
     AppleAdapterRuntimeSmokeRequest, EvalArtifact, EvalMetric, EvalRunState,
 };
 use psionic_train::{
-    AppleAdapterToolkitExportOutcome, AppleAdapterToolkitExportRequest,
-    AppleAdapterToolkitPrecision, AppleAdapterToolkitTrainingOutcome,
-    AppleAdapterToolkitTrainingRequest, run_apple_adapter_toolkit_export,
-    run_apple_adapter_toolkit_training,
+    APPLE_LIVE_REFERENCE_FEATURE_WIDTH, AppleAdapterActivationCheckpointPolicy,
+    AppleAdapterExecutionConfig, AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel,
+    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterToolkitExportOutcome,
+    AppleAdapterToolkitExportRequest, AppleAdapterToolkitPrecision,
+    AppleAdapterToolkitTrainingOutcome, AppleAdapterToolkitTrainingRequest,
+    AppleAdapterTrainingExecutionBackend, TrainingLoopBudget, TrainingOptimizerConfig,
+    TrainingOptimizerResidencyPolicy, apple_live_reference_trainable_targets,
+    run_apple_adapter_sft_export,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -80,6 +84,8 @@ const APPLE_TRAINING_RUNTIME_VALIDATION_POSTURE: ComputeAppleRuntimeValidationPo
 const APPLE_TRAINING_PRODUCT_ID: &str = "psionic.training.apple_adapter.sft";
 const APPLE_TRAINING_RUNTIME_SMOKE_PROMPT: &str =
     "Explain what a mutex does in one short sentence.";
+const APPLE_PSIONIC_TRAINING_BACKEND_ID: &str = "psionic.apple_adapter.reference_sft.v1";
+const APPLE_PSIONIC_EXPORT_BACKEND_ID: &str = "psionic.apple_runtime_asset.native.v1";
 const APPLE_TOOLKIT_TRAINING_BACKEND_ID: &str = "apple_adapter_training_toolkit_v26_0_0";
 const APPLE_TOOLKIT_EXPORT_BACKEND_ID: &str = "apple_runtime_asset.toolkit_export_v26_0_0";
 
@@ -177,8 +183,8 @@ pub struct AppleAdapterOperatorRunStatus {
     pub run_directory: String,
     pub staged_package_path: Option<String>,
     pub exported_package_path: Option<String>,
-    pub toolkit_checkpoint_path: Option<String>,
-    pub toolkit_export_package_path: Option<String>,
+    pub training_checkpoint_path: Option<String>,
+    pub runtime_asset_package_path: Option<String>,
     pub launched_at_epoch_ms: Option<u64>,
     pub evaluated_at_epoch_ms: Option<u64>,
     pub exported_at_epoch_ms: Option<u64>,
@@ -314,8 +320,8 @@ impl AppleAdapterTrainingController {
             run_directory: run_directory.display().to_string(),
             staged_package_path: None,
             exported_package_path: None,
-            toolkit_checkpoint_path: None,
-            toolkit_export_package_path: None,
+            training_checkpoint_path: None,
+            runtime_asset_package_path: None,
             launched_at_epoch_ms: Some(now),
             evaluated_at_epoch_ms: None,
             exported_at_epoch_ms: None,
@@ -600,60 +606,45 @@ fn execute_launch_pipeline(
             "Derived Apple adapter packing policy",
         )
     })?;
-    let toolkit_training_request =
-        build_toolkit_training_request(run_id, run_directory.as_path(), request, &packing_policy);
-    let toolkit_export_request =
-        build_toolkit_export_request(run_directory.as_path(), request.package_name.as_str());
-
+    let execution_config =
+        build_psionic_execution_config(run_id, &runtime_profile, &packing_policy);
+    let sft_request = build_psionic_sft_request(run_id, request);
     with_controller(|controller| {
         controller.push_log(
             run_id,
             format!(
-                "launch: executing Apple toolkit training via {}",
-                toolkit_training_request.checkpoint_dir.display()
+                "launch: executing Rust-native Psionic Apple training across {} live targets",
+                execution_config.model.targets.len()
             ),
-            "Running Apple toolkit-backed adapter training",
+            "Running Rust-native Apple adapter training",
         )
     })?;
-    let toolkit_training_outcome = run_apple_adapter_toolkit_training(&toolkit_training_request)
-        .map_err(|error| format!("Apple toolkit training failed: {error}"))?;
+    let training_started = Instant::now();
+    let backend = AppleAdapterTrainingExecutionBackend::new(
+        execution_config,
+        &train_dataset,
+        captures.as_slice(),
+        &environment,
+    )
+    .map_err(|error| format!("Failed to build Psionic Apple training backend: {error}"))?;
+    let sft_outcome =
+        run_apple_adapter_sft_export(&backend, &train_dataset, &environment, &sft_request)
+            .map_err(|error| format!("Psionic Apple training failed: {error}"))?;
+    let training_wall_clock_ms = elapsed_ms(training_started);
+    let training_artifacts =
+        write_psionic_training_artifacts(run_directory.as_path(), &sft_outcome)?;
     with_controller(|controller| {
         controller.push_log(
             run_id,
             format!(
-                "launch: Apple toolkit checkpoint {} ({} bytes, {} ms)",
-                toolkit_training_outcome.checkpoint_path.display(),
-                toolkit_training_outcome.checkpoint_size_bytes,
-                toolkit_training_outcome.receipt.duration_ms
+                "launch: Psionic checkpoint {} ({} bytes, {} ms)",
+                training_artifacts.final_checkpoint_path.display(),
+                training_artifacts.checkpoint_size_bytes,
+                training_wall_clock_ms
             ),
-            "Completed Apple toolkit training",
+            "Completed Rust-native Apple training",
         )
     })?;
-    let toolkit_export_outcome =
-        run_apple_adapter_toolkit_export(&AppleAdapterToolkitExportRequest {
-            checkpoint_path: toolkit_training_outcome.checkpoint_path.clone(),
-            ..toolkit_export_request
-        })
-        .map_err(|error| format!("Apple toolkit export failed: {error}"))?;
-    with_controller(|controller| {
-        controller.push_log(
-            run_id,
-            format!(
-                "launch: Apple toolkit exported {} (asset sha256={}, {} ms)",
-                toolkit_export_outcome.toolkit_package_path.display(),
-                toolkit_export_outcome.adapter_weights_sha256,
-                toolkit_export_outcome.receipt.duration_ms
-            ),
-            "Completed Apple toolkit runtime asset export",
-        )
-    })?;
-    let adapter_package = build_toolkit_adapter_package(
-        run_id,
-        request,
-        &runtime_profile,
-        &packing_policy,
-        &toolkit_export_outcome,
-    )?;
     let staged_package_path =
         staging_root.join(package_directory_name(request.package_name.as_str()));
     if staged_package_path.exists() {
@@ -664,25 +655,35 @@ fn execute_launch_pipeline(
             )
         })?;
     }
-    adapter_package
+    let export_started = Instant::now();
+    sft_outcome
+        .adapter_package
         .write_to_directory(staged_package_path.as_path())
         .map_err(|error| format!("Failed to write staged Apple adapter package: {error}"))?;
+    let export_wall_clock_ms = elapsed_ms(export_started);
+    with_controller(|controller| {
+        controller.push_log(
+            run_id,
+            format!(
+                "launch: Psionic exported {} (package digest={}, {} ms)",
+                staged_package_path.display(),
+                sft_outcome.adapter_package.package_digest,
+                export_wall_clock_ms
+            ),
+            "Completed Rust-native Apple runtime asset export",
+        )
+    })?;
 
     with_controller(|controller| {
         let run = controller.run_mut(run_id)?;
         run.staged_package_path = Some(staged_package_path.display().to_string());
-        run.toolkit_checkpoint_path = Some(
-            toolkit_training_outcome
-                .checkpoint_path
+        run.training_checkpoint_path = Some(
+            training_artifacts
+                .final_checkpoint_path
                 .display()
                 .to_string(),
         );
-        run.toolkit_export_package_path = Some(
-            toolkit_export_outcome
-                .toolkit_package_path
-                .display()
-                .to_string(),
-        );
+        run.runtime_asset_package_path = Some(staged_package_path.display().to_string());
         run.launch_state = AppleAdapterOperatorStageState::Completed;
         run.last_error = None;
         run.updated_at_epoch_ms = current_epoch_ms();
@@ -717,11 +718,12 @@ fn execute_launch_pipeline(
     )
     .map_err(|error| format!("Apple adapter runtime smoke failed: {error}"))?;
 
-    let local_summary = build_toolkit_local_summary(
-        &toolkit_training_outcome,
-        &toolkit_export_outcome,
-        &adapter_package,
+    let local_summary = build_psionic_local_summary(
+        &sft_outcome,
+        &training_artifacts,
         captures.as_slice(),
+        training_wall_clock_ms,
+        export_wall_clock_ms,
         &held_out_eval,
         &runtime_smoke,
         &runtime_profile,
@@ -2296,6 +2298,227 @@ fn build_execution_packing_policy(
     )
     .with_pad_to_multiple_of(8)
     .with_overlong_sequence_posture(OverlongSequencePosture::Refuse)
+}
+
+struct PsionicAppleTrainingArtifacts {
+    final_checkpoint_path: PathBuf,
+    checkpoint_size_bytes: u64,
+}
+
+fn build_psionic_execution_config(
+    run_id: &str,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
+    packing_policy: &DatasetPackingPolicy,
+) -> AppleAdapterExecutionConfig {
+    let optimizer =
+        TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0);
+    AppleAdapterExecutionConfig {
+        run_id: run_id.to_string(),
+        checkpoint_family: format!("{APPLE_TRAINING_CHECKPOINT_FAMILY}.psionic"),
+        budget: TrainingLoopBudget {
+            max_steps: 4,
+            steps_per_window: 1,
+            windows_per_cadence: 1,
+        },
+        packing_policy: packing_policy.clone(),
+        precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
+        activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
+        model: AppleAdapterReferenceModel {
+            base_model_signature: runtime_profile.base_model_signature(),
+            tokenizer_digest: runtime_profile
+                .dataset_metadata()
+                .tokenizer
+                .tokenizer_digest,
+            prompt_shaping_digest: runtime_profile.prompt_shaping_digest(),
+            input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            targets: apple_live_reference_trainable_targets(
+                optimizer,
+                TrainingOptimizerResidencyPolicy::host_only(),
+            ),
+        },
+    }
+}
+
+fn build_psionic_sft_request(
+    run_id: &str,
+    request: &AppleAdapterOperatorLaunchRequest,
+) -> AppleAdapterSftRunRequest {
+    let slug = slugify(run_id);
+    AppleAdapterSftRunRequest {
+        dataset_ref: dataset_ref_for_path(request.train_dataset_path.as_str(), "train"),
+        benchmark_refs: vec![format!(
+            "benchmark://openagents/apple_adapter/{slug}/held_out"
+        )],
+        validator_policy_ref: format!("validator://openagents/apple_adapter/{slug}/held_out"),
+        package_name: request.package_name.clone(),
+        author: request.author.clone(),
+        description: request.description.clone(),
+        license: request.license.clone(),
+        started_at_ms: current_epoch_ms(),
+        step_duration_ms: 250,
+    }
+}
+
+fn write_psionic_training_artifacts(
+    run_directory: &Path,
+    outcome: &AppleAdapterSftRunOutcome,
+) -> Result<PsionicAppleTrainingArtifacts, String> {
+    let root = run_directory.join("psionic");
+    let checkpoints_dir = root.join("checkpoints");
+    fs::create_dir_all(checkpoints_dir.as_path()).map_err(|error| {
+        format!(
+            "Failed to create Psionic checkpoint directory {}: {error}",
+            checkpoints_dir.display()
+        )
+    })?;
+    let initial_path = checkpoints_dir.join("adapter-initial.safetensors");
+    let final_path = checkpoints_dir.join("adapter-final.safetensors");
+    let (initial_bytes, _) = outcome
+        .initial_bundle
+        .export_safetensors()
+        .map_err(|error| format!("Failed to export initial Psionic checkpoint: {error}"))?;
+    let (final_bytes, _) = outcome
+        .final_bundle
+        .export_safetensors()
+        .map_err(|error| format!("Failed to export final Psionic checkpoint: {error}"))?;
+    fs::write(initial_path.as_path(), initial_bytes).map_err(|error| {
+        format!(
+            "Failed to write initial Psionic checkpoint {}: {error}",
+            initial_path.display()
+        )
+    })?;
+    fs::write(final_path.as_path(), final_bytes.as_slice()).map_err(|error| {
+        format!(
+            "Failed to write final Psionic checkpoint {}: {error}",
+            final_path.display()
+        )
+    })?;
+
+    let summary_path = root.join("training-summary.json");
+    let summary_bytes = serde_json::to_vec_pretty(&outcome.summary)
+        .map_err(|error| format!("Failed to encode Psionic training summary: {error}"))?;
+    fs::write(summary_path.as_path(), summary_bytes).map_err(|error| {
+        format!(
+            "Failed to write Psionic training summary {}: {error}",
+            summary_path.display()
+        )
+    })?;
+
+    let receipts_path = root.join("step-receipts.json");
+    let receipt_bytes = serde_json::to_vec_pretty(&outcome.step_receipts)
+        .map_err(|error| format!("Failed to encode Psionic step receipts: {error}"))?;
+    fs::write(receipts_path.as_path(), receipt_bytes).map_err(|error| {
+        format!(
+            "Failed to write Psionic step receipts {}: {error}",
+            receipts_path.display()
+        )
+    })?;
+
+    let gradients_path = root.join("gradient-records.json");
+    let gradient_bytes = serde_json::to_vec_pretty(&outcome.gradient_records)
+        .map_err(|error| format!("Failed to encode Psionic gradient records: {error}"))?;
+    fs::write(gradients_path.as_path(), gradient_bytes).map_err(|error| {
+        format!(
+            "Failed to write Psionic gradient records {}: {error}",
+            gradients_path.display()
+        )
+    })?;
+
+    Ok(PsionicAppleTrainingArtifacts {
+        final_checkpoint_path: final_path,
+        checkpoint_size_bytes: match u64::try_from(final_bytes.len()) {
+            Ok(value) => value,
+            Err(_) => u64::MAX,
+        },
+    })
+}
+
+fn build_psionic_local_summary(
+    outcome: &AppleAdapterSftRunOutcome,
+    artifacts: &PsionicAppleTrainingArtifacts,
+    captures: &[AppleAdapterSampleTokenCapture],
+    training_wall_clock_ms: u64,
+    export_wall_clock_ms: u64,
+    held_out_eval: &EvalRunState,
+    runtime_smoke: &AppleAdapterRuntimeSmokeReceipt,
+    runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
+) -> AppleAdapterOperatorLocalSummary {
+    let processed_token_count = Some(
+        captures
+            .iter()
+            .map(|capture| u64::from(capture.total_tokens()))
+            .sum::<u64>(),
+    );
+    let average_loss = (!outcome.step_receipts.is_empty()).then(|| {
+        outcome
+            .step_receipts
+            .iter()
+            .map(|receipt| f64::from(receipt.loss))
+            .sum::<f64>()
+            / outcome.step_receipts.len() as f64
+    });
+    let runtime_asset_size_bytes = outcome
+        .adapter_package
+        .inventory
+        .iter()
+        .find(|entry| entry.relative_path == "adapter_weights.bin")
+        .map(|entry| entry.byte_length);
+    AppleAdapterOperatorLocalSummary {
+        completed_steps: outcome.summary.run_summary.completed_steps,
+        expected_steps: outcome.summary.run_summary.budget.max_steps,
+        average_loss,
+        processed_token_count,
+        training_backend: APPLE_PSIONIC_TRAINING_BACKEND_ID.to_string(),
+        export_backend: APPLE_PSIONIC_EXPORT_BACKEND_ID.to_string(),
+        training_wall_clock_ms: Some(training_wall_clock_ms),
+        export_wall_clock_ms: Some(export_wall_clock_ms),
+        training_max_resident_set_size_bytes: None,
+        training_peak_memory_footprint_bytes: None,
+        export_max_resident_set_size_bytes: None,
+        export_peak_memory_footprint_bytes: None,
+        checkpoint_size_bytes: Some(artifacts.checkpoint_size_bytes),
+        runtime_asset_size_bytes,
+        toolkit_root: None,
+        toolkit_python: None,
+        held_out_pass_rate_bps: held_out_eval
+            .summary
+            .as_ref()
+            .map(|summary| summary.pass_rate_bps),
+        held_out_average_score_bps: held_out_eval
+            .summary
+            .as_ref()
+            .and_then(|summary| summary.average_score_bps),
+        runtime_smoke_passed: Some(runtime_smoke.passed),
+        runtime_smoke_digest: Some(runtime_smoke.smoke_digest.clone()),
+        package_digest: Some(outcome.adapter_package.package_digest.clone()),
+        adapter_identifier: Some(outcome.adapter_package.metadata.adapter_identifier.clone()),
+        base_model_signature: outcome
+            .adapter_package
+            .metadata
+            .base_model_signature
+            .clone(),
+        tokenizer_digest: runtime_profile
+            .dataset_metadata()
+            .tokenizer
+            .tokenizer_digest,
+        prompt_shaping_digest: runtime_profile.prompt_shaping_digest(),
+        runtime_model_id: runtime_profile.model_id.clone(),
+        runtime_use_case: runtime_profile.use_case.clone(),
+        runtime_guardrails: runtime_profile.guardrails.clone(),
+        locale: runtime_profile.locale.clone(),
+        default_instruction: runtime_profile.default_instruction.clone(),
+        bridge_version: runtime_profile.bridge_version.clone(),
+        bridge_platform: runtime_profile.bridge_platform.clone(),
+        package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
+    }
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    match u64::try_from(started.elapsed().as_millis()) {
+        Ok(value) => value,
+        Err(_) => u64::MAX,
+    }
 }
 
 fn build_toolkit_training_request(

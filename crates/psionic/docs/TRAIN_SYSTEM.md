@@ -1,6 +1,6 @@
 # Psionic Train System
 
-> Status: updated 2026-03-15 after reviewing `docs/MVP.md`,
+> Status: updated 2026-03-16 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`,
 > `docs/audits/2026-03-13-intellect-lessons-for-psionic-train-audit.md`,
 > `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`,
@@ -181,20 +181,20 @@ The current path is:
 2. `psionic-environments` binds that dataset to the Apple adapter
    train/eval/benchmark environment package family so the train, held-out eval,
    and runtime-smoke lanes all point at one versioned environment truth.
-3. `psionic-train` currently exposes two Apple lanes:
-   - a repo-owned reference backend (`AppleAdapterTrainingExecutionBackend`)
-     that turns packed samples into token-sequence reference batches with
-     turn-aware prompt pooling, tool/schema boundary encoding, and
-     completion-side token-sequence supervision
-   - the shipped live operator lane, which wraps the local Apple adapter
-     toolkit so the desktop flow can produce Apple-valid runtime assets
-4. The current operator path uses
-   `run_apple_adapter_toolkit_training(...)` and
-   `run_apple_adapter_toolkit_export(...)` to capture typed train/export
-   receipts and then stage the final `.fmadapter` through `psionic-adapters`
-   with repo-owned lineage and environment metadata. The older
-   `run_apple_adapter_sft_export(...)` path remains a repo-native reference
-   exporter, not the authoritative Apple-valid runtime-asset path.
+3. `psionic-train` now exposes the live Apple SFT executor through the
+   repo-owned `AppleAdapterTrainingExecutionBackend` plus
+   `run_apple_adapter_sft_export(...)`, which turns packed samples into
+   token-sequence reference batches with turn-aware prompt pooling,
+   tool/schema boundary encoding, completion-side token-sequence supervision,
+   checkpoint emission, and staged `.fmadapter` package construction.
+4. The current operator path in
+   `apps/autopilot-desktop/src/apple_adapter_training_control.rs` now calls
+   that Rust-native Psionic executor directly for the authoritative train
+   phase. A real operator run (`rust-native-3768-validation-1773641773075`)
+   completed the Rust train step, wrote repo-owned checkpoints, wrote a staged
+   package, and then failed later at the bridge-backed adapter-load gate. That
+   means training is now Rust-native in the shipped path, while export/runtime
+   parity is still an explicit downstream gate rather than a solved fact.
 5. `psionic-eval` runs the held-out and benchmark-style adapter harnesses, and
    the bridge-backed runtime-smoke path proves the exported package can be
    loaded and exercised against the live Apple FM runtime. That smoke path now
@@ -226,21 +226,20 @@ The shipped Apple reference lane is intentionally narrow:
 
 - base-model weights stay frozen
 - only adapter parameter groups are updated
-- the current live operator precision posture is `f16_mixed`
-- the current live operator activation-checkpoint posture is `enabled`
+- the current live operator precision posture is `f32_reference`
+- the current live operator activation-checkpoint posture is `disabled`
 - tokenizer and packing truth now come from a repo-owned Apple-compatible
   transcript preprocessor, not an Apple-exact tokenizer oracle
-- the current live Apple-valid runtime asset is produced through the Apple
-  toolkit wrapper; the repo-native backend remains a narrower reference path
-  with hashed lexical token traces and pooled regression instead of native
-  Apple hidden states or a full decoder-loss trainer
+- the current live operator export attempt is repo-owned, but live bridge
+  acceptance still fails for the staged Rust-exported package, so the end to
+  end Apple-valid runtime-asset boundary is not honestly complete yet
 - the higher-level optional follow-on is draft-model distillation, not a second
   generic full-model trainer
 
-That is why the right current claim is "the repo ships a real Apple-valid
-operator lane with toolkit-backed training/export plus a separate repo-native
-reference backend" rather than "Psionic now has complete Rust-native
-distributed Apple FM training."
+That is why the right current claim is "the repo now ships a Rust-native
+authoritative Apple train phase with an unresolved export/runtime parity gate"
+rather than "Psionic now has complete Rust-native distributed Apple FM
+training."
 
 ### Relationship To Cluster And Distributed Training Substrate
 

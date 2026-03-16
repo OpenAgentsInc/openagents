@@ -249,6 +249,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
+name = "arc-benchmark"
+version = "0.1.0"
+dependencies = [
+ "arc-core",
+ "arc-engine",
+ "psionic-eval",
+ "psionic-research",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "arc-client"
+version = "0.1.0"
+dependencies = [
+ "arc-core",
+ "arc-engine",
+ "axum 0.8.8",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "arc-core"
 version = "0.1.0"
 dependencies = [
@@ -272,6 +300,16 @@ dependencies = [
 
 [[package]]
 name = "arc-engine"
+version = "0.1.0"
+dependencies = [
+ "arc-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "arc-solvers"
 version = "0.1.0"
 dependencies = [
  "arc-core",
@@ -585,6 +623,7 @@ dependencies = [
  "openagents-provider-substrate",
  "openagents-spark",
  "pollster",
+ "psionic-adapters",
  "psionic-apple-fm",
  "psionic-data",
  "psionic-environments",
@@ -6613,6 +6652,8 @@ dependencies = [
  "psionic-data",
  "psionic-datastream",
  "psionic-environments",
+ "psionic-models",
+ "psionic-runtime",
  "serde",
  "serde_json",
  "sha2",
@@ -6767,6 +6808,7 @@ name = "psionic-train"
 version = "0.1.1"
 dependencies = [
  "ed25519-dalek",
+ "half",
  "hex",
  "psionic-adapters",
  "psionic-cluster",

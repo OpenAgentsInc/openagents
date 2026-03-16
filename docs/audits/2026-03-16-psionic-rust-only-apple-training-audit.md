@@ -15,24 +15,35 @@ This is a codebase-grounded audit of the current tree, not a wish list.
 
 ## Executive Summary
 
-We are still using Python because the shipped Apple-valid training and export
-path is still the Apple Adapter Training Toolkit wrapper in
+Update after `#3768` on 2026-03-16:
+
+- the shipped Apple operator path no longer uses Python for the train phase
+- `apps/autopilot-desktop/src/apple_adapter_training_control.rs` now launches
+  the repo-owned `AppleAdapterTrainingExecutionBackend` through
+  `run_apple_adapter_sft_export(...)`
+- a real operator run,
+  `rust-native-3768-validation-1773641773075`, completed the Rust train step,
+  wrote repo-owned checkpoints, and staged a `.fmadapter`
+- that same run then failed at the live bridge adapter-load gate, so the lane
+  is still not honestly Rust-only end to end
+
+We are therefore still using Python only because the Apple-valid export parity
+problem is not closed yet and the toolkit path remains the external oracle in
 `crates/psionic/psionic-train/src/apple_toolkit.rs`.
 
 That wrapper is not incidental:
 
 - it discovers a toolkit checkout on disk
 - it discovers a Python interpreter inside the toolkit virtualenv
-- it launches `python -m examples.train_adapter`
 - it launches `python -m export.export_fmadapter`
-- the desktop operator lane in
-  `apps/autopilot-desktop/src/apple_adapter_training_control.rs` still calls
-  that wrapper as the authoritative live path
+- the bridge-accepted runtime payload contract is still judged against that
+  external path until the native exporter passes the live bridge gate
 
 So the honest current answer is:
 
-> the Apple operator lane is still Rust-orchestrated but Python-executed for the
-> authoritative train and export steps.
+> the Apple operator lane is now Rust-executed for training, but it is still
+> not honestly Rust-only because the native export/runtime path is not yet
+> bridge-accepted without the toolkit oracle.
 
 That is also why the operator UI and CLI feel blind during long runs:
 
@@ -49,7 +60,7 @@ The current lane is therefore failing two separate goals:
 
 ## Current Code Reality
 
-### 1. The live Apple train or export lane is still the Python toolkit wrapper
+### 1. The live Apple export parity oracle is still the Python toolkit wrapper
 
 The current authoritative wrapper is:
 
@@ -64,37 +75,35 @@ That file currently owns:
 - `run_apple_adapter_toolkit_export(...)`
 - `run_toolkit_command(...)`
 
-The current training command is built as:
-
-- `python -m examples.train_adapter ...`
-
 The current export command is built as:
 
 - `python -m export.export_fmadapter ...`
 
-This is not a fallback-only codepath. It is the path the desktop operator lane
-currently uses for the real run.
+This is no longer the live train-phase codepath after `#3768`, but it remains
+the external export oracle the native path still has to match.
 
-### 2. The app-owned operator flow still depends on that wrapper directly
+### 2. The app-owned operator flow now uses Rust for training but still needs
+the native exporter to reach bridge acceptance
 
 The relevant orchestrator is:
 
 - `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
 
-The current launch flow still does this:
+The current launch flow now does this:
 
-1. builds a toolkit training request
-2. calls `run_apple_adapter_toolkit_training(...)`
-3. builds a toolkit export request
-4. calls `run_apple_adapter_toolkit_export(...)`
-5. wraps the toolkit-produced runtime asset in repo-owned package metadata
-6. runs held-out eval and runtime smoke against the staged package
+1. builds a repo-owned `AppleAdapterExecutionConfig`
+2. launches `AppleAdapterTrainingExecutionBackend`
+3. runs `run_apple_adapter_sft_export(...)`
+4. writes repo-owned checkpoints, summaries, receipts, and gradient records
+5. stages the resulting `.fmadapter`
+6. runs held-out eval and bridge-backed runtime acceptance
 
-So even though the operator flow is app-owned Rust code, the heavy lifting for
-the current live train/export path is still the Python toolkit.
+So the heavy lifting for the train phase is now Rust. The missing piece is that
+the staged native export still failed to load through the live bridge in the
+first validation run.
 
-### 3. Psionic does have Rust Apple training code, but it is not yet the
-authoritative live path
+### 3. Psionic now has an authoritative Rust Apple training path, but export
+parity is still not complete
 
 The Rust-side reference surfaces exist in:
 
@@ -110,12 +119,14 @@ Those files are real work, not placeholders. They define:
 - reference export metadata
 - draft-model-related reference paths
 
-But they are still not the same thing as:
+After `#3768`, they are now the authoritative live training path for the
+desktop operator lane.
 
-- a Rust-native Apple-valid adapter trainer that matches the authoritative
-  runtime asset path
+But they are still not yet the same thing as:
+
 - a Rust-native Apple-valid `.fmadapter` exporter that emits the exact runtime
-  payload Apple accepts
+  payload Apple accepts through the live bridge
+- an honestly Rust-only end-to-end Apple lane
 
 The train system doc already says this precisely:
 
@@ -295,10 +306,15 @@ acceptance targets.
 ### 1. Psionic Apple Train: replace `apple_toolkit.rs` training invocation with
 an authoritative Rust-native Apple adapter SFT executor
 
+Status:
+
+- implemented in `#3768`
+
 Why:
 
-- the current authoritative training path still shells out to Python
-- `AppleAdapterTrainingExecutionBackend` is not yet the shipped live executor
+- the old authoritative training path shelled out to Python
+- `AppleAdapterTrainingExecutionBackend` had to become the shipped live
+  executor rather than a side reference backend
 
 Deliverables:
 
