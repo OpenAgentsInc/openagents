@@ -18,6 +18,7 @@ struct FoundationBridge {
         Starting server on port \(port)...
         Endpoints:
           GET  /health
+          POST /control/shutdown
           GET  /v1/models
           GET  /v1/adapters
           POST /v1/adapters/load

@@ -18,14 +18,16 @@ So: Swift talks to Apple; Rust talks to the bridge over HTTP; the desktop app ow
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  apps/autopilot-desktop                                          │
-│  - Finds or builds foundation-bridge binary                      │
-│  - Spawns / supervises bridge process                            │
+│  - Finds or builds foundation-bridge helper                      │
+│  - Launches FoundationBridge.app via Launch Services when        │
+│    available; falls back to raw binary exec only when needed     │
+│  - Supervises bridge health and stop/shutdown                    │
 │  - Mission Control UI, Go Online preflight, workbench            │
 │  - Uses psionic_apple_fm::AppleFmBridgeClient (HTTP)             │
 └────────────────────────────┬────────────────────────────────────┘
                              │ HTTP (127.0.0.1:11435)
 ┌────────────────────────────▼────────────────────────────────────┐
-│  swift/foundation-bridge (executable)                            │
+│  swift/foundation-bridge (executable + FoundationBridge.app)     │
 │  - GET /health, GET /v1/models, POST /v1/chat/completions, etc.  │
 │  - Calls Apple Foundation Models framework                      │
 └────────────────────────────┬────────────────────────────────────┘
@@ -88,6 +90,7 @@ validator, not as the trainer.
 - **Default base URL**: `http://127.0.0.1:11435`. Override with **`OPENAGENTS_APPLE_FM_BASE_URL`**.
 - **Key endpoints** (see `psionic_apple_fm::contract` and `swift/foundation-bridge/README.md`):
   - **`GET /health`** — Returns system model availability, supported use cases, guardrails. Used to decide “is the bridge up and is the system model ready?”
+  - **`POST /control/shutdown`** — Local-only shutdown request used by the desktop app when the helper was launched as a bundle.
   - **`GET /v1/models`** — List of model IDs (e.g. `apple-foundation-model`).
   - **`POST /v1/chat/completions`** — OpenAI-style chat completion.
   - Session, stream, and structured-generation endpoints are also part of the
@@ -115,17 +118,26 @@ If the bridge process is running but Apple Intelligence is off (or the system mo
 
 ## 5. Binary discovery (where the app looks for the bridge)
 
-The desktop app looks for the **`foundation-bridge`** binary in this order:
+The desktop app looks for the bridge helper in this order:
 
 1. **`OPENAGENTS_APPLE_FM_BRIDGE_BIN`** — If set, use this path (must exist).
 2. **CWD-relative** (when run from repo root):
+   `bin/FoundationBridge.app/Contents/MacOS/foundation-bridge`,
    `bin/foundation-bridge`,
    `swift/foundation-bridge/.build/release/foundation-bridge`,
    `swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge`.
-3. **Exe-relative repo root**: walk up from the current executable path until a directory contains `swift/foundation-bridge` or `bin/foundation-bridge`; then check `bin/foundation-bridge` and the same `.build/` paths under that root. This lets the app find the binary when run from `target/debug` or elsewhere under the repo.
+3. **Exe-relative repo root**: walk up from the current executable path until a directory contains `swift/foundation-bridge`, `bin/foundation-bridge`, or `bin/FoundationBridge.app/...`; then check the same candidates under that root. This lets the app find the helper when run from `target/debug` or elsewhere under the repo.
 4. **Bundled with the app** (for shipped .app):
-   - **Next to the executable**: `YourApp.app/Contents/MacOS/foundation-bridge`.
-   - **In Resources**: `YourApp.app/Contents/Resources/foundation-bridge`.
+   - **Preferred helper bundle**: `YourApp.app/Contents/Helpers/FoundationBridge.app/Contents/MacOS/foundation-bridge`.
+   - **Preferred resource bundle**: `YourApp.app/Contents/Resources/FoundationBridge.app/Contents/MacOS/foundation-bridge`.
+   - **Raw fallback next to the executable**: `YourApp.app/Contents/MacOS/foundation-bridge`.
+   - **Raw fallback in Resources**: `YourApp.app/Contents/Resources/foundation-bridge`.
+
+When the discovered helper lives inside `FoundationBridge.app`, the desktop app
+should launch the bundle through Launch Services (`open ... FoundationBridge.app
+--args <port>`) instead of exec'ing the inner Mach-O directly. That preserves
+bundle identity and avoids Apple Intelligence "this app needs an update"
+warnings that can appear when the raw executable path is used.
 
 If none of these yield an existing binary, the app may try to **auto-build** once (see below). If the app is **running from an .app bundle** (path contains `.app/Contents/`), it does **not** tell the user to build; it tells them the app was not packaged with the bridge and to reinstall or get a complete build.
 
@@ -133,14 +145,14 @@ If none of these yield an existing binary, the app may try to **auto-build** onc
 
 - **Build** (from repo root):
   `cd swift/foundation-bridge && ./build.sh`
-  Produces **`bin/foundation-bridge`** and ad-hoc signs the copied binary so
-  macOS will launch the rebuilt sidecar locally. The bridge is written in
+  Produces **`bin/foundation-bridge`** plus a signed
+  **`bin/FoundationBridge.app`** helper bundle. The bridge is written in
   **Swift**, so the build requires the **Swift compiler** (Xcode from the App
   Store, or **`xcode-select --install`** for Command Line Tools only—no full
   Xcode needed).
 - **Run**:
-  `./bin/foundation-bridge`
-  Default port **11435**. Optional: `./bin/foundation-bridge 8080` for a different port (and set `OPENAGENTS_APPLE_FM_BASE_URL` accordingly).
+  `open -n -g ./bin/FoundationBridge.app --args 11435`
+  Default port **11435**. Optional low-level debug path: `./bin/foundation-bridge 8080` for a different port (and set `OPENAGENTS_APPLE_FM_BASE_URL` accordingly).
 - **Test**:
   `curl -s http://127.0.0.1:11435/health`
   You should get a JSON object with system model availability. Before working on autopilot or Mission Control, **test the bridge first** (build → run → curl health), then start the desktop app. See **AGENTS.md** and the main **README.md** “Agent Install Instructions” for the canonical “test bridge first” workflow.
@@ -151,9 +163,10 @@ To ship so **users never need to build the bridge or install Xcode**:
 
 1. **Build the bridge once** (on your machine or in CI):
    `cd swift/foundation-bridge && ./build.sh`
-   → produces `bin/foundation-bridge`.
+   → produces `bin/foundation-bridge` and `bin/FoundationBridge.app`.
 2. **Include that binary in your app bundle** when you create the .app:
-   - Put **`foundation-bridge`** in **`YourApp.app/Contents/MacOS/`** (next to your main executable), or in **`YourApp.app/Contents/Resources/`**. The app checks both.
+   - Prefer placing **`FoundationBridge.app`** in **`YourApp.app/Contents/Helpers/`** or **`YourApp.app/Contents/Resources/`** so the desktop app can launch it as a helper bundle.
+   - Raw **`foundation-bridge`** binaries in **`Contents/MacOS/`** or **`Contents/Resources/`** remain a fallback for older packaging layouts.
    - For other layouts, set **`OPENAGENTS_APPLE_FM_BRIDGE_BIN`** to the full path of the binary in your package.
 3. Users then only need: **macOS 26+**, **Apple Silicon**, and **Apple Intelligence enabled**. No Xcode or build step.
 
@@ -181,7 +194,7 @@ Other “not ready” cases:
 When working on autopilot, Mission Control, or Apple FM:
 
 1. **Build the bridge**: `cd swift/foundation-bridge && ./build.sh`.
-2. **Run the bridge**: `./bin/foundation-bridge` (leave running or in another terminal).
+2. **Run the bridge**: `open -n -g ./bin/FoundationBridge.app --args 11435` (leave running or in another terminal).
 3. **Verify**: `curl -s http://127.0.0.1:11435/health` — confirm JSON response.
 4. **Then** run or test the desktop app (`cargo autopilot` or equivalent).
 

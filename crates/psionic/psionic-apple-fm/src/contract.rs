@@ -12,6 +12,9 @@ pub const DEFAULT_APPLE_FM_MODEL_ID: &str = "apple-foundation-model";
 /// Health endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_HEALTH_PATH: &str = "/health";
 
+/// Local control endpoint for bridge shutdown.
+pub const APPLE_FM_BRIDGE_SHUTDOWN_PATH: &str = "/control/shutdown";
+
 /// Model-list endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_MODELS_PATH: &str = "/v1/models";
 
