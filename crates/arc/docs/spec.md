@@ -270,6 +270,9 @@ correspondence candidates now also live here.
 
 `crates/arc/datasets` now exists as the owner for ARC-AGI-1/2 file loading and
 split metadata export into Psionic-owned dataset manifest contracts.
+The current parser/objectization acceptance corpus now lives in
+`crates/arc/core/fixtures/objectization_corpus_manifest.json` over sampled
+ARC-AGI-1/2 task fixtures.
 
 ## 4. Shared domain model
 

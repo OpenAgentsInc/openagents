@@ -6,6 +6,7 @@
 )]
 
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use arc_core::{
     ArcAction, ArcActionKind, ArcBenchmark, ArcGameState, ArcOperationMode, ArcRecording,
@@ -371,4 +372,92 @@ fn correspondence_candidates_match_train_objects_by_shape_and_degree() {
         correspondence[0].candidates[1].output_object,
         arc_core::ObjectId(1)
     );
+}
+
+#[test]
+fn parser_objectization_corpus_stays_deterministic_for_sampled_arc_tasks() {
+    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/objectization_corpus_manifest.json");
+    let manifest_input =
+        fs::read_to_string(&manifest_path).expect("objectization corpus manifest should exist");
+    let corpus: Vec<ObjectizationCorpusEntry> =
+        serde_json::from_str(&manifest_input).expect("objectization corpus manifest should parse");
+
+    for entry in corpus {
+        let task_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&entry.task_path);
+        let task_path_string = task_path.to_string_lossy();
+        assert!(task_path_string.contains(&entry.family));
+        assert!(task_path_string.contains(&entry.split));
+        let task = load_task_fixture(&task_path);
+        assert_eq!(task.id.as_str(), entry.expected_task_id);
+
+        let canonical = canonicalize_task(&task).expect("task should canonicalize");
+        let correspondence = extract_train_correspondence_candidates(&task)
+            .expect("correspondence candidates should extract");
+
+        let train_input_counts = canonical
+            .normalized_train
+            .iter()
+            .map(|pair| extract_relation_graph(&pair.input.grid).objects.len())
+            .collect::<Vec<_>>();
+        let train_output_counts = canonical
+            .normalized_train
+            .iter()
+            .map(|pair| extract_relation_graph(&pair.output.grid).objects.len())
+            .collect::<Vec<_>>();
+        let test_input_count = canonical
+            .normalized_test_inputs
+            .first()
+            .map(|grid| extract_relation_graph(&grid.grid).objects.len())
+            .expect("sample corpus should include one test input");
+
+        assert_eq!(train_input_counts, entry.expected_train_input_object_counts);
+        assert_eq!(
+            train_output_counts,
+            entry.expected_train_output_object_counts
+        );
+        assert_eq!(test_input_count, entry.expected_test_input_object_count);
+        assert_eq!(
+            extract_relation_graph(&canonical.normalized_train[0].input.grid).objects[0].holes,
+            entry.expected_first_train_input_holes
+        );
+        assert_eq!(
+            correspondence[0].candidates[0].score,
+            entry.expected_top_correspondence_score
+        );
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ObjectizationCorpusEntry {
+    family: String,
+    split: String,
+    task_path: String,
+    expected_task_id: String,
+    expected_train_input_object_counts: Vec<usize>,
+    expected_train_output_object_counts: Vec<usize>,
+    expected_test_input_object_count: usize,
+    expected_first_train_input_holes: u8,
+    expected_top_correspondence_score: u8,
+}
+
+#[derive(serde::Deserialize)]
+struct RawTaskFixture {
+    id: Option<ArcTaskId>,
+    train: Vec<arc_core::ArcExample>,
+    test: Vec<arc_core::ArcGrid>,
+}
+
+fn load_task_fixture(path: &Path) -> ArcTask {
+    let input = fs::read_to_string(path).expect("task fixture should be readable");
+    let raw: RawTaskFixture = serde_json::from_str(&input).expect("task fixture should parse");
+    let task_id = raw.id.unwrap_or_else(|| {
+        ArcTaskId::new(
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .expect("fixture filename should be valid UTF-8"),
+        )
+        .expect("fixture filename should be a valid task id")
+    });
+    ArcTask::new(task_id, raw.train, raw.test).expect("task fixture should be valid")
 }

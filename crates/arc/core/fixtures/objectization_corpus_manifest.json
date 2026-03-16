@@ -1,0 +1,46 @@
+[
+  {
+    "family": "arc_agi1",
+    "split": "train",
+    "task_path": "../datasets/fixtures/arc_agi1/train/demo_square.json",
+    "expected_task_id": "demo_square",
+    "expected_train_input_object_counts": [1],
+    "expected_train_output_object_counts": [1],
+    "expected_test_input_object_count": 1,
+    "expected_first_train_input_holes": 0,
+    "expected_top_correspondence_score": 10
+  },
+  {
+    "family": "arc_agi1",
+    "split": "evaluation",
+    "task_path": "../datasets/fixtures/arc_agi1/evaluation/demo_line.json",
+    "expected_task_id": "demo_line",
+    "expected_train_input_object_counts": [1],
+    "expected_train_output_object_counts": [2],
+    "expected_test_input_object_count": 1,
+    "expected_first_train_input_holes": 0,
+    "expected_top_correspondence_score": 5
+  },
+  {
+    "family": "arc_agi2",
+    "split": "train",
+    "task_path": "../datasets/fixtures/arc_agi2/train/demo_ring.json",
+    "expected_task_id": "demo_ring",
+    "expected_train_input_object_counts": [1],
+    "expected_train_output_object_counts": [1],
+    "expected_test_input_object_count": 1,
+    "expected_first_train_input_holes": 1,
+    "expected_top_correspondence_score": 7
+  },
+  {
+    "family": "arc_agi2",
+    "split": "evaluation",
+    "task_path": "../datasets/fixtures/arc_agi2/evaluation/demo_shift.json",
+    "expected_task_id": "demo_shift",
+    "expected_train_input_object_counts": [1],
+    "expected_train_output_object_counts": [1],
+    "expected_test_input_object_count": 1,
+    "expected_first_train_input_holes": 0,
+    "expected_top_correspondence_score": 10
+  }
+]
