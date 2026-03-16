@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use wgpui::components::sections::{TerminalLine, TerminalStream};
 use wgpui::{Bounds, Component, Hsla, InputEvent, PaintContext, Point, Quad, theme};
@@ -32,6 +33,8 @@ const TRAINING_CARD_GAP: f32 = 8.0;
 const TRAINING_ROW_HEIGHT: f32 = 44.0;
 const TRAINING_ROW_GAP: f32 = 8.0;
 const TRAINING_MAX_RUN_ROWS: usize = 9;
+const TRAINING_RUN_LOG_TAIL_LIMIT: usize = 256;
+const TRAINING_RUN_STALE_HEARTBEAT_MS: u64 = 15_000;
 
 pub fn paint(
     content_bounds: Bounds,
@@ -914,7 +917,11 @@ fn sync_selected_run_detail_state(
         pane_state.log_tail_run_id = Some(run.run_id.clone());
         pane_state.selected_run_log_scroll_offset_px = 0.0;
     }
-    for (index, line) in run.log_lines.iter().enumerate() {
+    let start = run
+        .log_lines
+        .len()
+        .saturating_sub(TRAINING_RUN_LOG_TAIL_LIMIT);
+    for (index, line) in run.log_lines.iter().enumerate().skip(start) {
         pane_state.log_tail.push_line(
             TerminalLine::new(training_log_stream(line.as_str()), line.clone())
                 .with_key(format!("{}:{index}", run.run_id)),
@@ -932,6 +939,8 @@ pub(crate) fn detail_lines_for_run(
     run: &DesktopControlAppleAdapterOperatorRunStatus,
     training_status: &DesktopControlTrainingStatus,
 ) -> Vec<String> {
+    let failure_context = run_failure_context(run).unwrap_or_else(|| "-".to_string());
+    let loss_trend = run_loss_trend_label(run);
     let mut lines = vec![
         format!("Run id: {}", run.run_id),
         format!(
@@ -953,6 +962,15 @@ pub(crate) fn detail_lines_for_run(
             "Staged / exported: {} // {}",
             run.staged_package_path.as_deref().unwrap_or("-"),
             run.exported_package_path.as_deref().unwrap_or("-")
+        ),
+        format!(
+            "Run health: {} // failure context {}",
+            run_health_label(run),
+            failure_context
+        ),
+        format!(
+            "Stages: launch {} // eval {} // export {} // accept {}",
+            run.launch_state, run.evaluation_state, run.export_state, run.acceptance_state
         ),
         format!(
             "Steps: {}/{} // average loss {}",
@@ -1008,15 +1026,19 @@ pub(crate) fn detail_lines_for_run(
             run.authority.accepted_outcome_id.as_deref().unwrap_or("-")
         ),
         format!(
-            "Live phase / heartbeat: {} / {}",
+            "Live phase / heartbeat / phase elapsed: {} / {} / {}",
             run.progress.current_phase.as_deref().unwrap_or("-"),
             run.progress
                 .last_heartbeat_at_epoch_ms
                 .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .phase_elapsed_ms
+                .map(|value| value.to_string())
                 .unwrap_or_else(|| "-".to_string())
         ),
         format!(
-            "Live elapsed / ETA: {} / {}",
+            "Live elapsed / ETA / loss trend: {} / {} / {}",
             run.progress
                 .run_elapsed_ms
                 .map(|value| value.to_string())
@@ -1024,10 +1046,11 @@ pub(crate) fn detail_lines_for_run(
             run.progress
                 .eta_ms
                 .map(|value| value.to_string())
-                .unwrap_or_else(|| "-".to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            loss_trend
         ),
         format!(
-            "Live epoch / eval / checkpoint: {}/{} // {}/{} // {}",
+            "Live epoch / eval / checkpoint / smoke: {}/{} // {}/{} // {} // {}",
             run.progress
                 .current_epoch
                 .map(|value| value.to_string())
@@ -1044,7 +1067,10 @@ pub(crate) fn detail_lines_for_run(
                 .expected_eval_samples
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "-".to_string()),
-            run.progress.last_checkpoint_path.as_deref().unwrap_or("-")
+            run.progress.last_checkpoint_path.as_deref().unwrap_or("-"),
+            run.runtime_smoke_passed
+                .map(truth_label)
+                .unwrap_or("unknown")
         ),
         format!("Last action: {}", run.last_action.as_deref().unwrap_or("-")),
         format!("Last error: {}", run.last_error.as_deref().unwrap_or("-")),
@@ -1054,6 +1080,9 @@ pub(crate) fn detail_lines_for_run(
             "Recent event {} // {} // {}",
             event.kind, event.phase, event.detail
         ));
+    }
+    for log_line in run.log_lines.iter().rev().take(2) {
+        lines.push(format!("Recent backend log: {}", log_line));
     }
     if let Some(training_run_id) = run.authority.training_run_id.as_deref() {
         let matching_windows = training_status
@@ -1140,6 +1169,120 @@ pub(crate) fn detail_lines_for_run(
             .unwrap_or("-")
     ));
     lines
+}
+
+fn run_health_label(run: &DesktopControlAppleAdapterOperatorRunStatus) -> &'static str {
+    if run.last_error.is_some()
+        || [
+            run.launch_state.as_str(),
+            run.evaluation_state.as_str(),
+            run.export_state.as_str(),
+            run.acceptance_state.as_str(),
+        ]
+        .into_iter()
+        .any(|state| state == "failed")
+    {
+        return "failed";
+    }
+
+    let has_running_stage = [
+        run.launch_state.as_str(),
+        run.evaluation_state.as_str(),
+        run.export_state.as_str(),
+        run.acceptance_state.as_str(),
+    ]
+    .into_iter()
+    .any(|state| state == "running");
+    if has_running_stage {
+        if let (Some(now), Some(last_heartbeat)) =
+            (current_epoch_ms(), run.progress.last_heartbeat_at_epoch_ms)
+            && now.saturating_sub(last_heartbeat) > TRAINING_RUN_STALE_HEARTBEAT_MS
+        {
+            return "stalled";
+        }
+        return "live";
+    }
+
+    if run.acceptance_state == "completed" {
+        "accepted"
+    } else if run.evaluation_state == "completed" && run.launch_state == "completed" {
+        "completed"
+    } else if run.launch_state == "completed" {
+        "checkpointed"
+    } else {
+        "pending"
+    }
+}
+
+fn run_failure_context(run: &DesktopControlAppleAdapterOperatorRunStatus) -> Option<String> {
+    let stage = if run.launch_state == "failed" {
+        Some("launch")
+    } else if run.evaluation_state == "failed" {
+        Some("evaluation")
+    } else if run.export_state == "failed" {
+        Some("export")
+    } else if run.acceptance_state == "failed" {
+        Some("acceptance")
+    } else {
+        run.progress.current_phase.as_deref()
+    };
+    let detail = run
+        .last_error
+        .as_deref()
+        .or_else(|| {
+            run.recent_events
+                .iter()
+                .rev()
+                .find(|event| event.kind.contains("failed") || event.detail.contains("failed"))
+                .map(|event| event.detail.as_str())
+        })
+        .or_else(|| {
+            run.log_lines
+                .iter()
+                .rev()
+                .find(|line| training_log_stream(line.as_str()) == TerminalStream::Stderr)
+                .map(String::as_str)
+        })?;
+    Some(format!("{} // {}", stage.unwrap_or("operator"), detail))
+}
+
+fn run_loss_trend_label(run: &DesktopControlAppleAdapterOperatorRunStatus) -> String {
+    let losses = run
+        .recent_events
+        .iter()
+        .filter(|event| event.kind == "loss_observed")
+        .filter_map(|event| event.loss_label.as_deref())
+        .filter_map(|loss| loss.parse::<f64>().ok())
+        .collect::<Vec<_>>();
+    if losses.len() < 2 {
+        return run
+            .progress
+            .latest_loss_label
+            .clone()
+            .unwrap_or_else(|| "-".to_string());
+    }
+    let previous = losses[losses.len() - 2];
+    let current = losses[losses.len() - 1];
+    let delta = current - previous;
+    let direction = if delta.abs() < 1e-6 {
+        "flat"
+    } else if delta < 0.0 {
+        "down"
+    } else {
+        "up"
+    };
+    format!("{direction} {:.6}->{:.6}", previous, current)
+}
+
+fn current_epoch_ms() -> Option<u64> {
+    Some(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()?
+            .as_millis()
+            .try_into()
+            .ok()?,
+    )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1574,7 +1717,8 @@ fn training_red() -> Hsla {
 mod tests {
     use super::{
         acceptance_gate_reason, apply_launch_response, build_accept_request, build_export_request,
-        build_workbench_handoff, detail_lines_for_run, paint, validate_launch_form,
+        build_workbench_handoff, detail_lines_for_run, paint, sync_selected_run_detail_state,
+        validate_launch_form,
     };
     use crate::app_state::{
         AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, AppleFmWorkbenchPaneInputs,
@@ -1831,6 +1975,69 @@ mod tests {
     }
 
     #[test]
+    fn detail_lines_surface_failure_context_loss_trend_and_recent_logs() {
+        let run = DesktopControlAppleAdapterOperatorRunStatus {
+            run_id: "apple-run-11".to_string(),
+            package_name: "weather-helper".to_string(),
+            launch_state: "completed".to_string(),
+            evaluation_state: "failed".to_string(),
+            progress: crate::desktop_control::DesktopControlAppleAdapterOperatorProgressStatus {
+                current_phase: Some("evaluation".to_string()),
+                phase_elapsed_ms: Some(321),
+                run_elapsed_ms: Some(654),
+                eta_ms: Some(0),
+                current_epoch: Some(4),
+                expected_epochs: Some(4),
+                completed_eval_samples: Some(1),
+                expected_eval_samples: Some(2),
+                last_checkpoint_path: Some("/tmp/checkpoints/final".to_string()),
+                latest_loss_label: Some("0.250000".to_string()),
+                ..crate::desktop_control::DesktopControlAppleAdapterOperatorProgressStatus::default(
+                )
+            },
+            runtime_smoke_passed: Some(false),
+            last_error: Some("Held-out eval failed on schema mismatch".to_string()),
+            recent_events: vec![
+                crate::desktop_control::DesktopControlAppleAdapterOperatorEventStatus {
+                    kind: "loss_observed".to_string(),
+                    loss_label: Some("0.500000".to_string()),
+                    ..crate::desktop_control::DesktopControlAppleAdapterOperatorEventStatus::default(
+                    )
+                },
+                crate::desktop_control::DesktopControlAppleAdapterOperatorEventStatus {
+                    kind: "loss_observed".to_string(),
+                    loss_label: Some("0.250000".to_string()),
+                    ..crate::desktop_control::DesktopControlAppleAdapterOperatorEventStatus::default(
+                    )
+                },
+            ],
+            log_lines: vec![
+                "launch: completed local train/eval staging".to_string(),
+                "evaluation failed: schema mismatch on sample-0002".to_string(),
+            ],
+            ..DesktopControlAppleAdapterOperatorRunStatus::default()
+        };
+
+        let lines = detail_lines_for_run(&run, &DesktopControlTrainingStatus::default());
+        assert!(lines.iter().any(|line| {
+            line.contains(
+                "Run health: failed // failure context evaluation // Held-out eval failed on schema mismatch",
+            )
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("Live elapsed / ETA / loss trend: 654 / 0 / down 0.500000->0.250000")
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains(
+                "Live epoch / eval / checkpoint / smoke: 4/4 // 1/2 // /tmp/checkpoints/final // no",
+            )
+        }));
+        assert!(lines.iter().any(|line| {
+            line.contains("Recent backend log: evaluation failed: schema mismatch on sample-0002")
+        }));
+    }
+
+    #[test]
     fn acceptance_gate_reason_blocks_until_eval_and_export_complete() {
         let run = DesktopControlAppleAdapterOperatorRunStatus {
             run_id: "apple-run-8".to_string(),
@@ -1872,6 +2079,32 @@ mod tests {
         assert_eq!(
             handoff.adapter_identifier.as_deref(),
             Some("adapter.weather.helper")
+        );
+    }
+
+    #[test]
+    fn sync_selected_run_detail_state_keeps_bounded_log_tail() {
+        let mut pane_state = AppleAdapterTrainingPaneState::default();
+        let mut inputs = AppleAdapterTrainingPaneInputs::default();
+        let run = DesktopControlAppleAdapterOperatorRunStatus {
+            run_id: "apple-run-12".to_string(),
+            log_lines: (0..300)
+                .map(|index| format!("log-line-{index:03}"))
+                .collect(),
+            ..DesktopControlAppleAdapterOperatorRunStatus::default()
+        };
+
+        sync_selected_run_detail_state(&mut pane_state, &mut inputs, Some(&run));
+
+        let recent = pane_state.log_tail.recent_lines(usize::MAX);
+        assert_eq!(recent.len(), 256);
+        assert_eq!(
+            recent.first().map(|line| line.text.as_str()),
+            Some("log-line-044")
+        );
+        assert_eq!(
+            recent.last().map(|line| line.text.as_str()),
+            Some("log-line-299")
         );
     }
 
