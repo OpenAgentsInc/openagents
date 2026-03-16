@@ -1,9 +1,9 @@
 # Psionic MLX Roadmap
 
-> Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`, after
-> reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
+> Status: updated 2026-03-16 after closing `PMLX-002` / `#3830` and
+> `PMLX-003` / `#3831`, after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
-> `MLX_COMPATIBILITY_SCOPE.md`,
+> `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
 > `deep-research-mlx.md`, and
 > `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`,
 > and after reviewing the local upstream MLX checkout at `~/code/mlx` and the
@@ -39,6 +39,9 @@ Choose the reference that owns the layer being changed:
 - start with `crates/psionic/docs/MLX_COMPATIBILITY_SCOPE.md` for the canonical
   bounded upstream MLX version window and the required distinction between
   `MLX-class` and `MLX-compatible` language
+- start with `crates/psionic/docs/MLX_ACCEPTANCE_MATRIX.md` for the canonical
+  MLX-lane closure categories and the machine-readable acceptance report
+  contract
 - start with `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`
   for the adaptation logic that explains what should be ported directly versus
   redesigned deliberately
@@ -345,13 +348,27 @@ froze the initial upstream MLX claim window and language contract in
 - `MLX-compatible` means later bounded facades or migration layers above the
   native substrate, never a substitute for it
 
+`PMLX-003` / [#3831](https://github.com/OpenAgentsInc/openagents/issues/3831)
+added `MLX_ACCEPTANCE_MATRIX.md`,
+`mlx_acceptance_matrix_report.schema.json`,
+`scripts/release/check-psionic-mlx-acceptance-matrix.sh`, and
+`psionic-compat::builtin_mlx_acceptance_matrix_report()` so the MLX lane now
+has one canonical closure matrix over:
+
+- `array-runtime-surface`
+- `transform-compile`
+- `nn-optimizer`
+- `export-serialization-tooling`
+- `distributed-semantics`
+- `backend-closure`
+
 ### Issues
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
 | `PMLX-001` | landed | `Psionic MLX: create the lane-specific roadmap and issue program` | This document closes the issue. It records the decision to use `ROADMAP_MLX.md`, names the owner split, and seeds the full dependency-ordered issue queue. |
 | `PMLX-002` / [#3830](https://github.com/OpenAgentsInc/openagents/issues/3830) | done (2026-03-16) | `Psionic MLX: freeze the upstream MLX version window and compatibility scope` | `psionic-compat` now publishes `MlxCompatibilityScopeReport`, freezing the initial `ml-explore/mlx` claim window to `v0.31.0` through `v0.31.1`, recording the informative audit checkout, and defining the canonical `MLX-class` versus `MLX-compatible` language contract in `MLX_COMPATIBILITY_SCOPE.md`. |
-| `PMLX-003` | planned | `Psionic MLX: add an acceptance matrix for array, transform, nn, export, distributed, and backend closure` | Create the MLX-lane acceptance doc and machine-readable report contract so closure is measured against explicit capability families rather than one-off demos. |
+| `PMLX-003` / [#3831](https://github.com/OpenAgentsInc/openagents/issues/3831) | done (2026-03-16) | `Psionic MLX: add an acceptance matrix for array, transform, nn, export, distributed, and backend closure` | `psionic-compat` now publishes `MlxAcceptanceMatrixReport`, the repo now ships `MLX_ACCEPTANCE_MATRIX.md` plus `mlx_acceptance_matrix_report.schema.json`, and `scripts/release/check-psionic-mlx-acceptance-matrix.sh` can emit a machine-readable tracking report over the six canonical MLX closure categories instead of leaving closure to one-off demos. |
 | `PMLX-004` | planned | `Psionic MLX: build a parity harness runner seeded from upstream MLX test families` | Create one Rust-native parity runner that can import, mirror, or port upstream MLX test categories and emit a comparable pass, refusal, or unsupported report. |
 | `PMLX-005` | planned | `Psionic MLX: publish a supported-convertible-unsupported compatibility matrix` | Define one matrix covering native support, compatibility shims, and intentionally unsupported MLX behaviors so later adoption claims stay bounded and reviewable. |
 
