@@ -464,7 +464,7 @@ The current baseline is intentionally thin.
 
 - `arc-solvers` and `arc-ml` still do not exist
 - `arc-benchmark` now covers exact-match static scoring plus bounded
-  methodology-based interactive RHAE scoring plus bounded checkpoint/resume
+  versioned interactive RHAE policy surfaces plus bounded checkpoint/resume
   and repeated-run summary surfaces, but scorecard lifecycle and JSONL
   compatibility remain open
 - there is not yet a benchmark-truthful REST/runtime parity layer for
@@ -647,7 +647,7 @@ Master issue:
 | `ARC-203` / [#3682](https://github.com/OpenAgentsInc/openagents/issues/3682) | landed | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
 | `ARC-204` / [#3683](https://github.com/OpenAgentsInc/openagents/issues/3683) | landed | Port the local compatibility server against the ARC docs schema and local-vs-online behavior docs. |
 | `ARC-205` / [#3684](https://github.com/OpenAgentsInc/openagents/issues/3684) | landed | Add local-vs-remote parity harnesses so game-client behavior is explicitly comparable across modes. |
-| `ARC-211` / [#3690](https://github.com/OpenAgentsInc/openagents/issues/3690) | planned | Implement versioned interactive score policies, including the current weighted-and-squared methodology/competition policy and any required compatibility fixtures for upstream preview behavior. |
+| `ARC-211` / [#3690](https://github.com/OpenAgentsInc/openagents/issues/3690) | landed | Implement versioned interactive score policies, including the current weighted-and-squared methodology/competition policy and any required compatibility fixtures for upstream preview behavior. |
 | `ARC-212` / [#3691](https://github.com/OpenAgentsInc/openagents/issues/3691) | planned | Implement scorecard lifecycle and operation-mode policy surfaces: default-scorecard reuse, auto-close behavior, closed-card refusal, and competition-mode restrictions. |
 | `ARC-213` / [#3692](https://github.com/OpenAgentsInc/openagents/issues/3692) | planned | Implement cookie-affine remote sessions, 429/backoff handling, and local-vs-online recording policy with JSONL recording compatibility. |
 

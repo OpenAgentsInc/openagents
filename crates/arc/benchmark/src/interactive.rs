@@ -6,6 +6,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::ArcBenchmarkError;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArcInteractiveAggregationKind {
+    WeightedByLevelIndex,
+    MeanAcrossLevels,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ArcInteractiveScorePolicy {
+    id: ArcScorePolicyId,
+    aggregation: ArcInteractiveAggregationKind,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ArcInteractiveStepSummary {
     pub step_index: u32,
@@ -55,12 +67,8 @@ pub fn score_interactive_recording(
     baseline_actions: &[u32],
 ) -> Result<ArcInteractiveRunReport, ArcBenchmarkError> {
     ensure_interactive_benchmark(recording.benchmark)?;
-    ensure_supported_operation_mode(recording.operation_mode)?;
-
-    let score_policy_id = recording
-        .score_policy_id
-        .unwrap_or(ArcScorePolicyId::ArcAgi3MethodologyV1);
-    ensure_supported_interactive_policy(score_policy_id)?;
+    let score_policy =
+        resolve_interactive_policy(recording.operation_mode, recording.score_policy_id)?;
 
     let first_step =
         recording
@@ -138,7 +146,7 @@ pub fn score_interactive_recording(
             }
 
             let baseline = baseline_actions[usize::from(level_index.saturating_sub(1))];
-            let score = methodology_level_score(baseline, action_count);
+            let score = weighted_and_squared_level_score(baseline, action_count);
             level_scores.push(ArcLevelScore {
                 level_index,
                 action_count,
@@ -206,9 +214,9 @@ pub fn score_interactive_recording(
     let scorecard = ArcScorecard {
         benchmark: recording.benchmark,
         task_id: recording.task_id.clone(),
-        overall_score: methodology_weighted_average(&level_scores),
+        overall_score: aggregate_policy_score(score_policy.aggregation, &level_scores),
         operation_mode: recording.operation_mode,
-        score_policy_id: Some(score_policy_id),
+        score_policy_id: Some(score_policy.id),
         recording_envelope_id: recording.envelope_id.clone(),
         metadata,
         levels: level_scores,
@@ -218,7 +226,7 @@ pub fn score_interactive_recording(
         benchmark: recording.benchmark,
         task_id: recording.task_id.clone(),
         operation_mode: recording.operation_mode,
-        score_policy_id,
+        score_policy_id: score_policy.id,
         recording_digest: recording.contract_digest()?,
         total_actions,
         resets,
@@ -312,42 +320,105 @@ fn ensure_interactive_benchmark(benchmark: ArcBenchmark) -> Result<(), ArcBenchm
 fn ensure_supported_operation_mode(
     operation_mode: Option<ArcOperationMode>,
 ) -> Result<(), ArcBenchmarkError> {
-    if operation_mode == Some(ArcOperationMode::Competition) {
+    if operation_mode.is_some_and(|mode| {
+        !matches!(
+            mode,
+            ArcOperationMode::Normal
+                | ArcOperationMode::Offline
+                | ArcOperationMode::Online
+                | ArcOperationMode::Competition
+        )
+    }) {
         return Err(ArcBenchmarkError::UnsupportedInteractiveOperationMode {
-            operation_mode: ArcOperationMode::Competition,
+            operation_mode: operation_mode.unwrap_or(ArcOperationMode::Normal),
         });
     }
     Ok(())
 }
 
-fn ensure_supported_interactive_policy(
-    score_policy_id: ArcScorePolicyId,
-) -> Result<(), ArcBenchmarkError> {
-    match score_policy_id {
-        ArcScorePolicyId::ArcAgi3MethodologyV1 => Ok(()),
-        other => Err(ArcBenchmarkError::UnsupportedInteractiveScorePolicy {
-            score_policy_id: other,
-        }),
+fn resolve_interactive_policy(
+    operation_mode: Option<ArcOperationMode>,
+    score_policy_id: Option<ArcScorePolicyId>,
+) -> Result<ArcInteractiveScorePolicy, ArcBenchmarkError> {
+    ensure_supported_operation_mode(operation_mode)?;
+
+    let resolved_policy = match (operation_mode, score_policy_id) {
+        (Some(ArcOperationMode::Competition), None) => ArcScorePolicyId::ArcAgi3CompetitionV1,
+        (_, None) => ArcScorePolicyId::ArcAgi3MethodologyV1,
+        (_, Some(policy_id)) => policy_id,
+    };
+
+    let policy = match resolved_policy {
+        ArcScorePolicyId::ArcAgi3MethodologyV1 => ArcInteractiveScorePolicy {
+            id: ArcScorePolicyId::ArcAgi3MethodologyV1,
+            aggregation: ArcInteractiveAggregationKind::WeightedByLevelIndex,
+        },
+        ArcScorePolicyId::ArcAgi3CompetitionV1 => ArcInteractiveScorePolicy {
+            id: ArcScorePolicyId::ArcAgi3CompetitionV1,
+            aggregation: ArcInteractiveAggregationKind::WeightedByLevelIndex,
+        },
+        ArcScorePolicyId::ArcAgi3PreviewCompatibilityV1 => ArcInteractiveScorePolicy {
+            id: ArcScorePolicyId::ArcAgi3PreviewCompatibilityV1,
+            aggregation: ArcInteractiveAggregationKind::MeanAcrossLevels,
+        },
+        other => {
+            return Err(ArcBenchmarkError::UnsupportedInteractiveScorePolicy {
+                score_policy_id: other,
+            });
+        }
+    };
+
+    if operation_mode == Some(ArcOperationMode::Competition)
+        && policy.id != ArcScorePolicyId::ArcAgi3CompetitionV1
+    {
+        return Err(ArcBenchmarkError::InteractiveScorePolicyModeMismatch {
+            score_policy_id: policy.id,
+            operation_mode,
+        });
     }
+    if operation_mode != Some(ArcOperationMode::Competition)
+        && policy.id == ArcScorePolicyId::ArcAgi3CompetitionV1
+    {
+        return Err(ArcBenchmarkError::InteractiveScorePolicyModeMismatch {
+            score_policy_id: policy.id,
+            operation_mode,
+        });
+    }
+
+    Ok(policy)
 }
 
-fn methodology_level_score(baseline_actions: u32, action_count: u32) -> f32 {
+fn weighted_and_squared_level_score(baseline_actions: u32, action_count: u32) -> f32 {
     let ratio = baseline_actions as f32 / action_count as f32;
     (ratio * ratio).min(1.0)
 }
 
-fn methodology_weighted_average(level_scores: &[ArcLevelScore]) -> f32 {
-    let total_weight = level_scores
-        .iter()
-        .map(|level| u32::from(level.level_index))
-        .sum::<u32>();
-    if total_weight == 0 {
+fn aggregate_policy_score(
+    aggregation: ArcInteractiveAggregationKind,
+    level_scores: &[ArcLevelScore],
+) -> f32 {
+    if level_scores.is_empty() {
         return 0.0;
     }
 
-    let weighted_score = level_scores
-        .iter()
-        .map(|level| level.score * f32::from(level.level_index))
-        .sum::<f32>();
-    weighted_score / total_weight as f32
+    match aggregation {
+        ArcInteractiveAggregationKind::WeightedByLevelIndex => {
+            let total_weight = level_scores
+                .iter()
+                .map(|level| u32::from(level.level_index))
+                .sum::<u32>();
+            if total_weight == 0 {
+                return 0.0;
+            }
+
+            let weighted_score = level_scores
+                .iter()
+                .map(|level| level.score * f32::from(level.level_index))
+                .sum::<f32>();
+            weighted_score / total_weight as f32
+        }
+        ArcInteractiveAggregationKind::MeanAcrossLevels => {
+            level_scores.iter().map(|level| level.score).sum::<f32>() / level_scores.len() as f32
+        }
+    }
 }

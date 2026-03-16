@@ -262,6 +262,13 @@ pub enum ArcBenchmarkError {
     UnsupportedInteractiveOperationMode { operation_mode: ArcOperationMode },
     #[error("interactive scoring does not yet support score policy `{score_policy_id:?}`")]
     UnsupportedInteractiveScorePolicy { score_policy_id: ArcScorePolicyId },
+    #[error(
+        "interactive score policy `{score_policy_id:?}` is incompatible with operation mode `{operation_mode:?}`"
+    )]
+    InteractiveScorePolicyModeMismatch {
+        score_policy_id: ArcScorePolicyId,
+        operation_mode: Option<ArcOperationMode>,
+    },
     #[error("exact-match answer key for `{task_id}` must contain at least one test output")]
     EmptyAnswerKey { task_id: ArcTaskId },
     #[error("answer key task `{answer_key_task_id}` does not match task `{task_id}`")]
