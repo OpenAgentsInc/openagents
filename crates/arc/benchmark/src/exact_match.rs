@@ -1,4 +1,7 @@
-use arc_core::{ArcBenchmark, ArcGrid, ArcTask, ArcTaskId, ContractSerializationError};
+use arc_core::{
+    ArcBenchmark, ArcGameState, ArcGrid, ArcOperationMode, ArcScorePolicyId, ArcTask, ArcTaskId,
+    ContractSerializationError,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -253,6 +256,12 @@ fn ensure_static_benchmark(benchmark: ArcBenchmark) -> Result<(), ArcBenchmarkEr
 pub enum ArcBenchmarkError {
     #[error("exact-match scoring only supports ARC-AGI-1 and ARC-AGI-2, got {benchmark:?}")]
     UnsupportedStaticBenchmark { benchmark: ArcBenchmark },
+    #[error("interactive scoring only supports ARC-AGI-3, got {benchmark:?}")]
+    UnsupportedInteractiveBenchmark { benchmark: ArcBenchmark },
+    #[error("interactive scoring does not yet support operation mode `{operation_mode:?}`")]
+    UnsupportedInteractiveOperationMode { operation_mode: ArcOperationMode },
+    #[error("interactive scoring does not yet support score policy `{score_policy_id:?}`")]
+    UnsupportedInteractiveScorePolicy { score_policy_id: ArcScorePolicyId },
     #[error("exact-match answer key for `{task_id}` must contain at least one test output")]
     EmptyAnswerKey { task_id: ArcTaskId },
     #[error("answer key task `{answer_key_task_id}` does not match task `{task_id}`")]
@@ -288,6 +297,93 @@ pub enum ArcBenchmarkError {
         task_id: ArcTaskId,
         expected: ArcBenchmark,
         actual: ArcBenchmark,
+    },
+    #[error(
+        "interactive baseline action list for `{task_id}` has {actual} entries but recording expects {expected} levels"
+    )]
+    BaselineActionLengthMismatch {
+        task_id: ArcTaskId,
+        expected: usize,
+        actual: usize,
+    },
+    #[error(
+        "interactive baseline action count for `{task_id}` level {level_index} must be positive"
+    )]
+    InvalidBaselineActionCount {
+        task_id: ArcTaskId,
+        level_index: u16,
+    },
+    #[error("interactive recording for `{task_id}` must start with an initial full reset")]
+    MissingInitialFullReset { task_id: ArcTaskId },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} contains a full reset outside the initial reset"
+    )]
+    UnexpectedFullReset { task_id: ArcTaskId, step_index: u32 },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} marked full_reset without a RESET action"
+    )]
+    FullResetActionMismatch { task_id: ArcTaskId, step_index: u32 },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} is missing win-level metadata"
+    )]
+    MissingWinLevels { task_id: ArcTaskId, step_index: u32 },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} used win_levels={actual} but the run started with {expected}"
+    )]
+    WinLevelMismatch {
+        task_id: ArcTaskId,
+        step_index: u32,
+        expected: u16,
+        actual: u16,
+    },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} regressed completed levels from {previous} to {current}"
+    )]
+    LevelsCompletedRegression {
+        task_id: ArcTaskId,
+        step_index: u32,
+        previous: u16,
+        current: u16,
+    },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} jumped completed levels from {previous} to {current}"
+    )]
+    LevelsCompletedJump {
+        task_id: ArcTaskId,
+        step_index: u32,
+        previous: u16,
+        current: u16,
+    },
+    #[error(
+        "interactive recording for `{task_id}` step {step_index} reports {levels_completed} completed levels but only {win_levels} total levels"
+    )]
+    LevelsCompletedExceedsWinLevels {
+        task_id: ArcTaskId,
+        step_index: u32,
+        levels_completed: u16,
+        win_levels: u16,
+    },
+    #[error(
+        "interactive recording for `{task_id}` step index {actual} is out of sequence; expected {expected}"
+    )]
+    NonSequentialStepIndex {
+        task_id: ArcTaskId,
+        expected: u32,
+        actual: u32,
+    },
+    #[error(
+        "interactive recording for `{task_id}` level {level_index} completed without any counted actions"
+    )]
+    ZeroActionCompletedLevel {
+        task_id: ArcTaskId,
+        level_index: u16,
+    },
+    #[error(
+        "interactive recording for `{task_id}` ended in `{state:?}` after completing all levels but did not report WIN"
+    )]
+    TerminalStateMismatch {
+        task_id: ArcTaskId,
+        state: ArcGameState,
     },
     #[error(transparent)]
     Serialization(#[from] ContractSerializationError),

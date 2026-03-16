@@ -390,6 +390,9 @@ pub struct ArcEpisodeStep {
     pub step_index: u32,
     pub action: ArcAction,
     pub observation: ArcObservation,
+    pub levels_completed: u16,
+    pub win_levels: u16,
+    pub full_reset: bool,
     pub terminal: bool,
 }
 ```
@@ -425,6 +428,9 @@ Interactive contracts must preserve the upstream ARC-AGI-3 wire semantics:
 - `ACTION6` availability without implicit enumeration of active coordinates
 - `guid` plus sticky cookie-jar behavior for online sessions
 - scorecard metadata envelopes including `source_url`, `tags`, and `opaque`
+- per-step `levels_completed`, `win_levels`, and `full_reset` metadata so
+  methodology scoring can reconstruct scorecards and refusal behavior without
+  app-local state
 
 ### 4.2 Canonicalized task state
 
@@ -1448,9 +1454,9 @@ mode does not require an API key and keeps compatibility scorecards in-memory.
 `ARC-205` is now also landed: `arc-client` includes a typed local-vs-remote
 parity report surface plus a manifest-driven harness that compares
 `LocalArcEnvironment` traces against the compatibility server step by step for
-translated `bt11` and `bt33` scripts. Benchmark-truthful scoring, lifecycle
+translated `bt11` and `bt33` scripts. Checkpoint/resume behavior, lifecycle
 policy, and online/runtime policy remain the next explicit follow-on in
-`ARC-207`, `ARC-211`, `ARC-212`, and `ARC-213`.
+`ARC-208`, `ARC-211`, `ARC-212`, and `ARC-213`.
 
 ### Phase 3: benchmark runtime
 
@@ -1478,9 +1484,12 @@ Acceptance:
 This phase has now started in bounded form. `ARC-206` landed the first live
 `arc-benchmark` crate with a typed static answer-key/submission/report surface,
 an exact-match scorer for ARC-AGI-1 and ARC-AGI-2, and a fixture-backed
-summary harness. Interactive RHAE, scorecard lifecycle, recordings,
-checkpoints, resume behavior, and repeated-run aggregation remain follow-on
-benchmark work.
+summary harness. `ARC-207` is now also landed in bounded form: the crate can
+score deterministic ARC-AGI-3 recordings with the current methodology policy,
+emit typed scorecards plus per-step summaries, and refuse unsupported
+competition-mode, non-initial full-reset, or malformed baseline cases
+explicitly. Scorecard lifecycle, JSONL compatibility, checkpoints, resume
+behavior, and repeated-run aggregation remain follow-on benchmark work.
 
 ### Phase 4: solver layer
 

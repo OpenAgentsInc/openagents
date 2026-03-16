@@ -16,4 +16,5 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+arc-engine = { path = "../engine" }
 serde_json = { workspace = true }
