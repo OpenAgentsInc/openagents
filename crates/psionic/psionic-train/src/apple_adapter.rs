@@ -351,6 +351,16 @@ pub struct AppleAdapterGradientBatchRecord {
     pub execution_digest: String,
 }
 
+impl AppleAdapterGradientBatchRecord {
+    /// Drops full gradient tensors once a step has been applied so long-running
+    /// operator runs do not retain one full gradient snapshot per completed step.
+    #[must_use]
+    pub fn redacted_for_retention(mut self) -> Self {
+        self.training_batch.gradients.clear();
+        self
+    }
+}
+
 /// Repo-owned Apple dataset -> batch -> gradient backend.
 #[derive(Clone, Debug)]
 pub struct AppleAdapterTrainingExecutionBackend {
@@ -713,8 +723,6 @@ struct AppleAdapterSftExecutionArtifacts {
     final_bundle: PortableModelBundle,
     initial_bundle_receipt: ModelIoArtifactReceipt,
     final_bundle_receipt: ModelIoArtifactReceipt,
-    initial_bundle_bytes: Vec<u8>,
-    final_bundle_bytes: Vec<u8>,
     runtime_asset_bytes: Vec<u8>,
     adapter_delta: ModelAdapterDelta,
     adapter_identifier: String,
@@ -1568,8 +1576,8 @@ fn execute_apple_adapter_sft_artifacts(
         let finished_at_ms = started_at_ms + request.step_duration_ms;
         let (step_input, gradient_record) =
             backend.produce_step_input(&run, batch_index, started_at_ms, finished_at_ms)?;
-        gradient_records.push(gradient_record);
         let receipt = run.apply_step(step_input)?;
+        gradient_records.push(gradient_record.redacted_for_retention());
         on_progress(&AppleAdapterSftProgressEvent::StepCompleted {
             receipt: receipt.clone(),
             expected_steps,
@@ -1608,8 +1616,8 @@ fn execute_apple_adapter_sft_artifacts(
             .clone()
             .or_else(|| Some(backend.config().model.prompt_shaping_digest.clone())),
     )?;
-    let (initial_bundle_bytes, initial_bundle_receipt) = initial_bundle.export_safetensors()?;
-    let (final_bundle_bytes, final_bundle_receipt) = final_bundle.export_safetensors()?;
+    let (_, initial_bundle_receipt) = initial_bundle.export_safetensors()?;
+    let (_, final_bundle_receipt) = final_bundle.export_safetensors()?;
     let runtime_asset_bytes =
         export_native_apple_runtime_asset_bytes(&backend, final_groups.as_slice())?;
     let adapter_identifier = stable_adapter_identifier(
@@ -1629,8 +1637,6 @@ fn execute_apple_adapter_sft_artifacts(
         final_bundle,
         initial_bundle_receipt,
         final_bundle_receipt,
-        initial_bundle_bytes,
-        final_bundle_bytes,
         runtime_asset_bytes,
         adapter_delta,
         adapter_identifier,
@@ -3348,6 +3354,12 @@ mod tests {
         };
         let outcome = run_apple_adapter_sft_export(&backend, &dataset, &environment, &request)?;
         assert_eq!(outcome.step_receipts.len(), 2);
+        assert!(
+            outcome
+                .gradient_records
+                .iter()
+                .all(|record| record.training_batch.gradients.is_empty())
+        );
         assert_eq!(outcome.summary.dataset_ref, request.dataset_ref);
         assert!(!outcome.adapter_delta.tensors.is_empty());
 
