@@ -63,12 +63,15 @@ Current posture:
   `psionic-models`
 - its Phase 2 artifact/compatibility contract now exists as digest-bound
   program artifacts plus explicit executor compatibility descriptors
+- its Phase 3 benchmark/environment package layer now exists in
+  `psionic-environments` and `psionic-eval`
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2 issue spine is tracked in
+- its landed Phase 0/1/2/3 issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
-  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
+  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
 
 ## Crate Map
 
@@ -128,11 +131,12 @@ Current posture:
 - `psionic-data`: versioned dataset manifests, tokenizer digests, split
   declarations, streamed iteration, and packing contracts.
 - `psionic-environments`: environment package ABI, workload/difficulty/policy
-  contracts, tool/rubric hooks, deterministic runtime sessions, and train/eval
-  parity helpers.
+  contracts, tool/rubric hooks, deterministic runtime sessions, train/eval
+  parity helpers, and the `Tassadar` exact-executor environment bundle.
 - `psionic-eval`: held-out eval runs, rubric-scored samples, benchmark
-  packages, repeat-run aggregation, local validator simulation, and Apple
-  adapter eval harnesses.
+  packages, repeat-run aggregation, local validator simulation, Apple
+  adapter eval harnesses, and the `Tassadar` package-driven exactness
+  benchmark suite with CPU/reference-linear baselines.
 - `psionic-train`: checkpoint/recovery truth, elastic membership, run graphs,
   rollout-worker protocol, orchestrator control, fixed-budget training core,
   Apple training execution, Apple SFT/export, and optional Apple draft-model

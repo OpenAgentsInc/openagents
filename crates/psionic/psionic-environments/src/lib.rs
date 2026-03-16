@@ -6,6 +6,7 @@
 )]
 
 mod apple_adapter;
+mod tassadar;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -17,6 +18,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use apple_adapter::*;
+pub use tassadar::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "environment package ABI and runtime contract";

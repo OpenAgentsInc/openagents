@@ -20,6 +20,8 @@ psionic-apple-fm = { path = "../psionic-apple-fm" }
 psionic-data = { path = "../psionic-data" }
 psionic-datastream = { path = "../psionic-datastream" }
 psionic-environments = { path = "../psionic-environments" }
+psionic-models = { path = "../psionic-models" }
+psionic-runtime = { path = "../psionic-runtime" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
