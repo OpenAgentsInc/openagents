@@ -1,10 +1,10 @@
 # Psionic Framework-Core Acceptance Matrix
 
-> Status: canonical `#3609` closure doc, updated 2026-03-14 after landing the
-> runnable matrix hook in
-> `scripts/release/check-psionic-framework-core-acceptance.sh` and the
-> reusable-optimizer closure for `#3603` plus the reverse-mode autodiff closure
-> for `#3602`.
+> Status: canonical framework-core acceptance doc, updated 2026-03-16 after
+> widening `scripts/release/check-psionic-framework-core-acceptance.sh` from a
+> representative runner into the full PLIB-107 broad-coverage gate with a
+> machine-readable JSON report contract in
+> `crates/psionic/docs/framework_core_acceptance_report.schema.json`.
 
 Psionic can now make several higher-level claims:
 
@@ -29,6 +29,13 @@ Run the framework-core matrix from the repo root:
 scripts/release/check-psionic-framework-core-acceptance.sh
 ```
 
+Write the machine-readable acceptance artifact for release or CI attachment:
+
+```bash
+scripts/release/check-psionic-framework-core-acceptance.sh \
+  --report /tmp/psionic-framework-core-acceptance.json
+```
+
 Targeted entrypoints:
 
 ```bash
@@ -43,9 +50,12 @@ scripts/release/check-psionic-framework-core-acceptance.sh --only local-multi-de
 
 The runner is intentionally honest about remaining boundaries:
 
-- it executes the current validation hooks for each category
+- it executes the full documented validation hooks for each category rather than
+  one representative proof
 - it prints explicit refusal or implemented-early notes when a category is real
   but still intentionally bounded
+- it can emit a machine-readable JSON report whose shape is fixed by
+  `crates/psionic/docs/framework_core_acceptance_report.schema.json`
 - it does not treat serving or train acceptance as a substitute for
   framework-core closure
 

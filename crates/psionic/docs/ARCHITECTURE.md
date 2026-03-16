@@ -34,7 +34,9 @@ This doc should be read together with:
 
 - `crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`
   - framework-core completion bar for tensor, compiler, IO, replay, and local
-    multi-device behavior, distinct from serving or train product acceptance
+    multi-device behavior, distinct from serving or train product acceptance,
+    with a machine-readable runner artifact defined by
+    `crates/psionic/docs/framework_core_acceptance_report.schema.json`
 - `crates/psionic/docs/TRAIN_SYSTEM.md`
   - deep subsystem spec for training-class execution
 - `crates/psionic/docs/INFERENCE_ENGINE.md`
