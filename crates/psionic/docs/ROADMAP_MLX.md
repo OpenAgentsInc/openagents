@@ -1,7 +1,8 @@
 # Psionic MLX Roadmap
 
 > Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`,
-> `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, and `PMLX-005` / `#3833`,
+> `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, `PMLX-005` / `#3833`, and
+> `PMLX-101` / `#3834`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -414,7 +415,7 @@ Expose a real MLX-class lazy array surface above current Psionic core crates.
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
-| `PMLX-101` | planned | `Psionic MLX: add a public lazy array facade above psionic-core and psionic-ir` | Introduce the public Rust-native array type and its graph-backed arithmetic surface without bloating `psionic-core` directly. |
+| `PMLX-101` / [#3834](https://github.com/OpenAgentsInc/openagents/issues/3834) | done (2026-03-16) | `Psionic MLX: add a public lazy array facade above psionic-core and psionic-ir` | `psionic-array` now publishes `ArrayContext` and `Array` as the first public lazy-array facade above `psionic-core` and `psionic-ir`, with context-owned graph construction, graph-backed arithmetic, and snapshot graph export; explicit `eval`, device-stream, view-family, random, and host-materialization work remains in `PMLX-102` through `PMLX-106`. |
 | `PMLX-102` | planned | `Psionic MLX: define explicit eval and async_eval semantics plus materialization boundaries` | Expose MLX-class lazy evaluation rules, including explicit evaluation, implicit materialization triggers, and replay-safe execution boundaries. |
 | `PMLX-103` | planned | `Psionic MLX: publish device and stream APIs with unified-memory capability flags` | Add public device and stream handles, dependency scheduling, and a capability-based unified-memory model that is honest on Apple, CUDA, and future backends. |
 | `PMLX-104` | planned | `Psionic MLX: widen array creation, indexing, view, reshape, slice, concat, and broadcast families` | Close the public array-surface gap for standard construction and view families needed for MLX-style code and for later transform or module layers. |
@@ -594,7 +595,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 
 ### Phase 2: land the public lazy array and runtime surface
 
-- `PMLX-101`
+- `PMLX-101` done 2026-03-16
 - `PMLX-102`
 - `PMLX-103`
 - `PMLX-104`

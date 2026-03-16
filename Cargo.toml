@@ -26,6 +26,7 @@ members = [
     "crates/wgpui",
     "crates/psionic/psionic-core",
     "crates/psionic/psionic-ir",
+    "crates/psionic/psionic-array",
     "crates/psionic/psionic-compiler",
     "crates/psionic/psionic-runtime",
     "crates/psionic/psionic-sandbox",

@@ -1,0 +1,19 @@
+[package]
+name = "psionic-array"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Public lazy array facade above psionic-core and psionic-ir for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+psionic-core = { path = "../psionic-core" }
+psionic-ir = { path = "../psionic-ir" }
+thiserror = { workspace = true }
