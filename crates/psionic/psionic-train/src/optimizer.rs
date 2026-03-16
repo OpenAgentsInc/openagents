@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::core_loop::{TrainingOptimizerConfig, TrainingOptimizerKind, TrainingOptimizerState};
+use crate::core_loop::{
+    TrainingOptimizerConfig, TrainingOptimizerKind, TrainingOptimizerState,
+    TrainingSchedulerBinding, TrainingSchedulerConfig, TrainingSchedulerKind,
+};
 
 /// Error returned by the reusable optimizer surface.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -38,6 +41,14 @@ pub enum TrainingOptimizerError {
         /// Actual vector length.
         actual_len: usize,
     },
+    /// One scheduler binding carried an invalid configuration.
+    #[error("training scheduler `{scheduler:?}` is invalid: {message}")]
+    InvalidSchedulerConfig {
+        /// Scheduler family.
+        scheduler: TrainingSchedulerKind,
+        /// Human-readable reason.
+        message: String,
+    },
 }
 
 /// Inspectable result of one reusable optimizer step.
@@ -47,6 +58,10 @@ pub struct TrainingOptimizerStepReport {
     pub optimizer: TrainingOptimizerKind,
     /// One-based step count used for the update.
     pub step_number: u64,
+    /// Effective learning rate for the step after group/scheduler resolution.
+    pub effective_learning_rate: f32,
+    /// Effective weight decay for the step after group resolution.
+    pub effective_weight_decay: f32,
     /// Concrete update values applied to each parameter element.
     pub update_values: Vec<f32>,
     /// L2 norm of the update vector.
@@ -234,6 +249,8 @@ pub fn apply_training_optimizer_step(
     Ok(TrainingOptimizerStepReport {
         optimizer: optimizer.kind,
         step_number,
+        effective_learning_rate: optimizer.learning_rate,
+        effective_weight_decay: optimizer.weight_decay,
         update_norm_l2: norm_l2(update_values.as_slice()),
         parameter_norm_l2_before,
         parameter_norm_l2_after: norm_l2(parameter_values),
@@ -246,6 +263,74 @@ pub fn apply_training_optimizer_step(
 enum AdamWeightDecayMode {
     Coupled,
     Decoupled,
+}
+
+/// Resolves the current learning rate for one scheduler binding and advances its state.
+pub fn scheduled_learning_rate(
+    binding: &mut TrainingSchedulerBinding,
+    base_learning_rate: f32,
+    step_number: u64,
+) -> Result<f32, TrainingOptimizerError> {
+    let learning_rate =
+        resolve_scheduler_learning_rate(&binding.config, base_learning_rate, step_number)?;
+    binding.state.last_step = step_number;
+    binding.state.last_learning_rate = Some(learning_rate);
+    Ok(learning_rate)
+}
+
+fn resolve_scheduler_learning_rate(
+    config: &TrainingSchedulerConfig,
+    base_learning_rate: f32,
+    step_number: u64,
+) -> Result<f32, TrainingOptimizerError> {
+    match config {
+        TrainingSchedulerConfig::Constant => Ok(base_learning_rate),
+        TrainingSchedulerConfig::StepLr { step_size, gamma } => {
+            if *step_size == 0 {
+                return Err(TrainingOptimizerError::InvalidSchedulerConfig {
+                    scheduler: TrainingSchedulerKind::StepLr,
+                    message: String::from("step_size must be greater than zero"),
+                });
+            }
+            let decay_events = step_number.saturating_sub(1) / *step_size;
+            Ok(base_learning_rate * gamma.powf(decay_events as f32))
+        }
+        TrainingSchedulerConfig::LinearWarmup {
+            warmup_steps,
+            start_factor,
+        } => {
+            if *warmup_steps == 0 {
+                return Err(TrainingOptimizerError::InvalidSchedulerConfig {
+                    scheduler: TrainingSchedulerKind::LinearWarmup,
+                    message: String::from("warmup_steps must be greater than zero"),
+                });
+            }
+            let progress = (step_number.min(*warmup_steps) as f32) / (*warmup_steps as f32);
+            Ok(base_learning_rate * (start_factor + ((1.0 - start_factor) * progress)))
+        }
+        TrainingSchedulerConfig::CosineAnnealing {
+            total_steps,
+            min_learning_rate,
+        } => {
+            if *total_steps == 0 {
+                return Err(TrainingOptimizerError::InvalidSchedulerConfig {
+                    scheduler: TrainingSchedulerKind::CosineAnnealing,
+                    message: String::from("total_steps must be greater than zero"),
+                });
+            }
+            let capped_step = step_number
+                .saturating_sub(1)
+                .min(total_steps.saturating_sub(1));
+            let progress = if *total_steps <= 1 {
+                1.0
+            } else {
+                (capped_step as f32) / ((total_steps - 1) as f32)
+            };
+            let cosine = (std::f32::consts::PI * progress).cos();
+            Ok(min_learning_rate
+                + ((base_learning_rate - min_learning_rate) * 0.5 * (1.0 + cosine)))
+        }
+    }
 }
 
 fn sgd_like_updates(
@@ -432,13 +517,14 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        TrainingOptimizerConfig, TrainingOptimizerKind, TrainingOptimizerState,
-        apply_training_optimizer_step,
+        apply_training_optimizer_step, TrainingOptimizerConfig, TrainingOptimizerKind,
+        TrainingOptimizerState, TrainingSchedulerBinding, TrainingSchedulerConfig,
+        TrainingSchedulerKind,
     };
 
     #[test]
-    fn reusable_optimizer_surface_advances_small_model_with_sgd_and_adam()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn reusable_optimizer_surface_advances_small_model_with_sgd_and_adam(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut sgd_parameters = vec![1.0_f32, -1.0];
         let sgd_gradients = vec![0.25_f32, -0.25];
         let sgd_optimizer = TrainingOptimizerConfig::sgd(0.1).with_momentum(0.9);
@@ -459,6 +545,8 @@ mod tests {
         )?;
         assert!(sgd_step_one.update_norm_l2 > 0.0);
         assert!(sgd_step_two.update_norm_l2 > sgd_step_one.update_norm_l2);
+        assert!((sgd_step_one.effective_learning_rate - 0.1).abs() < 0.0001);
+        assert!((sgd_step_one.effective_weight_decay - 0.0).abs() < 0.0001);
         assert!(sgd_parameters[0] < 1.0);
 
         let mut adam_parameters = vec![1.0_f32, -1.0];
@@ -483,13 +571,14 @@ mod tests {
         assert!(adam_step_two.update_norm_l2 > 0.0);
         assert!(adam_parameters[0] < 1.0);
         assert_eq!(adam_step_two.optimizer, TrainingOptimizerKind::Adam);
+        assert!((adam_step_two.effective_learning_rate - 0.05).abs() < 0.0001);
 
         Ok(())
     }
 
     #[test]
-    fn reusable_optimizer_surface_supports_all_declared_optimizer_families()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn reusable_optimizer_surface_supports_all_declared_optimizer_families(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let cases = vec![
             TrainingOptimizerConfig::sgd(0.1).with_momentum(0.9),
             TrainingOptimizerConfig::adam(0.05, 0.9, 0.999, 1e-8),
@@ -551,5 +640,29 @@ mod tests {
                 state_kind: TrainingOptimizerKind::Sgd,
             }
         );
+    }
+
+    #[test]
+    fn reusable_optimizer_scheduler_surface_tracks_state_and_refuses_invalid_configs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut step_lr = TrainingSchedulerBinding::new(TrainingSchedulerConfig::step_lr(2, 0.5));
+        let step_one = super::scheduled_learning_rate(&mut step_lr, 0.1, 1)?;
+        let step_three = super::scheduled_learning_rate(&mut step_lr, 0.1, 3)?;
+        assert!((step_one - 0.1).abs() < 0.0001);
+        assert!((step_three - 0.05).abs() < 0.0001);
+        assert_eq!(step_lr.state.last_step, 3);
+        assert_eq!(step_lr.state.last_learning_rate, Some(0.05));
+
+        let mut invalid = TrainingSchedulerBinding::new(TrainingSchedulerConfig::step_lr(0, 0.5));
+        let error = super::scheduled_learning_rate(&mut invalid, 0.1, 1)
+            .expect_err("zero step size should refuse");
+        assert_eq!(
+            error,
+            super::TrainingOptimizerError::InvalidSchedulerConfig {
+                scheduler: TrainingSchedulerKind::StepLr,
+                message: String::from("step_size must be greater than zero"),
+            }
+        );
+        Ok(())
     }
 }

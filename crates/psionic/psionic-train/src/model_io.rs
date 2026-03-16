@@ -11,16 +11,17 @@ use psionic_models::{
     WeightTensorStorage,
 };
 use safetensors::{
-    Dtype as SafeTensorsDType, SafeTensorError, SafeTensors, serialize, tensor::TensorView,
+    serialize, tensor::TensorView, Dtype as SafeTensorsDType, SafeTensorError, SafeTensors,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    OptimizerStateResidency, TrainingOptimizerConfig, TrainingOptimizerKind,
-    TrainingOptimizerResidencyPolicy, TrainingOptimizerState, TrainingParameterClass,
-    TrainingParameterGroupState, TrainingTensorBuffer, core_loop::TrainingCoreError,
+    core_loop::TrainingCoreError, OptimizerStateResidency, TrainingOptimizerConfig,
+    TrainingOptimizerKind, TrainingOptimizerResidencyPolicy, TrainingOptimizerState,
+    TrainingParameterClass, TrainingParameterGroupSemantics, TrainingParameterGroupState,
+    TrainingSchedulerBinding, TrainingSchedulerConfig, TrainingTensorBuffer,
 };
 
 const SAFETENSORS_MANIFEST_KEY: &str = "psionic.model_io.bundle_manifest";
@@ -418,6 +419,12 @@ pub struct ModelStateGroupAssignment {
     pub model_tree_path: Vec<String>,
     /// Full optimizer configuration for the group.
     pub optimizer: TrainingOptimizerConfig,
+    /// Group-level learning-rate and weight-decay scaling semantics.
+    #[serde(default)]
+    pub parameter_semantics: TrainingParameterGroupSemantics,
+    /// Optional scheduler config plus current state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<TrainingSchedulerBinding>,
     /// Preferred residency posture for the optimizer state.
     pub optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
     /// Current residency posture.
@@ -559,6 +566,8 @@ impl PortableModelStateDict {
                 class: group.class,
                 model_tree_path: group_path,
                 optimizer: group.optimizer.clone(),
+                parameter_semantics: group.parameter_semantics,
+                scheduler: group.scheduler.clone(),
                 optimizer_residency_policy: group.optimizer_residency_policy,
                 optimizer_residency: group.optimizer_residency,
                 applied_steps: group.applied_steps,
@@ -780,6 +789,8 @@ impl PortableModelStateDict {
                 class: assignment.class,
                 parameter,
                 optimizer: assignment.optimizer.clone(),
+                parameter_semantics: assignment.parameter_semantics,
+                scheduler: assignment.scheduler.clone(),
                 optimizer_state,
                 optimizer_residency_policy: assignment.optimizer_residency_policy,
                 optimizer_residency: assignment.optimizer_residency,
@@ -1700,8 +1711,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn portable_model_bundle_roundtrips_training_groups_through_torch_json()
-    -> Result<(), Box<dyn Error>> {
+    fn portable_model_bundle_roundtrips_training_groups_through_torch_json(
+    ) -> Result<(), Box<dyn Error>> {
         let groups = sample_training_groups()?;
         let bundle = PortableModelBundle::from_training_groups(
             "weather-agent",
@@ -1771,8 +1782,8 @@ mod tests {
     }
 
     #[test]
-    fn portable_model_bundle_roundtrips_new_optimizer_family_variants_through_safetensors()
-    -> Result<(), Box<dyn Error>> {
+    fn portable_model_bundle_roundtrips_new_optimizer_family_variants_through_safetensors(
+    ) -> Result<(), Box<dyn Error>> {
         let mut adam = TrainingParameterGroupState::new(
             "adam.block",
             TrainingParameterClass::Matrix,
@@ -1786,12 +1797,20 @@ mod tests {
                 OptimizerStateResidency::DeviceResident,
                 OptimizerStateResidency::HostResident,
             ),
-        )?;
+        )?
+        .with_parameter_semantics(TrainingParameterGroupSemantics::new(0.5, 1.0))
+        .with_scheduler(TrainingSchedulerConfig::linear_warmup(4, 0.25));
         adam.optimizer_state = TrainingOptimizerState::Adam {
             first_moment: vec![0.01, -0.02],
             second_moment: vec![0.03, 0.04],
         };
         adam.applied_steps = 2;
+        adam.scheduler.as_mut().expect("scheduler").state.last_step = 2;
+        adam.scheduler
+            .as_mut()
+            .expect("scheduler")
+            .state
+            .last_learning_rate = Some(0.00375);
 
         let mut lars = TrainingParameterGroupState::new(
             "lars.block",
@@ -1806,12 +1825,20 @@ mod tests {
                 OptimizerStateResidency::DeviceResident,
                 OptimizerStateResidency::HostResident,
             ),
-        )?;
+        )?
+        .with_parameter_semantics(TrainingParameterGroupSemantics::new(1.25, 0.5))
+        .with_scheduler(TrainingSchedulerConfig::step_lr(2, 0.5));
         lars.optimizer_state = TrainingOptimizerState::Lars {
             momentum_buffer: Some(vec![0.001, -0.002]),
         };
         lars.optimizer_residency = OptimizerStateResidency::HostResident;
         lars.applied_steps = 3;
+        lars.scheduler.as_mut().expect("scheduler").state.last_step = 3;
+        lars.scheduler
+            .as_mut()
+            .expect("scheduler")
+            .state
+            .last_learning_rate = Some(0.0125);
 
         let mut lamb = TrainingParameterGroupState::new(
             "lamb.head",
@@ -1826,13 +1853,21 @@ mod tests {
                 OptimizerStateResidency::DeviceResident,
                 OptimizerStateResidency::Offloaded,
             ),
-        )?;
+        )?
+        .with_parameter_semantics(TrainingParameterGroupSemantics::new(0.75, 1.5))
+        .with_scheduler(TrainingSchedulerConfig::cosine_annealing(8, 0.001));
         lamb.optimizer_state = TrainingOptimizerState::Lamb {
             first_moment: vec![0.02, -0.03],
             second_moment: vec![0.04, 0.05],
         };
         lamb.optimizer_residency = OptimizerStateResidency::Offloaded;
         lamb.applied_steps = 4;
+        lamb.scheduler.as_mut().expect("scheduler").state.last_step = 4;
+        lamb.scheduler
+            .as_mut()
+            .expect("scheduler")
+            .state
+            .last_learning_rate = Some(0.008);
 
         let groups = vec![adam, lars, lamb];
         let bundle = PortableModelBundle::from_training_groups(
