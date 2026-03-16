@@ -535,6 +535,17 @@ That runbook is intentionally narrow and explicit about posture:
   path that is useful for cluster, staging, and receipt bring-up but does not
   overclaim Apple-valid mixed-backend training
 
+On 2026-03-15, GitHub issue `#3662` tightened the first heterogeneous
+mixed-backend experiment boundary:
+
+- Apple remains the coordinator, `.fmadapter` export, and runtime-validation
+  authority host for the Apple lane
+- the first concrete non-Apple participant target is the CUDA-backed open
+  adapter lane identified by `open_adapter_backend.cuda.gpt_oss_lm_head`
+- mixed Apple plus NVIDIA participation is therefore shared at the cluster,
+  artifact, validator, and replay layers first, not overclaimed as symmetric
+  Apple training
+
 ## Canonical Train Objects
 
 The full train system needs a formal object model. Today only some of these
