@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use autopilot_desktop::apple_architecture_explainer_reference_run::{
-    ArchitectureExplainerFirstRunConfig, run_architecture_explainer_reference_cycle,
+    ArchitectureExplainerFirstRunConfig, benchmark_architecture_explainer_adapter_package,
+    run_architecture_explainer_reference_cycle,
 };
 use clap::Parser;
 
@@ -47,6 +48,8 @@ struct Cli {
     control_base_url: Option<String>,
     #[arg(long)]
     control_bearer_token: Option<String>,
+    #[arg(long)]
+    benchmark_only_adapter_package_path: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -92,7 +95,15 @@ fn main() -> Result<()> {
     config.control_base_url = cli.control_base_url;
     config.control_bearer_token = cli.control_bearer_token;
 
-    let report = run_architecture_explainer_reference_cycle(&config)?;
-    println!("{}", serde_json::to_string_pretty(&report)?);
+    if let Some(adapter_package_path) = cli.benchmark_only_adapter_package_path {
+        let report = benchmark_architecture_explainer_adapter_package(
+            &config,
+            adapter_package_path.as_path(),
+        )?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        let report = run_architecture_explainer_reference_cycle(&config)?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    }
     Ok(())
 }

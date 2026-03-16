@@ -3881,6 +3881,7 @@ fn launch_apple_adapter_training_action(
             license: license.to_string(),
             apple_fm_base_url: apple_fm_base_url.to_string(),
             expected_base_model_signature: None,
+            experiment_manifest_path: None,
         },
     ) {
         Ok(run) => training_action_payload_response(

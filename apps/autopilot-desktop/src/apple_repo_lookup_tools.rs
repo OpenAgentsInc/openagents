@@ -154,18 +154,19 @@ impl AppleRepoLookupTool {
                 None,
             )
         })?;
-        let lookup_kind = LookupKind::for_tool_name(self.definition.name.as_str()).ok_or_else(|| {
-            RepoLookupToolError::harness(
-                self.definition.name.as_str(),
-                "unsupported_tool_name",
-                format!(
-                    "tool `{}` is not implemented by the Apple repo lookup harness",
-                    self.definition.name
-                ),
-                Some(requested_path.clone()),
-                None,
-            )
-        })?;
+        let lookup_kind =
+            LookupKind::for_tool_name(self.definition.name.as_str()).ok_or_else(|| {
+                RepoLookupToolError::harness(
+                    self.definition.name.as_str(),
+                    "unsupported_tool_name",
+                    format!(
+                        "tool `{}` is not implemented by the Apple repo lookup harness",
+                        self.definition.name
+                    ),
+                    Some(requested_path.clone()),
+                    None,
+                )
+            })?;
         let resolved_path = resolve_repo_path(self.repo_root.as_path(), requested_path.as_str())
             .map_err(|(code, detail)| {
                 RepoLookupToolError::model_request(
@@ -176,16 +177,20 @@ impl AppleRepoLookupTool {
                     None,
                 )
             })?;
-        validate_lookup_path(lookup_kind, requested_path.as_str(), resolved_path.as_path())
-            .map_err(|(code, detail)| {
-                RepoLookupToolError::model_request(
-                    self.definition.name.as_str(),
-                    code,
-                    detail,
-                    Some(requested_path.clone()),
-                    Some(resolved_path.clone()),
-                )
-            })?;
+        validate_lookup_path(
+            lookup_kind,
+            requested_path.as_str(),
+            resolved_path.as_path(),
+        )
+        .map_err(|(code, detail)| {
+            RepoLookupToolError::model_request(
+                self.definition.name.as_str(),
+                code,
+                detail,
+                Some(requested_path.clone()),
+                Some(resolved_path.clone()),
+            )
+        })?;
         let raw_bytes = fs::read(resolved_path.as_path()).map_err(|error| {
             RepoLookupToolError::harness(
                 self.definition.name.as_str(),
@@ -305,7 +310,10 @@ impl AppleFmTool for AppleRepoLookupTool {
                     })?;
                 Err(AppleFmToolCallError::new(
                     self.definition.name.clone(),
-                    error.event.detail.unwrap_or_else(|| String::from("repo lookup failed")),
+                    error
+                        .event
+                        .detail
+                        .unwrap_or_else(|| String::from("repo lookup failed")),
                 ))
             }
         }
@@ -354,7 +362,10 @@ fn resolve_repo_path(
             String::from("tool paths must be repo-relative, not absolute"),
         ));
     }
-    if candidate.components().any(|component| component == Component::ParentDir) {
+    if candidate
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
         return Err((
             "path_traversal_disallowed",
             String::from("tool paths may not use `..` traversal"),
@@ -370,7 +381,10 @@ fn resolve_repo_path(
     if !canonical.starts_with(repo_root) {
         return Err((
             "path_outside_repo",
-            format!("resolved path `{}` escapes the repo root", canonical.display()),
+            format!(
+                "resolved path `{}` escapes the repo root",
+                canonical.display()
+            ),
         ));
     }
     if !canonical.is_file() {
@@ -396,8 +410,7 @@ fn validate_lookup_path(
         LookupKind::Code => matches!(
             extension.as_deref(),
             Some(
-                "rs"
-                    | "swift"
+                "rs" | "swift"
                     | "toml"
                     | "sh"
                     | "py"
@@ -449,7 +462,11 @@ fn build_excerpt(kind: LookupKind, raw_text: &str) -> LookupExcerpt {
     }
 }
 
-fn excerpt_full_or_trimmed(raw_text: &str, max_chars: usize, strategy: &'static str) -> LookupExcerpt {
+fn excerpt_full_or_trimmed(
+    raw_text: &str,
+    max_chars: usize,
+    strategy: &'static str,
+) -> LookupExcerpt {
     let content = raw_text.chars().collect::<Vec<_>>();
     if content.len() <= max_chars {
         return LookupExcerpt {
@@ -480,9 +497,7 @@ fn excerpt_head_tail(raw_text: &str, head_chars: usize, tail_chars: usize) -> Lo
         .skip(content.len().saturating_sub(tail_chars))
         .collect::<String>();
     LookupExcerpt {
-        content: format!(
-            "{head}\n\n... [truncated code excerpt] ...\n\n{tail}"
-        ),
+        content: format!("{head}\n\n... [truncated code excerpt] ...\n\n{tail}"),
         truncated: true,
         strategy: "head_tail",
     }
@@ -590,10 +605,10 @@ mod tests {
     use anyhow::Result;
     use serde_json::json;
 
-    use super::{
-        AppleRepoLookupRecorder, AppleRepoLookupTool, build_repo_lookup_tools, repo_root,
+    use super::{AppleRepoLookupRecorder, AppleRepoLookupTool, build_repo_lookup_tools, repo_root};
+    use psionic_data::{
+        AppleAdapterToolDefinition, AppleAdapterToolFunctionDefinition, AppleAdapterToolType,
     };
-    use psionic_data::{AppleAdapterToolDefinition, AppleAdapterToolFunctionDefinition, AppleAdapterToolType};
 
     fn tool_definition(name: &str) -> AppleAdapterToolDefinition {
         AppleAdapterToolDefinition {
@@ -650,14 +665,20 @@ mod tests {
                 "path": "apps/autopilot-desktop/src/apple_adapter_training_control.rs"
             }))
             .expect_err("code path should be rejected by doc tool");
-        assert_eq!(error.event.failure_code.as_deref(), Some("path_kind_mismatch"));
+        assert_eq!(
+            error.event.failure_code.as_deref(),
+            Some("path_kind_mismatch")
+        );
         Ok(())
     }
 
     #[test]
     fn repo_lookup_builder_preserves_supported_tool_inventory() -> Result<()> {
         let tools = build_repo_lookup_tools(
-            &[tool_definition("lookup_doc"), tool_definition("lookup_code")],
+            &[
+                tool_definition("lookup_doc"),
+                tool_definition("lookup_code"),
+            ],
             AppleRepoLookupRecorder::default(),
         )?;
         assert_eq!(tools.len(), 2);
