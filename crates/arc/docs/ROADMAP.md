@@ -742,7 +742,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `ARC-401` / [#3800](https://github.com/OpenAgentsInc/openagents/issues/3800) | landed | Ported a typed interactive agent trait, registry, session-context contract, local/remote environment adapters over `arc-client`, and a bounded runner in `arc-solvers` that emits `arc-benchmark` run reports plus checkpoint bundles instead of ad hoc logs. |
-| `ARC-402` / [#3801](https://github.com/OpenAgentsInc/openagents/issues/3801) | planned | Port the random baseline and a minimal deterministic scripted baseline. |
+| `ARC-402` / [#3801](https://github.com/OpenAgentsInc/openagents/issues/3801) | landed | Added checkpointable seeded-random and deterministic scripted baseline agents in `arc-solvers`, plus fixture-backed runner tests proving repeatable local artifacts, remote scorecard closeout, and a stable scripted win path over the shared interactive runner contracts. |
 | `ARC-403` / [#3802](https://github.com/OpenAgentsInc/openagents/issues/3802) | planned | Port the ADCR-style baseline as a baseline agent, not as the library contract. |
 | `ARC-404` / [#3803](https://github.com/OpenAgentsInc/openagents/issues/3803) | landed | Added shared interactive budget / reset / refusal envelopes in `arc-core`, taught the `arc-solvers` runner to emit explicit per-turn outcomes plus final completion-or-refusal artifacts, and covered success, invalid-action, budget-exhausted, terminal-state, policy-refusal, level-reset, and closed-scorecard cases with bounded local/remote tests. |
 | `ARC-405` / [#3804](https://github.com/OpenAgentsInc/openagents/issues/3804) | planned | Export typed trajectory bundles through the generalized Psionic environment/receipt path once `PLIB-512` and `PLIB-513` land. |
