@@ -12,6 +12,7 @@
 pub mod local;
 pub mod models;
 pub mod remote;
+pub mod server;
 
 use arc_core::{ArcActionError, ArcFrameDataError, ArcTaskId, ArcTaskIdError};
 use arc_engine::ArcEngineError;
@@ -20,11 +21,13 @@ use thiserror::Error;
 
 pub use local::LocalArcEnvironment;
 pub use models::{
-    ArcCloseScorecardRequest, ArcEnvironmentInfo, ArcOpenScorecardRequest,
-    ArcOpenScorecardResponse, ArcRemoteSession, ArcScorecardEnvironment, ArcScorecardRunSummary,
-    ArcScorecardSummary, ArcSessionFrame, ArcTagScore,
+    ArcCloseScorecardRequest, ArcCompatibilityActionInput, ArcCompatibilityFrameResponse,
+    ArcComplexActionCommand, ArcEnvironmentInfo, ArcOpenScorecardRequest, ArcOpenScorecardResponse,
+    ArcRemoteSession, ArcResetCommand, ArcScorecardEnvironment, ArcScorecardRunSummary,
+    ArcScorecardSummary, ArcSessionFrame, ArcSimpleActionCommand, ArcTagScore,
 };
 pub use remote::{ArcRemoteClient, RemoteArcEnvironment};
+pub use server::{ArcCompatibilityServer, ArcRegisteredEnvironment};
 
 /// Human-readable ownership summary for this crate.
 pub const CRATE_ROLE: &str =

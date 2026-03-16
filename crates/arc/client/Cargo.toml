@@ -13,7 +13,10 @@ workspace = true
 [dependencies]
 arc-core = { path = "../core" }
 arc-engine = { path = "../engine" }
+axum = "0.8"
 reqwest = { workspace = true, features = ["blocking"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+time = { version = "0.3", features = ["formatting"] }
+tokio = { workspace = true }

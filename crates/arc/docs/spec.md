@@ -1202,6 +1202,13 @@ The interactive runner must preserve the upstream ARC-AGI-3 operating split:
 - competition mode as a stricter benchmark policy surface, not just a flag on
   ordinary online runs
 
+The currently landed `arc-client` compatibility server is intentionally a local
+development surface, not benchmark authority. It already exposes docs-shaped
+`/api/games`, scorecard, command, and healthcheck routes with in-memory
+scorecard/session state and optional cookie injection for local parity testing,
+but its score fields remain bounded placeholders until `arc-benchmark`,
+versioned RHAE policy, and lifecycle-policy issues land.
+
 Competition-mode semantics must be modeled explicitly:
 
 - API interaction only
@@ -1433,9 +1440,14 @@ upstream sample blobs and machine-check the local-wrapper behaviors this crate
 currently claims. `ARC-203` is now also landed: `arc-client` exposes typed
 environment metadata and scorecard/command models, a local wrapper over
 `arc-engine`, and a blocking remote wrapper/client with cookie-affine session
-behavior proven by an in-process HTTP smoke fixture. Full compatibility-server
-conformance and local-vs-remote parity remain the next explicit follow-on in
-`ARC-204` and `ARC-205`.
+behavior proven by an in-process HTTP smoke fixture. `ARC-204` is now also
+landed in bounded form: `arc-client` ships a typed local compatibility server
+covering the documented game discovery, scorecard, command, and healthcheck
+routes, plus an end-to-end local-flow integration test that proves the local
+mode does not require an API key and keeps compatibility scorecards in-memory.
+Benchmark-truthful scoring, lifecycle policy, and local-vs-remote parity remain
+the next explicit follow-on in `ARC-205`, `ARC-207`, `ARC-211`, `ARC-212`, and
+`ARC-213`.
 
 ### Phase 3: benchmark runtime
 

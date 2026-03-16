@@ -1,12 +1,13 @@
-use arc_core::{ArcAction, ArcActionKind, ArcFrameData, ArcGameState};
+use arc_core::{ArcAction, ArcActionKind};
 use reqwest::blocking::Client;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
 use crate::ArcClientError;
 use crate::models::{
-    ArcCloseScorecardRequest, ArcEnvironmentInfo, ArcOpenScorecardRequest,
-    ArcOpenScorecardResponse, ArcRemoteSession, ArcScorecardSummary, ArcSessionFrame,
+    ArcCloseScorecardRequest, ArcCompatibilityFrameResponse, ArcComplexActionCommand,
+    ArcEnvironmentInfo, ArcOpenScorecardRequest, ArcOpenScorecardResponse, ArcRemoteSession,
+    ArcResetCommand, ArcScorecardSummary, ArcSessionFrame, ArcSimpleActionCommand,
 };
 
 #[derive(Clone)]
@@ -82,18 +83,13 @@ impl ArcRemoteClient {
         guid: Option<&str>,
     ) -> Result<(ArcRemoteSession, ArcSessionFrame), ArcClientError> {
         let card_id = card_id.into();
-        let request = ResetCommand {
+        let request = ArcResetCommand {
             game_id: game_id.clone(),
             card_id: card_id.clone(),
             guid: guid.map(ToOwned::to_owned),
         };
-        let response: ArcFrameResponseWire = self.post_json("/api/cmd/RESET", &request)?;
-        let session_guid = response
-            .guid
-            .clone()
-            .ok_or_else(|| ArcClientError::MissingGuid {
-                game_id: game_id.clone(),
-            })?;
+        let response: ArcCompatibilityFrameResponse = self.post_json("/api/cmd/RESET", &request)?;
+        let session_guid = response.guid.clone();
         let frame = response.try_into_session_frame()?;
         Ok((
             ArcRemoteSession {
@@ -114,30 +110,30 @@ impl ArcRemoteClient {
         let path = format!("/api/cmd/{}", action_path_segment(action));
         let response = match action {
             ArcAction::Action6 { x, y } => {
-                let request = ComplexActionCommand {
+                let request = ArcComplexActionCommand {
                     game_id: session.game_id.clone(),
                     guid: session.guid.clone(),
                     x: *x,
                     y: *y,
                     reasoning,
                 };
-                self.post_json::<_, ArcFrameResponseWire>(&path, &request)?
+                self.post_json::<_, ArcCompatibilityFrameResponse>(&path, &request)?
             }
             ArcAction::Reset => {
-                let request = ResetCommand {
+                let request = ArcResetCommand {
                     game_id: session.game_id.clone(),
                     card_id: session.scorecard_id.clone(),
                     guid: Some(session.guid.clone()),
                 };
-                self.post_json::<_, ArcFrameResponseWire>(&path, &request)?
+                self.post_json::<_, ArcCompatibilityFrameResponse>(&path, &request)?
             }
             _ => {
-                let request = SimpleActionCommand {
+                let request = ArcSimpleActionCommand {
                     game_id: session.game_id.clone(),
                     guid: session.guid.clone(),
                     reasoning,
                 };
-                self.post_json::<_, ArcFrameResponseWire>(&path, &request)?
+                self.post_json::<_, ArcCompatibilityFrameResponse>(&path, &request)?
             }
         };
         response.try_into_session_frame()
@@ -263,149 +259,6 @@ impl RemoteArcEnvironment {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ResetCommand {
-    game_id: arc_core::ArcTaskId,
-    card_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    guid: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct SimpleActionCommand {
-    game_id: arc_core::ArcTaskId,
-    guid: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reasoning: Option<serde_json::Value>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct ComplexActionCommand {
-    game_id: arc_core::ArcTaskId,
-    guid: String,
-    x: u8,
-    y: u8,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reasoning: Option<serde_json::Value>,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct ArcFrameResponseWire {
-    game_id: arc_core::ArcTaskId,
-    #[serde(default)]
-    guid: Option<String>,
-    frame: Vec<Vec<Vec<u8>>>,
-    state: ArcGameStateWire,
-    levels_completed: u16,
-    win_levels: u16,
-    action_input: ArcActionInputWire,
-    #[serde(default)]
-    available_actions: Vec<u8>,
-    #[serde(default)]
-    full_reset: bool,
-}
-
-impl ArcFrameResponseWire {
-    fn try_into_session_frame(self) -> Result<ArcSessionFrame, ArcClientError> {
-        let guid = self.guid.ok_or_else(|| ArcClientError::MissingGuid {
-            game_id: self.game_id.clone(),
-        })?;
-        let frames = self
-            .frame
-            .into_iter()
-            .enumerate()
-            .map(|(frame_index, frame)| flatten_remote_frame(frame_index, frame))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(ArcSessionFrame {
-            game_id: self.game_id,
-            guid,
-            frames,
-            game_state: self.state.into(),
-            levels_completed: self.levels_completed,
-            win_levels: self.win_levels,
-            action: self.action_input.try_into_action()?,
-            available_actions: self
-                .available_actions
-                .into_iter()
-                .map(action_kind_from_wire)
-                .collect::<Result<Vec<_>, _>>()?,
-            full_reset: self.full_reset,
-        })
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum ArcGameStateWire {
-    NotStarted,
-    NotFinished,
-    Win,
-    GameOver,
-}
-
-impl From<ArcGameStateWire> for ArcGameState {
-    fn from(value: ArcGameStateWire) -> Self {
-        match value {
-            ArcGameStateWire::NotStarted => Self::NotStarted,
-            ArcGameStateWire::NotFinished => Self::NotFinished,
-            ArcGameStateWire::Win => Self::Win,
-            ArcGameStateWire::GameOver => Self::GameOver,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct ArcActionInputWire {
-    id: u8,
-    #[serde(default)]
-    data: serde_json::Map<String, serde_json::Value>,
-}
-
-impl ArcActionInputWire {
-    fn try_into_action(self) -> Result<ArcAction, ArcClientError> {
-        match self.id {
-            0 => Ok(ArcAction::Reset),
-            1 => Ok(ArcAction::Action1),
-            2 => Ok(ArcAction::Action2),
-            3 => Ok(ArcAction::Action3),
-            4 => Ok(ArcAction::Action4),
-            5 => Ok(ArcAction::Action5),
-            6 => {
-                let x = self
-                    .data
-                    .get("x")
-                    .and_then(serde_json::Value::as_u64)
-                    .ok_or(ArcClientError::MissingAction6Coordinate { axis: "x" })?;
-                let y = self
-                    .data
-                    .get("y")
-                    .and_then(serde_json::Value::as_u64)
-                    .ok_or(ArcClientError::MissingAction6Coordinate { axis: "y" })?;
-                let x = u8::try_from(x)
-                    .map_err(|_| ArcClientError::MissingAction6Coordinate { axis: "x" })?;
-                let y = u8::try_from(y)
-                    .map_err(|_| ArcClientError::MissingAction6Coordinate { axis: "y" })?;
-                ArcAction::action6(x, y).map_err(Into::into)
-            }
-            7 => Ok(ArcAction::Action7),
-            id => Err(ArcClientError::UnsupportedActionId { id }),
-        }
-    }
-}
-
-fn action_kind_from_wire(id: u8) -> Result<ArcActionKind, ArcClientError> {
-    match id {
-        1 => Ok(ArcActionKind::Action1),
-        2 => Ok(ArcActionKind::Action2),
-        3 => Ok(ArcActionKind::Action3),
-        4 => Ok(ArcActionKind::Action4),
-        5 => Ok(ArcActionKind::Action5),
-        6 => Ok(ArcActionKind::Action6),
-        7 => Ok(ArcActionKind::Action7),
-        other => Err(ArcClientError::UnsupportedActionId { id: other }),
-    }
-}
-
 fn action_path_segment(action: &ArcAction) -> &'static str {
     match action {
         ArcAction::Reset => "RESET",
@@ -417,29 +270,4 @@ fn action_path_segment(action: &ArcAction) -> &'static str {
         ArcAction::Action6 { .. } => "ACTION6",
         ArcAction::Action7 => "ACTION7",
     }
-}
-
-fn flatten_remote_frame(
-    frame_index: usize,
-    rows: Vec<Vec<u8>>,
-) -> Result<ArcFrameData, ArcClientError> {
-    let height =
-        u8::try_from(rows.len()).map_err(|_| arc_core::ArcFrameDataError::InvalidHeight(255))?;
-    let width = rows.first().map(std::vec::Vec::len).unwrap_or_default();
-    let width = u8::try_from(width).map_err(|_| arc_core::ArcFrameDataError::InvalidWidth(255))?;
-    let mut pixels = Vec::with_capacity(usize::from(width) * usize::from(height));
-
-    for (row_index, row) in rows.into_iter().enumerate() {
-        if row.len() != usize::from(width) {
-            return Err(ArcClientError::RaggedRemoteFrame {
-                frame_index,
-                row_index,
-                expected: usize::from(width),
-                actual: row.len(),
-            });
-        }
-        pixels.extend(row);
-    }
-
-    ArcFrameData::new(width, height, pixels).map_err(Into::into)
 }
