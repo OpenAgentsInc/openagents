@@ -337,8 +337,9 @@ Current posture:
   single-rank-per-node launch validation, cluster membership/address/backend
   readiness checks, sandbox contract preflight, per-rank bootstrap payloads
   and sandbox job plans, distributed reserved-environment synthesis, cluster
-  execution evidence, and stable plan digests while backend transport and
-  backend-family mapping remain later work.
+  execution evidence, stable plan digests, tree-aware `grouped_all_sum` /
+  `grouped_all_reduce`, and floating-point `average_gradients` while backend
+  transport and backend-family mapping remain later work.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

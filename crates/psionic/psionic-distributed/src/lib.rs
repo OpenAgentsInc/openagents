@@ -21,7 +21,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, OnceLock},
 };
 
-use psionic_array::{Array, ArrayContext, ArrayError};
+use psionic_array::{Array, ArrayContext, ArrayError, Tree, TreeError, TreeSpec};
 use psionic_cluster::{
     ClusterBackendReadinessStatus, ClusterMembershipRecord, ClusterMembershipStatus,
     ClusterNodeTelemetry, ClusterState,
@@ -43,6 +43,9 @@ use thiserror::Error;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "public framework-distributed groups and bounded collective helpers above Psionic runtime mesh truth";
+
+/// Default threshold used to group small gradient leaves into one all-reduce payload.
+pub const DEFAULT_GROUPED_ALL_REDUCE_THRESHOLD_BYTES: usize = 64 * 1024;
 
 const RESERVED_DISTRIBUTED_ENV_KEYS: [&str; 11] = [
     "PSIONIC_DISTRIBUTED_RANK",
@@ -494,6 +497,13 @@ impl DistributedReferenceTensor {
             }
         }
     }
+
+    fn as_i8_values(&self) -> Option<Vec<i8>> {
+        match &self.storage {
+            DistributedReferenceStorage::F32(_) => None,
+            DistributedReferenceStorage::I8(values) => Some(values.clone()),
+        }
+    }
 }
 
 /// Public options for one collective helper over a distributed group.
@@ -533,6 +543,70 @@ impl DistributedCollectiveOptions {
         rank_inputs: BTreeMap<usize, DistributedReferenceTensor>,
     ) -> Self {
         self.rank_inputs = rank_inputs;
+        self
+    }
+}
+
+/// Public options for tree-aware gradient reduction over a distributed group.
+#[derive(Clone, Debug)]
+pub struct DistributedGradientReductionOptions {
+    /// Explicit group override; defaults to the current reusable group or singleton fallback.
+    pub group: Option<DistributedGroup>,
+    /// Explicit host-owned tree payloads for every rank in the current group.
+    pub rank_inputs: BTreeMap<usize, Tree<DistributedReferenceTensor>>,
+    /// Maximum packed payload size used when grouping small leaves into one all-reduce call.
+    pub small_tensor_bytes_threshold: usize,
+}
+
+impl Default for DistributedGradientReductionOptions {
+    fn default() -> Self {
+        Self {
+            group: None,
+            rank_inputs: BTreeMap::new(),
+            small_tensor_bytes_threshold: DEFAULT_GROUPED_ALL_REDUCE_THRESHOLD_BYTES,
+        }
+    }
+}
+
+impl DistributedGradientReductionOptions {
+    /// Creates the default tree-aware gradient-reduction options.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Overrides the distributed group used for the reduction.
+    #[must_use]
+    pub fn with_group(mut self, group: DistributedGroup) -> Self {
+        self.group = Some(group);
+        self
+    }
+
+    /// Adds one explicit rank tree payload.
+    #[must_use]
+    pub fn with_rank_input_tree(
+        mut self,
+        rank: usize,
+        gradients: Tree<DistributedReferenceTensor>,
+    ) -> Self {
+        self.rank_inputs.insert(rank, gradients);
+        self
+    }
+
+    /// Replaces the explicit rank tree payload map.
+    #[must_use]
+    pub fn with_rank_input_trees(
+        mut self,
+        rank_inputs: BTreeMap<usize, Tree<DistributedReferenceTensor>>,
+    ) -> Self {
+        self.rank_inputs = rank_inputs;
+        self
+    }
+
+    /// Overrides the grouping threshold; `0` disables small-tensor packing.
+    #[must_use]
+    pub fn with_small_tensor_bytes_threshold(mut self, threshold: usize) -> Self {
+        self.small_tensor_bytes_threshold = threshold;
         self
     }
 }
@@ -1406,6 +1480,39 @@ pub enum DistributedLaunchError {
     },
 }
 
+/// Tree-aware gradient reduction failure above the public collective layer.
+#[derive(Debug, Error, PartialEq)]
+pub enum DistributedGradientReductionError {
+    /// Lower collective semantics still govern grouped gradient reduction.
+    #[error(transparent)]
+    Collective(#[from] DistributedCollectiveError),
+    /// Tree rebuilding still uses the public deterministic tree utilities.
+    #[error(transparent)]
+    Tree(#[from] TreeError),
+    /// Every rank must provide the same tree structure as the local gradients.
+    #[error(
+        "public distributed gradient tree for rank {rank} has structure {actual:?}, expected {expected:?}"
+    )]
+    RankInputTreeStructureMismatch {
+        /// Rank whose tree structure disagreed with the local tree.
+        rank: usize,
+        /// Local gradient tree structure.
+        expected: TreeSpec,
+        /// Remote gradient tree structure.
+        actual: TreeSpec,
+    },
+    /// Gradient averaging only supports floating-point leaves on the current public surface.
+    #[error(
+        "public distributed average_gradients requires floating-point leaves, found dtype {dtype:?} at leaf {leaf_index}"
+    )]
+    NonFloatingGradientLeaf {
+        /// Leaf index in deterministic traversal order.
+        leaf_index: usize,
+        /// Dtype that refused averaging.
+        dtype: DType,
+    },
+}
+
 #[derive(Clone, Debug)]
 struct DistributedGroupState {
     group_id: String,
@@ -1850,6 +1957,97 @@ pub fn sum_scatter(
     reduce_scatter(x, options)
 }
 
+/// Sum-only grouped all-reduce over one tree of gradient leaves.
+pub fn grouped_all_sum(
+    gradients: &Tree<Array>,
+    options: DistributedGradientReductionOptions,
+) -> Result<Tree<Array>, DistributedGradientReductionError> {
+    let group = resolve_collective_group(options.group)?;
+    if group.is_singleton() {
+        return Ok(gradients.clone());
+    }
+
+    let local_spec = gradients.spec();
+    let local_leaves = gradients.leaves();
+    if local_leaves.is_empty() {
+        return Ok(local_spec.unflatten(Vec::new())?);
+    }
+    let rank_leaves = validated_rank_gradient_trees(
+        &group,
+        &local_spec,
+        local_leaves.as_slice(),
+        &options.rank_inputs,
+    )?;
+
+    let groups = gradient_leaf_groups(
+        local_leaves.as_slice(),
+        options.small_tensor_bytes_threshold,
+    );
+    let mut reduced_leaves = Vec::with_capacity(local_leaves.len());
+    for leaf_group in groups {
+        let local_payloads = leaf_group
+            .leaf_indices
+            .iter()
+            .map(|index| DistributedReferenceTensor::from_array(&local_leaves[*index]))
+            .collect::<Result<Vec<_>, _>>()?;
+        let local_concat = concatenate_reference_tensors(local_payloads.as_slice())?;
+        let local_concat_array =
+            local_concat.to_array(&local_leaves[leaf_group.leaf_indices[0]].context())?;
+        let mut rank_inputs = BTreeMap::new();
+        for (rank, rank_leaf_tensors) in &rank_leaves {
+            let payloads = leaf_group
+                .leaf_indices
+                .iter()
+                .map(|index| rank_leaf_tensors[*index].clone())
+                .collect::<Vec<_>>();
+            rank_inputs.insert(*rank, concatenate_reference_tensors(payloads.as_slice())?);
+        }
+        let reduced = all_sum(
+            &local_concat_array,
+            DistributedCollectiveOptions::new()
+                .with_group(group.clone())
+                .with_rank_inputs(rank_inputs),
+        )?;
+        let reduced_reference = DistributedReferenceTensor::from_array(&reduced)?;
+        reduced_leaves.extend(split_reduced_group(
+            &reduced_reference,
+            local_leaves.as_slice(),
+            &leaf_group,
+        )?);
+    }
+    Ok(local_spec.unflatten(reduced_leaves)?)
+}
+
+/// Alias matching the grouped all-reduce naming family from upstream docs.
+pub fn grouped_all_reduce(
+    gradients: &Tree<Array>,
+    options: DistributedGradientReductionOptions,
+) -> Result<Tree<Array>, DistributedGradientReductionError> {
+    grouped_all_sum(gradients, options)
+}
+
+/// Averages one tree of floating-point gradients across the current distributed group.
+pub fn average_gradients(
+    gradients: &Tree<Array>,
+    options: DistributedGradientReductionOptions,
+) -> Result<Tree<Array>, DistributedGradientReductionError> {
+    let group = resolve_collective_group(options.group.clone())?;
+    if group.is_singleton() {
+        return Ok(gradients.clone());
+    }
+    let local_leaves = gradients.leaves();
+    for (leaf_index, leaf) in local_leaves.iter().enumerate() {
+        if !matches!(leaf.dtype(), DType::F32 | DType::F16 | DType::BF16) {
+            return Err(DistributedGradientReductionError::NonFloatingGradientLeaf {
+                leaf_index,
+                dtype: leaf.dtype(),
+            });
+        }
+    }
+    grouped_all_sum(gradients, options.with_group(group.clone()))?
+        .map_leaves(&mut |leaf| scale_gradient_leaf(leaf, 1.0 / group.size() as f32))
+}
+
 /// Point-to-point send above the public distributed-group surface.
 pub fn send(
     x: &Array,
@@ -2196,6 +2394,11 @@ pub fn plan_launch(
         cluster_execution,
         assignments,
     })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GradientLeafGroup {
+    leaf_indices: Vec<usize>,
 }
 
 fn resolve_collective_group(
@@ -2709,6 +2912,227 @@ fn stable_launch_plan_digest(
         }
     }
     hex::encode(hasher.finalize())
+}
+
+fn validated_rank_gradient_trees(
+    group: &DistributedGroup,
+    local_spec: &TreeSpec,
+    local_leaves: &[Array],
+    rank_inputs: &BTreeMap<usize, Tree<DistributedReferenceTensor>>,
+) -> Result<BTreeMap<usize, Vec<DistributedReferenceTensor>>, DistributedGradientReductionError> {
+    let invalid_ranks = rank_inputs
+        .keys()
+        .copied()
+        .filter(|rank| *rank >= group.size())
+        .collect::<Vec<_>>();
+    if !invalid_ranks.is_empty() {
+        return Err(DistributedCollectiveError::InvalidRankInputs {
+            operation: DistributedCollectiveOperation::AllSum,
+            invalid_ranks,
+            group_size: group.size(),
+        }
+        .into());
+    }
+    let missing_ranks = (0..group.size())
+        .filter(|rank| !rank_inputs.contains_key(rank))
+        .collect::<Vec<_>>();
+    if !missing_ranks.is_empty() {
+        return Err(DistributedCollectiveError::MissingRankInputs {
+            operation: DistributedCollectiveOperation::AllSum,
+            missing_ranks,
+        }
+        .into());
+    }
+
+    let mut validated = BTreeMap::new();
+    for (rank, tree) in rank_inputs {
+        let actual = tree.spec();
+        if actual != *local_spec {
+            return Err(
+                DistributedGradientReductionError::RankInputTreeStructureMismatch {
+                    rank: *rank,
+                    expected: local_spec.clone(),
+                    actual,
+                },
+            );
+        }
+        let leaves = tree.leaves();
+        for (local_leaf, remote_leaf) in local_leaves.iter().zip(leaves.iter()) {
+            validate_rank_payload_shape_dtype(
+                DistributedCollectiveOperation::AllSum,
+                *rank,
+                local_leaf.shape(),
+                local_leaf.dtype(),
+                remote_leaf,
+            )?;
+            if *rank == group.rank()
+                && *remote_leaf != DistributedReferenceTensor::from_array(local_leaf)?
+            {
+                return Err(DistributedCollectiveError::LocalRankInputMismatch {
+                    operation: DistributedCollectiveOperation::AllSum,
+                    rank: group.rank(),
+                }
+                .into());
+            }
+        }
+        validated.insert(*rank, leaves);
+    }
+    Ok(validated)
+}
+
+fn gradient_leaf_groups(
+    local_leaves: &[Array],
+    small_tensor_bytes_threshold: usize,
+) -> Vec<GradientLeafGroup> {
+    let mut groups = Vec::new();
+    let mut current_indices = Vec::<usize>::new();
+    let mut current_dtype = None::<DType>;
+    let mut current_bytes = 0usize;
+
+    for (index, leaf) in local_leaves.iter().enumerate() {
+        let leaf_bytes = leaf
+            .shape()
+            .element_count()
+            .saturating_mul(leaf.dtype().element_size_bytes());
+        let eligible =
+            small_tensor_bytes_threshold > 0 && leaf_bytes <= small_tensor_bytes_threshold;
+        let can_extend = eligible
+            && !current_indices.is_empty()
+            && current_dtype == Some(leaf.dtype())
+            && current_bytes.saturating_add(leaf_bytes) <= small_tensor_bytes_threshold;
+        if can_extend {
+            current_indices.push(index);
+            current_bytes = current_bytes.saturating_add(leaf_bytes);
+            continue;
+        }
+        if !current_indices.is_empty() {
+            groups.push(GradientLeafGroup {
+                leaf_indices: std::mem::take(&mut current_indices),
+            });
+        }
+        if eligible {
+            current_indices.push(index);
+            current_dtype = Some(leaf.dtype());
+            current_bytes = leaf_bytes;
+        } else {
+            groups.push(GradientLeafGroup {
+                leaf_indices: vec![index],
+            });
+            current_dtype = None;
+            current_bytes = 0;
+        }
+    }
+    if !current_indices.is_empty() {
+        groups.push(GradientLeafGroup {
+            leaf_indices: current_indices,
+        });
+    }
+    groups
+}
+
+fn concatenate_reference_tensors(
+    tensors: &[DistributedReferenceTensor],
+) -> Result<DistributedReferenceTensor, DistributedGradientReductionError> {
+    let Some(first) = tensors.first() else {
+        return Err(DistributedCollectiveError::ReferenceElementCountMismatch {
+            shape: Shape::new(vec![0]),
+            expected_elements: 1,
+            actual_elements: 0,
+        }
+        .into());
+    };
+    let dtype = first.dtype();
+    let element_count = tensors
+        .iter()
+        .map(|tensor| tensor.shape().element_count())
+        .sum::<usize>();
+    let shape = Shape::new(vec![element_count]);
+    match dtype {
+        DType::F32 | DType::F16 | DType::BF16 => {
+            let values = tensors
+                .iter()
+                .flat_map(DistributedReferenceTensor::as_f32_values)
+                .collect::<Vec<_>>();
+            Ok(DistributedReferenceTensor::float(shape, dtype, values)?)
+        }
+        DType::I8 => {
+            let mut values = Vec::with_capacity(element_count);
+            for tensor in tensors {
+                let Some(local) = tensor.as_i8_values() else {
+                    return Err(DistributedCollectiveError::RankInputMismatch {
+                        operation: DistributedCollectiveOperation::AllSum,
+                        rank: 0,
+                        expected_shape: first.shape().clone(),
+                        actual_shape: tensor.shape().clone(),
+                        expected_dtype: dtype,
+                        actual_dtype: tensor.dtype(),
+                    }
+                    .into());
+                };
+                values.extend(local);
+            }
+            Ok(DistributedReferenceTensor::i8(shape, values)?)
+        }
+    }
+}
+
+fn split_reduced_group(
+    reduced_group: &DistributedReferenceTensor,
+    local_leaves: &[Array],
+    group: &GradientLeafGroup,
+) -> Result<Vec<Array>, DistributedGradientReductionError> {
+    let mut rebuilt = Vec::with_capacity(group.leaf_indices.len());
+    match reduced_group.dtype() {
+        DType::F32 | DType::F16 | DType::BF16 => {
+            let values = reduced_group.as_f32_values();
+            let mut cursor = 0usize;
+            for leaf_index in &group.leaf_indices {
+                let leaf = &local_leaves[*leaf_index];
+                let element_count = leaf.shape().element_count();
+                let next_cursor = cursor.saturating_add(element_count);
+                let payload = values[cursor..next_cursor].to_vec();
+                cursor = next_cursor;
+                rebuilt.push(
+                    DistributedReferenceTensor::float(leaf.shape().clone(), leaf.dtype(), payload)?
+                        .to_array(&leaf.context())?,
+                );
+            }
+        }
+        DType::I8 => {
+            let values = reduced_group.as_i8_values().unwrap_or_default();
+            let mut cursor = 0usize;
+            for leaf_index in &group.leaf_indices {
+                let leaf = &local_leaves[*leaf_index];
+                let element_count = leaf.shape().element_count();
+                let next_cursor = cursor.saturating_add(element_count);
+                let payload = values[cursor..next_cursor].to_vec();
+                cursor = next_cursor;
+                rebuilt.push(
+                    DistributedReferenceTensor::i8(leaf.shape().clone(), payload)?
+                        .to_array(&leaf.context())?,
+                );
+            }
+        }
+    }
+    Ok(rebuilt)
+}
+
+fn scale_gradient_leaf(
+    leaf: &Array,
+    factor: f32,
+) -> Result<Array, DistributedGradientReductionError> {
+    let context = leaf.context();
+    let scalar = context
+        .scalar_f32(factor)
+        .map_err(DistributedCollectiveError::from)?
+        .cast(leaf.dtype())
+        .map_err(DistributedCollectiveError::from)?;
+    let scale = scalar
+        .broadcast_to(leaf.shape().clone())
+        .map_err(DistributedCollectiveError::from)?;
+    leaf.mul(&scale)
+        .map_err(DistributedCollectiveError::from)
+        .map_err(Into::into)
 }
 
 fn validate_reference_element_count(
@@ -4217,6 +4641,329 @@ mod tests {
                 resource: "cpu_limit",
                 requested: 16,
                 profile_limit: 8,
+            }
+        );
+    }
+
+    #[test]
+    fn grouped_all_sum_preserves_tree_structure_and_reduces_grouped_leaves() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-b")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let gradients = Tree::Tuple(vec![
+            Tree::Leaf(
+                context
+                    .constant_f32(Shape::new(vec![2]), vec![1.0, 2.0])
+                    .expect("leaf a"),
+            ),
+            Tree::Dict(BTreeMap::from([
+                (
+                    String::from("bias"),
+                    Tree::Leaf(context.scalar_f32(3.0).expect("leaf b")),
+                ),
+                (
+                    String::from("proj"),
+                    Tree::Leaf(
+                        context
+                            .constant_f32(Shape::new(vec![1]), vec![4.0])
+                            .expect("leaf c"),
+                    ),
+                ),
+            ])),
+        ]);
+        let reduced = grouped_all_sum(
+            &gradients,
+            DistributedGradientReductionOptions::new()
+                .with_group(group)
+                .with_small_tensor_bytes_threshold(32)
+                .with_rank_input_tree(
+                    0,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![0.5, 1.5])
+                                .expect("rank 0 leaf a"),
+                        ),
+                        Tree::Dict(BTreeMap::from([
+                            (
+                                String::from("bias"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::scalar(), vec![1.0])
+                                        .expect("rank 0 leaf b"),
+                                ),
+                            ),
+                            (
+                                String::from("proj"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![2.0])
+                                        .expect("rank 0 leaf c"),
+                                ),
+                            ),
+                        ])),
+                    ]),
+                )
+                .with_rank_input_tree(
+                    1,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![1.0, 2.0])
+                                .expect("rank 1 leaf a"),
+                        ),
+                        Tree::Dict(BTreeMap::from([
+                            (
+                                String::from("bias"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::scalar(), vec![3.0])
+                                        .expect("rank 1 leaf b"),
+                                ),
+                            ),
+                            (
+                                String::from("proj"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![4.0])
+                                        .expect("rank 1 leaf c"),
+                                ),
+                            ),
+                        ])),
+                    ]),
+                )
+                .with_rank_input_tree(
+                    2,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![1.0, 1.0])
+                                .expect("rank 2 leaf a"),
+                        ),
+                        Tree::Dict(BTreeMap::from([
+                            (
+                                String::from("bias"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::scalar(), vec![2.0])
+                                        .expect("rank 2 leaf b"),
+                                ),
+                            ),
+                            (
+                                String::from("proj"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![1.0])
+                                        .expect("rank 2 leaf c"),
+                                ),
+                            ),
+                        ])),
+                    ]),
+                )
+                .with_rank_input_tree(
+                    3,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![0.5, 0.5])
+                                .expect("rank 3 leaf a"),
+                        ),
+                        Tree::Dict(BTreeMap::from([
+                            (
+                                String::from("bias"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::scalar(), vec![3.0])
+                                        .expect("rank 3 leaf b"),
+                                ),
+                            ),
+                            (
+                                String::from("proj"),
+                                Tree::Leaf(
+                                    DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![3.0])
+                                        .expect("rank 3 leaf c"),
+                                ),
+                            ),
+                        ])),
+                    ]),
+                ),
+        )
+        .expect("grouped tree reduction should succeed");
+
+        let flattened = reduced.flatten();
+        assert_eq!(flattened.spec, gradients.spec());
+        let reduced_values = flattened
+            .leaves
+            .into_iter()
+            .map(|leaf| {
+                leaf.to_host_data()
+                    .expect("reduced host export")
+                    .as_f32_slice()
+                    .expect("floating payload")
+                    .to_vec()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(reduced_values, vec![vec![3.0, 5.0], vec![9.0], vec![10.0]]);
+    }
+
+    #[test]
+    fn average_gradients_divides_grouped_reduction_by_world_size() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-a")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let gradients = Tree::Tuple(vec![
+            Tree::Leaf(
+                context
+                    .constant_f32(Shape::new(vec![2]), vec![4.0, 8.0])
+                    .expect("leaf a"),
+            ),
+            Tree::Leaf(context.scalar_f32(12.0).expect("leaf b")),
+        ]);
+
+        let averaged = average_gradients(
+            &gradients,
+            DistributedGradientReductionOptions::new()
+                .with_group(group)
+                .with_small_tensor_bytes_threshold(32)
+                .with_rank_input_tree(
+                    0,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![4.0, 8.0])
+                                .expect("rank 0 leaf a"),
+                        ),
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::scalar(), vec![12.0])
+                                .expect("rank 0 leaf b"),
+                        ),
+                    ]),
+                )
+                .with_rank_input_tree(
+                    1,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![2.0, 6.0])
+                                .expect("rank 1 leaf a"),
+                        ),
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::scalar(), vec![10.0])
+                                .expect("rank 1 leaf b"),
+                        ),
+                    ]),
+                )
+                .with_rank_input_tree(
+                    2,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![6.0, 10.0])
+                                .expect("rank 2 leaf a"),
+                        ),
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::scalar(), vec![14.0])
+                                .expect("rank 2 leaf b"),
+                        ),
+                    ]),
+                )
+                .with_rank_input_tree(
+                    3,
+                    Tree::Tuple(vec![
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![8.0, 12.0])
+                                .expect("rank 3 leaf a"),
+                        ),
+                        Tree::Leaf(
+                            DistributedReferenceTensor::f32(Shape::scalar(), vec![16.0])
+                                .expect("rank 3 leaf b"),
+                        ),
+                    ]),
+                ),
+        )
+        .expect("average_gradients should succeed on floating tree leaves");
+
+        let flattened = averaged.flatten();
+        let averaged_values = flattened
+            .leaves
+            .into_iter()
+            .map(|leaf| {
+                leaf.to_host_data()
+                    .expect("averaged host export")
+                    .as_f32_slice()
+                    .expect("floating payload")
+                    .to_vec()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(averaged_values, vec![vec![5.0, 9.0], vec![13.0]]);
+    }
+
+    #[test]
+    fn gradient_reduction_refuses_tree_structure_mismatch_and_non_floating_average() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-c")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let gradients = Tree::Tuple(vec![Tree::Leaf(
+            context
+                .constant_f32(Shape::new(vec![1]), vec![1.0])
+                .expect("leaf"),
+        )]);
+
+        let structure_error = grouped_all_sum(
+            &gradients,
+            DistributedGradientReductionOptions::new()
+                .with_group(group.clone())
+                .with_rank_input_tree(
+                    0,
+                    Tree::List(vec![Tree::Leaf(
+                        DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![1.0])
+                            .expect("rank 0 leaf"),
+                    )]),
+                )
+                .with_rank_input_tree(
+                    1,
+                    Tree::Tuple(vec![Tree::Leaf(
+                        DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![1.0])
+                            .expect("rank 1 leaf"),
+                    )]),
+                )
+                .with_rank_input_tree(
+                    2,
+                    Tree::Tuple(vec![Tree::Leaf(
+                        DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![1.0])
+                            .expect("rank 2 leaf"),
+                    )]),
+                )
+                .with_rank_input_tree(
+                    3,
+                    Tree::Tuple(vec![Tree::Leaf(
+                        DistributedReferenceTensor::f32(Shape::new(vec![1]), vec![1.0])
+                            .expect("rank 3 leaf"),
+                    )]),
+                ),
+        )
+        .expect_err("rank trees must preserve local structure");
+        assert_eq!(
+            structure_error,
+            DistributedGradientReductionError::RankInputTreeStructureMismatch {
+                rank: 0,
+                expected: TreeSpec::Tuple(vec![TreeSpec::Leaf]),
+                actual: TreeSpec::List(vec![TreeSpec::Leaf]),
+            }
+        );
+
+        let int_gradient = Tree::Leaf(
+            context
+                .scalar_f32(1.0)
+                .expect("int source")
+                .cast(DType::I8)
+                .expect("int gradient"),
+        );
+        let non_floating = average_gradients(
+            &int_gradient,
+            DistributedGradientReductionOptions::new().with_group(group),
+        )
+        .expect_err("average_gradients should refuse non-floating leaves");
+        assert_eq!(
+            non_floating,
+            DistributedGradientReductionError::NonFloatingGradientLeaf {
+                leaf_index: 0,
+                dtype: DType::I8,
             }
         );
     }

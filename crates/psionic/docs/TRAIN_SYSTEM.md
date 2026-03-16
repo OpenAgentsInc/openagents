@@ -142,6 +142,11 @@ It already has real substrate for:
   hostfile parsing, honest single-rank-per-node launch validation, per-rank
   bootstrap payloads and sandbox job plans, distributed reserved-environment
   synthesis, and cluster execution evidence in the framework-facing layer
+- bounded reusable tree-aware gradient reduction helpers in
+  `psionic-distributed` that reuse the public collective layer while keeping
+  deterministic tree structure, grouped small-leaf all-reduce, and
+  floating-point `average_gradients` above the current reference-emulated
+  multi-rank surface
 - a bounded reusable public scheduler and parameter-group shell in
   `psionic-nn` that reuses `psionic-train` scheduler primitives while keeping
   scheduler bindings, group-level learning-rate and weight-decay scaling, and
