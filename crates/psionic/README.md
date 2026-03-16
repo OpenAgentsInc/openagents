@@ -566,6 +566,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/EXTENSION_CONTRACT_SEMANTICS.md](docs/EXTENSION_CONTRACT_SEMANTICS.md)** —
   canonical bounded contract surface for custom ops, kernels, autograd,
   backend plugins, and quantizer plugins.
+- **[docs/DATA_INGRESS_SEMANTICS.md](docs/DATA_INGRESS_SEMANTICS.md)** —
+  canonical bounded local data-ingress surface for dataset source, sampler,
+  batch-sampler, and host-device staging contracts.
 - **[docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md](docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md)** —
   canonical capability and refusal matrix for dense, sparse, nested, masked,
   and storage-aware tensor-family contracts.

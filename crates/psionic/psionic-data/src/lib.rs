@@ -12,7 +12,10 @@ mod tassadar;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use psionic_datastream::{DatastreamDatasetBinding, DatastreamManifestRef, DatastreamSubjectKind};
+use psionic_datastream::{
+    DatastreamDatasetBinding, DatastreamEncoding, DatastreamManifest, DatastreamManifestRef,
+    DatastreamSubjectKind,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1574,6 +1577,565 @@ fn overlong_sequence_posture_label(posture: OverlongSequencePosture) -> &'static
     }
 }
 
+fn digest_lines(lines: Vec<String>) -> String {
+    let mut sorted = lines;
+    sorted.sort();
+    let mut hasher = Sha256::new();
+    for line in sorted {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
+/// Dataset access family surfaced by the reusable ingress layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatasetSourceKind {
+    MapStyle,
+    IterableStreaming,
+}
+
+/// Source contract for one dataset ingress path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatasetSourceContract {
+    pub source_kind: DatasetSourceKind,
+    pub iteration: DatasetIterationContract,
+}
+
+impl DatasetSourceContract {
+    #[must_use]
+    pub const fn new(source_kind: DatasetSourceKind, iteration: DatasetIterationContract) -> Self {
+        Self {
+            source_kind,
+            iteration,
+        }
+    }
+
+    pub fn validate(&self, manifest: &DatasetManifest) -> Result<(), DataIngressContractError> {
+        manifest.validate()?;
+        if manifest.split(self.iteration.split_name.as_str()).is_none() {
+            return Err(DataIngressContractError::UnknownSplit {
+                split_name: self.iteration.split_name.clone(),
+            });
+        }
+        if manifest.key != self.iteration.dataset {
+            return Err(DataIngressContractError::DatasetMismatch {
+                expected: self.iteration.dataset.storage_key(),
+                actual: manifest.storage_key(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Sampler family surfaced by the reusable ingress layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatasetSamplerKind {
+    Sequential,
+    DeterministicShuffle,
+    WeightedRoundRobin,
+}
+
+/// Sampler contract above the iteration substrate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatasetSamplerContract {
+    pub sampler_kind: DatasetSamplerKind,
+    pub seed: u64,
+    pub drop_last: bool,
+}
+
+impl DatasetSamplerContract {
+    #[must_use]
+    pub const fn new(sampler_kind: DatasetSamplerKind) -> Self {
+        Self {
+            sampler_kind,
+            seed: 0,
+            drop_last: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_seed(mut self, seed: u64) -> Self {
+        self.seed = seed;
+        self
+    }
+
+    pub fn validate(&self, source: &DatasetSourceContract) -> Result<(), DataIngressContractError> {
+        match self.sampler_kind {
+            DatasetSamplerKind::Sequential => Ok(()),
+            DatasetSamplerKind::DeterministicShuffle => {
+                if source.iteration.shard_ordering != DatasetShardOrdering::DeterministicShuffle {
+                    return Err(DataIngressContractError::SamplerOrderingMismatch {
+                        sampler_kind: String::from("deterministic_shuffle"),
+                        ordering: String::from(
+                            std::str::from_utf8(dataset_shard_ordering_label(
+                                source.iteration.shard_ordering,
+                            ))
+                            .unwrap_or("unknown"),
+                        ),
+                    });
+                }
+                Ok(())
+            }
+            DatasetSamplerKind::WeightedRoundRobin => {
+                Err(DataIngressContractError::UnsupportedSamplerKind {
+                    sampler_kind: String::from("weighted_round_robin"),
+                })
+            }
+        }
+    }
+}
+
+/// Batch-sampler contract above sampler and packing policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatasetBatchSamplerContract {
+    pub sampler: DatasetSamplerContract,
+    pub max_sequences_per_batch: usize,
+    pub max_tokens_per_batch: u32,
+    pub packing_policy: DatasetPackingPolicy,
+}
+
+impl DatasetBatchSamplerContract {
+    #[must_use]
+    pub fn new(
+        sampler: DatasetSamplerContract,
+        max_sequences_per_batch: usize,
+        max_tokens_per_batch: u32,
+        packing_policy: DatasetPackingPolicy,
+    ) -> Self {
+        Self {
+            sampler,
+            max_sequences_per_batch,
+            max_tokens_per_batch,
+            packing_policy,
+        }
+    }
+
+    pub fn validate(&self, source: &DatasetSourceContract) -> Result<(), DataIngressContractError> {
+        self.sampler.validate(source)?;
+        if self.max_sequences_per_batch == 0 {
+            return Err(DataIngressContractError::InvalidMaxSequencesPerBatch);
+        }
+        if self.max_tokens_per_batch == 0 {
+            return Err(DataIngressContractError::InvalidMaxTokensPerBatch);
+        }
+        Ok(())
+    }
+}
+
+/// Host-to-device staging posture surfaced by the reusable ingress layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostDeviceStagingMode {
+    DirectHost,
+    PinnedPrefetch,
+    AsyncPrefetch,
+}
+
+/// Host-device staging contract for one ingress path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostDeviceStagingContract {
+    pub staging_mode: HostDeviceStagingMode,
+    pub target_device_label: String,
+    pub prefetch_batch_count: u32,
+    pub pin_host_memory: bool,
+}
+
+impl HostDeviceStagingContract {
+    #[must_use]
+    pub fn new(
+        staging_mode: HostDeviceStagingMode,
+        target_device_label: impl Into<String>,
+    ) -> Self {
+        Self {
+            staging_mode,
+            target_device_label: target_device_label.into(),
+            prefetch_batch_count: 0,
+            pin_host_memory: false,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_prefetch_batch_count(mut self, prefetch_batch_count: u32) -> Self {
+        self.prefetch_batch_count = prefetch_batch_count;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_pin_host_memory(mut self, pin_host_memory: bool) -> Self {
+        self.pin_host_memory = pin_host_memory;
+        self
+    }
+
+    pub fn validate(&self) -> Result<(), DataIngressContractError> {
+        if self.target_device_label.trim().is_empty() {
+            return Err(DataIngressContractError::MissingTargetDeviceLabel);
+        }
+        match self.staging_mode {
+            HostDeviceStagingMode::DirectHost => {
+                if self.prefetch_batch_count != 0 || self.pin_host_memory {
+                    return Err(DataIngressContractError::InvalidDirectHostStaging);
+                }
+            }
+            HostDeviceStagingMode::PinnedPrefetch | HostDeviceStagingMode::AsyncPrefetch => {
+                if self.prefetch_batch_count == 0 {
+                    return Err(DataIngressContractError::InvalidPrefetchBatchCount);
+                }
+                if !self.pin_host_memory {
+                    return Err(DataIngressContractError::PinnedHostMemoryRequired);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Aggregate reusable ingress contract over source, sampler, batching, and staging.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataIngressContract {
+    pub source: DatasetSourceContract,
+    pub batch_sampler: DatasetBatchSamplerContract,
+    pub staging: HostDeviceStagingContract,
+}
+
+impl DataIngressContract {
+    #[must_use]
+    pub fn new(
+        source: DatasetSourceContract,
+        batch_sampler: DatasetBatchSamplerContract,
+        staging: HostDeviceStagingContract,
+    ) -> Self {
+        Self {
+            source,
+            batch_sampler,
+            staging,
+        }
+    }
+
+    pub fn validate(&self, manifest: &DatasetManifest) -> Result<(), DataIngressContractError> {
+        self.source.validate(manifest)?;
+        self.batch_sampler.validate(&self.source)?;
+        self.staging.validate()
+    }
+
+    fn stable_digest(&self) -> String {
+        digest_lines(vec![
+            format!("source_kind={:?}", self.source.source_kind),
+            format!("iteration={}", self.source.iteration.stable_digest()),
+            format!("sampler_kind={:?}", self.batch_sampler.sampler.sampler_kind),
+            format!("sampler_seed={}", self.batch_sampler.sampler.seed),
+            format!("drop_last={}", self.batch_sampler.sampler.drop_last),
+            format!(
+                "max_sequences_per_batch={}",
+                self.batch_sampler.max_sequences_per_batch
+            ),
+            format!(
+                "max_tokens_per_batch={}",
+                self.batch_sampler.max_tokens_per_batch
+            ),
+            format!(
+                "packing_policy={}",
+                self.batch_sampler.packing_policy.stable_digest()
+            ),
+            format!("staging_mode={:?}", self.staging.staging_mode),
+            format!("target_device={}", self.staging.target_device_label),
+            format!("prefetch_batch_count={}", self.staging.prefetch_batch_count),
+            format!("pin_host_memory={}", self.staging.pin_host_memory),
+        ])
+    }
+}
+
+/// Error returned while validating reusable ingress contracts.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DataIngressContractError {
+    #[error(transparent)]
+    Dataset(#[from] DatasetContractError),
+    #[error("dataset split `{split_name}` is not declared by the manifest")]
+    UnknownSplit { split_name: String },
+    #[error("data ingress expected dataset `{expected}` but found `{actual}`")]
+    DatasetMismatch { expected: String, actual: String },
+    #[error("sampler kind `{sampler_kind}` is not supported in the bounded current scope")]
+    UnsupportedSamplerKind { sampler_kind: String },
+    #[error("sampler `{sampler_kind}` requires matching source ordering, found `{ordering}`")]
+    SamplerOrderingMismatch {
+        sampler_kind: String,
+        ordering: String,
+    },
+    #[error("batch sampler must declare `max_sequences_per_batch > 0`")]
+    InvalidMaxSequencesPerBatch,
+    #[error("batch sampler must declare `max_tokens_per_batch > 0`")]
+    InvalidMaxTokensPerBatch,
+    #[error("host-device staging requires a non-empty target device label")]
+    MissingTargetDeviceLabel,
+    #[error("direct-host staging must not request prefetch or pinned-host memory")]
+    InvalidDirectHostStaging,
+    #[error("prefetch staging requires `prefetch_batch_count > 0`")]
+    InvalidPrefetchBatchCount,
+    #[error("prefetch staging requires pinned host memory")]
+    PinnedHostMemoryRequired,
+}
+
+/// Status for one bounded data-ingress capability case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataIngressCapabilityStatus {
+    Supported,
+    Refused,
+}
+
+/// One machine-readable bounded data-ingress capability case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataIngressCapabilityCaseResult {
+    pub case_id: String,
+    pub source_kind: DatasetSourceKind,
+    pub sampler_kind: DatasetSamplerKind,
+    pub staging_mode: HostDeviceStagingMode,
+    pub status: DataIngressCapabilityStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contract_digest: Option<String>,
+    pub bounded_scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+}
+
+/// Machine-readable bounded report for reusable data-ingress semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataIngressSemanticsReport {
+    pub schema_version: u32,
+    pub current_scope_window: String,
+    pub cases: Vec<DataIngressCapabilityCaseResult>,
+    pub report_digest: String,
+}
+
+impl DataIngressSemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<DataIngressCapabilityCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest = digest_lines(
+            std::iter::once(format!("current_scope_window={current_scope_window}"))
+                .chain(cases.iter().flat_map(|case| {
+                    let mut lines = vec![
+                        format!("case_id={}", case.case_id),
+                        format!("source_kind={:?}", case.source_kind),
+                        format!("sampler_kind={:?}", case.sampler_kind),
+                        format!("staging_mode={:?}", case.staging_mode),
+                        format!("status={:?}", case.status),
+                        format!("bounded_scope={}", case.bounded_scope),
+                    ];
+                    if let Some(contract_digest) = &case.contract_digest {
+                        lines.push(format!("contract_digest={contract_digest}"));
+                    }
+                    if let Some(refusal) = &case.refusal {
+                        lines.push(format!("refusal={refusal}"));
+                    }
+                    lines
+                }))
+                .collect(),
+        );
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{:?}|{:?}|{:?}|{:?}",
+                case.case_id, case.source_kind, case.sampler_kind, case.staging_mode, case.status
+            ));
+        }
+        lines
+    }
+}
+
+/// Builds the canonical bounded reusable data-ingress semantics report.
+#[must_use]
+pub fn builtin_data_ingress_semantics_report() -> DataIngressSemanticsReport {
+    let manifest = seeded_data_ingress_manifest();
+
+    let map_style = DataIngressContract::new(
+        DatasetSourceContract::new(
+            DatasetSourceKind::MapStyle,
+            DatasetIterationContract::new(manifest.key.clone(), "train"),
+        ),
+        DatasetBatchSamplerContract::new(
+            DatasetSamplerContract::new(DatasetSamplerKind::Sequential),
+            2,
+            24,
+            DatasetPackingPolicy::new(DatasetPackingMode::BatchByTokenBudget, 12, 24, 2),
+        ),
+        HostDeviceStagingContract::new(HostDeviceStagingMode::DirectHost, "cpu"),
+    );
+
+    let iterable_streaming = DataIngressContract::new(
+        DatasetSourceContract::new(
+            DatasetSourceKind::IterableStreaming,
+            DatasetIterationContract::new(manifest.key.clone(), "train")
+                .with_mode(DatasetIterationMode::Repeat)
+                .with_shard_ordering(DatasetShardOrdering::DeterministicShuffle)
+                .with_shuffle_seed(7),
+        ),
+        DatasetBatchSamplerContract::new(
+            DatasetSamplerContract::new(DatasetSamplerKind::DeterministicShuffle).with_seed(7),
+            4,
+            48,
+            DatasetPackingPolicy::new(DatasetPackingMode::PackIntoContextWindow, 24, 48, 2),
+        ),
+        HostDeviceStagingContract::new(HostDeviceStagingMode::PinnedPrefetch, "cuda:0")
+            .with_prefetch_batch_count(2)
+            .with_pin_host_memory(true),
+    );
+
+    let unsupported_weighted = DataIngressContract::new(
+        DatasetSourceContract::new(
+            DatasetSourceKind::IterableStreaming,
+            DatasetIterationContract::new(manifest.key.clone(), "train")
+                .with_mode(DatasetIterationMode::Repeat)
+                .with_shard_ordering(DatasetShardOrdering::DeterministicShuffle)
+                .with_shuffle_seed(9),
+        ),
+        DatasetBatchSamplerContract::new(
+            DatasetSamplerContract::new(DatasetSamplerKind::WeightedRoundRobin).with_seed(9),
+            4,
+            48,
+            DatasetPackingPolicy::new(DatasetPackingMode::BatchByTokenBudget, 24, 48, 2),
+        ),
+        HostDeviceStagingContract::new(HostDeviceStagingMode::PinnedPrefetch, "cuda:0")
+            .with_prefetch_batch_count(2)
+            .with_pin_host_memory(true),
+    );
+
+    DataIngressSemanticsReport::new(
+        String::from("psionic_data_ingress_v1"),
+        vec![
+            supported_data_ingress_case(
+                "map_style.sequential.direct_host",
+                &manifest,
+                &map_style,
+                "Current scope supports map-style dataset access, sequential sampling, batch sampling, and direct host consumption without app-local glue.",
+            ),
+            supported_data_ingress_case(
+                "iterable_streaming.deterministic_shuffle.pinned_prefetch",
+                &manifest,
+                &iterable_streaming,
+                "Current scope supports iterable-streaming access with deterministic shuffle, token-budget or context packing, and pinned host prefetch into one target device lane.",
+            ),
+            refused_data_ingress_case(
+                "iterable_streaming.weighted_round_robin",
+                &manifest,
+                &unsupported_weighted,
+                "Current scope refuses weighted or round-robin sampler families until distributed and sharded data-feed semantics land.",
+            ),
+        ],
+    )
+}
+
+fn seeded_data_ingress_manifest() -> DatasetManifest {
+    let dataset = DatasetKey::new("openagents/math-sft", "v1");
+    let train_split = DatasetSplitDeclaration::new(
+        &dataset,
+        "train",
+        DatasetSplitKind::Train,
+        vec![
+            seeded_data_shard(&dataset, "train", "shard-0", 3, 24),
+            seeded_data_shard(&dataset, "train", "shard-1", 2, 18),
+        ],
+    )
+    .expect("seeded data-ingress split should validate");
+    DatasetManifest::new(
+        dataset,
+        "OpenAgents Math SFT",
+        DatasetRecordEncoding::TokenIdsLeU32,
+        TokenizerDigest::new(TokenizerFamily::SentencePiece, "tokenizer-digest", 32_000),
+    )
+    .with_context_window_tokens(8192)
+    .with_splits(vec![train_split])
+}
+
+fn seeded_data_shard(
+    dataset: &DatasetKey,
+    split: &str,
+    shard_key: &str,
+    sequence_count: u64,
+    token_count: u64,
+) -> DatasetShardManifest {
+    let payload = vec![1_u8; 32];
+    let manifest = DatastreamManifest::from_bytes(
+        format!("{split}:{shard_key}"),
+        DatastreamSubjectKind::TokenizedCorpus,
+        payload.as_slice(),
+        16,
+        DatastreamEncoding::RawBinary,
+    )
+    .with_dataset_binding(dataset.datastream_binding(split, shard_key));
+    DatasetShardManifest::new(
+        dataset,
+        split,
+        shard_key,
+        manifest.manifest_ref(),
+        sequence_count,
+        token_count,
+        4,
+        12,
+    )
+    .expect("seeded data shard should validate")
+}
+
+fn supported_data_ingress_case(
+    case_id: &str,
+    manifest: &DatasetManifest,
+    contract: &DataIngressContract,
+    bounded_scope: &str,
+) -> DataIngressCapabilityCaseResult {
+    contract
+        .validate(manifest)
+        .expect("seeded data-ingress case should validate");
+    DataIngressCapabilityCaseResult {
+        case_id: String::from(case_id),
+        source_kind: contract.source.source_kind,
+        sampler_kind: contract.batch_sampler.sampler.sampler_kind,
+        staging_mode: contract.staging.staging_mode,
+        status: DataIngressCapabilityStatus::Supported,
+        contract_digest: Some(contract.stable_digest()),
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_data_ingress_case(
+    case_id: &str,
+    manifest: &DatasetManifest,
+    contract: &DataIngressContract,
+    bounded_scope: &str,
+) -> DataIngressCapabilityCaseResult {
+    let refusal = contract
+        .validate(manifest)
+        .expect_err("seeded data-ingress case should refuse");
+    DataIngressCapabilityCaseResult {
+        case_id: String::from(case_id),
+        source_kind: contract.source.source_kind,
+        sampler_kind: contract.batch_sampler.sampler.sampler_kind,
+        staging_mode: contract.staging.staging_mode,
+        status: DataIngressCapabilityStatus::Refused,
+        contract_digest: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1695,18 +2257,16 @@ mod tests {
             DatasetRecordEncoding::TokenIdsLeU32,
             sample_tokenizer(),
         )
-        .with_splits(vec![
-            DatasetSplitDeclaration::new(
-                &dataset,
-                "train",
-                DatasetSplitKind::Train,
-                vec![
-                    sample_shard(&dataset, "train", "shard-0", 3, 24),
-                    sample_shard(&dataset, "train", "shard-1", 2, 18),
-                ],
-            )
-            .expect("split should validate"),
-        ]);
+        .with_splits(vec![DatasetSplitDeclaration::new(
+            &dataset,
+            "train",
+            DatasetSplitKind::Train,
+            vec![
+                sample_shard(&dataset, "train", "shard-0", 3, 24),
+                sample_shard(&dataset, "train", "shard-1", 2, 18),
+            ],
+        )
+        .expect("split should validate")]);
 
         let contract = DatasetIterationContract::new(dataset, "train")
             .with_mode(DatasetIterationMode::Repeat)
@@ -1771,5 +2331,50 @@ mod tests {
         assert_eq!(plan.batches.len(), 1);
         assert_eq!(plan.total_source_sequences, 2);
         assert_eq!(plan.dropped_sequences, vec![String::from("long")]);
+    }
+
+    #[test]
+    fn data_ingress_semantics_report_tracks_seeded_source_sampler_and_staging_cases() {
+        let report = builtin_data_ingress_semantics_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_data_ingress_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let direct_host = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "map_style.sequential.direct_host")
+            .expect("missing direct-host case");
+        assert_eq!(direct_host.status, DataIngressCapabilityStatus::Supported);
+        assert!(direct_host.contract_digest.is_some());
+
+        let pinned_prefetch = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "iterable_streaming.deterministic_shuffle.pinned_prefetch")
+            .expect("missing iterable-streaming prefetch case");
+        assert_eq!(
+            pinned_prefetch.source_kind,
+            DatasetSourceKind::IterableStreaming
+        );
+        assert_eq!(
+            pinned_prefetch.sampler_kind,
+            DatasetSamplerKind::DeterministicShuffle
+        );
+        assert_eq!(
+            pinned_prefetch.staging_mode,
+            HostDeviceStagingMode::PinnedPrefetch
+        );
+
+        let refused = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "iterable_streaming.weighted_round_robin")
+            .expect("missing weighted-round-robin refusal");
+        assert_eq!(refused.status, DataIngressCapabilityStatus::Refused);
+        assert!(refused.refusal.is_some());
     }
 }

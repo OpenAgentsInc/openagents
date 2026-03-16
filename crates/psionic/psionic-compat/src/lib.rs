@@ -122,6 +122,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
     let extensions = psionic_ir::builtin_extension_contract_semantics_report();
     let program_transforms = psionic_ir::builtin_program_transform_capability_matrix_report();
+    let data_ingress = psionic_data::builtin_data_ingress_semantics_report();
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
     let autocast = psionic_core::builtin_autocast_policy_matrix_report();
@@ -177,6 +178,19 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("connect extension contracts to deployment and distribution surfaces"),
             ],
             vec![String::from("#3736")],
+        ),
+        seeded_area(
+            "data_ingress_semantics",
+            "Current claim is bounded to reusable local data-ingress contracts covering map-style and iterable-streaming dataset access, sequential and deterministic-shuffle sampling, batch-sampler policy above packing contracts, and direct-host or pinned-prefetch staging into one target device lane.",
+            vec![SemanticsEvidenceRef::new(
+                "data_ingress_semantics",
+                data_ingress.report_digest,
+            )],
+            vec![
+                String::from("broaden data ingress beyond the current local source, sampler, and staging window"),
+                String::from("land distributed and sharded data-feed semantics"),
+            ],
+            vec![String::from("#3734")],
         ),
         seeded_area(
             "tensor_family_semantics",
@@ -337,12 +351,11 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         ),
         future_area(
             "data_and_distributed_training_semantics",
-            "Dataset, sampler, host-device staging, and distributed input-order semantics remain future compatibility targets rather than current credibility claims.",
+            "Distributed input-order, sampler partitioning, and sharded data-feed semantics remain future compatibility targets after landing bounded local data-ingress contracts.",
             vec![
-                String::from("land dataset, iterable-streaming, sampler, and staging abstractions"),
                 String::from("land distributed and sharded data-feed semantics"),
             ],
-            vec![String::from("#3733"), String::from("#3734")],
+            vec![String::from("#3734")],
         ),
         future_area(
             "extensions_and_plugins",
@@ -453,6 +466,7 @@ mod tests {
             "operator_semantics",
             "program_transform_semantics",
             "extension_contract_semantics",
+            "data_ingress_semantics",
             "tensor_family_semantics",
             "advanced_dtype_semantics",
             "reproducibility_semantics",

@@ -41,6 +41,7 @@ machine-readable evidence for:
 - operator parity
 - bounded program-transform capability coverage
 - bounded extension-contract coverage
+- bounded local data-ingress coverage
 - tensor-family capability and refusal coverage
 - advanced dtype promotion, cast, and backend-capability coverage
 - reproducibility seed, generator-derivation, and checkpoint-restore coverage
@@ -58,7 +59,7 @@ including:
 
 - broader mixed-precision runtime systems beyond the current seeded fp16 and bf16 train window
 - export-safe graph compatibility beyond the current quantization seed coverage
-- dataset and distributed-training semantics
+- distributed-training data-feed semantics beyond the current local ingress seed coverage
 - extension and plugin contracts
 - advanced operator-family breadth
 
