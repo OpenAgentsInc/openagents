@@ -1832,6 +1832,10 @@ on top of that backend:
   delta
 - reproducibility metadata suitable for later authority publication
 - valid `.fmadapter` export through `psionic-adapters`
+- bounded long-run retention in the operator-facing SFT path: the optimizer step
+  still consumes explicit gradient tensors, but completed-step records now
+  redact those tensors after application so step history does not keep one full
+  gradient snapshot per step in memory during longer Apple runs
 
 That means the first honest Rust-native Apple adapter SFT path is now real in
 repo code.
