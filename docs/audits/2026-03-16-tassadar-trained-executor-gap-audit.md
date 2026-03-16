@@ -125,6 +125,9 @@ These issues track the executor-specific work that is still missing:
     geometry claims, next-token logits over the Tassadar vocabulary, and an
     explicit next-token-only claim boundary
 - `#3781` Phase 5: add next-token trace training and exact-trace evaluation
+  - implemented March 16, 2026: teacher-forced next-token training in
+    `psionic-train` plus exact-trace, final-output, and halt evaluation in
+    `psionic-eval` against the frozen CPU-reference sequence corpus
 - `#3782` Phase 6: benchmark real neural linear decode against CPU reference
 - `#3783` Phase 7: execute the first Psionic-only Sudoku-v0 training run
 - `#3784` Phase 8: add telemetry, trace logging, and failure-analysis artifacts

@@ -532,6 +532,11 @@ Its declared scope is:
   executor-specific descriptor, 2D lookup-head geometry claims, next-token
   logits over the Tassadar sequence vocabulary, and linear decode state that is
   explicitly separate from the handcrafted fixture lane
+- landed trained-executor Phase 5 bar from the post-audit issue spine:
+  `psionic-train` now runs teacher-forced next-token optimization over the
+  frozen sequence manifest, and `psionic-eval` now reports exact-trace,
+  final-output, and halt correctness for the trained executor model against the
+  CPU-reference sequence corpus
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

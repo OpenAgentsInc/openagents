@@ -266,6 +266,40 @@ impl TassadarTraceTokenizer {
         }
     }
 
+    /// Extracts output values from one symbolic executor trace.
+    #[must_use]
+    pub fn extract_output_values(&self, tokens: &[TokenId]) -> Vec<i32> {
+        let mut outputs = Vec::new();
+        let output_token = self.token_id(EVENT_OUTPUT);
+        let mut index = 0_usize;
+        while index < tokens.len() {
+            if tokens[index] == output_token {
+                if let Some(value) = self.parse_i32(tokens, index + 1) {
+                    outputs.push(value);
+                }
+                index = index.saturating_add(5);
+                continue;
+            }
+            index = index.saturating_add(1);
+        }
+        outputs
+    }
+
+    /// Extracts the final halt marker from one symbolic executor trace.
+    #[must_use]
+    pub fn extract_halt_marker(&self, tokens: &[TokenId]) -> Option<String> {
+        let halt_token = self.token_id(HALT_TOKEN);
+        for window in tokens.windows(2) {
+            if window[0] == halt_token {
+                return self
+                    .vocabulary
+                    .token(window[1])
+                    .map(std::string::ToString::to_string);
+            }
+        }
+        None
+    }
+
     fn push_step(&self, tokens: &mut Vec<TokenId>, step: &TassadarTraceStep) {
         tokens.push(self.token_id(STEP_TOKEN));
         tokens.push(self.token_id(FIELD_STEP_INDEX));
@@ -420,6 +454,25 @@ impl TassadarTraceTokenizer {
             TassadarArithmeticOp::Sub => self.token_id(EVENT_BINARY_SUB),
             TassadarArithmeticOp::Mul => self.token_id(EVENT_BINARY_MUL),
         }
+    }
+
+    fn parse_i32(&self, tokens: &[TokenId], start: usize) -> Option<i32> {
+        let bytes = [
+            self.byte_value(*tokens.get(start)?)?,
+            self.byte_value(*tokens.get(start + 1)?)?,
+            self.byte_value(*tokens.get(start + 2)?)?,
+            self.byte_value(*tokens.get(start + 3)?)?,
+        ];
+        Some(i32::from_le_bytes(bytes))
+    }
+
+    fn byte_value(&self, token: TokenId) -> Option<u8> {
+        let raw = token.as_u32();
+        let end = self.byte_token_start + 256;
+        if raw < self.byte_token_start || raw >= end {
+            return None;
+        }
+        Some((raw - self.byte_token_start) as u8)
     }
 }
 

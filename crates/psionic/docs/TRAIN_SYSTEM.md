@@ -190,6 +190,11 @@ That now includes one intentionally narrow executor-training answer:
   explicit next-token logits, linear decode state, and 2D lookup-head geometry
   claims, while still keeping the claim boundary truthful that this is not yet
   the exact handcrafted executor path
+- the train/eval loop now also exists for that model family: `psionic-train`
+  can run teacher-forced next-token optimization over the frozen sequence
+  manifest, and `psionic-eval` can score the trained model with exact-trace,
+  final-output, and halt correctness against the same CPU-reference sequences
+  that define the corpus
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim
