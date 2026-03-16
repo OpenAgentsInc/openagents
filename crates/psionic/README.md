@@ -99,6 +99,12 @@ Current posture:
   and truthful article-class benchmark reporting that surfaces hull/sparse
   fallback on those backtracking workloads instead of pretending they remain
   direct fast-path cases
+- the third trained-executor follow-on bar now also exists in
+  `psionic-data`, `psionic-models`, `psionic-eval`, and `psionic-train`: the
+  Sudoku-v0 corpus can now be materialized as deterministic program-plus-trace
+  token sequences with a fixed executor vocabulary, reversible symbolic decode,
+  versioned dataset manifests, split-stable lineage metadata, and frozen
+  packing plans for the first honest training run
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

@@ -176,6 +176,11 @@ The current scope is:
   with exact CPU-reference traces per puzzle and article-class benchmark
   reporting that stays honest about hull/sparse fallback on those search-heavy
   workloads
+- landed trained-executor Phase 3 follow-on bar: the Sudoku-v0 corpus can now
+  be materialized as deterministic program-plus-trace token sequences with a
+  fixed executor vocabulary, reversible symbolic decode, versioned tokenized
+  dataset manifests in `psionic-data`, CPU-reference dataset generation in
+  `psionic-eval`, and frozen split packing plans in `psionic-train`
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
