@@ -6763,6 +6763,7 @@ version = "0.1.1"
 dependencies = [
  "hex",
  "psionic-core",
+ "psionic-train",
  "serde",
  "sha2",
  "thiserror 2.0.17",

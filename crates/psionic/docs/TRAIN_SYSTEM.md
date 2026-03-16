@@ -129,6 +129,10 @@ It already has real substrate for:
   `psionic-nn`, covering `mse_loss`, `l1_loss`, `binary_cross_entropy_loss`,
   `cross_entropy_loss`, `softmax_last_dim`, `log_softmax_last_dim`,
   `sigmoid`, `one_hot`, `init_tensor`, and `init_parameter`
+- a bounded reusable public optimizer shell in `psionic-nn` that reuses
+  `psionic-train` optimizer math while keeping module-path keyed state,
+  explicit frozen-parameter handling, state snapshot restore, and per-step
+  receipts in the framework-facing layer
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity
