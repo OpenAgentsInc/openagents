@@ -2161,6 +2161,46 @@ that same Rust-only Apple reference lane:
   fails, so zero-improvement adapters stop at the acceptance boundary instead of
   being mistaken for complete Apple-lane success
 
+On 2026-03-16, GitHub issue `#3901` updated the operator wording and the
+canonical docs to match the exact live acceptance-harness result instead of
+letting export/runtime truth imply broader Apple-lane success:
+
+- `autopilotctl training status` and related text output now label the
+  authority boundary explicitly as `authority_accept` and `authority_outcome`
+  instead of the looser `accept` or `accepted_outcome`
+- when Apple operator runs are present, the text output now also prints an
+  explicit note that export, runtime smoke, and authority acceptance do not by
+  themselves prove benchmark-useful adapter quality
+- the latest live acceptance harness receipt on 2026-03-16 was:
+  - top-level `acceptance_passed = false`
+  - overfit stage run
+    `psionic-architecture-explainer-first-real-run-overfit-non-zero-1773694818159`
+    passed the weak gate with:
+    - aggregate score `520` bps
+    - aggregate pass rate `1428` bps
+    - improved case count `1`
+  - standard stage run
+    `psionic-architecture-explainer-first-real-run-standard-1773694877205`
+    remained rejected with:
+    - aggregate score `571` bps
+    - aggregate pass rate `1428` bps
+    - improved case count `1`
+    - reason codes:
+      - `adapter_score_below_minimum`
+      - `adapter_pass_rate_below_minimum`
+      - `score_delta_below_minimum`
+      - `pass_rate_delta_below_minimum`
+      - `improved_case_count_below_minimum`
+- the resulting claim boundary is now explicit:
+  - the Rust-only Apple lane can train, export, load, and runtime-smoke valid
+    `.fmadapter` packages
+  - the same lane now clears the weak overfit non-zero gate
+  - the standard benchmark-useful gate is still not met
+  - operator status and authority publication are lifecycle truth, not proof
+    that the adapter is already useful in the stronger benchmark sense
+- the canonical human-readable companion record for that status update is now:
+  - `docs/audits/2026-03-16-psionic-apple-acceptance-harness-status.md`
+
 On 2026-03-16, GitHub issue `#3893` moved that same Apple overfit path off the
 flat-zero benchmark floor without weakening the structured or tool contract:
 

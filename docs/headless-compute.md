@@ -214,6 +214,18 @@ continues in the background, and the status/event surfaces above are the
 supported way to follow progress without waiting for the original launch command
 to exit.
 
+For the Apple adapter lane, that operator status is lifecycle truth, not
+benchmark-usefulness truth. The text output now labels authority publication as
+`authority_accept` and `authority_outcome`, and it prints an explicit note that
+export, runtime smoke, and authority acceptance do not by themselves prove
+benchmark-useful adapter quality. The canonical benchmark-useful gate remains
+`scripts/release/check-psionic-apple-architecture-explainer-acceptance.sh`.
+The latest live acceptance receipt on 2026-03-16 passed only the weak overfit
+stage (`520` score bps, `1428` pass-rate bps, `1` improved case) and still
+rejected the standard stage (`571` score bps, `1428` pass-rate bps, `1`
+improved case), so do not read `autopilotctl training status` as a substitute
+for the acceptance harness.
+
 The packaged Apple-lane release checks now also run
 `scripts/release/check-psionic-apple-rust-only-gate.sh` before claiming Apple
 training readiness. That gate fails if the shipped Apple operator path regresses
