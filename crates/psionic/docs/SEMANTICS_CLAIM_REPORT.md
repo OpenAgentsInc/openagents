@@ -40,6 +40,7 @@ machine-readable evidence for:
 
 - operator parity
 - tensor-family capability and refusal coverage
+- advanced dtype promotion, cast, and backend-capability coverage
 - module and `state_dict` parity
 - optimizer step parity
 - fake-tensor and compiler-hygiene parity
@@ -49,7 +50,7 @@ But those artifacts are still seed-sized and explicitly bounded.
 The report keeps broader future targets marked `pytorch_compatible_later`,
 including:
 
-- advanced dtype, precision, and non-dense runtime systems
+- precision policy, gradient scaling, and broader mixed-precision runtime systems
 - quantization and export-safe graph compatibility
 - dataset and distributed-training semantics
 - extension and plugin contracts

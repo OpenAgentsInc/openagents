@@ -204,7 +204,8 @@ Current posture:
 
 ### Framework Core
 
-- `psionic-core`: canonical tensor, shape, dtype, and device contract.
+- `psionic-core`: canonical tensor, shape, dtype, device, layout, and bounded
+  advanced-dtype semantics contract.
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types plus tensor-family capability matrices for dense,
   sparse, nested, masked, and storage-aware semantics.
@@ -561,6 +562,10 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md](docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md)** —
   canonical capability and refusal matrix for dense, sparse, nested, masked,
   and storage-aware tensor-family contracts.
+- **[docs/ADVANCED_DTYPE_SEMANTICS.md](docs/ADVANCED_DTYPE_SEMANTICS.md)** —
+  canonical bounded promotion, cast, and backend-capability matrix for complex,
+  low-precision, and wider integer dtype semantics above the compact runtime
+  subset.
 - **[docs/MODULE_PARITY_MATRIX.md](docs/MODULE_PARITY_MATRIX.md)** —
   canonical seeded module parity artifact for the current PyTorch-derived
   `module_db`-style state-tree and `state_dict` coverage slice.
