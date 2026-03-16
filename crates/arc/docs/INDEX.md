@@ -20,6 +20,7 @@ Use it when you need to answer:
 | `crates/arc/docs/ROADMAP.md` | canonical dependency-ordered roadmap | execution order, epic boundaries, issue sequencing, and acceptance gating |
 | `crates/arc/docs/CLAIMS.md` | canonical claim vocabulary | frozen claim names, minimum meanings, and claim-to-artifact expectations |
 | `crates/arc/docs/UPSTREAM_TARGETS.md` | canonical first-pass upstream target freeze | exact upstream repo commits, protocol files, and benchmark/scoring source targets |
+| `crates/arc/docs/PUBLIC_EVAL_HYGIENE.md` | canonical public-eval operator policy | mandatory labeling rules, operator posture, and validator entrypoint for public-eval artifacts |
 | `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md` | canonical port-source and upstream-mapping audit | upstream source mapping, direct-port priorities, and Psionic-vs-ARC split rationale |
 
 ## Future Acceptance Surfaces
@@ -46,8 +47,9 @@ If you are new to the ARC subtree, read in this order:
 2. `crates/arc/docs/spec.md`
 3. `crates/arc/docs/CLAIMS.md`
 4. `crates/arc/docs/UPSTREAM_TARGETS.md`
-5. `crates/arc/docs/ROADMAP.md`
-6. `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
+5. `crates/arc/docs/PUBLIC_EVAL_HYGIENE.md`
+6. `crates/arc/docs/ROADMAP.md`
+7. `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
 
 ## Maintenance Rule
 

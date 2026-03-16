@@ -1108,6 +1108,11 @@ The solver program must enforce these rules:
 - internal hidden holdout must stay disjoint from synthetic tasks derived from
   public evaluation tasks
 
+Canonical operator policy and validator:
+
+- `crates/arc/docs/PUBLIC_EVAL_HYGIENE.md`
+- `scripts/lint/arc-public-eval-hygiene-check.sh`
+
 ## 9. ARC-AGI-3 seam
 
 The v1 solver targets static ARC first, but the subtree must already prepare for

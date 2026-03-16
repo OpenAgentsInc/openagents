@@ -305,6 +305,11 @@ These rules are non-negotiable:
 - public evaluation visibility may be used only for bounded compatibility or
   non-regression checks, not for optimization loops
 
+Canonical operator policy and harness:
+
+- `crates/arc/docs/PUBLIC_EVAL_HYGIENE.md`
+- `scripts/lint/arc-public-eval-hygiene-check.sh`
+
 ## Success Bar
 
 The ARC subtree should be judged against five progressively stronger claims.
