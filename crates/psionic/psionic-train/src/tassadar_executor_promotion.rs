@@ -8,11 +8,12 @@ use thiserror::Error;
 use crate::{
     TASSADAR_EXECUTOR_BOUNDARY_EXACTNESS_REPORT_FILE, TASSADAR_EXECUTOR_EXACT_TRACE_SAMPLES_FILE,
     TASSADAR_EXECUTOR_EXACTNESS_CURVE_FILE, TASSADAR_EXECUTOR_FAILURE_SAMPLES_FILE,
-    TASSADAR_EXECUTOR_PROMOTION_RUN_OUTPUT_DIR, TassadarExecutorCheckpointArtifact,
-    TassadarExecutorExactTraceSampleReport, TassadarExecutorModelArtifact,
-    TassadarExecutorReferenceRunBundle, TassadarExecutorRunError, TassadarExecutorTelemetryError,
-    TassadarExecutorTrainingReport, augment_tassadar_training_run_with_telemetry,
-    execute_tassadar_promotion_training_run,
+    TASSADAR_EXECUTOR_PROMOTION_RUN_OUTPUT_DIR,
+    TassadarExecutorCheckpointArtifact, TassadarExecutorExactTraceSampleReport,
+    TassadarExecutorModelArtifact, TassadarExecutorReferenceRunBundle, TassadarExecutorRunError,
+    TassadarExecutorTelemetryError, TassadarExecutorTrainingReport,
+    augment_tassadar_training_run_with_telemetry, execute_tassadar_promotion_training_run,
+    execute_tassadar_promotion_v2_training_run,
 };
 
 const TRAINING_REPORT_FILE: &str = "training_report.json";
@@ -280,6 +281,32 @@ pub fn execute_tassadar_promotion_training_run_with_artifacts(
         output_dir.display(),
     ));
     execute_tassadar_promotion_training_run(output_dir)?;
+    emit_tassadar_progress(format!(
+        "tassadar_progress phase=promotion_artifact_augment_start output_dir={} elapsed_ms={}",
+        output_dir.display(),
+        started_at.elapsed().as_millis(),
+    ));
+    let bundle = augment_tassadar_training_run_with_promotion_artifacts(output_dir)?;
+    emit_tassadar_progress(format!(
+        "tassadar_progress phase=promotion_run_complete run={} bundle_digest={} elapsed_ms={}",
+        bundle.run_id,
+        bundle.bundle_digest,
+        started_at.elapsed().as_millis(),
+    ));
+    Ok(bundle)
+}
+
+/// Executes the teacher-forced promotion follow-on run and augments it with the
+/// same promotion artifacts as Phase 14.
+pub fn execute_tassadar_promotion_v2_training_run_with_artifacts(
+    output_dir: &Path,
+) -> Result<TassadarExecutorReferenceRunBundle, TassadarExecutorPromotionError> {
+    let started_at = Instant::now();
+    emit_tassadar_progress(format!(
+        "tassadar_progress phase=promotion_run_start output_dir={} elapsed_ms=0",
+        output_dir.display(),
+    ));
+    execute_tassadar_promotion_v2_training_run(output_dir)?;
     emit_tassadar_progress(format!(
         "tassadar_progress phase=promotion_artifact_augment_start output_dir={} elapsed_ms={}",
         output_dir.display(),

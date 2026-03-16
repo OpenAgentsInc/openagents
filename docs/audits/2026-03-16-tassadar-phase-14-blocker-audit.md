@@ -185,6 +185,9 @@ Schedule churn on the current lookup-family lane is not enough.
 The next honest dependency is stronger work on the post-Phase-15 path:
 
 - keep the current lookup-family promotion bundle as the weak baseline
+- keep the separate teacher-forced continuation bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2` as additional
+  negative evidence that schedule-only churn does not beat the current ceiling
 - use the separate executor-attention family only with same-corpus comparisons
 - do not widen claims until one family actually clears the Phase 14 gate
 - do not promote 9x9 or Hungarian off this result

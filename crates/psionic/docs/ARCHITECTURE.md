@@ -272,6 +272,15 @@ The current scope is:
   `6875` bps first-32, `0/2` exact validation traces), so this phase closes
   the “promotion tooling exists” gap without pretending the learned 4x4 gate is
   green
+- landed trained-executor Phase 14A follow-on bar: `psionic-train` now also
+  preserves a separate teacher-forced continuation bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2`; that run
+  proves schedule-only churn on the current lookup family does not beat the
+  canonical ceiling, because its selected checkpoint `epoch_0008` exactly
+  reproduces the same gate result (`10000` bps first-target, `7500` bps
+  first-8, `6875` bps first-32, `0/2` exact validation traces) before later
+  32-token epochs regress again, so the next honest move is model/architecture
+  change rather than more schedule tuning
 - landed trained-executor Phase 15 follow-on bar: `psionic-models` now carries
   a separate bounded `TassadarExecutorAttentionTransformer` family with layered
   full-prefix causal hard-max attention, fixed 2D head geometry, explicit

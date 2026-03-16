@@ -42,6 +42,9 @@ pub const TASSADAR_EXECUTOR_BOUNDARY_RUN_ID: &str =
 /// Stable run identifier for the first promotion-gate follow-on run.
 pub const TASSADAR_EXECUTOR_PROMOTION_RUN_ID: &str =
     "tassadar-executor-transformer-sudoku-v0-promotion-v1";
+/// Stable run identifier for the teacher-forced promotion follow-on run.
+pub const TASSADAR_EXECUTOR_PROMOTION_V2_RUN_ID: &str =
+    "tassadar-executor-transformer-sudoku-v0-promotion-v2";
 /// Stable checkpoint family for persisted trained executor checkpoints.
 pub const TASSADAR_EXECUTOR_CHECKPOINT_FAMILY: &str = "train.tassadar.executor_transformer";
 /// Canonical repo path used for the first committed reference run.
@@ -53,6 +56,9 @@ pub const TASSADAR_EXECUTOR_BOUNDARY_RUN_OUTPUT_DIR: &str =
 /// Canonical repo path used for the first promotion-gate follow-on run.
 pub const TASSADAR_EXECUTOR_PROMOTION_RUN_OUTPUT_DIR: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v1";
+/// Canonical repo path used for the teacher-forced promotion follow-on run.
+pub const TASSADAR_EXECUTOR_PROMOTION_V2_RUN_OUTPUT_DIR: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2";
 
 const TRAINING_MANIFEST_FILE: &str = "training_manifest.json";
 const TRAINING_REPORT_FILE: &str = "training_report.json";
@@ -682,6 +688,35 @@ pub fn tassadar_executor_promotion_run_config() -> TassadarExecutorTrainingConfi
     }
 }
 
+/// Returns the follow-on promotion config that keeps the lane teacher-forced
+/// longer instead of switching into greedy refinement early.
+#[must_use]
+pub fn tassadar_executor_promotion_v2_run_config() -> TassadarExecutorTrainingConfig {
+    TassadarExecutorTrainingConfig {
+        run_id: String::from(TASSADAR_EXECUTOR_PROMOTION_V2_RUN_ID),
+        workload: psionic_eval::TassadarSequenceWorkload::SudokuV0,
+        dataset_version: String::from("train-v0"),
+        epochs: 1,
+        learning_rate: 0.05,
+        max_train_target_tokens_per_example: None,
+        max_eval_target_tokens_per_example: None,
+        terminal_stage_learning_rate_scale: Some(0.0025),
+        trainable_surface:
+            TassadarExecutorTrainableSurface::OutputHeadEmbeddingsAndSmallLearnedMixer,
+        curriculum_stages: vec![
+            crate::TassadarExecutorCurriculumStage::new("prompt_to_first_token", Some(1), 1),
+            crate::TassadarExecutorCurriculumStage::new("prompt_to_first_2_tokens", Some(2), 1),
+            crate::TassadarExecutorCurriculumStage::new("prompt_to_first_4_tokens", Some(4), 1),
+            crate::TassadarExecutorCurriculumStage::new("prompt_to_first_8_tokens", Some(8), 2),
+            crate::TassadarExecutorCurriculumStage::new("prompt_to_first_16_tokens", Some(16), 4),
+            crate::TassadarExecutorCurriculumStage::new("prompt_to_first_32_tokens", Some(32), 8)
+                .with_learning_rate_scale(0.2),
+        ],
+        validate_every_epoch: true,
+        select_best_checkpoint_by_boundary: true,
+    }
+}
+
 /// Executes the first boundary-curriculum follow-on run and persists its artifacts.
 pub fn execute_tassadar_boundary_training_run(
     output_dir: &Path,
@@ -694,6 +729,13 @@ pub fn execute_tassadar_promotion_training_run(
     output_dir: &Path,
 ) -> Result<TassadarExecutorReferenceRunBundle, TassadarExecutorRunError> {
     execute_tassadar_training_run(output_dir, &tassadar_executor_promotion_run_config(), None)
+}
+
+/// Executes the teacher-forced promotion follow-on run and persists its base artifacts.
+pub fn execute_tassadar_promotion_v2_training_run(
+    output_dir: &Path,
+) -> Result<TassadarExecutorReferenceRunBundle, TassadarExecutorRunError> {
+    execute_tassadar_training_run(output_dir, &tassadar_executor_promotion_v2_run_config(), None)
 }
 
 /// Executes one persisted Tassadar training run with an optional benchmark split filter.
