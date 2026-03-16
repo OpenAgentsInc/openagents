@@ -419,6 +419,284 @@ impl Graph {
         lines.push(format!("outputs|{outputs}"));
         lines
     }
+
+    /// Analyzes whether the graph stays inside the current transform-safe and
+    /// export-safe framework-core envelope.
+    #[must_use]
+    pub fn transform_safety_report(&self) -> TransformSafetyReport {
+        let mut tensors = BTreeMap::<TensorId, FunctionalTensorSemantics>::new();
+        let mut barriers = Vec::new();
+        for node in &self.nodes {
+            let (kind, alias_source, value_root) = match node.op() {
+                OpKind::Detach
+                | OpKind::Reshape
+                | OpKind::Permute { .. }
+                | OpKind::Slice { .. }
+                | OpKind::Select { .. }
+                | OpKind::Expand { .. } => {
+                    let alias_source = node.inputs().first().copied();
+                    let value_root = alias_source
+                        .and_then(|input| tensors.get(&input).map(|semantics| semantics.value_root))
+                        .unwrap_or(node.tensor().id());
+                    (FunctionalTensorKind::AliasView, alias_source, value_root)
+                }
+                OpKind::BackendExtension { op } => {
+                    barriers.push(TransformBarrier {
+                        tensor: node.tensor().id(),
+                        op: op.label().to_string(),
+                        reason: TransformBarrierKind::OpaqueBackendExtension,
+                    });
+                    (FunctionalTensorKind::ValueRoot, None, node.tensor().id())
+                }
+                _ => (FunctionalTensorKind::ValueRoot, None, node.tensor().id()),
+            };
+            tensors.insert(
+                node.tensor().id(),
+                FunctionalTensorSemantics {
+                    tensor: node.tensor().id(),
+                    kind,
+                    alias_source,
+                    value_root,
+                },
+            );
+        }
+        TransformSafetyReport {
+            graph_digest: self.stable_digest(),
+            tensors,
+            barriers,
+            outputs: self.outputs.clone(),
+        }
+    }
+
+    /// Produces a functionalized graph artifact, optionally refusing when the
+    /// graph is not export-safe under the current compact-core rules.
+    pub fn functionalize(
+        &self,
+        policy: FunctionalizationPolicy,
+    ) -> Result<FunctionalGraph, GraphTransformError> {
+        let report = self.transform_safety_report();
+        if matches!(policy, FunctionalizationPolicy::ExportSafeOnly) {
+            if let Some(barrier) = report.barriers.first() {
+                return Err(GraphTransformError::OpaqueTransformBarrier {
+                    tensor: barrier.tensor,
+                    op: barrier.op.clone(),
+                    reason: barrier.reason,
+                });
+            }
+        }
+        Ok(FunctionalGraph {
+            graph: self.clone(),
+            policy,
+            report,
+        })
+    }
+}
+
+/// Whether one tensor is a distinct value root or an alias-preserving view of an earlier value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FunctionalTensorKind {
+    /// Tensor owns a new value root for later transforms.
+    ValueRoot,
+    /// Tensor is an alias-preserving view over an earlier value root.
+    AliasView,
+}
+
+impl FunctionalTensorKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::ValueRoot => "value_root",
+            Self::AliasView => "alias_view",
+        }
+    }
+}
+
+/// One functionalization fact for a tensor in the graph.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FunctionalTensorSemantics {
+    /// Tensor being described.
+    pub tensor: TensorId,
+    /// Whether the tensor is a value root or an alias-preserving view.
+    pub kind: FunctionalTensorKind,
+    /// Immediate alias source when the tensor is a view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias_source: Option<TensorId>,
+    /// Stable value root that later transforms should treat as the owning value.
+    pub value_root: TensorId,
+}
+
+/// Current transform barrier categories that make a graph non-export-safe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransformBarrierKind {
+    /// Backend-extension op whose transform/export semantics remain opaque at framework-core scope.
+    OpaqueBackendExtension,
+}
+
+impl TransformBarrierKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::OpaqueBackendExtension => "opaque_backend_extension",
+        }
+    }
+}
+
+/// One explicit transform/export barrier recorded during graph analysis.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransformBarrier {
+    /// Tensor produced by the barrier op.
+    pub tensor: TensorId,
+    /// Stable operator label.
+    pub op: String,
+    /// Barrier reason.
+    pub reason: TransformBarrierKind,
+}
+
+/// Analysis result describing transform-safe alias/value semantics for one graph.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransformSafetyReport {
+    /// Stable source graph digest.
+    pub graph_digest: String,
+    /// Functionalization facts for all graph tensors.
+    pub tensors: BTreeMap<TensorId, FunctionalTensorSemantics>,
+    /// Explicit transform barriers that make the graph non-export-safe.
+    pub barriers: Vec<TransformBarrier>,
+    /// Output tensors requested by the graph.
+    pub outputs: Vec<TensorId>,
+}
+
+impl TransformSafetyReport {
+    /// Returns one tensor semantic record by tensor ID.
+    #[must_use]
+    pub fn tensor(&self, tensor: TensorId) -> Option<&FunctionalTensorSemantics> {
+        self.tensors.get(&tensor)
+    }
+
+    /// Returns whether the graph is export-safe under the current compact-core rules.
+    #[must_use]
+    pub fn is_export_safe(&self) -> bool {
+        self.barriers.is_empty()
+    }
+
+    /// Returns the stable report digest.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        digest_lines(self.stable_signature_lines())
+    }
+
+    /// Returns the canonical line-oriented signature for the transform-safety report.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![format!("graph|{}", self.graph_digest)];
+        for semantics in self.tensors.values() {
+            lines.push(format!(
+                "tensor|{}|{}|alias={}|root={}",
+                semantics.tensor,
+                semantics.kind.label(),
+                semantics
+                    .alias_source
+                    .map_or_else(|| String::from("none"), |tensor| tensor.to_string()),
+                semantics.value_root,
+            ));
+        }
+        for barrier in &self.barriers {
+            lines.push(format!(
+                "barrier|{}|{}|{}",
+                barrier.tensor,
+                barrier.op,
+                barrier.reason.label(),
+            ));
+        }
+        lines.push(format!(
+            "outputs|{}",
+            self.outputs
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+        lines
+    }
+}
+
+/// Functionalization posture for graph export and higher-level transforms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FunctionalizationPolicy {
+    /// Preserve the graph and report opaque transform barriers for later passes.
+    PreserveOpaqueKernels,
+    /// Refuse graphs that are not export-safe under the current compact-core rules.
+    ExportSafeOnly,
+}
+
+impl FunctionalizationPolicy {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::PreserveOpaqueKernels => "preserve_opaque_kernels",
+            Self::ExportSafeOnly => "export_safe_only",
+        }
+    }
+}
+
+/// Functionalized graph artifact that later transforms or export passes can consume.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FunctionalGraph {
+    /// Original graph retained alongside the functionalization report.
+    pub graph: Graph,
+    /// Functionalization policy used to produce the artifact.
+    pub policy: FunctionalizationPolicy,
+    /// Explicit transform-safety report.
+    pub report: TransformSafetyReport,
+}
+
+impl FunctionalGraph {
+    /// Returns the stable functionalization digest.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        digest_lines(self.stable_signature_lines())
+    }
+
+    /// Returns the canonical line-oriented functionalization signature.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![format!("policy|{}", self.policy.label())];
+        lines.push(format!("graph_digest|{}", self.graph.stable_digest()));
+        lines.extend(self.report.stable_signature_lines());
+        lines
+    }
+}
+
+/// Error raised when a graph cannot be functionalized under the requested policy.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum GraphTransformError {
+    /// A graph contained an opaque transform barrier while export-safe-only mode was requested.
+    #[error("graph is not export-safe because `{op}` at tensor {tensor} remains an opaque transform barrier ({reason:?})")]
+    OpaqueTransformBarrier {
+        /// Tensor produced by the barrier op.
+        tensor: TensorId,
+        /// Stable operator label.
+        op: String,
+        /// Barrier reason.
+        reason: TransformBarrierKind,
+    },
+}
+
+impl GraphTransformError {
+    /// Returns the canonical refusal when the transform error represents an
+    /// explicit unsupported transform or export boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::OpaqueTransformBarrier { op, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(op.clone()),
+            ),
+        }
+    }
 }
 
 /// Executable operation payload emitted by the compiler layer.
@@ -2526,10 +2804,11 @@ mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
-        DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, GraphError,
-        KernelDispatchKind, KernelRegistration, MetaCapabilityProfile, OperatorArity,
-        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry,
-        RegisteredOperatorSchema, RegistryExtensionError, Shape, TensorSpec,
+        DType, ExecutionOp, ExecutionPlan, ExecutionStep, FunctionalTensorKind,
+        FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
+        KernelRegistration, MetaCapabilityProfile, OperatorArity, OperatorImplementationKind,
+        OperatorMetaExecutionKind, OperatorRegistry, RegisteredOperatorSchema,
+        RegistryExtensionError, Shape, TensorSpec, TransformBarrierKind,
     };
 
     #[test]
@@ -2873,6 +3152,123 @@ mod tests {
             missing_output,
             Err(GraphError::InvalidOperatorInputs { .. })
         ));
+    }
+
+    #[test]
+    fn transform_safety_report_tracks_alias_roots_and_export_barriers() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+        let row = builder.select(&input, 0, 0);
+        assert!(row.is_ok());
+        let Ok(row) = row else {
+            return;
+        };
+        let expanded = builder.expand(&row, Shape::new(vec![2, 4]));
+        assert!(expanded.is_ok());
+        let Ok(expanded) = expanded else {
+            return;
+        };
+        let summed = builder.add(&input, &expanded);
+        assert!(summed.is_ok());
+        let Ok(summed) = summed else {
+            return;
+        };
+        let graph = builder.finish(vec![summed.clone()]);
+        let report = graph.transform_safety_report();
+
+        let row_semantics = report.tensor(row.id());
+        assert!(row_semantics.is_some());
+        let Some(row_semantics) = row_semantics else {
+            return;
+        };
+        assert_eq!(row_semantics.kind, FunctionalTensorKind::AliasView);
+        assert_eq!(row_semantics.alias_source, Some(input.id()));
+        assert_eq!(row_semantics.value_root, input.id());
+
+        let expanded_semantics = report.tensor(expanded.id());
+        assert!(expanded_semantics.is_some());
+        let Some(expanded_semantics) = expanded_semantics else {
+            return;
+        };
+        assert_eq!(expanded_semantics.kind, FunctionalTensorKind::AliasView);
+        assert_eq!(expanded_semantics.alias_source, Some(row.id()));
+        assert_eq!(expanded_semantics.value_root, input.id());
+        assert!(report.is_export_safe());
+        assert!(report.barriers.is_empty());
+    }
+
+    #[test]
+    fn functionalize_export_safe_graph_preserves_alias_metadata() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
+        let permuted = builder.permute(&input, vec![1, 0]);
+        assert!(permuted.is_ok());
+        let Ok(permuted) = permuted else {
+            return;
+        };
+        let graph = builder.finish(vec![permuted.clone()]);
+
+        let functionalized = graph.functionalize(FunctionalizationPolicy::ExportSafeOnly);
+        assert!(functionalized.is_ok());
+        let Ok(functionalized) = functionalized else {
+            return;
+        };
+        let semantics = functionalized.report.tensor(permuted.id());
+        assert!(semantics.is_some());
+        let Some(semantics) = semantics else {
+            return;
+        };
+        assert_eq!(semantics.kind, FunctionalTensorKind::AliasView);
+        assert_eq!(semantics.value_root, input.id());
+        assert!(!functionalized.stable_digest().is_empty());
+    }
+
+    #[test]
+    fn functionalize_export_safe_policy_refuses_opaque_backend_extensions() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![1, 4]), DType::F32);
+        let weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0]);
+        assert!(weight.is_ok());
+        let Ok(weight) = weight else {
+            return;
+        };
+        let normed = builder.rms_norm(&input, &weight, 1e-5);
+        assert!(normed.is_ok());
+        let Ok(normed) = normed else {
+            return;
+        };
+        let graph = builder.finish(vec![normed.clone()]);
+        let report = graph.transform_safety_report();
+        assert_eq!(report.barriers.len(), 1);
+        assert_eq!(
+            report.barriers[0].reason,
+            TransformBarrierKind::OpaqueBackendExtension
+        );
+
+        let error = graph.functionalize(FunctionalizationPolicy::ExportSafeOnly);
+        assert!(matches!(
+            error,
+            Err(GraphTransformError::OpaqueTransformBarrier { .. })
+        ));
+        let Err(error) = error else {
+            return;
+        };
+        let refusal = error.refusal();
+        assert!(refusal.is_some());
+        let Some(refusal) = refusal else {
+            return;
+        };
+        assert_eq!(refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(refusal.scope, PsionicRefusalScope::Graph);
+        assert_eq!(refusal.subject.as_deref(), Some("rms_norm"));
+
+        let preserved = graph.functionalize(FunctionalizationPolicy::PreserveOpaqueKernels);
+        assert!(preserved.is_ok());
+        let Ok(preserved) = preserved else {
+            return;
+        };
+        assert_eq!(preserved.report.barriers.len(), 1);
+        assert!(!preserved.report.is_export_safe());
     }
 
     #[test]
