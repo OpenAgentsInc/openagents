@@ -108,6 +108,372 @@ impl LocalWeightShardingRule {
     }
 }
 
+/// Declared shard execution mode for one local sharding policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalShardingExecutionMode {
+    /// The backend only needs whole-model or replica execution for each shard.
+    WholeModelOrReplica,
+    /// The backend must execute explicit layer or tensor partitions.
+    Partitioned,
+}
+
+/// Declared cross-device collective posture for one local sharding policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalCollectivePosture {
+    /// No cross-device collective is part of the current runtime contract.
+    None,
+    /// Later collectives or activation handoff remain caller-managed future work.
+    CallerManagedFuture,
+}
+
+/// Declared result or evidence posture for one local sharding policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalExecutionOutcomePosture {
+    /// The current local runner only guarantees per-shard metrics and evidence.
+    MetricsOnlyEvidence,
+}
+
+/// Validation failure for one local sharding policy declaration.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum LocalShardingPolicyError {
+    /// The policy identifier was blank.
+    #[error("local sharding policy is missing a policy_id")]
+    MissingPolicyId,
+    /// Policy version zero is not allowed.
+    #[error("local sharding policy version must be greater than zero")]
+    InvalidPolicyVersion,
+    /// The declared execution mode does not match the layout family.
+    #[error(
+        "local sharding policy layout {layout:?} does not allow execution mode {execution_mode:?}"
+    )]
+    LayoutExecutionModeMismatch {
+        /// Declared layout.
+        layout: ShardedModelLayoutKind,
+        /// Declared execution mode.
+        execution_mode: LocalShardingExecutionMode,
+    },
+    /// The declared collective posture does not match the layout family.
+    #[error(
+        "local sharding policy layout {layout:?} does not allow collective posture {collective_posture:?}"
+    )]
+    LayoutCollectivePostureMismatch {
+        /// Declared layout.
+        layout: ShardedModelLayoutKind,
+        /// Declared collective posture.
+        collective_posture: LocalCollectivePosture,
+    },
+    /// The declared outcome posture does not match the current local runner scope.
+    #[error(
+        "local sharding policy layout {layout:?} does not allow outcome posture {outcome_posture:?}"
+    )]
+    LayoutOutcomePostureMismatch {
+        /// Declared layout.
+        layout: ShardedModelLayoutKind,
+        /// Declared outcome posture.
+        outcome_posture: LocalExecutionOutcomePosture,
+    },
+}
+
+/// Explicit local sharding policy bound to one layout family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalShardingPolicy {
+    /// Stable policy identifier.
+    pub policy_id: String,
+    /// Version of the policy contract.
+    pub policy_version: u32,
+    /// Layout family this policy applies to.
+    pub layout: ShardedModelLayoutKind,
+    /// Execution mode required by the backend for the shard set.
+    pub execution_mode: LocalShardingExecutionMode,
+    /// Cross-device collective posture for the current policy.
+    pub collective_posture: LocalCollectivePosture,
+    /// Output or evidence posture for the current policy.
+    pub outcome_posture: LocalExecutionOutcomePosture,
+    /// Plain-language policy detail when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// Stable digest over the policy.
+    pub policy_digest: String,
+}
+
+impl LocalShardingPolicy {
+    /// Creates a validated local sharding policy and derives its stable digest.
+    pub fn new(
+        policy_id: impl Into<String>,
+        policy_version: u32,
+        layout: ShardedModelLayoutKind,
+        execution_mode: LocalShardingExecutionMode,
+        collective_posture: LocalCollectivePosture,
+        outcome_posture: LocalExecutionOutcomePosture,
+    ) -> Result<Self, LocalShardingPolicyError> {
+        let policy_id = policy_id.into();
+        if policy_id.trim().is_empty() {
+            return Err(LocalShardingPolicyError::MissingPolicyId);
+        }
+        if policy_version == 0 {
+            return Err(LocalShardingPolicyError::InvalidPolicyVersion);
+        }
+        match layout {
+            ShardedModelLayoutKind::Replicated => {
+                if execution_mode != LocalShardingExecutionMode::WholeModelOrReplica {
+                    return Err(LocalShardingPolicyError::LayoutExecutionModeMismatch {
+                        layout,
+                        execution_mode,
+                    });
+                }
+                if collective_posture != LocalCollectivePosture::None {
+                    return Err(LocalShardingPolicyError::LayoutCollectivePostureMismatch {
+                        layout,
+                        collective_posture,
+                    });
+                }
+            }
+            ShardedModelLayoutKind::LayerSharded | ShardedModelLayoutKind::TensorSharded => {
+                if execution_mode != LocalShardingExecutionMode::Partitioned {
+                    return Err(LocalShardingPolicyError::LayoutExecutionModeMismatch {
+                        layout,
+                        execution_mode,
+                    });
+                }
+                if collective_posture != LocalCollectivePosture::CallerManagedFuture {
+                    return Err(LocalShardingPolicyError::LayoutCollectivePostureMismatch {
+                        layout,
+                        collective_posture,
+                    });
+                }
+            }
+        }
+        if outcome_posture != LocalExecutionOutcomePosture::MetricsOnlyEvidence {
+            return Err(LocalShardingPolicyError::LayoutOutcomePostureMismatch {
+                layout,
+                outcome_posture,
+            });
+        }
+        Ok(Self::build(
+            policy_id,
+            policy_version,
+            layout,
+            execution_mode,
+            collective_posture,
+            outcome_posture,
+            None,
+        ))
+    }
+
+    /// Returns the current default v1 policy for one layout family.
+    #[must_use]
+    pub fn for_layout(layout: ShardedModelLayoutKind) -> Self {
+        match layout {
+            ShardedModelLayoutKind::Replicated => Self::build(
+                String::from("local_replicated_metrics_only_v1"),
+                1,
+                layout,
+                LocalShardingExecutionMode::WholeModelOrReplica,
+                LocalCollectivePosture::None,
+                LocalExecutionOutcomePosture::MetricsOnlyEvidence,
+                Some(String::from(
+                    "the first-cut local multi-device runtime records per-replica metrics and evidence but does not yet claim replica output reconciliation",
+                )),
+            ),
+            ShardedModelLayoutKind::LayerSharded => Self::build(
+                String::from("local_layer_sharded_metrics_only_v1"),
+                1,
+                layout,
+                LocalShardingExecutionMode::Partitioned,
+                LocalCollectivePosture::CallerManagedFuture,
+                LocalExecutionOutcomePosture::MetricsOnlyEvidence,
+                Some(String::from(
+                    "the first-cut local multi-device runtime can execute layer partitions but keeps activation handoff and output assembly outside the current evidence-only contract",
+                )),
+            ),
+            ShardedModelLayoutKind::TensorSharded => Self::build(
+                String::from("local_tensor_sharded_metrics_only_v1"),
+                1,
+                layout,
+                LocalShardingExecutionMode::Partitioned,
+                LocalCollectivePosture::CallerManagedFuture,
+                LocalExecutionOutcomePosture::MetricsOnlyEvidence,
+                Some(String::from(
+                    "the first-cut local multi-device runtime can execute tensor partitions but keeps collectives and final output assembly outside the current evidence-only contract",
+                )),
+            ),
+        }
+    }
+
+    /// Attaches plain-language policy detail and refreshes the digest.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self.policy_digest = stable_local_sharding_policy_digest(
+            self.policy_id.as_str(),
+            self.policy_version,
+            self.layout,
+            self.execution_mode,
+            self.collective_posture,
+            self.outcome_posture,
+            self.detail.as_deref(),
+        );
+        self
+    }
+
+    /// Returns whether the policy requires a partition-capable backend.
+    #[must_use]
+    pub fn requires_partition_capable_runtime(&self) -> bool {
+        self.execution_mode == LocalShardingExecutionMode::Partitioned
+    }
+
+    /// Returns whether the policy supports one concrete partition shape.
+    #[must_use]
+    pub fn supports_partition(&self, partition: &ExecutionPartition) -> bool {
+        match (self.execution_mode, partition) {
+            (
+                LocalShardingExecutionMode::WholeModelOrReplica,
+                ExecutionPartition::WholeModel | ExecutionPartition::Replica { .. },
+            ) => true,
+            (
+                LocalShardingExecutionMode::Partitioned,
+                ExecutionPartition::LayerRange { .. } | ExecutionPartition::TensorRange { .. },
+            ) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns stable signature lines for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("policy_id={}", self.policy_id),
+            format!("policy_version={}", self.policy_version),
+            format!("layout={:?}", self.layout),
+            format!("execution_mode={:?}", self.execution_mode),
+            format!("collective_posture={:?}", self.collective_posture),
+            format!("outcome_posture={:?}", self.outcome_posture),
+            format!("policy_digest={}", self.policy_digest),
+        ];
+        if let Some(detail) = &self.detail {
+            lines.push(format!("detail={detail}"));
+        }
+        lines
+    }
+
+    fn build(
+        policy_id: String,
+        policy_version: u32,
+        layout: ShardedModelLayoutKind,
+        execution_mode: LocalShardingExecutionMode,
+        collective_posture: LocalCollectivePosture,
+        outcome_posture: LocalExecutionOutcomePosture,
+        detail: Option<String>,
+    ) -> Self {
+        let policy_digest = stable_local_sharding_policy_digest(
+            policy_id.as_str(),
+            policy_version,
+            layout,
+            execution_mode,
+            collective_posture,
+            outcome_posture,
+            detail.as_deref(),
+        );
+        Self {
+            policy_id,
+            policy_version,
+            layout,
+            execution_mode,
+            collective_posture,
+            outcome_posture,
+            detail,
+            policy_digest,
+        }
+    }
+}
+
+/// Stable refusal taxonomy for local multi-device contract or runner boundaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalMultiDeviceRefusalReason {
+    /// One declared weight strategy does not fit the requested layout.
+    UnsupportedWeightStrategy,
+    /// The selected backend does not match the contract backend.
+    SelectionBackendMismatch,
+    /// The explicit topology backend does not match the contract backend.
+    TopologyBackendMismatch,
+    /// The explicit topology kind does not match the contract layout.
+    TopologyLayoutMismatch,
+    /// The realized device count falls outside the contract bounds.
+    DeviceCountOutOfBounds,
+    /// The selected-device set does not match the topology shard count.
+    SelectionDeviceCountMismatch,
+    /// The selected-device set duplicated one stable device identifier.
+    DuplicateSelectedDevice,
+    /// One selected device belongs to the wrong backend family.
+    SelectionDeviceBackendMismatch,
+    /// One topology assignment referenced a device the selection did not surface.
+    MissingSelectedDevice,
+    /// One selected device did not surface the memory contract the sharding contract requires.
+    DeviceMemoryUnknown,
+    /// One selected device did not meet the required memory floor.
+    InsufficientDeviceMemory,
+    /// One realized partition does not fit the declared sharding policy.
+    PolicyPartitionMismatch,
+    /// Local multi-device execution requires an explicit topology.
+    MissingExecutionTopology,
+    /// The local runner does not implement the requested topology kind.
+    UnsupportedTopologyKind,
+    /// The sharded-model manifest does not match the realized topology contract.
+    ManifestTopologyMismatch,
+    /// The runtime set does not cover one selected shard device.
+    MissingRuntimeForShardDevice,
+}
+
+impl LocalMultiDeviceRefusalReason {
+    /// Returns the stable subject label for the refusal reason.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedWeightStrategy => "unsupported_weight_strategy",
+            Self::SelectionBackendMismatch => "selection_backend_mismatch",
+            Self::TopologyBackendMismatch => "topology_backend_mismatch",
+            Self::TopologyLayoutMismatch => "topology_layout_mismatch",
+            Self::DeviceCountOutOfBounds => "device_count_out_of_bounds",
+            Self::SelectionDeviceCountMismatch => "selection_device_count_mismatch",
+            Self::DuplicateSelectedDevice => "duplicate_selected_device",
+            Self::SelectionDeviceBackendMismatch => "selection_device_backend_mismatch",
+            Self::MissingSelectedDevice => "missing_selected_device",
+            Self::DeviceMemoryUnknown => "device_memory_unknown",
+            Self::InsufficientDeviceMemory => "insufficient_device_memory",
+            Self::PolicyPartitionMismatch => "policy_partition_mismatch",
+            Self::MissingExecutionTopology => "missing_execution_topology",
+            Self::UnsupportedTopologyKind => "unsupported_topology_kind",
+            Self::ManifestTopologyMismatch => "manifest_topology_mismatch",
+            Self::MissingRuntimeForShardDevice => "missing_runtime_for_shard_device",
+        }
+    }
+
+    const fn refusal_code(self) -> PsionicRefusalCode {
+        match self {
+            Self::UnsupportedWeightStrategy => PsionicRefusalCode::UnsupportedLayout,
+            Self::UnsupportedTopologyKind => PsionicRefusalCode::UnsupportedBackendCapability,
+            Self::ManifestTopologyMismatch => PsionicRefusalCode::SerializationIncompatibility,
+            Self::SelectionBackendMismatch
+            | Self::TopologyBackendMismatch
+            | Self::TopologyLayoutMismatch
+            | Self::DeviceCountOutOfBounds
+            | Self::SelectionDeviceCountMismatch
+            | Self::DuplicateSelectedDevice
+            | Self::SelectionDeviceBackendMismatch
+            | Self::MissingSelectedDevice
+            | Self::DeviceMemoryUnknown
+            | Self::InsufficientDeviceMemory
+            | Self::PolicyPartitionMismatch
+            | Self::MissingExecutionTopology
+            | Self::MissingRuntimeForShardDevice => PsionicRefusalCode::TopologyMismatch,
+        }
+    }
+}
+
 /// Validation failure for one local multi-device sharding contract or bound runtime path.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum LocalShardingContractError {
@@ -120,6 +486,16 @@ pub enum LocalShardingContractError {
     /// The effective backend label was blank.
     #[error("local sharding contract is missing an effective backend")]
     MissingEffectiveBackend,
+    /// The supplied sharding policy does not match the contract layout.
+    #[error(
+        "local sharding contract layout {contract_layout:?} does not match policy layout {policy_layout:?}"
+    )]
+    PolicyLayoutMismatch {
+        /// Contract layout.
+        contract_layout: ShardedModelLayoutKind,
+        /// Policy layout.
+        policy_layout: ShardedModelLayoutKind,
+    },
     /// The contract asked for fewer than two devices.
     #[error("local sharding contract requires at least 2 devices, found {min_device_count}")]
     InvalidMinDeviceCount {
@@ -261,42 +637,82 @@ pub enum LocalShardingContractError {
         /// Available bytes surfaced by the runtime.
         available_bytes: u64,
     },
+    /// One topology assignment does not fit the declared local sharding policy.
+    #[error("local sharding contract policy `{policy_id}` does not allow partition {partition:?}")]
+    PolicyPartitionMismatch {
+        /// Stable policy identifier.
+        policy_id: String,
+        /// Unsupported partition.
+        partition: ExecutionPartition,
+    },
 }
 
 impl LocalShardingContractError {
-    /// Returns the canonical refusal when the sharding contract hit a topology
-    /// or layout boundary.
+    /// Returns the typed refusal reason when the contract error is a current
+    /// sharding or topology refusal.
     #[must_use]
-    pub fn refusal(&self) -> Option<PsionicRefusal> {
+    pub const fn refusal_reason(&self) -> Option<LocalMultiDeviceRefusalReason> {
         match self {
-            Self::UnsupportedWeightStrategy { .. } => Some(PsionicRefusal::new(
-                PsionicRefusalCode::UnsupportedLayout,
-                PsionicRefusalScope::Topology,
-                self.to_string(),
-            )),
-            Self::SelectionBackendMismatch { .. }
-            | Self::TopologyBackendMismatch { .. }
-            | Self::TopologyLayoutMismatch { .. }
-            | Self::DeviceCountOutOfBounds { .. }
-            | Self::SelectionDeviceCountMismatch { .. }
-            | Self::DuplicateSelectedDevice { .. }
-            | Self::SelectionDeviceBackendMismatch { .. }
-            | Self::MissingSelectedDevice { .. }
-            | Self::DeviceMemoryUnknown { .. }
-            | Self::InsufficientDeviceMemory { .. } => Some(PsionicRefusal::new(
-                PsionicRefusalCode::TopologyMismatch,
-                PsionicRefusalScope::Topology,
-                self.to_string(),
-            )),
+            Self::UnsupportedWeightStrategy { .. } => {
+                Some(LocalMultiDeviceRefusalReason::UnsupportedWeightStrategy)
+            }
+            Self::SelectionBackendMismatch { .. } => {
+                Some(LocalMultiDeviceRefusalReason::SelectionBackendMismatch)
+            }
+            Self::TopologyBackendMismatch { .. } => {
+                Some(LocalMultiDeviceRefusalReason::TopologyBackendMismatch)
+            }
+            Self::TopologyLayoutMismatch { .. } => {
+                Some(LocalMultiDeviceRefusalReason::TopologyLayoutMismatch)
+            }
+            Self::DeviceCountOutOfBounds { .. } => {
+                Some(LocalMultiDeviceRefusalReason::DeviceCountOutOfBounds)
+            }
+            Self::SelectionDeviceCountMismatch { .. } => {
+                Some(LocalMultiDeviceRefusalReason::SelectionDeviceCountMismatch)
+            }
+            Self::DuplicateSelectedDevice { .. } => {
+                Some(LocalMultiDeviceRefusalReason::DuplicateSelectedDevice)
+            }
+            Self::SelectionDeviceBackendMismatch { .. } => {
+                Some(LocalMultiDeviceRefusalReason::SelectionDeviceBackendMismatch)
+            }
+            Self::MissingSelectedDevice { .. } => {
+                Some(LocalMultiDeviceRefusalReason::MissingSelectedDevice)
+            }
+            Self::DeviceMemoryUnknown { .. } => {
+                Some(LocalMultiDeviceRefusalReason::DeviceMemoryUnknown)
+            }
+            Self::InsufficientDeviceMemory { .. } => {
+                Some(LocalMultiDeviceRefusalReason::InsufficientDeviceMemory)
+            }
+            Self::PolicyPartitionMismatch { .. } => {
+                Some(LocalMultiDeviceRefusalReason::PolicyPartitionMismatch)
+            }
             Self::MissingContractId
             | Self::MissingModelFamily
             | Self::MissingEffectiveBackend
+            | Self::PolicyLayoutMismatch { .. }
             | Self::InvalidMinDeviceCount { .. }
             | Self::InvalidDeviceCountBounds { .. }
             | Self::MissingWeightRules
             | Self::DuplicateWeightClass { .. }
             | Self::MissingPrimaryShardingRule { .. } => None,
         }
+    }
+
+    /// Returns the canonical refusal when the sharding contract hit a topology
+    /// or layout boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        self.refusal_reason().map(|reason| {
+            PsionicRefusal::new(
+                reason.refusal_code(),
+                PsionicRefusalScope::Topology,
+                self.to_string(),
+            )
+            .with_subject(reason.as_str())
+        })
     }
 }
 
@@ -321,6 +737,8 @@ pub struct LocalShardingContract {
     /// Minimum surfaced device memory required per local shard when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_memory_bytes_per_device: Option<u64>,
+    /// Explicit sharding policy for the current layout family.
+    pub policy: LocalShardingPolicy,
     /// Inspectable rules for the representative model-family weight classes.
     pub weight_rules: Vec<LocalWeightShardingRule>,
     /// Stable digest over the contract.
@@ -339,6 +757,31 @@ impl LocalShardingContract {
         min_memory_bytes_per_device: Option<u64>,
         weight_rules: Vec<LocalWeightShardingRule>,
     ) -> Result<Self, LocalShardingContractError> {
+        Self::new_with_policy(
+            contract_id,
+            model_family,
+            effective_backend,
+            layout,
+            min_device_count,
+            max_device_count,
+            min_memory_bytes_per_device,
+            LocalShardingPolicy::for_layout(layout),
+            weight_rules,
+        )
+    }
+
+    /// Creates a local sharding contract with an explicit sharding policy.
+    pub fn new_with_policy(
+        contract_id: impl Into<String>,
+        model_family: impl Into<String>,
+        effective_backend: impl Into<String>,
+        layout: ShardedModelLayoutKind,
+        min_device_count: usize,
+        max_device_count: Option<usize>,
+        min_memory_bytes_per_device: Option<u64>,
+        policy: LocalShardingPolicy,
+        weight_rules: Vec<LocalWeightShardingRule>,
+    ) -> Result<Self, LocalShardingContractError> {
         let contract_id = contract_id.into();
         if contract_id.trim().is_empty() {
             return Err(LocalShardingContractError::MissingContractId);
@@ -350,6 +793,12 @@ impl LocalShardingContract {
         let effective_backend = effective_backend.into();
         if effective_backend.trim().is_empty() {
             return Err(LocalShardingContractError::MissingEffectiveBackend);
+        }
+        if policy.layout != layout {
+            return Err(LocalShardingContractError::PolicyLayoutMismatch {
+                contract_layout: layout,
+                policy_layout: policy.layout,
+            });
         }
         if min_device_count < 2 {
             return Err(LocalShardingContractError::InvalidMinDeviceCount { min_device_count });
@@ -391,6 +840,7 @@ impl LocalShardingContract {
             min_device_count,
             max_device_count,
             min_memory_bytes_per_device,
+            &policy,
             weight_rules.as_slice(),
         );
         Ok(Self {
@@ -402,6 +852,7 @@ impl LocalShardingContract {
             max_device_count,
             requires_same_backend_family: true,
             min_memory_bytes_per_device,
+            policy,
             weight_rules,
             contract_digest,
         })
@@ -475,6 +926,12 @@ impl LocalShardingContract {
         }
 
         for assignment in &topology.assignments {
+            if !self.policy.supports_partition(&assignment.partition) {
+                return Err(LocalShardingContractError::PolicyPartitionMismatch {
+                    policy_id: self.policy.policy_id.clone(),
+                    partition: assignment.partition.clone(),
+                });
+            }
             let Some(device_inventory) = inventory_by_id.get(&assignment.device.stable_device_id)
             else {
                 return Err(LocalShardingContractError::MissingSelectedDevice {
@@ -588,6 +1045,10 @@ pub struct LocalMultiDeviceExecutionReport {
     pub sharding_contract_id: String,
     /// Stable sharding contract digest.
     pub sharding_contract_digest: String,
+    /// Stable sharding policy identifier.
+    pub sharding_policy_id: String,
+    /// Stable sharding policy digest.
+    pub sharding_policy_digest: String,
     /// Stable sharded-model manifest identifier.
     pub sharded_model_manifest_id: String,
     /// Stable sharded-model manifest digest.
@@ -655,6 +1116,45 @@ pub enum LocalMultiDeviceExecutionError {
         /// Runtime error detail.
         message: String,
     },
+}
+
+impl LocalMultiDeviceExecutionError {
+    /// Returns the typed refusal reason when the execution error reflects a
+    /// current capability or topology boundary rather than an operational
+    /// runtime failure.
+    #[must_use]
+    pub fn refusal_reason(&self) -> Option<LocalMultiDeviceRefusalReason> {
+        match self {
+            Self::MissingExecutionTopology => {
+                Some(LocalMultiDeviceRefusalReason::MissingExecutionTopology)
+            }
+            Self::UnsupportedTopologyKind { .. } => {
+                Some(LocalMultiDeviceRefusalReason::UnsupportedTopologyKind)
+            }
+            Self::Contract(error) => error.refusal_reason(),
+            Self::Manifest(_) => Some(LocalMultiDeviceRefusalReason::ManifestTopologyMismatch),
+            Self::MissingRuntimeForShardDevice { .. } => {
+                Some(LocalMultiDeviceRefusalReason::MissingRuntimeForShardDevice)
+            }
+            Self::MissingRuntimeInstances
+            | Self::RuntimeDiscoveryFailed { .. }
+            | Self::ShardExecutionFailed { .. } => None,
+        }
+    }
+
+    /// Returns the canonical refusal when the execution error reflects an
+    /// explicit local multi-device capability or topology boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        self.refusal_reason().map(|reason| {
+            PsionicRefusal::new(
+                reason.refusal_code(),
+                PsionicRefusalScope::Topology,
+                self.to_string(),
+            )
+            .with_subject(reason.as_str())
+        })
+    }
 }
 
 /// Backend contract for same-type local multi-device partition execution.
@@ -797,6 +1297,8 @@ where
         model_family: request.sharding_contract.model_family.clone(),
         sharding_contract_id: request.sharding_contract.contract_id.clone(),
         sharding_contract_digest: request.sharding_contract.contract_digest.clone(),
+        sharding_policy_id: request.sharding_contract.policy.policy_id.clone(),
+        sharding_policy_digest: request.sharding_contract.policy.policy_digest.clone(),
         sharded_model_manifest_id: request.sharded_model_manifest.manifest_id.clone(),
         sharded_model_manifest_digest: request.sharded_model_manifest.stable_digest(),
         execution_topology: execution_topology.clone(),
@@ -830,6 +1332,7 @@ fn stable_local_sharding_contract_digest(
     min_device_count: usize,
     max_device_count: Option<usize>,
     min_memory_bytes_per_device: Option<u64>,
+    policy: &LocalShardingPolicy,
     weight_rules: &[LocalWeightShardingRule],
 ) -> String {
     let mut hasher = Sha256::new();
@@ -859,6 +1362,8 @@ fn stable_local_sharding_contract_digest(
             .map_or_else(String::new, |value| value.to_string())
             .as_bytes(),
     );
+    hasher.update(b"|policy|");
+    hasher.update(policy.policy_digest.as_bytes());
     for rule in weight_rules {
         hasher.update(b"|rule|");
         hasher.update(format!("{:?}", rule.class).as_bytes());
@@ -866,6 +1371,47 @@ fn stable_local_sharding_contract_digest(
         hasher.update(format!("{:?}", rule.strategy).as_bytes());
         hasher.update(b"|");
         hasher.update(rule.detail.as_deref().unwrap_or_default().as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_local_sharding_policy_digest(
+    policy_id: &str,
+    policy_version: u32,
+    layout: ShardedModelLayoutKind,
+    execution_mode: LocalShardingExecutionMode,
+    collective_posture: LocalCollectivePosture,
+    outcome_posture: LocalExecutionOutcomePosture,
+    detail: Option<&str>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"local_sharding_policy|");
+    hasher.update(policy_id.as_bytes());
+    hasher.update(b"|version|");
+    hasher.update(policy_version.to_string().as_bytes());
+    hasher.update(b"|layout|");
+    hasher.update(match layout {
+        ShardedModelLayoutKind::Replicated => b"replicated".as_slice(),
+        ShardedModelLayoutKind::LayerSharded => b"layer_sharded".as_slice(),
+        ShardedModelLayoutKind::TensorSharded => b"tensor_sharded".as_slice(),
+    });
+    hasher.update(b"|execution|");
+    hasher.update(match execution_mode {
+        LocalShardingExecutionMode::WholeModelOrReplica => b"whole_model_or_replica".as_slice(),
+        LocalShardingExecutionMode::Partitioned => b"partitioned".as_slice(),
+    });
+    hasher.update(b"|collective|");
+    hasher.update(match collective_posture {
+        LocalCollectivePosture::None => b"none".as_slice(),
+        LocalCollectivePosture::CallerManagedFuture => b"caller_managed_future".as_slice(),
+    });
+    hasher.update(b"|outcome|");
+    hasher.update(match outcome_posture {
+        LocalExecutionOutcomePosture::MetricsOnlyEvidence => b"metrics_only_evidence".as_slice(),
+    });
+    if let Some(detail) = detail {
+        hasher.update(b"|detail|");
+        hasher.update(detail.as_bytes());
     }
     hex::encode(hasher.finalize())
 }
@@ -890,10 +1436,12 @@ mod tests {
     };
 
     use super::{
+        execute_local_multi_device_plan, LocalCollectivePosture, LocalExecutionOutcomePosture,
         LocalModelWeightClass, LocalMultiDeviceExecutionError, LocalMultiDeviceExecutionRequest,
-        LocalShardingContract, LocalShardingContractError, LocalWeightShardingRule,
-        LocalWeightShardingStrategy, ShardedModelArtifactRef, ShardedModelLayoutKind,
-        ShardedModelManifest, execute_local_multi_device_plan,
+        LocalMultiDeviceRefusalReason, LocalShardingContract, LocalShardingContractError,
+        LocalShardingExecutionMode, LocalShardingPolicy, LocalShardingPolicyError,
+        LocalWeightShardingRule, LocalWeightShardingStrategy, ShardedModelArtifactRef,
+        ShardedModelLayoutKind, ShardedModelManifest,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -990,8 +1538,66 @@ mod tests {
     }
 
     #[test]
-    fn local_multi_device_plan_runner_executes_tensor_sharded_workload_without_cluster_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn local_sharding_policy_defaults_are_serializable_and_metrics_only(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let policy = LocalShardingPolicy::for_layout(ShardedModelLayoutKind::TensorSharded);
+
+        assert_eq!(policy.policy_version, 1);
+        assert_eq!(policy.layout, ShardedModelLayoutKind::TensorSharded);
+        assert_eq!(
+            policy.execution_mode,
+            LocalShardingExecutionMode::Partitioned
+        );
+        assert_eq!(
+            policy.collective_posture,
+            LocalCollectivePosture::CallerManagedFuture
+        );
+        assert_eq!(
+            policy.outcome_posture,
+            LocalExecutionOutcomePosture::MetricsOnlyEvidence
+        );
+        assert!(policy.requires_partition_capable_runtime());
+        assert!(policy.supports_partition(&ExecutionPartition::TensorRange {
+            axis: 1,
+            start: 0,
+            end: 32,
+        }));
+        assert!(!policy.supports_partition(&ExecutionPartition::WholeModel));
+        assert!(!policy.policy_digest.is_empty());
+
+        let encoded = serde_json::to_string(&policy)?;
+        let decoded: LocalShardingPolicy = serde_json::from_str(&encoded)?;
+        assert_eq!(decoded, policy);
+        assert!(decoded
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("policy_digest=")));
+        Ok(())
+    }
+
+    #[test]
+    fn local_sharding_policy_refuses_invalid_layout_execution_pair() {
+        let error = LocalShardingPolicy::new(
+            "bad-policy",
+            1,
+            ShardedModelLayoutKind::Replicated,
+            LocalShardingExecutionMode::Partitioned,
+            LocalCollectivePosture::CallerManagedFuture,
+            LocalExecutionOutcomePosture::MetricsOnlyEvidence,
+        )
+        .expect_err("replicated layout should refuse partitioned mode");
+        assert_eq!(
+            error,
+            LocalShardingPolicyError::LayoutExecutionModeMismatch {
+                layout: ShardedModelLayoutKind::Replicated,
+                execution_mode: LocalShardingExecutionMode::Partitioned,
+            }
+        );
+    }
+
+    #[test]
+    fn local_multi_device_plan_runner_executes_tensor_sharded_workload_without_cluster_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device0 = sample_cuda_device(0, 16 * 1024 * 1024 * 1024);
         let device1 = sample_cuda_device(1, 16 * 1024 * 1024 * 1024);
         let execution_topology = crate::ExecutionTopologyPlan::tensor_sharded(
@@ -1054,6 +1660,11 @@ mod tests {
         assert_eq!(report.runtime_backend, "cuda");
         assert_eq!(report.model_family, "gguf_decoder:llama");
         assert_eq!(
+            report.sharding_policy_id,
+            "local_tensor_sharded_metrics_only_v1"
+        );
+        assert_eq!(report.sharding_policy_digest, contract.policy.policy_digest);
+        assert_eq!(
             report.execution_topology.kind,
             crate::ExecutionTopologyKind::TensorSharded
         );
@@ -1077,8 +1688,8 @@ mod tests {
     }
 
     #[test]
-    fn local_sharding_contract_refuses_backend_memory_and_device_count_mismatches()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn local_sharding_contract_refuses_backend_memory_and_device_count_mismatches(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device0 = sample_cuda_device(0, 4 * 1024 * 1024 * 1024);
         let device1 = sample_cuda_device(1, 4 * 1024 * 1024 * 1024);
         let execution_topology = crate::ExecutionTopologyPlan::tensor_sharded(
@@ -1183,8 +1794,8 @@ mod tests {
     }
 
     #[test]
-    fn local_sharding_contract_refusal_taxonomy_surfaces_topology_mismatch()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn local_sharding_contract_refusal_taxonomy_surfaces_topology_mismatch(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device0 = sample_cuda_device(0, 16 * 1024 * 1024 * 1024);
         let device1 = sample_cuda_device(1, 16 * 1024 * 1024 * 1024);
         let execution_topology = crate::ExecutionTopologyPlan::tensor_sharded(
@@ -1232,12 +1843,88 @@ mod tests {
         };
         assert_eq!(refusal.code, PsionicRefusalCode::TopologyMismatch);
         assert_eq!(refusal.scope, PsionicRefusalScope::Topology);
+        assert_eq!(
+            refusal.subject.as_deref(),
+            Some("selection_backend_mismatch")
+        );
         Ok(())
     }
 
     #[test]
-    fn local_multi_device_plan_runner_refuses_missing_runtime_for_selected_device()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn local_sharding_contract_policy_refuses_partition_kind_mismatch(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let device0 = sample_cuda_device(0, 16 * 1024 * 1024 * 1024);
+        let device1 = sample_cuda_device(1, 16 * 1024 * 1024 * 1024);
+        let contract = LocalShardingContract::new(
+            "gguf-decoder-llama-tp-v1",
+            "gguf_decoder:llama",
+            "cuda",
+            ShardedModelLayoutKind::TensorSharded,
+            2,
+            Some(2),
+            Some(8 * 1024 * 1024 * 1024),
+            vec![
+                LocalWeightShardingRule::new(
+                    LocalModelWeightClass::TokenEmbedding,
+                    LocalWeightShardingStrategy::TensorAxis { axis: 1 },
+                ),
+                LocalWeightShardingRule::new(
+                    LocalModelWeightClass::AttentionOutput,
+                    LocalWeightShardingStrategy::TensorAxis { axis: 1 },
+                ),
+            ],
+        )?;
+        let malformed_topology = crate::ExecutionTopologyPlan {
+            effective_backend: String::from("cuda"),
+            kind: crate::ExecutionTopologyKind::TensorSharded,
+            assignments: vec![
+                crate::ExecutionShardAssignment {
+                    shard_id: 0,
+                    device: crate::ExecutionDevicePlacement::from_inventory(
+                        &device0.inventory_qualifiers(),
+                        0,
+                    ),
+                    partition: ExecutionPartition::WholeModel,
+                },
+                crate::ExecutionShardAssignment {
+                    shard_id: 1,
+                    device: crate::ExecutionDevicePlacement::from_inventory(
+                        &device1.inventory_qualifiers(),
+                        1,
+                    ),
+                    partition: ExecutionPartition::WholeModel,
+                },
+            ],
+        };
+        let selection = BackendSelection::direct_with_policy(
+            "cuda",
+            Some(device0.clone()),
+            vec![String::from("matmul")],
+            ServedProductBackendPolicy::same_backend_only(),
+        )
+        .with_selected_devices(vec![device0, device1])
+        .with_execution_topology(Some(malformed_topology.clone()));
+
+        let error = contract
+            .validate_selection(&selection, &malformed_topology)
+            .expect_err("whole-model partitions should refuse under tensor policy");
+        assert_eq!(
+            error,
+            LocalShardingContractError::PolicyPartitionMismatch {
+                policy_id: String::from("local_tensor_sharded_metrics_only_v1"),
+                partition: ExecutionPartition::WholeModel,
+            }
+        );
+        assert_eq!(
+            error.refusal_reason(),
+            Some(LocalMultiDeviceRefusalReason::PolicyPartitionMismatch)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_multi_device_plan_runner_refuses_missing_runtime_for_selected_device(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device0 = sample_cuda_device(0, 16 * 1024 * 1024 * 1024);
         let device1 = sample_cuda_device(1, 16 * 1024 * 1024 * 1024);
         let execution_topology = crate::ExecutionTopologyPlan::tensor_sharded(
@@ -1291,6 +1978,117 @@ mod tests {
                 shard_id: 1,
                 stable_device_id: String::from("cuda:1"),
             }
+        );
+        assert_eq!(
+            error.refusal_reason(),
+            Some(LocalMultiDeviceRefusalReason::MissingRuntimeForShardDevice)
+        );
+        let refusal = error
+            .refusal()
+            .expect("missing runtime should map to refusal");
+        assert_eq!(refusal.code, PsionicRefusalCode::TopologyMismatch);
+        assert_eq!(
+            refusal.subject.as_deref(),
+            Some("missing_runtime_for_shard_device")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_multi_device_execution_refusal_taxonomy_surfaces_missing_topology_and_pipeline_gap(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let device0 = sample_cuda_device(0, 16 * 1024 * 1024 * 1024);
+        let device1 = sample_cuda_device(1, 16 * 1024 * 1024 * 1024);
+        let contract = LocalShardingContract::new(
+            "gguf-decoder-llama-tp-v1",
+            "gguf_decoder:llama",
+            "cuda",
+            ShardedModelLayoutKind::TensorSharded,
+            2,
+            Some(2),
+            Some(8 * 1024 * 1024 * 1024),
+            vec![
+                LocalWeightShardingRule::new(
+                    LocalModelWeightClass::TokenEmbedding,
+                    LocalWeightShardingStrategy::TensorAxis { axis: 1 },
+                ),
+                LocalWeightShardingRule::new(
+                    LocalModelWeightClass::AttentionOutput,
+                    LocalWeightShardingStrategy::TensorAxis { axis: 1 },
+                ),
+            ],
+        )?;
+        let manifest = sample_tensor_manifest()?;
+        let plan = sample_plan();
+        let inputs = BTreeMap::new();
+        let mut runtimes = vec![MockLocalShardRuntime::new(device0.clone())];
+
+        let missing_topology_selection = BackendSelection::direct_with_policy(
+            "cuda",
+            None,
+            vec![String::from("matmul")],
+            ServedProductBackendPolicy::same_backend_only(),
+        );
+        let missing_topology = execute_local_multi_device_plan(
+            runtimes.as_mut_slice(),
+            LocalMultiDeviceExecutionRequest::new(
+                &plan,
+                &missing_topology_selection,
+                &contract,
+                &manifest,
+                &inputs,
+            ),
+        )
+        .expect_err("missing topology should refuse");
+        assert_eq!(
+            missing_topology.refusal_reason(),
+            Some(LocalMultiDeviceRefusalReason::MissingExecutionTopology)
+        );
+
+        let pipeline_topology = crate::ExecutionTopologyPlan::pipeline_sharded(
+            "cuda",
+            vec![
+                (device0.inventory_qualifiers(), 0, 16),
+                (device1.inventory_qualifiers(), 16, 32),
+            ],
+        );
+        let pipeline_selection = BackendSelection::direct_with_policy(
+            "cuda",
+            Some(device0),
+            vec![String::from("matmul")],
+            ServedProductBackendPolicy::same_backend_only(),
+        )
+        .with_selected_devices(vec![
+            sample_cuda_device(0, 16 * 1024 * 1024 * 1024),
+            device1,
+        ])
+        .with_execution_topology(Some(pipeline_topology));
+        let pipeline_error = execute_local_multi_device_plan(
+            runtimes.as_mut_slice(),
+            LocalMultiDeviceExecutionRequest::new(
+                &plan,
+                &pipeline_selection,
+                &contract,
+                &manifest,
+                &inputs,
+            ),
+        )
+        .expect_err("pipeline topology should refuse");
+        assert_eq!(
+            pipeline_error.refusal_reason(),
+            Some(LocalMultiDeviceRefusalReason::UnsupportedTopologyKind)
+        );
+        let refusal = pipeline_error
+            .refusal()
+            .expect("unsupported pipeline topology should map to refusal");
+        assert_eq!(
+            refusal.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(refusal.scope, PsionicRefusalScope::Topology);
+        assert_eq!(
+            refusal.subject.as_deref(),
+            Some("unsupported_topology_kind")
         );
         Ok(())
     }

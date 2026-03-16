@@ -133,7 +133,7 @@ category_summary() {
       echo "Compiled and trained paths emit machine-legible replay and provenance identity instead of relying on anecdotal environment memory."
       ;;
     local-multi-device)
-      echo "Same-host same-backend execution already has a real tensor-sharded runner, explicit sharding contracts, and topology-sensitive compiler identity."
+      echo "Same-host same-backend execution now exposes explicit sharding policy, stable refusal reasons, evidence-only runner truth, representative model-family contracts, and topology-sensitive compiler identity."
       ;;
     *)
       echo "unknown category: $1" >&2
@@ -267,9 +267,14 @@ EOF
     local-multi-device)
       cat <<'EOF'
 decoder-family-sharding-contract|psionic-models|lib||sharding::tests::gguf_decoder_family_tensor_parallel_contract_is_declarative_and_inspectable
+local-sharding-policy-defaults|psionic-runtime|lib||local_multi_device::tests::local_sharding_policy_defaults_are_serializable_and_metrics_only
+local-sharding-policy-refusal|psionic-runtime|lib||local_multi_device::tests::local_sharding_policy_refuses_invalid_layout_execution_pair
 local-runner-tensor-sharded|psionic-runtime|lib||local_multi_device::tests::local_multi_device_plan_runner_executes_tensor_sharded_workload_without_cluster_truth
 local-sharding-mismatch-refusal|psionic-runtime|lib||local_multi_device::tests::local_sharding_contract_refuses_backend_memory_and_device_count_mismatches
+local-policy-partition-refusal|psionic-runtime|lib||local_multi_device::tests::local_sharding_contract_policy_refuses_partition_kind_mismatch
 local-topology-refusal|psionic-runtime|lib||local_multi_device::tests::local_sharding_contract_refusal_taxonomy_surfaces_topology_mismatch
+local-runner-missing-runtime-refusal|psionic-runtime|lib||local_multi_device::tests::local_multi_device_plan_runner_refuses_missing_runtime_for_selected_device
+local-runner-refusal-taxonomy|psionic-runtime|lib||local_multi_device::tests::local_multi_device_execution_refusal_taxonomy_surfaces_missing_topology_and_pipeline_gap
 compiler-topology-digest|psionic-compiler|lib||tests::compile_graph_with_topology_changes_digest_when_sharding_changes
 EOF
       ;;
