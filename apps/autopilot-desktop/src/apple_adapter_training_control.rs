@@ -253,6 +253,19 @@ pub struct AppleAdapterOperatorLocalSummary {
     pub default_instruction: Option<String>,
     pub bridge_version: Option<String>,
     pub bridge_platform: Option<String>,
+    #[serde(default)]
+    pub requested_target_families: Vec<String>,
+    #[serde(default)]
+    pub executed_target_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_input_width: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_output_width: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_lora_rank: Option<usize>,
+    pub executed_input_width: usize,
+    pub executed_output_width: usize,
+    pub executed_lora_rank: usize,
     pub package_format_version: String,
 }
 
@@ -1020,39 +1033,7 @@ fn execute_launch_pipeline(
                 "Loaded Apple experiment manifest",
             )
         })?;
-        if manifest.input_width != APPLE_LIVE_REFERENCE_FEATURE_WIDTH
-            || manifest.output_width != APPLE_LIVE_REFERENCE_FEATURE_WIDTH
-            || manifest.lora_rank != APPLE_LIVE_REFERENCE_LORA_RANK
-        {
-            with_controller(|controller| {
-                controller.push_log(
-                    run_id,
-                    format!(
-                        "launch: manifest requested feature_width={}x{} lora_rank={} but the live Apple runtime-export lane remains pinned to {}x{} rank {} for export compatibility; applying symbolic target families plus max_steps only",
-                        manifest.input_width,
-                        manifest.output_width,
-                        manifest.lora_rank,
-                        APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
-                        APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
-                        APPLE_LIVE_REFERENCE_LORA_RANK,
-                    ),
-                    "Pinned live Apple export-compatible model geometry",
-                )
-            })?;
-        }
-        let skipped_targets = live_backend_skipped_manifest_targets(manifest);
-        if !skipped_targets.is_empty() {
-            with_controller(|controller| {
-                controller.push_log(
-                    run_id,
-                    format!(
-                        "launch: current live Apple exportable backend cannot represent manifest targets [{}] because those runtime tensors need geometry outside the current 2048x2048 reference lane; skipping them for this run",
-                        skipped_targets.join(",")
-                    ),
-                    "Skipped unsupported manifest targets for live Apple export lane",
-                )
-            })?;
-        }
+        validate_manifest_against_live_exportable_lane(manifest)?;
     }
     let execution_config = build_psionic_execution_config(
         run_id,
@@ -1088,7 +1069,7 @@ fn execute_launch_pipeline(
     )
     .map_err(|error| format!("Failed to collect runtime negative anchors: {error}"))?;
     let backend = AppleAdapterTrainingExecutionBackend::new_with_negative_targets(
-        execution_config,
+        execution_config.clone(),
         &train_dataset,
         captures.as_slice(),
         &environment,
@@ -1382,6 +1363,8 @@ fn execute_launch_pipeline(
 
     let local_summary = build_psionic_local_summary(
         &sft_outcome,
+        &execution_config,
+        experiment_manifest.as_ref(),
         &training_artifacts,
         captures.as_slice(),
         training_wall_clock_ms,
@@ -2688,6 +2671,44 @@ fn extend_apple_lineage_metadata(value: &mut Value, summary: &AppleAdapterOperat
             Value::String(bridge_platform.clone()),
         );
     }
+    object.insert(
+        "requested_target_families".to_string(),
+        serde_json::to_value(&summary.requested_target_families).unwrap_or(Value::Null),
+    );
+    object.insert(
+        "executed_target_families".to_string(),
+        serde_json::to_value(&summary.executed_target_families).unwrap_or(Value::Null),
+    );
+    if let Some(requested_input_width) = summary.requested_input_width {
+        object.insert(
+            "requested_input_width".to_string(),
+            Value::from(requested_input_width as u64),
+        );
+    }
+    if let Some(requested_output_width) = summary.requested_output_width {
+        object.insert(
+            "requested_output_width".to_string(),
+            Value::from(requested_output_width as u64),
+        );
+    }
+    if let Some(requested_lora_rank) = summary.requested_lora_rank {
+        object.insert(
+            "requested_lora_rank".to_string(),
+            Value::from(requested_lora_rank as u64),
+        );
+    }
+    object.insert(
+        "executed_input_width".to_string(),
+        Value::from(summary.executed_input_width as u64),
+    );
+    object.insert(
+        "executed_output_width".to_string(),
+        Value::from(summary.executed_output_width as u64),
+    );
+    object.insert(
+        "executed_lora_rank".to_string(),
+        Value::from(summary.executed_lora_rank as u64),
+    );
 }
 
 fn build_compute_benchmark_package(
@@ -3078,6 +3099,26 @@ fn build_psionic_execution_config(
     })
 }
 
+fn validate_manifest_against_live_exportable_lane(
+    manifest: &AppleAdapterExperimentManifest,
+) -> Result<(), String> {
+    if manifest.input_width != APPLE_LIVE_REFERENCE_FEATURE_WIDTH
+        || manifest.output_width != APPLE_LIVE_REFERENCE_FEATURE_WIDTH
+        || manifest.lora_rank != APPLE_LIVE_REFERENCE_LORA_RANK
+    {
+        return Err(format!(
+            "Apple experiment manifest requests feature_width={}x{} lora_rank={}, but the live Apple runtime-exportable lane requires {}x{} rank {}. Update the manifest or do not launch this run.",
+            manifest.input_width,
+            manifest.output_width,
+            manifest.lora_rank,
+            APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            APPLE_LIVE_REFERENCE_LORA_RANK,
+        ));
+    }
+    Ok(())
+}
+
 fn manifest_trainable_targets(
     manifest: &AppleAdapterExperimentManifest,
     optimizer: &TrainingOptimizerConfig,
@@ -3089,7 +3130,6 @@ fn manifest_trainable_targets(
             "decoder.attn.q_proj" => {
                 q_projection_trainable_targets(optimizer, optimizer_residency_policy)
             }
-            "decoder.ffn.up_proj" => Vec::new(),
             other => {
                 return Err(format!(
                     "Apple experiment manifest target `{other}` is not supported by the live runtime-exportable operator lane"
@@ -3107,15 +3147,6 @@ fn manifest_trainable_targets(
         );
     }
     Ok(targets)
-}
-
-fn live_backend_skipped_manifest_targets(manifest: &AppleAdapterExperimentManifest) -> Vec<String> {
-    manifest
-        .lora_targets
-        .iter()
-        .filter(|target| target.as_str() == "decoder.ffn.up_proj")
-        .cloned()
-        .collect()
 }
 
 fn q_projection_trainable_targets(
@@ -3248,6 +3279,8 @@ fn write_psionic_training_artifacts(
 
 fn build_psionic_local_summary(
     outcome: &AppleAdapterSftRunOutcome,
+    execution_config: &AppleAdapterExecutionConfig,
+    experiment_manifest: Option<&AppleAdapterExperimentManifest>,
     artifacts: &PsionicAppleTrainingArtifacts,
     captures: &[AppleAdapterSampleTokenCapture],
     training_wall_clock_ms: u64,
@@ -3276,6 +3309,7 @@ fn build_psionic_local_summary(
         .iter()
         .find(|entry| entry.relative_path == "adapter_weights.bin")
         .map(|entry| entry.byte_length);
+    let executed_target_families = symbolic_target_families_for_execution_config(execution_config);
     AppleAdapterOperatorLocalSummary {
         completed_steps: outcome.summary.run_summary.completed_steps,
         expected_steps: outcome.summary.run_summary.budget.max_steps,
@@ -3320,8 +3354,55 @@ fn build_psionic_local_summary(
         default_instruction: runtime_profile.default_instruction.clone(),
         bridge_version: runtime_profile.bridge_version.clone(),
         bridge_platform: runtime_profile.bridge_platform.clone(),
+        requested_target_families: experiment_manifest
+            .map(|manifest| manifest.lora_targets.clone())
+            .unwrap_or_else(|| executed_target_families.clone()),
+        executed_target_families,
+        requested_input_width: experiment_manifest.map(|manifest| manifest.input_width),
+        requested_output_width: experiment_manifest.map(|manifest| manifest.output_width),
+        requested_lora_rank: experiment_manifest.map(|manifest| manifest.lora_rank),
+        executed_input_width: execution_config.model.input_width,
+        executed_output_width: execution_config.model.output_width,
+        executed_lora_rank: execution_config
+            .model
+            .targets
+            .iter()
+            .map(|target| target.lora_rank)
+            .max()
+            .unwrap_or(0),
         package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
     }
+}
+
+fn symbolic_target_families_for_execution_config(
+    execution_config: &AppleAdapterExecutionConfig,
+) -> Vec<String> {
+    let mut families = execution_config
+        .model
+        .targets
+        .iter()
+        .filter_map(|target| {
+            if target
+                .target_id
+                .contains("attention.qkv_transform.adapters.base_adapter.lora_0")
+                || target
+                    .target_id
+                    .contains("attention.q_transform.adapters.base_adapter")
+            {
+                Some("decoder.attn.q_proj".to_string())
+            } else if target
+                .target_id
+                .contains("feed_forward.hidden_transform.linear_0.adapters.base_adapter")
+            {
+                Some("decoder.ffn.up_proj".to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    families.sort();
+    families.dedup();
+    families
 }
 
 fn elapsed_ms(started: Instant) -> u64 {
@@ -4102,16 +4183,17 @@ mod tests {
         APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE,
         APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER, APPLE_PSIONIC_EXPORT_BACKEND_ID,
         APPLE_PSIONIC_TRAINING_BACKEND_ID, build_psionic_execution_config,
-        q_projection_trainable_targets,
+        q_projection_trainable_targets, validate_manifest_against_live_exportable_lane,
     };
     use psionic_data::{
         AppleAdapterRuntimeCompatibilityProfile, DatasetKey, DatasetPackingMode,
         DatasetPackingPolicy,
     };
     use psionic_train::{
-        APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_LORA_RANK,
-        AppleAdapterExperimentManifest, AppleAdapterUsefulAdapterAcceptanceGate,
-        TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
+        APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        APPLE_LIVE_REFERENCE_LORA_RANK, AppleAdapterExperimentManifest,
+        AppleAdapterUsefulAdapterAcceptanceGate, TrainingOptimizerConfig,
+        TrainingOptimizerResidencyPolicy,
     };
 
     #[test]
@@ -4181,10 +4263,10 @@ mod tests {
             environment_ref: "env.openagents.apple.test".to_string(),
             benchmark_ref: "benchmark://openagents/apple_adapter/test".to_string(),
             fidelity_plan_id: "openagents.apple.token_sequence_reference.v1".to_string(),
-            input_width: 48,
-            output_width: 24,
+            input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
             lora_targets: vec!["decoder.attn.q_proj".to_string()],
-            lora_rank: 4,
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
             max_steps: 8,
             useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
                 runtime_smoke_required: true,
@@ -4215,5 +4297,112 @@ mod tests {
         .expect("manifest-backed config should build");
 
         assert_eq!(config.budget.max_steps, 8);
+    }
+
+    #[test]
+    fn manifest_backed_psionic_execution_config_rejects_unsupported_symbolic_targets() {
+        let runtime_profile = AppleAdapterRuntimeCompatibilityProfile::new(
+            "apple-foundation-model",
+            "general",
+            "default",
+        );
+        let packing_policy =
+            DatasetPackingPolicy::new(DatasetPackingMode::PackIntoContextWindow, 256, 512, 1);
+        let manifest = AppleAdapterExperimentManifest {
+            abi_version: APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION.to_string(),
+            experiment_id: "apple_adapter.test.unsupported_target".to_string(),
+            target_id: "apple_adapter.test".to_string(),
+            dataset: DatasetKey::new("dataset://openagents/apple_adapter/test", "2026.03.16"),
+            train_split_digest: "sha256:train".to_string(),
+            held_out_split_digest: "sha256:held".to_string(),
+            benchmark_split_digest: "sha256:bench".to_string(),
+            corpus_manifest_digest: "sha256:corpus".to_string(),
+            base_model_signature: "9799725ff8e851184037110b422d891ad3b92ec1".to_string(),
+            tokenizer_digest: "sha256:tokenizer".to_string(),
+            prompt_shaping_digest: "sha256:prompt".to_string(),
+            environment_ref: "env.openagents.apple.test".to_string(),
+            benchmark_ref: "benchmark://openagents/apple_adapter/test".to_string(),
+            fidelity_plan_id: "openagents.apple.token_sequence_reference.v1".to_string(),
+            input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            lora_targets: vec!["decoder.ffn.up_proj".to_string()],
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            max_steps: 8,
+            useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
+                runtime_smoke_required: true,
+                standard_benchmark_policy:
+                    psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                        minimum_adapter_score_bps: 0,
+                        minimum_adapter_pass_rate_bps: 0,
+                        minimum_score_delta_bps: 0,
+                        minimum_pass_rate_delta_bps: 0,
+                        minimum_improved_case_count: 0,
+                    },
+                overfit_non_zero_policy: psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                    minimum_adapter_score_bps: 1,
+                    minimum_adapter_pass_rate_bps: 1,
+                    minimum_score_delta_bps: 1,
+                    minimum_pass_rate_delta_bps: 1,
+                    minimum_improved_case_count: 1,
+                },
+            },
+        };
+
+        let error = build_psionic_execution_config(
+            "test-run",
+            &runtime_profile,
+            &packing_policy,
+            Some(&manifest),
+        )
+        .expect_err("unsupported target should fail fast");
+        assert!(error.contains("decoder.ffn.up_proj"));
+    }
+
+    #[test]
+    fn manifest_live_lane_validation_rejects_geometry_mismatch() {
+        let manifest = AppleAdapterExperimentManifest {
+            abi_version: APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION.to_string(),
+            experiment_id: "apple_adapter.test.geometry_mismatch".to_string(),
+            target_id: "apple_adapter.test".to_string(),
+            dataset: DatasetKey::new("dataset://openagents/apple_adapter/test", "2026.03.16"),
+            train_split_digest: "sha256:train".to_string(),
+            held_out_split_digest: "sha256:held".to_string(),
+            benchmark_split_digest: "sha256:bench".to_string(),
+            corpus_manifest_digest: "sha256:corpus".to_string(),
+            base_model_signature: "9799725ff8e851184037110b422d891ad3b92ec1".to_string(),
+            tokenizer_digest: "sha256:tokenizer".to_string(),
+            prompt_shaping_digest: "sha256:prompt".to_string(),
+            environment_ref: "env.openagents.apple.test".to_string(),
+            benchmark_ref: "benchmark://openagents/apple_adapter/test".to_string(),
+            fidelity_plan_id: "openagents.apple.token_sequence_reference.v1".to_string(),
+            input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH / 2,
+            output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            lora_targets: vec!["decoder.attn.q_proj".to_string()],
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            max_steps: 8,
+            useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
+                runtime_smoke_required: true,
+                standard_benchmark_policy:
+                    psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                        minimum_adapter_score_bps: 0,
+                        minimum_adapter_pass_rate_bps: 0,
+                        minimum_score_delta_bps: 0,
+                        minimum_pass_rate_delta_bps: 0,
+                        minimum_improved_case_count: 0,
+                    },
+                overfit_non_zero_policy: psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                    minimum_adapter_score_bps: 1,
+                    minimum_adapter_pass_rate_bps: 1,
+                    minimum_score_delta_bps: 1,
+                    minimum_pass_rate_delta_bps: 1,
+                    minimum_improved_case_count: 1,
+                },
+            },
+        };
+
+        let error = validate_manifest_against_live_exportable_lane(&manifest)
+            .expect_err("geometry mismatch should fail fast");
+        assert!(error.contains("feature_width=1024x2048"));
+        assert!(error.contains("2048x2048 rank 32"));
     }
 }

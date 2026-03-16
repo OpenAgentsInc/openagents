@@ -693,13 +693,10 @@ mod tests {
                 "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
             ),
             fidelity_plan_id: String::from("openagents.apple.token_sequence_reference.v1"),
-            input_width: 48,
-            output_width: 24,
-            lora_targets: vec![
-                String::from("decoder.attn.q_proj"),
-                String::from("decoder.ffn.up_proj"),
-            ],
-            lora_rank: 4,
+            input_width: 2048,
+            output_width: 2048,
+            lora_targets: vec![String::from("decoder.attn.q_proj")],
+            lora_rank: 32,
             max_steps: 8,
             useful_adapter_gate:
                 AppleAdapterUsefulAdapterAcceptanceGate::architecture_explainer_default(),

@@ -390,6 +390,10 @@ impl CpuBackend {
             | ExecutionOp::Expand { .. } => {
                 CpuBuffer::view_of(self.input(step, values, 0)?, step.spec.clone())?
             }
+            ExecutionOp::Cast { .. } => {
+                let source = self.input(step, values, 0)?.logical_values()?;
+                CpuBuffer::from_f32(step.spec.clone(), source)?
+            }
             ExecutionOp::Concat { axis } => self.concat(step, values, *axis)?,
             ExecutionOp::ReduceSum { axis } => self.reduce_sum(step, values, *axis)?,
         };
@@ -1799,20 +1803,22 @@ mod tests {
             TensorSpec::new(Shape::new(vec![2, 3]), DType::F32, Device::cpu()),
             vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         )?;
-        let view_spec = TensorSpec::from_layout(
-            source
-                .spec()
-                .layout()
-                .selected(0, 0)
-                .ok_or_else(|| RuntimeError::Backend(String::from("select view should exist")))?,
-            DType::F32,
-            Device::cpu(),
-        );
+        let view_spec =
+            TensorSpec::from_layout(
+                source.spec().layout().selected(0, 0).ok_or_else(|| {
+                    RuntimeError::Backend(String::from("select view should exist"))
+                })?,
+                DType::F32,
+                Device::cpu(),
+            );
         let view = CpuBuffer::view_of(&source, view_spec)?;
         let broadcast_spec = TensorSpec::from_layout(
-            view.spec().layout().expanded(&Shape::new(vec![2, 3])).ok_or_else(|| {
-                RuntimeError::Backend(String::from("broadcast view should exist"))
-            })?,
+            view.spec()
+                .layout()
+                .expanded(&Shape::new(vec![2, 3]))
+                .ok_or_else(|| {
+                    RuntimeError::Backend(String::from("broadcast view should exist"))
+                })?,
             DType::F32,
             Device::cpu(),
         );
@@ -1825,20 +1831,27 @@ mod tests {
         assert!(view_contract.is_some());
         assert!(broadcast_contract.is_some());
         let Some(source_contract) = source_contract else {
-            return Err(RuntimeError::Backend(String::from("source contract missing")));
+            return Err(RuntimeError::Backend(String::from(
+                "source contract missing",
+            )));
         };
         let Some(view_contract) = view_contract else {
             return Err(RuntimeError::Backend(String::from("view contract missing")));
         };
         let Some(broadcast_contract) = broadcast_contract else {
-            return Err(RuntimeError::Backend(String::from("broadcast contract missing")));
+            return Err(RuntimeError::Backend(String::from(
+                "broadcast contract missing",
+            )));
         };
 
         assert_eq!(source_contract.view_semantics, ViewSemantics::Dense);
         assert_eq!(view_contract.identity, source_contract.identity);
         assert_eq!(view_contract.view_semantics, ViewSemantics::AliasView);
         assert_eq!(broadcast_contract.identity, source_contract.identity);
-        assert_eq!(broadcast_contract.view_semantics, ViewSemantics::BroadcastView);
+        assert_eq!(
+            broadcast_contract.view_semantics,
+            ViewSemantics::BroadcastView
+        );
         Ok(())
     }
 
@@ -1848,7 +1861,9 @@ mod tests {
         let mut pool = CpuAllocatorPool::new(cpu_allocator_pool_policy());
         let buffer = pool.allocate(&spec);
         let first_contract = buffer.storage_contract().ok_or_else(|| {
-            RuntimeError::Backend(String::from("allocated buffer should expose storage contract"))
+            RuntimeError::Backend(String::from(
+                "allocated buffer should expose storage contract",
+            ))
         })?;
         pool.recycle(buffer);
 

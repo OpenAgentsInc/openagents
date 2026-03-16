@@ -2088,7 +2088,7 @@ flat-zero benchmark floor without weakening the structured or tool contract:
   text rubric
 - the live Apple overfit-non-zero run now clears the frozen weak gate with a
   real adapted benchmark delta:
-  - aggregate score `571` bps
+  - aggregate score `520` bps
   - aggregate pass rate `1428` bps
   - improved case count `1`
   - the improved case is the reviewed stale-evidence refusal row
@@ -2097,7 +2097,28 @@ flat-zero benchmark floor without weakening the structured or tool contract:
   broadly useful:
   - the standard benchmark-improving bar is still not met
   - structured summary and tool-routing rows remain unresolved
-  - multiple plain-text rows still fail outright
+- multiple plain-text rows still fail outright
+
+On 2026-03-16, GitHub issue `#3894` closed the manifest-to-live parity gap for
+that same first reviewed Apple lane:
+
+- the frozen architecture-explainer manifest fixture is now pinned to the
+  actual live exportable lane instead of claiming a broader geometry or target
+  family:
+  - symbolic targets: `decoder.attn.q_proj`
+  - feature width: `2048x2048`
+  - LoRA rank: `32`
+- the operator no longer silently narrows unsupported manifest requests:
+  - unsupported symbolic target families such as `decoder.ffn.up_proj` now
+    fail before training with an explicit contract error
+  - geometry or rank mismatches now fail before training with an explicit
+    live-lane requirement error
+- operator receipts and lineage metadata now record both the requested and the
+  executed target families plus geometry, so reports show exactly what the run
+  asked for and what the live lane actually executed
+- the current truthful overfit report at
+  `psionic-architecture-explainer-first-real-run-1773687000518` shows those
+  requested and executed fields matching exactly for the frozen manifest
 
 On 2026-03-15, GitHub issue `#3657` tightened the Apple runtime-validation
 layer around that same run:
