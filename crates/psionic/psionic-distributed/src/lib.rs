@@ -1,9 +1,11 @@
-//! Public framework-distributed group semantics above Psionic mesh truth.
+//! Public framework-distributed semantics above Psionic mesh truth.
 //!
-//! This crate intentionally lands only the first bounded distributed slice:
-//! explicit group initialization from current mesh facts, honest singleton
-//! fallback, global-group reuse, and plan-backed subgroup split semantics.
-//! Collective helpers still land later on top of this group surface.
+//! This crate intentionally lands the first bounded framework-distributed
+//! slices: explicit group initialization from current mesh facts, honest
+//! singleton fallback, global-group reuse, plan-backed subgroup split
+//! semantics, and a reference-first collective helper layer above that group
+//! surface. Backend-family transport mapping and broader helper families still
+//! land later.
 
 #![cfg_attr(
     test,
@@ -16,6 +18,8 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, OnceLock},
 };
 
+use psionic_array::{Array, ArrayContext, ArrayError};
+use psionic_core::{DType, Shape};
 use psionic_runtime::{
     ClusterCommunicationClass, TrainingDeviceMeshContext, TrainingElasticMembershipContext,
 };
@@ -24,7 +28,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "public framework-distributed groups above Psionic runtime mesh truth";
+pub const CRATE_ROLE: &str = "public framework-distributed groups and bounded collective helpers above Psionic runtime mesh truth";
 
 /// Requested distributed backend family for the public group surface.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -260,6 +264,296 @@ pub struct DistributedGroupSnapshot {
     pub parent_group_id: Option<String>,
 }
 
+/// One public collective helper exposed above the distributed-group surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributedCollectiveOperation {
+    /// All-reduce sum over the current group.
+    AllSum,
+    /// First-axis gather over the current group.
+    AllGather,
+    /// Sum-only reduce-scatter over the current group.
+    ReduceScatter,
+    /// Point-to-point send to one destination rank.
+    Send,
+    /// Point-to-point receive from one source rank.
+    Recv,
+}
+
+impl DistributedCollectiveOperation {
+    /// Returns the stable label for the collective helper.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AllSum => "all_sum",
+            Self::AllGather => "all_gather",
+            Self::ReduceScatter => "reduce_scatter",
+            Self::Send => "send",
+            Self::Recv => "recv",
+        }
+    }
+}
+
+impl fmt::Display for DistributedCollectiveOperation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Support posture for one public collective helper on the current group.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributedCollectiveSupportStatus {
+    /// The helper is a real singleton passthrough on this group.
+    SingletonPassthrough,
+    /// The helper is available through explicit reference payloads above the group surface.
+    ReferenceEmulation,
+    /// The helper currently validates local behavior only while transport remains later work.
+    ValidationOnly,
+    /// The helper explicitly refuses on this group today.
+    TypedRefusal,
+}
+
+/// Machine-readable collective capability snapshot for one public group.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedCollectiveSupport {
+    /// Stable group identifier this snapshot describes.
+    pub group_id: String,
+    /// High-level provenance for the current group.
+    pub group_kind: DistributedGroupKind,
+    /// Requested backend family for this group.
+    pub requested_backend: DistributedBackend,
+    /// Effective backend carried by the underlying mesh.
+    pub effective_backend: String,
+    /// Whether vendor transport-backed collectives are available on the current public surface.
+    pub backend_transport_available: bool,
+    /// Current posture of `all_sum`.
+    pub all_sum: DistributedCollectiveSupportStatus,
+    /// Current posture of `all_gather`.
+    pub all_gather: DistributedCollectiveSupportStatus,
+    /// Current posture of `reduce_scatter`.
+    pub reduce_scatter: DistributedCollectiveSupportStatus,
+    /// Current posture of `send`.
+    pub send: DistributedCollectiveSupportStatus,
+    /// Current posture of `recv`.
+    pub recv: DistributedCollectiveSupportStatus,
+    /// Boundary note that keeps current claims honest.
+    pub boundary_note: String,
+}
+
+/// Host-owned reference storage used by the bounded public collective layer.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DistributedReferenceStorage {
+    /// Floating-point payload used for logical `f32`, `f16`, and `bf16`.
+    F32(Vec<f32>),
+    /// Integer payload used for logical `i8`.
+    I8(Vec<i8>),
+}
+
+/// Explicit host-owned tensor payload for bounded collective emulation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DistributedReferenceTensor {
+    shape: Shape,
+    dtype: DType,
+    storage: DistributedReferenceStorage,
+}
+
+impl DistributedReferenceTensor {
+    /// Creates one floating-point reference tensor with explicit logical dtype.
+    pub fn float(
+        shape: Shape,
+        dtype: DType,
+        values: impl Into<Vec<f32>>,
+    ) -> Result<Self, DistributedCollectiveError> {
+        if !matches!(dtype, DType::F32 | DType::F16 | DType::BF16) {
+            return Err(DistributedCollectiveError::FloatReferenceDTypeMismatch { dtype });
+        }
+        let values = values.into();
+        validate_reference_element_count(&shape, values.len())?;
+        Ok(Self {
+            shape,
+            dtype,
+            storage: DistributedReferenceStorage::F32(values),
+        })
+    }
+
+    /// Creates one logical `f32` reference tensor.
+    pub fn f32(
+        shape: Shape,
+        values: impl Into<Vec<f32>>,
+    ) -> Result<Self, DistributedCollectiveError> {
+        Self::float(shape, DType::F32, values)
+    }
+
+    /// Creates one logical `i8` reference tensor.
+    pub fn i8(
+        shape: Shape,
+        values: impl Into<Vec<i8>>,
+    ) -> Result<Self, DistributedCollectiveError> {
+        let values = values.into();
+        validate_reference_element_count(&shape, values.len())?;
+        Ok(Self {
+            shape,
+            dtype: DType::I8,
+            storage: DistributedReferenceStorage::I8(values),
+        })
+    }
+
+    /// Materializes one array into an explicit host-owned reference tensor.
+    pub fn from_array(array: &Array) -> Result<Self, DistributedCollectiveError> {
+        let shape = array.shape().clone();
+        let dtype = array.dtype();
+        let data = array.to_host_data()?;
+        let storage = match dtype {
+            DType::F32 | DType::F16 | DType::BF16 => DistributedReferenceStorage::F32(
+                data.as_f32_slice()
+                    .ok_or(DistributedCollectiveError::HostInteropStorageMismatch { dtype })?
+                    .to_vec(),
+            ),
+            DType::I8 => DistributedReferenceStorage::I8(
+                data.as_i8_slice()
+                    .ok_or(DistributedCollectiveError::HostInteropStorageMismatch { dtype })?
+                    .to_vec(),
+            ),
+        };
+        Ok(Self {
+            shape,
+            dtype,
+            storage,
+        })
+    }
+
+    /// Returns the logical shape of this reference tensor.
+    #[must_use]
+    pub fn shape(&self) -> &Shape {
+        &self.shape
+    }
+
+    /// Returns the logical dtype of this reference tensor.
+    #[must_use]
+    pub const fn dtype(&self) -> DType {
+        self.dtype
+    }
+
+    /// Rebuilds one lazy array from the host-owned reference tensor.
+    pub fn to_array(&self, context: &ArrayContext) -> Result<Array, DistributedCollectiveError> {
+        match &self.storage {
+            DistributedReferenceStorage::F32(values) => {
+                let array = context.constant_f32(self.shape.clone(), values.clone())?;
+                if self.dtype == DType::F32 {
+                    Ok(array)
+                } else {
+                    Ok(array.cast(self.dtype)?)
+                }
+            }
+            DistributedReferenceStorage::I8(values) => {
+                let promoted = values
+                    .iter()
+                    .map(|value| f32::from(*value))
+                    .collect::<Vec<_>>();
+                Ok(context
+                    .constant_f32(self.shape.clone(), promoted)?
+                    .cast(DType::I8)?)
+            }
+        }
+    }
+
+    fn as_f32_values(&self) -> Vec<f32> {
+        match &self.storage {
+            DistributedReferenceStorage::F32(values) => values.clone(),
+            DistributedReferenceStorage::I8(values) => {
+                values.iter().map(|value| f32::from(*value)).collect()
+            }
+        }
+    }
+}
+
+/// Public options for one collective helper over a distributed group.
+#[derive(Clone, Debug, Default)]
+pub struct DistributedCollectiveOptions {
+    /// Explicit group to use; defaults to the current global group or a singleton fallback.
+    pub group: Option<DistributedGroup>,
+    /// Explicit per-rank reference inputs used to emulate multi-rank behavior.
+    pub rank_inputs: BTreeMap<usize, DistributedReferenceTensor>,
+}
+
+impl DistributedCollectiveOptions {
+    /// Creates one default options payload.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Attaches an explicit group handle.
+    #[must_use]
+    pub fn with_group(mut self, group: DistributedGroup) -> Self {
+        self.group = Some(group);
+        self
+    }
+
+    /// Adds one rank payload to the explicit reference map.
+    #[must_use]
+    pub fn with_rank_input(mut self, rank: usize, payload: DistributedReferenceTensor) -> Self {
+        self.rank_inputs.insert(rank, payload);
+        self
+    }
+
+    /// Replaces the explicit reference map.
+    #[must_use]
+    pub fn with_rank_inputs(
+        mut self,
+        rank_inputs: BTreeMap<usize, DistributedReferenceTensor>,
+    ) -> Self {
+        self.rank_inputs = rank_inputs;
+        self
+    }
+}
+
+/// Public options for one point-to-point helper over a distributed group.
+#[derive(Clone, Debug, Default)]
+pub struct DistributedPointToPointOptions {
+    /// Explicit group to use; defaults to the current global group or a singleton fallback.
+    pub group: Option<DistributedGroup>,
+    /// Explicit per-peer message payloads used for bounded recv/send validation.
+    pub message_payloads: BTreeMap<usize, DistributedReferenceTensor>,
+}
+
+impl DistributedPointToPointOptions {
+    /// Creates one default options payload.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Attaches an explicit group handle.
+    #[must_use]
+    pub fn with_group(mut self, group: DistributedGroup) -> Self {
+        self.group = Some(group);
+        self
+    }
+
+    /// Adds one message payload keyed by source or destination rank.
+    #[must_use]
+    pub fn with_message_payload(
+        mut self,
+        rank: usize,
+        payload: DistributedReferenceTensor,
+    ) -> Self {
+        self.message_payloads.insert(rank, payload);
+        self
+    }
+
+    /// Replaces the explicit point-to-point message map.
+    #[must_use]
+    pub fn with_message_payloads(
+        mut self,
+        message_payloads: BTreeMap<usize, DistributedReferenceTensor>,
+    ) -> Self {
+        self.message_payloads = message_payloads;
+        self
+    }
+}
+
 /// Initialization failure for the public distributed group surface.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum DistributedInitError {
@@ -370,6 +664,160 @@ pub enum DistributedGroupError {
     EmptySplitColor {
         /// Color that selected no members.
         color: i32,
+    },
+}
+
+/// Collective failure for the public distributed helper surface.
+#[derive(Debug, Error, PartialEq)]
+pub enum DistributedCollectiveError {
+    /// Group resolution reused the public init path and refused there.
+    #[error(transparent)]
+    GroupInit(#[from] DistributedInitError),
+    /// Array materialization or reconstruction refused on the bounded reference path.
+    #[error(transparent)]
+    Array(#[from] ArrayError),
+    /// Floating-point reference storage only admits floating-point logical dtypes.
+    #[error("public distributed float reference storage cannot use dtype {dtype:?}")]
+    FloatReferenceDTypeMismatch {
+        /// Logical dtype requested for the floating reference payload.
+        dtype: DType,
+    },
+    /// One explicit host-owned reference tensor length disagrees with the declared shape.
+    #[error(
+        "public distributed reference tensor for shape {shape:?} expects {expected_elements} elements, got {actual_elements}"
+    )]
+    ReferenceElementCountMismatch {
+        /// Declared shape.
+        shape: Shape,
+        /// Expected element count derived from the shape.
+        expected_elements: usize,
+        /// Actual provided element count.
+        actual_elements: usize,
+    },
+    /// Host export returned a storage family that disagrees with the array dtype.
+    #[error(
+        "public distributed host export does not provide the expected storage family for dtype {dtype:?}"
+    )]
+    HostInteropStorageMismatch {
+        /// Dtype that disagreed with the host export family.
+        dtype: DType,
+    },
+    /// Multi-rank emulation requires a full explicit rank payload map.
+    #[error(
+        "public distributed `{operation}` requires explicit rank payloads for all group members; missing {missing_ranks:?}"
+    )]
+    MissingRankInputs {
+        /// Collective helper that refused.
+        operation: DistributedCollectiveOperation,
+        /// Missing ranks in ascending order.
+        missing_ranks: Vec<usize>,
+    },
+    /// The explicit rank payload map referenced ranks outside the group.
+    #[error(
+        "public distributed `{operation}` rank payload map contains invalid ranks {invalid_ranks:?} for group size {group_size}"
+    )]
+    InvalidRankInputs {
+        /// Collective helper that refused.
+        operation: DistributedCollectiveOperation,
+        /// Invalid rank ids.
+        invalid_ranks: Vec<usize>,
+        /// Group size used for validation.
+        group_size: usize,
+    },
+    /// One rank payload disagreed with the local input array contract.
+    #[error(
+        "public distributed `{operation}` rank {rank} payload shape/dtype mismatch: expected shape {expected_shape:?} dtype {expected_dtype:?}, got shape {actual_shape:?} dtype {actual_dtype:?}"
+    )]
+    RankInputMismatch {
+        /// Collective helper that refused.
+        operation: DistributedCollectiveOperation,
+        /// Rank that provided the mismatched payload.
+        rank: usize,
+        /// Expected shape from the local input array.
+        expected_shape: Shape,
+        /// Actual shape from the provided rank payload.
+        actual_shape: Shape,
+        /// Expected dtype from the local input array.
+        expected_dtype: DType,
+        /// Actual dtype from the provided rank payload.
+        actual_dtype: DType,
+    },
+    /// The explicit local-rank payload did not match the supplied array.
+    #[error(
+        "public distributed `{operation}` local rank {rank} payload does not match the supplied local array"
+    )]
+    LocalRankInputMismatch {
+        /// Collective helper that refused.
+        operation: DistributedCollectiveOperation,
+        /// Local rank for the current group.
+        rank: usize,
+    },
+    /// Send semantics refuse on singleton groups, matching MLX.
+    #[error("cannot send on a singleton public distributed group")]
+    CannotSendSingleton,
+    /// Recv semantics refuse on singleton groups, matching MLX.
+    #[error("cannot recv on a singleton public distributed group")]
+    CannotRecvSingleton,
+    /// One destination rank is outside the current group.
+    #[error("invalid destination {destination} for public distributed group size {group_size}")]
+    InvalidDestination {
+        /// Requested destination rank.
+        destination: usize,
+        /// Current group size.
+        group_size: usize,
+    },
+    /// One source rank is outside the current group.
+    #[error("invalid source {source_rank} for public distributed group size {group_size}")]
+    InvalidSource {
+        /// Requested source rank.
+        source_rank: usize,
+        /// Current group size.
+        group_size: usize,
+    },
+    /// The bounded recv path requires one explicit host-owned inbound payload.
+    #[error(
+        "public distributed recv requires an explicit inbound payload for source rank {source_rank}"
+    )]
+    MissingReceivePayload {
+        /// Source rank that lacked an explicit payload.
+        source_rank: usize,
+    },
+    /// The explicit recv payload disagreed with the requested shape or dtype.
+    #[error(
+        "public distributed recv payload for source rank {source_rank} mismatched: expected shape {expected_shape:?} dtype {expected_dtype:?}, got shape {actual_shape:?} dtype {actual_dtype:?}"
+    )]
+    ReceivePayloadMismatch {
+        /// Source rank that provided the mismatched payload.
+        source_rank: usize,
+        /// Requested shape.
+        expected_shape: Shape,
+        /// Provided shape.
+        actual_shape: Shape,
+        /// Requested dtype.
+        expected_dtype: DType,
+        /// Provided dtype.
+        actual_dtype: DType,
+    },
+    /// Optional outbound validation found a payload mismatch.
+    #[error(
+        "public distributed send payload for destination rank {destination} did not match the supplied local array"
+    )]
+    SendPayloadMismatch {
+        /// Destination rank whose expected payload mismatched the local array.
+        destination: usize,
+    },
+    /// Reduce-scatter requires one leading axis to scatter over.
+    #[error("public distributed reduce_scatter requires rank >= 1 input")]
+    ReduceScatterScalarInput,
+    /// Reduce-scatter requires the first axis to divide evenly across the group.
+    #[error(
+        "public distributed reduce_scatter requires axis 0 length {first_axis} to be divisible by group size {group_size}"
+    )]
+    ReduceScatterNonDivisibleAxis0 {
+        /// Length of axis 0.
+        first_axis: usize,
+        /// Current group size.
+        group_size: usize,
     },
 }
 
@@ -526,6 +974,49 @@ impl DistributedGroup {
         }
     }
 
+    /// Returns the current capability snapshot for public collective helpers on this group.
+    #[must_use]
+    pub fn collective_support(&self) -> DistributedCollectiveSupport {
+        let (all_sum, all_gather, reduce_scatter, send, recv, boundary_note) = if self
+            .is_singleton()
+        {
+            (
+                DistributedCollectiveSupportStatus::SingletonPassthrough,
+                DistributedCollectiveSupportStatus::SingletonPassthrough,
+                DistributedCollectiveSupportStatus::SingletonPassthrough,
+                DistributedCollectiveSupportStatus::TypedRefusal,
+                DistributedCollectiveSupportStatus::TypedRefusal,
+                String::from(
+                    "Singleton passthrough for all_sum, all_gather, and reduce_scatter is real today; send and recv still refuse because there is no peer process in the group.",
+                ),
+            )
+        } else {
+            (
+                DistributedCollectiveSupportStatus::ReferenceEmulation,
+                DistributedCollectiveSupportStatus::ReferenceEmulation,
+                DistributedCollectiveSupportStatus::ReferenceEmulation,
+                DistributedCollectiveSupportStatus::ValidationOnly,
+                DistributedCollectiveSupportStatus::ReferenceEmulation,
+                String::from(
+                    "Multi-rank collective helpers are currently bounded to explicit host-owned reference payloads above the group surface; backend transport execution and backend-family mapping remain later work.",
+                ),
+            )
+        };
+        DistributedCollectiveSupport {
+            group_id: self.state.group_id.clone(),
+            group_kind: self.state.kind,
+            requested_backend: self.state.requested_backend,
+            effective_backend: self.state.mesh.effective_backend.clone(),
+            backend_transport_available: false,
+            all_sum,
+            all_gather,
+            reduce_scatter,
+            send,
+            recv,
+            boundary_note,
+        }
+    }
+
     /// Returns a cloned group handle carrying one explicit split plan.
     #[must_use]
     pub fn with_split_plan(&self, split_plan: DistributedSplitPlan) -> Self {
@@ -666,6 +1157,347 @@ pub fn init(options: DistributedInitOptions) -> Result<DistributedGroup, Distrib
         });
     }
     Ok(DistributedGroup::singleton(options.backend))
+}
+
+/// All-reduce sum above the public distributed-group surface.
+pub fn all_sum(
+    x: &Array,
+    options: DistributedCollectiveOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    let group = resolve_collective_group(options.group)?;
+    if group.is_singleton() {
+        return Ok(x.clone());
+    }
+    let ordered = ordered_rank_inputs(
+        DistributedCollectiveOperation::AllSum,
+        x,
+        &group,
+        &options.rank_inputs,
+    )?;
+    let mut accumulated = vec![0.0; x.shape().element_count()];
+    for payload in ordered {
+        for (slot, value) in accumulated.iter_mut().zip(payload.as_f32_values()) {
+            *slot += value;
+        }
+    }
+    build_output_array(&x.context(), x.shape().clone(), x.dtype(), accumulated)
+}
+
+/// First-axis all-gather above the public distributed-group surface.
+pub fn all_gather(
+    x: &Array,
+    options: DistributedCollectiveOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    let group = resolve_collective_group(options.group)?;
+    if group.is_singleton() {
+        return Ok(x.clone());
+    }
+    let ordered = ordered_rank_inputs(
+        DistributedCollectiveOperation::AllGather,
+        x,
+        &group,
+        &options.rank_inputs,
+    )?;
+    let output_shape = gathered_shape(x.shape(), group.size());
+    let gathered = ordered
+        .into_iter()
+        .flat_map(|payload| payload.as_f32_values())
+        .collect::<Vec<_>>();
+    build_output_array(&x.context(), output_shape, x.dtype(), gathered)
+}
+
+/// Sum-only reduce-scatter above the public distributed-group surface.
+pub fn reduce_scatter(
+    x: &Array,
+    options: DistributedCollectiveOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    let group = resolve_collective_group(options.group)?;
+    if group.is_singleton() {
+        return Ok(x.clone());
+    }
+    let ordered = ordered_rank_inputs(
+        DistributedCollectiveOperation::ReduceScatter,
+        x,
+        &group,
+        &options.rank_inputs,
+    )?;
+    let mut reduced = vec![0.0; x.shape().element_count()];
+    for payload in ordered {
+        for (slot, value) in reduced.iter_mut().zip(payload.as_f32_values()) {
+            *slot += value;
+        }
+    }
+    let (output_shape, scattered) =
+        reduce_scatter_values(x.shape(), group.size(), group.rank(), reduced)?;
+    build_output_array(&x.context(), output_shape, x.dtype(), scattered)
+}
+
+/// Sum-only reduce-scatter alias matching the upstream MLX helper name.
+pub fn sum_scatter(
+    x: &Array,
+    options: DistributedCollectiveOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    reduce_scatter(x, options)
+}
+
+/// Point-to-point send above the public distributed-group surface.
+pub fn send(
+    x: &Array,
+    destination: usize,
+    options: DistributedPointToPointOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    let group = resolve_collective_group(options.group)?;
+    if group.is_singleton() {
+        return Err(DistributedCollectiveError::CannotSendSingleton);
+    }
+    validate_destination(destination, group.size())?;
+    validate_point_to_point_payload_ranks(
+        DistributedCollectiveOperation::Send,
+        group.size(),
+        &options.message_payloads,
+    )?;
+    if let Some(expected_payload) = options.message_payloads.get(&destination) {
+        validate_rank_payload_shape_dtype(
+            DistributedCollectiveOperation::Send,
+            destination,
+            x.shape(),
+            x.dtype(),
+            expected_payload,
+        )?;
+        let local_payload = DistributedReferenceTensor::from_array(x)?;
+        if local_payload != *expected_payload {
+            return Err(DistributedCollectiveError::SendPayloadMismatch { destination });
+        }
+    }
+    Ok(x.clone())
+}
+
+/// Point-to-point recv above the public distributed-group surface.
+pub fn recv(
+    context: &ArrayContext,
+    shape: Shape,
+    dtype: DType,
+    source: usize,
+    options: DistributedPointToPointOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    let group = resolve_collective_group(options.group)?;
+    if group.is_singleton() {
+        return Err(DistributedCollectiveError::CannotRecvSingleton);
+    }
+    validate_source(source, group.size())?;
+    validate_point_to_point_payload_ranks(
+        DistributedCollectiveOperation::Recv,
+        group.size(),
+        &options.message_payloads,
+    )?;
+    let payload = options.message_payloads.get(&source).ok_or(
+        DistributedCollectiveError::MissingReceivePayload {
+            source_rank: source,
+        },
+    )?;
+    if payload.shape() != &shape || payload.dtype() != dtype {
+        return Err(DistributedCollectiveError::ReceivePayloadMismatch {
+            source_rank: source,
+            expected_shape: shape,
+            actual_shape: payload.shape().clone(),
+            expected_dtype: dtype,
+            actual_dtype: payload.dtype(),
+        });
+    }
+    payload.to_array(context)
+}
+
+/// Point-to-point recv convenience wrapper using the shape and dtype of `like`.
+pub fn recv_like(
+    like: &Array,
+    source: usize,
+    options: DistributedPointToPointOptions,
+) -> Result<Array, DistributedCollectiveError> {
+    recv(
+        &like.context(),
+        like.shape().clone(),
+        like.dtype(),
+        source,
+        options,
+    )
+}
+
+fn resolve_collective_group(
+    group: Option<DistributedGroup>,
+) -> Result<DistributedGroup, DistributedCollectiveError> {
+    match group {
+        Some(group) => Ok(group),
+        None => Ok(init(DistributedInitOptions::new())?),
+    }
+}
+
+fn validate_reference_element_count(
+    shape: &Shape,
+    actual_elements: usize,
+) -> Result<(), DistributedCollectiveError> {
+    let expected_elements = shape.element_count();
+    if actual_elements != expected_elements {
+        return Err(DistributedCollectiveError::ReferenceElementCountMismatch {
+            shape: shape.clone(),
+            expected_elements,
+            actual_elements,
+        });
+    }
+    Ok(())
+}
+
+fn ordered_rank_inputs(
+    operation: DistributedCollectiveOperation,
+    x: &Array,
+    group: &DistributedGroup,
+    rank_inputs: &BTreeMap<usize, DistributedReferenceTensor>,
+) -> Result<Vec<DistributedReferenceTensor>, DistributedCollectiveError> {
+    let invalid_ranks = rank_inputs
+        .keys()
+        .copied()
+        .filter(|rank| *rank >= group.size())
+        .collect::<Vec<_>>();
+    if !invalid_ranks.is_empty() {
+        return Err(DistributedCollectiveError::InvalidRankInputs {
+            operation,
+            invalid_ranks,
+            group_size: group.size(),
+        });
+    }
+
+    let missing_ranks = (0..group.size())
+        .filter(|rank| !rank_inputs.contains_key(rank))
+        .collect::<Vec<_>>();
+    if !missing_ranks.is_empty() {
+        return Err(DistributedCollectiveError::MissingRankInputs {
+            operation,
+            missing_ranks,
+        });
+    }
+
+    let local_payload = DistributedReferenceTensor::from_array(x)?;
+    let mut ordered = Vec::with_capacity(group.size());
+    for rank in 0..group.size() {
+        let Some(payload) = rank_inputs.get(&rank).cloned() else {
+            return Err(DistributedCollectiveError::MissingRankInputs {
+                operation,
+                missing_ranks: vec![rank],
+            });
+        };
+        validate_rank_payload_shape_dtype(operation, rank, x.shape(), x.dtype(), &payload)?;
+        if rank == group.rank() && payload != local_payload {
+            return Err(DistributedCollectiveError::LocalRankInputMismatch { operation, rank });
+        }
+        ordered.push(payload);
+    }
+    Ok(ordered)
+}
+
+fn validate_rank_payload_shape_dtype(
+    operation: DistributedCollectiveOperation,
+    rank: usize,
+    expected_shape: &Shape,
+    expected_dtype: DType,
+    payload: &DistributedReferenceTensor,
+) -> Result<(), DistributedCollectiveError> {
+    if payload.shape() != expected_shape || payload.dtype() != expected_dtype {
+        return Err(DistributedCollectiveError::RankInputMismatch {
+            operation,
+            rank,
+            expected_shape: expected_shape.clone(),
+            actual_shape: payload.shape().clone(),
+            expected_dtype,
+            actual_dtype: payload.dtype(),
+        });
+    }
+    Ok(())
+}
+
+fn build_output_array(
+    context: &ArrayContext,
+    shape: Shape,
+    dtype: DType,
+    values: Vec<f32>,
+) -> Result<Array, DistributedCollectiveError> {
+    DistributedReferenceTensor::float(shape, dtype, values)?.to_array(context)
+}
+
+fn gathered_shape(input_shape: &Shape, group_size: usize) -> Shape {
+    if input_shape.rank() == 0 {
+        return Shape::new(vec![group_size]);
+    }
+    let mut dims = input_shape.dims().to_vec();
+    dims[0] *= group_size;
+    Shape::new(dims)
+}
+
+fn reduce_scatter_values(
+    input_shape: &Shape,
+    group_size: usize,
+    rank: usize,
+    reduced: Vec<f32>,
+) -> Result<(Shape, Vec<f32>), DistributedCollectiveError> {
+    if input_shape.rank() == 0 {
+        return Err(DistributedCollectiveError::ReduceScatterScalarInput);
+    }
+    let first_axis = input_shape.dims()[0];
+    if !first_axis.is_multiple_of(group_size) {
+        return Err(DistributedCollectiveError::ReduceScatterNonDivisibleAxis0 {
+            first_axis,
+            group_size,
+        });
+    }
+    let chunk_axis = first_axis / group_size;
+    let trailing = input_shape.dims()[1..].iter().product::<usize>().max(1);
+    let chunk_elements = chunk_axis * trailing;
+    let start = rank * chunk_elements;
+    let end = start + chunk_elements;
+    let mut dims = input_shape.dims().to_vec();
+    dims[0] = chunk_axis;
+    Ok((Shape::new(dims), reduced[start..end].to_vec()))
+}
+
+fn validate_destination(
+    destination: usize,
+    group_size: usize,
+) -> Result<(), DistributedCollectiveError> {
+    if destination >= group_size {
+        return Err(DistributedCollectiveError::InvalidDestination {
+            destination,
+            group_size,
+        });
+    }
+    Ok(())
+}
+
+fn validate_source(source: usize, group_size: usize) -> Result<(), DistributedCollectiveError> {
+    if source >= group_size {
+        return Err(DistributedCollectiveError::InvalidSource {
+            source_rank: source,
+            group_size,
+        });
+    }
+    Ok(())
+}
+
+fn validate_point_to_point_payload_ranks(
+    operation: DistributedCollectiveOperation,
+    group_size: usize,
+    payloads: &BTreeMap<usize, DistributedReferenceTensor>,
+) -> Result<(), DistributedCollectiveError> {
+    let invalid_ranks = payloads
+        .keys()
+        .copied()
+        .filter(|rank| *rank >= group_size)
+        .collect::<Vec<_>>();
+    if !invalid_ranks.is_empty() {
+        return Err(DistributedCollectiveError::InvalidRankInputs {
+            operation,
+            invalid_ranks,
+            group_size,
+        });
+    }
+    Ok(())
 }
 
 fn build_bootstrapped_state(
@@ -890,8 +1722,26 @@ fn clear_global_groups() {
 }
 
 #[cfg(test)]
+fn distributed_test_lock() -> &'static Mutex<()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+fn lock_distributed_test() -> MutexGuard<'static, ()> {
+    match distributed_test_lock().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
+    use psionic_array::ArrayContext;
+    use psionic_core::{DType, Shape};
 
     fn sample_membership() -> TrainingElasticMembershipContext {
         TrainingElasticMembershipContext::new(
@@ -938,6 +1788,7 @@ mod tests {
 
     #[test]
     fn init_returns_singleton_fallback_when_non_strict_group_is_unavailable() {
+        let _test_guard = lock_distributed_test();
         clear_global_groups();
 
         let group = init(DistributedInitOptions::new())
@@ -953,6 +1804,7 @@ mod tests {
 
     #[test]
     fn init_strict_refuses_without_bootstrap_or_existing_global_group() {
+        let _test_guard = lock_distributed_test();
         clear_global_groups();
 
         let error = init(DistributedInitOptions::new().with_strict(true))
@@ -968,6 +1820,7 @@ mod tests {
 
     #[test]
     fn init_bootstraps_one_group_and_reuses_it_as_the_global_group() {
+        let _test_guard = lock_distributed_test();
         clear_global_groups();
 
         let bootstrapped =
@@ -994,6 +1847,7 @@ mod tests {
 
     #[test]
     fn named_backend_families_stay_unavailable_until_mapping_work_lands() {
+        let _test_guard = lock_distributed_test();
         clear_global_groups();
 
         let error = init(
@@ -1013,6 +1867,7 @@ mod tests {
 
     #[test]
     fn split_uses_one_explicit_plan_and_reassigns_rank_by_key() {
+        let _test_guard = lock_distributed_test();
         clear_global_groups();
 
         let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-c")))
@@ -1047,6 +1902,7 @@ mod tests {
 
     #[test]
     fn split_refuses_missing_plan_singleton_and_local_assignment_mismatch() {
+        let _test_guard = lock_distributed_test();
         clear_global_groups();
 
         let singleton = init(DistributedInitOptions::new())
@@ -1084,6 +1940,550 @@ mod tests {
                 expected_key: 1,
                 actual_color: 0,
                 actual_key: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn collective_support_reports_singleton_and_reference_bounds() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let singleton = init(DistributedInitOptions::new())
+            .expect("non-strict init should return the singleton fallback");
+        let singleton_support = singleton.collective_support();
+        assert_eq!(
+            singleton_support.all_sum,
+            DistributedCollectiveSupportStatus::SingletonPassthrough
+        );
+        assert_eq!(
+            singleton_support.send,
+            DistributedCollectiveSupportStatus::TypedRefusal
+        );
+        assert!(!singleton_support.backend_transport_available);
+
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-b")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let support = group.collective_support();
+        assert_eq!(
+            support.all_gather,
+            DistributedCollectiveSupportStatus::ReferenceEmulation
+        );
+        assert_eq!(
+            support.send,
+            DistributedCollectiveSupportStatus::ValidationOnly
+        );
+        assert_eq!(
+            support.recv,
+            DistributedCollectiveSupportStatus::ReferenceEmulation
+        );
+        assert!(!support.backend_transport_available);
+    }
+
+    #[test]
+    fn all_sum_respects_singleton_passthrough_and_multi_rank_reference_inputs() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let singleton = context
+            .constant_f32(Shape::new(vec![2]), vec![3.0, 4.0])
+            .expect("singleton input");
+        let singleton_sum = all_sum(&singleton, DistributedCollectiveOptions::new())
+            .expect("singleton passthrough");
+        assert_eq!(
+            singleton_sum
+                .to_host_data()
+                .expect("singleton host")
+                .as_f32_slice(),
+            Some(&[3.0, 4.0][..])
+        );
+
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-c")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let local = context
+            .constant_f32(Shape::new(vec![2]), vec![3.0, 4.0])
+            .expect("local input");
+        let rank_inputs = BTreeMap::from([
+            (
+                0,
+                DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![1.0, 1.0])
+                    .expect("rank 0 input"),
+            ),
+            (
+                1,
+                DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![2.0, 2.0])
+                    .expect("rank 1 input"),
+            ),
+            (
+                2,
+                DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![3.0, 4.0])
+                    .expect("rank 2 input"),
+            ),
+            (
+                3,
+                DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![4.0, 5.0])
+                    .expect("rank 3 input"),
+            ),
+        ]);
+
+        let reduced = all_sum(
+            &local,
+            DistributedCollectiveOptions::new()
+                .with_group(group)
+                .with_rank_inputs(rank_inputs),
+        )
+        .expect("all_sum should emulate the four-rank reduction");
+        assert_eq!(
+            reduced.to_host_data().expect("reduced host").as_f32_slice(),
+            Some(&[10.0, 12.0][..])
+        );
+    }
+
+    #[test]
+    fn all_sum_refuses_missing_or_mismatched_rank_inputs() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-b")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let local = context
+            .constant_f32(Shape::new(vec![2]), vec![3.0, 4.0])
+            .expect("local input");
+
+        let missing = all_sum(
+            &local,
+            DistributedCollectiveOptions::new()
+                .with_group(group.clone())
+                .with_rank_inputs(BTreeMap::from([(
+                    1,
+                    DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![3.0, 4.0])
+                        .expect("local payload"),
+                )])),
+        )
+        .expect_err("missing remote ranks should refuse");
+        assert_eq!(
+            missing,
+            DistributedCollectiveError::MissingRankInputs {
+                operation: DistributedCollectiveOperation::AllSum,
+                missing_ranks: vec![0, 2, 3],
+            }
+        );
+
+        let mismatch = all_sum(
+            &local,
+            DistributedCollectiveOptions::new()
+                .with_group(group)
+                .with_rank_inputs(BTreeMap::from([
+                    (
+                        0,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![1.0, 1.0])
+                            .expect("rank 0"),
+                    ),
+                    (
+                        1,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![9.0, 9.0])
+                            .expect("local mismatch"),
+                    ),
+                    (
+                        2,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![2.0, 2.0])
+                            .expect("rank 2"),
+                    ),
+                    (
+                        3,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![4.0, 4.0])
+                            .expect("rank 3"),
+                    ),
+                ])),
+        )
+        .expect_err("local rank payload mismatch should refuse");
+        assert_eq!(
+            mismatch,
+            DistributedCollectiveError::LocalRankInputMismatch {
+                operation: DistributedCollectiveOperation::AllSum,
+                rank: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn all_gather_handles_vector_and_scalar_payloads() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-b")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let local = context
+            .constant_f32(Shape::new(vec![2]), vec![3.0, 4.0])
+            .expect("local input");
+        let gathered = all_gather(
+            &local,
+            DistributedCollectiveOptions::new()
+                .with_group(group.clone())
+                .with_rank_inputs(BTreeMap::from([
+                    (
+                        0,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![1.0, 2.0])
+                            .expect("rank 0"),
+                    ),
+                    (
+                        1,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![3.0, 4.0])
+                            .expect("rank 1"),
+                    ),
+                    (
+                        2,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![5.0, 6.0])
+                            .expect("rank 2"),
+                    ),
+                    (
+                        3,
+                        DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![7.0, 8.0])
+                            .expect("rank 3"),
+                    ),
+                ])),
+        )
+        .expect("all_gather should concatenate first-axis payloads");
+        assert_eq!(gathered.shape(), &Shape::new(vec![8]));
+        assert_eq!(
+            gathered
+                .to_host_data()
+                .expect("gathered host")
+                .as_f32_slice(),
+            Some(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0][..])
+        );
+
+        let scalar = context.scalar_f32(2.0).expect("scalar input");
+        let scalar_gathered = all_gather(
+            &scalar,
+            DistributedCollectiveOptions::new()
+                .with_group(group)
+                .with_rank_inputs(BTreeMap::from([
+                    (
+                        0,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![1.0])
+                            .expect("rank 0"),
+                    ),
+                    (
+                        1,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![2.0])
+                            .expect("rank 1"),
+                    ),
+                    (
+                        2,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![3.0])
+                            .expect("rank 2"),
+                    ),
+                    (
+                        3,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![4.0])
+                            .expect("rank 3"),
+                    ),
+                ])),
+        )
+        .expect("scalar gather should widen into one first axis");
+        assert_eq!(scalar_gathered.shape(), &Shape::new(vec![4]));
+        assert_eq!(
+            scalar_gathered
+                .to_host_data()
+                .expect("scalar gathered host")
+                .as_f32_slice(),
+            Some(&[1.0, 2.0, 3.0, 4.0][..])
+        );
+    }
+
+    #[test]
+    fn reduce_scatter_sums_then_slices_local_chunk() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-b")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let local = context
+            .constant_f32(Shape::new(vec![4]), vec![2.0, 20.0, 200.0, 2000.0])
+            .expect("local input");
+        let scattered = reduce_scatter(
+            &local,
+            DistributedCollectiveOptions::new()
+                .with_group(group)
+                .with_rank_inputs(BTreeMap::from([
+                    (
+                        0,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![4]),
+                            vec![1.0, 10.0, 100.0, 1000.0],
+                        )
+                        .expect("rank 0"),
+                    ),
+                    (
+                        1,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![4]),
+                            vec![2.0, 20.0, 200.0, 2000.0],
+                        )
+                        .expect("rank 1"),
+                    ),
+                    (
+                        2,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![4]),
+                            vec![3.0, 30.0, 300.0, 3000.0],
+                        )
+                        .expect("rank 2"),
+                    ),
+                    (
+                        3,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![4]),
+                            vec![4.0, 40.0, 400.0, 4000.0],
+                        )
+                        .expect("rank 3"),
+                    ),
+                ])),
+        )
+        .expect("reduce_scatter should sum then return the local chunk");
+        assert_eq!(scattered.shape(), &Shape::new(vec![1]));
+        assert_eq!(
+            scattered
+                .to_host_data()
+                .expect("scattered host")
+                .as_f32_slice(),
+            Some(&[100.0][..])
+        );
+    }
+
+    #[test]
+    fn reduce_scatter_refuses_scalar_or_non_divisible_axis_zero() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-a")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let scalar = context.scalar_f32(1.0).expect("scalar input");
+        let scalar_error = reduce_scatter(
+            &scalar,
+            DistributedCollectiveOptions::new()
+                .with_group(group.clone())
+                .with_rank_inputs(BTreeMap::from([
+                    (
+                        0,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![1.0])
+                            .expect("rank 0"),
+                    ),
+                    (
+                        1,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![2.0])
+                            .expect("rank 1"),
+                    ),
+                    (
+                        2,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![3.0])
+                            .expect("rank 2"),
+                    ),
+                    (
+                        3,
+                        DistributedReferenceTensor::f32(Shape::scalar(), vec![4.0])
+                            .expect("rank 3"),
+                    ),
+                ])),
+        )
+        .expect_err("scalar reduce_scatter should refuse");
+        assert_eq!(
+            scalar_error,
+            DistributedCollectiveError::ReduceScatterScalarInput
+        );
+
+        let vector = context
+            .constant_f32(Shape::new(vec![5]), vec![1.0, 2.0, 3.0, 4.0, 5.0])
+            .expect("vector input");
+        let divisibility_error = reduce_scatter(
+            &vector,
+            DistributedCollectiveOptions::new()
+                .with_group(group)
+                .with_rank_inputs(BTreeMap::from([
+                    (
+                        0,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![5]),
+                            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                        )
+                        .expect("rank 0"),
+                    ),
+                    (
+                        1,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![5]),
+                            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                        )
+                        .expect("rank 1"),
+                    ),
+                    (
+                        2,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![5]),
+                            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                        )
+                        .expect("rank 2"),
+                    ),
+                    (
+                        3,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![5]),
+                            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                        )
+                        .expect("rank 3"),
+                    ),
+                ])),
+        )
+        .expect_err("axis 0 must divide evenly by group size");
+        assert_eq!(
+            divisibility_error,
+            DistributedCollectiveError::ReduceScatterNonDivisibleAxis0 {
+                first_axis: 5,
+                group_size: 4,
+            }
+        );
+    }
+
+    #[test]
+    fn send_and_recv_cover_validation_and_reference_payload_paths() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let context = ArrayContext::cpu();
+        let singleton = context.scalar_f32(1.0).expect("singleton input");
+        assert_eq!(
+            send(&singleton, 0, DistributedPointToPointOptions::new())
+                .expect_err("singleton send should refuse"),
+            DistributedCollectiveError::CannotSendSingleton
+        );
+        assert_eq!(
+            recv(
+                &context,
+                Shape::scalar(),
+                DType::F32,
+                0,
+                DistributedPointToPointOptions::new(),
+            )
+            .expect_err("singleton recv should refuse"),
+            DistributedCollectiveError::CannotRecvSingleton
+        );
+
+        let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-a")))
+            .expect("bootstrapped mesh should initialize one public group");
+        let local = context
+            .constant_f32(Shape::new(vec![2]), vec![5.0, 6.0])
+            .expect("local input");
+        let sent = send(
+            &local,
+            3,
+            DistributedPointToPointOptions::new()
+                .with_group(group.clone())
+                .with_message_payload(
+                    3,
+                    DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![5.0, 6.0])
+                        .expect("expected outbound"),
+                ),
+        )
+        .expect("send should validate destination and return the local array");
+        assert_eq!(
+            sent.to_host_data().expect("sent host").as_f32_slice(),
+            Some(&[5.0, 6.0][..])
+        );
+
+        let invalid_destination = send(
+            &local,
+            4,
+            DistributedPointToPointOptions::new().with_group(group.clone()),
+        )
+        .expect_err("out-of-range destination should refuse");
+        assert_eq!(
+            invalid_destination,
+            DistributedCollectiveError::InvalidDestination {
+                destination: 4,
+                group_size: 4,
+            }
+        );
+
+        let send_mismatch = send(
+            &local,
+            2,
+            DistributedPointToPointOptions::new()
+                .with_group(group.clone())
+                .with_message_payload(
+                    2,
+                    DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![9.0, 9.0])
+                        .expect("mismatched outbound"),
+                ),
+        )
+        .expect_err("explicit outbound mismatch should refuse");
+        assert_eq!(
+            send_mismatch,
+            DistributedCollectiveError::SendPayloadMismatch { destination: 2 }
+        );
+
+        let received = recv(
+            &context,
+            Shape::new(vec![2]),
+            DType::F32,
+            2,
+            DistributedPointToPointOptions::new()
+                .with_group(group.clone())
+                .with_message_payload(
+                    2,
+                    DistributedReferenceTensor::f32(Shape::new(vec![2]), vec![7.0, 8.0])
+                        .expect("inbound payload"),
+                ),
+        )
+        .expect("recv should materialize the explicit inbound payload");
+        assert_eq!(
+            received
+                .to_host_data()
+                .expect("received host")
+                .as_f32_slice(),
+            Some(&[7.0, 8.0][..])
+        );
+
+        let missing_recv = recv(
+            &context,
+            Shape::new(vec![2]),
+            DType::F32,
+            1,
+            DistributedPointToPointOptions::new().with_group(group.clone()),
+        )
+        .expect_err("recv requires an inbound payload on the bounded surface");
+        assert_eq!(
+            missing_recv,
+            DistributedCollectiveError::MissingReceivePayload { source_rank: 1 }
+        );
+
+        let mismatched_recv = recv(
+            &context,
+            Shape::new(vec![2]),
+            DType::F32,
+            1,
+            DistributedPointToPointOptions::new()
+                .with_group(group)
+                .with_message_payload(
+                    1,
+                    DistributedReferenceTensor::i8(Shape::new(vec![2]), vec![1, 2])
+                        .expect("i8 payload"),
+                ),
+        )
+        .expect_err("recv payload shape/dtype mismatches should refuse");
+        assert_eq!(
+            mismatched_recv,
+            DistributedCollectiveError::ReceivePayloadMismatch {
+                source_rank: 1,
+                expected_shape: Shape::new(vec![2]),
+                actual_shape: Shape::new(vec![2]),
+                expected_dtype: DType::F32,
+                actual_dtype: DType::I8,
             }
         );
     }

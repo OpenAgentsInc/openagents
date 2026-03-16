@@ -1147,10 +1147,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane publishes distributed group, collective, gradient-reduction, tensor-parallel, FSDP-style update, and launch/topology helpers above Psionic collectives and cluster truth.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first bounded public distributed-group layer in psionic-distributed above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, and explicit-plan subgroup split semantics, while collective helpers, gradient helpers, tensor-parallel helpers, FSDP-style helpers, and launch/topology tooling remain open.",
+                "Psionic now exposes a first bounded public distributed-group plus core collective-helper layer in psionic-distributed above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, explicit-plan subgroup split semantics, MLX-style singleton passthrough for all_sum/all_gather/reduce_scatter, explicit host-owned per-rank reference emulation for multi-rank collectives and recv, validation-only send, and typed collective-support snapshots, while launch/config, gradient helpers, tensor-parallel helpers, FSDP-style helpers, backend-family mapping, and real backend transport remain open.",
             ),
             boundary_note: String::from(
-                "Do not infer MLX distributed closure from the new group layer alone; the public collective/helper family is still incomplete.",
+                "Do not infer MLX distributed closure from the new group plus core collective-helper layer alone; the broader helper family, launch/config surface, backend-family mapping, and transport-backed execution are still incomplete.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1498,14 +1498,23 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                     "cargo test -p psionic-distributed tests::split_uses_one_explicit_plan_and_reassigns_rank_by_key -- --exact --nocapture",
                 ),
                 String::from(
-                    "cargo test -p psionic-distributed tests::split_refuses_missing_plan_singleton_and_local_assignment_mismatch -- --exact --nocapture",
+                    "cargo test -p psionic-distributed tests::all_sum_respects_singleton_passthrough_and_multi_rank_reference_inputs -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::all_gather_handles_vector_and_scalar_payloads -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::reduce_scatter_sums_then_slices_local_chunk -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::send_and_recv_cover_validation_and_reference_payload_paths -- --exact --nocapture",
                 ),
             ],
             summary: String::from(
-                "psionic-distributed now exposes a first bounded public group surface with init/rank/size/split semantics, but the seeded upstream distributed family still lacks the collective helpers and backend-family breadth needed for a parity pass.",
+                "psionic-distributed now exposes a bounded public group plus core collective-helper surface with singleton passthrough, reference-emulated multi-rank collectives, and typed send/recv validation, but the seeded upstream distributed family still lacks launch/config closure, backend-family mapping, and transport-backed multi-rank execution needed for a parity pass.",
             ),
             boundary_note: String::from(
-                "Current group semantics are necessary but not sufficient; seeded upstream distributed parity still requires collective helpers, backend-family mapping, and broader helper closure.",
+                "Current group plus core collective-helper semantics are necessary but not sufficient; seeded upstream distributed parity still requires launch/config closure, broader helper families, backend-family mapping, and transport-backed execution.",
             ),
         },
     ])
@@ -1756,17 +1765,16 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_distributed_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
             summary: String::from(
-                "psionic-distributed now exposes a bounded public distributed-group API, but the broader MLX distributed helper surface remains unsupported.",
+                "psionic-distributed now exposes a bounded public distributed-group plus core collective-helper API, but the broader MLX distributed helper surface remains unsupported.",
             ),
             evidence_refs: vec![
                 String::from("MlxAcceptanceMatrixReport::distributed-semantics = partial"),
                 String::from(
-                    "cargo test -p psionic-distributed init/split/rank/size coverage now exists",
+                    "cargo test -p psionic-distributed group plus collective helper coverage now exists",
                 ),
                 String::from("MLX parity family `distributed` = unsupported"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-502 (#3860)"),
                 String::from("PMLX-503 (#3861)"),
                 String::from("PMLX-504 (#3862)"),
                 String::from("PMLX-505 (#3863)"),
@@ -1774,7 +1782,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("PMLX-507 (#3865)"),
             ],
             boundary_note: String::from(
-                "Current collectives and cluster internals are not themselves a supported MLX public distributed surface, and the new group layer alone is not enough to claim full MLX distributed support.",
+                "Current collectives and cluster internals are not themselves a supported MLX public distributed surface, and the new group plus bounded collective-helper layer is still not enough to claim full MLX distributed support.",
             ),
         },
         MlxCompatibilityMatrixEntry {

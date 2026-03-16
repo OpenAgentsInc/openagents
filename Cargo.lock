@@ -6771,6 +6771,8 @@ name = "psionic-distributed"
 version = "0.1.1"
 dependencies = [
  "hex",
+ "psionic-array",
+ "psionic-core",
  "psionic-runtime",
  "serde",
  "sha2",
