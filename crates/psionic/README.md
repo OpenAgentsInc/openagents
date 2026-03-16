@@ -217,6 +217,18 @@ Current posture:
   first-target / first-32 exactness and `1333` target tok/s, versus the lookup
   baseline at `10000` / `6563` bps and `32000` target tok/s), so this is a
   research-family landing rather than a promotion or parity claim
+- the post-Phase-15 trained-attention follow-on now also exists in
+  `psionic-research`, `docs/audits/`, and two new bounded artifact roots at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`:
+  the attention family now has a real output-head training loop plus a
+  preserved same-corpus comparison against the lookup baseline; the trained
+  attention checkpoint materially improves over the seeded Phase 15 candidate
+  (`6563` bps aggregate and first-32 exactness instead of `0`), but it still
+  fails the first-token boundary (`0` bps first-target), still yields `0/2`
+  exact bounded traces, and still loses the lookup baseline on the specific
+  gate that matters, so this is a truthful research follow-on rather than a
+  learned-lane promotion result
 - the separate post-audit Phase 17 bar now also exists in `psionic-models`,
   `psionic-eval`, `psionic-research`, `docs/audits/`, and a canonical bounded
   compiled-lane bundle at

@@ -293,6 +293,18 @@ The current scope is:
   first-32 exactness and `1333` target tok/s, versus `10000` / `6563` bps and
   `32000` target tok/s for the lookup baseline), so this phase lands as a
   research candidate rather than a promotion result
+- landed trained-executor Phase 15A follow-on bar: `psionic-research` now also
+  owns a bounded attention-family training loop plus a preserved trained-family
+  comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`;
+  the resulting artifacts prove the executor-attention family is no longer just
+  a seeded architectural candidate because it now trains off the `0`-bps floor
+  to `6563` bps aggregate / first-32 exactness on the bounded window, but it
+  still fails the first-token boundary (`0` bps first-target), still stays at
+  `0` exact bounded traces, and still loses the preserved lookup baseline on
+  the open 4x4 promotion metric, so the claim boundary remains
+  `research_windowed_decode_only` rather than learned-lane success
 - landed trained-executor Phase 17 follow-on bar: `psionic-models` now carries
   a bounded typed `TassadarCompiledProgramExecutor` surface with persisted
   compile-evidence bundles, `psionic-eval` now emits exactness and

@@ -333,6 +333,126 @@ impl TassadarExecutorAttentionWeightBundle {
     pub fn metadata(&self) -> &WeightBundleMetadata {
         &self.metadata
     }
+
+    /// Returns the current output projection.
+    #[must_use]
+    pub fn output_projection(&self) -> &[f32] {
+        &self.output_projection
+    }
+
+    /// Returns mutable output projection weights for bounded research training.
+    pub fn output_projection_mut(&mut self) -> &mut [f32] {
+        &mut self.output_projection
+    }
+
+    /// Returns the current output bias.
+    #[must_use]
+    pub fn output_bias(&self) -> &[f32] {
+        &self.output_bias
+    }
+
+    /// Returns mutable output bias weights for bounded research training.
+    pub fn output_bias_mut(&mut self) -> &mut [f32] {
+        &mut self.output_bias
+    }
+
+    fn refresh_metadata(&mut self, config: &TassadarExecutorAttentionConfig) {
+        let mut entries = vec![
+            (
+                WeightTensorMetadata::new(
+                    "token_embeddings",
+                    Shape::new(vec![config.vocab_size, config.model_width]),
+                    DType::F32,
+                ),
+                self.token_embeddings.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "position_embeddings",
+                    Shape::new(vec![config.max_sequence_tokens, config.model_width]),
+                    DType::F32,
+                ),
+                self.position_embeddings.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "output_projection",
+                    Shape::new(vec![config.model_width, config.vocab_size]),
+                    DType::F32,
+                ),
+                self.output_projection.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "output_bias",
+                    Shape::new(vec![config.vocab_size]),
+                    DType::F32,
+                ),
+                self.output_bias.as_slice(),
+            ),
+        ];
+        for layer in 0..config.layer_count {
+            entries.extend([
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.query_projection"),
+                        Shape::new(vec![config.model_width, config.model_width]),
+                        DType::F32,
+                    ),
+                    self.query_projections[layer].as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.key_projection"),
+                        Shape::new(vec![config.model_width, config.model_width]),
+                        DType::F32,
+                    ),
+                    self.key_projections[layer].as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.value_projection"),
+                        Shape::new(vec![config.model_width, config.model_width]),
+                        DType::F32,
+                    ),
+                    self.value_projections[layer].as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.output_projection"),
+                        Shape::new(vec![config.model_width, config.model_width]),
+                        DType::F32,
+                    ),
+                    self.output_projections[layer].as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.feed_forward_in"),
+                        Shape::new(vec![config.model_width, config.feed_forward_width]),
+                        DType::F32,
+                    ),
+                    self.feed_forward_in[layer].as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.feed_forward_in_bias"),
+                        Shape::new(vec![config.feed_forward_width]),
+                        DType::F32,
+                    ),
+                    self.feed_forward_in_bias[layer].as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        format!("layers.{layer}.feed_forward_out"),
+                        Shape::new(vec![config.feed_forward_width, config.model_width]),
+                        DType::F32,
+                    ),
+                    self.feed_forward_out[layer].as_slice(),
+                ),
+            ]);
+        }
+        self.metadata = build_metadata(entries.as_slice());
+    }
 }
 
 /// One head-level selected position for a decoded token step.
@@ -488,6 +608,23 @@ impl TassadarExecutorAttentionTransformer {
     #[must_use]
     pub fn tokenizer(&self) -> &TassadarTraceTokenizer {
         &self.tokenizer
+    }
+
+    /// Returns the current weight bundle.
+    #[must_use]
+    pub fn weights(&self) -> &TassadarExecutorAttentionWeightBundle {
+        &self.weights
+    }
+
+    /// Returns mutable access to the weight bundle for bounded research training.
+    pub fn weights_mut(&mut self) -> &mut TassadarExecutorAttentionWeightBundle {
+        &mut self.weights
+    }
+
+    /// Refreshes descriptor-level weight metadata after a training update.
+    pub fn refresh_after_training(&mut self) {
+        self.weights.refresh_metadata(&self.descriptor.config);
+        self.descriptor.weights = self.weights.metadata().clone();
     }
 
     /// Returns whether the descriptor advertises one decode mode directly.

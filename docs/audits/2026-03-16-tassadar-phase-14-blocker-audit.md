@@ -188,7 +188,12 @@ The next honest dependency is stronger work on the post-Phase-15 path:
 - keep the separate teacher-forced continuation bundle at
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2` as additional
   negative evidence that schedule-only churn does not beat the current ceiling
-- use the separate executor-attention family only with same-corpus comparisons
+- use the separate executor-attention family only with same-corpus comparisons;
+  the trained follow-on under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`
+  is real progress over the seeded Phase 15 candidate, but it still fails at
+  target index `0` and still does not clear the gate
 - do not widen claims until one family actually clears the Phase 14 gate
 - do not promote 9x9 or Hungarian off this result
 

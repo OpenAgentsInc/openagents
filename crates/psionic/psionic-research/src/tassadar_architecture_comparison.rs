@@ -10,12 +10,10 @@ use psionic_eval::{
     TassadarSequenceEvalError,
     build_tassadar_executor_architecture_comparison_report, build_tassadar_sequence_dataset,
     evaluate_attention_family_for_architecture_comparison,
-    evaluate_lookup_family_for_architecture_comparison,
 };
 use psionic_models::{
-    TassadarExecutorAttentionTransformer, TassadarExecutorTransformer,
+    TassadarExecutorAttentionTransformer, TassadarExecutorTransformerDescriptor,
 };
-use psionic_train::TassadarExecutorCheckpointState;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -23,6 +21,10 @@ use thiserror::Error;
 /// Canonical output root for the bounded Phase 15 same-corpus comparison.
 pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_OUTPUT_DIR: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1";
+/// Canonical output root for the follow-on comparison that swaps in the
+/// trained attention-family checkpoint.
+pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2";
 /// Canonical machine-readable architecture-comparison artifact.
 pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE: &str =
     "architecture_comparison_report.json";
@@ -32,10 +34,16 @@ const EXECUTOR_ATTENTION_DIR: &str = "executor_attention_candidate";
 const FAMILY_REPORT_FILE: &str = "family_report.json";
 const RUN_BUNDLE_FILE: &str = "run_bundle.json";
 const MODEL_DESCRIPTOR_FILE: &str = "model_descriptor.json";
-const LOOKUP_BASELINE_CHECKPOINT_STATE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1/output_head_embeddings_and_small_learned_mixer/checkpoint_state.json";
 const LOOKUP_BASELINE_SOURCE_RUN_BUNDLE: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1/output_head_embeddings_and_small_learned_mixer/run_bundle.json";
+const LOOKUP_BASELINE_PRESERVED_FAMILY_REPORT: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/lookup_baseline/family_report.json";
+const LOOKUP_BASELINE_PRESERVED_MODEL_DESCRIPTOR: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/lookup_baseline/model_descriptor.json";
+const TRAINED_ATTENTION_CHECKPOINT_STATE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/checkpoint_state.json";
+const TRAINED_ATTENTION_SOURCE_RUN_BUNDLE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/run_bundle.json";
 const PROMPT_WINDOW_TOKEN_CAP: usize = 256;
 const TARGET_TOKEN_CAP: usize = 32;
 
@@ -78,12 +86,14 @@ impl TassadarExecutorArchitectureRunBundle {
     fn new(
         family_kind: TassadarExecutorArchitectureFamilyKind,
         run_directory: &str,
+        run_revision: &str,
         report: &TassadarExecutorArchitectureFamilyReport,
         source_artifact_ref: Option<String>,
     ) -> Self {
         let run_id = format!(
-            "tassadar-executor-architecture-{}-v1",
-            family_kind.label()
+            "tassadar-executor-architecture-{}-{}",
+            family_kind.label(),
+            run_revision
         );
         let mut bundle = Self {
             family_kind,
@@ -134,9 +144,14 @@ pub enum TassadarExecutorArchitectureComparisonPersistError {
         /// Source error.
         error: serde_json::Error,
     },
-    /// Materializing the lookup baseline model failed.
-    #[error(transparent)]
-    Materialize(#[from] psionic_train::TassadarExecutorRunError),
+    /// Materializing the trained attention checkpoint failed.
+    #[error("failed to materialize trained attention checkpoint `{checkpoint_id}`: {error}")]
+    MaterializeAttention {
+        /// Stable checkpoint identifier.
+        checkpoint_id: String,
+        /// Source error.
+        error: crate::TassadarExecutorAttentionTrainingError,
+    },
     /// Creating one output directory failed.
     #[error("failed to create `{path}`: {error}")]
     CreateDir {
@@ -161,6 +176,70 @@ pub fn run_tassadar_executor_architecture_comparison(
     output_dir: &Path,
 ) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
 {
+    run_tassadar_executor_architecture_comparison_with_attention_candidate(
+        output_dir,
+        "v1",
+        &TassadarExecutorAttentionTransformer::sudoku_v0(),
+        None,
+    )
+}
+
+/// Executes the bounded same-corpus architecture comparison with the trained
+/// attention-family checkpoint from the canonical attention-training bundle.
+pub fn run_tassadar_executor_architecture_comparison_with_trained_attention(
+    output_dir: &Path,
+) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
+{
+    let trained_attention = load_trained_attention_candidate()?;
+    run_tassadar_executor_architecture_comparison_with_attention_candidate(
+        output_dir,
+        "v2",
+        &trained_attention,
+        Some(String::from(TRAINED_ATTENTION_SOURCE_RUN_BUNDLE)),
+    )
+}
+
+fn load_lookup_baseline(
+) -> Result<
+    (
+        TassadarExecutorArchitectureFamilyReport,
+        TassadarExecutorTransformerDescriptor,
+    ),
+    TassadarExecutorArchitectureComparisonPersistError,
+> {
+    let report = read_json(
+        repo_root().join(LOOKUP_BASELINE_PRESERVED_FAMILY_REPORT),
+        "tassadar_executor_architecture_family_report",
+    )?;
+    let descriptor = read_json(
+        repo_root().join(LOOKUP_BASELINE_PRESERVED_MODEL_DESCRIPTOR),
+        "tassadar_executor_transformer_descriptor",
+    )?;
+    Ok((report, descriptor))
+}
+
+fn load_trained_attention_candidate(
+) -> Result<TassadarExecutorAttentionTransformer, TassadarExecutorArchitectureComparisonPersistError>
+{
+    let checkpoint: crate::TassadarExecutorAttentionCheckpointState = read_json(
+        repo_root().join(TRAINED_ATTENTION_CHECKPOINT_STATE),
+        "tassadar_executor_attention_checkpoint_state",
+    )?;
+    checkpoint.materialize_model().map_err(|error| {
+        TassadarExecutorArchitectureComparisonPersistError::MaterializeAttention {
+            checkpoint_id: checkpoint.checkpoint_id,
+            error,
+        }
+    })
+}
+
+fn run_tassadar_executor_architecture_comparison_with_attention_candidate(
+    output_dir: &Path,
+    run_revision: &str,
+    executor_attention_candidate: &TassadarExecutorAttentionTransformer,
+    attention_source_artifact_ref: Option<String>,
+) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
+{
     fs::create_dir_all(output_dir).map_err(|error| {
         TassadarExecutorArchitectureComparisonPersistError::CreateDir {
             path: output_dir.display().to_string(),
@@ -168,19 +247,11 @@ pub fn run_tassadar_executor_architecture_comparison(
         }
     })?;
 
-    let dataset = build_tassadar_sequence_dataset(psionic_eval::TassadarSequenceWorkload::SudokuV0, "train-v0")?;
-    let lookup_baseline = load_lookup_baseline()?;
-    let executor_attention_candidate = TassadarExecutorAttentionTransformer::sudoku_v0();
-
-    let lookup_report = evaluate_lookup_family_for_architecture_comparison(
-        &lookup_baseline,
-        &dataset.dataset,
-        TassadarSequenceSplit::Validation,
-        PROMPT_WINDOW_TOKEN_CAP,
-        TARGET_TOKEN_CAP,
-    )?;
+    let dataset =
+        build_tassadar_sequence_dataset(psionic_eval::TassadarSequenceWorkload::SudokuV0, "train-v0")?;
+    let (lookup_report, lookup_descriptor) = load_lookup_baseline()?;
     let candidate_report = evaluate_attention_family_for_architecture_comparison(
-        &executor_attention_candidate,
+        executor_attention_candidate,
         &dataset.dataset,
         TassadarSequenceSplit::Validation,
         PROMPT_WINDOW_TOKEN_CAP,
@@ -195,11 +266,13 @@ pub fn run_tassadar_executor_architecture_comparison(
         candidate_report.clone(),
     )?;
 
-    persist_lookup_bundle(output_dir, &lookup_baseline, &lookup_report)?;
+    persist_lookup_bundle(output_dir, run_revision, &lookup_descriptor, &lookup_report)?;
     persist_attention_bundle(
         output_dir,
-        &executor_attention_candidate,
+        run_revision,
+        executor_attention_candidate,
         &candidate_report,
+        attention_source_artifact_ref,
     )?;
     write_json(
         output_dir.join(TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE),
@@ -209,18 +282,10 @@ pub fn run_tassadar_executor_architecture_comparison(
     Ok(comparison)
 }
 
-fn load_lookup_baseline(
-) -> Result<TassadarExecutorTransformer, TassadarExecutorArchitectureComparisonPersistError> {
-    let checkpoint: TassadarExecutorCheckpointState = read_json(
-        repo_root().join(LOOKUP_BASELINE_CHECKPOINT_STATE),
-        "tassadar_executor_checkpoint_state",
-    )?;
-    checkpoint.materialize_model().map_err(Into::into)
-}
-
 fn persist_lookup_bundle(
     output_dir: &Path,
-    model: &TassadarExecutorTransformer,
+    run_revision: &str,
+    descriptor: &TassadarExecutorTransformerDescriptor,
     report: &TassadarExecutorArchitectureFamilyReport,
 ) -> Result<(), TassadarExecutorArchitectureComparisonPersistError> {
     let family_dir = output_dir.join(LOOKUP_BASELINE_DIR);
@@ -233,19 +298,22 @@ fn persist_lookup_bundle(
     let bundle = TassadarExecutorArchitectureRunBundle::new(
         TassadarExecutorArchitectureFamilyKind::LookupBaseline,
         LOOKUP_BASELINE_DIR,
+        run_revision,
         report,
         Some(String::from(LOOKUP_BASELINE_SOURCE_RUN_BUNDLE)),
     );
     write_json(family_dir.join(FAMILY_REPORT_FILE), report)?;
-    write_json(family_dir.join(MODEL_DESCRIPTOR_FILE), model.descriptor())?;
+    write_json(family_dir.join(MODEL_DESCRIPTOR_FILE), descriptor)?;
     write_json(family_dir.join(RUN_BUNDLE_FILE), &bundle)?;
     Ok(())
 }
 
 fn persist_attention_bundle(
     output_dir: &Path,
+    run_revision: &str,
     model: &TassadarExecutorAttentionTransformer,
     report: &TassadarExecutorArchitectureFamilyReport,
+    source_artifact_ref: Option<String>,
 ) -> Result<(), TassadarExecutorArchitectureComparisonPersistError> {
     let family_dir = output_dir.join(EXECUTOR_ATTENTION_DIR);
     fs::create_dir_all(&family_dir).map_err(|error| {
@@ -257,8 +325,9 @@ fn persist_attention_bundle(
     let bundle = TassadarExecutorArchitectureRunBundle::new(
         TassadarExecutorArchitectureFamilyKind::ExecutorAttentionCandidate,
         EXECUTOR_ATTENTION_DIR,
+        run_revision,
         report,
-        None,
+        source_artifact_ref,
     );
     write_json(family_dir.join(FAMILY_REPORT_FILE), report)?;
     write_json(family_dir.join(MODEL_DESCRIPTOR_FILE), model.descriptor())?;
@@ -325,8 +394,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
+        TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR,
         TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE,
         run_tassadar_executor_architecture_comparison,
+        run_tassadar_executor_architecture_comparison_with_trained_attention,
     };
 
     #[test]
@@ -347,6 +418,33 @@ mod tests {
                 .join("executor_attention_candidate")
                 .join("run_bundle.json")
                 .exists()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn trained_attention_architecture_comparison_writes_top_level_report()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let report = run_tassadar_executor_architecture_comparison_with_trained_attention(
+            temp.path(),
+        )?;
+
+        assert!(report.candidate_closer_to_article_fidelity);
+        assert!(
+            temp.path()
+                .join(TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE)
+                .exists()
+        );
+        assert!(
+            temp.path()
+                .join("executor_attention_candidate")
+                .join("run_bundle.json")
+                .exists()
+        );
+        assert_ne!(
+            TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR,
+            ""
         );
         Ok(())
     }
