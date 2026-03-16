@@ -18,7 +18,8 @@ This guide is intentionally bounded to repo-owned Rust entrypoints:
 
 - `cargo test` flows that exercise the retained operator path
 - fixture manifests in `crates/arc/*/tests/fixtures`
-- typed artifact APIs in `arc-client`, `arc-benchmark`, and `arc-solvers`
+- typed artifact APIs in `arc-client`, `arc-benchmark`, `arc-solvers`, and
+  `arc-ml`
 
 It is not a substitute for the upstream hosted ARC Prize service, and it does
 not claim full ARC-AGI-3 release equivalence.
@@ -45,6 +46,7 @@ cargo test -p arc-solvers interactive_runner_executes_a_bounded_remote_episode_e
 cargo test -p arc-solvers interactive_runner_parity_manifest_covers_one_shot_and_resume_flows -- --nocapture
 cargo test -p arc-benchmark benchmark_parity_manifest_covers_interactive_checkpoint_recording_and_replay -- --nocapture
 cargo test -p arc-solvers repeated_interactive_eval_aggregates_replayed_rounds_over_psionic_eval -- --nocapture
+cargo test -p arc-ml interactive_practice_suite_scores_synthetic_attempts_and_aggregates_pass_at_k -- --nocapture
 ```
 
 ## Local Compatibility-Server Flow
@@ -168,6 +170,22 @@ These are the canonical bounded checks for:
 - finalized `EvalRunState` and repeated `BenchmarkExecutionSession` rounds
 - completion / refusal / error / replay-coverage summaries
 
+### ARC-ML Practice Evaluator
+
+Use:
+
+```bash
+cargo test -p arc-ml interactive_practice_suite_scores_synthetic_attempts_and_aggregates_pass_at_k -- --nocapture
+cargo test -p arc-ml pass_at_k_estimator_matches_reference_probability -- --nocapture
+```
+
+These are the canonical bounded checks for:
+
+- evaluator-first ARC-ML work before any model claim
+- synthetic ARC-AGI-3-style attempt corpora rooted in owned fixtures
+- benchmark-owned interactive scoring through `arc-benchmark`
+- suite-level `pass@k` aggregation plus per-attempt retained reports
+
 ## Replay, Recording, And Checkpoint Artifacts
 
 ### Local Recording Round-Trip
@@ -245,6 +263,7 @@ The main retained fixture roots are:
 - `crates/arc/engine/fixtures/`
 - `crates/arc/client/tests/fixtures/`
 - `crates/arc/benchmark/tests/fixtures/`
+- `crates/arc/ml/fixtures/`
 - `crates/arc/solvers/tests/fixtures/`
 
 The most reused demo game fixture is:
@@ -267,6 +286,10 @@ When bringing up or reviewing the subtree, run in this order:
 
 If all five are green, the retained local, remote-compatible, replay,
 checkpoint, and repeated-eval surfaces are all alive at the same time.
+
+If you also want the evaluator-first ARC-ML practice layer alive, run:
+
+6. `cargo test -p arc-ml interactive_practice_suite_scores_synthetic_attempts_and_aggregates_pass_at_k -- --nocapture`
 
 ## Maintenance Rule
 

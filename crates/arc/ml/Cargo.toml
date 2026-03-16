@@ -1,0 +1,22 @@
+[package]
+name = "arc-ml"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "ARC evaluator-first ML practice layer over benchmark truth and Psionic eval contracts"
+
+[lints]
+workspace = true
+
+[dependencies]
+arc-benchmark = { path = "../benchmark" }
+arc-core = { path = "../core" }
+psionic-eval = { path = "../../psionic/psionic-eval", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+arc-engine = { path = "../engine" }

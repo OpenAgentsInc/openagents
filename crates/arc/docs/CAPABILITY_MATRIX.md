@@ -34,7 +34,8 @@ Use it when you need to answer:
 | static solver lanes | landed | n/a | n/a | n/a | landed | symbolic, transductive, recursive tiny-model, MDL/compression, verifier, and portfolio arbiter lanes are implemented for retained bounded scope |
 | evidence / operator stack | landed | landed | bounded | n/a | bounded | public-eval hygiene is real; this matrix and the operator workflow doc are the current hardening layer, not a final competition-readiness claim |
 | Psionic environment / eval bridge | n/a | landed | bounded | bounded | landed | ARC-owned trajectory bundles now export through `psionic-environments`, and repeated interactive eval now runs over `psionic-eval` without moving ARC scoring semantics into Psionic |
-| `arc-ml` and HRM-class program | blocked | blocked | blocked | blocked | blocked | `arc-ml` crate is still future work and remains gated on the Psionic roadmap items called out in `crates/arc/docs/ROADMAP.md` |
+| `arc-ml` evaluator-first practice layer | n/a | bounded | bounded | bounded | bounded | `arc-ml` now exists in bounded synthetic-practice form: it scores ARC-AGI-3-style `ArcRecording` attempts through `arc-benchmark`, retains per-attempt run reports, and aggregates `pass@k` without claiming real dataset access or learned-model parity |
+| HRM-class program | blocked | blocked | blocked | blocked | blocked | learned-model parity and train-class claims remain gated on the named Psionic roadmap items plus later `ARC-502` through `ARC-508` work |
 
 ## Solver Lane Matrix
 
@@ -49,7 +50,8 @@ Use it when you need to answer:
 | MDL / compression lane | bounded static simplicity-pressure ranking | landed | `crates/arc/solvers/tests/mdl_lane.rs` |
 | verifier | typed falsification and common verification | landed | `crates/arc/solvers/tests/verifier.rs` |
 | portfolio arbiter | verifier-first candidate selection and second-attempt gating | landed | `crates/arc/solvers/tests/arbiter.rs` |
-| ARC-ML learned lanes | model/training program | blocked | gated on `ARC-5xx` plus Psionic train/eval prerequisites |
+| ARC-ML evaluator-first practice | synthetic ARC-AGI-3-style scoring and `pass@k` aggregation | bounded | `crates/arc/ml/tests/interactive_practice.rs` |
+| ARC-ML learned lanes | model/training program | blocked | gated on `ARC-502` through `ARC-508` plus Psionic train/eval prerequisites |
 
 ## ARC-AGI-3 Preview vs Release Drift
 
@@ -71,7 +73,6 @@ Use it when you need to answer:
 
 | Item | Why it is not done yet | Owner |
 | --- | --- | --- |
-| `arc-ml` crate | the crate does not exist yet in retained scope | ARC |
 | HRM-class training / eval parity | still gated on the named Psionic roadmap items for interactive environments, collectives, train-class operator coverage, and model-state IO | Psionic + ARC |
 | full ARC-AGI-3 release-readiness claim | upstream preview drift is still real enough that the final contract is not yet frozen | upstream + ARC |
 
