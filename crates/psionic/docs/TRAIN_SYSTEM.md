@@ -287,6 +287,16 @@ That now includes one intentionally narrow executor-training answer:
   exactness while still leaving `0/2` exact validation traces and the first
   divergence bucket at target index `1`; the companion human-readable audit is
   `docs/audits/2026-03-16-tassadar-phase-13-trainable-surface-audit.md`
+- the Phase 14 promotion-truth run now also exists above that baseline:
+  `psionic-train` can execute the canonical promotion config, stream live
+  stage/epoch/batch/validation/checkpoint progress while it runs, and persist
+  `best_checkpoint_manifest.json` plus `promotion_gate_report.json` under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v1`; the selected
+  checkpoint is still `epoch_0006` from `prompt_to_first_16_tokens` with
+  `10000` bps first-target exactness, `7500` bps first-8 exactness,
+  `6875` bps first-32 exactness, and `0/2` exact validation traces, so the
+  promotion gate remains red and the companion human-readable audit is
+  `docs/audits/2026-03-16-tassadar-phase-14-blocker-audit.md`
 - the Phase 15 executor-attention comparison now also exists beside that
   baseline: `psionic-models` now carries a distinct bounded
   `TassadarExecutorAttentionTransformer` family with layered causal hard-max

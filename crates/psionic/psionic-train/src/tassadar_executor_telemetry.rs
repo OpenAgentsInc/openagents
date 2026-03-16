@@ -25,6 +25,8 @@ pub const TASSADAR_EXECUTOR_EXACTNESS_CURVE_FILE: &str = "exactness_curve.json";
 pub const TASSADAR_EXECUTOR_TRACE_DIVERGENCE_FILE: &str = "trace_divergence_report.json";
 /// Canonical failure-sample artifact file for the first reference run.
 pub const TASSADAR_EXECUTOR_FAILURE_SAMPLES_FILE: &str = "failure_samples.json";
+/// Canonical exact-trace-sample artifact file for promotion-gate follow-on runs.
+pub const TASSADAR_EXECUTOR_EXACT_TRACE_SAMPLES_FILE: &str = "exact_trace_samples.json";
 
 const TRAINING_MANIFEST_FILE: &str = "training_manifest.json";
 const TRAINING_REPORT_FILE: &str = "training_report.json";
@@ -197,6 +199,31 @@ pub struct TassadarExecutorExactnessCurve {
     pub points: Vec<TassadarExecutorExactnessCurvePoint>,
 }
 
+/// One checkpoint-level exactness point preserved for promotion review.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorCheckpointExactnessPoint {
+    /// Stable checkpoint identifier.
+    pub checkpoint_id: String,
+    /// Zero-based global epoch index.
+    pub global_epoch_index: u32,
+    /// Stable curriculum stage identifier.
+    pub stage_id: String,
+    /// Zero-based epoch index inside the stage.
+    pub stage_epoch_index: u32,
+    /// Aggregate token-level exactness over the evaluated split.
+    pub aggregate_target_token_exactness_bps: u32,
+    /// Aggregate exactness over the first target token.
+    pub first_target_exactness_bps: u32,
+    /// Aggregate exactness over the first eight target tokens.
+    pub first_8_token_exactness_bps: u32,
+    /// Aggregate exactness over the first 32 target tokens.
+    pub first_32_token_exactness_bps: u32,
+    /// Number of exact trace cases at the checkpoint.
+    pub exact_trace_case_count: u32,
+    /// Whether this checkpoint was selected for export.
+    pub selected_for_export: bool,
+}
+
 /// Exactness-curve artifact for the persisted run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExecutorExactnessCurveReport {
@@ -212,6 +239,9 @@ pub struct TassadarExecutorExactnessCurveReport {
     pub trained_model_descriptor_digest: String,
     /// Checkpoint manifest digest tied to the run.
     pub checkpoint_manifest_digest: String,
+    /// Exactness over the persisted checkpoints.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoint_curve: Vec<TassadarExecutorCheckpointExactnessPoint>,
     /// All exactness curves.
     pub curves: Vec<TassadarExecutorExactnessCurve>,
     /// Stable report digest.
@@ -318,6 +348,50 @@ pub struct TassadarExecutorFailureSampleReport {
     pub report_digest: String,
 }
 
+/// One exact validation trace sample for promotion review.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorExactTraceSample {
+    /// Stable sequence identifier.
+    pub sequence_id: String,
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Dataset split.
+    pub split: TassadarSequenceSplit,
+    /// Number of prompt tokens in the example.
+    pub prompt_token_count: u32,
+    /// Number of exact target tokens.
+    pub target_token_count: u32,
+    /// Final output values extracted from the exact trace.
+    pub final_output_values: Vec<i32>,
+    /// Stable digest over the exact target suffix.
+    pub target_digest: String,
+    /// Prefix sample of the exact target suffix.
+    pub target_prefix_tokens: Vec<String>,
+    /// Suffix sample of the exact target suffix.
+    pub target_suffix_tokens: Vec<String>,
+}
+
+/// Exact-trace sample artifact for promotion review.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorExactTraceSampleReport {
+    /// Stable run identifier.
+    pub run_id: String,
+    /// Dataset storage key used for the run.
+    pub dataset_storage_key: String,
+    /// Dataset digest used for the run.
+    pub dataset_digest: String,
+    /// Trained model descriptor digest.
+    pub trained_model_descriptor_digest: String,
+    /// Checkpoint manifest digest tied to the run.
+    pub checkpoint_manifest_digest: String,
+    /// Number of exact-trace cases captured in the report.
+    pub exact_trace_case_count: u32,
+    /// Exact trace samples.
+    pub samples: Vec<TassadarExecutorExactTraceSample>,
+    /// Stable report digest.
+    pub report_digest: String,
+}
+
 /// Errors while materializing telemetry for the persisted Tassadar run.
 #[derive(Debug, Error)]
 pub enum TassadarExecutorTelemetryError {
@@ -366,12 +440,14 @@ pub enum TassadarExecutorTelemetryError {
 #[derive(Clone, Debug, PartialEq)]
 struct ExampleAnalysis {
     case: TassadarExecutorTraceDivergenceCase,
+    prompt_token_count: u32,
+    reference_full: Vec<TokenId>,
     reference_target: Vec<TokenId>,
     predicted_target: Vec<TokenId>,
 }
 
-/// Generates the canonical telemetry and failure-analysis artifacts for the committed reference run.
-pub fn augment_tassadar_reference_run_with_telemetry(
+/// Generates the canonical telemetry and failure-analysis artifacts for one persisted Tassadar run.
+pub fn augment_tassadar_training_run_with_telemetry(
     output_dir: &Path,
 ) -> Result<TassadarExecutorReferenceRunBundle, TassadarExecutorTelemetryError> {
     let run_bundle: TassadarExecutorReferenceRunBundle = read_json(
@@ -425,6 +501,7 @@ pub fn augment_tassadar_reference_run_with_telemetry(
     );
     let exactness_curve = build_exactness_curve_report(
         &run_bundle,
+        &training_report,
         checkpoint_manifest_digest.as_str(),
         analyses.as_slice(),
     );
@@ -434,6 +511,12 @@ pub fn augment_tassadar_reference_run_with_telemetry(
         analyses.as_slice(),
     );
     let failure_samples = build_failure_sample_report(
+        &run_bundle,
+        checkpoint_manifest_digest.as_str(),
+        &tokenizer,
+        analyses.as_slice(),
+    );
+    let exact_trace_samples = build_exact_trace_sample_report(
         &run_bundle,
         checkpoint_manifest_digest.as_str(),
         &tokenizer,
@@ -465,6 +548,12 @@ pub fn augment_tassadar_reference_run_with_telemetry(
         "tassadar_failure_samples",
         &failure_samples,
     )?);
+    new_artifacts.push(write_json_artifact(
+        output_dir,
+        TASSADAR_EXECUTOR_EXACT_TRACE_SAMPLES_FILE,
+        "tassadar_exact_trace_samples",
+        &exact_trace_samples,
+    )?);
 
     let mut artifact_map = run_bundle
         .artifacts
@@ -476,7 +565,13 @@ pub fn augment_tassadar_reference_run_with_telemetry(
         artifact_map.insert(artifact.artifact_ref.clone(), artifact);
     }
     let artifacts = artifact_map.into_values().collect::<Vec<_>>();
-    let updated_bundle = refresh_bundle_with_artifacts(run_bundle, artifacts);
+    let updated_bundle = refresh_bundle_with_artifacts(
+        run_bundle,
+        artifacts,
+        Some(exactness_curve.report_digest.clone()),
+        Some(failure_samples.report_digest.clone()),
+        Some(exact_trace_samples.report_digest.clone()),
+    );
     write_json(
         output_dir.join(RUN_BUNDLE_FILE),
         "tassadar_reference_run_bundle",
@@ -485,8 +580,16 @@ pub fn augment_tassadar_reference_run_with_telemetry(
     Ok(updated_bundle)
 }
 
+/// Generates the canonical telemetry and failure-analysis artifacts for the committed reference run.
+pub fn augment_tassadar_reference_run_with_telemetry(
+    output_dir: &Path,
+) -> Result<TassadarExecutorReferenceRunBundle, TassadarExecutorTelemetryError> {
+    augment_tassadar_training_run_with_telemetry(output_dir)
+}
+
 fn build_exactness_curve_report(
     run_bundle: &TassadarExecutorReferenceRunBundle,
+    training_report: &TassadarExecutorTrainingReport,
     checkpoint_manifest_digest: &str,
     analyses: &[ExampleAnalysis],
 ) -> TassadarExecutorExactnessCurveReport {
@@ -509,6 +612,24 @@ fn build_exactness_curve_report(
         training_manifest_digest: run_bundle.training_manifest_digest.clone(),
         trained_model_descriptor_digest: run_bundle.trained_model_descriptor_digest.clone(),
         checkpoint_manifest_digest: checkpoint_manifest_digest.to_string(),
+        checkpoint_curve: training_report
+            .epoch_reports
+            .iter()
+            .map(|epoch| TassadarExecutorCheckpointExactnessPoint {
+                checkpoint_id: epoch.checkpoint_id.clone(),
+                global_epoch_index: epoch.global_epoch_index,
+                stage_id: epoch.stage_id.clone(),
+                stage_epoch_index: epoch.stage_epoch_index,
+                aggregate_target_token_exactness_bps: epoch
+                    .evaluation
+                    .aggregate_target_token_exactness_bps,
+                first_target_exactness_bps: epoch.evaluation.first_target_exactness_bps,
+                first_8_token_exactness_bps: epoch.evaluation.first_8_token_exactness_bps,
+                first_32_token_exactness_bps: epoch.evaluation.first_32_token_exactness_bps,
+                exact_trace_case_count: epoch.evaluation.exact_trace_case_count,
+                selected_for_export: epoch.checkpoint_id == training_report.best_checkpoint_id,
+            })
+            .collect(),
         curves,
         report_digest: String::new(),
     };
@@ -644,6 +765,39 @@ fn build_failure_sample_report(
     report
 }
 
+fn build_exact_trace_sample_report(
+    run_bundle: &TassadarExecutorReferenceRunBundle,
+    checkpoint_manifest_digest: &str,
+    tokenizer: &TassadarTraceTokenizer,
+    analyses: &[ExampleAnalysis],
+) -> TassadarExecutorExactTraceSampleReport {
+    let mut samples = analyses
+        .iter()
+        .filter(|analysis| analysis.case.exact_trace_match)
+        .map(|analysis| exact_trace_sample(tokenizer, analysis))
+        .collect::<Vec<_>>();
+    samples.sort_by(|left, right| {
+        left.split
+            .cmp(&right.split)
+            .then(left.case_id.cmp(&right.case_id))
+    });
+    let mut report = TassadarExecutorExactTraceSampleReport {
+        run_id: run_bundle.run_id.clone(),
+        dataset_storage_key: run_bundle.dataset_storage_key.clone(),
+        dataset_digest: run_bundle.dataset_digest.clone(),
+        trained_model_descriptor_digest: run_bundle.trained_model_descriptor_digest.clone(),
+        checkpoint_manifest_digest: checkpoint_manifest_digest.to_string(),
+        exact_trace_case_count: samples.len() as u32,
+        samples,
+        report_digest: String::new(),
+    };
+    report.report_digest = stable_digest(
+        b"psionic_tassadar_executor_exact_trace_sample_report|",
+        &report,
+    );
+    report
+}
+
 fn analyze_example(
     model: &TassadarExecutorTransformer,
     tokenizer: &TassadarTraceTokenizer,
@@ -714,6 +868,8 @@ fn analyze_example(
     };
     Ok(ExampleAnalysis {
         case,
+        prompt_token_count: prompt_len as u32,
+        reference_full,
         reference_target,
         predicted_target,
     })
@@ -762,11 +918,51 @@ fn failure_sample(
     }
 }
 
+fn exact_trace_sample(
+    tokenizer: &TassadarTraceTokenizer,
+    analysis: &ExampleAnalysis,
+) -> TassadarExecutorExactTraceSample {
+    let prefix_tokens = analysis
+        .reference_target
+        .iter()
+        .take(8)
+        .map(|token| token_symbol(tokenizer, *token))
+        .collect::<Vec<_>>();
+    let suffix_tokens = analysis
+        .reference_target
+        .iter()
+        .rev()
+        .take(8)
+        .copied()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|token| token_symbol(tokenizer, token))
+        .collect::<Vec<_>>();
+    TassadarExecutorExactTraceSample {
+        sequence_id: analysis.case.sequence_id.clone(),
+        case_id: analysis.case.case_id.clone(),
+        split: analysis.case.split,
+        prompt_token_count: analysis.prompt_token_count,
+        target_token_count: analysis.reference_target.len() as u32,
+        final_output_values: tokenizer.extract_output_values(analysis.reference_full.as_slice()),
+        target_digest: analysis.case.reference_target_digest.clone(),
+        target_prefix_tokens: prefix_tokens,
+        target_suffix_tokens: suffix_tokens,
+    }
+}
+
 fn refresh_bundle_with_artifacts(
     mut bundle: TassadarExecutorReferenceRunBundle,
     artifacts: Vec<EvalArtifact>,
+    exactness_curve_report_digest: Option<String>,
+    failure_samples_report_digest: Option<String>,
+    exact_trace_samples_report_digest: Option<String>,
 ) -> TassadarExecutorReferenceRunBundle {
     bundle.artifacts = artifacts;
+    bundle.exactness_curve_report_digest = exactness_curve_report_digest;
+    bundle.failure_samples_report_digest = failure_samples_report_digest;
+    bundle.exact_trace_samples_report_digest = exact_trace_samples_report_digest;
     bundle.bundle_digest.clear();
     bundle.bundle_digest =
         stable_digest(b"psionic_tassadar_executor_reference_run_bundle|", &bundle);

@@ -81,9 +81,7 @@ fn default_trainable_surface() -> TassadarExecutorTrainableSurface {
     TassadarExecutorTrainableSurface::OutputHeadOnly
 }
 
-fn trainable_surface_is_output_head_only(
-    surface: &TassadarExecutorTrainableSurface,
-) -> bool {
+fn trainable_surface_is_output_head_only(surface: &TassadarExecutorTrainableSurface) -> bool {
     *surface == TassadarExecutorTrainableSurface::OutputHeadOnly
 }
 
@@ -506,6 +504,19 @@ pub struct TassadarExecutorTransformerDecodeState {
     pub kv_points: Vec<TassadarExecutorTransformerKvPoint>,
 }
 
+/// Hidden-state and logits emitted for one decode step.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TassadarExecutorTransformerDecodeStep {
+    /// Lookup-only hidden state before any optional learned mixer.
+    pub source_hidden_state: Vec<f32>,
+    /// Hidden state for the next-token prediction.
+    pub hidden_state: Vec<f32>,
+    /// Vocabulary logits for the next-token prediction.
+    pub logits: Vec<f32>,
+    /// Context tokens and position used to build the hidden state.
+    pub step_context: TassadarExecutorTransformerStepContext,
+}
+
 /// First honest neural executor family in Psionic.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TassadarExecutorTransformer {
@@ -798,15 +809,9 @@ impl TassadarExecutorTransformer {
         state: &TassadarExecutorTransformerDecodeState,
         requested_decode_mode: TassadarExecutorDecodeMode,
     ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
-        let selection = self.select_decode_mode(requested_decode_mode);
-        let Some(effective_decode_mode) = selection.effective_decode_mode else {
-            return Err(TassadarExecutorTransformerError::UnsupportedDecodeMode {
-                requested: requested_decode_mode,
-                supported: selection.supported_decode_modes,
-            });
-        };
-        let hidden_state = self.hidden_state_from_decode_state(state, effective_decode_mode)?;
-        self.project_logits(hidden_state.as_slice())
+        Ok(self
+            .decode_step_for_mode(state, requested_decode_mode)?
+            .logits)
     }
 
     /// Greedily chooses the next token for one decode state.
@@ -832,14 +837,37 @@ impl TassadarExecutorTransformer {
         Ok(TokenId(best_index as u32))
     }
 
-    fn hidden_state_from_decode_state(
+    /// Returns the full decode-step state for one requested decode mode.
+    pub fn decode_step_for_mode(
         &self,
         state: &TassadarExecutorTransformerDecodeState,
-        decode_mode: TassadarExecutorDecodeMode,
-    ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
-        let step_context = self.step_context_from_decode_state(state, decode_mode)?;
-        let hidden = self.hidden_state_from_step_context(&step_context)?;
-        self.apply_small_learned_mixer(hidden.as_slice())
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<TassadarExecutorTransformerDecodeStep, TassadarExecutorTransformerError> {
+        let selection = self.select_decode_mode(requested_decode_mode);
+        let Some(effective_decode_mode) = selection.effective_decode_mode else {
+            return Err(TassadarExecutorTransformerError::UnsupportedDecodeMode {
+                requested: requested_decode_mode,
+                supported: selection.supported_decode_modes,
+            });
+        };
+        let step_context = self.step_context_from_decode_state(state, effective_decode_mode)?;
+        let source_hidden_state = self.hidden_state_from_step_context(&step_context)?;
+        let hidden_state = self.apply_small_learned_mixer(source_hidden_state.as_slice())?;
+        let logits = self.project_logits(hidden_state.as_slice())?;
+        Ok(TassadarExecutorTransformerDecodeStep {
+            source_hidden_state,
+            hidden_state,
+            logits,
+            step_context,
+        })
+    }
+
+    /// Returns the full decode-step state for the default reference-linear path.
+    pub fn decode_step(
+        &self,
+        state: &TassadarExecutorTransformerDecodeState,
+    ) -> Result<TassadarExecutorTransformerDecodeStep, TassadarExecutorTransformerError> {
+        self.decode_step_for_mode(state, TassadarExecutorDecodeMode::ReferenceLinear)
     }
 
     fn step_context(

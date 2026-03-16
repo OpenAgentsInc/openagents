@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, env, time::Instant};
 
-use psionic_data::TassadarSequenceSplit;
+use psionic_data::{TassadarSequenceExample, TassadarSequenceSplit};
 use psionic_eval::{
     TassadarExecutorEvalError, TassadarExecutorEvalReport, TassadarExecutorLinearBenchmarkError,
     TassadarExecutorLinearBenchmarkReport, TassadarSequenceEvalError, TassadarSequenceWorkload,
@@ -36,8 +36,55 @@ fn default_trainable_surface() -> TassadarExecutorTrainableSurface {
     TassadarExecutorTrainableSurface::OutputHeadOnly
 }
 
+fn tassadar_progress_updates_enabled() -> bool {
+    match env::var("OPENAGENTS_TASSADAR_PROGRESS") {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            !matches!(normalized.as_str(), "0" | "false" | "off" | "no")
+        }
+        Err(_) => !cfg!(test),
+    }
+}
+
+fn emit_tassadar_progress(message: impl AsRef<str>) {
+    if tassadar_progress_updates_enabled() {
+        eprintln!("{}", message.as_ref());
+    }
+}
+
+fn stage_prefix_mode_is_teacher_forced(mode: &TassadarExecutorStagePrefixMode) -> bool {
+    *mode == TassadarExecutorStagePrefixMode::TeacherForced
+}
+
+/// Prefix construction mode for one curriculum stage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorStagePrefixMode {
+    /// Use the frozen reference prefix for every supervised target token.
+    TeacherForced,
+    /// Feed the model's own greedy predictions back into the prefix during training.
+    GreedyRollout,
+}
+
+impl TassadarExecutorStagePrefixMode {
+    /// Returns a stable label for reports and audits.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::TeacherForced => "teacher_forced",
+            Self::GreedyRollout => "greedy_rollout",
+        }
+    }
+}
+
+impl Default for TassadarExecutorStagePrefixMode {
+    fn default() -> Self {
+        Self::TeacherForced
+    }
+}
+
 /// One curriculum stage for the trained executor lane.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TassadarExecutorCurriculumStage {
     /// Stable stage identifier.
     pub stage_id: String,
@@ -46,6 +93,12 @@ pub struct TassadarExecutorCurriculumStage {
     pub max_train_target_tokens_per_example: Option<usize>,
     /// Number of epochs to spend in the stage.
     pub epochs: u32,
+    /// Optional multiplier over the base learning rate for this stage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_rate_scale: Option<f32>,
+    /// Prefix construction mode used while supervising the stage.
+    #[serde(default, skip_serializing_if = "stage_prefix_mode_is_teacher_forced")]
+    pub prefix_mode: TassadarExecutorStagePrefixMode,
 }
 
 impl TassadarExecutorCurriculumStage {
@@ -60,7 +113,23 @@ impl TassadarExecutorCurriculumStage {
             stage_id: stage_id.into(),
             max_train_target_tokens_per_example,
             epochs,
+            learning_rate_scale: None,
+            prefix_mode: TassadarExecutorStagePrefixMode::TeacherForced,
         }
+    }
+
+    /// Overrides the stage-local learning-rate scale.
+    #[must_use]
+    pub const fn with_learning_rate_scale(mut self, learning_rate_scale: f32) -> Self {
+        self.learning_rate_scale = Some(learning_rate_scale);
+        self
+    }
+
+    /// Overrides the stage-local prefix construction mode.
+    #[must_use]
+    pub const fn with_prefix_mode(mut self, prefix_mode: TassadarExecutorStagePrefixMode) -> Self {
+        self.prefix_mode = prefix_mode;
+        self
     }
 }
 
@@ -84,6 +153,9 @@ pub struct TassadarExecutorTrainingConfig {
     /// Optional cap over target tokens evaluated from each validation example.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_eval_target_tokens_per_example: Option<usize>,
+    /// Optional multiplier over the base learning rate for the terminal full-trace stage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_stage_learning_rate_scale: Option<f32>,
     /// Active trainable surface for the run.
     #[serde(default = "default_trainable_surface")]
     pub trainable_surface: TassadarExecutorTrainableSurface,
@@ -110,6 +182,7 @@ impl TassadarExecutorTrainingConfig {
             learning_rate: 0.05,
             max_train_target_tokens_per_example: Some(256),
             max_eval_target_tokens_per_example: None,
+            terminal_stage_learning_rate_scale: None,
             trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             curriculum_stages: Vec::new(),
             validate_every_epoch: true,
@@ -128,6 +201,7 @@ impl TassadarExecutorTrainingConfig {
             learning_rate: 0.05,
             max_train_target_tokens_per_example: None,
             max_eval_target_tokens_per_example: None,
+            terminal_stage_learning_rate_scale: None,
             trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             curriculum_stages: vec![
                 TassadarExecutorCurriculumStage::new("prompt_to_first_token", Some(1), 1),
@@ -153,6 +227,7 @@ impl TassadarExecutorTrainingConfig {
             learning_rate: 0.05,
             max_train_target_tokens_per_example: Some(8),
             max_eval_target_tokens_per_example: Some(8),
+            terminal_stage_learning_rate_scale: None,
             trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             curriculum_stages: Vec::new(),
             validate_every_epoch: true,
@@ -172,11 +247,14 @@ impl TassadarExecutorTrainingConfig {
 
     fn resolved_stages(&self) -> Vec<TassadarExecutorCurriculumStage> {
         let mut stages = self.curriculum_stages.clone();
-        stages.push(TassadarExecutorCurriculumStage::new(
-            "full_trace_supervision",
-            self.max_train_target_tokens_per_example,
-            self.epochs,
-        ));
+        stages.push(
+            TassadarExecutorCurriculumStage::new(
+                "full_trace_supervision",
+                self.max_train_target_tokens_per_example,
+                self.epochs,
+            )
+            .with_learning_rate_scale(self.terminal_stage_learning_rate_scale.unwrap_or(1.0)),
+        );
         stages
     }
 }
@@ -199,6 +277,10 @@ pub struct TassadarExecutorTrainingBatchReport {
     /// Frozen cap over target tokens used during the stage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage_max_train_target_tokens_per_example: Option<usize>,
+    /// Effective learning rate used during the stage.
+    pub stage_learning_rate: f32,
+    /// Prefix construction mode used during the stage.
+    pub stage_prefix_mode: TassadarExecutorStagePrefixMode,
     /// Stable batch identifier from the frozen packing manifest.
     pub batch_id: String,
     /// Stable source sequence identifiers in the batch.
@@ -223,6 +305,10 @@ pub struct TassadarExecutorTrainingEpochReport {
     /// Frozen cap over target tokens used during the stage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage_max_train_target_tokens_per_example: Option<usize>,
+    /// Effective learning rate used during the stage.
+    pub stage_learning_rate: f32,
+    /// Prefix construction mode used during the stage.
+    pub stage_prefix_mode: TassadarExecutorStagePrefixMode,
     /// Mean next-token loss over the epoch.
     pub mean_loss: f32,
     /// Number of supervised target tokens consumed.
@@ -352,6 +438,7 @@ pub enum TassadarExecutorTrainingError {
 pub fn train_tassadar_executor_transformer(
     config: &TassadarExecutorTrainingConfig,
 ) -> Result<TassadarExecutorTrainingOutcome, TassadarExecutorTrainingError> {
+    let run_started_at = Instant::now();
     let bundle = build_tassadar_sequence_dataset(config.workload, config.dataset_version.as_str())?;
     let manifest = build_tassadar_sequence_training_manifest(
         config.workload,
@@ -379,30 +466,95 @@ pub fn train_tassadar_executor_transformer(
     let mut best_model: Option<TassadarExecutorTransformer> = None;
     let mut best_epoch_report: Option<TassadarExecutorTrainingEpochReport> = None;
     let mut global_epoch_index = 0_u32;
+    let resolved_stages = config.resolved_stages();
+    let total_stage_count = resolved_stages.len();
+    let total_epoch_count = resolved_stages
+        .iter()
+        .map(|stage| stage.epochs)
+        .sum::<u32>();
+    let batches_per_epoch = manifest.train_plan.batches.len();
 
-    for stage in config.resolved_stages() {
+    emit_tassadar_progress(format!(
+        "tassadar_progress phase=train_start run={} workload={} surface={} stages={} epochs={} train_batches_per_epoch={} train_examples={} validation_examples={} dataset={} elapsed_ms={}",
+        config.run_id,
+        config.workload.dataset_ref(),
+        config.trainable_surface.label(),
+        total_stage_count,
+        total_epoch_count,
+        batches_per_epoch,
+        bundle
+            .dataset
+            .examples
+            .iter()
+            .filter(|example| example.metadata.split == TassadarSequenceSplit::Train)
+            .count(),
+        bundle
+            .dataset
+            .examples
+            .iter()
+            .filter(|example| example.metadata.split == TassadarSequenceSplit::Validation)
+            .count(),
+        config.dataset_version,
+        run_started_at.elapsed().as_millis(),
+    ));
+
+    for (stage_index, stage) in resolved_stages.iter().enumerate() {
+        let stage_learning_rate = config.learning_rate * stage.learning_rate_scale.unwrap_or(1.0);
+        emit_tassadar_progress(format!(
+            "tassadar_progress phase=stage_start run={} stage={}/{} stage_id={} prefix_mode={} epochs={} target_cap={} learning_rate={:.6} global_epoch_start={} elapsed_ms={}",
+            config.run_id,
+            stage_index + 1,
+            total_stage_count,
+            stage.stage_id,
+            stage.prefix_mode.label(),
+            stage.epochs,
+            stage
+                .max_train_target_tokens_per_example
+                .map_or_else(|| String::from("full"), |value| value.to_string()),
+            stage_learning_rate,
+            global_epoch_index,
+            run_started_at.elapsed().as_millis(),
+        ));
         for stage_epoch_index in 0..stage.epochs {
+            let epoch_started_at = Instant::now();
             current_epoch_batches.clear();
-            for batch in &manifest.train_plan.batches {
+            emit_tassadar_progress(format!(
+                "tassadar_progress phase=epoch_start run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} prefix_mode={} target_cap={} learning_rate={:.6} batches={} elapsed_ms={}",
+                config.run_id,
+                stage.stage_id,
+                stage_epoch_index + 1,
+                stage.epochs,
+                global_epoch_index + 1,
+                total_epoch_count,
+                stage.prefix_mode.label(),
+                stage
+                    .max_train_target_tokens_per_example
+                    .map_or_else(|| String::from("full"), |value| value.to_string()),
+                stage_learning_rate,
+                batches_per_epoch,
+                run_started_at.elapsed().as_millis(),
+            ));
+            for (batch_index, batch) in manifest.train_plan.batches.iter().enumerate() {
+                let batch_started_at = Instant::now();
                 let hidden_width = current_model.descriptor().config.hidden_width();
                 let vocab_size = current_model.descriptor().config.vocab_size;
-                let embedding_dim = current_model.descriptor().config.embedding_dim;
                 let sequence_ids = batch
                     .rows
                     .iter()
                     .flat_map(|row| row.source_sequences.iter())
                     .map(|sequence| sequence.sequence_id.clone())
                     .collect::<Vec<_>>();
+                let sequence_count = sequence_ids.len();
                 let mut projection_grad = vec![0.0; hidden_width * vocab_size];
                 let mut bias_grad = vec![0.0; vocab_size];
-                let mut token_embedding_grad =
-                    config.trainable_surface.trains_token_embeddings().then(|| {
-                        vec![0.0; current_model.weights().token_embeddings().len()]
-                    });
-                let mut position_embedding_grad =
-                    config.trainable_surface.trains_position_embeddings().then(|| {
-                        vec![0.0; current_model.weights().position_embeddings().len()]
-                    });
+                let mut token_embedding_grad = config
+                    .trainable_surface
+                    .trains_token_embeddings()
+                    .then(|| vec![0.0; current_model.weights().token_embeddings().len()]);
+                let mut position_embedding_grad = config
+                    .trainable_surface
+                    .trains_position_embeddings()
+                    .then(|| vec![0.0; current_model.weights().position_embeddings().len()]);
                 let mut mixer_projection_grad = config
                     .trainable_surface
                     .trains_small_learned_mixer()
@@ -418,102 +570,25 @@ pub fn train_tassadar_executor_transformer(
                     let example = examples_by_id
                         .get(sequence_id.as_str())
                         .expect("frozen train plan should reference known examples");
-                    let max_target = stage
-                        .max_train_target_tokens_per_example
-                        .unwrap_or(example.metadata.target_token_count as usize)
-                        .min(example.metadata.target_token_count as usize);
-                    let effective_sequence_len =
-                        example.metadata.prompt_token_count as usize + max_target;
-                    let sequence = TokenSequence::new(
-                        example.token_ids[..effective_sequence_len]
-                            .iter()
-                            .map(|token| TokenId(*token))
-                            .collect::<Vec<_>>(),
-                    );
-                    let forward = current_model.forward_logits(&sequence)?;
-                    let start_logit_index =
-                        example.metadata.prompt_token_count.saturating_sub(1) as usize;
-                    let end_logit_index =
-                        (start_logit_index + max_target).min(forward.logits.len());
-                    for logit_index in start_logit_index..end_logit_index {
-                        let hidden = &forward.hidden_states[logit_index];
-                        let source_hidden = &forward.source_hidden_states[logit_index];
-                        let step_context = &forward.step_contexts[logit_index];
-                        let logits = &forward.logits[logit_index];
-                        let probabilities = softmax(logits.as_slice());
-                        let target_token = sequence.as_slice()[logit_index + 1].as_u32() as usize;
-                        let probability = probabilities[target_token].max(1e-8);
-                        total_loss -= probability.ln();
-                        target_token_count = target_token_count.saturating_add(1);
-                        let mut hidden_grad = vec![0.0; hidden_width];
-
-                        for (token_index, probability) in probabilities.iter().enumerate() {
-                            let delta = probability - f32::from(token_index == target_token);
-                            bias_grad[token_index] += delta;
-                            for (hidden_index, hidden_value) in hidden.iter().enumerate() {
-                                let projection_index =
-                                    hidden_index * probabilities.len() + token_index;
-                                projection_grad[projection_index] += hidden_value * delta;
-                                hidden_grad[hidden_index] += current_model.weights()
-                                    .output_projection()[projection_index]
-                                    * delta;
-                            }
-                        }
-
-                        let source_hidden_grad =
-                            if config.trainable_surface.trains_small_learned_mixer() {
-                                let mut source_hidden_grad = hidden_grad.clone();
-                                let mixer_projection =
-                                    current_model.weights().small_learned_mixer_projection();
-                                let mixer_projection_grad = mixer_projection_grad
-                                    .as_mut()
-                                    .expect("mixer projection grad should exist");
-                                let mixer_bias_grad = mixer_bias_grad
-                                    .as_mut()
-                                    .expect("mixer bias grad should exist");
-                                for output_index in 0..hidden_width {
-                                    mixer_bias_grad[output_index] += hidden_grad[output_index];
-                                    for input_index in 0..hidden_width {
-                                        let weight_index =
-                                            input_index * hidden_width + output_index;
-                                        mixer_projection_grad[weight_index] +=
-                                            source_hidden[input_index] * hidden_grad[output_index];
-                                        source_hidden_grad[input_index] +=
-                                            mixer_projection[weight_index]
-                                                * hidden_grad[output_index];
-                                    }
-                                }
-                                source_hidden_grad
-                            } else {
-                                hidden_grad
-                            };
-
-                        if let Some(token_embedding_grad) = token_embedding_grad.as_mut() {
-                            for (slot_index, token) in step_context.context_tokens.iter().enumerate()
-                            {
-                                let token_index = token.as_u32() as usize;
-                                let token_offset = token_index * embedding_dim;
-                                let hidden_offset = slot_index * embedding_dim;
-                                for dim in 0..embedding_dim {
-                                    token_embedding_grad[token_offset + dim] +=
-                                        source_hidden_grad[hidden_offset + dim];
-                                }
-                            }
-                        }
-                        if let Some(position_embedding_grad) = position_embedding_grad.as_mut() {
-                            let position_index = step_context.position as usize;
-                            let position_offset = position_index * embedding_dim;
-                            let hidden_offset = step_context.context_tokens.len() * embedding_dim;
-                            for dim in 0..embedding_dim {
-                                position_embedding_grad[position_offset + dim] +=
-                                    source_hidden_grad[hidden_offset + dim];
-                            }
-                        }
-                    }
+                    let (sequence_loss, sequence_target_token_count) =
+                        accumulate_sequence_gradients(
+                            &current_model,
+                            example,
+                            &stage,
+                            projection_grad.as_mut_slice(),
+                            bias_grad.as_mut_slice(),
+                            token_embedding_grad.as_deref_mut(),
+                            position_embedding_grad.as_deref_mut(),
+                            mixer_projection_grad.as_deref_mut(),
+                            mixer_bias_grad.as_deref_mut(),
+                        )?;
+                    total_loss += sequence_loss;
+                    target_token_count =
+                        target_token_count.saturating_add(sequence_target_token_count);
                 }
 
                 if target_token_count > 0 {
-                    let scale = config.learning_rate / target_token_count as f32;
+                    let scale = stage_learning_rate / target_token_count as f32;
                     for (weight, gradient) in current_model
                         .weights_mut()
                         .output_projection_mut()
@@ -579,6 +654,8 @@ pub fn train_tassadar_executor_transformer(
                     stage_epoch_index,
                     stage_max_train_target_tokens_per_example: stage
                         .max_train_target_tokens_per_example,
+                    stage_learning_rate,
+                    stage_prefix_mode: stage.prefix_mode,
                     batch_id: batch.batch_id.clone(),
                     sequence_ids,
                     mean_loss: if target_token_count == 0 {
@@ -590,6 +667,28 @@ pub fn train_tassadar_executor_transformer(
                 };
                 current_epoch_batches.push(batch_report.clone());
                 batch_reports.push(batch_report);
+                emit_tassadar_progress(format!(
+                    "tassadar_progress phase=batch_complete run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} batch={}/{} batch_id={} sequences={} target_tokens={} mean_loss={:.6} batch_ms={} epoch_ms={} elapsed_ms={}",
+                    config.run_id,
+                    stage.stage_id,
+                    stage_epoch_index + 1,
+                    stage.epochs,
+                    global_epoch_index + 1,
+                    total_epoch_count,
+                    batch_index + 1,
+                    batches_per_epoch,
+                    batch.batch_id,
+                    sequence_count,
+                    target_token_count,
+                    if target_token_count == 0 {
+                        0.0
+                    } else {
+                        total_loss / target_token_count as f32
+                    },
+                    batch_started_at.elapsed().as_millis(),
+                    epoch_started_at.elapsed().as_millis(),
+                    run_started_at.elapsed().as_millis(),
+                ));
             }
 
             let evaluation = if config.validate_every_epoch {
@@ -607,9 +706,35 @@ pub fn train_tassadar_executor_transformer(
                     config.max_eval_target_tokens_per_example,
                 )?
             };
+            emit_tassadar_progress(format!(
+                "tassadar_progress phase=validation_complete run={} stage_id={} stage_epoch={}/{} global_epoch={}/{} mean_loss={:.6} target_tokens={} aggregate_bps={} first_target_bps={} first_8_bps={} first_32_bps={} exact_traces={} epoch_ms={} elapsed_ms={}",
+                config.run_id,
+                stage.stage_id,
+                stage_epoch_index + 1,
+                stage.epochs,
+                global_epoch_index + 1,
+                total_epoch_count,
+                mean_batch_loss(current_epoch_batches.as_slice()),
+                current_epoch_batches
+                    .iter()
+                    .map(|batch| batch.target_token_count)
+                    .sum::<u32>(),
+                evaluation.aggregate_target_token_exactness_bps,
+                evaluation.first_target_exactness_bps,
+                evaluation.first_8_token_exactness_bps,
+                evaluation.first_32_token_exactness_bps,
+                evaluation.exact_trace_case_count,
+                epoch_started_at.elapsed().as_millis(),
+                run_started_at.elapsed().as_millis(),
+            ));
 
             let checkpoint_id =
                 format!("{}.checkpoint.epoch_{global_epoch_index:04}", config.run_id);
+            let epoch_mean_loss = mean_batch_loss(current_epoch_batches.as_slice());
+            let epoch_target_token_count = current_epoch_batches
+                .iter()
+                .map(|batch| batch.target_token_count)
+                .sum();
             let epoch_report = TassadarExecutorTrainingEpochReport {
                 checkpoint_id: checkpoint_id.clone(),
                 global_epoch_index,
@@ -617,11 +742,10 @@ pub fn train_tassadar_executor_transformer(
                 stage_epoch_index,
                 stage_max_train_target_tokens_per_example: stage
                     .max_train_target_tokens_per_example,
-                mean_loss: mean_batch_loss(current_epoch_batches.as_slice()),
-                target_token_count: current_epoch_batches
-                    .iter()
-                    .map(|batch| batch.target_token_count)
-                    .sum(),
+                stage_learning_rate,
+                stage_prefix_mode: stage.prefix_mode,
+                mean_loss: epoch_mean_loss,
+                target_token_count: epoch_target_token_count,
                 evaluation: evaluation.clone(),
             };
             checkpoint_leaderboard.push(TassadarExecutorCheckpointLeaderboardEntry {
@@ -652,6 +776,20 @@ pub fn train_tassadar_executor_transformer(
             if should_replace_best {
                 best_model = Some(current_model.clone());
                 best_epoch_report = Some(epoch_report.clone());
+                emit_tassadar_progress(format!(
+                    "tassadar_progress phase=best_checkpoint_updated run={} checkpoint_id={} stage_id={} global_epoch={}/{} aggregate_bps={} first_target_bps={} first_8_bps={} first_32_bps={} exact_traces={} elapsed_ms={}",
+                    config.run_id,
+                    checkpoint_id,
+                    stage.stage_id,
+                    global_epoch_index + 1,
+                    total_epoch_count,
+                    evaluation.aggregate_target_token_exactness_bps,
+                    evaluation.first_target_exactness_bps,
+                    evaluation.first_8_token_exactness_bps,
+                    evaluation.first_32_token_exactness_bps,
+                    evaluation.exact_trace_case_count,
+                    run_started_at.elapsed().as_millis(),
+                ));
             }
             epoch_reports.push(epoch_report);
             global_epoch_index = global_epoch_index.saturating_add(1);
@@ -686,6 +824,19 @@ pub fn train_tassadar_executor_transformer(
         checkpoint_leaderboard,
         best_epoch_report.evaluation,
     );
+    emit_tassadar_progress(format!(
+        "tassadar_progress phase=train_complete run={} best_checkpoint={} aggregate_bps={} first_target_bps={} first_8_bps={} first_32_bps={} exact_traces={} total_batches={} total_epochs={} elapsed_ms={}",
+        config.run_id,
+        report.best_checkpoint_id,
+        report.evaluation.aggregate_target_token_exactness_bps,
+        report.evaluation.first_target_exactness_bps,
+        report.evaluation.first_8_token_exactness_bps,
+        report.evaluation.first_32_token_exactness_bps,
+        report.evaluation.exact_trace_case_count,
+        report.batch_reports.len(),
+        report.epoch_reports.len(),
+        run_started_at.elapsed().as_millis(),
+    ));
     Ok(TassadarExecutorTrainingOutcome {
         model: best_model,
         report,
@@ -704,6 +855,235 @@ pub fn benchmark_trained_tassadar_executor_transformer(
         &bundle.dataset,
         split_filter,
     )?)
+}
+
+fn accumulate_sequence_gradients(
+    current_model: &TassadarExecutorTransformer,
+    example: &TassadarSequenceExample,
+    stage: &TassadarExecutorCurriculumStage,
+    projection_grad: &mut [f32],
+    bias_grad: &mut [f32],
+    token_embedding_grad: Option<&mut [f32]>,
+    position_embedding_grad: Option<&mut [f32]>,
+    mixer_projection_grad: Option<&mut [f32]>,
+    mixer_bias_grad: Option<&mut [f32]>,
+) -> Result<(f32, u32), TassadarExecutorTrainingError> {
+    match stage.prefix_mode {
+        TassadarExecutorStagePrefixMode::TeacherForced => {
+            accumulate_teacher_forced_sequence_gradients(
+                current_model,
+                example,
+                stage,
+                projection_grad,
+                bias_grad,
+                token_embedding_grad,
+                position_embedding_grad,
+                mixer_projection_grad,
+                mixer_bias_grad,
+            )
+        }
+        TassadarExecutorStagePrefixMode::GreedyRollout => {
+            accumulate_greedy_rollout_sequence_gradients(
+                current_model,
+                example,
+                stage,
+                projection_grad,
+                bias_grad,
+                token_embedding_grad,
+                position_embedding_grad,
+                mixer_projection_grad,
+                mixer_bias_grad,
+            )
+        }
+    }
+}
+
+fn accumulate_teacher_forced_sequence_gradients(
+    current_model: &TassadarExecutorTransformer,
+    example: &TassadarSequenceExample,
+    stage: &TassadarExecutorCurriculumStage,
+    projection_grad: &mut [f32],
+    bias_grad: &mut [f32],
+    mut token_embedding_grad: Option<&mut [f32]>,
+    mut position_embedding_grad: Option<&mut [f32]>,
+    mut mixer_projection_grad: Option<&mut [f32]>,
+    mut mixer_bias_grad: Option<&mut [f32]>,
+) -> Result<(f32, u32), TassadarExecutorTrainingError> {
+    let max_target = stage
+        .max_train_target_tokens_per_example
+        .unwrap_or(example.metadata.target_token_count as usize)
+        .min(example.metadata.target_token_count as usize);
+    let effective_sequence_len = example.metadata.prompt_token_count as usize + max_target;
+    let sequence = TokenSequence::new(
+        example.token_ids[..effective_sequence_len]
+            .iter()
+            .map(|token| TokenId(*token))
+            .collect::<Vec<_>>(),
+    );
+    let forward = current_model.forward_logits(&sequence)?;
+    let start_logit_index = example.metadata.prompt_token_count.saturating_sub(1) as usize;
+    let end_logit_index = (start_logit_index + max_target).min(forward.logits.len());
+    let mut total_loss = 0.0_f32;
+    let mut target_token_count = 0_u32;
+    for logit_index in start_logit_index..end_logit_index {
+        total_loss += accumulate_step_gradients(
+            current_model,
+            &forward.hidden_states[logit_index],
+            &forward.source_hidden_states[logit_index],
+            &forward.step_contexts[logit_index],
+            &forward.logits[logit_index],
+            sequence.as_slice()[logit_index + 1],
+            projection_grad,
+            bias_grad,
+            token_embedding_grad.as_deref_mut(),
+            position_embedding_grad.as_deref_mut(),
+            mixer_projection_grad.as_deref_mut(),
+            mixer_bias_grad.as_deref_mut(),
+        );
+        target_token_count = target_token_count.saturating_add(1);
+    }
+    Ok((total_loss, target_token_count))
+}
+
+fn accumulate_greedy_rollout_sequence_gradients(
+    current_model: &TassadarExecutorTransformer,
+    example: &TassadarSequenceExample,
+    stage: &TassadarExecutorCurriculumStage,
+    projection_grad: &mut [f32],
+    bias_grad: &mut [f32],
+    mut token_embedding_grad: Option<&mut [f32]>,
+    mut position_embedding_grad: Option<&mut [f32]>,
+    mut mixer_projection_grad: Option<&mut [f32]>,
+    mut mixer_bias_grad: Option<&mut [f32]>,
+) -> Result<(f32, u32), TassadarExecutorTrainingError> {
+    let prompt_token_count = example.metadata.prompt_token_count as usize;
+    let max_target = stage
+        .max_train_target_tokens_per_example
+        .unwrap_or(example.metadata.target_token_count as usize)
+        .min(example.metadata.target_token_count as usize);
+    let prompt = TokenSequence::new(
+        example.token_ids[..prompt_token_count]
+            .iter()
+            .map(|token| TokenId(*token))
+            .collect::<Vec<_>>(),
+    );
+    let reference_target = example.token_ids[prompt_token_count..prompt_token_count + max_target]
+        .iter()
+        .map(|token| TokenId(*token))
+        .collect::<Vec<_>>();
+    let mut state = current_model.start_decode(prompt)?;
+    let mut total_loss = 0.0_f32;
+    let mut target_token_count = 0_u32;
+    for target_token in reference_target {
+        let step = current_model.decode_step(&state)?;
+        total_loss += accumulate_step_gradients(
+            current_model,
+            step.hidden_state.as_slice(),
+            step.source_hidden_state.as_slice(),
+            &step.step_context,
+            step.logits.as_slice(),
+            target_token,
+            projection_grad,
+            bias_grad,
+            token_embedding_grad.as_deref_mut(),
+            position_embedding_grad.as_deref_mut(),
+            mixer_projection_grad.as_deref_mut(),
+            mixer_bias_grad.as_deref_mut(),
+        );
+        target_token_count = target_token_count.saturating_add(1);
+        current_model
+            .push_decoded_token(&mut state, greedy_token_from_logits(step.logits.as_slice()))?;
+    }
+    Ok((total_loss, target_token_count))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn accumulate_step_gradients(
+    current_model: &TassadarExecutorTransformer,
+    hidden: &[f32],
+    source_hidden: &[f32],
+    step_context: &psionic_models::TassadarExecutorTransformerStepContext,
+    logits: &[f32],
+    target_token: TokenId,
+    projection_grad: &mut [f32],
+    bias_grad: &mut [f32],
+    token_embedding_grad: Option<&mut [f32]>,
+    position_embedding_grad: Option<&mut [f32]>,
+    mixer_projection_grad: Option<&mut [f32]>,
+    mixer_bias_grad: Option<&mut [f32]>,
+) -> f32 {
+    let hidden_width = current_model.descriptor().config.hidden_width();
+    let embedding_dim = current_model.descriptor().config.embedding_dim;
+    let probabilities = softmax(logits);
+    let target_token_index = target_token.as_u32() as usize;
+    let probability = probabilities[target_token_index].max(1e-8);
+    let mut hidden_grad = vec![0.0; hidden_width];
+
+    for (token_index, probability) in probabilities.iter().enumerate() {
+        let delta = probability - f32::from(token_index == target_token_index);
+        bias_grad[token_index] += delta;
+        for (hidden_index, hidden_value) in hidden.iter().enumerate() {
+            let projection_index = hidden_index * probabilities.len() + token_index;
+            projection_grad[projection_index] += hidden_value * delta;
+            hidden_grad[hidden_index] +=
+                current_model.weights().output_projection()[projection_index] * delta;
+        }
+    }
+
+    let source_hidden_grad = if current_model
+        .trainable_surface()
+        .trains_small_learned_mixer()
+    {
+        let mut source_hidden_grad = hidden_grad.clone();
+        let mixer_projection = current_model.weights().small_learned_mixer_projection();
+        let mixer_projection_grad =
+            mixer_projection_grad.expect("mixer projection grad should exist");
+        let mixer_bias_grad = mixer_bias_grad.expect("mixer bias grad should exist");
+        for output_index in 0..hidden_width {
+            mixer_bias_grad[output_index] += hidden_grad[output_index];
+            for input_index in 0..hidden_width {
+                let weight_index = input_index * hidden_width + output_index;
+                mixer_projection_grad[weight_index] +=
+                    source_hidden[input_index] * hidden_grad[output_index];
+                source_hidden_grad[input_index] +=
+                    mixer_projection[weight_index] * hidden_grad[output_index];
+            }
+        }
+        source_hidden_grad
+    } else {
+        hidden_grad
+    };
+
+    if let Some(token_embedding_grad) = token_embedding_grad {
+        for (slot_index, token) in step_context.context_tokens.iter().enumerate() {
+            let token_index = token.as_u32() as usize;
+            let token_offset = token_index * embedding_dim;
+            let hidden_offset = slot_index * embedding_dim;
+            for dim in 0..embedding_dim {
+                token_embedding_grad[token_offset + dim] += source_hidden_grad[hidden_offset + dim];
+            }
+        }
+    }
+    if let Some(position_embedding_grad) = position_embedding_grad {
+        let position_index = step_context.position as usize;
+        let position_offset = position_index * embedding_dim;
+        let hidden_offset = step_context.context_tokens.len() * embedding_dim;
+        for dim in 0..embedding_dim {
+            position_embedding_grad[position_offset + dim] +=
+                source_hidden_grad[hidden_offset + dim];
+        }
+    }
+
+    -probability.ln()
+}
+
+fn greedy_token_from_logits(logits: &[f32]) -> TokenId {
+    let (best_index, _) = logits
+        .iter()
+        .enumerate()
+        .max_by(|(_, left), (_, right)| left.partial_cmp(right).unwrap())
+        .expect("vocabulary logits should be non-empty");
+    TokenId(best_index as u32)
 }
 
 fn checkpoint_rank_tuple(

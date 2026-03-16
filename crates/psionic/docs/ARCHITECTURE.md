@@ -262,6 +262,16 @@ The current scope is:
   where only `output_head_embeddings_and_small_learned_mixer` materially beats
   the preserved baseline (`3750` bps first-8 exactness, `5625` bps first-32
   exactness) while still leaving `0/2` exact traces
+- landed trained-executor Phase 14 follow-on bar: `psionic-train` now owns a
+  canonical learned-lane promotion bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v1`, explicit
+  `best_checkpoint_manifest.json` plus `promotion_gate_report.json` artifacts,
+  and live stage/epoch/batch/validation/checkpoint progress while long runs are
+  executing; the canonical promotion result remains explicitly below the bar at
+  checkpoint `epoch_0006` (`10000` bps first-target, `7500` bps first-8,
+  `6875` bps first-32, `0/2` exact validation traces), so this phase closes
+  the “promotion tooling exists” gap without pretending the learned 4x4 gate is
+  green
 - landed trained-executor Phase 15 follow-on bar: `psionic-models` now carries
   a separate bounded `TassadarExecutorAttentionTransformer` family with layered
   full-prefix causal hard-max attention, fixed 2D head geometry, explicit

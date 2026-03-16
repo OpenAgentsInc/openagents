@@ -1,0 +1,26 @@
+{
+  "run_id": "tassadar-executor-transformer-sudoku-v0-promotion-v1",
+  "trainable_surface": "output_head_embeddings_and_small_learned_mixer",
+  "checkpoint_id": "tassadar-executor-transformer-sudoku-v0-promotion-v1.checkpoint.epoch_0006",
+  "selected_stage_id": "prompt_to_first_16_tokens",
+  "first_target_exactness_bps": 10000,
+  "first_32_token_exactness_bps": 6875,
+  "exact_trace_case_count": 0,
+  "required_first_target_exactness_bps": 10000,
+  "required_first_32_token_exactness_bps_strictly_greater_than": 9000,
+  "required_exact_trace_case_count": 1,
+  "passed": false,
+  "failures": [
+    {
+      "kind": "first32_token_exactness_below_threshold",
+      "actual": 6875,
+      "required": 9001
+    },
+    {
+      "kind": "exact_trace_count_below_threshold",
+      "actual": 0,
+      "required": 1
+    }
+  ],
+  "report_digest": "7ea19446828a6e95ba8a15d2f71c4ee155834320cf79bf13c7133c7b2417898c"
+}

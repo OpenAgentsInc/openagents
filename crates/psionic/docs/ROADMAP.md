@@ -833,6 +833,10 @@ is tracked under the post-audit umbrella
   [#3813](https://github.com/OpenAgentsInc/openagents/issues/3813)
 - Phase 14 produce the first exact 4x4 validation trace:
   [#3814](https://github.com/OpenAgentsInc/openagents/issues/3814)
+  canonical promotion tooling and the repo bundle now exist at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v1`, but the gate
+  remains red at `10000` bps first-target, `6875` bps first-32, and `0`
+  exact validation traces
 - Phase 15 add a true executor-attention candidate family:
   [#3815](https://github.com/OpenAgentsInc/openagents/issues/3815)
   landed as a bounded research candidate; does not close the Phase 14 gate
