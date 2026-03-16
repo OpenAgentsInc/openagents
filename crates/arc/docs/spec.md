@@ -54,6 +54,23 @@ are used as described in RFC 2119.
 Coding agents implementing ARC crates MUST treat all normative requirements as
 binding constraints.
 
+## 0.2 Doc Authority
+
+The ARC subtree currently has four canonical documents with different roles:
+
+- `crates/arc/docs/spec.md`
+  - canonical architecture, ownership, and crate-boundary spec
+- `crates/arc/docs/ROADMAP.md`
+  - canonical dependency-ordered execution roadmap
+- `crates/arc/docs/CLAIMS.md`
+  - canonical ARC claim vocabulary and minimum artifact expectations
+- `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
+  - port-source and upstream-mapping audit, not the canonical current-state
+    contract
+
+Acceptance artifacts and future ARC matrices SHOULD use the frozen claim names
+from `crates/arc/docs/CLAIMS.md` rather than inventing near-duplicates.
+
 ## 1. Architectural fit and boundaries
 
 This spec must obey `docs/OWNERSHIP.md`.

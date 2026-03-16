@@ -7,6 +7,7 @@
 >
 > This is now the canonical roadmap for `crates/arc/*`.
 > `crates/arc/spec.md` remains the canonical architecture and ownership spec.
+> `crates/arc/docs/CLAIMS.md` remains the canonical claim-vocabulary doc.
 > The audit remains the port-source and upstream-mapping reference.
 
 ## Executive Summary
@@ -304,6 +305,9 @@ These rules are non-negotiable:
 ## Success Bar
 
 The ARC subtree should be judged against five progressively stronger claims.
+
+Canonical claim vocabulary:
+`crates/arc/docs/CLAIMS.md`
 
 ### Claim 1: `contracts-real`
 
