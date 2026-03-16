@@ -3520,8 +3520,7 @@ fn paint_mission_control_scrollbar_for_viewport(
         2.0,
         viewport.size.height,
     );
-    let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
-        .clamp(16.0, viewport.size.height);
+    let thumb_height = scrollbar_thumb_height(viewport.size.height, content_height, 16.0);
     let thumb_y = viewport.origin.y
         + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
     paint.scene.draw_quad(
