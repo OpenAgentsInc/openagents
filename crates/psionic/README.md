@@ -274,9 +274,10 @@ Current posture:
   and exact-equivalence reporting plus runtime capability/selection artifacts.
 - `psionic-train`: checkpoint/recovery truth, elastic membership, run graphs,
   rollout-worker protocol, orchestrator control, fixed-budget training core,
-  parameter-group and scheduler semantics, Apple training execution, Apple
-  SFT/export, model-IO compatibility boundaries, optional Apple draft-model
-  distillation, and the bounded `Tassadar` small-executor training lane.
+  parameter-group and scheduler semantics, replay-truth and reproducibility
+  semantics, Apple training execution, Apple SFT/export, model-IO
+  compatibility boundaries, optional Apple draft-model distillation, and the
+  bounded `Tassadar` small-executor training lane.
 - `psionic-research`: typed experiment specs, bounded run manifests, result
   summaries, promotion records, and the `Tassadar` executor-variant research
   family with machine-readable sweep records for hillclimb/research loops.
@@ -566,6 +567,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   canonical bounded promotion, cast, and backend-capability matrix for complex,
   low-precision, and wider integer dtype semantics above the compact runtime
   subset.
+- **[docs/REPRODUCIBILITY_SEMANTICS.md](docs/REPRODUCIBILITY_SEMANTICS.md)** —
+  canonical framework-wide replay seed, generator-derivation, and
+  checkpoint-restore truth surface across runtime and training replay.
 - **[docs/MODULE_PARITY_MATRIX.md](docs/MODULE_PARITY_MATRIX.md)** —
   canonical seeded module parity artifact for the current PyTorch-derived
   `module_db`-style state-tree and `state_dict` coverage slice.

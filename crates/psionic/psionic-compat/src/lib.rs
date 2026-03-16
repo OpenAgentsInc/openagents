@@ -124,6 +124,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
     let module = psionic_nn::builtin_module_parity_matrix_report()?;
     let optimizer = psionic_train::builtin_optimizer_parity_matrix_report()?;
+    let reproducibility = psionic_train::builtin_reproducibility_semantics_report();
     let compiler = psionic_compiler::builtin_compiler_hygiene_parity_matrix_report()?;
 
     Ok(SemanticsClaimReport::new(vec![
@@ -180,6 +181,24 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("#3728"),
                 String::from("#3729"),
                 String::from("#3730"),
+            ],
+        ),
+        seeded_area(
+            "reproducibility_semantics",
+            "Current claim is bounded to framework-wide replay seed discipline, strict trainer and eval runtime contracts, stable local-device and distributed-rank generator derivation, and checkpoint-stable RNG restore across the current runtime and training replay substrate.",
+            vec![SemanticsEvidenceRef::new(
+                "reproducibility_semantics",
+                reproducibility.report_digest,
+            )],
+            vec![
+                String::from("broaden reproducibility coverage beyond the current seeded runtime and replay cases"),
+                String::from("connect mixed-precision and distributed data-feed semantics to the replayable RNG contract"),
+                String::from("extend checkpointed RNG restore deeper into later train-loop and export surfaces"),
+            ],
+            vec![
+                String::from("#3728"),
+                String::from("#3734"),
+                String::from("#3736"),
             ],
         ),
         seeded_area(
@@ -380,6 +399,7 @@ mod tests {
             "operator_semantics",
             "tensor_family_semantics",
             "advanced_dtype_semantics",
+            "reproducibility_semantics",
             "module_and_state_semantics",
             "optimizer_semantics",
             "compiler_hygiene_and_fake_tensor",

@@ -2599,6 +2599,13 @@ The new contract makes these reproducibility seams explicit:
 - reproducible eval posture with deterministic scheduler enforcement
 - typed replay-verification receipts and drift signals
 
+`PLIB-212` / `#3727` extends that foundation by publishing one
+machine-readable `ReproducibilitySemanticsReport` in `src/replay_truth.rs`.
+That report binds assignment, trainer, and eval seeds into runtime
+determinism contracts, proves stable local-device and distributed-rank
+generator derivation, proves checkpoint-stable RNG restore, and carries typed
+refusal for missing strict generators or invalid distributed-rank bounds.
+
 This is still not the claim that the full train system can be re-executed from
 one receipt without more runtime work. It is the claim that replay-compatible
 inputs, pins, and verification are now explicit enough to support "same

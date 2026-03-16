@@ -41,6 +41,7 @@ machine-readable evidence for:
 - operator parity
 - tensor-family capability and refusal coverage
 - advanced dtype promotion, cast, and backend-capability coverage
+- reproducibility seed, generator-derivation, and checkpoint-restore coverage
 - module and `state_dict` parity
 - optimizer step parity
 - fake-tensor and compiler-hygiene parity

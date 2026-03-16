@@ -301,6 +301,10 @@ Current shipped foundation:
 - `psionic-runtime` now owns a serializable determinism contract with explicit
   mode and deterministic-algorithm posture rather than treating seeded replay
   as one ad hoc sampler flag
+- `psionic-train` now projects assignment, trainer, and eval seeds into those
+  runtime determinism contracts and publishes one machine-readable
+  reproducibility report across runtime, local-device, distributed-rank, and
+  checkpoint-restore seams
 - replayable generator state can now be exported from `TokenSampler`,
   checkpointed alongside runtime state, restored later, and resumed without
   silently resetting the RNG stream
@@ -311,6 +315,7 @@ Canonical hooks:
 
 - `cargo test -p psionic-train --lib replay_truth::tests::replay_truth_receipt_is_machine_legible_and_verifiable -- --exact`
 - `cargo test -p psionic-train --lib replay_truth::tests::replay_truth_verification_detects_seed_tool_and_order_drift -- --exact`
+- `cargo test -p psionic-train --lib replay_truth::tests::reproducibility_semantics_report_tracks_seeded_runtime_and_replay_cases -- --exact`
 - `cargo test -p psionic-compiler --test process_replay matmul_add_replay_fixture_matches -- --exact`
 - `cargo test -p psionic-runtime --lib tests::strict_determinism_contract_refuses_missing_generator_state -- --exact`
 - `cargo test -p psionic-runtime --lib tests::runtime_determinism_contract_derives_stable_local_and_distributed_generators -- --exact`
