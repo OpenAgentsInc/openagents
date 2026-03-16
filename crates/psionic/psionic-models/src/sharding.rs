@@ -137,18 +137,23 @@ mod tests {
 
     use psionic_runtime::{LocalModelWeightClass, LocalWeightShardingStrategy};
 
-    use super::{DecoderFamilyShardingContractError, gguf_decoder_family_tensor_parallel_contract};
+    use super::{gguf_decoder_family_tensor_parallel_contract, DecoderFamilyShardingContractError};
     use crate::GgufDecoderFamily;
 
     #[test]
-    fn gguf_decoder_family_tensor_parallel_contract_is_declarative_and_inspectable()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn gguf_decoder_family_tensor_parallel_contract_is_declarative_and_inspectable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let contract =
             gguf_decoder_family_tensor_parallel_contract(GgufDecoderFamily::Llama, "cuda", 2)?;
 
         assert_eq!(contract.model_family, "gguf_decoder:llama");
         assert_eq!(contract.min_device_count, 2);
         assert_eq!(contract.max_device_count, Some(2));
+        assert_eq!(
+            contract.policy.policy_id,
+            "local_tensor_sharded_metrics_only_v1"
+        );
+        assert!(!contract.policy.policy_digest.is_empty());
         assert_eq!(
             contract.weight_rules[0].class,
             LocalModelWeightClass::TokenEmbedding
@@ -157,20 +162,16 @@ mod tests {
             contract.weight_rules[0].strategy,
             LocalWeightShardingStrategy::TensorAxis { axis: 1 }
         );
-        assert!(
-            contract
-                .weight_rules
-                .iter()
-                .any(|rule| rule.class == LocalModelWeightClass::AttentionQuery
-                    && rule.strategy == LocalWeightShardingStrategy::TensorAxis { axis: 0 })
-        );
-        assert!(
-            contract
-                .weight_rules
-                .iter()
-                .any(|rule| rule.class == LocalModelWeightClass::KvCache
-                    && rule.strategy == LocalWeightShardingStrategy::Replicated)
-        );
+        assert!(contract
+            .weight_rules
+            .iter()
+            .any(|rule| rule.class == LocalModelWeightClass::AttentionQuery
+                && rule.strategy == LocalWeightShardingStrategy::TensorAxis { axis: 0 }));
+        assert!(contract
+            .weight_rules
+            .iter()
+            .any(|rule| rule.class == LocalModelWeightClass::KvCache
+                && rule.strategy == LocalWeightShardingStrategy::Replicated));
         assert!(!contract.contract_digest.is_empty());
         Ok(())
     }

@@ -110,7 +110,7 @@ shadow refusal records for the same unsupported families.
 | Compiler lowering and realize path | `implemented_early` | compile lowering is deterministic, topology-sensitive, extension-aware, schema-backed, fake- or meta-executable, transform-safe enough for later rewrites/export, and replayable from named fixtures instead of being only an internal implementation detail | `psionic-ir` now publishes a built-in plus extensible operator registry with explicit built-in/custom schema registration, backend-kernel registration, dispatch resolution, transform-safety analysis, functionalization policies, dense plus non-dense meta-tensor family contracts, shape-only graph/plan execution, and capability-gated refusal behavior, while `psionic-compiler` now owns deterministic lowering plus explicit schedule formation, fusion-policy realization, alias-aware memory planning, plan-cache identity, compile-cache evidence, and fixture-backed replay above that IR surface | `psionic-ir` operator-registry, extensible-registry, transform-safety, non-dense meta-tensor, and meta-execution tests plus `psionic-compiler` compile-graph, compiler-artifact, plan-cache, and `process_replay` tests | Do not claim framework-core closure if lowering stays green only on one happy-path fixture while operator schemas, extension registration, dispatch resolution, transform barriers, non-dense meta contracts, fake execution, schedule/memory/cache identity, graph identity, or topology sensitivity drift |
 | Memory planning and cache behavior | `implemented_early` | model admission, compiler memory planning, allocator/cache budgets, KV/prefix cache state, and runtime resource reports stay explicit and bounded instead of being hidden behind backend heuristics | `psionic-compiler` now owns compile-time tensor lifetime intervals, alias-aware slot reuse, stable plan-cache identity, and cold-vs-warm compile-cache evidence, while `psionic-runtime` still owns model-admission planning, runtime resource reports, and prefix/KV cache contracts | `psionic-compiler` compiler-artifact and plan-cache tests plus `psionic-runtime` admission, budget, KV cache, and prefix-cache tests | Do not collapse compile-time or runtime cache truth into product throughput headlines; framework-core acceptance cares about explicit policy and refusal behavior too |
 | Process replay and program identity | `implemented_early` | reviewers can tell whether a compiled or trained path is the same program, the same replay contract, and the same tool/environment posture | `psionic-compiler` fixture replay and `psionic-train` replay-truth receipts already exist | `psionic-compiler` replay fixtures plus `psionic-train` replay-truth tests | Do not treat request receipts or serving-route provenance alone as framework replay closure |
-| Same-type local multi-device behavior | `implemented_early` | one same-host same-backend runner can realize a plan across multiple devices with explicit topology, sharding policy, and refusal reasons | `psionic-runtime` now owns a same-type local multi-device runner plus explicit refusal taxonomy, and `psionic-models` now publishes one representative decoder-family tensor-parallel sharding contract | representative decoder-family sharding-contract test, local multi-device runner execution/refusal tests, plus topology-sensitive compiler digest test | Keep local serving acceptance honest: the lower-level runtime runner is real, but `TOPOLOGY_ACCEPTANCE_MATRIX.md` still keeps local tensor/pipeline/layer/replica serving unsupported until a served lane adopts it |
+| Same-type local multi-device behavior | `implemented_early` | one same-host same-backend runner can realize a plan across multiple devices with explicit topology, sharding policy, and refusal reasons | `psionic-runtime` now owns a same-type local multi-device runner, explicit `LocalShardingPolicy` contracts, and one stable `LocalMultiDeviceRefusalReason` taxonomy across contract validation plus runner-level topology gaps, while `psionic-models` publishes one representative decoder-family tensor-parallel sharding contract with runtime-owned policy identity | representative decoder-family sharding-contract test, policy serialization and refusal tests, local multi-device runner execution/refusal tests, plus topology-sensitive compiler digest test | Keep local serving acceptance honest: the lower-level runtime runner is real, but `TOPOLOGY_ACCEPTANCE_MATRIX.md` still keeps local tensor/pipeline/layer/replica serving unsupported until a served lane adopts it |
 
 ## Category Mapping
 
@@ -314,21 +314,30 @@ Canonical hooks:
 
 ### 7. Same-type local multi-device behavior
 
-This category is intentionally not green yet.
+This category is now `implemented_early`.
 
 Current shipped foundation:
 
 - multi-device topology identity and inventory qualifiers
 - topology-sensitive compile digests
-- one same-host same-backend local plan runner with explicit runtime refusal reasons
-- one representative GGUF decoder-family tensor-parallel sharding contract with inspectable weight-class rules
+- one same-host same-backend local plan runner with explicit local
+  multi-device refusal taxonomy
+- explicit local sharding policies with stable digest, version, partition-mode,
+  collective-boundary, and evidence-only outcome posture
+- one representative GGUF decoder-family tensor-parallel sharding contract with
+  inspectable weight-class rules plus a runtime-owned policy digest
 - explicit local-serving unsupported-scope language in the serving-topology matrix so the framework runner is not mistaken for a served product lane
 
 Canonical hooks:
 
 - `cargo test -p psionic-models --lib sharding::tests::gguf_decoder_family_tensor_parallel_contract_is_declarative_and_inspectable -- --exact`
+- `cargo test -p psionic-runtime --lib local_multi_device::tests::local_sharding_policy_defaults_are_serializable_and_metrics_only -- --exact`
+- `cargo test -p psionic-runtime --lib local_multi_device::tests::local_sharding_policy_refuses_invalid_layout_execution_pair -- --exact`
 - `cargo test -p psionic-runtime --lib local_multi_device::tests::local_multi_device_plan_runner_executes_tensor_sharded_workload_without_cluster_truth -- --exact`
 - `cargo test -p psionic-runtime --lib local_multi_device::tests::local_sharding_contract_refuses_backend_memory_and_device_count_mismatches -- --exact`
+- `cargo test -p psionic-runtime --lib local_multi_device::tests::local_sharding_contract_policy_refuses_partition_kind_mismatch -- --exact`
+- `cargo test -p psionic-runtime --lib local_multi_device::tests::local_multi_device_plan_runner_refuses_missing_runtime_for_selected_device -- --exact`
+- `cargo test -p psionic-runtime --lib local_multi_device::tests::local_multi_device_execution_refusal_taxonomy_surfaces_missing_topology_and_pipeline_gap -- --exact`
 - `cargo test -p psionic-compiler --lib tests::compile_graph_with_topology_changes_digest_when_sharding_changes -- --exact`
 
 ## Current Closure Summary
