@@ -31,6 +31,10 @@ pub struct AppleAdapterRuntimeCompatibilityProfile {
     pub use_case: String,
     /// Stable runtime guardrail label.
     pub guardrails: String,
+    /// Optional explicit Apple runtime compatibility anchor when the bridge or
+    /// experiment program can provide a real base-model signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explicit_base_model_signature: Option<String>,
     /// Optional locale carried into prompt shaping.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
@@ -57,11 +61,19 @@ impl AppleAdapterRuntimeCompatibilityProfile {
             model_id: model_id.into(),
             use_case: use_case.into(),
             guardrails: guardrails.into(),
+            explicit_base_model_signature: None,
             locale: None,
             default_instruction: None,
             bridge_version: None,
             bridge_platform: None,
         }
+    }
+
+    /// Attaches an explicit base-model compatibility anchor.
+    #[must_use]
+    pub fn with_base_model_signature(mut self, base_model_signature: impl Into<String>) -> Self {
+        self.explicit_base_model_signature = Some(base_model_signature.into());
+        self
     }
 
     /// Attaches a locale tag used by the repo-owned prompt shaper.
@@ -95,6 +107,14 @@ impl AppleAdapterRuntimeCompatibilityProfile {
     /// Returns the stable base-model compatibility anchor for this runtime configuration.
     #[must_use]
     pub fn base_model_signature(&self) -> String {
+        if let Some(signature) = self
+            .explicit_base_model_signature
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return signature.to_string();
+        }
         truncated_hex_digest(
             b"psionic_apple_adapter_base_model_signature|",
             &[
@@ -1860,14 +1880,16 @@ mod tests {
     fn apple_adapter_packing_refuses_tokenizer_and_prompt_shaping_drift() {
         let dataset = import_fixture("guided");
         let policy = DatasetPackingPolicy::new(DatasetPackingMode::BatchByTokenBudget, 128, 128, 4);
-        let drifted_tokenizer = vec![AppleAdapterSampleTokenCapture::new(
-            dataset.samples[0].sample_id.clone(),
-            "other-tokenizer",
-            dataset.metadata.prompt_shaping_digest.clone(),
-            30,
-            14,
-        )
-        .with_response_schema_tokens(22)];
+        let drifted_tokenizer = vec![
+            AppleAdapterSampleTokenCapture::new(
+                dataset.samples[0].sample_id.clone(),
+                "other-tokenizer",
+                dataset.metadata.prompt_shaping_digest.clone(),
+                30,
+                14,
+            )
+            .with_response_schema_tokens(22),
+        ];
         let tokenizer_err = dataset
             .plan_packing(drifted_tokenizer.as_slice(), &policy)
             .expect_err("tokenizer drift should fail");
@@ -1876,14 +1898,16 @@ mod tests {
             AppleAdapterDatasetError::TokenizerDrift { .. }
         ));
 
-        let drifted_prompt = vec![AppleAdapterSampleTokenCapture::new(
-            dataset.samples[0].sample_id.clone(),
-            dataset.metadata.tokenizer.tokenizer_digest.clone(),
-            "other-prompt-shaping",
-            30,
-            14,
-        )
-        .with_response_schema_tokens(22)];
+        let drifted_prompt = vec![
+            AppleAdapterSampleTokenCapture::new(
+                dataset.samples[0].sample_id.clone(),
+                dataset.metadata.tokenizer.tokenizer_digest.clone(),
+                "other-prompt-shaping",
+                30,
+                14,
+            )
+            .with_response_schema_tokens(22),
+        ];
         let prompt_err = dataset
             .plan_packing(drifted_prompt.as_slice(), &policy)
             .expect_err("prompt-shaping drift should fail");

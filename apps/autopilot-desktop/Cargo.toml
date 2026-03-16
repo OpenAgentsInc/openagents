@@ -39,6 +39,10 @@ path = "src/bin/autopilot_compute_mcp.rs"
 name = "autopilot-throughput-bench"
 path = "src/bin/autopilot_throughput_bench.rs"
 
+[[bin]]
+name = "apple-architecture-explainer-reference-run"
+path = "src/bin/apple_architecture_explainer_reference_run.rs"
+
 [lints]
 workspace = true
 
@@ -50,6 +54,7 @@ codex-client = { path = "../../crates/codex-client" }
 psionic-data = { path = "../../crates/psionic/psionic-data" }
 psionic-environments = { path = "../../crates/psionic/psionic-environments" }
 psionic-eval = { path = "../../crates/psionic/psionic-eval" }
+psionic-adapters = { path = "../../crates/psionic/psionic-adapters" }
 psionic-apple-fm = { path = "../../crates/psionic/psionic-apple-fm" }
 psionic-research = { path = "../../crates/psionic/psionic-research" }
 psionic-runtime = { path = "../../crates/psionic/psionic-runtime" }

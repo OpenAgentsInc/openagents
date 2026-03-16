@@ -143,13 +143,19 @@ execution receipts into operator and settlement-facing truth:
 The retained Apple adapter path now has a concrete operator-to-authority flow
 in `apps/autopilot-desktop`:
 
-1. desktop control or `autopilotctl` launches a repo-native Apple adapter run
+1. desktop control or `autopilotctl` launches an Apple adapter run under
+   repo-owned operator orchestration
 2. the run stages one `.fmadapter` package locally
 3. held-out eval plus runtime-smoke checks execute before authority acceptance
 4. export is optional operator materialization, not canonical market truth
 5. acceptance registers the canonical environment, benchmark, validator,
    checkpoint-family, training-policy, eval-run, training-run, and
    accepted-outcome records
+
+For the current live Apple-valid path, the operator lane now delegates the
+training/export step to the local Apple adapter toolkit wrapper in
+`psionic-train`. That is distinct from the older repo-native reference backend
+and is the truthful boundary for Apple runtime compatibility today.
 
 That means the repo now has a truthful boundary between:
 
