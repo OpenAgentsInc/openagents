@@ -43,6 +43,7 @@ machine-readable evidence for:
 - advanced dtype promotion, cast, and backend-capability coverage
 - reproducibility seed, generator-derivation, and checkpoint-restore coverage
 - autocast-style precision-policy coverage with numerics diagnostics
+- train-class gradient-scaling coverage with explicit overflow and underflow handling
 - module and `state_dict` parity
 - optimizer step parity
 - fake-tensor and compiler-hygiene parity
@@ -52,7 +53,7 @@ But those artifacts are still seed-sized and explicitly bounded.
 The report keeps broader future targets marked `pytorch_compatible_later`,
 including:
 
-- gradient scaling and broader mixed-precision runtime systems
+- broader mixed-precision runtime systems beyond the current seeded fp16 and bf16 train window
 - quantization and export-safe graph compatibility
 - dataset and distributed-training semantics
 - extension and plugin contracts

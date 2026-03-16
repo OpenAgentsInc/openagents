@@ -507,6 +507,7 @@ training subsystems.
 | `ModuleStateTree` | `psionic-nn` | digest-bound flattened parameter or buffer view that downstream train, checkpoint, and compatibility code can consume | `implemented` |
 | `ModuleStateLoadReport` | `psionic-nn` | explicit strict/non-strict load receipt with loaded, missing, unexpected, and digest-transition facts | `implemented` |
 | `OptimizerParityMatrixReport` | `psionic-train` | machine-readable seeded optimizer parity cases and refusal proofs for the current PyTorch-derived single-step optimizer oracle window | `implemented` |
+| `GradientScalingSemanticsReport` | `psionic-train` | machine-readable bounded train-class mixed-precision report for fp16 dynamic loss scaling, overflow/underflow handling, bf16 no-scaling posture, and typed refusal boundaries | `implemented` |
 | `ReproducibilitySemanticsReport` | `psionic-train` | machine-readable framework-wide replay seed, deterministic-mode, generator-derivation, and checkpoint-restore report across training replay and runtime determinism contracts | `implemented` |
 | `BufferStorageContract` | `psionic-runtime` | backend-visible storage identity and logical view posture for one realized buffer | `implemented_early` |
 | `RuntimeDeterminismContract` | `psionic-runtime` | runtime-owned RNG, generator-state, checkpoint-snapshot, and deterministic-algorithm contract for replayable execution | `implemented_early` |
