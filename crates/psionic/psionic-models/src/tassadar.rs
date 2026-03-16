@@ -104,6 +104,7 @@ impl TassadarExecutorCompatibility {
             supported_decode_modes: vec![
                 TassadarExecutorDecodeMode::ReferenceLinear,
                 TassadarExecutorDecodeMode::HullCache,
+                TassadarExecutorDecodeMode::SparseTopK,
             ],
             attention_mode: TassadarExecutorAttentionMode::ReferenceFixture,
             attention_geometry: TassadarAttentionGeometryContract::reference_fixture(),
@@ -833,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn tassadar_descriptor_rejects_sparse_top_k_decode_mode() {
+    fn tassadar_descriptor_accepts_sparse_top_k_decode_mode() {
         let fixture = TassadarExecutorFixture::new();
         let case = tassadar_validation_corpus()
             .into_iter()
@@ -846,20 +847,10 @@ mod tests {
             case.program,
         )
         .expect("artifact should assemble");
-        let error = fixture
+        fixture
             .descriptor()
             .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::SparseTopK)
-            .expect_err("sparse top-k decode mode should refuse");
-        assert_eq!(
-            error,
-            TassadarExecutorContractError::DecodeModeUnsupported {
-                requested: TassadarExecutorDecodeMode::SparseTopK,
-                supported: vec![
-                    TassadarExecutorDecodeMode::ReferenceLinear,
-                    TassadarExecutorDecodeMode::HullCache,
-                ],
-            }
-        );
+            .expect("sparse top-k decode mode should validate");
     }
 
     #[test]
@@ -872,6 +863,7 @@ mod tests {
         let capability = fixture.runtime_capability_report();
         assert!(capability.supports_executor_trace);
         assert!(capability.supports_hull_decode);
+        assert!(capability.supports_sparse_top_k_decode);
         assert_eq!(capability.validated_trace_abi_versions, vec![1]);
         let diagnostic = fixture
             .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::HullCache);
@@ -879,6 +871,12 @@ mod tests {
         assert_eq!(
             diagnostic.effective_decode_mode,
             Some(TassadarExecutorDecodeMode::HullCache)
+        );
+        let sparse_diagnostic = fixture
+            .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::SparseTopK);
+        assert_eq!(
+            sparse_diagnostic.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::SparseTopK)
         );
     }
 

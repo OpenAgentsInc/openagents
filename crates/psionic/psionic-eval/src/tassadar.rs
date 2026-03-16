@@ -12,9 +12,9 @@ use psionic_runtime::{
     TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
     TassadarExecutorSelectionReason, TassadarExecutorSelectionState, TassadarFixtureRunner,
     TassadarHullCacheRunner, TassadarProgramArtifact, TassadarProgramArtifactError,
-    TassadarTraceAbi, TassadarWasmProfile,
-    build_tassadar_execution_evidence_bundle, run_tassadar_exact_equivalence,
-    tassadar_article_class_corpus, tassadar_validation_corpus,
+    TassadarSparseTopKRunner,
+    TassadarTraceAbi, TassadarWasmProfile, build_tassadar_execution_evidence_bundle,
+    run_tassadar_exact_equivalence, tassadar_article_class_corpus, tassadar_validation_corpus,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -53,6 +53,8 @@ pub const TASSADAR_ARTICLE_CLASS_DATASET_REF: &str =
     "dataset://openagents/tassadar/article_class_corpus";
 /// Stable metric id for the Phase 5 hull-cache lane.
 pub const TASSADAR_HULL_CACHE_METRIC_ID: &str = "tassadar.hull_cache_steps_per_second";
+/// Stable metric id for the Phase 8 sparse-top-k lane.
+pub const TASSADAR_SPARSE_TOP_K_METRIC_ID: &str = "tassadar.sparse_top_k_steps_per_second";
 
 const TASSADAR_OUTPUT_EXACTNESS_METRIC_ID: &str = "tassadar.final_output_exactness_bps";
 const TASSADAR_STEP_EXACTNESS_METRIC_ID: &str = "tassadar.step_exactness_bps";
@@ -64,6 +66,10 @@ const TASSADAR_HULL_CACHE_SPEEDUP_METRIC_ID: &str =
     "tassadar.hull_cache_speedup_over_reference_linear";
 const TASSADAR_HULL_CACHE_CPU_GAP_METRIC_ID: &str =
     "tassadar.hull_cache_remaining_gap_vs_cpu_reference";
+const TASSADAR_SPARSE_TOP_K_SPEEDUP_METRIC_ID: &str =
+    "tassadar.sparse_top_k_speedup_over_reference_linear";
+const TASSADAR_SPARSE_TOP_K_CPU_GAP_METRIC_ID: &str =
+    "tassadar.sparse_top_k_remaining_gap_vs_cpu_reference";
 const TASSADAR_TRACE_STEP_COUNT_METRIC_ID: &str = "tassadar.trace_step_count";
 
 /// One packaged Tassadar Phase 3 suite.
@@ -107,11 +113,11 @@ pub struct TassadarBenchmarkCaseReport {
     pub selection_reason: Option<TassadarExecutorSelectionReason>,
     /// Whether execution used an explicit decode fallback.
     pub used_decode_fallback: bool,
-    /// Whether trace digests matched across CPU, linear, and hull-cache paths.
+    /// Whether trace digests matched across CPU, linear, hull-cache, and sparse-top-k paths.
     pub trace_digest_equal: bool,
-    /// Whether outputs matched across CPU, linear, and hull-cache paths.
+    /// Whether outputs matched across CPU, linear, hull-cache, and sparse-top-k paths.
     pub outputs_equal: bool,
-    /// Whether halt reasons matched across CPU, linear, and hull-cache paths.
+    /// Whether halt reasons matched across CPU, linear, hull-cache, and sparse-top-k paths.
     pub halt_equal: bool,
     /// Observed trace-step count.
     pub trace_steps: u64,
@@ -125,12 +131,27 @@ pub struct TassadarBenchmarkCaseReport {
     pub hull_cache_speedup_over_reference_linear: f64,
     /// Remaining CPU-reference gap ratio, computed as `cpu / hull`.
     pub hull_cache_remaining_gap_vs_cpu_reference: f64,
+    /// Direct/fallback/refused state emitted for the sparse-top-k path.
+    pub sparse_top_k_selection_state: TassadarExecutorSelectionState,
+    /// Stable reason for sparse-top-k fallback or refusal when one existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse_top_k_selection_reason: Option<TassadarExecutorSelectionReason>,
+    /// Whether sparse-top-k execution used an explicit decode fallback.
+    pub sparse_top_k_used_decode_fallback: bool,
+    /// Sparse-top-k executor throughput.
+    pub sparse_top_k_steps_per_second: f64,
+    /// Speedup ratio of sparse-top-k over reference-linear execution.
+    pub sparse_top_k_speedup_over_reference_linear: f64,
+    /// Remaining CPU-reference gap ratio, computed as `cpu / sparse_top_k`.
+    pub sparse_top_k_remaining_gap_vs_cpu_reference: f64,
     /// Runner-independent CPU behavior digest.
     pub cpu_behavior_digest: String,
     /// Runner-independent reference-linear behavior digest.
     pub reference_linear_behavior_digest: String,
     /// Runner-independent hull-cache behavior digest.
     pub hull_cache_behavior_digest: String,
+    /// Runner-independent sparse-top-k behavior digest.
+    pub sparse_top_k_behavior_digest: String,
 }
 
 /// Full report for one package-driven Tassadar benchmark run.
@@ -233,6 +254,7 @@ pub fn run_tassadar_reference_fixture_benchmark(
     let cpu_runner = TassadarCpuReferenceRunner::new();
     let reference_linear_runner = TassadarFixtureRunner::new();
     let hull_cache_runner = TassadarHullCacheRunner::new();
+    let sparse_top_k_runner = TassadarSparseTopKRunner::new();
 
     let mut eval_run = EvalRunState::open(
         EvalRunContract::new(
@@ -260,18 +282,21 @@ pub fn run_tassadar_reference_fixture_benchmark(
         descriptor
             .validate_program_artifact(artifact, TassadarExecutorDecodeMode::ReferenceLinear)?;
         descriptor.validate_program_artifact(artifact, TassadarExecutorDecodeMode::HullCache)?;
+        descriptor.validate_program_artifact(artifact, TassadarExecutorDecodeMode::SparseTopK)?;
         let selection = fixture
             .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::HullCache);
+        let sparse_top_k_selection = fixture
+            .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::SparseTopK);
         let effective_decode_mode = selection
             .effective_decode_mode
             .expect("validated benchmark corpus should not be refused");
-
         let equivalence_started = Instant::now();
         let equivalence_report = run_tassadar_exact_equivalence(&case.program)?;
         let equivalence_elapsed = equivalence_started.elapsed();
         let cpu_execution = &equivalence_report.cpu_reference;
         let reference_execution = &equivalence_report.reference_linear;
         let hull_cache_execution = &equivalence_report.hull_cache;
+        let sparse_top_k_execution = &equivalence_report.sparse_top_k;
         let trace_steps = reference_execution.steps.len() as u64;
         let cpu_steps_per_second =
             benchmark_runner_steps_per_second(trace_steps, || cpu_runner.execute(&case.program))?;
@@ -282,6 +307,10 @@ pub fn run_tassadar_reference_fixture_benchmark(
         let hull_cache_steps_per_second = benchmark_runner_steps_per_second(trace_steps, || {
             hull_cache_runner.execute(&case.program)
         })?;
+        let sparse_top_k_steps_per_second =
+            benchmark_runner_steps_per_second(trace_steps, || {
+                sparse_top_k_runner.execute(&case.program)
+            })?;
         let trace_digest_equal = equivalence_report.trace_digest_equal();
         let outputs_equal = equivalence_report.outputs_equal();
         let halt_equal = equivalence_report.halt_equal();
@@ -289,6 +318,10 @@ pub fn run_tassadar_reference_fixture_benchmark(
             hull_cache_steps_per_second / reference_linear_steps_per_second.max(1e-9);
         let hull_cache_remaining_gap_vs_cpu_reference =
             cpu_steps_per_second / hull_cache_steps_per_second.max(1e-9);
+        let sparse_top_k_speedup_over_reference_linear =
+            sparse_top_k_steps_per_second / reference_linear_steps_per_second.max(1e-9);
+        let sparse_top_k_remaining_gap_vs_cpu_reference =
+            cpu_steps_per_second / sparse_top_k_steps_per_second.max(1e-9);
 
         let final_output_exactness_bps =
             u32::from(reference_execution.outputs == case.expected_outputs && outputs_equal)
@@ -376,6 +409,18 @@ pub fn run_tassadar_reference_fixture_benchmark(
                     hull_cache_remaining_gap_vs_cpu_reference,
                 )
                 .with_unit("ratio"),
+                EvalMetric::new(TASSADAR_SPARSE_TOP_K_METRIC_ID, sparse_top_k_steps_per_second)
+                    .with_unit("steps_per_second"),
+                EvalMetric::new(
+                    TASSADAR_SPARSE_TOP_K_SPEEDUP_METRIC_ID,
+                    sparse_top_k_speedup_over_reference_linear,
+                )
+                .with_unit("ratio"),
+                EvalMetric::new(
+                    TASSADAR_SPARSE_TOP_K_CPU_GAP_METRIC_ID,
+                    sparse_top_k_remaining_gap_vs_cpu_reference,
+                )
+                .with_unit("ratio"),
                 EvalMetric::new(TASSADAR_TRACE_STEP_COUNT_METRIC_ID, trace_steps as f64)
                     .with_unit("steps"),
             ],
@@ -432,6 +477,10 @@ pub fn run_tassadar_reference_fixture_benchmark(
                     Value::String(hull_cache_execution.behavior_digest()),
                 ),
                 (
+                    String::from("sparse_top_k_behavior_digest"),
+                    Value::String(sparse_top_k_execution.behavior_digest()),
+                ),
+                (
                     String::from("trace_digest_equal"),
                     Value::Bool(trace_digest_equal),
                 ),
@@ -448,12 +497,32 @@ pub fn run_tassadar_reference_fixture_benchmark(
                         .unwrap_or(Value::Null),
                 ),
                 (
+                    String::from("sparse_top_k_speedup_over_reference_linear"),
+                    serde_json::to_value(sparse_top_k_speedup_over_reference_linear)
+                        .unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("sparse_top_k_remaining_gap_vs_cpu_reference"),
+                    serde_json::to_value(sparse_top_k_remaining_gap_vs_cpu_reference)
+                        .unwrap_or(Value::Null),
+                ),
+                (
                     String::from("selection_state"),
                     serde_json::to_value(selection.selection_state).unwrap_or(Value::Null),
                 ),
                 (
                     String::from("selection_reason"),
                     serde_json::to_value(selection.selection_reason).unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("sparse_top_k_selection_state"),
+                    serde_json::to_value(sparse_top_k_selection.selection_state)
+                        .unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("sparse_top_k_selection_reason"),
+                    serde_json::to_value(sparse_top_k_selection.selection_reason)
+                        .unwrap_or(Value::Null),
                 ),
             ]),
         };
@@ -480,9 +549,16 @@ pub fn run_tassadar_reference_fixture_benchmark(
             hull_cache_steps_per_second,
             hull_cache_speedup_over_reference_linear,
             hull_cache_remaining_gap_vs_cpu_reference,
+            sparse_top_k_selection_state: sparse_top_k_selection.selection_state,
+            sparse_top_k_selection_reason: sparse_top_k_selection.selection_reason,
+            sparse_top_k_used_decode_fallback: sparse_top_k_selection.is_fallback(),
+            sparse_top_k_steps_per_second,
+            sparse_top_k_speedup_over_reference_linear,
+            sparse_top_k_remaining_gap_vs_cpu_reference,
             cpu_behavior_digest: cpu_execution.behavior_digest(),
             reference_linear_behavior_digest: reference_execution.behavior_digest(),
             hull_cache_behavior_digest: hull_cache_execution.behavior_digest(),
+            sparse_top_k_behavior_digest: sparse_top_k_execution.behavior_digest(),
         });
     }
 
@@ -564,8 +640,11 @@ pub fn run_tassadar_article_class_benchmark(
         descriptor
             .validate_program_artifact(artifact, TassadarExecutorDecodeMode::ReferenceLinear)?;
         descriptor.validate_program_artifact(artifact, TassadarExecutorDecodeMode::HullCache)?;
+        descriptor.validate_program_artifact(artifact, TassadarExecutorDecodeMode::SparseTopK)?;
         let selection = fixture
             .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::HullCache);
+        let sparse_top_k_selection = fixture
+            .runtime_selection_diagnostic(&case.program, TassadarExecutorDecodeMode::SparseTopK);
         let effective_decode_mode = selection
             .effective_decode_mode
             .expect("validated article-class corpus should not be refused");
@@ -573,12 +652,14 @@ pub fn run_tassadar_article_class_benchmark(
         let cpu_runner = TassadarCpuReferenceRunner::for_program(&case.program)?;
         let reference_linear_runner = TassadarFixtureRunner::for_program(&case.program)?;
         let hull_cache_runner = TassadarHullCacheRunner::for_program(&case.program)?;
+        let sparse_top_k_runner = TassadarSparseTopKRunner::for_program(&case.program)?;
         let equivalence_started = Instant::now();
         let equivalence_report = run_tassadar_exact_equivalence(&case.program)?;
         let equivalence_elapsed = equivalence_started.elapsed();
         let cpu_execution = &equivalence_report.cpu_reference;
         let reference_execution = &equivalence_report.reference_linear;
         let hull_cache_execution = &equivalence_report.hull_cache;
+        let sparse_top_k_execution = &equivalence_report.sparse_top_k;
         let trace_steps = reference_execution.steps.len() as u64;
         let cpu_steps_per_second =
             benchmark_runner_steps_per_second(trace_steps, || cpu_runner.execute(&case.program))?;
@@ -589,6 +670,10 @@ pub fn run_tassadar_article_class_benchmark(
         let hull_cache_steps_per_second = benchmark_runner_steps_per_second(trace_steps, || {
             hull_cache_runner.execute(&case.program)
         })?;
+        let sparse_top_k_steps_per_second =
+            benchmark_runner_steps_per_second(trace_steps, || {
+                sparse_top_k_runner.execute(&case.program)
+            })?;
         let trace_digest_equal = equivalence_report.trace_digest_equal();
         let outputs_equal = equivalence_report.outputs_equal();
         let halt_equal = equivalence_report.halt_equal();
@@ -596,6 +681,10 @@ pub fn run_tassadar_article_class_benchmark(
             hull_cache_steps_per_second / reference_linear_steps_per_second.max(1e-9);
         let hull_cache_remaining_gap_vs_cpu_reference =
             cpu_steps_per_second / hull_cache_steps_per_second.max(1e-9);
+        let sparse_top_k_speedup_over_reference_linear =
+            sparse_top_k_steps_per_second / reference_linear_steps_per_second.max(1e-9);
+        let sparse_top_k_remaining_gap_vs_cpu_reference =
+            cpu_steps_per_second / sparse_top_k_steps_per_second.max(1e-9);
 
         let final_output_exactness_bps =
             u32::from(reference_execution.outputs == case.expected_outputs && outputs_equal)
@@ -678,6 +767,18 @@ pub fn run_tassadar_article_class_benchmark(
                     hull_cache_remaining_gap_vs_cpu_reference,
                 )
                 .with_unit("ratio"),
+                EvalMetric::new(TASSADAR_SPARSE_TOP_K_METRIC_ID, sparse_top_k_steps_per_second)
+                    .with_unit("steps_per_second"),
+                EvalMetric::new(
+                    TASSADAR_SPARSE_TOP_K_SPEEDUP_METRIC_ID,
+                    sparse_top_k_speedup_over_reference_linear,
+                )
+                .with_unit("ratio"),
+                EvalMetric::new(
+                    TASSADAR_SPARSE_TOP_K_CPU_GAP_METRIC_ID,
+                    sparse_top_k_remaining_gap_vs_cpu_reference,
+                )
+                .with_unit("ratio"),
                 EvalMetric::new(
                     TASSADAR_TRACE_DIGEST_EQUAL_METRIC_ID,
                     f64::from(u32::from(trace_digest_equal) * 10_000),
@@ -741,6 +842,10 @@ pub fn run_tassadar_article_class_benchmark(
                     Value::String(hull_cache_execution.behavior_digest()),
                 ),
                 (
+                    String::from("sparse_top_k_behavior_digest"),
+                    Value::String(sparse_top_k_execution.behavior_digest()),
+                ),
+                (
                     String::from("trace_digest_equal"),
                     Value::Bool(trace_digest_equal),
                 ),
@@ -757,12 +862,32 @@ pub fn run_tassadar_article_class_benchmark(
                         .unwrap_or(Value::Null),
                 ),
                 (
+                    String::from("sparse_top_k_speedup_over_reference_linear"),
+                    serde_json::to_value(sparse_top_k_speedup_over_reference_linear)
+                        .unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("sparse_top_k_remaining_gap_vs_cpu_reference"),
+                    serde_json::to_value(sparse_top_k_remaining_gap_vs_cpu_reference)
+                        .unwrap_or(Value::Null),
+                ),
+                (
                     String::from("selection_state"),
                     serde_json::to_value(selection.selection_state).unwrap_or(Value::Null),
                 ),
                 (
                     String::from("selection_reason"),
                     serde_json::to_value(selection.selection_reason).unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("sparse_top_k_selection_state"),
+                    serde_json::to_value(sparse_top_k_selection.selection_state)
+                        .unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("sparse_top_k_selection_reason"),
+                    serde_json::to_value(sparse_top_k_selection.selection_reason)
+                        .unwrap_or(Value::Null),
                 ),
             ]),
         };
@@ -791,9 +916,17 @@ pub fn run_tassadar_article_class_benchmark(
             hull_cache_steps_per_second,
             hull_cache_speedup_over_reference_linear,
             hull_cache_remaining_gap_vs_cpu_reference,
+            sparse_top_k_selection_state: sparse_top_k_selection.selection_state,
+            sparse_top_k_selection_reason: sparse_top_k_selection.selection_reason,
+            sparse_top_k_used_decode_fallback: sparse_top_k_selection.selection_state
+                == TassadarExecutorSelectionState::Fallback,
+            sparse_top_k_steps_per_second,
+            sparse_top_k_speedup_over_reference_linear,
+            sparse_top_k_remaining_gap_vs_cpu_reference,
             cpu_behavior_digest: cpu_execution.behavior_digest(),
             reference_linear_behavior_digest: reference_execution.behavior_digest(),
             hull_cache_behavior_digest: hull_cache_execution.behavior_digest(),
+            sparse_top_k_behavior_digest: sparse_top_k_execution.behavior_digest(),
         });
     }
 
@@ -1022,6 +1155,10 @@ fn build_tassadar_benchmark_package(
         Value::String(String::from(TASSADAR_HULL_CACHE_METRIC_ID)),
     );
     package.metadata.insert(
+        String::from("tassadar.sparse_top_k_metric_id"),
+        Value::String(String::from(TASSADAR_SPARSE_TOP_K_METRIC_ID)),
+    );
+    package.metadata.insert(
         String::from("tassadar.corpus_digest"),
         Value::String(environment_bundle.program_binding.corpus_digest.clone()),
     );
@@ -1223,6 +1360,10 @@ fn build_tassadar_article_class_benchmark_package(
         Value::String(String::from(TASSADAR_HULL_CACHE_METRIC_ID)),
     );
     package.metadata.insert(
+        String::from("tassadar.sparse_top_k_metric_id"),
+        Value::String(String::from(TASSADAR_SPARSE_TOP_K_METRIC_ID)),
+    );
+    package.metadata.insert(
         String::from("tassadar.corpus_digest"),
         Value::String(environment_bundle.program_binding.corpus_digest.clone()),
     );
@@ -1363,6 +1504,14 @@ mod tests {
             Some(TASSADAR_HULL_CACHE_METRIC_ID)
         );
         assert_eq!(
+            suite
+                .benchmark_package
+                .metadata
+                .get("tassadar.sparse_top_k_metric_id")
+                .and_then(Value::as_str),
+            Some(TASSADAR_SPARSE_TOP_K_METRIC_ID)
+        );
+        assert_eq!(
             suite.environment_bundle.current_workload_targets,
             vec![
                 TassadarWorkloadTarget::ArithmeticMicroprogram,
@@ -1409,8 +1558,20 @@ mod tests {
             report
                 .case_reports
                 .iter()
+                .all(|case| case.sparse_top_k_steps_per_second > 0.0)
+        );
+        assert!(
+            report
+                .case_reports
+                .iter()
                 .all(|case| case.hull_cache_speedup_over_reference_linear > 1.0)
         );
+        assert!(report.case_reports.iter().all(|case| {
+            case.sparse_top_k_selection_state == TassadarExecutorSelectionState::Direct
+                && case.sparse_top_k_selection_reason.is_none()
+                && !case.sparse_top_k_used_decode_fallback
+                && case.sparse_top_k_speedup_over_reference_linear > 0.0
+        }));
         assert!(report.case_reports.iter().all(|case| {
             case.requested_decode_mode == TassadarExecutorDecodeMode::HullCache
                 && case.effective_decode_mode == TassadarExecutorDecodeMode::HullCache
@@ -1518,7 +1679,12 @@ mod tests {
                 && case.selection_reason.is_none()
                 && !case.used_decode_fallback
         }));
-        assert!(report.case_reports.iter().all(|case| case.trace_digest_equal));
+        assert!(
+            report
+                .case_reports
+                .iter()
+                .all(|case| case.trace_digest_equal)
+        );
         assert!(report.case_reports.iter().all(|case| case.outputs_equal));
         assert!(report.case_reports.iter().all(|case| case.halt_equal));
         assert!(
@@ -1539,6 +1705,17 @@ mod tests {
                 .iter()
                 .all(|case| case.hull_cache_steps_per_second > 0.0)
         );
+        assert!(
+            report
+                .case_reports
+                .iter()
+                .all(|case| case.sparse_top_k_steps_per_second > 0.0)
+        );
+        assert!(report.case_reports.iter().all(|case| {
+            case.sparse_top_k_selection_state == TassadarExecutorSelectionState::Direct
+                && case.sparse_top_k_selection_reason.is_none()
+                && !case.sparse_top_k_used_decode_fallback
+        }));
         Ok(())
     }
 }

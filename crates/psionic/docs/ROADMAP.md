@@ -515,6 +515,9 @@ Its declared scope is:
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
+- landed Phase 8B bar: validated `SparseTopK` decode mode with explicit direct
+  selection on the current subset, exact fallback on unsupported shapes, and
+  benchmark reporting against CPU, reference-linear, and hull-cache baselines
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -524,6 +527,7 @@ Its declared scope is:
   - `psionic-runtime::build_tassadar_execution_evidence_bundle`
   - `psionic-serve::LocalTassadarExecutorService`
   - `psionic-research::ExperimentFamily::ExecutorVariants`
+  - `psionic-runtime::TassadarSparseTopKRunner`
 - strategic value: inner exact-computation substrate for larger reasoning
   systems
 - non-goals: current MVP product scope, kernel authority, or replacement of
@@ -551,8 +555,10 @@ The current issue spine is:
   [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761)
 - Phase 8A executor architecture, ABI, and cache research families:
   [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762)
+- Phase 8B validated sparse-top-k executor decode path:
+  [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763)
 
-What Phases 1 through 8A now concretely provide:
+What Phases 1 through 8B now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -610,6 +616,12 @@ What Phases 1 through 8A now concretely provide:
   first-class experiment inputs and outputs
 - one machine-readable sweep record for reproducible same-contract executor
   candidate comparison
+- one validated `SparseTopK` executor decode mode with a real runtime path
+  rather than only fallback diagnostics
+- explicit sparse-top-k validation gates plus truthful fallback on unsupported
+  control-flow or program-size shapes
+- sparse-top-k throughput, speedup-over-reference-linear, and remaining
+  gap-vs-CPU reporting inside the same benchmark package family
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
