@@ -122,6 +122,9 @@ It already has real substrate for:
 - deterministic `state_dict` naming plus bounded public `save_weights` /
   `load_weights` behavior with strict/non-strict keyed load posture and
   explicit size-mismatch refusal in `psionic-nn`
+- a bounded reusable CPU-reference core layer surface in `psionic-nn`,
+  covering linear, embedding, norms, activations, dropout, conv, and pooling
+  families above the same module/state substrate
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity

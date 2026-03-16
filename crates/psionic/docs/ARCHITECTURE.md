@@ -564,6 +564,8 @@ training subsystems.
 | `ModuleStateDict` | `psionic-nn` | deterministic keyed `state_dict` and saved-weights view with stable path order and persistent-vs-all-buffer selection | `implemented` |
 | `ModuleStateTree` | `psionic-nn` | digest-bound flattened parameter or buffer view that downstream train, checkpoint, and compatibility code can consume | `implemented` |
 | `ModuleStateLoadReport` | `psionic-nn` | explicit strict/non-strict load receipt returned by bounded public `load_weights` behavior, with loaded, missing, unexpected, and digest-transition facts | `implemented` |
+| `NnTensor` | `psionic-nn` | bounded dense cpu-f32 layer input/output wrapper above `TensorSpec` plus `TensorData` | `implemented_early` |
+| `Linear` + `Embedding` + `LayerNorm` + `RmsNorm` + `Activation` + `Dropout` + `Conv1d` + `Conv2d` + `Pool1d` + `Pool2d` | `psionic-nn` | bounded public CPU-reference core layer surface built above the shared module/state substrate | `implemented_early` |
 | `OptimizerParityMatrixReport` | `psionic-train` | machine-readable seeded optimizer parity cases and refusal proofs for the current PyTorch-derived single-step optimizer oracle window | `implemented` |
 | `GradientScalingSemanticsReport` | `psionic-train` | machine-readable bounded train-class mixed-precision report for fp16 dynamic loss scaling, overflow/underflow handling, bf16 no-scaling posture, and typed refusal boundaries | `implemented` |
 | `ReproducibilitySemanticsReport` | `psionic-train` | machine-readable framework-wide replay seed, deterministic-mode, generator-derivation, and checkpoint-restore report across training replay and runtime determinism contracts | `implemented` |

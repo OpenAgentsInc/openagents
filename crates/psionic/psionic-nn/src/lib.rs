@@ -1,4 +1,7 @@
-//! Reusable module, parameter, buffer, and state-tree semantics for Psionic.
+//! Reusable module, parameter, buffer, state-tree, and bounded layer semantics
+//! for Psionic.
+
+mod layers;
 
 use std::collections::BTreeMap;
 
@@ -10,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub use layers::*;
+
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "module, parameter, buffer, and state-tree semantics";
+pub const CRATE_ROLE: &str = "module, parameter, buffer, state-tree, and bounded layer semantics";
 
 /// Error returned when a module tree or state entry violates Psionic-nn rules.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
