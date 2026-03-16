@@ -1043,7 +1043,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
     MlxAcceptanceMatrixReport::new(vec![
         MlxAcceptanceCategory {
             category_id: String::from("array-runtime-surface"),
-            matrix_status: MlxAcceptanceCategoryStatus::Partial,
+            matrix_status: MlxAcceptanceCategoryStatus::ImplementedEarly,
             epic_id: String::from("PMLX-E1"),
             issue_refs: vec![
                 String::from("PMLX-101 (#3834)"),
@@ -1057,10 +1057,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "A public lazy array type exists with explicit eval and async_eval posture, public device and stream handles, creation and view families, deterministic random and cast behavior, and safe host materialization boundaries.",
             ),
             current_repo_truth: String::from(
-                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, scalar and filled-array creation helpers, reshape/permute/transpose/slice/select/concat/broadcast_to view families, explicit seeded or best-effort random-uniform and random-normal creation, logical dtype casts, and arange/linspace/eye helpers, but host-materialization boundaries remain open.",
+                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, scalar and filled-array creation helpers, reshape/permute/transpose/slice/select/concat/broadcast_to view families, explicit seeded or best-effort random-uniform and random-normal creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, and deterministic tree flatten/map/unflatten utilities.",
             ),
             boundary_note: String::from(
-                "Do not claim MLX-class array closure from the first public facade plus random/cast coverage alone; the category stays open until PMLX-106 lands too.",
+                "Treat this as supported early array/runtime closure only; it does not imply transform, nn, export, or distributed MLX closure.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1206,12 +1206,18 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-array tests::public_lazy_array_random_cast_and_common_creation_families_stay_seeded -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_host_interop_and_item_access_stay_explicit -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_tree_utilities_preserve_structure_and_refuse_bad_unflatten -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "The upstream array-core family is still tracked as unsupported, but psionic-array now provides the first public lazy-array entrypoint plus standard creation, deterministic random, cast, and view families for later parity work.",
+                "The upstream array-core family is still tracked as unsupported, but psionic-array now provides the first public lazy-array entrypoint plus standard creation, deterministic random, cast, host-interop, item, and tree families for later parity work.",
             ),
             boundary_note: String::from(
-                "A first public array facade with random/cast coverage exists, but that is still not enough to call the upstream array-core family ported.",
+                "A first public array facade with host/item/tree coverage exists, but that is still not enough to call the upstream array-core family ported.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1239,12 +1245,15 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-array tests::public_lazy_array_random_cast_and_common_creation_families_stay_seeded -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_host_interop_and_item_access_stay_explicit -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "The numeric-op and creation families remain tracked but unsupported even though psionic-array now exposes graph-backed arithmetic plus common creation, deterministic random, and logical dtype-cast coverage.",
+                "The numeric-op and creation families remain tracked but unsupported even though psionic-array now exposes graph-backed arithmetic plus common creation, deterministic random, logical dtype-cast coverage, and explicit host or singleton export boundaries.",
             ),
             boundary_note: String::from(
-                "The first public numeric ops plus random/cast coverage are still not the same thing as a seeded upstream MLX numeric parity family.",
+                "The first public numeric ops plus host/item coverage are still not the same thing as a seeded upstream MLX numeric parity family.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1494,9 +1503,9 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("public_mlx_array_api"),
-            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, and arange/linspace/eye helpers, but host interop is still incomplete.",
+                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, and deterministic tree flatten/map/unflatten utilities.",
             ),
             evidence_refs: vec![
                 String::from("ArrayDevice"),
@@ -1504,14 +1513,15 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("ArrayContext"),
                 String::from("Array"),
                 String::from("EvaluatedArray"),
+                String::from("HostArrayData"),
+                String::from("ArrayScalar"),
+                String::from("Tree<Array>"),
                 String::from("PendingAsyncEval"),
-                String::from("MlxAcceptanceMatrixReport::array-runtime-surface = partial"),
+                String::from("MlxAcceptanceMatrixReport::array-runtime-surface = implemented_early"),
             ],
-            blocking_issue_refs: vec![
-                String::from("PMLX-106 (#3839)"),
-            ],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "Public random and cast coverage are still not the same thing as full supported MLX array closure.",
+                "This is a bounded supported early array surface; it does not imply MLX transform, nn, export, or distributed support.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -1995,7 +2005,7 @@ mod tests {
                 .find(|category| category.category_id == category_id)
                 .expect("missing MLX acceptance category");
             let expected_status = if category_id == "array-runtime-surface" {
-                MlxAcceptanceCategoryStatus::Partial
+                MlxAcceptanceCategoryStatus::ImplementedEarly
             } else {
                 MlxAcceptanceCategoryStatus::Planned
             };
@@ -2153,10 +2163,7 @@ mod tests {
             .iter()
             .find(|surface| surface.surface_id == "public_mlx_array_api")
             .expect("missing public array row");
-        assert_eq!(
-            array.matrix_status,
-            MlxCompatibilityMatrixStatus::Convertible
-        );
+        assert_eq!(array.matrix_status, MlxCompatibilityMatrixStatus::Supported);
 
         let filtered = report.filter_to_surfaces(&[
             String::from("governance_contracts"),
