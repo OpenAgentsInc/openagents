@@ -3,8 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use psionic_core::{
-    DType, Device, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorId,
-    TensorSpec,
+    DType, Device, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData,
+    TensorId, TensorSpec, ViewSemantics,
 };
 use psionic_ir::{
     BUILTIN_OPERATOR_SCHEMA_VERSION, ExecutionOp, ExecutionPlan, ExecutionStep,
@@ -60,6 +60,9 @@ pub enum CompilerHygieneParityError {
     /// One compiler operation failed.
     #[error(transparent)]
     Compile(#[from] CompileError),
+    /// One compile trace-family operation failed.
+    #[error(transparent)]
+    TraceFamily(#[from] CompileTraceFamilyError),
 }
 
 /// Outcome status for one compiler-hygiene parity case.
@@ -242,15 +245,33 @@ pub fn builtin_compiler_hygiene_parity_matrix_report()
             ],
             alias_aware_memory_signature_lines()?,
         ),
+        run_compiler_hygiene_supported_case(
+            "pytorch.symbolic_shape.shapeless_trace_family_cache_identity",
+            "symbolic_shape",
+            "shapeless_trace_family",
+            vec![
+                String::from("shape_mode=shapeless_trace_family"),
+                String::from("input_dims=input.t0.d0,input.t0.d1"),
+                String::from("output_dims=input.t0.d0"),
+                String::from("constraint=input.t0.d0=input.t1.d0"),
+            ],
+            shapeless_trace_family_signature_lines()?,
+        ),
         run_compiler_hygiene_refusal_case(
             "pytorch.symbolic_shape.environment_missing",
             "symbolic_shape",
             "symbolic_shape_guard_environment",
             symbolic_shape_environment_refusal(),
         ),
+        run_compiler_hygiene_refusal_case(
+            "pytorch.symbolic_shape.reshape_formula_missing",
+            "symbolic_shape",
+            "shapeless_trace_family_refusal",
+            shapeless_trace_family_reshape_refusal()?,
+        ),
     ];
     Ok(CompilerHygieneParityMatrixReport::new(
-        "pytorch_compiler_hygiene_seed_v0",
+        "pytorch_compiler_hygiene_seed_v1",
         cases,
     ))
 }
@@ -1368,6 +1389,260 @@ impl CompilerPlanCache {
     }
 }
 
+/// Explicit shape posture for one public compile transform.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileShapeMode {
+    /// Compile against the exact concrete graph and plan shapes only.
+    #[default]
+    ConcreteOnly,
+    /// Compile one concrete plan while also surfacing a bounded rank-and-constraint
+    /// trace-family identity that abstracts selected input extents.
+    ShapelessTraceFamily,
+}
+
+impl CompileShapeMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::ConcreteOnly => "concrete_only",
+            Self::ShapelessTraceFamily => "shapeless_trace_family",
+        }
+    }
+}
+
+impl std::fmt::Display for CompileShapeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+/// One tensor family inside a compile trace family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompileTraceTensorFamily {
+    /// Tensor carried by the family.
+    pub tensor: TensorId,
+    /// Logical dtype for the tensor family.
+    pub dtype: DType,
+    /// Stable device label.
+    pub device: String,
+    /// View posture surfaced by the current layout.
+    pub view_semantics: ViewSemantics,
+    /// Stable dim-family labels in axis order.
+    pub dim_families: Vec<String>,
+}
+
+impl CompileTraceTensorFamily {
+    fn stable_signature_line(&self, family_kind: &str) -> String {
+        format!(
+            "{family_kind}|{}|dtype={:?}|device={}|view={}|dims={}",
+            self.tensor,
+            self.dtype,
+            self.device,
+            view_semantics_label(self.view_semantics),
+            self.dim_families.join(","),
+        )
+    }
+}
+
+/// One step-level family record inside a compile trace family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompileTraceFamilyStep {
+    /// Stable step index inside the lowered plan.
+    pub step_index: usize,
+    /// Output tensor materialized by the step.
+    pub output: TensorId,
+    /// Stable op-family label plus bounded payload details.
+    pub op_family: String,
+    /// Input tensor ids consumed by the step.
+    pub inputs: Vec<TensorId>,
+    /// Output tensor family carried by the step.
+    pub output_family: CompileTraceTensorFamily,
+}
+
+/// Stable trace-family identity distinct from the concrete plan-cache identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompileTraceFamilyIdentity {
+    /// Compiler-side contract schema version.
+    pub compiler_schema_version: u16,
+    /// Built-in operator schema version from `psionic-ir`.
+    pub operator_schema_version: u16,
+    /// Shape posture used to derive the family.
+    pub shape_mode: CompileShapeMode,
+    /// Topology digest or `none` when absent.
+    pub topology_digest: String,
+    /// Schedule-formation posture carried by the family.
+    pub schedule_policy: ScheduleFormationPolicy,
+    /// Fusion posture carried by the family.
+    pub fusion_policy: FusionPolicy,
+    /// Memory-planning posture carried by the family.
+    pub memory_policy: MemoryPlanningPolicy,
+    /// Lowering passes that produced the underlying concrete plan.
+    pub lowering_passes: Vec<String>,
+    /// Step-level family records in plan order.
+    pub step_families: Vec<CompileTraceFamilyStep>,
+    /// Output tensor families in graph output order.
+    pub output_families: Vec<CompileTraceTensorFamily>,
+    /// Stable equality or fixed-size constraints that remain in force for the family.
+    pub constraints: Vec<String>,
+    /// Stable digest over the family contents.
+    pub trace_family_digest: String,
+}
+
+impl CompileTraceFamilyIdentity {
+    fn new(
+        shape_mode: CompileShapeMode,
+        topology_digest: impl Into<String>,
+        schedule_policy: ScheduleFormationPolicy,
+        fusion_policy: FusionPolicy,
+        memory_policy: MemoryPlanningPolicy,
+        lowering_passes: Vec<String>,
+        step_families: Vec<CompileTraceFamilyStep>,
+        output_families: Vec<CompileTraceTensorFamily>,
+        constraints: Vec<String>,
+    ) -> Self {
+        let topology_digest = topology_digest.into();
+        let trace_family_digest = digest_lines(stable_compile_trace_family_lines(
+            shape_mode,
+            topology_digest.as_str(),
+            schedule_policy,
+            fusion_policy,
+            memory_policy,
+            lowering_passes.as_slice(),
+            step_families.as_slice(),
+            output_families.as_slice(),
+            constraints.as_slice(),
+        ));
+        Self {
+            compiler_schema_version: COMPILER_CONTRACT_SCHEMA_VERSION,
+            operator_schema_version: BUILTIN_OPERATOR_SCHEMA_VERSION,
+            shape_mode,
+            topology_digest,
+            schedule_policy,
+            fusion_policy,
+            memory_policy,
+            lowering_passes,
+            step_families,
+            output_families,
+            constraints,
+            trace_family_digest,
+        }
+    }
+
+    /// Returns the stable trace-family digest.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        self.trace_family_digest.clone()
+    }
+
+    /// Returns the canonical line-oriented trace-family signature.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("compiler_schema_version|{}", self.compiler_schema_version),
+            format!("operator_schema_version|{}", self.operator_schema_version),
+            format!("shape_mode|{}", self.shape_mode.label()),
+            format!("topology_digest|{}", self.topology_digest),
+            format!("schedule_policy|{}", self.schedule_policy.label()),
+            format!(
+                "fusion_policy|{}|max_group_size={}",
+                self.fusion_policy.mode.label(),
+                self.fusion_policy.max_group_size
+            ),
+            format!("memory_policy|{}", self.memory_policy.label()),
+        ];
+        lines.extend(
+            self.lowering_passes
+                .iter()
+                .enumerate()
+                .map(|(index, pass)| format!("lowering_pass|{index}|{pass}")),
+        );
+        for step in &self.step_families {
+            lines.push(format!(
+                "step_family|{}|{}|{}|inputs={}",
+                step.step_index,
+                step.output,
+                step.op_family,
+                join_tensor_ids(&step.inputs),
+            ));
+            lines.push(
+                step.output_family
+                    .stable_signature_line("step_output_family"),
+            );
+        }
+        for family in &self.output_families {
+            lines.push(family.stable_signature_line("graph_output_family"));
+        }
+        lines.extend(
+            self.constraints
+                .iter()
+                .map(|constraint| format!("constraint|{constraint}")),
+        );
+        lines.push(format!("trace_family_digest|{}", self.trace_family_digest));
+        lines
+    }
+}
+
+/// Typed failure returned while building one compile trace family.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum CompileTraceFamilyError {
+    /// One plan input or dependency was missing while the family was being derived.
+    #[error("compile trace-family identity is missing tensor family state for {tensor}")]
+    MissingTensorFamily {
+        /// Tensor whose family binding was missing.
+        tensor: TensorId,
+    },
+    /// The current bounded shapeless family does not support one op family.
+    #[error("compile trace-family mode `{shape_mode}` does not yet support op `{op}`: {detail}")]
+    UnsupportedShapelessOp {
+        /// Shape mode that emitted the refusal.
+        shape_mode: CompileShapeMode,
+        /// Unsupported op label.
+        op: String,
+        /// Plain-language refusal detail.
+        detail: String,
+    },
+    /// One bounded symbolic equality or fixed-size constraint became inconsistent.
+    #[error(
+        "compile trace-family mode `{shape_mode}` found inconsistent symbolic constraints while processing `{op}`: {detail}"
+    )]
+    InconsistentConstraint {
+        /// Shape mode that emitted the refusal.
+        shape_mode: CompileShapeMode,
+        /// Op label under analysis.
+        op: String,
+        /// Plain-language refusal detail.
+        detail: String,
+    },
+}
+
+impl CompileTraceFamilyError {
+    /// Returns the canonical refusal when the trace-family failure belongs to one
+    /// explicit unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> PsionicRefusal {
+        match self {
+            Self::MissingTensorFamily { tensor } => PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedOp,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )
+            .with_subject(format!("trace_family:{tensor}")),
+            Self::UnsupportedShapelessOp { op, .. } => PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedLayout,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )
+            .with_subject(format!("shapeless_trace_family:{op}")),
+            Self::InconsistentConstraint { op, .. } => PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedLayout,
+                PsionicRefusalScope::Graph,
+                self.to_string(),
+            )
+            .with_subject(format!("shapeless_trace_family:{op}")),
+        }
+    }
+}
+
 /// Explicit purity declaration for one public compile transform.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1417,6 +1692,8 @@ pub enum CompileTransformTraceMode {
     Disabled,
     /// Emit only cache-identity lines for the compiled artifacts.
     CacheIdentity,
+    /// Emit only trace-family identity lines for the compiled artifacts.
+    TraceFamilyIdentity,
     /// Emit the full aggregate compiler-artifact signature lines.
     FullArtifacts,
 }
@@ -1456,6 +1733,8 @@ pub struct CompileTransformConfig {
     pub trace_mode: CompileTransformTraceMode,
     /// Debug capture posture for the compiled execution plan.
     pub debug_mode: CompileTransformDebugMode,
+    /// Explicit concrete-only versus bounded shapeless-trace-family posture.
+    pub shape_mode: CompileShapeMode,
     /// Optional explicit topology carried into compiler identity.
     pub topology: Option<ExecutionTopologyPlan>,
     /// Compiler contract for schedule, fusion, and memory planning.
@@ -1470,6 +1749,7 @@ impl Default for CompileTransformConfig {
             cache_control: CompileTransformCacheControl::UsePlanCache,
             trace_mode: CompileTransformTraceMode::Disabled,
             debug_mode: CompileTransformDebugMode::Disabled,
+            shape_mode: CompileShapeMode::ConcreteOnly,
             topology: None,
             compiler_contract: CompilerContract::default(),
         }
@@ -1533,6 +1813,9 @@ pub struct CompileTransformResult {
     /// Stable cache key used by the compiled path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_key: Option<String>,
+    /// Stable trace-family cache key used by the bounded current shape posture.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_family_cache_key: Option<String>,
     /// Whether the compiled path reused a warm cache entry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_hit: Option<bool>,
@@ -1541,6 +1824,9 @@ pub struct CompileTransformResult {
     pub compile_path: Option<CompilePathEvidence>,
     /// Trace payload for the configured trace posture.
     pub trace: CompileTransformTrace,
+    /// Stable trace-family identity for the compiled path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_family_identity: Option<CompileTraceFamilyIdentity>,
     /// Stable debug rendering for the compiled execution plan when requested.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_debug: Option<String>,
@@ -1552,6 +1838,21 @@ pub enum CompileTransformError {
     /// One lower compiler operation failed.
     #[error(transparent)]
     Compile(#[from] CompileError),
+    /// One trace-family derivation failed.
+    #[error(transparent)]
+    TraceFamily(#[from] CompileTraceFamilyError),
+}
+
+impl CompileTransformError {
+    /// Returns the canonical refusal when the transform failure belongs to one
+    /// explicit unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::Compile(_) => None,
+            Self::TraceFamily(error) => Some(error.refusal()),
+        }
+    }
 }
 
 /// First-class public compile transform above the compiler pipeline.
@@ -1608,9 +1909,11 @@ impl CompileTransform {
                 bypass_reason: Some(reason),
                 artifacts: None,
                 cache_key: None,
+                trace_family_cache_key: None,
                 cache_hit: None,
                 compile_path: None,
                 trace: compile_transform_bypass_trace(&graph_digest, &self.config, reason),
+                trace_family_identity: None,
                 plan_debug: None,
             });
         }
@@ -1684,18 +1987,23 @@ impl CompileTransform {
                 (artifacts, cache_key, false, compile_path)
             }
         };
+        let trace_family_identity =
+            compile_trace_family_identity(&compiled.0, self.config.shape_mode)?;
 
         let plan_debug = matches!(self.config.debug_mode, CompileTransformDebugMode::PlanDebug)
             .then(|| compiled.0.compiled.plan.stable_debug());
-        let trace = compile_transform_trace(&compiled.0, self.config.trace_mode);
+        let trace =
+            compile_transform_trace(&compiled.0, &trace_family_identity, self.config.trace_mode);
         Ok(CompileTransformResult {
             disposition: CompileTransformDisposition::Compiled,
             bypass_reason: None,
             artifacts: Some(compiled.0),
             cache_key: Some(compiled.1),
+            trace_family_cache_key: Some(trace_family_identity.stable_digest()),
             cache_hit: Some(compiled.2),
             compile_path: Some(compiled.3),
             trace,
+            trace_family_identity: Some(trace_family_identity),
             plan_debug,
         })
     }
@@ -1722,8 +2030,534 @@ pub fn compile_transform(graph: &Graph, config: CompileTransformConfig) -> Compi
     CompileTransform::new(graph.clone(), config)
 }
 
+/// Derives one stable trace-family identity over already-compiled artifacts.
+pub fn compile_trace_family_identity(
+    artifacts: &CompilerArtifacts,
+    shape_mode: CompileShapeMode,
+) -> Result<CompileTraceFamilyIdentity, CompileTraceFamilyError> {
+    let mut constraints = TraceConstraintSet::default();
+    let mut families = BTreeMap::<TensorId, DerivedTraceTensorFamily>::new();
+    let mut derived_steps =
+        Vec::<DerivedTraceFamilyStep>::with_capacity(artifacts.compiled.plan.steps.len());
+
+    for (step_index, step) in artifacts.compiled.plan.steps.iter().enumerate() {
+        let family = derive_trace_tensor_family(step, shape_mode, &families, &mut constraints)?;
+        families.insert(step.output, family.clone());
+        derived_steps.push(DerivedTraceFamilyStep {
+            step_index,
+            output: step.output,
+            op_family: format_trace_family_op(&step.op),
+            inputs: step.inputs.clone(),
+            output_family: family,
+        });
+    }
+
+    let step_families = derived_steps
+        .into_iter()
+        .map(|step| CompileTraceFamilyStep {
+            step_index: step.step_index,
+            output: step.output,
+            op_family: step.op_family,
+            inputs: step.inputs,
+            output_family: step.output_family.to_public(step.output, &mut constraints),
+        })
+        .collect::<Vec<_>>();
+
+    let output_families = artifacts
+        .compiled
+        .plan
+        .outputs
+        .iter()
+        .map(|output| {
+            let family = families
+                .get(output)
+                .ok_or(CompileTraceFamilyError::MissingTensorFamily { tensor: *output })?;
+            Ok(family.to_public(*output, &mut constraints))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let topology_digest = artifacts.compiled.topology.as_ref().map_or_else(
+        || String::from("none"),
+        ExecutionTopologyPlan::stable_digest,
+    );
+    Ok(CompileTraceFamilyIdentity::new(
+        shape_mode,
+        topology_digest,
+        artifacts.schedule.policy,
+        artifacts.fusion.policy,
+        artifacts.memory_plan.policy,
+        artifacts.cache_identity.lowering_passes.clone(),
+        step_families,
+        output_families,
+        constraints.stable_lines(),
+    ))
+}
+
+#[derive(Clone, Debug)]
+struct DerivedTraceFamilyStep {
+    step_index: usize,
+    output: TensorId,
+    op_family: String,
+    inputs: Vec<TensorId>,
+    output_family: DerivedTraceTensorFamily,
+}
+
+#[derive(Clone, Debug)]
+struct DerivedTraceTensorFamily {
+    dtype: DType,
+    device: String,
+    view_semantics: ViewSemantics,
+    dims: Vec<TraceDimFamily>,
+}
+
+impl DerivedTraceTensorFamily {
+    fn from_spec_concrete(spec: &TensorSpec) -> Self {
+        Self {
+            dtype: spec.dtype(),
+            device: spec.device().to_string(),
+            view_semantics: spec.layout().view_semantics(),
+            dims: spec
+                .shape()
+                .dims()
+                .iter()
+                .copied()
+                .map(TraceDimFamily::Concrete)
+                .collect(),
+        }
+    }
+
+    fn from_input_spec_symbolic(spec: &TensorSpec, tensor: TensorId) -> Self {
+        Self {
+            dtype: spec.dtype(),
+            device: spec.device().to_string(),
+            view_semantics: spec.layout().view_semantics(),
+            dims: spec
+                .shape()
+                .dims()
+                .iter()
+                .enumerate()
+                .map(|(axis, _)| TraceDimFamily::Symbol(format!("input.{tensor}.d{axis}")))
+                .collect(),
+        }
+    }
+
+    fn to_public(
+        &self,
+        tensor: TensorId,
+        constraints: &mut TraceConstraintSet,
+    ) -> CompileTraceTensorFamily {
+        CompileTraceTensorFamily {
+            tensor,
+            dtype: self.dtype,
+            device: self.device.clone(),
+            view_semantics: self.view_semantics,
+            dim_families: self
+                .dims
+                .iter()
+                .map(|dim| constraints.canonical_dim_label(dim))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum TraceDimFamily {
+    Concrete(usize),
+    Symbol(String),
+}
+
+#[derive(Default)]
+struct TraceConstraintSet {
+    parent: BTreeMap<String, String>,
+    constant: BTreeMap<String, usize>,
+}
+
+impl TraceConstraintSet {
+    fn root(&mut self, symbol: &str) -> String {
+        let mut current = symbol.to_string();
+        let mut path = Vec::new();
+        loop {
+            let next = self
+                .parent
+                .entry(current.clone())
+                .or_insert_with(|| current.clone())
+                .clone();
+            if next == current {
+                break;
+            }
+            path.push(current);
+            current = next;
+        }
+        for node in path {
+            self.parent.insert(node, current.clone());
+        }
+        current
+    }
+
+    fn equate_symbols(
+        &mut self,
+        left: &str,
+        right: &str,
+        op: &ExecutionOp,
+    ) -> Result<String, CompileTraceFamilyError> {
+        let left_root = self.root(left);
+        let right_root = self.root(right);
+        if left_root == right_root {
+            return Ok(left_root);
+        }
+        let (root, child) = if left_root <= right_root {
+            (left_root, right_root)
+        } else {
+            (right_root, left_root)
+        };
+        self.parent.insert(child.clone(), root.clone());
+        let root_constant = self.constant.get(&root).copied();
+        let child_constant = self.constant.remove(&child);
+        if let (Some(expected), Some(actual)) = (root_constant, child_constant) {
+            if expected != actual {
+                return Err(CompileTraceFamilyError::InconsistentConstraint {
+                    shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                    op: op.label().to_string(),
+                    detail: format!(
+                        "symbolic dims `{root}` and `{child}` require incompatible fixed extents {expected} and {actual}"
+                    ),
+                });
+            }
+        } else if root_constant.is_none() {
+            if let Some(value) = child_constant {
+                self.constant.insert(root.clone(), value);
+            }
+        }
+        Ok(root)
+    }
+
+    fn constrain_symbol_to_constant(
+        &mut self,
+        symbol: &str,
+        value: usize,
+        op: &ExecutionOp,
+    ) -> Result<(), CompileTraceFamilyError> {
+        let root = self.root(symbol);
+        if let Some(existing) = self.constant.get(&root).copied() {
+            if existing != value {
+                return Err(CompileTraceFamilyError::InconsistentConstraint {
+                    shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                    op: op.label().to_string(),
+                    detail: format!(
+                        "symbolic dim `{root}` requires incompatible fixed extents {existing} and {value}"
+                    ),
+                });
+            }
+        } else {
+            self.constant.insert(root, value);
+        }
+        Ok(())
+    }
+
+    fn canonical_dim_label(&mut self, dim: &TraceDimFamily) -> String {
+        match dim {
+            TraceDimFamily::Concrete(value) => value.to_string(),
+            TraceDimFamily::Symbol(symbol) => self.root(symbol),
+        }
+    }
+
+    fn stable_lines(&mut self) -> Vec<String> {
+        let symbols = self.parent.keys().cloned().collect::<Vec<_>>();
+        let mut groups = BTreeMap::<String, Vec<String>>::new();
+        for symbol in symbols {
+            let root = self.root(symbol.as_str());
+            groups.entry(root).or_default().push(symbol);
+        }
+        let mut lines = Vec::new();
+        for (root, mut members) in groups {
+            members.sort();
+            members.dedup();
+            for member in members {
+                if member != root {
+                    lines.push(format!("{root}={member}"));
+                }
+            }
+            if let Some(value) = self.constant.get(&root).copied() {
+                lines.push(format!("{root}={value}"));
+            }
+        }
+        lines.sort();
+        lines
+    }
+}
+
+fn derive_trace_tensor_family(
+    step: &ExecutionStep,
+    shape_mode: CompileShapeMode,
+    families: &BTreeMap<TensorId, DerivedTraceTensorFamily>,
+    constraints: &mut TraceConstraintSet,
+) -> Result<DerivedTraceTensorFamily, CompileTraceFamilyError> {
+    if matches!(shape_mode, CompileShapeMode::ConcreteOnly) {
+        return Ok(DerivedTraceTensorFamily::from_spec_concrete(&step.spec));
+    }
+    match &step.op {
+        ExecutionOp::Input { .. } => Ok(DerivedTraceTensorFamily::from_input_spec_symbolic(
+            &step.spec,
+            step.output,
+        )),
+        ExecutionOp::Constant { .. } => {
+            Ok(DerivedTraceTensorFamily::from_spec_concrete(&step.spec))
+        }
+        ExecutionOp::Detach | ExecutionOp::Cast { .. } => {
+            let input = trace_input_family(step, families, 0)?;
+            Ok(DerivedTraceTensorFamily {
+                dtype: step.spec.dtype(),
+                device: step.spec.device().to_string(),
+                view_semantics: step.spec.layout().view_semantics(),
+                dims: input.dims.clone(),
+            })
+        }
+        ExecutionOp::Add | ExecutionOp::Mul => {
+            let left = trace_input_family(step, families, 0)?;
+            let right = trace_input_family(step, families, 1)?;
+            Ok(DerivedTraceTensorFamily {
+                dtype: step.spec.dtype(),
+                device: step.spec.device().to_string(),
+                view_semantics: step.spec.layout().view_semantics(),
+                dims: broadcast_trace_dims(&left.dims, &right.dims, &step.op, constraints)?,
+            })
+        }
+        ExecutionOp::Matmul => {
+            let left = trace_input_family(step, families, 0)?;
+            let right = trace_input_family(step, families, 1)?;
+            if left.dims.len() != 2 || right.dims.len() != 2 {
+                return Err(CompileTraceFamilyError::UnsupportedShapelessOp {
+                    shape_mode,
+                    op: step.op.label().to_string(),
+                    detail: String::from(
+                        "bounded shapeless trace-family compile currently only models rank-2 matmul",
+                    ),
+                });
+            }
+            enforce_same_dim(&left.dims[1], &right.dims[0], &step.op, constraints)?;
+            Ok(DerivedTraceTensorFamily {
+                dtype: step.spec.dtype(),
+                device: step.spec.device().to_string(),
+                view_semantics: step.spec.layout().view_semantics(),
+                dims: vec![left.dims[0].clone(), right.dims[1].clone()],
+            })
+        }
+        ExecutionOp::Permute { axes } => {
+            let input = trace_input_family(step, families, 0)?;
+            let dims = axes
+                .iter()
+                .map(|axis| {
+                    input.dims.get(*axis).cloned().ok_or_else(|| {
+                        CompileTraceFamilyError::UnsupportedShapelessOp {
+                            shape_mode,
+                            op: step.op.label().to_string(),
+                            detail: format!("permute axis `{axis}` is outside the input rank"),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(DerivedTraceTensorFamily {
+                dtype: step.spec.dtype(),
+                device: step.spec.device().to_string(),
+                view_semantics: step.spec.layout().view_semantics(),
+                dims,
+            })
+        }
+        ExecutionOp::ReduceSum { axis } => {
+            let input = trace_input_family(step, families, 0)?;
+            let dims = match axis {
+                Some(axis) => input
+                    .dims
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| index != axis)
+                    .map(|(_, dim)| dim.clone())
+                    .collect(),
+                None => Vec::new(),
+            };
+            Ok(DerivedTraceTensorFamily {
+                dtype: step.spec.dtype(),
+                device: step.spec.device().to_string(),
+                view_semantics: step.spec.layout().view_semantics(),
+                dims,
+            })
+        }
+        ExecutionOp::Reshape => Err(CompileTraceFamilyError::UnsupportedShapelessOp {
+            shape_mode,
+            op: step.op.label().to_string(),
+            detail: String::from(
+                "reshape targets still carry only concrete extents in the current graph model, so bounded shapeless trace-family compile cannot prove the output formula yet",
+            ),
+        }),
+        ExecutionOp::Slice { .. }
+        | ExecutionOp::Select { .. }
+        | ExecutionOp::Concat { .. }
+        | ExecutionOp::Expand { .. }
+        | ExecutionOp::BackendExtension { .. } => {
+            Err(CompileTraceFamilyError::UnsupportedShapelessOp {
+                shape_mode,
+                op: step.op.label().to_string(),
+                detail: String::from(
+                    "bounded shapeless trace-family compile currently refuses this shape-dependent or opaque op family",
+                ),
+            })
+        }
+    }
+}
+
+fn trace_input_family<'a>(
+    step: &ExecutionStep,
+    families: &'a BTreeMap<TensorId, DerivedTraceTensorFamily>,
+    input_index: usize,
+) -> Result<&'a DerivedTraceTensorFamily, CompileTraceFamilyError> {
+    let tensor = step.inputs.get(input_index).copied().ok_or(
+        CompileTraceFamilyError::MissingTensorFamily {
+            tensor: step.output,
+        },
+    )?;
+    families
+        .get(&tensor)
+        .ok_or(CompileTraceFamilyError::MissingTensorFamily { tensor })
+}
+
+fn broadcast_trace_dims(
+    left: &[TraceDimFamily],
+    right: &[TraceDimFamily],
+    op: &ExecutionOp,
+    constraints: &mut TraceConstraintSet,
+) -> Result<Vec<TraceDimFamily>, CompileTraceFamilyError> {
+    let rank = left.len().max(right.len());
+    let mut merged = Vec::with_capacity(rank);
+    for axis in 0..rank {
+        let left_dim = left
+            .get(left.len().wrapping_sub(rank - axis))
+            .cloned()
+            .unwrap_or(TraceDimFamily::Concrete(1));
+        let right_dim = right
+            .get(right.len().wrapping_sub(rank - axis))
+            .cloned()
+            .unwrap_or(TraceDimFamily::Concrete(1));
+        merged.push(merge_broadcast_dim(&left_dim, &right_dim, op, constraints)?);
+    }
+    Ok(merged)
+}
+
+fn merge_broadcast_dim(
+    left: &TraceDimFamily,
+    right: &TraceDimFamily,
+    op: &ExecutionOp,
+    constraints: &mut TraceConstraintSet,
+) -> Result<TraceDimFamily, CompileTraceFamilyError> {
+    match (left, right) {
+        (TraceDimFamily::Concrete(1), other) | (other, TraceDimFamily::Concrete(1)) => {
+            Ok(other.clone())
+        }
+        (TraceDimFamily::Concrete(left), TraceDimFamily::Concrete(right)) => {
+            if left == right {
+                Ok(TraceDimFamily::Concrete(*left))
+            } else {
+                Err(CompileTraceFamilyError::InconsistentConstraint {
+                    shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                    op: op.label().to_string(),
+                    detail: format!(
+                        "broadcast axis requires equal concrete extents but saw {left} and {right}"
+                    ),
+                })
+            }
+        }
+        (TraceDimFamily::Symbol(left), TraceDimFamily::Concrete(right))
+        | (TraceDimFamily::Concrete(right), TraceDimFamily::Symbol(left)) => {
+            constraints.constrain_symbol_to_constant(left, *right, op)?;
+            Ok(TraceDimFamily::Concrete(*right))
+        }
+        (TraceDimFamily::Symbol(left), TraceDimFamily::Symbol(right)) => {
+            let root = constraints.equate_symbols(left, right, op)?;
+            Ok(TraceDimFamily::Symbol(root))
+        }
+    }
+}
+
+fn enforce_same_dim(
+    left: &TraceDimFamily,
+    right: &TraceDimFamily,
+    op: &ExecutionOp,
+    constraints: &mut TraceConstraintSet,
+) -> Result<(), CompileTraceFamilyError> {
+    match (left, right) {
+        (TraceDimFamily::Concrete(left), TraceDimFamily::Concrete(right)) => {
+            if left == right {
+                Ok(())
+            } else {
+                Err(CompileTraceFamilyError::InconsistentConstraint {
+                    shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                    op: op.label().to_string(),
+                    detail: format!(
+                        "shape equality requires the same extent but saw {left} and {right}"
+                    ),
+                })
+            }
+        }
+        (TraceDimFamily::Symbol(left), TraceDimFamily::Concrete(right))
+        | (TraceDimFamily::Concrete(right), TraceDimFamily::Symbol(left)) => {
+            constraints.constrain_symbol_to_constant(left, *right, op)
+        }
+        (TraceDimFamily::Symbol(left), TraceDimFamily::Symbol(right)) => {
+            constraints.equate_symbols(left, right, op).map(|_| ())
+        }
+    }
+}
+
+fn format_trace_family_op(op: &ExecutionOp) -> String {
+    match op {
+        ExecutionOp::Input { name } => format!("input:name={name}"),
+        ExecutionOp::Constant { data } => {
+            format!("constant:payload={}", constant_payload_digest(data))
+        }
+        ExecutionOp::Detach => String::from("detach"),
+        ExecutionOp::Add => String::from("add"),
+        ExecutionOp::Mul => String::from("mul"),
+        ExecutionOp::Matmul => String::from("matmul"),
+        ExecutionOp::Reshape => String::from("reshape"),
+        ExecutionOp::Permute { axes } => format!("permute:axes={}", join_usize(axes)),
+        ExecutionOp::Slice { axis, start, end } => {
+            format!("slice:axis={axis}:start={start}:end={end}")
+        }
+        ExecutionOp::Select { axis, index } => {
+            format!("select:axis={axis}:index={index}")
+        }
+        ExecutionOp::Concat { axis } => format!("concat:axis={axis}"),
+        ExecutionOp::Expand { shape } => format!("expand:shape={shape}"),
+        ExecutionOp::Cast { dtype } => format!("cast:dtype={dtype:?}"),
+        ExecutionOp::ReduceSum { axis } => axis.map_or_else(
+            || String::from("reduce_sum:all"),
+            |axis| format!("reduce_sum:axis={axis}"),
+        ),
+        ExecutionOp::BackendExtension { op } => format!("backend_extension:{}", op.label()),
+    }
+}
+
+fn constant_payload_digest(data: &TensorData) -> String {
+    match data {
+        TensorData::F32(values) => {
+            let mut hasher = Sha256::new();
+            hasher.update(b"f32");
+            for value in values {
+                hasher.update(value.to_bits().to_le_bytes());
+            }
+            format!("{:x}", hasher.finalize())
+        }
+        TensorData::QuantizedBlocks(data) => digest_lines(vec![
+            String::from("quantized_blocks"),
+            format!("mode={:?}", data.mode),
+            format!("layout={:?}", data.layout),
+            format!("bytes_len={}", data.bytes.len()),
+        ]),
+    }
+}
+
 fn compile_transform_trace(
     artifacts: &CompilerArtifacts,
+    trace_family_identity: &CompileTraceFamilyIdentity,
     mode: CompileTransformTraceMode,
 ) -> CompileTransformTrace {
     let lines = match mode {
@@ -1731,7 +2565,17 @@ fn compile_transform_trace(
         CompileTransformTraceMode::CacheIdentity => {
             artifacts.cache_identity.stable_signature_lines()
         }
-        CompileTransformTraceMode::FullArtifacts => artifacts.stable_signature_lines(),
+        CompileTransformTraceMode::TraceFamilyIdentity => {
+            trace_family_identity.stable_signature_lines()
+        }
+        CompileTransformTraceMode::FullArtifacts => {
+            let mut lines = artifacts.stable_signature_lines();
+            lines.push(format!(
+                "trace_family_digest|{}",
+                trace_family_identity.stable_digest()
+            ));
+            lines
+        }
     };
     CompileTransformTrace {
         mode,
@@ -1754,6 +2598,7 @@ fn compile_transform_bypass_trace(
             format!("purity={}", config.purity.label()),
             format!("cache_control={}", config.cache_control.label()),
             format!("debug_mode={}", config.debug_mode.label()),
+            format!("shape_mode={}", config.shape_mode.label()),
         ]
     };
     CompileTransformTrace {
@@ -1974,6 +2819,60 @@ pub fn builtin_export_deployment_artifact_semantics_report()
             ),
         ],
     ))
+}
+
+fn stable_compile_trace_family_lines(
+    shape_mode: CompileShapeMode,
+    topology_digest: &str,
+    schedule_policy: ScheduleFormationPolicy,
+    fusion_policy: FusionPolicy,
+    memory_policy: MemoryPlanningPolicy,
+    lowering_passes: &[String],
+    step_families: &[CompileTraceFamilyStep],
+    output_families: &[CompileTraceTensorFamily],
+    constraints: &[String],
+) -> Vec<String> {
+    let mut lines = vec![
+        format!("compiler_schema_version={COMPILER_CONTRACT_SCHEMA_VERSION}"),
+        format!("operator_schema_version={BUILTIN_OPERATOR_SCHEMA_VERSION}"),
+        format!("shape_mode={}", shape_mode.label()),
+        format!("topology_digest={topology_digest}"),
+        format!("schedule_policy={}", schedule_policy.label()),
+        format!(
+            "fusion_policy={}|max_group_size={}",
+            fusion_policy.mode.label(),
+            fusion_policy.max_group_size
+        ),
+        format!("memory_policy={}", memory_policy.label()),
+    ];
+    lines.extend(
+        lowering_passes
+            .iter()
+            .enumerate()
+            .map(|(index, pass)| format!("lowering_pass={index}:{pass}")),
+    );
+    for step in step_families {
+        lines.push(format!(
+            "step_family={}:{}:{}:inputs={}",
+            step.step_index,
+            step.output,
+            step.op_family,
+            join_tensor_ids(&step.inputs),
+        ));
+        lines.push(
+            step.output_family
+                .stable_signature_line("step_output_family"),
+        );
+    }
+    for family in output_families {
+        lines.push(family.stable_signature_line("graph_output_family"));
+    }
+    lines.extend(
+        constraints
+            .iter()
+            .map(|constraint| format!("constraint={constraint}")),
+    );
+    lines
 }
 
 fn digest_lines(lines: Vec<String>) -> String {
@@ -2368,6 +3267,70 @@ fn alias_aware_memory_signature_lines() -> Result<Vec<String>, CompilerHygienePa
     ])
 }
 
+fn shapeless_trace_family_signature_lines() -> Result<Vec<String>, CompilerHygieneParityError> {
+    let graph = compiler_shapeless_trace_graph(2)?;
+    let artifacts =
+        compile_graph_artifacts_with_topology(&graph, None, CompilerContract::default())?;
+    let identity =
+        compile_trace_family_identity(&artifacts, CompileShapeMode::ShapelessTraceFamily)?;
+    let input = identity
+        .step_families
+        .iter()
+        .find(|step| step.op_family.starts_with("input:"))
+        .ok_or(CompilerHygieneParityError::TraceFamily(
+            CompileTraceFamilyError::MissingTensorFamily {
+                tensor: TensorId(0),
+            },
+        ))?;
+    let output =
+        identity
+            .output_families
+            .first()
+            .ok_or(CompilerHygieneParityError::TraceFamily(
+                CompileTraceFamilyError::MissingTensorFamily {
+                    tensor: TensorId(0),
+                },
+            ))?;
+    let constraint = identity
+        .constraints
+        .iter()
+        .find(|constraint| constraint.ends_with("input.t1.d0"))
+        .cloned()
+        .ok_or(CompilerHygieneParityError::TraceFamily(
+            CompileTraceFamilyError::InconsistentConstraint {
+                shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                op: String::from("add"),
+                detail: String::from(
+                    "expected equality constraint across the leading input axis in the shapeless seed graph",
+                ),
+            },
+        ))?;
+    Ok(vec![
+        format!("shape_mode={}", identity.shape_mode.label()),
+        format!("input_dims={}", input.output_family.dim_families.join(",")),
+        format!("output_dims={}", output.dim_families.join(",")),
+        format!("constraint={constraint}"),
+    ])
+}
+
+fn shapeless_trace_family_reshape_refusal() -> Result<PsionicRefusal, CompilerHygieneParityError> {
+    let graph = compiler_shapeless_reshape_graph()?;
+    let artifacts =
+        compile_graph_artifacts_with_topology(&graph, None, CompilerContract::default())?;
+    match compile_trace_family_identity(&artifacts, CompileShapeMode::ShapelessTraceFamily) {
+        Ok(_) => Err(CompilerHygieneParityError::TraceFamily(
+            CompileTraceFamilyError::UnsupportedShapelessOp {
+                shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                op: String::from("reshape"),
+                detail: String::from(
+                    "expected bounded shapeless reshape refusal but compile trace family succeeded",
+                ),
+            },
+        )),
+        Err(error) => Ok(error.refusal()),
+    }
+}
+
 fn symbolic_shape_environment_refusal() -> PsionicRefusal {
     PsionicRefusal::new(
         PsionicRefusalCode::UnsupportedLayout,
@@ -2404,6 +3367,14 @@ fn cache_action_label(action: CacheAction) -> &'static str {
     }
 }
 
+fn view_semantics_label(view: ViewSemantics) -> &'static str {
+    match view {
+        ViewSemantics::Dense => "dense",
+        ViewSemantics::AliasView => "alias_view",
+        ViewSemantics::BroadcastView => "broadcast_view",
+    }
+}
+
 fn memory_storage_class_label(class: MemoryStorageClass) -> &'static str {
     match class {
         MemoryStorageClass::ExternalInput => "external_input",
@@ -2422,6 +3393,22 @@ fn compiler_sample_graph() -> Result<Graph, GraphError> {
     let projected = builder.matmul(&input, &weights)?;
     let shifted = builder.add(&projected, &bias)?;
     Ok(builder.finish(vec![shifted]))
+}
+
+fn compiler_shapeless_trace_graph(rows: usize) -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let left = builder.input("left", Shape::new(vec![rows, 3]), DType::F32);
+    let right = builder.input("right", Shape::new(vec![rows, 3]), DType::F32);
+    let shifted = builder.add(&left, &right)?;
+    let reduced = builder.reduce_sum_axis(&shifted, 1)?;
+    Ok(builder.finish(vec![reduced]))
+}
+
+fn compiler_shapeless_reshape_graph() -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 3, 4]), DType::F32);
+    let reshaped = builder.reshape(&input, Shape::new(vec![6, 4]))?;
+    Ok(builder.finish(vec![reshaped]))
 }
 
 fn compiler_fusible_chain_graph() -> Result<Graph, GraphError> {
@@ -2660,7 +3647,7 @@ mod tests {
     };
 
     use super::{
-        CompileError, CompileTransformBypassReason, CompileTransformCacheControl,
+        CompileError, CompileShapeMode, CompileTransformBypassReason, CompileTransformCacheControl,
         CompileTransformConfig, CompileTransformDebugMode, CompileTransformDisposition,
         CompileTransformPurity, CompileTransformTraceMode, CompilerContract,
         CompilerHygieneParityStatus, CompilerPlanCache, DeploymentArtifactFormat,
@@ -3210,13 +4197,120 @@ mod tests {
     }
 
     #[test]
+    fn compile_transform_shapeless_trace_family_identity_groups_same_rank_graphs() {
+        let graph_a =
+            super::compiler_shapeless_trace_graph(2).map_err(|_| CompileError::EmptyGraph);
+        let graph_b =
+            super::compiler_shapeless_trace_graph(5).map_err(|_| CompileError::EmptyGraph);
+        assert!(graph_a.is_ok());
+        assert!(graph_b.is_ok());
+        let Ok(graph_a) = graph_a else {
+            return;
+        };
+        let Ok(graph_b) = graph_b else {
+            return;
+        };
+
+        let mut transform_a = compile_transform(
+            &graph_a,
+            CompileTransformConfig {
+                shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                trace_mode: CompileTransformTraceMode::TraceFamilyIdentity,
+                ..CompileTransformConfig::default()
+            },
+        );
+        let mut transform_b = compile_transform(
+            &graph_b,
+            CompileTransformConfig {
+                shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                ..CompileTransformConfig::default()
+            },
+        );
+
+        let result_a = transform_a.apply();
+        let result_b = transform_b.apply();
+        assert!(result_a.is_ok(), "{result_a:?}");
+        assert!(result_b.is_ok(), "{result_b:?}");
+        let Ok(result_a) = result_a else {
+            return;
+        };
+        let Ok(result_b) = result_b else {
+            return;
+        };
+
+        assert_eq!(result_a.disposition, CompileTransformDisposition::Compiled);
+        assert_eq!(result_b.disposition, CompileTransformDisposition::Compiled);
+        assert_ne!(result_a.cache_key, result_b.cache_key);
+        assert_eq!(
+            result_a.trace_family_cache_key,
+            result_b.trace_family_cache_key
+        );
+        assert_eq!(
+            result_a
+                .trace_family_identity
+                .as_ref()
+                .map(|identity| identity.shape_mode),
+            Some(CompileShapeMode::ShapelessTraceFamily)
+        );
+        assert!(
+            result_a
+                .trace
+                .lines
+                .iter()
+                .any(|line| line == "shape_mode|shapeless_trace_family")
+        );
+        assert!(
+            result_a
+                .trace_family_identity
+                .as_ref()
+                .is_some_and(|identity| identity
+                    .constraints
+                    .iter()
+                    .any(|line| line.ends_with("input.t1.d0")))
+        );
+    }
+
+    #[test]
+    fn compile_transform_shapeless_trace_family_refuses_reshape_without_formula() {
+        let graph = super::compiler_shapeless_reshape_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+
+        let mut transform = compile_transform(
+            &graph,
+            CompileTransformConfig {
+                shape_mode: CompileShapeMode::ShapelessTraceFamily,
+                ..CompileTransformConfig::default()
+            },
+        );
+        let error = transform.apply();
+        assert!(error.is_err());
+        let Err(error) = error else {
+            return;
+        };
+        assert_eq!(
+            error.refusal().map(|refusal| refusal.code),
+            Some(PsionicRefusalCode::UnsupportedLayout)
+        );
+        assert_eq!(
+            error
+                .refusal()
+                .and_then(|refusal| refusal.subject)
+                .as_deref(),
+            Some("shapeless_trace_family:reshape")
+        );
+    }
+
+    #[test]
     fn compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases()
     -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_compiler_hygiene_parity_matrix_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(
             report.oracle_family_window,
-            "pytorch_compiler_hygiene_seed_v0"
+            "pytorch_compiler_hygiene_seed_v1"
         );
         assert!(
             report
@@ -3246,6 +4340,36 @@ mod tests {
                 .as_ref()
                 .and_then(|refusal| refusal.subject.as_deref()),
             Some("symbolic_shape_environment")
+        );
+
+        let shapeless_case = report
+            .cases
+            .iter()
+            .find(|case| {
+                case.case_id == "pytorch.symbolic_shape.shapeless_trace_family_cache_identity"
+            })
+            .expect("missing shapeless trace-family case");
+        assert_eq!(
+            shapeless_case.status,
+            CompilerHygieneParityStatus::Supported
+        );
+        assert_eq!(
+            shapeless_case.expected_signature_lines,
+            shapeless_case.actual_signature_lines
+        );
+
+        let reshape_refusal = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.symbolic_shape.reshape_formula_missing")
+            .expect("missing shapeless reshape refusal case");
+        assert_eq!(reshape_refusal.status, CompilerHygieneParityStatus::Refused);
+        assert_eq!(
+            reshape_refusal
+                .actual_refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("shapeless_trace_family:reshape")
         );
 
         Ok(())

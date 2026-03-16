@@ -265,7 +265,8 @@ Current posture:
   non-strict keyed load behavior.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity,
   compiler diagnostics, and the first public compile-transform surface with
-  explicit purity, cache, trace, and debug posture.
+  explicit purity, concrete-plan cache identity, bounded shapeless trace-family
+  identity, trace capture, and debug posture.
 - `psionic-runtime`: runtime traits, allocators, compiled-plan execution,
   local-multi-device truth, and canonical execution-proof bundles.
 - `psionic-catalog`: local blob, artifact, and model-catalog substrate used by
