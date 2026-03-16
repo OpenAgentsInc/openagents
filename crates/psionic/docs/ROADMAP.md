@@ -472,7 +472,7 @@ Epic 0 and later epics beyond 2 still use roadmap-local IDs until activated.
 ### Tassadar Executor-Class Reference Lane
 
 This track is now implemented early as a Psionic-owned reference lane and
-remains dependency-ordered beyond Phase 1.
+remains dependency-ordered beyond Phase 2.
 
 It is a cross-epic lane that depends on:
 
@@ -485,6 +485,8 @@ Its declared scope is:
 - owner: `crates/psionic/*`
 - first target: WebAssembly-first executor semantics
 - landed Phase 1 bar: CPU reference fixture and exact parity harness
+- landed Phase 2 bar: digest-bound program artifacts and explicit
+  model/program compatibility contracts
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -499,8 +501,10 @@ The current issue spine is:
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
 - Phase 1 CPU reference WebAssembly executor fixture and exact parity harness:
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+- Phase 2 executor model and program artifact contracts:
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
 
-What Phase 1 now concretely provides:
+What Phases 1 and 2 now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -510,15 +514,21 @@ What Phase 1 now concretely provides:
 - typed refusal surfaces for unsupported programs
 - one `WeightFormat::ProgrammaticFixture` executor model descriptor and weight
   bundle
+- one digest-bound `TassadarProgramArtifact` contract
+- explicit executor-family compatibility, decode-mode, and exactness claims for
+  model/program pairing
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
 
-- executor model and program artifacts
-- benchmark and environment packages
-- executor-trace proof bundles
-- hull-cache or geometric retrieval decoding
-- typed runtime capability and refusal surfaces
+- benchmark and environment packages:
+  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
+- executor-trace proof bundles:
+  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
+- hull-cache or geometric retrieval decoding:
+  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
+- typed runtime capability and refusal surfaces:
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - dedicated executor serving where useful
 - hybrid planner-plus-executor routing
 
