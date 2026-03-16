@@ -133,6 +133,10 @@ It already has real substrate for:
   `psionic-train` optimizer math while keeping module-path keyed state,
   explicit frozen-parameter handling, state snapshot restore, and per-step
   receipts in the framework-facing layer
+- a bounded reusable public scheduler and parameter-group shell in
+  `psionic-nn` that reuses `psionic-train` scheduler primitives while keeping
+  scheduler bindings, group-level learning-rate and weight-decay scaling, and
+  multi-optimizer composition in the framework-facing layer
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity

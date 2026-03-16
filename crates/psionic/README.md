@@ -292,8 +292,9 @@ Current posture:
   `load_weights` wrappers, and a bounded CPU-reference core layer surface
   covering linear, embedding, norms, activations, dropout, conv, and pooling
   above `psionic-core`, plus bounded CPU-reference losses, initializers, and
-  helper functions for tiny training loops, plus a bounded public optimizer
-  shell with module-path keyed state and snapshot restore, including strict and
+  helper functions for tiny training loops, plus a bounded public optimizer and
+  scheduler shell with module-path keyed state, parameter-group scaling,
+  multi-optimizer composition, and snapshot restore, including strict and
   non-strict keyed load behavior.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity,
   compiler diagnostics, and the first public compile-transform surface with
