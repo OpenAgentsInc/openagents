@@ -275,8 +275,9 @@ Current posture:
   or claim-language contract, the MLX acceptance-matrix report contract, and
   the seeded MLX parity-harness report plus the MLX compatibility matrix.
 - `psionic-nn`: reusable public `Module` tree, parameter, buffer, explicit
-  freeze posture, filtered recursive parameter discovery, and deterministic
-  state-dict/state-tree semantics above `psionic-core`, including strict and
+  freeze posture, filtered recursive parameter discovery, deterministic
+  state-dict/state-tree semantics, and bounded public `save_weights` /
+  `load_weights` wrappers above `psionic-core`, including strict and
   non-strict keyed load behavior.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity,
   compiler diagnostics, and the first public compile-transform surface with

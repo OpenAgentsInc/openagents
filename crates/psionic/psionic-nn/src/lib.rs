@@ -848,6 +848,37 @@ impl Module {
         ModuleStateDict::from_state_tree(self.state_tree(view))
     }
 
+    /// Saves the default persistent-only weights view for the current module
+    /// tree.
+    #[must_use]
+    pub fn save_weights(&self) -> ModuleStateDict {
+        self.state_dict()
+    }
+
+    /// Saves one explicit weights view for the current module tree.
+    #[must_use]
+    pub fn save_weights_with_view(&self, view: ModuleStateView) -> ModuleStateDict {
+        self.state_dict_with_view(view)
+    }
+
+    /// Loads one saved weights view using strict matching by default.
+    pub fn load_weights(
+        &mut self,
+        weights: &ModuleStateDict,
+    ) -> Result<ModuleStateLoadReport, ModuleStateLoadError> {
+        self.load_weights_with_mode(weights, ModuleStateLoadMode::Strict)
+    }
+
+    /// Loads one saved weights view using the requested strict or non-strict
+    /// posture.
+    pub fn load_weights_with_mode(
+        &mut self,
+        weights: &ModuleStateDict,
+        mode: ModuleStateLoadMode,
+    ) -> Result<ModuleStateLoadReport, ModuleStateLoadError> {
+        self.load_state_dict(weights, mode)
+    }
+
     /// Loads one keyed state dict into the current module tree.
     pub fn load_state_dict(
         &mut self,
@@ -1889,6 +1920,60 @@ mod tests {
         let all_buffers = root.state_dict_with_view(ModuleStateView::AllBuffers);
         assert!(all_buffers.entry("scratch").is_some());
         assert_ne!(state_dict.state_dict_digest, all_buffers.state_dict_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn save_weights_defaults_to_persistent_view_and_load_weights_defaults_to_strict()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut target = Module::new("target", "linear")?;
+        target.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
+        target.insert_buffer("running_mean", f32_buffer(&[1], &[0.0], true)?)?;
+
+        let mut source = Module::new("source", "linear")?;
+        source.insert_parameter("weight", f32_parameter(&[1], &[5.0])?)?;
+        source.insert_buffer("scratch", f32_buffer(&[1], &[9.0], false)?)?;
+
+        let saved = source.save_weights();
+        assert_eq!(saved.view, ModuleStateView::PersistentOnly);
+        assert_eq!(saved.keys(), vec![String::from("weight")]);
+
+        let refusal = target
+            .load_weights(&saved)
+            .expect_err("missing persistent buffer should refuse strict load");
+        assert_eq!(
+            refusal,
+            ModuleStateLoadError::StrictKeyMismatch {
+                missing_keys: vec![String::from("running_mean")],
+                unexpected_keys: Vec::new(),
+            }
+        );
+        assert_eq!(target.parameter("weight")?.data, TensorData::F32(vec![1.0]));
+        Ok(())
+    }
+
+    #[test]
+    fn load_weights_with_mode_surfaces_non_strict_behavior_explicitly()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut target = Module::new("target", "linear")?;
+        target.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
+        target.insert_buffer("running_mean", f32_buffer(&[1], &[0.0], true)?)?;
+
+        let mut source = Module::new("source", "linear")?;
+        source.insert_parameter("weight", f32_parameter(&[1], &[7.0])?)?;
+        source.insert_parameter("bias", f32_parameter(&[1], &[9.0])?)?;
+
+        let report = target
+            .load_weights_with_mode(&source.save_weights(), ModuleStateLoadMode::NonStrict)?;
+        assert_eq!(report.mode, ModuleStateLoadMode::NonStrict);
+        assert_eq!(report.loaded_paths, vec![String::from("weight")]);
+        assert_eq!(report.missing_keys, vec![String::from("running_mean")]);
+        assert_eq!(report.unexpected_keys, vec![String::from("bias")]);
+        assert_eq!(target.parameter("weight")?.data, TensorData::F32(vec![7.0]));
+        assert_eq!(
+            target.buffer("running_mean")?.data,
+            TensorData::F32(vec![0.0])
+        );
         Ok(())
     }
 

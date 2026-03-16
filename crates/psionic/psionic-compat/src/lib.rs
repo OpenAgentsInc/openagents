@@ -1102,10 +1102,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane exposes a public Module tree, state save and load behavior, core layers, losses, initializers, optimizers, schedulers, and quantized-module semantics above Psionic-native training primitives.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public module tree in psionic-nn, including explicit parameter versus buffer registration, trainable versus frozen posture, recursive parameter discovery with filtered trainable or frozen views, and deterministic state-tree/state-dict behavior; the broader MLX-class layer, loss, initializer, optimizer, scheduler, and quantized-module shell is still missing.",
+                "Psionic now exposes a first public module tree in psionic-nn, including explicit parameter versus buffer registration, trainable versus frozen posture, recursive parameter discovery with filtered trainable or frozen views, deterministic state-tree/state-dict behavior, and bounded public save_weights/load_weights wrappers with strict-by-default plus explicit non-strict load posture; the broader MLX-class layer, loss, initializer, optimizer, scheduler, and quantized-module shell is still missing.",
             ),
             boundary_note: String::from(
-                "Do not claim MLX nn closure from the new public Module tree alone; the current surface stops at module registration, freeze posture, and state semantics until the public layer, loss, optimizer, and scheduler contracts are exposed together.",
+                "Do not claim MLX nn closure from the current module plus save/load slice alone; the public surface now covers registration, freeze posture, and module-state save/load semantics, but the layer, loss, optimizer, and scheduler contracts are still missing.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1426,10 +1426,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
             current_outcome: MlxParityHarnessOutcome::Unsupported,
             psionic_hook_commands: Vec::new(),
             summary: String::from(
-                "psionic-nn now exposes a first public Module tree with explicit freeze posture, but the upstream nn, optimizer, loss, init, quantized, and tree helpers still remain unsupported on the MLX public surface.",
+                "psionic-nn now exposes a first public Module tree with explicit freeze posture plus bounded save_weights/load_weights behavior, but the upstream nn, optimizer, loss, init, quantized, and tree helpers still remain unsupported on the MLX public surface.",
             ),
             boundary_note: String::from(
-                "The new public Module tree is useful substrate, but it does not yet equal an MLX-class public nn, loss, init, optimizer, or quantized family.",
+                "The new public Module plus save/load slice is useful substrate, but it does not yet equal an MLX-class public nn, loss, init, optimizer, or quantized family.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1521,29 +1521,29 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("PortableModelBundle::import_safetensors"),
                 String::from("GGUF import inventory"),
             ],
-            blocking_issue_refs: vec![
-                String::from("PMLX-302 (#3847)"),
-                String::from("PMLX-401 (#3853)"),
-            ],
+            blocking_issue_refs: vec![String::from("PMLX-401 (#3853)")],
             boundary_note: String::from(
                 "Portable model IO is not the same thing as native MLX weight or module-state compatibility.",
             ),
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("module_state_tree_bridge"),
-            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "Psionic now exposes a public module tree with explicit trainable versus frozen posture plus deterministic module state-tree and state-dict contracts that later MLX save/load behavior can map onto.",
+                "Psionic now exposes a public module tree with explicit trainable versus frozen posture, deterministic module state-tree and state-dict contracts, and bounded public save_weights/load_weights behavior with strict-by-default plus explicit non-strict loading.",
             ),
             evidence_refs: vec![
                 String::from("Module"),
                 String::from("ModuleParameterView"),
+                String::from("Module::save_weights"),
+                String::from("Module::load_weights"),
+                String::from("Module::load_weights_with_mode"),
                 String::from("ModuleStateDict"),
                 String::from("ModuleStateLoadReport"),
             ],
-            blocking_issue_refs: vec![String::from("PMLX-302 (#3847)")],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "This bridge substrate does not mean the public MLX `save_weights` and `load_weights` surface already exists.",
+                "This supported module-state bridge is still bounded to Psionic-native module naming and receipts; it does not imply general array file IO or broad external MLX artifact compatibility.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -1600,16 +1600,17 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_nn_optimizer_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
             summary: String::from(
-                "Psionic now has a first public Module tree with explicit freeze posture in psionic-nn, but there is still no public MLX-class layer, loss, initializer, optimizer, or scheduler API.",
+                "Psionic now has a first public Module tree with explicit freeze posture plus bounded public save_weights/load_weights support in psionic-nn, but there is still no public MLX-class layer, loss, initializer, optimizer, or scheduler API.",
             ),
             evidence_refs: vec![
                 String::from("Module"),
                 String::from("ModuleParameterView"),
+                String::from("Module::save_weights"),
+                String::from("Module::load_weights"),
                 String::from("MlxAcceptanceMatrixReport::nn-optimizer = partial"),
                 String::from("MLX parity family `nn_optimizers_quantized` = unsupported"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-302 (#3847)"),
                 String::from("PMLX-303 (#3848)"),
                 String::from("PMLX-304 (#3849)"),
                 String::from("PMLX-305 (#3850)"),
@@ -2254,6 +2255,17 @@ mod tests {
             transform.matrix_status,
             MlxCompatibilityMatrixStatus::Supported
         );
+
+        let module_state = report
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "module_state_tree_bridge")
+            .expect("missing module-state bridge row");
+        assert_eq!(
+            module_state.matrix_status,
+            MlxCompatibilityMatrixStatus::Supported
+        );
+        assert!(module_state.blocking_issue_refs.is_empty());
 
         let filtered = report.filter_to_surfaces(&[
             String::from("governance_contracts"),
