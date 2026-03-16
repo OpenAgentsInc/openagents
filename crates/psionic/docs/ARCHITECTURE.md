@@ -324,9 +324,10 @@ Applications / Operators / Authority
    - foundational tensor, dtype, shape, device, layout, view-semantics, and
      cross-library refusal-taxonomy types
 2. `psionic-ir`
-   - canonical graph, built-in operator registry, fake/meta execution and plan
-     validation contracts, detach/no-grad/autodiff tracking, symbolic backward
-     plans, and execution-plan representation
+   - canonical graph, built-in plus extensible operator registry, custom-op
+     schema and backend-dispatch registration contracts, fake/meta execution
+     and plan validation contracts, detach/no-grad/autodiff tracking, symbolic
+     backward plans, and execution-plan representation
 3. `psionic-compiler`
    - lowering, schedule-formation, fusion-policy, memory-plan, and
      plan-cache-identity boundaries over IR

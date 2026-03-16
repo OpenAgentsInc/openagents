@@ -706,6 +706,245 @@ pub struct OperatorSchema {
     pub meta_execution: OperatorMetaExecutionKind,
 }
 
+/// Error type raised while extending the built-in operator registry with
+/// custom schemas or backend-kernel registrations.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum RegistryExtensionError {
+    /// A custom schema attempted to reuse a built-in operator label.
+    #[error("custom operator `{name}` cannot shadow a built-in schema")]
+    ReservedBuiltinName {
+        /// Conflicting operator label.
+        name: String,
+    },
+    /// A custom schema attempted to reuse an existing custom label.
+    #[error("custom operator `{name}` is already registered")]
+    DuplicateSchema {
+        /// Conflicting operator label.
+        name: String,
+    },
+    /// A custom schema requested an unsupported meta-execution posture.
+    #[error(
+        "custom operator `{name}` must use declared output meta execution in framework core, not {meta_execution:?}"
+    )]
+    InvalidCustomMetaExecution {
+        /// Operator label.
+        name: String,
+        /// Unsupported meta-execution posture.
+        meta_execution: OperatorMetaExecutionKind,
+    },
+    /// A kernel registration targeted an unknown operator label.
+    #[error("cannot register kernel for unknown operator `{name}`")]
+    UnknownOperator {
+        /// Unknown operator label.
+        name: String,
+    },
+    /// A kernel registration targeted a non-kernel operator family.
+    #[error("operator `{name}` does not accept backend-kernel registrations: {message}")]
+    InvalidKernelRegistration {
+        /// Operator label.
+        name: String,
+        /// Human-readable validation failure.
+        message: String,
+    },
+    /// A duplicate backend registration was attempted.
+    #[error("kernel registration for `{name}` and backend `{backend}` already exists")]
+    DuplicateKernelRegistration {
+        /// Operator label.
+        name: String,
+        /// Backend label or `*` for generic fallback.
+        backend: String,
+    },
+    /// No backend-kernel registration exists for the requested operator/backend pair.
+    #[error("missing kernel registration for `{name}` on backend `{backend}`")]
+    MissingKernelRegistration {
+        /// Operator label.
+        name: String,
+        /// Requested backend label.
+        backend: String,
+    },
+}
+
+impl RegistryExtensionError {
+    /// Returns the canonical refusal when the registry-extension failure belongs
+    /// to one explicit unsupported or capability boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::ReservedBuiltinName { name }
+            | Self::DuplicateSchema { name }
+            | Self::InvalidCustomMetaExecution { name, .. }
+            | Self::UnknownOperator { name }
+            | Self::InvalidKernelRegistration { name, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(name.clone()),
+            ),
+            Self::DuplicateKernelRegistration { name, backend }
+            | Self::MissingKernelRegistration { name, backend } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(format!("{name}@{backend}")),
+            ),
+        }
+    }
+}
+
+/// Whether one operator schema comes from the built-in registry or a custom
+/// extension registration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorRegistrationKind {
+    /// Built-in compact-core schema.
+    Builtin,
+    /// Custom extension schema registered above the compact core.
+    Custom,
+}
+
+/// Stable operator schema record carried through the extensible registry.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisteredOperatorSchema {
+    /// Stable operator label.
+    pub name: String,
+    /// Stable schema version.
+    pub schema_version: u16,
+    /// Input-count contract.
+    pub arity: OperatorArity,
+    /// Runtime implementation family.
+    pub implementation: OperatorImplementationKind,
+    /// Meta execution posture.
+    pub meta_execution: OperatorMetaExecutionKind,
+    /// Whether the schema is built-in or custom.
+    pub registration_kind: OperatorRegistrationKind,
+}
+
+impl RegisteredOperatorSchema {
+    /// Creates one custom operator schema.
+    #[must_use]
+    pub fn custom(
+        name: impl Into<String>,
+        schema_version: u16,
+        arity: OperatorArity,
+        implementation: OperatorImplementationKind,
+        meta_execution: OperatorMetaExecutionKind,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            schema_version,
+            arity,
+            implementation,
+            meta_execution,
+            registration_kind: OperatorRegistrationKind::Custom,
+        }
+    }
+
+    fn from_builtin(schema: &OperatorSchema) -> Self {
+        Self {
+            name: schema.name.to_string(),
+            schema_version: schema.schema_version,
+            arity: schema.arity,
+            implementation: schema.implementation,
+            meta_execution: schema.meta_execution,
+            registration_kind: OperatorRegistrationKind::Builtin,
+        }
+    }
+}
+
+/// Dispatch posture carried by one backend-kernel registration or resolution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KernelDispatchKind {
+    /// Schema-only operator with no backend kernel.
+    SchemaOnly,
+    /// Framework-owned composite operator with no backend kernel.
+    Composite,
+    /// Generic kernel fallback used when no backend-specific registration exists.
+    GenericFallback,
+    /// Backend-specific kernel path.
+    BackendSpecific,
+}
+
+/// One backend-kernel registration for an operator schema.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelRegistration {
+    /// Operator label the kernel implements.
+    pub name: String,
+    /// Backend label or `None` for a generic fallback.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Stable kernel symbol or family identifier.
+    pub kernel_symbol: String,
+    /// Dispatch posture for the registration.
+    pub dispatch_kind: KernelDispatchKind,
+}
+
+impl KernelRegistration {
+    /// Creates a backend-specific kernel registration.
+    #[must_use]
+    pub fn backend_specific(
+        name: impl Into<String>,
+        backend: impl Into<String>,
+        kernel_symbol: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            backend: Some(backend.into()),
+            kernel_symbol: kernel_symbol.into(),
+            dispatch_kind: KernelDispatchKind::BackendSpecific,
+        }
+    }
+
+    /// Creates a generic fallback kernel registration.
+    #[must_use]
+    pub fn generic(name: impl Into<String>, kernel_symbol: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            backend: None,
+            kernel_symbol: kernel_symbol.into(),
+            dispatch_kind: KernelDispatchKind::GenericFallback,
+        }
+    }
+
+    fn backend_key(&self) -> String {
+        self.backend.clone().unwrap_or_else(|| String::from("*"))
+    }
+}
+
+/// Resolved dispatch contract for one operator/backend request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorDispatchContract {
+    /// Operator label being dispatched.
+    pub name: String,
+    /// Requested backend label.
+    pub requested_backend: String,
+    /// Schema version that owns the dispatch.
+    pub schema_version: u16,
+    /// Runtime implementation family.
+    pub implementation: OperatorImplementationKind,
+    /// Whether the resolution is schema-only, composite, generic-kernel, or backend-specific.
+    pub dispatch_kind: KernelDispatchKind,
+    /// Registration origin.
+    pub registration_kind: OperatorRegistrationKind,
+    /// Kernel symbol when one backend kernel is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kernel_symbol: Option<String>,
+    /// Backend that actually satisfied the dispatch when a kernel registration was used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_backend: Option<String>,
+}
+
+/// Extensible operator registry seeded from the built-in compact-core schemas.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExtensibleOperatorRegistry {
+    schemas: BTreeMap<String, RegisteredOperatorSchema>,
+    kernel_registrations: BTreeMap<(String, String), KernelRegistration>,
+}
+
 /// Shape-only tensor record emitted by fake or meta execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetaTensor {
@@ -807,6 +1046,201 @@ impl OperatorSchema {
             arity,
             implementation,
             meta_execution,
+        }
+    }
+}
+
+impl ExtensibleOperatorRegistry {
+    /// Creates an extensible registry seeded from the built-in compact-core schemas.
+    #[must_use]
+    pub fn with_builtin() -> Self {
+        let mut registry = Self::default();
+        for schema in BUILTIN_OPERATOR_SCHEMAS {
+            registry.schemas.insert(
+                schema.name.to_string(),
+                RegisteredOperatorSchema::from_builtin(schema),
+            );
+            if schema.implementation == OperatorImplementationKind::BackendKernel {
+                let registration =
+                    KernelRegistration::generic(schema.name, format!("builtin::{}", schema.name));
+                registry.kernel_registrations.insert(
+                    (registration.name.clone(), registration.backend_key()),
+                    registration,
+                );
+            }
+        }
+        registry
+    }
+
+    /// Returns one schema by stable label.
+    #[must_use]
+    pub fn schema(&self, name: &str) -> Option<&RegisteredOperatorSchema> {
+        self.schemas.get(name)
+    }
+
+    /// Registers one custom operator schema above the built-in registry.
+    pub fn register_custom_schema(
+        &mut self,
+        schema: RegisteredOperatorSchema,
+    ) -> Result<(), RegistryExtensionError> {
+        if schema.registration_kind != OperatorRegistrationKind::Custom {
+            return Err(RegistryExtensionError::InvalidKernelRegistration {
+                name: schema.name,
+                message: String::from("custom registration API requires registration_kind=custom"),
+            });
+        }
+        if self
+            .schemas
+            .get(schema.name.as_str())
+            .is_some_and(|existing| existing.registration_kind == OperatorRegistrationKind::Builtin)
+        {
+            return Err(RegistryExtensionError::ReservedBuiltinName { name: schema.name });
+        }
+        if self.schemas.contains_key(schema.name.as_str()) {
+            return Err(RegistryExtensionError::DuplicateSchema { name: schema.name });
+        }
+        if schema.meta_execution != OperatorMetaExecutionKind::DeclaredOutput {
+            return Err(RegistryExtensionError::InvalidCustomMetaExecution {
+                name: schema.name,
+                meta_execution: schema.meta_execution,
+            });
+        }
+        self.schemas.insert(schema.name.clone(), schema);
+        Ok(())
+    }
+
+    /// Registers one backend-kernel implementation contract for an existing operator schema.
+    pub fn register_kernel(
+        &mut self,
+        registration: KernelRegistration,
+    ) -> Result<(), RegistryExtensionError> {
+        let Some(schema) = self.schemas.get(registration.name.as_str()) else {
+            return Err(RegistryExtensionError::UnknownOperator {
+                name: registration.name,
+            });
+        };
+        if schema.implementation != OperatorImplementationKind::BackendKernel {
+            return Err(RegistryExtensionError::InvalidKernelRegistration {
+                name: registration.name,
+                message: format!(
+                    "implementation kind {:?} does not dispatch through backend kernels",
+                    schema.implementation
+                ),
+            });
+        }
+        let key = (registration.name.clone(), registration.backend_key());
+        if self.kernel_registrations.contains_key(&key) {
+            return Err(RegistryExtensionError::DuplicateKernelRegistration {
+                name: key.0,
+                backend: key.1,
+            });
+        }
+        self.kernel_registrations.insert(key, registration);
+        Ok(())
+    }
+
+    /// Resolves the dispatch contract for one operator/backend request.
+    pub fn resolve_dispatch(
+        &self,
+        name: &str,
+        backend: &str,
+    ) -> Result<OperatorDispatchContract, RegistryExtensionError> {
+        let Some(schema) = self.schemas.get(name) else {
+            return Err(RegistryExtensionError::UnknownOperator {
+                name: name.to_string(),
+            });
+        };
+        match schema.implementation {
+            OperatorImplementationKind::SchemaOnly => Ok(OperatorDispatchContract {
+                name: schema.name.clone(),
+                requested_backend: backend.to_string(),
+                schema_version: schema.schema_version,
+                implementation: schema.implementation,
+                dispatch_kind: KernelDispatchKind::SchemaOnly,
+                registration_kind: schema.registration_kind,
+                kernel_symbol: None,
+                resolved_backend: None,
+            }),
+            OperatorImplementationKind::Composite => Ok(OperatorDispatchContract {
+                name: schema.name.clone(),
+                requested_backend: backend.to_string(),
+                schema_version: schema.schema_version,
+                implementation: schema.implementation,
+                dispatch_kind: KernelDispatchKind::Composite,
+                registration_kind: schema.registration_kind,
+                kernel_symbol: None,
+                resolved_backend: None,
+            }),
+            OperatorImplementationKind::BackendKernel => {
+                let exact_key = (name.to_string(), backend.to_string());
+                let generic_key = (name.to_string(), String::from("*"));
+                let registration = self
+                    .kernel_registrations
+                    .get(&exact_key)
+                    .or_else(|| self.kernel_registrations.get(&generic_key))
+                    .ok_or_else(|| RegistryExtensionError::MissingKernelRegistration {
+                        name: name.to_string(),
+                        backend: backend.to_string(),
+                    })?;
+                Ok(OperatorDispatchContract {
+                    name: schema.name.clone(),
+                    requested_backend: backend.to_string(),
+                    schema_version: schema.schema_version,
+                    implementation: schema.implementation,
+                    dispatch_kind: registration.dispatch_kind,
+                    registration_kind: schema.registration_kind,
+                    kernel_symbol: Some(registration.kernel_symbol.clone()),
+                    resolved_backend: registration.backend.clone(),
+                })
+            }
+        }
+    }
+
+    /// Validates one declared-output custom operator invocation.
+    pub fn validate_declared_custom_output(
+        &self,
+        name: &str,
+        input_count: usize,
+        declared_output: Option<&TensorSpec>,
+    ) -> Result<TensorSpec, GraphError> {
+        let Some(schema) = self.schemas.get(name) else {
+            return Err(GraphError::InvalidOperatorInputs {
+                op: name.to_string(),
+                message: String::from("unregistered custom operator schema"),
+            });
+        };
+        if schema.registration_kind != OperatorRegistrationKind::Custom {
+            return Err(GraphError::InvalidOperatorInputs {
+                op: name.to_string(),
+                message: String::from(
+                    "declared custom-output validation only accepts custom schemas",
+                ),
+            });
+        }
+        if !schema.arity.accepts(input_count) {
+            return Err(GraphError::InvalidOperatorArity {
+                op: name.to_string(),
+                expected: schema.arity.describe(),
+                actual: input_count,
+            });
+        }
+        match schema.meta_execution {
+            OperatorMetaExecutionKind::DeclaredOutput => {
+                declared_output
+                    .cloned()
+                    .ok_or_else(|| GraphError::InvalidOperatorInputs {
+                        op: name.to_string(),
+                        message: String::from(
+                            "declared output spec is required for custom operator",
+                        ),
+                    })
+            }
+            OperatorMetaExecutionKind::BuiltinInference => Err(GraphError::InvalidOperatorInputs {
+                op: name.to_string(),
+                message: String::from(
+                    "custom operators do not support built-in inference in framework core",
+                ),
+            }),
         }
     }
 }
@@ -932,6 +1366,13 @@ impl OperatorRegistry {
     #[must_use]
     pub const fn builtin() -> Self {
         Self
+    }
+
+    /// Returns the extensible registry seeded from the built-in schemas and
+    /// generic backend-kernel registrations.
+    #[must_use]
+    pub fn extensible(&self) -> ExtensibleOperatorRegistry {
+        ExtensibleOperatorRegistry::with_builtin()
     }
 
     /// Returns all built-in operator schemas in stable order.
@@ -2086,8 +2527,9 @@ mod tests {
 
     use super::{
         DType, ExecutionOp, ExecutionPlan, ExecutionStep, GraphBuilder, GraphError,
-        MetaCapabilityProfile, OperatorImplementationKind, OperatorMetaExecutionKind,
-        OperatorRegistry, Shape, TensorSpec,
+        KernelDispatchKind, KernelRegistration, MetaCapabilityProfile, OperatorArity,
+        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry,
+        RegisteredOperatorSchema, RegistryExtensionError, Shape, TensorSpec,
     };
 
     #[test]
@@ -2293,6 +2735,144 @@ mod tests {
             return;
         };
         assert_eq!(rope.arity, super::OperatorArity::Fixed(3));
+    }
+
+    #[test]
+    fn extensible_operator_registry_seeds_builtin_dispatch_contracts() {
+        let registry = OperatorRegistry::builtin().extensible();
+
+        let add_dispatch = registry.resolve_dispatch("add", "cpu");
+        assert!(add_dispatch.is_ok());
+        let Ok(add_dispatch) = add_dispatch else {
+            return;
+        };
+        assert_eq!(
+            add_dispatch.implementation,
+            OperatorImplementationKind::BackendKernel
+        );
+        assert_eq!(
+            add_dispatch.dispatch_kind,
+            KernelDispatchKind::GenericFallback
+        );
+        assert_eq!(add_dispatch.kernel_symbol.as_deref(), Some("builtin::add"));
+        assert_eq!(add_dispatch.resolved_backend, None);
+
+        let expand_dispatch = registry.resolve_dispatch("expand", "cpu");
+        assert!(expand_dispatch.is_ok());
+        let Ok(expand_dispatch) = expand_dispatch else {
+            return;
+        };
+        assert_eq!(
+            expand_dispatch.implementation,
+            OperatorImplementationKind::Composite
+        );
+        assert_eq!(expand_dispatch.dispatch_kind, KernelDispatchKind::Composite);
+        assert!(expand_dispatch.kernel_symbol.is_none());
+    }
+
+    #[test]
+    fn extensible_operator_registry_accepts_custom_schema_and_backend_dispatch() {
+        let mut registry = OperatorRegistry::builtin().extensible();
+        let register_schema = registry.register_custom_schema(RegisteredOperatorSchema::custom(
+            "custom_bias_gelu",
+            1,
+            OperatorArity::Fixed(2),
+            OperatorImplementationKind::BackendKernel,
+            OperatorMetaExecutionKind::DeclaredOutput,
+        ));
+        assert!(register_schema.is_ok());
+
+        let register_kernel = registry.register_kernel(KernelRegistration::backend_specific(
+            "custom_bias_gelu",
+            "cpu",
+            "custom::bias_gelu::cpu",
+        ));
+        assert!(register_kernel.is_ok());
+
+        let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
+        let declared = registry.validate_declared_custom_output("custom_bias_gelu", 2, Some(&spec));
+        assert!(declared.is_ok());
+        let Ok(declared) = declared else {
+            return;
+        };
+        assert_eq!(declared, spec);
+
+        let cpu_dispatch = registry.resolve_dispatch("custom_bias_gelu", "cpu");
+        assert!(cpu_dispatch.is_ok());
+        let Ok(cpu_dispatch) = cpu_dispatch else {
+            return;
+        };
+        assert_eq!(
+            cpu_dispatch.dispatch_kind,
+            KernelDispatchKind::BackendSpecific
+        );
+        assert_eq!(
+            cpu_dispatch.kernel_symbol.as_deref(),
+            Some("custom::bias_gelu::cpu")
+        );
+        assert_eq!(cpu_dispatch.resolved_backend.as_deref(), Some("cpu"));
+
+        let missing = registry.resolve_dispatch("custom_bias_gelu", "cuda");
+        assert!(matches!(
+            missing,
+            Err(RegistryExtensionError::MissingKernelRegistration { .. })
+        ));
+    }
+
+    #[test]
+    fn extensible_operator_registry_refuses_shadowing_duplicates_and_missing_output() {
+        let mut registry = OperatorRegistry::builtin().extensible();
+
+        let shadow = registry.register_custom_schema(RegisteredOperatorSchema::custom(
+            "add",
+            1,
+            OperatorArity::Fixed(2),
+            OperatorImplementationKind::BackendKernel,
+            OperatorMetaExecutionKind::DeclaredOutput,
+        ));
+        assert!(matches!(
+            shadow,
+            Err(RegistryExtensionError::ReservedBuiltinName { .. })
+        ));
+
+        let custom_schema = RegisteredOperatorSchema::custom(
+            "custom_layout_check",
+            1,
+            OperatorArity::Fixed(1),
+            OperatorImplementationKind::BackendKernel,
+            OperatorMetaExecutionKind::DeclaredOutput,
+        );
+        let register_once = registry.register_custom_schema(custom_schema.clone());
+        assert!(register_once.is_ok());
+
+        let duplicate = registry.register_custom_schema(custom_schema);
+        assert!(matches!(
+            duplicate,
+            Err(RegistryExtensionError::DuplicateSchema { .. })
+        ));
+
+        let register_kernel = registry.register_kernel(KernelRegistration::backend_specific(
+            "custom_layout_check",
+            "cpu",
+            "custom::layout_check::cpu",
+        ));
+        assert!(register_kernel.is_ok());
+        let duplicate_kernel = registry.register_kernel(KernelRegistration::backend_specific(
+            "custom_layout_check",
+            "cpu",
+            "custom::layout_check::cpu_v2",
+        ));
+        assert!(matches!(
+            duplicate_kernel,
+            Err(RegistryExtensionError::DuplicateKernelRegistration { .. })
+        ));
+
+        let missing_output =
+            registry.validate_declared_custom_output("custom_layout_check", 1, None);
+        assert!(matches!(
+            missing_output,
+            Err(GraphError::InvalidOperatorInputs { .. })
+        ));
     }
 
     #[test]
