@@ -1124,10 +1124,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane supports general array IO, a Psionic-native function export/import artifact, bounded .mlxfn compatibility, memory and cache controls, backend debug hooks, and extension-facing tooling.",
             ),
             current_repo_truth: String::from(
-                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array, while native function artifacts, .mlxfn compatibility, memory controls, debug hooks, and extension tooling remain open.",
+                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array, and a first native .psifn function-artifact slice in psionic-function-io with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, while .mlxfn compatibility, memory controls, debug hooks, and extension tooling remain open.",
             ),
             boundary_note: String::from(
-                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO now exists, but the rest of the public export/tooling shell is still missing.",
+                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO and the native .psifn function artifact now exist, but the rest of the public export/tooling shell is still missing.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1405,9 +1405,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                     "cargo test -p psionic-train model_io::tests::portable_model_bundle_roundtrips_through_safetensors_manifest -- --exact --nocapture",
                 ),
                 String::from("cargo test -p psionic-array-io -- --nocapture"),
+                String::from("cargo test -p psionic-function-io -- --nocapture"),
             ],
             summary: String::from(
-                "The seeded export/import family can now point at exportable-graph, portable-model-IO, and public array-IO hooks as bounded parity anchors.",
+                "The seeded export/import family can now point at exportable-graph, native .psifn function artifacts, portable-model-IO, and public array-IO hooks as bounded parity anchors.",
             ),
             boundary_note: String::from(
                 "This seed pass does not imply the full public MLX export or tooling shell already exists.",
@@ -1529,20 +1530,19 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("graph_first_function_export_bridge"),
-            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "Psionic-native exportable-graph and deployment-artifact contracts exist and can support later bounded MLX function compatibility work.",
+                "Psionic now exposes one supported native graph-first function export bridge through psionic-function-io, with .psifn artifacts binding export-safe graphs to optional compiler artifacts, trace-family identity, deployment contracts, and stable import/export receipts.",
             ),
             evidence_refs: vec![
                 String::from("ExportableGraphContract"),
                 String::from("DeploymentArtifactContract"),
+                String::from("FunctionArtifact"),
+                String::from("FunctionArtifactReceipt"),
             ],
-            blocking_issue_refs: vec![
-                String::from("PMLX-402 (#3854)"),
-                String::from("PMLX-403 (#3855)"),
-            ],
+            blocking_issue_refs: vec![String::from("PMLX-403 (#3855)")],
             boundary_note: String::from(
-                "This is a native bridge substrate, not current `.mlxfn` support.",
+                "This supported bridge is Psionic-native `.psifn`, not current `.mlxfn` support.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2337,7 +2337,7 @@ mod tests {
             .expect("missing export bridge row");
         assert_eq!(
             bridge.matrix_status,
-            MlxCompatibilityMatrixStatus::Convertible
+            MlxCompatibilityMatrixStatus::Supported
         );
 
         let array = report

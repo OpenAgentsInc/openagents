@@ -6794,6 +6794,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-function-io"
+version = "0.1.1"
+dependencies = [
+ "hex",
+ "psionic-compiler",
+ "psionic-core",
+ "psionic-ir",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "psionic-ir"
 version = "0.1.1"
 dependencies = [

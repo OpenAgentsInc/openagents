@@ -3,7 +3,8 @@
 > Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`,
 > `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, `PMLX-005` / `#3833`,
 > `PMLX-101` / `#3834`, `PMLX-102` / `#3835`, `PMLX-103` / `#3836`,
-> `PMLX-104` / `#3837`, and `PMLX-105` / `#3838`,
+> `PMLX-104` / `#3837`, `PMLX-105` / `#3838`, `PMLX-401` / `#3853`, and
+> `PMLX-402` / `#3854`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -493,7 +494,7 @@ from an MLX-class framework.
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
 | `PMLX-401` / [#3853](https://github.com/OpenAgentsInc/openagents/issues/3853) | done (2026-03-16) | `Psionic MLX: add general array save and load APIs for npy, npz, safetensors, and gguf families` | `psionic-array-io` now owns bounded public array artifact IO above `psionic-array`, with stable receipts, explicit dtype and quantization truth, `npy` / `npz` / `safetensors` save/load, and dense GGUF import/export that discloses quantized GGUF dequantization on import instead of hiding it inside model-local loaders. |
-| `PMLX-402` | planned | `Psionic MLX: add a Psionic-native function export and import artifact above the IR` | Build the native graph or function export story first, with stable signatures, trace families, and replay identity. |
+| `PMLX-402` / [#3854](https://github.com/OpenAgentsInc/openagents/issues/3854) | done (2026-03-16) | `Psionic MLX: add a Psionic-native function export and import artifact above the IR` | `psionic-function-io` now owns a first native `.psifn` artifact above `psionic-ir` and `psionic-compiler`, with digest-bound export-safe graphs, optional compiler artifacts, optional trace-family identity, optional deployment bundle binding, and stable import/export receipts that refuse graph, trace, or deployment drift instead of hiding it inside ad hoc packaging code. |
 | `PMLX-403` | planned | `Psionic MLX: add bounded mlxfn import and export compatibility on top of the native function artifact` | Only after the native function artifact exists, add optional `.mlxfn` interoperability with explicit supported and unsupported boundaries. |
 | `PMLX-404` | planned | `Psionic MLX: expose memory-reporting and cache-control APIs to the public framework surface` | Publish active, peak, and cache memory counters plus cache-limit and reset controls above the current runtime diagnostics. |
 | `PMLX-405` | planned | `Psionic MLX: expose backend debug, logging, and capture hooks for Metal and CUDA lanes` | Turn internal backend debug and profiling substrate into public framework tooling rather than leaving it as lane-local implementation detail. |
