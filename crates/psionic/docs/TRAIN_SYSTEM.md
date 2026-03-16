@@ -117,6 +117,8 @@ trainer-step core.
 
 It already has real substrate for:
 
+- reusable module, parameter, buffer, and deterministic state-tree semantics
+  in `psionic-nn`
 - training recovery posture
 - checkpoint lineage
 - elastic membership truth

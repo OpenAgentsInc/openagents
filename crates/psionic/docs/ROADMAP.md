@@ -414,7 +414,8 @@ The largest open gaps are now more architectural than existential:
 
 - framework-core breadth is still much thinner than PyTorch or Tinygrad
 - operator and module parity harnesses are still too sparse
-- module/state-tree semantics are still underdeveloped
+- module/state-tree semantics now exist in `psionic-nn`, but state loading,
+  checkpoint interoperability, and parity breadth are still underdeveloped
 - distributed-training semantics are still mostly below the framework line
 - serialization and checkpoint compatibility are still narrower than a
   practical PyTorch replacement needs
@@ -860,7 +861,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-201` / [#3716](https://github.com/OpenAgentsInc/openagents/issues/3716) | planned | Add a first-class module, parameter, buffer, and state-tree system. |
+| `PLIB-201` / [#3716](https://github.com/OpenAgentsInc/openagents/issues/3716) | done (2026-03-16) | `psionic-nn` now owns a first-class reusable module tree with validated parameters and buffers, deterministic named traversal, persistent-vs-ephemeral buffer views, flattened digest-bound state trees, and explicit refusal on shadowing, invalid names, missing paths, and malformed tensor payloads. |
 | `PLIB-202` / [#3717](https://github.com/OpenAgentsInc/openagents/issues/3717) | planned | Add deterministic `state_dict`-style naming, strict and non-strict load behavior, and size-mismatch refusal semantics. |
 | `PLIB-203` / [#3718](https://github.com/OpenAgentsInc/openagents/issues/3718) | planned | Widen optimizer coverage with scheduler integration, parameter-group semantics, and stronger state behavior. |
 | `PLIB-204` / [#3719](https://github.com/OpenAgentsInc/openagents/issues/3719) | planned | Define serialization and checkpoint compatibility boundaries for practical PyTorch interoperability without inheriting every historical artifact path. |
