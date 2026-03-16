@@ -15,6 +15,7 @@
 
 pub mod arbiter;
 pub mod dsl;
+pub mod interactive;
 pub mod interpreter;
 pub mod mdl;
 pub mod model;
@@ -26,18 +27,24 @@ pub mod verifier;
 
 pub use arbiter::{
     PORTFOLIO_ARBITER_BOUNDARY_SUMMARY, PortfolioArbiter, PortfolioArbiterCandidateScore,
-    PortfolioArbiterConfig, PortfolioArbiterError, PortfolioArbiterRun,
-    SecondAttemptCandidateGate, SecondAttemptPolicyOutcome,
+    PortfolioArbiterConfig, PortfolioArbiterError, PortfolioArbiterRun, SecondAttemptCandidateGate,
+    SecondAttemptPolicyOutcome,
 };
 pub use dsl::{
     ARC_SOLVER_BOUNDARY_SUMMARY, ArcDslTier, ArcGridBinding, ArcGridExpr, ArcObjectSelector,
     ArcObjectTransform, ArcProgram, ArcProgramMetadata, ArcSymbol, ArcSymbolError,
 };
+pub use interactive::{
+    ArcInteractiveAgent, ArcInteractiveAgentDefinition, ArcInteractiveAgentError,
+    ArcInteractiveAgentRegistry, ArcInteractiveCheckpointHandoff, ArcInteractiveEnvironment,
+    ArcInteractiveEnvironmentKind, ArcInteractiveGameStep, ArcInteractiveRunArtifacts,
+    ArcInteractiveRunner, ArcInteractiveRunnerConfig, ArcInteractiveRunnerConfigError,
+    ArcInteractiveRunnerError, ArcInteractiveSessionContext, INTERACTIVE_RUNNER_BOUNDARY_SUMMARY,
+};
 pub use interpreter::{ArcInterpreter, ArcInterpreterError};
 pub use mdl::{
-    ArcMdlCandidateReport, ArcMdlInitializationMode, ArcMdlLane, ArcMdlLaneConfig,
-    ArcMdlLaneError, ArcMdlLaneRun, ArcMdlRepresentation, MDL_LANE_BOUNDARY_SUMMARY,
-    MDL_LANE_ID,
+    ArcMdlCandidateReport, ArcMdlInitializationMode, ArcMdlLane, ArcMdlLaneConfig, ArcMdlLaneError,
+    ArcMdlLaneRun, ArcMdlRepresentation, MDL_LANE_BOUNDARY_SUMMARY, MDL_LANE_ID,
 };
 pub use model::{
     ArcDigest, ArcDigestError, BudgetCounterDelta, BudgetCounterKind, BudgetCounterSummary,
@@ -52,10 +59,10 @@ pub use model::{
 pub use recursive::{
     ArcRecursiveTinyModelBootstrap, ArcRecursiveTinyModelBootstrapMode,
     ArcRecursiveTinyModelConfig, ArcRecursiveTinyModelLane, ArcRecursiveTinyModelLaneError,
-    ArcRecursiveTinyModelLaneRun, ArcRecursiveTinyModelState,
-    ArcRecursiveTinyModelStepDecision, ArcRecursiveTinyModelStepOutput,
-    ArcRecursiveTinyModelStepTrace, ArcRecursiveTinyModelTracePhase, ArcTinyModel,
-    RECURSIVE_TINY_MODEL_BOUNDARY_SUMMARY, RECURSIVE_TINY_MODEL_LANE_ID,
+    ArcRecursiveTinyModelLaneRun, ArcRecursiveTinyModelState, ArcRecursiveTinyModelStepDecision,
+    ArcRecursiveTinyModelStepOutput, ArcRecursiveTinyModelStepTrace,
+    ArcRecursiveTinyModelTracePhase, ArcTinyModel, RECURSIVE_TINY_MODEL_BOUNDARY_SUMMARY,
+    RECURSIVE_TINY_MODEL_LANE_ID,
 };
 pub use symbolic::{
     SYMBOLIC_LANE_BOUNDARY_SUMMARY, SYMBOLIC_LANE_ID, SymbolicLane, SymbolicLaneConfig,

@@ -219,7 +219,7 @@ The target layout is a real subtree under `crates/arc/`.
 | `crates/arc/engine` | `arc-engine` | deterministic local game engine, sprite/camera/level logic, game package loading, and replay-safe action execution |
 | `crates/arc/client` | `arc-client` | ARC REST client, cookie-affine session handling, local/remote wrappers, and compatibility server behavior |
 | `crates/arc/benchmark` | `arc-benchmark` | exact-match scoring, versioned interactive RHAE scoring, recordings, checkpoints, scorecards, run manifests, resume semantics, and eval summaries |
-| `crates/arc/solvers` | `arc-solvers` | ARC DSL, hypothesis IR, search/refinement control, verifier, arbiter, baseline agents, prompt policies, and Psionic-backed local solver integration |
+| `crates/arc/solvers` | `arc-solvers` | ARC DSL, hypothesis IR, search/refinement control, verifier, arbiter, baseline agents, interactive runner contracts, prompt policies, and Psionic-backed local solver integration |
 | `crates/arc/ml` | `arc-ml` | HRM and baseline model definitions, train/eval bridges, ARC-specific metrics, and Psionic-backed training adapters |
 
 ### 3.1 Dependency shape
@@ -232,8 +232,8 @@ Keep the subtree acyclic and predictable:
 - `arc-client` may depend on `arc-core` and `arc-engine`.
 - `arc-benchmark` may depend on `arc-core`, `arc-engine`, `arc-client`, and
   Psionic eval/research crates.
-- `arc-solvers` may depend on `arc-core`, `arc-engine`, `arc-client`, and
-  Psionic serve/runtime/research crates.
+- `arc-solvers` may depend on `arc-core`, `arc-engine`, `arc-client`,
+  `arc-benchmark`, and Psionic serve/runtime/research crates.
 - `arc-ml` may depend on `arc-core`, `arc-datasets`, and Psionic train/eval
   crates. Solver-facing adapters should point from `arc-solvers` to `arc-ml`,
   not the reverse.
@@ -1319,7 +1319,8 @@ The system must already expose:
 - `arc-engine` owns deterministic state transition and local replay.
 - `arc-client` owns remote/local transport wrappers and compatibility-server
   behavior.
-- `arc-solvers` owns action-selection policy and planning.
+- `arc-solvers` owns action-selection policy, the typed interactive runner,
+  agent registry, and checkpoint handoff contracts.
 - `arc-benchmark` owns RHAE scoring, recordings, scorecards, and episode
   summaries.
 

@@ -734,18 +734,21 @@ score, trajectory, and environment truth into ad hoc prompting.
 - baseline agents are reproducible and replayable
 - interactive run artifacts are compatible with `arc-benchmark`
 
+Master issue:
+[#3810](https://github.com/OpenAgentsInc/openagents/issues/3810)
+
 ### Issues
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-401` | planned | Port the `GameClient`, runner registry, and baseline agent trait into `arc-solvers` and `arc-benchmark`. |
-| `ARC-402` | planned | Port the random baseline and a minimal deterministic scripted baseline. |
-| `ARC-403` | planned | Port the ADCR-style baseline as a baseline agent, not as the library contract. |
-| `ARC-404` | planned | Add explicit action-budget, reset, and terminal-state refusal semantics for interactive runs. |
-| `ARC-405` | planned | Export typed trajectory bundles through the generalized Psionic environment/receipt path once `PLIB-512` and `PLIB-513` land. |
-| `ARC-406` | planned | Add repeated interactive benchmark runs over the Psionic eval bridge once `PLIB-514` lands. |
-| `ARC-407` | planned | Add local-vs-remote game-client parity fixtures for action execution, checkpoints, and scorecards. |
-| `ARC-408` | planned | Add memory/context and prompt-policy surfaces that remain subordinate to typed action and score contracts. |
+| `ARC-401` / [#3800](https://github.com/OpenAgentsInc/openagents/issues/3800) | landed | Ported a typed interactive agent trait, registry, session-context contract, local/remote environment adapters over `arc-client`, and a bounded runner in `arc-solvers` that emits `arc-benchmark` run reports plus checkpoint bundles instead of ad hoc logs. |
+| `ARC-402` / [#3801](https://github.com/OpenAgentsInc/openagents/issues/3801) | planned | Port the random baseline and a minimal deterministic scripted baseline. |
+| `ARC-403` / [#3802](https://github.com/OpenAgentsInc/openagents/issues/3802) | planned | Port the ADCR-style baseline as a baseline agent, not as the library contract. |
+| `ARC-404` / [#3803](https://github.com/OpenAgentsInc/openagents/issues/3803) | planned | Add explicit action-budget, reset, and terminal-state refusal semantics for interactive runs. |
+| `ARC-405` / [#3804](https://github.com/OpenAgentsInc/openagents/issues/3804) | planned | Export typed trajectory bundles through the generalized Psionic environment/receipt path once `PLIB-512` and `PLIB-513` land. |
+| `ARC-406` / [#3805](https://github.com/OpenAgentsInc/openagents/issues/3805) | planned | Add repeated interactive benchmark runs over the Psionic eval bridge once `PLIB-514` lands. |
+| `ARC-407` / [#3806](https://github.com/OpenAgentsInc/openagents/issues/3806) | planned | Add local-vs-remote game-client parity fixtures for action execution, checkpoints, and scorecards. |
+| `ARC-408` / [#3807](https://github.com/OpenAgentsInc/openagents/issues/3807) | planned | Add memory/context and prompt-policy surfaces that remain subordinate to typed action and score contracts. |
 
 ## Epic 5: ARC-ML Over Psionic
 
