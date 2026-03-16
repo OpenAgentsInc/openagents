@@ -264,7 +264,8 @@ and replay identifiers stay stable across refactors. Dynamic
 `available_actions`, game-state enums, operation modes, score-policy IDs, and
 recording-envelope identifiers also live here as benchmark contracts. Task-wide
 color normalization, canonicalized grid metadata, and train/test dimension
-summaries now also start in this layer.
+summaries now also start in this layer. Typed bitmasks, connected components,
+hole counts, symmetry signatures, and relation graphs now also live here.
 
 ## 4. Shared domain model
 
