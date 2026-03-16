@@ -209,6 +209,13 @@ That now includes one intentionally narrow executor-training answer:
   (`validation_exact_trace_case_count = 0/2`, aggregate target exactness
   `13` bps), which makes it useful as a real learning baseline rather than as
   benchmark theater
+- the train-side learning loop artifacts now also exist for that same run:
+  `psionic-train` can augment the persisted bundle with
+  `training_telemetry.json`, `exactness_curve.json`,
+  `trace_divergence_report.json`, and `failure_samples.json`, all bound to the
+  same dataset/model/checkpoint identity; those artifacts currently show every
+  decoded case diverging at target token 0, which is exactly the sort of
+  machine-readable failure baseline the next curriculum/model iteration needs
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

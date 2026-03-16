@@ -208,6 +208,14 @@ The current scope is:
   run remains explicitly low-exactness (`0/2` validation exact-trace cases,
   `13` bps aggregate target exactness), so the claim stays at "first honest
   trained run exists" rather than "the trained executor already works"
+- landed trained-executor Phase 8 follow-on bar: the same persisted run bundle
+  now also carries machine-readable post-run telemetry and failure artifacts in
+  `training_telemetry.json`, `exactness_curve.json`,
+  `trace_divergence_report.json`, and `failure_samples.json`; those artifacts
+  keep dataset/model/checkpoint identity explicit and show the current first
+  run failing immediately on all 8 cases (first divergence at target token 0,
+  case exactness between `9` and `16` bps), which is the correct baseline for
+  later curriculum/model changes
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

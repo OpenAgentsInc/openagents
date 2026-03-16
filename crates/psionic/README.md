@@ -132,6 +132,13 @@ Current posture:
   (`validation_exact_trace_case_count = 0/2`, aggregate target exactness
   `13` bps), so this is a reproducible first-run artifact lane rather than a
   claim that Sudoku is already solved in-model
+- the eighth trained-executor follow-on bar now also exists in
+  `psionic-train` and that same run bundle: Phase 8 telemetry now persists
+  `training_telemetry.json`, `exactness_curve.json`,
+  `trace_divergence_report.json`, and `failure_samples.json`, and the current
+  artifacts show that all 8 decoded cases diverge at target token 0 with case
+  exactness only in the `9` to `16` bps range, which gives the next run a real
+  failure-analysis baseline instead of an anecdotal “weak model” label
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

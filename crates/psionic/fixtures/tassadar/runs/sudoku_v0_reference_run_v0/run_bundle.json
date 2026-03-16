@@ -15,6 +15,46 @@
   "model_artifact_digest": "6296d111b6e458b1642458c4910d234a4409a3bc717d8d5bf8113163486dd204",
   "artifacts": [
     {
+      "artifact_kind": "tassadar_checkpoint_artifact",
+      "artifact_ref": "checkpoint_artifact.json",
+      "artifact_digest": "d1fcf558ca7c65010132c5cfcb4081ebcbc29f925027aef6641817446e4cccab"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_manifest",
+      "artifact_ref": "checkpoint_manifest.json",
+      "artifact_digest": "88b4e3d9faebbb2570d5a9d41a126f77080c34a92de7a95dfa8c04736e615185"
+    },
+    {
+      "artifact_kind": "tassadar_checkpoint_state",
+      "artifact_ref": "checkpoint_state.json",
+      "artifact_digest": "c9aede016ad03a742ab8b9a8c62c94c8a8d390b24721d44eaebf2068d6eb7a34"
+    },
+    {
+      "artifact_kind": "tassadar_exactness_curve",
+      "artifact_ref": "exactness_curve.json",
+      "artifact_digest": "d35ad452b564bf5a30a99c2d1dee426a48db5e8258307c364796bf8f95bb2f6e"
+    },
+    {
+      "artifact_kind": "tassadar_failure_samples",
+      "artifact_ref": "failure_samples.json",
+      "artifact_digest": "a382fefb4902f725d8fb4384bc29448134d2aa057f9bbf1e0c11cce985f1541f"
+    },
+    {
+      "artifact_kind": "tassadar_linear_benchmark_report",
+      "artifact_ref": "linear_benchmark_report.json",
+      "artifact_digest": "3b15158f2c43cd6092ec58579770fb24a7223e4e3f9190452b5692ca24422eed"
+    },
+    {
+      "artifact_kind": "tassadar_model_artifact",
+      "artifact_ref": "model_artifact.json",
+      "artifact_digest": "f71885712d82a1ec10e6c89351d6c63ae879b62832ff0372c2970470bd749e40"
+    },
+    {
+      "artifact_kind": "tassadar_trace_divergence_report",
+      "artifact_ref": "trace_divergence_report.json",
+      "artifact_digest": "fe489cd8bee94529503ed03c3bc794e73ab097e341dddfdd92b65da682870472"
+    },
+    {
       "artifact_kind": "tassadar_training_manifest",
       "artifact_ref": "training_manifest.json",
       "artifact_digest": "6d6cabbce1899bed85af0c1b3e55c7207ad71e43bed0cd15a7c3c49d5bd7e336"
@@ -25,30 +65,10 @@
       "artifact_digest": "8bda161bfdbe9db15078d9183b31a0e2fc5a136a64be9492ebbbbdd39942e950"
     },
     {
-      "artifact_kind": "tassadar_linear_benchmark_report",
-      "artifact_ref": "linear_benchmark_report.json",
-      "artifact_digest": "3b15158f2c43cd6092ec58579770fb24a7223e4e3f9190452b5692ca24422eed"
-    },
-    {
-      "artifact_kind": "tassadar_checkpoint_artifact",
-      "artifact_ref": "checkpoint_artifact.json",
-      "artifact_digest": "d1fcf558ca7c65010132c5cfcb4081ebcbc29f925027aef6641817446e4cccab"
-    },
-    {
-      "artifact_kind": "tassadar_checkpoint_state",
-      "artifact_ref": "checkpoint_state.json",
-      "artifact_digest": "c9aede016ad03a742ab8b9a8c62c94c8a8d390b24721d44eaebf2068d6eb7a34"
-    },
-    {
-      "artifact_kind": "tassadar_checkpoint_manifest",
-      "artifact_ref": "checkpoint_manifest.json",
-      "artifact_digest": "88b4e3d9faebbb2570d5a9d41a126f77080c34a92de7a95dfa8c04736e615185"
-    },
-    {
-      "artifact_kind": "tassadar_model_artifact",
-      "artifact_ref": "model_artifact.json",
-      "artifact_digest": "f71885712d82a1ec10e6c89351d6c63ae879b62832ff0372c2970470bd749e40"
+      "artifact_kind": "tassadar_training_telemetry",
+      "artifact_ref": "training_telemetry.json",
+      "artifact_digest": "85cd281ffc1cfbf0345c71f9321a3eb54e2972032af7c9dd73db185f7e8452f0"
     }
   ],
-  "bundle_digest": "d95838729a77eaf55fda43277aa7457c5c535229fd715cf3ac2460d1c7873e90"
+  "bundle_digest": "c701f5011ce43bdbd67e4e7aaffe7585bb810a3d9014a6fac221a899fba5e133"
 }
