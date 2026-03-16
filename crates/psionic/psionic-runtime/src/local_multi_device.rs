@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use psionic_core::TensorId;
+use psionic_core::{PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, TensorId};
 use psionic_ir::ExecutionPlan;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -261,6 +261,43 @@ pub enum LocalShardingContractError {
         /// Available bytes surfaced by the runtime.
         available_bytes: u64,
     },
+}
+
+impl LocalShardingContractError {
+    /// Returns the canonical refusal when the sharding contract hit a topology
+    /// or layout boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedWeightStrategy { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedLayout,
+                PsionicRefusalScope::Topology,
+                self.to_string(),
+            )),
+            Self::SelectionBackendMismatch { .. }
+            | Self::TopologyBackendMismatch { .. }
+            | Self::TopologyLayoutMismatch { .. }
+            | Self::DeviceCountOutOfBounds { .. }
+            | Self::SelectionDeviceCountMismatch { .. }
+            | Self::DuplicateSelectedDevice { .. }
+            | Self::SelectionDeviceBackendMismatch { .. }
+            | Self::MissingSelectedDevice { .. }
+            | Self::DeviceMemoryUnknown { .. }
+            | Self::InsufficientDeviceMemory { .. } => Some(PsionicRefusal::new(
+                PsionicRefusalCode::TopologyMismatch,
+                PsionicRefusalScope::Topology,
+                self.to_string(),
+            )),
+            Self::MissingContractId
+            | Self::MissingModelFamily
+            | Self::MissingEffectiveBackend
+            | Self::InvalidMinDeviceCount { .. }
+            | Self::InvalidDeviceCountBounds { .. }
+            | Self::MissingWeightRules
+            | Self::DuplicateWeightClass { .. }
+            | Self::MissingPrimaryShardingRule { .. } => None,
+        }
+    }
 }
 
 /// Inspectable local sharding contract bound to one representative model-family path.
@@ -839,7 +876,10 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use psionic_core::{DType, Device, DeviceKind, QuantizationMode, Shape, TensorId, TensorSpec};
+    use psionic_core::{
+        DType, Device, DeviceKind, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode,
+        Shape, TensorId, TensorSpec,
+    };
     use psionic_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
 
     use crate::{
@@ -1139,6 +1179,59 @@ mod tests {
                 selected_devices: 1,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn local_sharding_contract_refusal_taxonomy_surfaces_topology_mismatch()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let device0 = sample_cuda_device(0, 16 * 1024 * 1024 * 1024);
+        let device1 = sample_cuda_device(1, 16 * 1024 * 1024 * 1024);
+        let execution_topology = crate::ExecutionTopologyPlan::tensor_sharded(
+            "cuda",
+            1,
+            vec![
+                (device0.inventory_qualifiers(), 0, 32),
+                (device1.inventory_qualifiers(), 32, 64),
+            ],
+        );
+        let contract = LocalShardingContract::new(
+            "gguf-decoder-llama-tp-v1",
+            "gguf_decoder:llama",
+            "cuda",
+            ShardedModelLayoutKind::TensorSharded,
+            2,
+            Some(2),
+            Some(8 * 1024 * 1024 * 1024),
+            vec![
+                LocalWeightShardingRule::new(
+                    LocalModelWeightClass::TokenEmbedding,
+                    LocalWeightShardingStrategy::TensorAxis { axis: 1 },
+                ),
+                LocalWeightShardingRule::new(
+                    LocalModelWeightClass::AttentionOutput,
+                    LocalWeightShardingStrategy::TensorAxis { axis: 1 },
+                ),
+            ],
+        )?;
+        let selection = BackendSelection::direct_with_policy(
+            "metal",
+            Some(device0),
+            vec![String::from("matmul")],
+            ServedProductBackendPolicy::same_backend_only(),
+        )
+        .with_selected_devices(vec![device1])
+        .with_execution_topology(Some(execution_topology.clone()));
+        let refusal = contract
+            .validate_selection(&selection, &execution_topology)
+            .expect_err("backend mismatch should refuse");
+        let refusal = refusal.refusal();
+        assert!(refusal.is_some());
+        let Some(refusal) = refusal else {
+            return Ok(());
+        };
+        assert_eq!(refusal.code, PsionicRefusalCode::TopologyMismatch);
+        assert_eq!(refusal.scope, PsionicRefusalScope::Topology);
         Ok(())
     }
 

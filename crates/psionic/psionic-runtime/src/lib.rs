@@ -18,8 +18,9 @@ pub use local_multi_device::*;
 pub use parity::*;
 pub use proof::*;
 use psionic_core::{
-    BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
-    TensorId, TensorSpec, ViewSemantics,
+    BackendExtensionKind, DType, Device, DeviceKind, PsionicRefusal, PsionicRefusalCode,
+    PsionicRefusalScope, QuantizationMode, QuantizedBlockLayout, TensorId, TensorSpec,
+    ViewSemantics,
 };
 use psionic_ir::ExecutionPlan;
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -58,6 +59,33 @@ pub enum RuntimeError {
     /// Generic backend failure.
     #[error("{0}")]
     Backend(String),
+}
+
+impl RuntimeError {
+    /// Returns the canonical refusal when the runtime error represents one
+    /// explicit unsupported or incompatibility boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::InvalidBuffer { tensor, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedLayout,
+                    PsionicRefusalScope::Runtime,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor:?}")),
+            ),
+            Self::UnsupportedStep(step) => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Runtime,
+                    self.to_string(),
+                )
+                .with_subject(step.clone()),
+            ),
+            Self::MissingInput(_) | Self::Backend(_) => None,
+        }
+    }
 }
 
 /// Backend-neutral local runtime error taxonomy used by served-product surfaces.
@@ -170,6 +198,36 @@ impl LocalRuntimeDiagnostic {
     pub const fn with_backend_health(mut self, backend_health: HealthStatus) -> Self {
         self.backend_health = Some(backend_health);
         self
+    }
+
+    /// Returns the canonical refusal when the diagnostic represents one explicit
+    /// unsupported or incompatibility boundary.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        let subject = self
+            .backend
+            .clone()
+            .or_else(|| self.model_id.clone())
+            .or_else(|| self.product_id.clone());
+        let refusal = match self.code {
+            LocalRuntimeErrorCode::UnsupportedCapability
+            | LocalRuntimeErrorCode::BackendUnavailable
+            | LocalRuntimeErrorCode::BackendDegraded => PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                self.message.clone(),
+            ),
+            LocalRuntimeErrorCode::SessionMismatch => PsionicRefusal::new(
+                PsionicRefusalCode::SerializationIncompatibility,
+                PsionicRefusalScope::Runtime,
+                self.message.clone(),
+            ),
+            _ => return None,
+        };
+        Some(match subject {
+            Some(subject) => refusal.with_subject(subject),
+            None => refusal,
+        })
     }
 }
 
@@ -6242,6 +6300,27 @@ pub enum GenerationSchedulerFallbackReason {
     SessionSerialization,
 }
 
+impl GenerationSchedulerFallbackReason {
+    /// Returns the canonical refusal when one scheduler fallback is really an
+    /// explicit unsupported or serialization boundary.
+    #[must_use]
+    pub fn refusal(self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedRuntime => Some(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                "shared scheduler is unsupported on the selected runtime",
+            )),
+            Self::SessionSerialization => Some(PsionicRefusal::new(
+                PsionicRefusalCode::SerializationIncompatibility,
+                PsionicRefusalScope::Runtime,
+                "request session state must serialize before this scheduler path can proceed",
+            )),
+            Self::QueueCapacityExceeded => None,
+        }
+    }
+}
+
 /// Aggregate count for one observed scheduler fallback reason.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerationSchedulerFallbackCount {
@@ -9272,7 +9351,8 @@ mod tests {
 
     use ed25519_dalek::SigningKey;
     use psionic_core::{
-        BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec,
+        BackendExtensionKind, DType, Device, DeviceKind, PsionicRefusalCode, PsionicRefusalScope,
+        QuantizationMode, Shape, TensorSpec,
     };
     use psionic_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
     use serde_json::json;
@@ -12610,6 +12690,46 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn runtime_refusal_taxonomy_maps_capability_and_serialization_boundaries() {
+        let step_refusal = RuntimeError::UnsupportedStep(String::from("rope")).refusal();
+        assert!(step_refusal.is_some());
+        let Some(step_refusal) = step_refusal else {
+            return;
+        };
+        assert_eq!(step_refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(step_refusal.scope, PsionicRefusalScope::Runtime);
+        assert_eq!(step_refusal.subject.as_deref(), Some("rope"));
+
+        let diagnostic = super::LocalRuntimeDiagnostic::new(
+            super::LocalRuntimeErrorCode::UnsupportedCapability,
+            503,
+            "selected backend does not expose kv residency",
+        )
+        .with_backend("metal");
+        let diagnostic_refusal = diagnostic.refusal();
+        assert!(diagnostic_refusal.is_some());
+        let Some(diagnostic_refusal) = diagnostic_refusal else {
+            return;
+        };
+        assert_eq!(
+            diagnostic_refusal.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(diagnostic_refusal.subject.as_deref(), Some("metal"));
+
+        let serialization = GenerationSchedulerFallbackReason::SessionSerialization.refusal();
+        assert!(serialization.is_some());
+        let Some(serialization) = serialization else {
+            return;
+        };
+        assert_eq!(
+            serialization.code,
+            PsionicRefusalCode::SerializationIncompatibility
+        );
+        assert_eq!(serialization.scope, PsionicRefusalScope::Runtime);
     }
 
     #[test]

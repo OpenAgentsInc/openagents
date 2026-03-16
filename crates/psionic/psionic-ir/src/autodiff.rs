@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use psionic_core::{DType, Device, Shape, Tensor, TensorData, TensorId};
+use psionic_core::{
+    DType, Device, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, Shape, Tensor,
+    TensorData, TensorId,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -200,6 +203,36 @@ pub enum ReferenceEvaluationError {
     },
 }
 
+impl ReferenceEvaluationError {
+    /// Returns the canonical refusal when the reference path intentionally
+    /// refuses one graph family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedDType { tensor_id, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}")),
+            ),
+            Self::UnsupportedOp { tensor_id, op } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}:{op}")),
+            ),
+            Self::MissingInput { .. }
+            | Self::UnknownTensor { .. }
+            | Self::DenseF32Required { .. }
+            | Self::PayloadLengthMismatch { .. } => None,
+        }
+    }
+}
+
 /// Typed error returned by the autodiff layer.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum AutodiffError {
@@ -266,6 +299,32 @@ pub enum AutodiffError {
     /// One lower-layer reference-evaluation operation failed.
     #[error(transparent)]
     ReferenceEvaluation(#[from] ReferenceEvaluationError),
+}
+
+impl AutodiffError {
+    /// Returns the canonical refusal when the autodiff layer intentionally
+    /// refuses one unsupported gradient family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedGradientDType { tensor_id, .. }
+            | Self::UnsupportedGradientOp { tensor_id, .. }
+            | Self::SeedDenseF32Required { tensor_id } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedGradient,
+                    PsionicRefusalScope::Autodiff,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}")),
+            ),
+            Self::ReferenceEvaluation(error) => error.refusal(),
+            Self::UnknownTensor { .. }
+            | Self::OutputNotTracked { .. }
+            | Self::NonScalarOutputRequiresSeed { .. }
+            | Self::SeedLengthMismatch { .. }
+            | Self::BackwardGraphConstruction { .. } => None,
+        }
+    }
 }
 
 /// One binding from a primal forward tensor to a gradient-graph input.
@@ -1676,7 +1735,7 @@ mod tests {
 
     use std::{collections::BTreeMap, error::Error};
 
-    use psionic_core::{DType, Device, Shape, TensorData};
+    use psionic_core::{DType, Device, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData};
 
     use crate::{
         AutodiffContext, AutodiffError, AutodiffGradientSupport, AutodiffGraphBuilder,
@@ -1779,6 +1838,22 @@ mod tests {
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn autodiff_refusal_taxonomy_maps_unsupported_gradient_family() {
+        let refusal = AutodiffError::UnsupportedGradientOp {
+            tensor_id: TensorId(7),
+            op: String::from("rms_norm"),
+        }
+        .refusal();
+        assert!(refusal.is_some());
+        let Some(refusal) = refusal else {
+            return;
+        };
+        assert_eq!(refusal.code, PsionicRefusalCode::UnsupportedGradient);
+        assert_eq!(refusal.scope, PsionicRefusalScope::Autodiff);
+        assert_eq!(refusal.subject.as_deref(), Some("TensorId(7)"));
     }
 
     #[test]

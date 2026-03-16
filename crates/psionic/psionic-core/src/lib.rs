@@ -10,6 +10,80 @@ use serde::{Deserialize, Serialize};
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "tensor facade and foundational engine types";
 
+/// Canonical cross-library refusal family for explicitly unsupported behavior.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PsionicRefusalCode {
+    /// One op family is intentionally unsupported.
+    UnsupportedOp,
+    /// One reverse-mode gradient path is intentionally unsupported.
+    UnsupportedGradient,
+    /// One requested layout or view family is intentionally unsupported.
+    UnsupportedLayout,
+    /// One backend or kernel capability is intentionally unsupported.
+    UnsupportedBackendCapability,
+    /// One serialized or replayed artifact is incompatible with the expected contract.
+    SerializationIncompatibility,
+    /// Sandbox policy denied the request before execution.
+    SandboxPolicyDenied,
+    /// One runtime or sharding request did not satisfy topology requirements.
+    TopologyMismatch,
+}
+
+/// Owning surface for one canonical refusal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PsionicRefusalScope {
+    /// Graph construction or operator planning surface.
+    Graph,
+    /// Autodiff or backward-planning surface.
+    Autodiff,
+    /// General runtime or serving runtime surface.
+    Runtime,
+    /// Sandbox execution-policy surface.
+    Sandbox,
+    /// Local or clustered topology and sharding surface.
+    Topology,
+}
+
+/// Canonical typed refusal record shared across Psionic crates.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PsionicRefusal {
+    /// Stable refusal family.
+    pub code: PsionicRefusalCode,
+    /// Owning surface that emitted the refusal.
+    pub scope: PsionicRefusalScope,
+    /// Stable subject such as an op label, backend name, or product id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    /// Plain-language detail suitable for logs, fixtures, or receipts.
+    pub detail: String,
+}
+
+impl PsionicRefusal {
+    /// Creates a canonical refusal.
+    #[must_use]
+    pub fn new(
+        code: PsionicRefusalCode,
+        scope: PsionicRefusalScope,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            scope,
+            subject: None,
+            detail: detail.into(),
+        }
+    }
+
+    /// Attaches a stable subject when one exists.
+    #[must_use]
+    pub fn with_subject(mut self, subject: impl Into<String>) -> Self {
+        self.subject = Some(subject.into());
+        self
+    }
+}
+
 /// Stable tensor identifier used across the Psionic crates.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -944,7 +1018,10 @@ fn is_permutation(order: &[usize]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{DType, DTypeClass, Device, DeviceKind, Layout, Shape, TensorSpec, ViewSemantics};
+    use super::{
+        DType, DTypeClass, Device, DeviceKind, Layout, PsionicRefusal, PsionicRefusalCode,
+        PsionicRefusalScope, Shape, TensorSpec, ViewSemantics,
+    };
 
     #[test]
     fn scalar_shape_counts_as_one_element() {
@@ -1085,7 +1162,8 @@ mod tests {
         let Some(sliced) = sliced else {
             return;
         };
-        let broadcast = Layout::contiguous(Shape::new(vec![1, 3])).expanded(&Shape::new(vec![4, 3]));
+        let broadcast =
+            Layout::contiguous(Shape::new(vec![1, 3])).expanded(&Shape::new(vec![4, 3]));
         assert!(broadcast.is_some());
         let Some(broadcast) = broadcast else {
             return;
@@ -1117,5 +1195,20 @@ mod tests {
         assert!(DType::F32.supports_quantized_logical_storage());
         assert!(!DType::F16.supports_quantized_logical_storage());
         assert!(!DType::I8.supports_quantized_logical_storage());
+    }
+
+    #[test]
+    fn psionic_refusal_builder_keeps_code_scope_and_subject() {
+        let refusal = PsionicRefusal::new(
+            PsionicRefusalCode::UnsupportedOp,
+            PsionicRefusalScope::Graph,
+            "operator registry refused the op",
+        )
+        .with_subject("rope");
+
+        assert_eq!(refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(refusal.scope, PsionicRefusalScope::Graph);
+        assert_eq!(refusal.subject.as_deref(), Some("rope"));
+        assert_eq!(refusal.detail, "operator registry refused the op");
     }
 }
