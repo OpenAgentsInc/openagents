@@ -1282,6 +1282,21 @@ Canonical operator policy and validator:
 - `crates/arc/docs/PUBLIC_EVAL_HYGIENE.md`
 - `scripts/lint/arc-public-eval-hygiene-check.sh`
 
+Current bounded landing:
+
+- `ARC-310` lands a typed static hygiene harness in `arc-benchmark`
+- the harness reports exact-match performance separately for internal hidden
+  holdout, synthetic regression, and public-eval-visible slices, plus
+  concept-slice aggregates over the same scored task reports
+- synthetic-regression provenance and hidden-holdout disjointness are validated
+  as typed suite metadata rather than left to naming conventions
+- public-eval artifact manifests are now validated in Rust against the same
+  policy the repo script enforces, so benchmark acceptance can refuse leakage
+  and invalid labeling directly
+- later work may widen this into larger hidden-eval services or interactive
+  hygiene gates, but the current typed visibility/provenance/report contracts
+  must remain explicit
+
 ## 9. ARC-AGI-3 seam
 
 The v1 solver targets static ARC first, but the subtree must already prepare for

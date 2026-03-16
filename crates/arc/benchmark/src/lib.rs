@@ -17,6 +17,7 @@
 
 mod checkpoint;
 mod exact_match;
+mod hygiene;
 mod interactive;
 mod summary;
 
@@ -29,6 +30,12 @@ pub use exact_match::{
     ArcBenchmarkError, ArcExactMatchAttemptReport, ArcExactMatchBenchmarkSummary,
     ArcExactMatchPairReport, ArcExactMatchTaskReport, ArcStaticAnswerKey, ArcStaticPairSubmission,
     ArcStaticTaskSubmission, score_exact_match_task,
+};
+pub use hygiene::{
+    ArcBenchmarkHygieneError, ArcConceptSliceSummary, ArcEvaluationVisibility,
+    ArcPublicEvalArtifactManifest, ArcPublicEvalValidationResult, ArcStaticHygieneCase,
+    ArcStaticHygieneReport, ArcStaticHygieneSuite, ArcSyntheticDerivation,
+    ArcVisibilitySummary, run_static_hygiene_suite, validate_public_eval_artifact_manifest,
 };
 pub use interactive::{
     ArcInteractiveRunReport, ArcInteractiveStepSummary, score_interactive_recording,

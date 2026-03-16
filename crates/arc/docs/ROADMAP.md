@@ -717,7 +717,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-310` / [#3702](https://github.com/OpenAgentsInc/openagents/issues/3702) | planned | Build internal hidden holdout, synthetic regression, concept-slice reporting, and explicit public-eval hygiene enforcement so solver progress cannot depend on public-eval leakage. |
+| `ARC-310` / [#3702](https://github.com/OpenAgentsInc/openagents/issues/3702) | done | Added a typed static hygiene harness in `arc-benchmark` with internal-holdout / synthetic-regression / public-eval visibility slices, concept-slice aggregation, missing-submission reporting, Rust-side public-eval artifact validation that mirrors the repo policy script, and fixture-backed tests covering positive reporting plus leakage refusal. |
 
 ## Epic 4: Interactive ARC-AGI-3 Agents
 
