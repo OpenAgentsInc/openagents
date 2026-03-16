@@ -1,0 +1,24 @@
+{
+  "id": "correspondence-demo",
+  "train": [
+    {
+      "input": {
+        "width": 5,
+        "height": 3,
+        "cells": [1, 1, 0, 2, 0, 1, 1, 0, 2, 0, 0, 0, 0, 0, 0]
+      },
+      "output": {
+        "width": 5,
+        "height": 3,
+        "cells": [0, 3, 3, 0, 4, 0, 3, 3, 0, 4, 0, 0, 0, 0, 0]
+      }
+    }
+  ],
+  "test": [
+    {
+      "width": 1,
+      "height": 1,
+      "cells": [0]
+    }
+  ]
+}

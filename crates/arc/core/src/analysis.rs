@@ -162,6 +162,31 @@ pub struct RelationGraph {
     pub edges: Vec<ObjectRelation>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CorrespondenceFeatures {
+    pub same_bbox_size: bool,
+    pub same_cell_count: bool,
+    pub same_hole_count: bool,
+    pub same_shape_signature: bool,
+    pub same_relation_degree: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CorrespondenceCandidate {
+    pub input_object: ObjectId,
+    pub output_object: ObjectId,
+    pub score: u8,
+    pub features: CorrespondenceFeatures,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TrainPairCorrespondence {
+    pub pair_index: u16,
+    pub input_graph: RelationGraph,
+    pub output_graph: RelationGraph,
+    pub candidates: Vec<CorrespondenceCandidate>,
+}
+
 #[must_use]
 pub fn canonical_palette(grid: &ArcGrid) -> Vec<u8> {
     let mut palette = grid.cells().to_vec();
@@ -317,6 +342,31 @@ pub fn extract_relation_graph(grid: &ArcGrid) -> RelationGraph {
     edges.sort_by_key(relation_sort_key);
 
     RelationGraph { objects, edges }
+}
+
+pub fn extract_train_correspondence_candidates(
+    task: &ArcTask,
+) -> Result<Vec<TrainPairCorrespondence>, ArcCanonicalizationError> {
+    let canonical = canonicalize_task(task)?;
+
+    canonical
+        .normalized_train
+        .iter()
+        .enumerate()
+        .map(|(pair_index, pair)| {
+            let input_graph = extract_relation_graph(&pair.input.grid);
+            let output_graph = extract_relation_graph(&pair.output.grid);
+            let mut candidates = build_correspondence_candidates(&input_graph, &output_graph);
+            candidates.sort_by_key(correspondence_sort_key);
+
+            Ok(TrainPairCorrespondence {
+                pair_index: pair_index as u16,
+                input_graph,
+                output_graph,
+                candidates,
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -635,6 +685,41 @@ fn build_relation_edges(objects: &[ArcObject]) -> Vec<ObjectRelation> {
     edges
 }
 
+fn build_correspondence_candidates(
+    input_graph: &RelationGraph,
+    output_graph: &RelationGraph,
+) -> Vec<CorrespondenceCandidate> {
+    let mut candidates = Vec::new();
+
+    for input_object in &input_graph.objects {
+        for output_object in &output_graph.objects {
+            let features = CorrespondenceFeatures {
+                same_bbox_size: input_object.mask.width == output_object.mask.width
+                    && input_object.mask.height == output_object.mask.height,
+                same_cell_count: object_cell_count(input_object)
+                    == object_cell_count(output_object),
+                same_hole_count: input_object.holes == output_object.holes,
+                same_shape_signature: input_object.shape_signature == output_object.shape_signature,
+                same_relation_degree: relation_degree(input_graph, input_object.object_id)
+                    == relation_degree(output_graph, output_object.object_id),
+            };
+            let score = correspondence_score(features);
+            if score == 0 {
+                continue;
+            }
+
+            candidates.push(CorrespondenceCandidate {
+                input_object: input_object.object_id,
+                output_object: output_object.object_id,
+                score,
+                features,
+            });
+        }
+    }
+
+    candidates
+}
+
 fn objects_touch(source: &ArcObject, target: &ArcObject) -> bool {
     let x_gap = bounding_gap(
         source.bbox.min_x,
@@ -678,6 +763,50 @@ fn relation_sort_key(relation: &ObjectRelation) -> (u32, u32, String) {
         relation.target.0,
         format!("{:?}", relation.kind),
     )
+}
+
+fn correspondence_sort_key(candidate: &CorrespondenceCandidate) -> (u8, u32, u32) {
+    (
+        u8::MAX - candidate.score,
+        candidate.input_object.0,
+        candidate.output_object.0,
+    )
+}
+
+fn object_cell_count(object: &ArcObject) -> u16 {
+    object
+        .color_histogram
+        .iter()
+        .map(|count| u16::from(*count))
+        .sum()
+}
+
+fn relation_degree(graph: &RelationGraph, object_id: ObjectId) -> usize {
+    graph
+        .edges
+        .iter()
+        .filter(|edge| edge.source == object_id || edge.target == object_id)
+        .count()
+}
+
+fn correspondence_score(features: CorrespondenceFeatures) -> u8 {
+    let mut score = 0_u8;
+    if features.same_shape_signature {
+        score = score.saturating_add(4);
+    }
+    if features.same_bbox_size {
+        score = score.saturating_add(2);
+    }
+    if features.same_cell_count {
+        score = score.saturating_add(2);
+    }
+    if features.same_hole_count {
+        score = score.saturating_add(1);
+    }
+    if features.same_relation_degree {
+        score = score.saturating_add(1);
+    }
+    score
 }
 
 fn four_neighbors_grid(grid: &ArcGrid, x: u8, y: u8) -> Vec<(u8, u8)> {

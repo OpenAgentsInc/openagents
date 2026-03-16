@@ -20,9 +20,11 @@ pub mod schema;
 pub use analysis::{
     ANALYSIS_BOUNDARY_SUMMARY, ArcBoundingBox, ArcCanonicalizationError, ArcColorNormalization,
     ArcGridDimensions, ArcGridPadding, ArcObject, BitGrid, CanonicalGrid, CanonicalPair,
-    CanonicalTask, ConnectivityKind, GridAnalysisSummary, ObjectId, ObjectRelation,
-    ObjectRelationKind, RelationGraph, ShapeSignature, TaskDimensionSummary, canonical_palette,
-    canonicalize_task, extract_relation_graph, summarize_grid, summarize_task_dimensions,
+    CanonicalTask, ConnectivityKind, CorrespondenceCandidate, CorrespondenceFeatures,
+    GridAnalysisSummary, ObjectId, ObjectRelation, ObjectRelationKind, RelationGraph,
+    ShapeSignature, TaskDimensionSummary, TrainPairCorrespondence, canonical_palette,
+    canonicalize_task, extract_relation_graph, extract_train_correspondence_candidates,
+    summarize_grid, summarize_task_dimensions,
 };
 pub use envelopes::{
     ArcRefusalCode, ArcSolveOutcome, ArcSolveRefusal, ArcSolveRefusalError, ArcSolveResultEnvelope,
