@@ -8,7 +8,8 @@
 use std::fs;
 
 use arc_core::{
-    ArcAction, ArcBenchmark, ArcRecording, ArcRefusalCode, ArcScorecard, ArcSolveOutcome,
+    ArcAction, ArcActionKind, ArcBenchmark, ArcGameState, ArcOperationMode, ArcRecording,
+    ArcRecordingEnvelopeId, ArcRefusalCode, ArcScorePolicyId, ArcScorecard, ArcSolveOutcome,
     ArcSolveRefusal, ArcSolveResultEnvelope, ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget,
     TraceLocator, summarize_grid,
 };
@@ -183,4 +184,60 @@ fn frozen_interactive_contract_digests_remain_stable() {
             .expect("solve result digest should compute"),
         "c9b702998afabbb88f07636836efdefb0f15c29141bda940e247f7dcf674e045"
     );
+}
+
+#[test]
+fn policy_contracts_round_trip_without_breaking_base_recordings() {
+    let fixture = serde_json::json!({
+        "benchmark": "arc_agi3",
+        "task_id": "demo-bridge-task",
+        "envelope_id": "recording://demo-bridge-task/session-1",
+        "operation_mode": "online",
+        "score_policy_id": "arc_agi3_methodology_v1",
+        "steps": [
+            {
+                "step_index": 0,
+                "action": { "kind": "RESET" },
+                "observation": {
+                    "frame": {
+                        "width": 2,
+                        "height": 2,
+                        "pixels": [0, 0, 0, 0]
+                    },
+                    "available_actions": ["RESET", "ACTION6", "ACTION7"],
+                    "game_state": "not_finished"
+                },
+                "terminal": false
+            }
+        ]
+    });
+
+    let recording: ArcRecording =
+        serde_json::from_value(fixture).expect("policy fixture should deserialize");
+
+    assert_eq!(
+        recording.envelope_id,
+        Some(
+            ArcRecordingEnvelopeId::new("recording://demo-bridge-task/session-1")
+                .expect("envelope id should validate")
+        )
+    );
+    assert_eq!(recording.operation_mode, Some(ArcOperationMode::Online));
+    assert_eq!(
+        recording.score_policy_id,
+        Some(ArcScorePolicyId::ArcAgi3MethodologyV1)
+    );
+    assert_eq!(
+        recording.steps[0].observation.available_actions,
+        vec![
+            ArcActionKind::Reset,
+            ArcActionKind::Action6,
+            ArcActionKind::Action7
+        ]
+    );
+    assert_eq!(
+        recording.steps[0].observation.game_state,
+        ArcGameState::NotFinished
+    );
+    assert_eq!(recording.steps[0].action.kind(), ArcActionKind::Reset);
 }

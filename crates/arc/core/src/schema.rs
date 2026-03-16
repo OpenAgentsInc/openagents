@@ -281,6 +281,20 @@ pub enum ArcAction {
 }
 
 impl ArcAction {
+    #[must_use]
+    pub fn kind(&self) -> ArcActionKind {
+        match self {
+            Self::Reset => ArcActionKind::Reset,
+            Self::Action1 => ArcActionKind::Action1,
+            Self::Action2 => ArcActionKind::Action2,
+            Self::Action3 => ArcActionKind::Action3,
+            Self::Action4 => ArcActionKind::Action4,
+            Self::Action5 => ArcActionKind::Action5,
+            Self::Action6 { .. } => ArcActionKind::Action6,
+            Self::Action7 => ArcActionKind::Action7,
+        }
+    }
+
     pub fn action6(x: u8, y: u8) -> Result<Self, ArcActionError> {
         if x > ARC_ACTION6_COORDINATE_MAX {
             return Err(ArcActionError::CoordinateOutOfRange {
@@ -414,6 +428,97 @@ pub enum ArcActionError {
     CoordinateOutOfRange { axis: &'static str, value: u8 },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ArcActionKind {
+    Reset,
+    Action1,
+    Action2,
+    Action3,
+    Action4,
+    Action5,
+    Action6,
+    Action7,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArcOperationMode {
+    Normal,
+    Offline,
+    Online,
+    Competition,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ArcGameState {
+    #[default]
+    NotFinished,
+    Win,
+    GameOver,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArcScorePolicyId {
+    ArcAgi2ExactMatchV1,
+    ArcAgi3MethodologyV1,
+    ArcAgi3CompetitionV1,
+    ArcAgi3PreviewCompatibilityV1,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ArcRecordingEnvelopeId(String);
+
+impl ArcRecordingEnvelopeId {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn new(raw: impl Into<String>) -> Result<Self, ArcRecordingEnvelopeIdError> {
+        let raw = raw.into();
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(ArcRecordingEnvelopeIdError::Empty);
+        }
+        if trimmed.chars().any(char::is_whitespace) {
+            return Err(ArcRecordingEnvelopeIdError::ContainsWhitespace(
+                trimmed.to_owned(),
+            ));
+        }
+        Ok(Self(trimmed.to_owned()))
+    }
+}
+
+impl Serialize for ArcRecordingEnvelopeId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ArcRecordingEnvelopeId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ArcRecordingEnvelopeIdError {
+    #[error("ARC recording envelope id must not be empty")]
+    Empty,
+    #[error("ARC recording envelope id must not contain whitespace: {0}")]
+    ContainsWhitespace(String),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArcFrameData {
     width: u8,
@@ -516,6 +621,10 @@ pub enum ArcFrameDataError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArcObservation {
     pub frame: ArcFrameData,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub available_actions: Vec<ArcActionKind>,
+    #[serde(default, skip_serializing_if = "arc_game_state_is_default")]
+    pub game_state: ArcGameState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -530,6 +639,12 @@ pub struct ArcEpisodeStep {
 pub struct ArcRecording {
     pub benchmark: ArcBenchmark,
     pub task_id: ArcTaskId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub envelope_id: Option<ArcRecordingEnvelopeId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_mode: Option<ArcOperationMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_policy_id: Option<ArcScorePolicyId>,
     pub steps: Vec<ArcEpisodeStep>,
 }
 
@@ -545,6 +660,9 @@ impl ArcRecording {
         Ok(Self {
             benchmark,
             task_id,
+            envelope_id: None,
+            operation_mode: None,
+            score_policy_id: None,
             steps,
         })
     }
@@ -583,6 +701,12 @@ pub struct ArcScorecard {
     pub benchmark: ArcBenchmark,
     pub task_id: ArcTaskId,
     pub overall_score: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_mode: Option<ArcOperationMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_policy_id: Option<ArcScorePolicyId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recording_envelope_id: Option<ArcRecordingEnvelopeId>,
     pub metadata: ArcScorecardMetadata,
     pub levels: Vec<ArcLevelScore>,
 }
@@ -635,6 +759,10 @@ fn reject_unexpected_coordinates(action: &ArcActionWire) -> Result<(), ArcAction
         });
     }
     Ok(())
+}
+
+fn arc_game_state_is_default(state: &ArcGameState) -> bool {
+    *state == ArcGameState::NotFinished
 }
 
 pub fn canonical_json_string<T>(value: &T) -> Result<String, ContractSerializationError>
