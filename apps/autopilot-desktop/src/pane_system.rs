@@ -2917,7 +2917,7 @@ pub fn mission_control_load_funds_layout_with_scroll(
     let compact_layout = controls_column.size.height < 152.0;
     let control_gap = if compact_layout { 6.0 } else { 10.0 };
     let send_section_gap = if compact_layout { 14.0 } else { 42.0 };
-    let control_top_inset = if compact_layout { 8.0 } else { 20.0 };
+    let control_top_inset = 24.0;
     let control_height =
         ((controls_column.size.height - control_top_inset - control_gap * 2.0 - send_section_gap)
             / 4.0)
@@ -7954,6 +7954,7 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
+        mission_control_load_funds_layout, mission_control_load_funds_scroll_viewport_bounds,
         network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
         network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
         network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
@@ -8834,5 +8835,21 @@ mod tests {
         assert!(refresh.max_x() < inbox.min_x());
         assert!(inbox.max_x() < active.min_x());
         assert!(active.max_x() < history.min_x());
+    }
+
+    #[test]
+    fn mission_control_load_funds_inputs_leave_room_for_labels() {
+        let regular_content = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let regular_viewport =
+            mission_control_load_funds_scroll_viewport_bounds(regular_content, false);
+        let regular_layout = mission_control_load_funds_layout(regular_content, false);
+        assert!(regular_layout.amount_input.origin.y >= regular_viewport.origin.y + 24.0);
+
+        let compact_content = Bounds::new(0.0, 0.0, 760.0, 340.0);
+        let compact_viewport =
+            mission_control_load_funds_scroll_viewport_bounds(compact_content, true);
+        let compact_layout = mission_control_load_funds_layout(compact_content, true);
+        assert!(compact_layout.controls_column.size.height < 152.0);
+        assert!(compact_layout.amount_input.origin.y >= compact_viewport.origin.y + 24.0);
     }
 }
