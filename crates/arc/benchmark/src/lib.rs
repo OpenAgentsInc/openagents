@@ -18,6 +18,7 @@
 mod checkpoint;
 mod exact_match;
 mod interactive;
+mod summary;
 
 pub use checkpoint::{
     ArcBenchmarkUsageTotals, ArcCheckpointErrorRecord, ArcInteractiveCheckpointBundle,
@@ -31,6 +32,10 @@ pub use exact_match::{
 };
 pub use interactive::{
     ArcInteractiveRunReport, ArcInteractiveStepSummary, score_interactive_recording,
+};
+pub use summary::{
+    ArcBenchmarkRunKind, ArcBenchmarkRunSummary, ArcRepeatedRunAggregate, ArcRepeatedRunSpec,
+    aggregate_repeated_runs, summarize_exact_match_run, summarize_interactive_run,
 };
 
 /// Human-readable ownership summary for this crate.

@@ -1492,9 +1492,12 @@ explicitly. `ARC-208` is now also landed in bounded form: the crate ships
 typed task checkpoints, batch run manifests, and inspectable interactive
 checkpoint bundles with local JSON persistence plus resume-oriented helpers
 such as next-attempt selection, stale-task reset, retry-failed-task reset, and
-next-step cursor recovery from saved ARC-AGI-3 runs. Scorecard lifecycle,
-JSONL compatibility, and repeated-run aggregation remain follow-on benchmark
-work.
+next-step cursor recovery from saved ARC-AGI-3 runs. `ARC-209` is now also
+landed in bounded form: `arc-benchmark` can derive ARC-owned run summaries
+from exact-match and interactive reports, aggregate repeated runs into
+`psionic-eval::BenchmarkAggregateSummary`, and emit `psionic-research`
+experiment/evaluation views for regression and comparison workflows. Scorecard
+lifecycle and JSONL compatibility remain follow-on benchmark work.
 
 ### Phase 4: solver layer
 
