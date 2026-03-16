@@ -65,13 +65,17 @@ Current posture:
   program artifacts plus explicit executor compatibility descriptors
 - its Phase 3 benchmark/environment package layer now exists in
   `psionic-environments` and `psionic-eval`
+- its Phase 4 proof/lineage layer now exists in `psionic-runtime`, with
+  emitted trace artifacts, runtime-manifest lineage, and canonical proof-bundle
+  integration
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3 issue spine is tracked in
+- its landed Phase 0/1/2/3/4 issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
-  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
+  [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746) and
+  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 
 ## Crate Map
 

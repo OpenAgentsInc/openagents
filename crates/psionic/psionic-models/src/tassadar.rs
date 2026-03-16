@@ -238,6 +238,17 @@ impl TassadarExecutorModelDescriptor {
         }
     }
 
+    /// Returns a stable digest over the executor model descriptor.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let encoded =
+            serde_json::to_vec(self).expect("Tassadar executor model descriptor should serialize");
+        let mut hasher = Sha256::new();
+        hasher.update(b"tassadar_executor_model_descriptor|");
+        hasher.update(encoded);
+        hex::encode(hasher.finalize())
+    }
+
     /// Validates one digest-bound program artifact against this descriptor.
     pub fn validate_program_artifact(
         &self,
