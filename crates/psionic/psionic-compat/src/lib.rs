@@ -1124,10 +1124,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane supports general array IO, a Psionic-native function export/import artifact, bounded .mlxfn compatibility, memory and cache controls, backend debug hooks, and extension-facing tooling.",
             ),
             current_repo_truth: String::from(
-                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array; psionic-function-io now also exposes both a native .psifn function-artifact slice with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, and a bounded .mlxfn compatibility shell that supports one positional CPU trace over the current primitive and dtype subset while refusing shapeless, keyword, multi-trace, unsupported-device, and unsupported-primitive artifacts honestly; psionic-array now also exposes bounded public runtime memory reporting with active, peak, and cache counters plus explicit cache-limit and reset controls above the current reference eval substrate, while backend debug hooks and extension tooling remain open.",
+                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array; psionic-function-io now also exposes both a native .psifn function-artifact slice with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, and a bounded .mlxfn compatibility shell that supports one positional CPU trace over the current primitive and dtype subset while refusing shapeless, keyword, multi-trace, unsupported-device, and unsupported-primitive artifacts honestly; psionic-array now also exposes bounded public runtime memory reporting with active, peak, and cache counters plus explicit cache-limit and reset controls above the current reference eval substrate, plus a public backend-debug layer with lane-specific support matrices for cpu, metal, and cuda, retained runtime log events, bounded runtime-observability snapshots, compiler-backed debug captures, and optional lane-labeled JSON bundles; extension tooling remains open.",
             ),
             boundary_note: String::from(
-                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO, the native .psifn function artifact, a bounded .mlxfn shell, and bounded runtime memory/cache controls now exist, but backend debug hooks and extension tooling are still missing.",
+                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO, the native .psifn function artifact, a bounded .mlxfn shell, bounded runtime memory/cache controls, and bounded backend debug hooks now exist, but extension tooling is still missing.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1283,12 +1283,18 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-array tests::public_lazy_array_cache_limit_controls_clamp_and_reset_runtime_resources -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_backend_debug_support_and_snapshot_track_seeded_lanes -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-array tests::public_lazy_array_backend_debug_capture_emits_receipt_logs_and_artifact -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "Device, eval, scheduler, and memory families remain named and unsupported even though psionic-array now exposes public device and stream handles with honest unified-memory and dependency-policy truth plus bounded runtime memory reports and cache-limit/reset controls above the reference eval path.",
+                "Device, eval, scheduler, and memory families remain named and unsupported even though psionic-array now exposes public device and stream handles with honest unified-memory and dependency-policy truth plus bounded runtime memory reports, cache-limit/reset controls, and backend-debug capture hooks above the reference eval path.",
             ),
             boundary_note: String::from(
-                "Public device and stream handles plus bounded reference-memory counters and cache controls are still not the same thing as MLX-class allocator, scheduler, or runtime-memory parity.",
+                "Public device and stream handles plus bounded reference-memory counters, cache controls, and backend-debug capture hooks are still not the same thing as MLX-class allocator, scheduler, vendor-native profiler capture, or runtime-memory parity.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1591,7 +1597,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_array_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, and a bounded runtime resource report with active/peak/cache counters plus explicit cache-limit and reset controls, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
+                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, a bounded runtime resource report with active/peak/cache counters plus explicit cache-limit and reset controls, and a bounded backend-debug layer with lane-specific cpu/metal/cuda support matrices, retained runtime log events, bounded observability snapshots, compiler-backed debug capture receipts, and optional lane-labeled JSON bundles, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
             ),
             evidence_refs: vec![
                 String::from("ArrayDevice"),
@@ -1607,6 +1613,8 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("ArrayRuntimeResourceReport"),
                 String::from("ArrayCacheLimitControl"),
                 String::from("ArrayCacheResetReceipt"),
+                String::from("ArrayBackendDebugSnapshot"),
+                String::from("ArrayBackendCaptureReceipt"),
                 String::from("ArrayArtifactReceipt"),
                 String::from("encode_npy"),
                 String::from("decode_npz"),
