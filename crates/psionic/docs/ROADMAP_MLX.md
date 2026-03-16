@@ -441,7 +441,7 @@ Turn current graph and autodiff substrate into MLX-class public transforms.
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
 | `PMLX-201` / [#3840](https://github.com/OpenAgentsInc/openagents/issues/3840) | done (2026-03-16) | `Psionic MLX: expose grad, value_and_grad, and vjp as first-class public transforms` | `psionic-ir` now exposes first-class public reverse-mode `grad`, `value_and_grad`, and `vjp` transform objects above `AutodiffGraph`, with typed target validation, explicit singleton-output rules for scalar transforms, disconnected-target zero cotangents, and public tests that anchor the MLX autograd parity family without overclaiming higher-order or compile closure. |
-| `PMLX-202` | planned | `Psionic MLX: add jvp and forward-mode autodiff to the public transform surface` | Extend the current autodiff substrate beyond reverse mode so the MLX lane can honestly support `jvp`-class use cases and transform composition. |
+| `PMLX-202` / [#3841](https://github.com/OpenAgentsInc/openagents/issues/3841) | done (2026-03-16) | `Psionic MLX: add jvp and forward-mode autodiff to the public transform surface` | `psionic-ir` now exposes a first-class public `jvp` transform object above `AutodiffGraph`, with explicit tangent-target validation, dense `f32` tangent propagation over the current primitive graph family, typed refusal for cast or backend-extension barriers, and a lower transform-capability matrix that no longer treats `jvp` as a pure future placeholder. |
 | `PMLX-203` | planned | `Psionic MLX: add vmap with explicit unsupported-op refusals and parity fixtures` | Add automatic vectorization with a public refusal matrix so unsupported cases fail honestly instead of hiding gaps behind fallback behavior. |
 | `PMLX-204` | planned | `Psionic MLX: add checkpoint, custom_vjp, and custom transform registration hooks` | Expose gradient checkpointing and user-defined transform overrides in a reusable contract above IR internals. |
 | `PMLX-205` | planned | `Psionic MLX: expose compile as a transform with purity, cache, and debug controls` | Turn current compiler substrate into MLX-class compiled-function behavior with explicit disable, trace, purity, and cache invalidation rules. |
@@ -606,7 +606,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 ### Phase 3: land public transforms and compile
 
 - `PMLX-201` done 2026-03-16
-- `PMLX-202`
+- `PMLX-202` done 2026-03-16
 - `PMLX-203`
 - `PMLX-204`
 - `PMLX-205`

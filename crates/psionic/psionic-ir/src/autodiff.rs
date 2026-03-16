@@ -508,6 +508,138 @@ pub struct VjpTransformResult {
     pub backward_result: AutodiffBackwardResult,
 }
 
+/// Stable target signature for one public `jvp` transform.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JvpTransformSignature {
+    /// Output tensor whose primal value and tangent are exposed.
+    pub output: TensorId,
+    /// Primal tensors that must receive explicit tangent inputs.
+    pub primal_targets: Vec<TensorId>,
+}
+
+/// Typed error returned by the public forward-mode transform layer.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum ForwardModeTransformError {
+    /// One requested tensor is not present in the graph.
+    #[error("forward-mode transform graph does not contain tensor `{tensor_id}`")]
+    UnknownTensor {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One requested target is not gradient-bearing under the bounded current graph contract.
+    #[error("forward-mode transform target `{tensor_id}` is not gradient-tracked")]
+    UntrackedTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One requested target uses an unsupported dtype.
+    #[error(
+        "forward-mode transform target `{tensor_id}` uses unsupported tangent dtype `{dtype:?}`"
+    )]
+    UnsupportedTargetDType {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Observed dtype.
+        dtype: DType,
+    },
+    /// One required tangent input was not provided.
+    #[error("forward-mode transform target `{tensor_id}` requires an explicit tangent input")]
+    MissingTangentTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One tangent input was provided for a non-target tensor.
+    #[error("forward-mode transform received unexpected tangent input for tensor `{tensor_id}`")]
+    UnexpectedTangentTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One tangent input used an unsupported storage family.
+    #[error("tangent input for tensor `{tensor_id}` must be dense `f32`")]
+    TangentDenseF32Required {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One tangent input length mismatched its target tensor.
+    #[error(
+        "tangent input for tensor `{tensor_id}` length mismatch: expected {expected_len}, found {actual_len}"
+    )]
+    TangentLengthMismatch {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Expected logical element count.
+        expected_len: usize,
+        /// Observed tangent length.
+        actual_len: usize,
+    },
+    /// One forward-mode reference step hit an unsupported op family.
+    #[error("forward-mode transform used unsupported op `{op}` at tensor `{tensor_id}`")]
+    UnsupportedOp {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Stable op label.
+        op: String,
+    },
+    /// One forward output value was missing after evaluation.
+    #[error("forward-mode transform output `{tensor_id}` did not materialize a forward value")]
+    MissingForwardValue {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One forward output tangent was missing after evaluation.
+    #[error("forward-mode transform output `{tensor_id}` did not materialize a tangent value")]
+    MissingOutputTangent {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One lower-layer reference-evaluation operation failed.
+    #[error(transparent)]
+    ReferenceEvaluation(#[from] ReferenceEvaluationError),
+}
+
+impl ForwardModeTransformError {
+    /// Returns the canonical refusal when the forward-mode layer intentionally
+    /// refuses one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedTargetDType { tensor_id, .. }
+            | Self::TangentDenseF32Required { tensor_id }
+            | Self::UnsupportedOp { tensor_id, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedGradient,
+                    PsionicRefusalScope::Autodiff,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}")),
+            ),
+            Self::ReferenceEvaluation(error) => error.refusal(),
+            Self::UnknownTensor { .. }
+            | Self::UntrackedTarget { .. }
+            | Self::MissingTangentTarget { .. }
+            | Self::UnexpectedTangentTarget { .. }
+            | Self::TangentLengthMismatch { .. }
+            | Self::MissingForwardValue { .. }
+            | Self::MissingOutputTangent { .. } => None,
+        }
+    }
+}
+
+/// Materialized result from one public `jvp` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JvpTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: JvpTransformSignature,
+    /// Forward value for the requested output tensor.
+    pub value: TensorData,
+    /// Tangent value for the requested output tensor.
+    pub tangent: TensorData,
+    /// Forward values for all materialized graph tensors.
+    pub forward_values: BTreeMap<TensorId, TensorData>,
+    /// Tangent values for all materialized graph tensors.
+    pub tangent_values: BTreeMap<TensorId, TensorData>,
+}
+
 /// First-class public `grad` transform over one autodiff graph.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GradTransform {
@@ -632,6 +764,50 @@ impl VjpTransform {
     }
 }
 
+/// First-class public `jvp` transform over one autodiff graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct JvpTransform {
+    graph: AutodiffGraph,
+    signature: JvpTransformSignature,
+}
+
+impl JvpTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &JvpTransformSignature {
+        &self.signature
+    }
+
+    /// Materializes the forward value and output tangent using explicit primal tangents.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+        tangents: &BTreeMap<TensorId, TensorData>,
+    ) -> Result<JvpTransformResult, ForwardModeTransformError> {
+        let tangent_inputs =
+            validate_and_seed_tangent_inputs(&self.graph, &self.signature, tangents)?;
+        let (forward_values, tangent_values) =
+            evaluate_graph_forward_mode(self.graph.graph(), inputs, &tangent_inputs)?;
+        let value = forward_values.get(&self.signature.output).cloned().ok_or(
+            ForwardModeTransformError::MissingForwardValue {
+                tensor_id: self.signature.output,
+            },
+        )?;
+        let tangent = tangent_values.get(&self.signature.output).cloned().ok_or(
+            ForwardModeTransformError::MissingOutputTangent {
+                tensor_id: self.signature.output,
+            },
+        )?;
+        Ok(JvpTransformResult {
+            signature: self.signature.clone(),
+            value,
+            tangent,
+            forward_values,
+            tangent_values,
+        })
+    }
+}
+
 /// Creates one public `grad` transform over the provided output and primal targets.
 pub fn grad(
     graph: &AutodiffGraph,
@@ -672,6 +848,19 @@ pub fn vjp(
 ) -> Result<VjpTransform, ReverseModeTransformError> {
     let signature = validate_reverse_mode_transform_signature(graph, output, primal_targets, None)?;
     Ok(VjpTransform {
+        graph: graph.clone(),
+        signature,
+    })
+}
+
+/// Creates one public `jvp` transform over the provided output and primal targets.
+pub fn jvp(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<JvpTransform, ForwardModeTransformError> {
+    let signature = validate_jvp_transform_signature(graph, output, primal_targets)?;
+    Ok(JvpTransform {
         graph: graph.clone(),
         signature,
     })
@@ -1261,6 +1450,561 @@ fn zero_gradient_for_target(
             .shape()
             .element_count()
     ]))
+}
+
+fn validate_jvp_transform_signature(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<JvpTransformSignature, ForwardModeTransformError> {
+    let output_node = graph
+        .graph()
+        .node(output)
+        .ok_or(ForwardModeTransformError::UnknownTensor { tensor_id: output })?;
+    ensure_supported_forward_mode_target(output_node.tensor())?;
+
+    for target in primal_targets {
+        let node = graph
+            .graph()
+            .node(*target)
+            .ok_or(ForwardModeTransformError::UnknownTensor { tensor_id: *target })?;
+        if !graph.requires_grad(*target) {
+            return Err(ForwardModeTransformError::UntrackedTarget { tensor_id: *target });
+        }
+        ensure_supported_forward_mode_target(node.tensor())?;
+    }
+
+    Ok(JvpTransformSignature {
+        output,
+        primal_targets: primal_targets.to_vec(),
+    })
+}
+
+fn ensure_supported_forward_mode_target(tensor: &Tensor) -> Result<(), ForwardModeTransformError> {
+    if tensor.spec().dtype() == DType::F32 {
+        Ok(())
+    } else {
+        Err(ForwardModeTransformError::UnsupportedTargetDType {
+            tensor_id: tensor.id(),
+            dtype: tensor.spec().dtype(),
+        })
+    }
+}
+
+fn validate_and_seed_tangent_inputs(
+    graph: &AutodiffGraph,
+    signature: &JvpTransformSignature,
+    tangents: &BTreeMap<TensorId, TensorData>,
+) -> Result<BTreeMap<TensorId, TensorData>, ForwardModeTransformError> {
+    for tensor_id in tangents.keys() {
+        if !signature.primal_targets.contains(tensor_id) {
+            return Err(ForwardModeTransformError::UnexpectedTangentTarget {
+                tensor_id: *tensor_id,
+            });
+        }
+    }
+
+    let mut validated = BTreeMap::new();
+    for tensor_id in &signature.primal_targets {
+        let tangent =
+            tangents
+                .get(tensor_id)
+                .ok_or(ForwardModeTransformError::MissingTangentTarget {
+                    tensor_id: *tensor_id,
+                })?;
+        let Some(values) = tangent.as_f32_slice() else {
+            return Err(ForwardModeTransformError::TangentDenseF32Required {
+                tensor_id: *tensor_id,
+            });
+        };
+        let node =
+            graph
+                .graph()
+                .node(*tensor_id)
+                .ok_or(ForwardModeTransformError::UnknownTensor {
+                    tensor_id: *tensor_id,
+                })?;
+        let expected_len = node.tensor().spec().shape().element_count();
+        if values.len() != expected_len {
+            return Err(ForwardModeTransformError::TangentLengthMismatch {
+                tensor_id: *tensor_id,
+                expected_len,
+                actual_len: values.len(),
+            });
+        }
+        validated.insert(*tensor_id, TensorData::F32(values.to_vec()));
+    }
+    Ok(validated)
+}
+
+fn evaluate_graph_forward_mode(
+    graph: &Graph,
+    inputs: &BTreeMap<TensorId, TensorData>,
+    tangents: &BTreeMap<TensorId, TensorData>,
+) -> Result<
+    (
+        BTreeMap<TensorId, TensorData>,
+        BTreeMap<TensorId, TensorData>,
+    ),
+    ForwardModeTransformError,
+> {
+    let mut forward_values = BTreeMap::new();
+    let mut tangent_values = BTreeMap::new();
+
+    for node in graph.nodes() {
+        let forward = match node.op() {
+            OpKind::Input { .. } => inputs.get(&node.tensor().id()).cloned().ok_or(
+                ReferenceEvaluationError::MissingInput {
+                    tensor_id: node.tensor().id(),
+                },
+            )?,
+            OpKind::Constant { data } => data.clone(),
+            OpKind::Detach => forward_values.get(&node.inputs()[0]).cloned().ok_or(
+                ReferenceEvaluationError::UnknownTensor {
+                    tensor_id: node.inputs()[0],
+                },
+            )?,
+            OpKind::Add => {
+                let left = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                TensorData::F32(
+                    left.iter()
+                        .zip(right.iter())
+                        .map(|(left, right)| left + right)
+                        .collect(),
+                )
+            }
+            OpKind::Mul => {
+                let left = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                TensorData::F32(
+                    left.iter()
+                        .zip(right.iter())
+                        .map(|(left, right)| left * right)
+                        .collect(),
+                )
+            }
+            OpKind::Matmul => {
+                let left_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let right_node = graph.node(node.inputs()[1]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[1],
+                    },
+                )?;
+                let left = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                TensorData::F32(matmul_values(
+                    left,
+                    left_node.tensor().spec().shape(),
+                    right,
+                    right_node.tensor().spec().shape(),
+                ))
+            }
+            OpKind::Reshape => forward_values.get(&node.inputs()[0]).cloned().ok_or(
+                ReferenceEvaluationError::UnknownTensor {
+                    tensor_id: node.inputs()[0],
+                },
+            )?,
+            OpKind::Permute { axes } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(permute_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    axes,
+                ))
+            }
+            OpKind::Slice { axis, start, end } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(slice_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                    *start,
+                    *end,
+                ))
+            }
+            OpKind::Select { axis, index } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(select_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                    *index,
+                ))
+            }
+            OpKind::Concat { axis } => {
+                let mut parts = Vec::with_capacity(node.inputs().len());
+                for input_id in node.inputs() {
+                    let input_node =
+                        graph
+                            .node(*input_id)
+                            .ok_or(ReferenceEvaluationError::UnknownTensor {
+                                tensor_id: *input_id,
+                            })?;
+                    let input =
+                        resolve_dense_input(graph, &forward_values, *input_id, node.op().label())?;
+                    parts.push((input_node.tensor().spec().shape().clone(), input.to_vec()));
+                }
+                TensorData::F32(concat_values(parts.as_slice(), *axis))
+            }
+            OpKind::Expand { shape } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(expand_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    shape,
+                ))
+            }
+            OpKind::Cast { .. } | OpKind::BackendExtension { .. } => {
+                return Err(ForwardModeTransformError::UnsupportedOp {
+                    tensor_id: node.tensor().id(),
+                    op: String::from(node.op().label()),
+                });
+            }
+            OpKind::ReduceSum { axis } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(reduce_sum_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                ))
+            }
+        };
+        validate_output_length(node.tensor(), &forward)?;
+        forward_values.insert(node.tensor().id(), forward);
+
+        let tangent = match node.op() {
+            OpKind::Input { .. } => tangents
+                .get(&node.tensor().id())
+                .cloned()
+                .unwrap_or_else(|| zero_tensor_like(node.tensor())),
+            OpKind::Constant { .. } | OpKind::Detach => zero_tensor_like(node.tensor()),
+            OpKind::Add => {
+                let left = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                TensorData::F32(
+                    left.iter()
+                        .zip(right.iter())
+                        .map(|(left, right)| left + right)
+                        .collect(),
+                )
+            }
+            OpKind::Mul => {
+                let left_primal = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right_primal = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                let left_tangent = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right_tangent = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                TensorData::F32(
+                    left_tangent
+                        .iter()
+                        .zip(right_primal.iter())
+                        .zip(left_primal.iter().zip(right_tangent.iter()))
+                        .map(
+                            |((left_tangent, right_primal), (left_primal, right_tangent))| {
+                                (left_tangent * right_primal) + (left_primal * right_tangent)
+                            },
+                        )
+                        .collect(),
+                )
+            }
+            OpKind::Matmul => {
+                let left_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let right_node = graph.node(node.inputs()[1]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[1],
+                    },
+                )?;
+                let left_primal = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right_primal = resolve_dense_input(
+                    graph,
+                    &forward_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                let left_tangent = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                let right_tangent = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[1],
+                    node.op().label(),
+                )?;
+                let left_term = matmul_values(
+                    left_tangent,
+                    left_node.tensor().spec().shape(),
+                    right_primal,
+                    right_node.tensor().spec().shape(),
+                );
+                let right_term = matmul_values(
+                    left_primal,
+                    left_node.tensor().spec().shape(),
+                    right_tangent,
+                    right_node.tensor().spec().shape(),
+                );
+                TensorData::F32(
+                    left_term
+                        .iter()
+                        .zip(right_term.iter())
+                        .map(|(left, right)| left + right)
+                        .collect(),
+                )
+            }
+            OpKind::Reshape => tangent_values.get(&node.inputs()[0]).cloned().ok_or(
+                ReferenceEvaluationError::UnknownTensor {
+                    tensor_id: node.inputs()[0],
+                },
+            )?,
+            OpKind::Permute { axes } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(permute_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    axes,
+                ))
+            }
+            OpKind::Slice { axis, start, end } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(slice_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                    *start,
+                    *end,
+                ))
+            }
+            OpKind::Select { axis, index } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(select_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                    *index,
+                ))
+            }
+            OpKind::Concat { axis } => {
+                let mut parts = Vec::with_capacity(node.inputs().len());
+                for input_id in node.inputs() {
+                    let input_node =
+                        graph
+                            .node(*input_id)
+                            .ok_or(ReferenceEvaluationError::UnknownTensor {
+                                tensor_id: *input_id,
+                            })?;
+                    let input =
+                        resolve_dense_input(graph, &tangent_values, *input_id, node.op().label())?;
+                    parts.push((input_node.tensor().spec().shape().clone(), input.to_vec()));
+                }
+                TensorData::F32(concat_values(parts.as_slice(), *axis))
+            }
+            OpKind::Expand { shape } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(expand_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    shape,
+                ))
+            }
+            OpKind::Cast { .. } | OpKind::BackendExtension { .. } => {
+                return Err(ForwardModeTransformError::UnsupportedOp {
+                    tensor_id: node.tensor().id(),
+                    op: String::from(node.op().label()),
+                });
+            }
+            OpKind::ReduceSum { axis } => {
+                let input_node = graph.node(node.inputs()[0]).ok_or(
+                    ReferenceEvaluationError::UnknownTensor {
+                        tensor_id: node.inputs()[0],
+                    },
+                )?;
+                let input = resolve_dense_input(
+                    graph,
+                    &tangent_values,
+                    node.inputs()[0],
+                    node.op().label(),
+                )?;
+                TensorData::F32(reduce_sum_values(
+                    input,
+                    input_node.tensor().spec().shape(),
+                    *axis,
+                ))
+            }
+        };
+        validate_output_length(node.tensor(), &tangent)?;
+        tangent_values.insert(node.tensor().id(), tangent);
+    }
+
+    Ok((forward_values, tangent_values))
+}
+
+fn zero_tensor_like(tensor: &Tensor) -> TensorData {
+    TensorData::F32(vec![0.0; tensor.spec().shape().element_count()])
 }
 
 /// Autodiff-aware wrapper over the canonical graph builder.
@@ -2127,9 +2871,9 @@ mod tests {
     use psionic_core::{DType, Device, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData};
 
     use crate::{
-        grad, gradient_support_for_op, value_and_grad, vjp, AutodiffContext, AutodiffError,
+        grad, gradient_support_for_op, jvp, value_and_grad, vjp, AutodiffContext, AutodiffError,
         AutodiffGradientSupport, AutodiffGraphBuilder, AutodiffUnsupportedGradientReason,
-        ReverseModeTransformError, TensorId,
+        ForwardModeTransformError, ReverseModeTransformError, TensorId,
     };
 
     #[test]
@@ -2550,6 +3294,71 @@ mod tests {
                     .expect("y gradient should be synthesized as zeros")
             ),
             vec![0.0, 0.0]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_forward_mode_jvp_exposes_value_and_tangent() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let y = builder.input("y", Shape::new(vec![2]), DType::F32, true);
+        let output = builder.mul(&x, &y)?;
+        let graph = builder.finish(vec![output.clone()]);
+        let inputs = BTreeMap::from([
+            (x.id(), TensorData::F32(vec![2.0, 3.0])),
+            (y.id(), TensorData::F32(vec![4.0, 5.0])),
+        ]);
+        let tangents = BTreeMap::from([
+            (x.id(), TensorData::F32(vec![1.0, 1.0])),
+            (y.id(), TensorData::F32(vec![2.0, 0.0])),
+        ]);
+
+        let transform = jvp(&graph, output.id(), &[x.id(), y.id()])?;
+        let result = transform.apply(&inputs, &tangents)?;
+
+        assert_eq!(dense_tensor(&result.value), vec![8.0, 15.0]);
+        assert_eq!(dense_tensor(&result.tangent), vec![8.0, 5.0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_forward_mode_jvp_refuses_invalid_tangent_bindings() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let tracked = builder.input("tracked", Shape::new(vec![1]), DType::F32, true);
+        let other = builder.input("other", Shape::new(vec![1]), DType::F32, false);
+        let graph = builder.finish(vec![tracked.clone()]);
+        let inputs = BTreeMap::from([
+            (tracked.id(), TensorData::F32(vec![2.0])),
+            (other.id(), TensorData::F32(vec![9.0])),
+        ]);
+
+        assert_eq!(
+            jvp(&graph, tracked.id(), &[other.id()]),
+            Err(ForwardModeTransformError::UntrackedTarget {
+                tensor_id: other.id(),
+            })
+        );
+
+        let transform = jvp(&graph, tracked.id(), &[tracked.id()])?;
+        assert_eq!(
+            transform.apply(&inputs, &BTreeMap::new()),
+            Err(ForwardModeTransformError::MissingTangentTarget {
+                tensor_id: tracked.id(),
+            })
+        );
+        assert_eq!(
+            transform.apply(
+                &inputs,
+                &BTreeMap::from([(other.id(), TensorData::F32(vec![1.0]))])
+            ),
+            Err(ForwardModeTransformError::UnexpectedTangentTarget {
+                tensor_id: other.id(),
+            })
         );
 
         Ok(())

@@ -563,9 +563,37 @@ impl Graph {
                     ),
                 })
             }
-            ProgramTransformFamily::Vmap
-            | ProgramTransformFamily::Jvp
-            | ProgramTransformFamily::Jacobian => Err(
+            ProgramTransformFamily::Jvp => {
+                if let Some(node) = self.nodes().iter().find(|node| {
+                    matches!(
+                        node.op(),
+                        OpKind::Cast { .. } | OpKind::BackendExtension { .. }
+                    )
+                }) {
+                    return Err(
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            format!(
+                                "program-transform family `{}` refuses graph op `{}` in the bounded current scope",
+                                family.label(),
+                                node.op().label()
+                            ),
+                        )
+                        .with_subject(format!("{}:{}", family.label(), node.op().label())),
+                    );
+                }
+                Ok(ProgramTransformCapabilityOutcome {
+                    family,
+                    policy,
+                    graph_digest: self.stable_digest(),
+                    artifact_digest: None,
+                    bounded_scope: String::from(
+                        "Current scope supports public jvp over dense f32 primitive graphs so long as they avoid cast and opaque backend-extension barriers.",
+                    ),
+                })
+            }
+            ProgramTransformFamily::Vmap | ProgramTransformFamily::Jacobian => Err(
                 PsionicRefusal::new(
                     PsionicRefusalCode::UnsupportedOp,
                     PsionicRefusalScope::Graph,
@@ -1229,9 +1257,9 @@ pub fn builtin_program_transform_capability_matrix_report() -> ProgramTransformC
                 ProgramTransformFamily::Vmap,
                 FunctionalizationPolicy::PreserveOpaqueKernels,
             ),
-            refused_program_transform_case(
-                "jvp.future_surface",
-                None,
+            supported_program_transform_case(
+                "jvp.primitive_dense_graph",
+                &export_safe_graph,
                 ProgramTransformFamily::Jvp,
                 FunctionalizationPolicy::PreserveOpaqueKernels,
             ),
