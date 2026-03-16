@@ -175,6 +175,11 @@ That now includes one intentionally narrow executor-training answer:
   real 4x4 backtracking Sudoku program on the CPU reference lane, but that is
   still substrate for later corpus/model/training issues rather than a claim
   that the trained executor already exists
+- the benchmark side now also carries a real split-aware 4x4 Sudoku-v0 corpus
+  with stable train/validation/test assignments and exact CPU-reference traces
+  per puzzle, which replaces the earlier placeholder `SudokuClass` proxy and
+  gives later tokenization/training issues an honest package-backed source
+  corpus
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

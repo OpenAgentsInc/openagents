@@ -108,8 +108,13 @@ executor model without leaving the Psionic stack.
 These issues track the executor-specific work that is still missing:
 
 - `#3777` Phase 1: widen the Wasm subset for real Sudoku search
+  - implemented March 16, 2026: `tassadar.wasm.sudoku_v0_search.v1` plus a
+    real 4x4 backtracking search-program representation on the CPU reference
+    lane
 - `#3778` Phase 2: replace the placeholder Sudoku benchmark with a real 4x4
   solver corpus
+  - implemented March 16, 2026: split-aware 4x4 Sudoku-v0 corpus with exact
+    CPU-reference traces and package metadata for train/validation/test splits
 - `#3779` Phase 3: add trace-token vocabulary and sequence dataset generation
 - `#3780` Phase 4: implement a real executor transformer family
 - `#3781` Phase 5: add next-token trace training and exact-trace evaluation

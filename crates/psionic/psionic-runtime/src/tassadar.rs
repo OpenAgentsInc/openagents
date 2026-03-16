@@ -2503,7 +2503,50 @@ pub fn run_tassadar_exact_parity(
     Ok(report)
 }
 
-/// Replays one program through CPU, linear, and hull-cache runners and checks exact equivalence.
+fn run_effective_tassadar_decode(
+    program: &TassadarProgram,
+    requested_decode_mode: TassadarExecutorDecodeMode,
+) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+    let trace_abi = tassadar_trace_abi_for_profile_id(program.profile_id.as_str()).ok_or(
+        TassadarExecutionRefusal::ProfileMismatch {
+            expected: String::from("one of the supported Tassadar Wasm profiles"),
+            actual: program.profile_id.clone(),
+        },
+    )?;
+    let diagnostic = diagnose_tassadar_executor_request(
+        program,
+        requested_decode_mode,
+        trace_abi.schema_version,
+        Some(&[
+            TassadarExecutorDecodeMode::ReferenceLinear,
+            TassadarExecutorDecodeMode::HullCache,
+            TassadarExecutorDecodeMode::SparseTopK,
+        ]),
+    );
+    let effective_decode_mode =
+        diagnostic
+            .effective_decode_mode
+            .ok_or(TassadarExecutionRefusal::ProfileMismatch {
+                expected: format!(
+                    "supported decode selection for `{}`",
+                    requested_decode_mode.as_str()
+                ),
+                actual: diagnostic.detail,
+            })?;
+    match effective_decode_mode {
+        TassadarExecutorDecodeMode::ReferenceLinear => {
+            TassadarFixtureRunner::for_program(program)?.execute(program)
+        }
+        TassadarExecutorDecodeMode::HullCache => {
+            TassadarHullCacheRunner::for_program(program)?.execute(program)
+        }
+        TassadarExecutorDecodeMode::SparseTopK => {
+            TassadarSparseTopKRunner::for_program(program)?.execute(program)
+        }
+    }
+}
+
+/// Replays one program through CPU, linear, and effective fast-path execution and checks exact equivalence.
 pub fn run_tassadar_exact_equivalence(
     program: &TassadarProgram,
 ) -> Result<TassadarExactEquivalenceReport, TassadarExecutionRefusal> {
@@ -2511,8 +2554,11 @@ pub fn run_tassadar_exact_equivalence(
         program_id: program.program_id.clone(),
         cpu_reference: TassadarCpuReferenceRunner::for_program(program)?.execute(program)?,
         reference_linear: TassadarFixtureRunner::for_program(program)?.execute(program)?,
-        hull_cache: TassadarHullCacheRunner::for_program(program)?.execute(program)?,
-        sparse_top_k: TassadarSparseTopKRunner::for_program(program)?.execute(program)?,
+        hull_cache: run_effective_tassadar_decode(program, TassadarExecutorDecodeMode::HullCache)?,
+        sparse_top_k: run_effective_tassadar_decode(
+            program,
+            TassadarExecutorDecodeMode::SparseTopK,
+        )?,
     };
     report.require_exact()?;
     Ok(report)
@@ -2848,7 +2894,7 @@ pub fn replay_tassadar_execution(
 }
 
 /// Small reference corpus that keeps the Phase 1 trace/output boundary honest.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarValidationCase {
     /// Stable case identifier.
     pub case_id: String,
@@ -2860,6 +2906,45 @@ pub struct TassadarValidationCase {
     pub expected_trace: Vec<TassadarTraceStep>,
     /// Exact expected output values.
     pub expected_outputs: Vec<i32>,
+}
+
+/// Stable split identity for one real 4x4 Sudoku-v0 corpus case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarSudokuV0CorpusSplit {
+    /// Training split for later tokenization and model fitting.
+    Train,
+    /// Validation split for exactness reporting during training.
+    Validation,
+    /// Held-out test split for later trained-model checks.
+    Test,
+}
+
+impl TassadarSudokuV0CorpusSplit {
+    /// Returns the stable split identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Train => "train",
+            Self::Validation => "validation",
+            Self::Test => "test",
+        }
+    }
+}
+
+/// One real 4x4 Sudoku-v0 corpus case backed by the honest search program.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarSudokuV0CorpusCase {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable split assignment.
+    pub split: TassadarSudokuV0CorpusSplit,
+    /// Flat 4x4 puzzle cells where `0` denotes an empty square.
+    pub puzzle_cells: Vec<i32>,
+    /// Number of fixed givens in the puzzle.
+    pub given_count: usize,
+    /// Exact CPU-reference-backed validation case.
+    pub validation_case: TassadarValidationCase,
 }
 
 const TASSADAR_SUDOKU_V0_CELL_COUNT: usize = 16;
@@ -2963,6 +3048,129 @@ fn build_tassadar_sudoku_v0_search_instructions() -> Vec<TassadarInstruction> {
     assembler.emit(TassadarInstruction::Return);
 
     assembler.finalize()
+}
+
+/// Returns the canonical real 4x4 Sudoku-v0 corpus with stable split assignments.
+#[must_use]
+pub fn tassadar_sudoku_v0_corpus() -> Vec<TassadarSudokuV0CorpusCase> {
+    vec![
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_train_a",
+            TassadarSudokuV0CorpusSplit::Train,
+            [
+                1, 0, 0, 4, //
+                0, 4, 1, 0, //
+                0, 1, 0, 3, //
+                4, 0, 2, 0,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_train_b",
+            TassadarSudokuV0CorpusSplit::Train,
+            [
+                0, 1, 0, 0, //
+                0, 4, 1, 0, //
+                1, 0, 0, 4, //
+                0, 3, 0, 0,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_train_c",
+            TassadarSudokuV0CorpusSplit::Train,
+            [
+                0, 0, 0, 0, //
+                3, 0, 0, 0, //
+                0, 0, 0, 4, //
+                0, 0, 1, 0,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_train_d",
+            TassadarSudokuV0CorpusSplit::Train,
+            [
+                1, 0, 0, 0, //
+                0, 0, 1, 0, //
+                0, 1, 0, 0, //
+                0, 0, 0, 1,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_validation_a",
+            TassadarSudokuV0CorpusSplit::Validation,
+            [
+                0, 2, 0, 4, //
+                3, 0, 0, 0, //
+                0, 0, 4, 0, //
+                0, 3, 0, 1,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_validation_b",
+            TassadarSudokuV0CorpusSplit::Validation,
+            [
+                0, 0, 4, 0, //
+                0, 4, 0, 0, //
+                1, 0, 0, 4, //
+                0, 3, 0, 0,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_test_a",
+            TassadarSudokuV0CorpusSplit::Test,
+            [
+                2, 0, 0, 0, //
+                0, 4, 0, 2, //
+                0, 0, 3, 0, //
+                4, 0, 0, 1,
+            ],
+        ),
+        computed_sudoku_v0_corpus_case(
+            "sudoku_v0_test_b",
+            TassadarSudokuV0CorpusSplit::Test,
+            [
+                0, 0, 0, 4, //
+                3, 0, 1, 0, //
+                0, 1, 0, 0, //
+                0, 3, 0, 0,
+            ],
+        ),
+    ]
+}
+
+fn computed_sudoku_v0_corpus_case(
+    case_id: &str,
+    split: TassadarSudokuV0CorpusSplit,
+    puzzle_cells: [i32; TASSADAR_SUDOKU_V0_CELL_COUNT],
+) -> TassadarSudokuV0CorpusCase {
+    let given_count = puzzle_cells.iter().filter(|value| **value != 0).count();
+    let program = tassadar_sudoku_v0_search_program(format!("tassadar.{case_id}.v1"), puzzle_cells);
+    let execution = TassadarCpuReferenceRunner::for_program(&program)
+        .expect("Sudoku-v0 search profile should resolve on CPU")
+        .execute(&program)
+        .expect("Sudoku-v0 corpus puzzle should solve exactly");
+    assert_eq!(
+        execution.outputs.len(),
+        TASSADAR_SUDOKU_V0_CELL_COUNT,
+        "Sudoku-v0 corpus case `{case_id}` should emit a full solved grid"
+    );
+    let summary = format!(
+        "real 4x4 Sudoku-v0 backtracking puzzle on the {} split with {} givens",
+        split.as_str(),
+        given_count
+    );
+    TassadarSudokuV0CorpusCase {
+        case_id: String::from(case_id),
+        split,
+        puzzle_cells: puzzle_cells.to_vec(),
+        given_count,
+        validation_case: TassadarValidationCase {
+            case_id: String::from(case_id),
+            summary,
+            program,
+            expected_trace: execution.steps,
+            expected_outputs: execution.outputs,
+        },
+    }
 }
 
 fn sudoku_v0_stage_label(cell: usize) -> String {
@@ -3084,11 +3292,14 @@ pub fn tassadar_validation_corpus() -> Vec<TassadarValidationCase> {
 /// Returns the widened article-class benchmark corpus.
 #[must_use]
 pub fn tassadar_article_class_corpus() -> Vec<TassadarValidationCase> {
-    vec![
-        micro_wasm_kernel_case(),
-        sudoku_class_case(),
-        hungarian_matching_case(),
-    ]
+    let mut cases = vec![micro_wasm_kernel_case()];
+    cases.extend(
+        tassadar_sudoku_v0_corpus()
+            .into_iter()
+            .map(|case| case.validation_case),
+    );
+    cases.push(hungarian_matching_case());
+    cases
 }
 
 fn computed_validation_case(
@@ -4416,7 +4627,7 @@ fn branch_guard_case() -> TassadarValidationCase {
 }
 
 fn micro_wasm_kernel_case() -> TassadarValidationCase {
-    let profile = TassadarWasmProfile::core_i32_v2();
+    let profile = TassadarWasmProfile::sudoku_v0_search_v1();
     computed_validation_case(
         "micro_wasm_kernel",
         "unrolled weighted-sum and checksum micro-kernel over memory-backed inputs",
@@ -4482,47 +4693,8 @@ fn micro_wasm_kernel_case() -> TassadarValidationCase {
     )
 }
 
-fn sudoku_class_case() -> TassadarValidationCase {
-    let profile = TassadarWasmProfile::core_i32_v2();
-    computed_validation_case(
-        "sudoku_class",
-        "sum-based exact completion for two missing values in a tiny 4x4 Sudoku-style instance",
-        TassadarProgram::new(
-            "tassadar.sudoku_class.v2",
-            &profile,
-            0,
-            8,
-            vec![
-                TassadarInstruction::I32Const { value: 10 },
-                TassadarInstruction::I32Load { slot: 0 },
-                TassadarInstruction::I32Sub,
-                TassadarInstruction::I32Load { slot: 2 },
-                TassadarInstruction::I32Sub,
-                TassadarInstruction::I32Load { slot: 3 },
-                TassadarInstruction::I32Sub,
-                TassadarInstruction::I32Store { slot: 1 },
-                TassadarInstruction::I32Load { slot: 1 },
-                TassadarInstruction::Output,
-                TassadarInstruction::I32Const { value: 10 },
-                TassadarInstruction::I32Load { slot: 5 },
-                TassadarInstruction::I32Sub,
-                TassadarInstruction::I32Load { slot: 6 },
-                TassadarInstruction::I32Sub,
-                TassadarInstruction::I32Load { slot: 7 },
-                TassadarInstruction::I32Sub,
-                TassadarInstruction::I32Store { slot: 4 },
-                TassadarInstruction::I32Load { slot: 4 },
-                TassadarInstruction::Output,
-                TassadarInstruction::Return,
-            ],
-        )
-        .with_initial_memory(vec![1, 0, 3, 4, 0, 4, 1, 2]),
-        vec![2, 3],
-    )
-}
-
 fn hungarian_matching_case() -> TassadarValidationCase {
-    let profile = TassadarWasmProfile::core_i32_v2();
+    let profile = TassadarWasmProfile::sudoku_v0_search_v1();
     computed_validation_case(
         "hungarian_matching",
         "tiny fixed 2x2 matching instance with branch-selected winning assignment and exact cost",
@@ -4741,14 +4913,16 @@ mod tests {
         build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
         execute_tassadar_executor_request, replay_tassadar_execution,
         run_tassadar_exact_equivalence, run_tassadar_exact_parity, tassadar_article_class_corpus,
-        tassadar_runtime_capability_report, tassadar_sudoku_v0_search_program,
-        tassadar_validation_corpus, TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner,
-        TassadarExecutionRefusal, TassadarExecutorDecodeMode, TassadarExecutorSelectionReason,
+        tassadar_runtime_capability_report, tassadar_sudoku_v0_corpus,
+        tassadar_sudoku_v0_search_program, tassadar_validation_corpus,
+        TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
+        TassadarExecutorDecodeMode, TassadarExecutorSelectionReason,
         TassadarExecutorSelectionState, TassadarFixtureRunner, TassadarHullCacheRunner,
         TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
         TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
-        TassadarSparseTopKRunner, TassadarTraceAbi, TassadarTraceEvent, TassadarWasmProfile,
-        TassadarWasmProfileId, TASSADAR_FIXTURE_RUNNER_ID, TASSADAR_RUNTIME_BACKEND_ID,
+        TassadarSparseTopKRunner, TassadarSudokuV0CorpusSplit, TassadarTraceAbi,
+        TassadarTraceEvent, TassadarWasmProfile, TassadarWasmProfileId, TASSADAR_FIXTURE_RUNNER_ID,
+        TASSADAR_RUNTIME_BACKEND_ID,
     };
 
     #[test]
@@ -4868,7 +5042,7 @@ mod tests {
         for case in tassadar_article_class_corpus() {
             assert_eq!(
                 case.program.profile_id,
-                TassadarWasmProfileId::CoreI32V2.as_str()
+                TassadarWasmProfileId::SudokuV0SearchV1.as_str()
             );
             TassadarCpuReferenceRunner::for_program(&case.program)
                 .expect("article-class CPU runner should resolve");
@@ -4879,6 +5053,39 @@ mod tests {
             TassadarSparseTopKRunner::for_program(&case.program)
                 .expect("article-class sparse runner should resolve");
         }
+    }
+
+    #[test]
+    fn sudoku_v0_corpus_assigns_stable_train_validation_and_test_splits() {
+        let corpus = tassadar_sudoku_v0_corpus();
+        assert_eq!(corpus.len(), 8);
+        assert_eq!(
+            corpus
+                .iter()
+                .filter(|case| case.split == TassadarSudokuV0CorpusSplit::Train)
+                .count(),
+            4
+        );
+        assert_eq!(
+            corpus
+                .iter()
+                .filter(|case| case.split == TassadarSudokuV0CorpusSplit::Validation)
+                .count(),
+            2
+        );
+        assert_eq!(
+            corpus
+                .iter()
+                .filter(|case| case.split == TassadarSudokuV0CorpusSplit::Test)
+                .count(),
+            2
+        );
+        assert!(corpus
+            .iter()
+            .all(|case| !case.validation_case.expected_trace.is_empty()));
+        assert!(corpus
+            .iter()
+            .all(|case| case.validation_case.expected_outputs.len() == 16));
     }
 
     #[test]
