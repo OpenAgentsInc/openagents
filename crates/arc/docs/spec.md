@@ -857,8 +857,11 @@ Current bounded landing:
 - `ARC-303` extends the same model with `VerificationReport`,
   `PairVerificationResult`, falsification checks, and the bounded common
   verifier
-- lane proposal batches and trace-bundle manifests still extend this same
-  model rather than redefining shadow types
+- `ARC-304` further extends the same model with `LaneProposalBatch`,
+  `ArbiterDecision`, `SolverTraceBundle`, JSON trace-bundle IO, and replay
+  validation against manifest and budget lineage
+- later lane and arbiter work must extend these same records rather than
+  redefining shadow types
 
 ```rust
 pub struct HypothesisId(pub String);

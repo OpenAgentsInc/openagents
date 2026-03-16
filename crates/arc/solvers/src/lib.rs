@@ -16,6 +16,7 @@
 pub mod dsl;
 pub mod interpreter;
 pub mod model;
+pub mod trace;
 pub mod verifier;
 
 pub use dsl::{
@@ -32,6 +33,12 @@ pub use model::{
     SolveAttemptEnvelope, SolveAttemptEnvelopeError, SolveAttemptStatus,
     SolveAttemptVerificationSummary, SolverIdError, SolverLaneId, SolverPhase, SolverRefusalCode,
     TaskBudget,
+};
+pub use trace::{
+    ArbiterDecision, LaneBatchStatus, LaneProposalBatch, ProposalPhase, SolverTraceBundle,
+    TRACE_BUNDLE_BOUNDARY_SUMMARY, TraceBundleError, TraceBundleManifest, TraceBundleReplayReport,
+    TracedLaneProposal, read_trace_bundle_json_file, replay_trace_bundle,
+    write_trace_bundle_json_file,
 };
 pub use verifier::{
     ArcCommonVerifier, ArcVerifierAugmentation, ArcVerifierConfig, ArcVerifierError,
