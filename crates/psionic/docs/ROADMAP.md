@@ -442,16 +442,22 @@ This roadmap is organized into seven epics.
 | Epic 6 | Training, eval, and research | decentralized adapter training first, then broader train-class closure |
 | Epic 7 | Interop and adoption | practical path from "good Rust engine" to "usable for most PyTorch workloads" |
 
-Only one of these epics currently has a live dedicated GitHub issue block:
+This roadmap now has three live GitHub issue blocks:
 
 - decentralized adapter training:
   [#3649](https://github.com/OpenAgentsInc/openagents/issues/3649) and
   [#3636](https://github.com/OpenAgentsInc/openagents/issues/3636) through
   [#3648](https://github.com/OpenAgentsInc/openagents/issues/3648)
+- framework core completion:
+  [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741) with child
+  issues [#3703](https://github.com/OpenAgentsInc/openagents/issues/3703)
+  through [#3715](https://github.com/OpenAgentsInc/openagents/issues/3715)
+- semantics and compatibility:
+  [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742) with child
+  issues [#3716](https://github.com/OpenAgentsInc/openagents/issues/3716)
+  through [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
 
-For the rest of the roadmap, the issue IDs below are currently roadmap-local
-IDs. Open matching GitHub issues when an epic becomes active rather than
-mass-opening the whole future program immediately.
+Epic 0 and later epics beyond 2 still use roadmap-local IDs until activated.
 
 ## Epic 0: Governance And Acceptance
 
@@ -503,23 +509,26 @@ opaque monolith.
 - `psionic-runtime` runtime descriptors, proof, cache, and local multi-device
   substrate
 
+Master issue:
+[#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
+
 ### Issues
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-101` | planned | Expand tensor semantics to credible view, alias, indexing, shape, reduction, and dtype-promotion breadth. |
-| `PLIB-102` | planned | Add a real operator registry, schema layer, and dispatch/composite/meta execution split above the current primitive op set. |
-| `PLIB-103` | planned | Add fake or meta tensor execution for shape-only planning, compile validation, and compatibility harnesses. |
-| `PLIB-104` | planned | Expand autodiff coverage to broader operator families while keeping typed refusal on unsupported gradients. |
-| `PLIB-105` | planned | Deepen compiler passes: schedule formation, fusion policy, memory planning, plan cache identity, and compile-cache evidence. |
-| `PLIB-106` | planned | Complete same-type local multi-device behavior beyond implemented-early substrate, including sharding policy and refusal taxonomy. |
-| `PLIB-107` | planned | Promote framework-core acceptance from representative proof to broad contract coverage with fixture-backed replay and failure tests. |
-| `PLIB-108` | planned | Define one cross-library refusal taxonomy covering unsupported ops, unsupported gradients, unsupported layouts, unsupported backend capabilities, serialization incompatibility, sandbox policy denial, and topology mismatch. |
-| `PLIB-109` | planned | Formalize storage identity, alias invariants, view semantics, and complex or advanced dtype rules as core contracts rather than backend accidents. |
-| `PLIB-110` | planned | Add framework-core RNG, seeding, generator-state, and deterministic-algorithm contracts that survive replay, checkpoint, multi-device execution, and distributed execution replay. |
-| `PLIB-111` | planned | Define stable custom-op schema, kernel registration, and backend dispatch contracts so extensibility does not fork the core. |
-| `PLIB-112` | planned | Add transform-safe graph and functionalization foundations so higher-level program transforms and export contracts can build on explicit IR rules. |
-| `PLIB-113` | planned | Add sparse, nested, masked, and storage-aware meta execution foundations so non-dense families can enter through typed contracts rather than ad hoc exceptions. |
+| `PLIB-101` / [#3703](https://github.com/OpenAgentsInc/openagents/issues/3703) | planned | Expand tensor semantics to credible view, alias, indexing, shape, reduction, and dtype-promotion breadth. |
+| `PLIB-102` / [#3704](https://github.com/OpenAgentsInc/openagents/issues/3704) | planned | Add a real operator registry, schema layer, and dispatch/composite/meta execution split above the current primitive op set. |
+| `PLIB-103` / [#3705](https://github.com/OpenAgentsInc/openagents/issues/3705) | planned | Add fake or meta tensor execution for shape-only planning, compile validation, and compatibility harnesses. |
+| `PLIB-104` / [#3706](https://github.com/OpenAgentsInc/openagents/issues/3706) | planned | Expand autodiff coverage to broader operator families while keeping typed refusal on unsupported gradients. |
+| `PLIB-105` / [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707) | planned | Deepen compiler passes: schedule formation, fusion policy, memory planning, plan cache identity, and compile-cache evidence. |
+| `PLIB-106` / [#3708](https://github.com/OpenAgentsInc/openagents/issues/3708) | planned | Complete same-type local multi-device behavior beyond implemented-early substrate, including sharding policy and refusal taxonomy. |
+| `PLIB-107` / [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709) | planned | Promote framework-core acceptance from representative proof to broad contract coverage with fixture-backed replay and failure tests. |
+| `PLIB-108` / [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710) | planned | Define one cross-library refusal taxonomy covering unsupported ops, unsupported gradients, unsupported layouts, unsupported backend capabilities, serialization incompatibility, sandbox policy denial, and topology mismatch. |
+| `PLIB-109` / [#3711](https://github.com/OpenAgentsInc/openagents/issues/3711) | planned | Formalize storage identity, alias invariants, view semantics, and complex or advanced dtype rules as core contracts rather than backend accidents. |
+| `PLIB-110` / [#3712](https://github.com/OpenAgentsInc/openagents/issues/3712) | planned | Add framework-core RNG, seeding, generator-state, and deterministic-algorithm contracts that survive replay, checkpoint, multi-device execution, and distributed execution replay. |
+| `PLIB-111` / [#3713](https://github.com/OpenAgentsInc/openagents/issues/3713) | planned | Define stable custom-op schema, kernel registration, and backend dispatch contracts so extensibility does not fork the core. |
+| `PLIB-112` / [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714) | planned | Add transform-safe graph and functionalization foundations so higher-level program transforms and export contracts can build on explicit IR rules. |
+| `PLIB-113` / [#3715](https://github.com/OpenAgentsInc/openagents/issues/3715) | planned | Add sparse, nested, masked, and storage-aware meta execution foundations so non-dense families can enter through typed contracts rather than ad hoc exceptions. |
 
 ## Epic 2: Semantics And Compatibility
 
@@ -546,58 +555,61 @@ library."
 
 It is the most important missing middle layer in current Psionic.
 
+Master issue:
+[#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+
 ### Issues
 
 ### State And Training Semantics
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-201` | planned | Add a first-class module, parameter, buffer, and state-tree system. |
-| `PLIB-202` | planned | Add deterministic `state_dict`-style naming, strict and non-strict load behavior, and size-mismatch refusal semantics. |
-| `PLIB-203` | planned | Widen optimizer coverage with scheduler integration, parameter-group semantics, and stronger state behavior. |
-| `PLIB-204` | planned | Define serialization and checkpoint compatibility boundaries for practical PyTorch interoperability without inheriting every historical artifact path. |
+| `PLIB-201` / [#3716](https://github.com/OpenAgentsInc/openagents/issues/3716) | planned | Add a first-class module, parameter, buffer, and state-tree system. |
+| `PLIB-202` / [#3717](https://github.com/OpenAgentsInc/openagents/issues/3717) | planned | Add deterministic `state_dict`-style naming, strict and non-strict load behavior, and size-mismatch refusal semantics. |
+| `PLIB-203` / [#3718](https://github.com/OpenAgentsInc/openagents/issues/3718) | planned | Widen optimizer coverage with scheduler integration, parameter-group semantics, and stronger state behavior. |
+| `PLIB-204` / [#3719](https://github.com/OpenAgentsInc/openagents/issues/3719) | planned | Define serialization and checkpoint compatibility boundaries for practical PyTorch interoperability without inheriting every historical artifact path. |
 
 ### Parity And Compiler Hygiene
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-205` | planned | Add a PyTorch-derived operator parity matrix analogous to `op_db` / `OpInfo` for Rust-native conformance. |
-| `PLIB-206` | planned | Add a PyTorch-derived module parity matrix analogous to `module_db`. |
-| `PLIB-207` | planned | Add a PyTorch-derived optimizer parity matrix analogous to `optim_db`. |
-| `PLIB-208` | planned | Add symbolic-shape, fake-tensor, and compiler-hygiene parity harnesses informed by modern PyTorch compiler tests. |
-| `PLIB-209` | planned | Make the semantics layer honest about what is `PyTorch-credible` versus what remains `PyTorch-compatible later`. |
+| `PLIB-205` / [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720) | planned | Add a PyTorch-derived operator parity matrix analogous to `op_db` / `OpInfo` for Rust-native conformance. |
+| `PLIB-206` / [#3721](https://github.com/OpenAgentsInc/openagents/issues/3721) | planned | Add a PyTorch-derived module parity matrix analogous to `module_db`. |
+| `PLIB-207` / [#3722](https://github.com/OpenAgentsInc/openagents/issues/3722) | planned | Add a PyTorch-derived optimizer parity matrix analogous to `optim_db`. |
+| `PLIB-208` / [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723) | planned | Add symbolic-shape, fake-tensor, and compiler-hygiene parity harnesses informed by modern PyTorch compiler tests. |
+| `PLIB-209` / [#3724](https://github.com/OpenAgentsInc/openagents/issues/3724) | planned | Make the semantics layer honest about what is `PyTorch-credible` versus what remains `PyTorch-compatible later`. |
 
 ### Tensor, Dtype, And Reproducibility Semantics
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-210` | planned | Add first-class sparse, nested, masked, and storage-aware tensor semantics with explicit capability matrices and refusal behavior. |
-| `PLIB-211` | planned | Add complex-number, low-precision, and advanced dtype semantics with explicit promotion, casting, and backend-capability rules. |
-| `PLIB-212` | planned | Define framework-wide reproducibility semantics covering global and per-device RNG, deterministic modes, and RNG state restore across train, eval, and distributed replay. |
-| `PLIB-213` | planned | Add an autocast-style precision-policy system with backend-aware rules, typed refusal surfaces, and numerics diagnostics. |
-| `PLIB-214` | planned | Add gradient scaling plus overflow and underflow handling for train-class mixed precision. |
+| `PLIB-210` / [#3725](https://github.com/OpenAgentsInc/openagents/issues/3725) | planned | Add first-class sparse, nested, masked, and storage-aware tensor semantics with explicit capability matrices and refusal behavior. |
+| `PLIB-211` / [#3726](https://github.com/OpenAgentsInc/openagents/issues/3726) | planned | Add complex-number, low-precision, and advanced dtype semantics with explicit promotion, casting, and backend-capability rules. |
+| `PLIB-212` / [#3727](https://github.com/OpenAgentsInc/openagents/issues/3727) | planned | Define framework-wide reproducibility semantics covering global and per-device RNG, deterministic modes, and RNG state restore across train, eval, and distributed replay. |
+| `PLIB-213` / [#3728](https://github.com/OpenAgentsInc/openagents/issues/3728) | planned | Add an autocast-style precision-policy system with backend-aware rules, typed refusal surfaces, and numerics diagnostics. |
+| `PLIB-214` / [#3729](https://github.com/OpenAgentsInc/openagents/issues/3729) | planned | Add gradient scaling plus overflow and underflow handling for train-class mixed precision. |
 
 ### Quantization And Transforms
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-215` | planned | Build quantization as a library capability family: PTQ, QAT, quantization configuration, backend quantization contracts, compiler or export-aware quantization flows, and quantized execution semantics above file-format decode. |
-| `PLIB-216` | planned | Add functionalization and program-transform capability for symbolic rewrites, export-safe graphs, and future `vmap` / `jvp` / `jacobian`-class transforms. |
+| `PLIB-215` / [#3730](https://github.com/OpenAgentsInc/openagents/issues/3730) | planned | Build quantization as a library capability family: PTQ, QAT, quantization configuration, backend quantization contracts, compiler or export-aware quantization flows, and quantized execution semantics above file-format decode. |
+| `PLIB-216` / [#3731](https://github.com/OpenAgentsInc/openagents/issues/3731) | planned | Add functionalization and program-transform capability for symbolic rewrites, export-safe graphs, and future `vmap` / `jvp` / `jacobian`-class transforms. |
 
 ### Extensibility And Data Systems
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-217` | planned | Publish user-facing extension contracts for custom ops, custom kernels, custom autograd, backend plugins, and quantizer plugins. |
-| `PLIB-218` | planned | Add dataset, iterable-streaming, sampler, batch-sampler, and host-device staging abstractions as reusable library capability, not app glue. |
-| `PLIB-219` | planned | Add distributed and sharded data-feed semantics, including sampler partitioning, worker coordination, and replay-safe input ordering. |
+| `PLIB-217` / [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732) | planned | Publish user-facing extension contracts for custom ops, custom kernels, custom autograd, backend plugins, and quantizer plugins. |
+| `PLIB-218` / [#3733](https://github.com/OpenAgentsInc/openagents/issues/3733) | planned | Add dataset, iterable-streaming, sampler, batch-sampler, and host-device staging abstractions as reusable library capability, not app glue. |
+| `PLIB-219` / [#3734](https://github.com/OpenAgentsInc/openagents/issues/3734) | planned | Add distributed and sharded data-feed semantics, including sampler partitioning, worker coordination, and replay-safe input ordering. |
 
 ### Advanced Operator Families And Export
 
-| ID | Status | Work |
+| ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-220` | planned | Add advanced operator-family programs for linalg, fft or signal, distributions, special functions, and attention-family semantics. |
-| `PLIB-221` | planned | Add exportable graph and deployment artifact contracts so the semantics layer can hand off stable graph units independent of raw checkpoints. |
+| `PLIB-220` / [#3735](https://github.com/OpenAgentsInc/openagents/issues/3735) | planned | Add advanced operator-family programs for linalg, fft or signal, distributions, special functions, and attention-family semantics. |
+| `PLIB-221` / [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736) | planned | Add exportable graph and deployment artifact contracts so the semantics layer can hand off stable graph units independent of raw checkpoints. |
 
 ## Epic 3: Model IO And Runtime Families
 
