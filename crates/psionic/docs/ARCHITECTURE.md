@@ -497,6 +497,7 @@ training subsystems.
 | `PsionicRefusal` | `psionic-core` | canonical cross-library refusal taxonomy for unsupported op, gradient, layout, capability, serialization, sandbox-policy, and topology boundaries | `implemented_early` |
 | `OperatorParityMatrixReport` | `psionic-ir` | machine-readable seeded operator parity cases and refusal proofs against the current PyTorch-derived oracle window | `implemented` |
 | `CompilerHygieneParityMatrixReport` | `psionic-compiler` | machine-readable seeded symbolic-shape, fake-tensor, and compiler-hygiene parity cases plus an explicit symbolic-shape refusal proof for the current PyTorch-derived oracle window | `implemented` |
+| `SemanticsClaimReport` | `psionic-compat` | machine-readable claim vocabulary that separates seeded evidence from `PyTorch-credible` and `PyTorch-compatible later` posture across the current semantics program | `implemented` |
 | `Module` | `psionic-nn` | reusable nested module tree with deterministic parameter, buffer, and submodule traversal | `implemented` |
 | `ModuleParityMatrixReport` | `psionic-nn` | machine-readable seeded module parity cases and refusal proofs for the current PyTorch-derived normalized module-tree and `state_dict` oracle window | `implemented` |
 | `ModuleStateDict` | `psionic-nn` | deterministic keyed `state_dict` view with stable path order and persistent-vs-all-buffer selection | `implemented` |
