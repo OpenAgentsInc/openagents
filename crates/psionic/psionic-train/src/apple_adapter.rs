@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, path::Path};
 
+use half::f16;
 use psionic_adapters::{
     AppleFmAdapterPackage, AppleFmAdapterPackageError, AppleFmAdapterPackageMetadata,
 };
@@ -26,6 +27,16 @@ use crate::{
 
 const OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION: &str = "openagents.apple-fmadapter.v1";
 const APPLE_ADAPTER_FIDELITY_PLAN_ID: &str = "openagents.apple.token_sequence_reference.v1";
+/// Feature width used by the current live Rust-native Apple reference lane.
+pub const APPLE_LIVE_REFERENCE_FEATURE_WIDTH: usize = 2048;
+/// LoRA rank used by the current live Rust-native Apple reference lane.
+pub const APPLE_LIVE_REFERENCE_LORA_RANK: usize = 32;
+const APPLE_RUNTIME_KV_FEATURE_WIDTH: usize = 256;
+const APPLE_RUNTIME_FEED_FORWARD_WIDTH: usize = 6656;
+const APPLE_RUNTIME_SEGMENT0_LAYER_COUNT: usize = 35;
+const APPLE_RUNTIME_SEGMENT1_LAYER_COUNT: usize = 21;
+const APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER: usize = 30;
+const APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER: usize = 16;
 
 /// Precision posture for the first repo-owned Apple reference backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,6 +108,50 @@ impl AppleAdapterTrainableTarget {
     fn scale(&self) -> f32 {
         self.lora_alpha / self.lora_rank as f32
     }
+}
+
+/// Returns the current live Rust-native Apple target family used by the desktop operator.
+#[must_use]
+pub fn apple_live_reference_trainable_targets(
+    optimizer: TrainingOptimizerConfig,
+    optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+) -> Vec<AppleAdapterTrainableTarget> {
+    let mut targets = Vec::new();
+    for layer in APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER..APPLE_RUNTIME_SEGMENT0_LAYER_COUNT {
+        for stem in [
+            format!(
+                "layers.segment_0.layer_{layer}.attention.qkv_transform.adapters.base_adapter.lora_0"
+            ),
+            format!(
+                "layers.segment_0.layer_{layer}.attention.output_transform.adapters.base_adapter"
+            ),
+        ] {
+            targets.push(AppleAdapterTrainableTarget {
+                target_id: stem,
+                lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+                lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                optimizer: optimizer.clone(),
+                optimizer_residency_policy,
+            });
+        }
+    }
+    for layer in APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER..APPLE_RUNTIME_SEGMENT1_LAYER_COUNT {
+        for stem in [
+            format!("layers.segment_1.layer_{layer}.attention.q_transform.adapters.base_adapter"),
+            format!(
+                "layers.segment_1.layer_{layer}.attention.output_transform.adapters.base_adapter"
+            ),
+        ] {
+            targets.push(AppleAdapterTrainableTarget {
+                target_id: stem,
+                lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+                lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                optimizer: optimizer.clone(),
+                optimizer_residency_policy,
+            });
+        }
+    }
+    targets
 }
 
 /// Minimal frozen-base and trainable-adapter representation used by the repo-owned backend.
@@ -651,6 +706,7 @@ struct AppleAdapterSftExecutionArtifacts {
     final_bundle_receipt: ModelIoArtifactReceipt,
     initial_bundle_bytes: Vec<u8>,
     final_bundle_bytes: Vec<u8>,
+    runtime_asset_bytes: Vec<u8>,
     adapter_delta: ModelAdapterDelta,
     adapter_identifier: String,
 }
@@ -921,6 +977,329 @@ impl AppleAdapterDraftDistillationOutcome {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AppleRuntimeQkPermutation {
+    n_heads: usize,
+    dim1: usize,
+    dim2: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AppleRuntimeTensorTemplate {
+    key_suffix: &'static str,
+    rows: usize,
+    cols: usize,
+    qk_permutation: Option<AppleRuntimeQkPermutation>,
+}
+
+const APPLE_RUNTIME_SEGMENT0_TEMPLATES: [AppleRuntimeTensorTemplate; 14] = [
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.qkv_transform.adapters.base_adapter.lora_0.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.qkv_transform.adapters.base_adapter.lora_0.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        qk_permutation: Some(AppleRuntimeQkPermutation {
+            n_heads: 16,
+            dim1: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            dim2: APPLE_LIVE_REFERENCE_LORA_RANK,
+        }),
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.qkv_transform.adapters.base_adapter.lora_1.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.qkv_transform.adapters.base_adapter.lora_1.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_RUNTIME_KV_FEATURE_WIDTH,
+        qk_permutation: Some(AppleRuntimeQkPermutation {
+            n_heads: 2,
+            dim1: APPLE_RUNTIME_KV_FEATURE_WIDTH,
+            dim2: APPLE_LIVE_REFERENCE_LORA_RANK,
+        }),
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.qkv_transform.adapters.base_adapter.lora_2.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.qkv_transform.adapters.base_adapter.lora_2.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_RUNTIME_KV_FEATURE_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.output_transform.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.output_transform.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_0.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_0.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_RUNTIME_FEED_FORWARD_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_1.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_1.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_RUNTIME_FEED_FORWARD_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.output_transform.adapters.base_adapter.a_transpose",
+        rows: APPLE_RUNTIME_FEED_FORWARD_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.output_transform.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        qk_permutation: None,
+    },
+];
+
+const APPLE_RUNTIME_SEGMENT1_TEMPLATES: [AppleRuntimeTensorTemplate; 10] = [
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.q_transform.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.q_transform.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        qk_permutation: Some(AppleRuntimeQkPermutation {
+            n_heads: 16,
+            dim1: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            dim2: APPLE_LIVE_REFERENCE_LORA_RANK,
+        }),
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.output_transform.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "attention.output_transform.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_0.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_0.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_RUNTIME_FEED_FORWARD_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_1.adapters.base_adapter.a_transpose",
+        rows: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.hidden_transform.linear_1.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_RUNTIME_FEED_FORWARD_WIDTH,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.output_transform.adapters.base_adapter.a_transpose",
+        rows: APPLE_RUNTIME_FEED_FORWARD_WIDTH,
+        cols: APPLE_LIVE_REFERENCE_LORA_RANK,
+        qk_permutation: None,
+    },
+    AppleRuntimeTensorTemplate {
+        key_suffix: "feed_forward.output_transform.adapters.base_adapter.b_transpose",
+        rows: APPLE_LIVE_REFERENCE_LORA_RANK,
+        cols: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        qk_permutation: None,
+    },
+];
+
+/// Error surfaced while turning repo-owned LoRA groups into Apple runtime bytes.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum AppleAdapterRuntimeAssetError {
+    #[error("Apple runtime asset export does not support trained target `{target_id}`")]
+    UnsupportedTargetId { target_id: String },
+    #[error("Apple runtime asset export is missing training group `{group_id}`")]
+    MissingTrainingGroup { group_id: String },
+    #[error("Apple runtime asset export requires dense f32 values for `{group_id}`")]
+    NonDenseTrainingGroup { group_id: String },
+    #[error(
+        "Apple runtime asset export shape mismatch for `{group_id}`: expected {expected_rows}x{expected_cols}, found {actual:?}"
+    )]
+    ShapeMismatch {
+        group_id: String,
+        expected_rows: usize,
+        expected_cols: usize,
+        actual: Vec<usize>,
+    },
+}
+
+fn apple_runtime_tensor_templates() -> Vec<(String, AppleRuntimeTensorTemplate)> {
+    let mut templates = Vec::with_capacity(
+        APPLE_RUNTIME_SEGMENT0_LAYER_COUNT * APPLE_RUNTIME_SEGMENT0_TEMPLATES.len()
+            + APPLE_RUNTIME_SEGMENT1_LAYER_COUNT * APPLE_RUNTIME_SEGMENT1_TEMPLATES.len(),
+    );
+    for layer in 0..APPLE_RUNTIME_SEGMENT0_LAYER_COUNT {
+        for template in APPLE_RUNTIME_SEGMENT0_TEMPLATES {
+            templates.push((
+                format!("layers.segment_0.layer_{layer}.{}", template.key_suffix),
+                template,
+            ));
+        }
+    }
+    for layer in 0..APPLE_RUNTIME_SEGMENT1_LAYER_COUNT {
+        for template in APPLE_RUNTIME_SEGMENT1_TEMPLATES {
+            templates.push((
+                format!("layers.segment_1.layer_{layer}.{}", template.key_suffix),
+                template,
+            ));
+        }
+    }
+    templates
+}
+
+fn export_native_apple_runtime_asset_bytes(
+    backend: &AppleAdapterTrainingExecutionBackend,
+    final_groups: &[TrainingParameterGroupState],
+) -> Result<Vec<u8>, AppleAdapterRuntimeAssetError> {
+    let templates = apple_runtime_tensor_templates();
+    let template_by_key = templates
+        .iter()
+        .map(|(key, template)| (key.clone(), *template))
+        .collect::<BTreeMap<_, _>>();
+    for target in &backend.config().model.targets {
+        for suffix in ["a_transpose", "b_transpose"] {
+            let key = format!("{}.{}", target.target_id, suffix);
+            if !template_by_key.contains_key(key.as_str()) {
+                return Err(AppleAdapterRuntimeAssetError::UnsupportedTargetId {
+                    target_id: target.target_id.clone(),
+                });
+            }
+        }
+    }
+
+    let groups_by_id = final_groups
+        .iter()
+        .map(|group| (group.group_id.clone(), group))
+        .collect::<BTreeMap<_, _>>();
+    let mut bytes = Vec::new();
+    for (checkpoint_key, template) in templates {
+        let target_id = checkpoint_key
+            .trim_end_matches(".a_transpose")
+            .trim_end_matches(".b_transpose");
+        let group_id = if checkpoint_key.ends_with(".a_transpose") {
+            format!("{target_id}.lora_a")
+        } else {
+            format!("{target_id}.lora_b")
+        };
+        let values = if let Some(group) = groups_by_id.get(group_id.as_str()) {
+            let actual = group.parameter.spec.shape().dims().to_vec();
+            if actual != vec![template.rows, template.cols] {
+                return Err(AppleAdapterRuntimeAssetError::ShapeMismatch {
+                    group_id: group_id.clone(),
+                    expected_rows: template.rows,
+                    expected_cols: template.cols,
+                    actual,
+                });
+            }
+            dense_values(group, group_id.as_str())
+                .map_err(|_| AppleAdapterRuntimeAssetError::NonDenseTrainingGroup {
+                    group_id: group_id.clone(),
+                })?
+                .to_vec()
+        } else {
+            vec![0.0_f32; template.rows * template.cols]
+        };
+        let mut transformed = transpose_matrix(values.as_slice(), template.rows, template.cols);
+        if let Some(permutation) = template.qk_permutation {
+            transformed = permute_qk_matrix(
+                transformed.as_slice(),
+                permutation.n_heads,
+                permutation.dim1,
+                permutation.dim2,
+            );
+        }
+        bytes.extend(encode_f16_bytes(transformed.as_slice()));
+    }
+    Ok(bytes)
+}
+
+fn transpose_matrix(values: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    let mut out = vec![0.0_f32; values.len()];
+    for row in 0..rows {
+        for col in 0..cols {
+            out[col * rows + row] = values[row * cols + col];
+        }
+    }
+    out
+}
+
+fn permute_qk_matrix(values: &[f32], n_heads: usize, dim1: usize, dim2: usize) -> Vec<f32> {
+    let mut out = vec![0.0_f32; values.len()];
+    let head_block = dim1 / n_heads / 2;
+    for head in 0..n_heads {
+        for block in 0..head_block {
+            for pair in 0..2 {
+                let src_row = head * head_block * 2 + block * 2 + pair;
+                let dst_row = head * head_block * 2 + pair * head_block + block;
+                let src_start = src_row * dim2;
+                let dst_start = dst_row * dim2;
+                out[dst_start..dst_start + dim2]
+                    .copy_from_slice(&values[src_start..src_start + dim2]);
+            }
+        }
+    }
+    out
+}
+
+fn encode_f16_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len() * std::mem::size_of::<u16>());
+    for value in values {
+        bytes.extend_from_slice(&f16::from_f32(*value).to_bits().to_le_bytes());
+    }
+    bytes
+}
+
 /// Runs the first honest Rust-native Apple adapter SFT lane and returns a valid `.fmadapter`.
 pub fn run_apple_adapter_sft_export(
     backend: &AppleAdapterTrainingExecutionBackend,
@@ -1097,6 +1476,8 @@ fn execute_apple_adapter_sft_artifacts(
     )?;
     let (initial_bundle_bytes, initial_bundle_receipt) = initial_bundle.export_safetensors()?;
     let (final_bundle_bytes, final_bundle_receipt) = final_bundle.export_safetensors()?;
+    let runtime_asset_bytes =
+        export_native_apple_runtime_asset_bytes(&backend, final_groups.as_slice())?;
     let adapter_identifier = stable_adapter_identifier(
         request.package_name.as_str(),
         final_bundle_receipt.artifact_digest.as_str(),
@@ -1116,6 +1497,7 @@ fn execute_apple_adapter_sft_artifacts(
         final_bundle_receipt,
         initial_bundle_bytes,
         final_bundle_bytes,
+        runtime_asset_bytes,
         adapter_delta,
         adapter_identifier,
     })
@@ -1180,7 +1562,7 @@ fn build_apple_adapter_package(
     AppleFmAdapterPackage::new(
         package_name,
         metadata,
-        sft_artifacts.final_bundle_bytes.clone(),
+        sft_artifacts.runtime_asset_bytes.clone(),
         draft_artifacts.map(|artifacts| artifacts.draft_mil_bytes.clone()),
         draft_artifacts.map(|artifacts| artifacts.draft_weights_bytes.clone()),
     )
@@ -1921,6 +2303,8 @@ pub enum AppleAdapterSftError {
     InvalidBenchmarkRef,
     #[error(transparent)]
     Execution(#[from] AppleAdapterTrainingExecutionError),
+    #[error(transparent)]
+    RuntimeAsset(#[from] AppleAdapterRuntimeAssetError),
     #[error(transparent)]
     TrainingCore(#[from] TrainingCoreError),
     #[error(transparent)]
@@ -2707,22 +3091,26 @@ mod tests {
                 base_model_signature: String::from("9799725ff8e851184037110b422d891ad3b92ec1"),
                 tokenizer_digest: String::from("apple-tokenizer-digest-v1"),
                 prompt_shaping_digest: String::from("apple-prompt-shaping-v1"),
-                input_width: 12,
-                output_width: 8,
+                input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+                output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
                 targets: vec![
                     AppleAdapterTrainableTarget {
-                        target_id: String::from("decoder.attn.q_proj"),
-                        lora_rank: 4,
-                        lora_alpha: 8.0,
-                        optimizer: TrainingOptimizerConfig::adamw(0.05, 0.9, 0.99, 1e-8)
+                        target_id: String::from(
+                            "layers.segment_0.layer_34.attention.qkv_transform.adapters.base_adapter.lora_0",
+                        ),
+                        lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+                        lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                        optimizer: TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8)
                             .with_gradient_clip_norm(1.0),
                         optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
                     },
                     AppleAdapterTrainableTarget {
-                        target_id: String::from("decoder.ffn.up_proj"),
-                        lora_rank: 4,
-                        lora_alpha: 8.0,
-                        optimizer: TrainingOptimizerConfig::adamw(0.05, 0.9, 0.99, 1e-8)
+                        target_id: String::from(
+                            "layers.segment_1.layer_20.attention.q_transform.adapters.base_adapter",
+                        ),
+                        lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+                        lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                        optimizer: TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8)
                             .with_gradient_clip_norm(1.0),
                         optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
                     },
@@ -2732,8 +3120,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_backend_produces_repo_owned_gradients_and_fixed_budget_steps(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_backend_produces_repo_owned_gradients_and_fixed_budget_steps()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
         let backend = AppleAdapterTrainingExecutionBackend::new(
             config(),
@@ -2751,10 +3139,12 @@ mod tests {
         let (step_input, gradient_record) = backend.produce_step_input(&run, 0, 1_000, 1_040)?;
         assert!(!gradient_record.training_batch.gradients.is_empty());
         assert!(gradient_record.mean_loss > 0.0);
-        assert!(gradient_record
-            .gradient_norms_l2
-            .values()
-            .all(|norm| *norm > 0.0));
+        assert!(
+            gradient_record
+                .gradient_norms_l2
+                .values()
+                .all(|norm| *norm > 0.0)
+        );
 
         let receipt = run.apply_step(step_input)?;
         assert_eq!(
@@ -2797,8 +3187,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_sft_lane_trains_and_exports_valid_fmadapter_package(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_sft_lane_trains_and_exports_valid_fmadapter_package()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
         let environment = environment_bundle();
         let backend = AppleAdapterTrainingExecutionBackend::new(
@@ -2872,8 +3262,8 @@ mod tests {
     }
 
     #[test]
-    fn apple_adapter_draft_lane_exports_valid_fmadapter_with_draft_payload(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn apple_adapter_draft_lane_exports_valid_fmadapter_with_draft_payload()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
         let environment = environment_bundle();
         let backend = AppleAdapterTrainingExecutionBackend::new(
