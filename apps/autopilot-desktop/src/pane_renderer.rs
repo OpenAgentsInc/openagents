@@ -2385,7 +2385,7 @@ fn paint_go_online_pane(
         mission_control_muted_color(),
     );
     let lightning_sats_label_bounds = lightning_sats_label.bounds();
-    let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 12.0;
+    let lightning_sats_label_bottom = load_funds_layout.amount_input.origin.y - 8.0;
     lightning_sats_label.origin = Point::new(
         load_funds_layout.amount_input.origin.x - lightning_sats_label_bounds.origin.x,
         lightning_sats_label_bottom
@@ -2425,7 +2425,7 @@ fn paint_go_online_pane(
         mission_control_muted_color(),
     );
     let lightning_withdraw_label_bounds = lightning_withdraw_label.bounds();
-    let lightning_withdraw_label_bottom = send_invoice_bounds.origin.y - 12.0;
+    let lightning_withdraw_label_bottom = send_invoice_bounds.origin.y - 8.0;
     lightning_withdraw_label.origin = Point::new(
         send_invoice_bounds.origin.x - lightning_withdraw_label_bounds.origin.x,
         lightning_withdraw_label_bottom
