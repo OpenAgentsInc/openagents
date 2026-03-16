@@ -119,6 +119,12 @@ impl ModuleParameter {
             requires_grad,
         })
     }
+
+    /// Returns whether the parameter is currently frozen.
+    #[must_use]
+    pub const fn is_frozen(&self) -> bool {
+        !self.requires_grad
+    }
 }
 
 /// One buffer entry owned by a module tree.
@@ -166,6 +172,18 @@ pub enum ModuleStateEntryKind {
     Parameter,
     /// Buffer entry.
     Buffer,
+}
+
+/// Declared parameter traversal posture over trainable versus frozen entries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleParameterView {
+    /// Traverse every parameter regardless of trainability.
+    All,
+    /// Traverse only parameters that still require gradients.
+    TrainableOnly,
+    /// Traverse only parameters that are currently frozen.
+    FrozenOnly,
 }
 
 /// One flattened state-tree entry.
@@ -731,9 +749,55 @@ impl Module {
     /// Returns deterministic named parameter traversal.
     #[must_use]
     pub fn named_parameters(&self) -> Vec<(String, &ModuleParameter)> {
+        self.named_parameters_with_view(ModuleParameterView::All)
+    }
+
+    /// Returns deterministic named parameter traversal for one trainability view.
+    #[must_use]
+    pub fn named_parameters_with_view(
+        &self,
+        view: ModuleParameterView,
+    ) -> Vec<(String, &ModuleParameter)> {
         let mut entries = Vec::new();
-        self.collect_named_parameters("", &mut entries);
+        self.collect_named_parameters("", view, &mut entries);
         entries
+    }
+
+    /// Sets one parameter's gradient posture by dot-separated path and returns
+    /// whether the flag changed.
+    pub fn set_parameter_requires_grad(
+        &mut self,
+        path: &str,
+        requires_grad: bool,
+    ) -> Result<bool, ModuleStateError> {
+        let parameter = self.parameter_mut(path)?;
+        let changed = parameter.requires_grad != requires_grad;
+        parameter.requires_grad = requires_grad;
+        Ok(changed)
+    }
+
+    /// Freezes every parameter in the current module tree and returns the
+    /// number of parameters whose posture changed.
+    pub fn freeze(&mut self) -> usize {
+        self.set_requires_grad_recursive(false)
+    }
+
+    /// Unfreezes every parameter in the current module tree and returns the
+    /// number of parameters whose posture changed.
+    pub fn unfreeze(&mut self) -> usize {
+        self.set_requires_grad_recursive(true)
+    }
+
+    /// Freezes one nested submodule by dot-separated path and returns the
+    /// number of parameters whose posture changed.
+    pub fn freeze_submodule(&mut self, path: &str) -> Result<usize, ModuleStateError> {
+        Ok(self.submodule_mut(path)?.set_requires_grad_recursive(false))
+    }
+
+    /// Unfreezes one nested submodule by dot-separated path and returns the
+    /// number of parameters whose posture changed.
+    pub fn unfreeze_submodule(&mut self, path: &str) -> Result<usize, ModuleStateError> {
+        Ok(self.submodule_mut(path)?.set_requires_grad_recursive(true))
     }
 
     /// Returns deterministic named buffer traversal for one state-tree view.
@@ -895,13 +959,26 @@ impl Module {
     fn collect_named_parameters<'a>(
         &'a self,
         prefix: &str,
+        view: ModuleParameterView,
         entries: &mut Vec<(String, &'a ModuleParameter)>,
     ) {
         for (name, parameter) in &self.parameters {
+            let include = match view {
+                ModuleParameterView::All => true,
+                ModuleParameterView::TrainableOnly => parameter.requires_grad,
+                ModuleParameterView::FrozenOnly => parameter.is_frozen(),
+            };
+            if !include {
+                continue;
+            }
             entries.push((join_path(prefix, name.as_str()), parameter));
         }
         for (name, submodule) in &self.submodules {
-            submodule.collect_named_parameters(join_path(prefix, name.as_str()).as_str(), entries);
+            submodule.collect_named_parameters(
+                join_path(prefix, name.as_str()).as_str(),
+                view,
+                entries,
+            );
         }
     }
 
@@ -930,6 +1007,20 @@ impl Module {
         for (name, submodule) in &self.submodules {
             submodule.collect_named_modules(join_path(prefix, name.as_str()).as_str(), entries);
         }
+    }
+
+    fn set_requires_grad_recursive(&mut self, requires_grad: bool) -> usize {
+        let mut changed = 0_usize;
+        for parameter in self.parameters.values_mut() {
+            if parameter.requires_grad != requires_grad {
+                parameter.requires_grad = requires_grad;
+                changed += 1;
+            }
+        }
+        for submodule in self.submodules.values_mut() {
+            changed += submodule.set_requires_grad_recursive(requires_grad);
+        }
+        changed
     }
 
     fn collect_state_entries(
@@ -1525,16 +1616,25 @@ mod tests {
     use psionic_core::{Device, Shape, TensorData, TensorSpec};
 
     use super::{
-        DType, Module, ModuleBuffer, ModuleParameter, ModuleParityStatus, ModuleStateDict,
-        ModuleStateEntry, ModuleStateEntryKind, ModuleStateError, ModuleStateLoadError,
-        ModuleStateLoadMode, ModuleStateView, builtin_module_parity_matrix_report,
+        DType, Module, ModuleBuffer, ModuleParameter, ModuleParameterView, ModuleParityStatus,
+        ModuleStateDict, ModuleStateEntry, ModuleStateEntryKind, ModuleStateError,
+        ModuleStateLoadError, ModuleStateLoadMode, ModuleStateView,
+        builtin_module_parity_matrix_report,
     };
 
     fn f32_parameter(shape: &[usize], values: &[f32]) -> Result<ModuleParameter, ModuleStateError> {
+        f32_parameter_with_grad(shape, values, true)
+    }
+
+    fn f32_parameter_with_grad(
+        shape: &[usize],
+        values: &[f32],
+        requires_grad: bool,
+    ) -> Result<ModuleParameter, ModuleStateError> {
         ModuleParameter::new(
             TensorSpec::new(Shape::new(shape.to_vec()), DType::F32, Device::cpu()),
             TensorData::F32(values.to_vec()),
-            true,
+            requires_grad,
         )
     }
 
@@ -1603,6 +1703,85 @@ mod tests {
             &[2, 2]
         );
         assert!(root.buffer("encoder.dropout_mask").is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn module_freeze_semantics_and_filtered_parameter_discovery_stay_recursive()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut root = Module::new("toy-transformer", "transformer")?;
+        root.insert_parameter(
+            "embedding",
+            f32_parameter_with_grad(&[2, 2], &[0.1, 0.2, 0.3, 0.4], true)?,
+        )?;
+
+        let mut block = Module::new("block0", "transformer_block")?;
+        block.insert_parameter(
+            "weight",
+            f32_parameter_with_grad(&[2, 2], &[1.0, 2.0, 3.0, 4.0], true)?,
+        )?;
+        block.insert_parameter(
+            "norm_bias",
+            f32_parameter_with_grad(&[2], &[0.0, 0.0], false)?,
+        )?;
+        root.insert_submodule("encoder", block)?;
+
+        let trainable_before = root
+            .named_parameters_with_view(ModuleParameterView::TrainableOnly)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            trainable_before,
+            vec![String::from("embedding"), String::from("encoder.weight")]
+        );
+        let frozen_before = root
+            .named_parameters_with_view(ModuleParameterView::FrozenOnly)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(frozen_before, vec![String::from("encoder.norm_bias")]);
+
+        assert_eq!(root.freeze_submodule("encoder")?, 1);
+        let trainable_after_submodule = root
+            .named_parameters_with_view(ModuleParameterView::TrainableOnly)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(trainable_after_submodule, vec![String::from("embedding")]);
+        let frozen_after_submodule = root
+            .named_parameters_with_view(ModuleParameterView::FrozenOnly)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            frozen_after_submodule,
+            vec![
+                String::from("encoder.norm_bias"),
+                String::from("encoder.weight")
+            ]
+        );
+
+        assert!(root.set_parameter_requires_grad("embedding", false)?);
+        assert!(root.parameter("embedding")?.is_frozen());
+        assert_eq!(root.freeze(), 0);
+        assert_eq!(root.unfreeze_submodule("encoder")?, 2);
+        assert_eq!(root.unfreeze(), 1);
+
+        let trainable_after = root
+            .named_parameters_with_view(ModuleParameterView::TrainableOnly)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            trainable_after,
+            vec![
+                String::from("embedding"),
+                String::from("encoder.norm_bias"),
+                String::from("encoder.weight")
+            ]
+        );
+
         Ok(())
     }
 

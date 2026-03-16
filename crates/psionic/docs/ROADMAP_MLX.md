@@ -466,7 +466,7 @@ quantized-module surface above current train primitives.
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
-| `PMLX-301` | planned | `Psionic MLX: add a public Module tree with parameter, buffer, and freeze semantics` | Implement the MLX-class module container model, including trainable versus frozen posture and recursive parameter discovery. |
+| `PMLX-301` / [#3846](https://github.com/OpenAgentsInc/openagents/issues/3846) | done (2026-03-16) | `Psionic MLX: add a public Module tree with parameter, buffer, and freeze semantics` | `psionic-nn` now exposes a first public `Module` tree with explicit parameter versus buffer registration, trainable versus frozen posture, recursive parameter discovery with filtered trainable or frozen views, targeted freeze/unfreeze helpers, and deterministic state-tree/state-dict behavior. |
 | `PMLX-302` | planned | `Psionic MLX: add save_weights and load_weights with strict and non-strict module-state behavior` | Build module-level state naming, load, and save semantics above existing model IO and refusal taxonomy rather than reusing serving-model loaders directly. |
 | `PMLX-303` | planned | `Psionic MLX: land the core layer surface for linear, embedding, norms, activations, conv, pooling, and dropout` | Provide the minimum MLX-class layer families needed for common models and for parity coverage against upstream MLX tests. |
 | `PMLX-304` | planned | `Psionic MLX: add losses, init families, and nn utility helpers` | Expose canonical loss functions, initialization utilities, and `nn` helper functions needed for practical training loops. |
@@ -616,7 +616,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 
 First close the AttnRes-enabling shared framework slice:
 
-- `PMLX-301`
+- `PMLX-301` done 2026-03-16
 - `PMLX-302`
 - `PMLX-303`
 - `PMLX-304`
