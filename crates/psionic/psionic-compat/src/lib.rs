@@ -81,6 +81,37 @@ pub struct MlxAcceptanceCategory {
     pub boundary_note: String,
 }
 
+/// Outcome for one seeded MLX parity-harness family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MlxParityHarnessOutcome {
+    /// The current Psionic hook can legitimately stand in as a seeded pass for the family.
+    Pass,
+    /// The current Psionic hook proves the family still refuses explicitly.
+    Refusal,
+    /// No current Psionic hook can honestly claim the family yet.
+    Unsupported,
+}
+
+/// One seeded upstream MLX family carried by the parity harness manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxParityHarnessFamily {
+    /// Stable family identifier.
+    pub family_id: String,
+    /// MLX acceptance category this family informs.
+    pub acceptance_category: String,
+    /// Upstream MLX source files mirrored by this family.
+    pub upstream_sources: Vec<String>,
+    /// Current seeded outcome for the family.
+    pub current_outcome: MlxParityHarnessOutcome,
+    /// Repo-owned hook commands that justify the current seeded outcome.
+    pub psionic_hook_commands: Vec<String>,
+    /// Plain-language summary of the current seeded claim.
+    pub summary: String,
+    /// Boundary note for what this seeded family does not prove yet.
+    pub boundary_note: String,
+}
+
 /// Aggregate machine-readable contract for Psionic's bounded MLX claim language.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlxCompatibilityScopeReport {
@@ -113,6 +144,25 @@ pub struct MlxAcceptanceMatrixReport {
     pub selected_categories: Vec<String>,
     /// Acceptance categories carried by the report.
     pub categories: Vec<MlxAcceptanceCategory>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+/// Aggregate machine-readable seeded parity-harness report for the MLX roadmap.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxParityHarnessReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Canonical JSON schema path for this report.
+    pub schema_path: String,
+    /// Canonical runner path for this report.
+    pub runner: String,
+    /// Frozen upstream oracle window used by the seeded families.
+    pub oracle_window: String,
+    /// Family ids included in this report instance.
+    pub selected_families: Vec<String>,
+    /// Seeded upstream MLX test families carried by the report.
+    pub families: Vec<MlxParityHarnessFamily>,
     /// Stable digest over the report contents.
     pub report_digest: String,
 }
@@ -198,6 +248,80 @@ impl MlxAcceptanceMatrixReport {
     }
 }
 
+impl MlxParityHarnessReport {
+    fn new(families: Vec<MlxParityHarnessFamily>) -> Self {
+        let selected_families = families
+            .iter()
+            .map(|family| family.family_id.clone())
+            .collect::<Vec<_>>();
+        Self::from_selected_families(families, selected_families)
+    }
+
+    fn from_selected_families(
+        families: Vec<MlxParityHarnessFamily>,
+        selected_families: Vec<String>,
+    ) -> Self {
+        let schema_path = String::from("crates/psionic/docs/mlx_parity_harness_report.schema.json");
+        let runner = String::from("scripts/release/check-psionic-mlx-parity-harness.sh");
+        let oracle_window = String::from("ml-explore/mlx:v0.31.0..v0.31.1:seed_v0");
+        let report_digest = stable_mlx_parity_harness_report_digest(
+            schema_path.as_str(),
+            runner.as_str(),
+            oracle_window.as_str(),
+            &selected_families,
+            &families,
+        );
+        Self {
+            schema_version: 1,
+            schema_path,
+            runner,
+            oracle_window,
+            selected_families,
+            families,
+            report_digest,
+        }
+    }
+
+    /// Returns a filtered report with only the named families.
+    pub fn filter_to_families(&self, family_ids: &[String]) -> Result<Self, MlxParityHarnessError> {
+        if family_ids.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let mut filtered_families = Vec::with_capacity(family_ids.len());
+        for family_id in family_ids {
+            let family = self
+                .families
+                .iter()
+                .find(|family| family.family_id == *family_id)
+                .cloned()
+                .ok_or_else(|| MlxParityHarnessError::UnknownFamily(family_id.clone()))?;
+            filtered_families.push(family);
+        }
+
+        Ok(Self::from_selected_families(
+            filtered_families,
+            family_ids.to_vec(),
+        ))
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("schema_path={}", self.schema_path),
+            format!("runner={}", self.runner),
+            format!("oracle_window={}", self.oracle_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for family in &self.families {
+            lines.push(format!("{}|{:?}", family.family_id, family.current_outcome));
+        }
+        lines
+    }
+}
+
 impl MlxCompatibilityScopeReport {
     fn new(
         upstream_version_window: MlxUpstreamVersionWindow,
@@ -270,6 +394,14 @@ pub enum MlxAcceptanceMatrixError {
     /// The requested category id is not declared in the builtin matrix.
     #[error("unknown MLX acceptance category: {0}")]
     UnknownCategory(String),
+}
+
+/// Failure returned while filtering the MLX parity harness.
+#[derive(Debug, Error)]
+pub enum MlxParityHarnessError {
+    /// The requested family id is not declared in the builtin harness.
+    #[error("unknown MLX parity family: {0}")]
+    UnknownFamily(String),
 }
 
 /// One evidence reference that supports the current posture for a claim area.
@@ -911,6 +1043,197 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
     ])
 }
 
+/// Builds the canonical seeded MLX parity-harness report for the current
+/// Psionic MLX roadmap.
+#[must_use]
+pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
+    MlxParityHarnessReport::new(vec![
+        MlxParityHarnessFamily {
+            family_id: String::from("array_core"),
+            acceptance_category: String::from("array-runtime-surface"),
+            upstream_sources: vec![
+                String::from("tests/array_tests.cpp"),
+                String::from("python/tests/test_array.py"),
+                String::from("python/tests/test_constants.py"),
+                String::from("python/tests/test_bf16.py"),
+                String::from("python/tests/test_double.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            psionic_hook_commands: Vec::new(),
+            summary: String::from(
+                "The upstream array-core family is tracked explicitly, but no public MLX-class array facade exists in Psionic yet.",
+            ),
+            boundary_note: String::from(
+                "Lower-layer tensor substrate is not enough to call the upstream array family ported.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("ops_numeric"),
+            acceptance_category: String::from("array-runtime-surface"),
+            upstream_sources: vec![
+                String::from("tests/ops_tests.cpp"),
+                String::from("tests/creations_tests.cpp"),
+                String::from("tests/arg_reduce_tests.cpp"),
+                String::from("tests/einsum_tests.cpp"),
+                String::from("tests/random_tests.cpp"),
+                String::from("python/tests/test_ops.py"),
+                String::from("python/tests/test_reduce.py"),
+                String::from("python/tests/test_einsum.py"),
+                String::from("python/tests/test_random.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            psionic_hook_commands: Vec::new(),
+            summary: String::from(
+                "The numeric-op and creation families remain tracked but unsupported until the public MLX array layer exists.",
+            ),
+            boundary_note: String::from(
+                "Current lower-layer operator evidence does not yet amount to an MLX-class family port.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("device_eval_memory"),
+            acceptance_category: String::from("backend-closure"),
+            upstream_sources: vec![
+                String::from("tests/device_tests.cpp"),
+                String::from("tests/eval_tests.cpp"),
+                String::from("tests/allocator_tests.cpp"),
+                String::from("tests/gpu_tests.cpp"),
+                String::from("tests/scheduler_tests.cpp"),
+                String::from("python/tests/test_device.py"),
+                String::from("python/tests/test_eval.py"),
+                String::from("python/tests/test_memory.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            psionic_hook_commands: Vec::new(),
+            summary: String::from(
+                "Device, eval, scheduler, and memory families are named in the harness, but MLX-class public backend closure is not claimed yet.",
+            ),
+            boundary_note: String::from(
+                "Backend substrate and diagnostics alone are not enough to mark the upstream runtime families ported.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("autograd"),
+            acceptance_category: String::from("transform-compile"),
+            upstream_sources: vec![
+                String::from("tests/autograd_tests.cpp"),
+                String::from("python/tests/test_autograd.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Pass,
+            psionic_hook_commands: vec![String::from(
+                "cargo test -p psionic-ir autodiff::tests::reverse_mode_autodiff_materializes_matmul_chain_gradients -- --exact --nocapture",
+            )],
+            summary: String::from(
+                "The seeded autograd family can already point at one real Psionic reverse-mode test as a bounded parity anchor.",
+            ),
+            boundary_note: String::from(
+                "This is only a seed family pass, not a claim that the public MLX transform API is complete.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("vmap_custom_vjp"),
+            acceptance_category: String::from("transform-compile"),
+            upstream_sources: vec![
+                String::from("tests/vmap_tests.cpp"),
+                String::from("tests/custom_vjp_tests.cpp"),
+                String::from("python/tests/test_vmap.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Refusal,
+            psionic_hook_commands: vec![String::from(
+                "cargo test -p psionic-ir tests::program_transform_capability_matrix_tracks_seeded_transform_and_future_cases -- --exact --nocapture",
+            )],
+            summary: String::from(
+                "The seeded higher-order-transform family currently refuses explicitly through the program-transform capability matrix.",
+            ),
+            boundary_note: String::from(
+                "A typed refusal is honest progress, but it is not a ported transform family.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("compile"),
+            acceptance_category: String::from("transform-compile"),
+            upstream_sources: vec![
+                String::from("tests/compile_tests.cpp"),
+                String::from("python/tests/test_compile.py"),
+                String::from("python/tests/test_graph.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Pass,
+            psionic_hook_commands: vec![String::from(
+                "cargo test -p psionic-compiler tests::compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases -- --exact --nocapture",
+            )],
+            summary: String::from(
+                "The seeded compile family can already point at the compiler-hygiene parity matrix as a bounded parity anchor.",
+            ),
+            boundary_note: String::from(
+                "This seed pass does not imply the public MLX compile-as-transform surface already exists.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("export_import"),
+            acceptance_category: String::from("export-serialization-tooling"),
+            upstream_sources: vec![
+                String::from("tests/export_import_tests.cpp"),
+                String::from("tests/load_tests.cpp"),
+                String::from("python/tests/test_export_import.py"),
+                String::from("python/tests/test_load.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Pass,
+            psionic_hook_commands: vec![
+                String::from(
+                    "cargo test -p psionic-ir tests::exportable_graph_contract_tracks_entry_signature_and_refuses_opaque_graphs -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-train model_io::tests::portable_model_bundle_roundtrips_through_safetensors_manifest -- --exact --nocapture",
+                ),
+            ],
+            summary: String::from(
+                "The seeded export/import family can already point at exportable-graph and portable-model-IO hooks as bounded parity anchors.",
+            ),
+            boundary_note: String::from(
+                "This seed pass does not imply the full public MLX export or tooling shell already exists.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("nn_optimizers_quantized"),
+            acceptance_category: String::from("nn-optimizer"),
+            upstream_sources: vec![
+                String::from("python/tests/test_nn.py"),
+                String::from("python/tests/test_losses.py"),
+                String::from("python/tests/test_init.py"),
+                String::from("python/tests/test_optimizers.py"),
+                String::from("python/tests/test_quantized.py"),
+                String::from("python/tests/test_tree.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            psionic_hook_commands: Vec::new(),
+            summary: String::from(
+                "The upstream nn, optimizer, loss, init, quantized, and tree helpers are explicitly tracked but remain unsupported on the MLX public surface.",
+            ),
+            boundary_note: String::from(
+                "Current psionic-nn and psionic-train internals do not yet equal an MLX-class public nn family.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("distributed"),
+            acceptance_category: String::from("distributed-semantics"),
+            upstream_sources: vec![
+                String::from("python/tests/ring_test_distributed.py"),
+                String::from("python/tests/mpi_test_distributed.py"),
+                String::from("python/tests/nccl_test_distributed.py"),
+                String::from("python/tests/mlx_distributed_tests.py"),
+            ],
+            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            psionic_hook_commands: Vec::new(),
+            summary: String::from(
+                "The upstream distributed families are seeded into the harness, but the MLX framework-distributed API does not exist in Psionic yet.",
+            ),
+            boundary_note: String::from(
+                "Current collectives and cluster substrate are not enough to claim an upstream distributed family port.",
+            ),
+        },
+    ])
+}
+
 fn seeded_area(
     area_id: &str,
     bounded_scope: &str,
@@ -1067,13 +1390,52 @@ fn stable_mlx_acceptance_matrix_report_digest(
     hex::encode(hasher.finalize())
 }
 
+fn stable_mlx_parity_harness_report_digest(
+    schema_path: &str,
+    runner: &str,
+    oracle_window: &str,
+    selected_families: &[String],
+    families: &[MlxParityHarnessFamily],
+) -> String {
+    let mut lines = vec![
+        format!("schema_path={schema_path}"),
+        format!("runner={runner}"),
+        format!("oracle_window={oracle_window}"),
+    ];
+    for family_id in selected_families {
+        lines.push(format!("selected={family_id}"));
+    }
+    for family in families {
+        lines.push(format!(
+            "family={}|{:?}|{}",
+            family.family_id, family.current_outcome, family.acceptance_category
+        ));
+        for source in &family.upstream_sources {
+            lines.push(format!("source={source}"));
+        }
+        for command in &family.psionic_hook_commands {
+            lines.push(format!("hook={command}"));
+        }
+        lines.push(format!("summary={}", family.summary));
+        lines.push(format!("boundary={}", family.boundary_note));
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, SemanticsClaimPosture,
-        builtin_mlx_acceptance_matrix_report, builtin_mlx_compatibility_scope_report,
+        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, MlxParityHarnessOutcome,
+        SemanticsClaimPosture, builtin_mlx_acceptance_matrix_report,
+        builtin_mlx_compatibility_scope_report, builtin_mlx_parity_harness_report,
         builtin_semantics_claim_report,
     };
 
@@ -1226,6 +1588,76 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "unknown MLX acceptance category: not-a-real-category"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn mlx_parity_harness_report_tracks_seeded_pass_refusal_and_unsupported_families()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_mlx_parity_harness_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.schema_path,
+            "crates/psionic/docs/mlx_parity_harness_report.schema.json"
+        );
+        assert_eq!(
+            report.runner,
+            "scripts/release/check-psionic-mlx-parity-harness.sh"
+        );
+        assert_eq!(
+            report.oracle_window,
+            "ml-explore/mlx:v0.31.0..v0.31.1:seed_v0"
+        );
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
+
+        let autograd = report
+            .families
+            .iter()
+            .find(|family| family.family_id == "autograd")
+            .expect("missing autograd family");
+        assert_eq!(autograd.current_outcome, MlxParityHarnessOutcome::Pass);
+        assert!(!autograd.psionic_hook_commands.is_empty());
+
+        let vmap = report
+            .families
+            .iter()
+            .find(|family| family.family_id == "vmap_custom_vjp")
+            .expect("missing vmap family");
+        assert_eq!(vmap.current_outcome, MlxParityHarnessOutcome::Refusal);
+        assert!(!vmap.psionic_hook_commands.is_empty());
+
+        let distributed = report
+            .families
+            .iter()
+            .find(|family| family.family_id == "distributed")
+            .expect("missing distributed family");
+        assert_eq!(
+            distributed.current_outcome,
+            MlxParityHarnessOutcome::Unsupported
+        );
+        assert!(distributed.psionic_hook_commands.is_empty());
+
+        let filtered =
+            report.filter_to_families(&[String::from("autograd"), String::from("distributed")])?;
+        assert_eq!(
+            filtered.selected_families,
+            vec![String::from("autograd"), String::from("distributed")]
+        );
+        assert_eq!(filtered.families.len(), 2);
+
+        let error = report
+            .filter_to_families(&[String::from("not-a-real-family")])
+            .expect_err("unknown family should refuse");
+        assert_eq!(
+            error.to_string(),
+            "unknown MLX parity family: not-a-real-family"
         );
 
         Ok(())
