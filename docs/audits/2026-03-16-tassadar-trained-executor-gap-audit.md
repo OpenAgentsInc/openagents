@@ -64,6 +64,62 @@ Article basis:
 - user-provided text of Percepta's `Can LLMs Be Computers?`
 - user-provided author clarifications already captured in the March 15 audit
 
+## Issue Tracker
+
+This audit now doubles as the narrative tracker for the remaining
+trained-executor work.
+
+The canonical GitHub tracker is:
+
+- `#3776` Psionic Tassadar Trained Executor Epic: move from executor substrate
+  to a real Psionic-only trained model
+
+### Existing Open Psionic / PLIB Prerequisites Reviewed
+
+These were already open before the trained-executor gap review and are relevant
+prerequisites or substrate dependencies for fully training a real executor
+inside Psionic:
+
+- `#3741` Psionic Epic 1 Master: framework core completion
+- `#3742` Psionic Epic 2 Master: semantics and compatibility
+- `#3709` PLIB-107 broad framework-core acceptance coverage
+- `#3710` PLIB-108 refusal taxonomy
+- `#3712` PLIB-110 RNG, seeding, generator-state, and deterministic-algorithm
+  contracts
+- `#3713` PLIB-111 custom-op schema, kernel registration, and backend dispatch
+  contracts
+- `#3716` PLIB-201 module, parameter, buffer, and state-tree system
+- `#3718` PLIB-203 optimizer coverage with scheduler integration and stronger
+  state behavior
+- `#3719` PLIB-204 serialization and checkpoint compatibility boundaries
+- `#3727` PLIB-212 framework-wide reproducibility semantics
+- `#3733` PLIB-218 dataset, iterable-streaming, sampler, and staging
+  abstractions
+- `#3735` PLIB-220 advanced operator-family and attention semantics
+- `#3736` PLIB-221 exportable graph and deployment artifact contracts
+
+Not all of these block the very first 4x4 Sudoku-v0 experiment equally, but
+they are the currently-open Psionic-library issues most directly relevant to
+fully training, checkpointing, replaying, evaluating, and iterating on a real
+executor model without leaving the Psionic stack.
+
+### Dedicated Tassadar Trained-Executor Issue Spine
+
+These issues track the executor-specific work that is still missing:
+
+- `#3777` Phase 1: widen the Wasm subset for real Sudoku search
+- `#3778` Phase 2: replace the placeholder Sudoku benchmark with a real 4x4
+  solver corpus
+- `#3779` Phase 3: add trace-token vocabulary and sequence dataset generation
+- `#3780` Phase 4: implement a real executor transformer family
+- `#3781` Phase 5: add next-token trace training and exact-trace evaluation
+- `#3782` Phase 6: benchmark real neural linear decode against CPU reference
+- `#3783` Phase 7: execute the first Psionic-only Sudoku-v0 training run
+- `#3784` Phase 8: add telemetry, trace logging, and failure-analysis artifacts
+- `#3785` Phase 9: review the first run and land the next-run plan
+- `#3786` Phase 10: add neural hull-cache decode for the trained executor model
+- `#3787` Phase 11: scale from Sudoku-v0 to real 9x9 Sudoku-class training
+
 ## The Main Correction
 
 The March 15 audit is still directionally useful as an architecture document.
@@ -427,7 +483,7 @@ That milestone is hard enough to matter and small enough to finish.
 
 ## The Smallest Honest Roadmap From Here
 
-### Phase A: Clean up the target
+### Phase A: Clean up the target and track it honestly (`#3776`)
 
 Do this first:
 
@@ -436,7 +492,10 @@ Do this first:
 - stop treating current Phase 9B as "trained executor" in narrative docs
 - define one new milestone called something like `trained_executor_v0`
 
-### Phase B: Build a real Sudoku-v0 workload
+This audit and the linked epic exist to make that correction explicit before
+more implementation claims accumulate.
+
+### Phase B: Build a real Sudoku-v0 workload (`#3777`, `#3778`, `#3779`)
 
 Do this second:
 
@@ -445,7 +504,7 @@ Do this second:
 - widen the opcode/profile subset enough to express it
 - create many puzzle instances and reference traces
 
-### Phase C: Add a true executor model
+### Phase C: Add a true executor model (`#3780`, `#3781`)
 
 Do this third:
 
@@ -454,21 +513,33 @@ Do this third:
 - add executor forward pass and next-token loss in `psionic-train`
 - keep exact-trace evaluation in `psionic-eval`
 
-### Phase D: Only then test the neural fast path
+### Phase D: Establish the trained-model baseline honestly (`#3782`)
 
 Do this fourth:
 
 - benchmark linear neural decode first
-- then add hull-cache lookup over real model KV state
-- then measure exactness plus speedup honestly
+- compare it directly against CPU-reference execution
+- keep exact-trace, halt, and final-output truth explicit
 
-### Phase E: Move from 4x4 to 9x9
+### Phase E: Run, log, and learn from the first model (`#3783`, `#3784`,
+`#3785`)
 
 Do this fifth:
 
-- easy 9x9 first
-- then backtracking-heavy 9x9
-- only then hard named instances
+- freeze the first honest Sudoku-v0 corpus and model config
+- execute the first full Psionic-only training run
+- persist receipts, checkpoints, eval outputs, telemetry, and failure samples
+- publish the first postmortem and next-run plan from observed failure modes
+
+### Phase F: Only then test the neural fast path and scale (`#3786`, `#3787`)
+
+Do this sixth:
+
+- then add hull-cache lookup over real model KV state
+- then measure exactness plus speedup honestly
+- move from 4x4 to 9x9 only after the first trained 4x4 lane is real
+- keep the distinction between Sudoku-v0 success and article-grade scale
+  completely explicit
 
 ## What OpenAgents Can Honestly Claim Today
 
