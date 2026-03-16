@@ -192,6 +192,11 @@ The current scope is:
   manifest, while `psionic-eval` surfaces exact-trace, final-output, and halt
   correctness reports against the same CPU-reference sequences that generated
   the training corpus
+- landed trained-executor Phase 6 follow-on bar: `psionic-eval` now benchmarks
+  neural linear decode for the executor transformer against direct CPU
+  reference execution on Sudoku-v0, with explicit decode-mode and KV-cache
+  identity plus per-case exactness/fallback truth rather than only aggregate
+  benchmark theater
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

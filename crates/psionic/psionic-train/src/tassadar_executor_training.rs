@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 
 use psionic_data::TassadarSequenceSplit;
 use psionic_eval::{
-    TassadarExecutorEvalError, TassadarExecutorEvalReport, TassadarSequenceEvalError,
-    build_tassadar_sudoku_v0_sequence_dataset, evaluate_tassadar_executor_transformer,
+    TassadarExecutorEvalError, TassadarExecutorEvalReport, TassadarExecutorLinearBenchmarkError,
+    TassadarExecutorLinearBenchmarkReport, TassadarSequenceEvalError,
+    benchmark_tassadar_executor_linear_decode, build_tassadar_sudoku_v0_sequence_dataset,
+    evaluate_tassadar_executor_transformer,
 };
 use psionic_models::{
     TassadarExecutorTransformer, TassadarExecutorTransformerError, TokenId, TokenSequence,
@@ -131,6 +133,9 @@ pub enum TassadarExecutorTrainingError {
     /// Validation exactness evaluation failed.
     #[error(transparent)]
     Eval(#[from] TassadarExecutorEvalError),
+    /// Neural linear benchmark failed.
+    #[error(transparent)]
+    Benchmark(#[from] TassadarExecutorLinearBenchmarkError),
     /// Model forward/decode failed.
     #[error(transparent)]
     Model(#[from] TassadarExecutorTransformerError),
@@ -255,6 +260,20 @@ pub fn train_tassadar_executor_transformer(
         evaluation,
     );
     Ok(TassadarExecutorTrainingOutcome { model, report })
+}
+
+/// Trains the neural executor family and benchmarks its neural linear decode against CPU reference.
+pub fn benchmark_trained_tassadar_executor_transformer(
+    config: &TassadarExecutorTrainingConfig,
+    split_filter: Option<TassadarSequenceSplit>,
+) -> Result<TassadarExecutorLinearBenchmarkReport, TassadarExecutorTrainingError> {
+    let outcome = train_tassadar_executor_transformer(config)?;
+    let bundle = build_tassadar_sudoku_v0_sequence_dataset(config.dataset_version.as_str())?;
+    Ok(benchmark_tassadar_executor_linear_decode(
+        &outcome.model,
+        &bundle.dataset,
+        split_filter,
+    )?)
 }
 
 fn softmax(logits: &[f32]) -> Vec<f32> {

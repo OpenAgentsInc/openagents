@@ -195,6 +195,11 @@ That now includes one intentionally narrow executor-training answer:
   manifest, and `psionic-eval` can score the trained model with exact-trace,
   final-output, and halt correctness against the same CPU-reference sequences
   that define the corpus
+- the benchmark side now also includes the trained-model comparison the audit
+  asked for: neural linear decode is measured directly against CPU reference
+  execution with explicit decode-mode and KV-cache identity so the remaining
+  performance and exactness gap is visible instead of being hidden behind the
+  handcrafted runtime lanes
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim
