@@ -120,6 +120,7 @@ pub enum SemanticsClaimError {
 /// PyTorch-facing posture.
 pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, SemanticsClaimError> {
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
+    let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let module = psionic_nn::builtin_module_parity_matrix_report()?;
     let optimizer = psionic_train::builtin_optimizer_parity_matrix_report()?;
     let compiler = psionic_compiler::builtin_compiler_hygiene_parity_matrix_report()?;
@@ -142,7 +143,24 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             vec![
                 String::from("#3735"),
                 String::from("#3726"),
-                String::from("#3725"),
+            ],
+        ),
+        seeded_area(
+            "tensor_family_semantics",
+            "Current claim is bounded to first-class sparse, nested, masked, and storage-aware tensor-family contracts, their meta-execution and declared-output capability matrix, and explicit refusal proofs for non-dense runtime materialization.",
+            vec![SemanticsEvidenceRef::new(
+                "tensor_family_capability_matrix",
+                tensor_families.matrix_digest,
+            )],
+            vec![
+                String::from("land runtime materialization for non-dense tensor families"),
+                String::from("broaden tensor-family behavior beyond meta, alias, and declared-output contracts"),
+                String::from("connect future dtype, autocast, and quantization systems to these non-dense families"),
+            ],
+            vec![
+                String::from("#3735"),
+                String::from("#3728"),
+                String::from("#3730"),
             ],
         ),
         seeded_area(
@@ -207,12 +225,10 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             "advanced_tensor_dtype_and_precision",
             "Advanced tensor families, dtype breadth, autocast policy, and gradient-scaling semantics remain explicit future compatibility targets.",
             vec![
-                String::from("land sparse, nested, masked, and storage-aware tensor semantics"),
                 String::from("land advanced dtype and promotion rules"),
                 String::from("land autocast and gradient-scaling systems"),
             ],
             vec![
-                String::from("#3725"),
                 String::from("#3726"),
                 String::from("#3728"),
                 String::from("#3729"),
@@ -326,11 +342,11 @@ fn stable_semantics_claim_report_digest(
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use super::{SemanticsClaimPosture, builtin_semantics_claim_report};
+    use super::{builtin_semantics_claim_report, SemanticsClaimPosture};
 
     #[test]
-    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_semantics_claim_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.claim_vocabulary_version, "pytorch_claim_v1");
@@ -338,15 +354,14 @@ mod tests {
             report.overall_posture,
             SemanticsClaimPosture::SeededEvidenceOnly
         );
-        assert!(
-            report
-                .stable_signature_lines()
-                .iter()
-                .any(|line| line.starts_with("report_digest="))
-        );
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
 
         for area_id in [
             "operator_semantics",
+            "tensor_family_semantics",
             "module_and_state_semantics",
             "optimizer_semantics",
             "compiler_hygiene_and_fake_tensor",

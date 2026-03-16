@@ -897,7 +897,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `PLIB-210` / [#3725](https://github.com/OpenAgentsInc/openagents/issues/3725) | planned | Add first-class sparse, nested, masked, and storage-aware tensor semantics with explicit capability matrices and refusal behavior. |
+| `PLIB-210` / [#3725](https://github.com/OpenAgentsInc/openagents/issues/3725) | done (2026-03-16) | `psionic-ir` now publishes a machine-readable tensor-family capability matrix covering dense, sparse, nested, masked, and storage-aware contracts across declared meta execution, declared custom outputs, contract serialization, alias-view posture, and explicit refusal of non-dense runtime materialization so downstream crates can consume one typed truth surface instead of inventing shadow family semantics. |
 | `PLIB-211` / [#3726](https://github.com/OpenAgentsInc/openagents/issues/3726) | planned | Add complex-number, low-precision, and advanced dtype semantics with explicit promotion, casting, and backend-capability rules. |
 | `PLIB-212` / [#3727](https://github.com/OpenAgentsInc/openagents/issues/3727) | planned | Define framework-wide reproducibility semantics covering global and per-device RNG, deterministic modes, and RNG state restore across train, eval, and distributed replay. |
 | `PLIB-213` / [#3728](https://github.com/OpenAgentsInc/openagents/issues/3728) | planned | Add an autocast-style precision-policy system with backend-aware rules, typed refusal surfaces, and numerics diagnostics. |

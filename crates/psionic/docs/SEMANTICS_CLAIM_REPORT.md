@@ -1,8 +1,8 @@
 # Semantics Claim Report
 
 > Status: canonical `PLIB-209` / `#3724` reference record, updated 2026-03-16
-> after landing the first machine-readable PyTorch-facing semantics claim
-> report in `crates/psionic/psionic-compat/src/lib.rs`.
+> after adding the tensor-family capability evidence from `PLIB-210` / `#3725`
+> into `crates/psionic/psionic-compat/src/lib.rs`.
 
 This document records the current honest claim boundary for Psionic's
 PyTorch-facing semantics layer.
@@ -39,6 +39,7 @@ The current overall posture is `seeded_evidence_only` because Psionic now has
 machine-readable evidence for:
 
 - operator parity
+- tensor-family capability and refusal coverage
 - module and `state_dict` parity
 - optimizer step parity
 - fake-tensor and compiler-hygiene parity
@@ -48,7 +49,7 @@ But those artifacts are still seed-sized and explicitly bounded.
 The report keeps broader future targets marked `pytorch_compatible_later`,
 including:
 
-- advanced tensor, dtype, and precision systems
+- advanced dtype, precision, and non-dense runtime systems
 - quantization and export-safe graph compatibility
 - dataset and distributed-training semantics
 - extension and plugin contracts

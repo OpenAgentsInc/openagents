@@ -206,7 +206,8 @@ Current posture:
 
 - `psionic-core`: canonical tensor, shape, dtype, and device contract.
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
-  execution-plan types.
+  execution-plan types plus tensor-family capability matrices for dense,
+  sparse, nested, masked, and storage-aware semantics.
 - `psionic-compat`: machine-readable compatibility claim vocabulary and current
   PyTorch-facing semantics posture aggregation.
 - `psionic-nn`: reusable module, parameter, buffer, and deterministic
@@ -557,6 +558,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/OPERATOR_PARITY_MATRIX.md](docs/OPERATOR_PARITY_MATRIX.md)** —
   canonical seeded operator parity artifact for the current PyTorch-derived
   `OpInfo`-style coverage slice.
+- **[docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md](docs/TENSOR_FAMILY_CAPABILITY_MATRIX.md)** —
+  canonical capability and refusal matrix for dense, sparse, nested, masked,
+  and storage-aware tensor-family contracts.
 - **[docs/MODULE_PARITY_MATRIX.md](docs/MODULE_PARITY_MATRIX.md)** —
   canonical seeded module parity artifact for the current PyTorch-derived
   `module_db`-style state-tree and `state_dict` coverage slice.
