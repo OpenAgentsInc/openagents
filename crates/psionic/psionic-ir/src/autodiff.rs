@@ -121,6 +121,8 @@ pub enum AutodiffUnsupportedGradientReason {
     /// Backend-extension op families still require dedicated reverse-mode
     /// contracts.
     BackendExtensionFamily,
+    /// Dtype-cast ops are not yet part of the bounded reverse-mode surface.
+    CastFamily,
 }
 
 /// Returns the reverse-mode support posture for one graph op.
@@ -140,6 +142,9 @@ pub const fn gradient_support_for_op(op: &OpKind) -> AutodiffGradientSupport {
         | OpKind::Concat { .. }
         | OpKind::Expand { .. }
         | OpKind::ReduceSum { .. } => AutodiffGradientSupport::Implemented,
+        OpKind::Cast { .. } => AutodiffGradientSupport::Unsupported {
+            reason: AutodiffUnsupportedGradientReason::CastFamily,
+        },
         OpKind::BackendExtension { .. } => AutodiffGradientSupport::Unsupported {
             reason: AutodiffUnsupportedGradientReason::BackendExtensionFamily,
         },
@@ -463,7 +468,10 @@ impl AutodiffGraph {
             }
 
             match node.op() {
-                OpKind::Input { .. } | OpKind::Constant { .. } | OpKind::Detach => {}
+                OpKind::Input { .. }
+                | OpKind::Constant { .. }
+                | OpKind::Detach
+                | OpKind::Cast { .. } => {}
                 OpKind::Add => {
                     for input_id in node.inputs() {
                         if self.requires_grad(*input_id) {
@@ -1334,6 +1342,19 @@ pub fn evaluate_graph(
                     shape,
                 ))
             }
+            OpKind::Cast { dtype } => {
+                let input =
+                    resolve_dense_input(graph, &values, node.inputs()[0], node.op().label())?;
+                TensorData::F32(
+                    input
+                        .iter()
+                        .map(|current| match dtype {
+                            DType::F32 | DType::F16 | DType::BF16 => *current,
+                            DType::I8 => current.round().clamp(i8::MIN as f32, i8::MAX as f32),
+                        })
+                        .collect(),
+                )
+            }
             OpKind::ReduceSum { axis } => {
                 let input_node = graph.node(node.inputs()[0]).ok_or(
                     ReferenceEvaluationError::UnknownTensor {
@@ -1738,8 +1759,8 @@ mod tests {
     use psionic_core::{DType, Device, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData};
 
     use crate::{
-        AutodiffContext, AutodiffError, AutodiffGradientSupport, AutodiffGraphBuilder,
-        AutodiffUnsupportedGradientReason, TensorId, gradient_support_for_op,
+        gradient_support_for_op, AutodiffContext, AutodiffError, AutodiffGradientSupport,
+        AutodiffGraphBuilder, AutodiffUnsupportedGradientReason, TensorId,
     };
 
     #[test]
@@ -1768,8 +1789,8 @@ mod tests {
     }
 
     #[test]
-    fn reverse_mode_autodiff_accumulates_shared_paths_and_honors_detach()
-    -> Result<(), Box<dyn Error>> {
+    fn reverse_mode_autodiff_accumulates_shared_paths_and_honors_detach(
+    ) -> Result<(), Box<dyn Error>> {
         let mut builder =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
@@ -1907,8 +1928,8 @@ mod tests {
     }
 
     #[test]
-    fn reverse_mode_autodiff_covers_select_concat_and_reshape_primitives()
-    -> Result<(), Box<dyn Error>> {
+    fn reverse_mode_autodiff_covers_select_concat_and_reshape_primitives(
+    ) -> Result<(), Box<dyn Error>> {
         let mut builder =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let x = builder.input("x", Shape::new(vec![2, 2]), DType::F32, true);

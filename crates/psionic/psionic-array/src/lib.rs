@@ -8,9 +8,15 @@
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
-use psionic_core::{DType, Device, DeviceKind, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec};
+use psionic_core::{
+    DType, Device, DeviceKind, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec,
+};
 use psionic_ir::{Graph, GraphBuilder, GraphError, OpKind};
-use psionic_runtime::{DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryClass};
+use psionic_runtime::{
+    DeterminismContractError, DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryClass,
+    GeneratorState, RuntimeDeterminismContract,
+};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -20,11 +26,12 @@ pub const CRATE_ROLE: &str = "public lazy array facade above psionic-core and ps
 struct ArrayContextInner {
     device: ArrayDevice,
     builder: RefCell<GraphBuilder>,
+    determinism: RefCell<RuntimeDeterminismContract>,
     next_stream_id: RefCell<u32>,
 }
 
 /// Error type raised by the public lazy-array facade.
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ArrayError {
     /// Two arrays came from different public graph-construction contexts.
     #[error("array operations require arrays from the same ArrayContext")]
@@ -32,8 +39,40 @@ pub enum ArrayError {
     /// One operation expected at least one array but received none.
     #[error("array operation requires at least one input array")]
     EmptyArrayList,
+    /// One deterministic-random contract is invalid for the requested array context.
+    #[error(transparent)]
+    DeterminismContract(#[from] DeterminismContractError),
+    /// One random-uniform request used invalid bounds.
+    #[error("random uniform requires high > low; found low={low} high={high}")]
+    InvalidRandomUniformBounds {
+        /// Lower bound.
+        low: f32,
+        /// Upper bound.
+        high: f32,
+    },
+    /// One random-normal request used an invalid standard deviation.
+    #[error("random normal requires stddev > 0; found stddev={stddev}")]
+    InvalidRandomNormalStddev {
+        /// Requested standard deviation.
+        stddev: f32,
+    },
+    /// One arange request used a zero or non-progressing step.
+    #[error("arange requires a non-zero step that progresses from start={start} toward stop={stop}; found step={step}")]
+    InvalidArangeStep {
+        /// Start value.
+        start: f32,
+        /// Stop value.
+        stop: f32,
+        /// Step value.
+        step: f32,
+    },
+    /// One linspace request used a zero sample count.
+    #[error("linspace requires count > 0")]
+    InvalidLinspaceCount,
     /// One stream belongs to a different device than the owning context.
-    #[error("stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`")]
+    #[error(
+        "stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`"
+    )]
     StreamDeviceMismatch {
         /// Stream identifier.
         stream_id: u32,
@@ -172,7 +211,10 @@ impl ArrayDevice {
     /// Returns whether the runtime explicitly reports shared host/device memory.
     #[must_use]
     pub const fn supports_unified_memory(&self) -> bool {
-        matches!(self.unified_memory, UnifiedMemoryCapability::HostOnly | UnifiedMemoryCapability::SharedHostDevice)
+        matches!(
+            self.unified_memory,
+            UnifiedMemoryCapability::HostOnly | UnifiedMemoryCapability::SharedHostDevice
+        )
     }
 
     /// Returns the stable inventory device identifier.
@@ -443,21 +485,74 @@ impl ArrayContext {
     /// Creates a context pinned to one public array-device handle.
     #[must_use]
     pub fn with_device(device: ArrayDevice) -> Self {
+        Self::with_device_and_determinism(device, RuntimeDeterminismContract::best_effort())
+            .expect("best-effort array determinism contract should validate")
+    }
+
+    /// Creates a context pinned to one device plus one explicit runtime determinism contract.
+    pub fn with_runtime_determinism(
+        device: Device,
+        determinism: RuntimeDeterminismContract,
+    ) -> Result<Self, ArrayError> {
+        Self::with_device_and_determinism(ArrayDevice::logical(device), determinism)
+    }
+
+    /// Creates a context pinned to one runtime-described device plus one explicit determinism contract.
+    pub fn from_device_descriptor_with_determinism(
+        descriptor: DeviceDescriptor,
+        determinism: RuntimeDeterminismContract,
+    ) -> Result<Self, ArrayError> {
+        Self::with_device_and_determinism(ArrayDevice::from_descriptor(descriptor), determinism)
+    }
+
+    /// Creates a CPU-backed context with one seeded replay contract.
+    pub fn cpu_seeded(seed: u64) -> Result<Self, ArrayError> {
+        Self::with_runtime_determinism(Device::cpu(), RuntimeDeterminismContract::seeded(seed))
+    }
+
+    fn with_device_and_determinism(
+        device: ArrayDevice,
+        determinism: RuntimeDeterminismContract,
+    ) -> Result<Self, ArrayError> {
+        determinism.validate()?;
+        let determinism = if determinism.generator.is_some() {
+            RuntimeDeterminismContract {
+                generator: Some(
+                    determinism.derive_local_device_generator(device.stable_id().to_string())?,
+                ),
+                ..determinism
+            }
+        } else {
+            determinism
+        };
         let stream = ArrayStream::default_for(device.clone());
-        Self {
+        Ok(Self {
             inner: Rc::new(ArrayContextInner {
                 builder: RefCell::new(GraphBuilder::new(device.device().clone())),
+                determinism: RefCell::new(determinism),
                 device,
                 next_stream_id: RefCell::new(1),
             }),
             stream,
-        }
+        })
     }
 
     /// Creates a CPU-backed context for tests and reference graph building.
     #[must_use]
     pub fn cpu() -> Self {
         Self::new(Device::cpu())
+    }
+
+    /// Returns the current runtime determinism contract for the context.
+    #[must_use]
+    pub fn determinism(&self) -> RuntimeDeterminismContract {
+        self.inner.determinism.borrow().clone()
+    }
+
+    /// Returns the current replayable generator state when the context is seeded.
+    #[must_use]
+    pub fn random_generator_state(&self) -> Option<GeneratorState> {
+        self.inner.determinism.borrow().generator.clone()
     }
 
     /// Returns the logical device assigned to the context.
@@ -518,8 +613,16 @@ impl ArrayContext {
         shape: Shape,
         values: impl Into<Vec<f32>>,
     ) -> Result<Array, ArrayError> {
-        let tensor = self.inner.builder.borrow_mut().constant_f32(shape, values)?;
-        Ok(Array::from_tensor(self.inner.clone(), self.stream.clone(), tensor))
+        let tensor = self
+            .inner
+            .builder
+            .borrow_mut()
+            .constant_f32(shape, values)?;
+        Ok(Array::from_tensor(
+            self.inner.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Adds a scalar `f32` constant to the current lazy graph.
@@ -540,6 +643,129 @@ impl ArrayContext {
     /// Adds an `f32` array filled with one repeated value.
     pub fn full_f32(&self, shape: Shape, value: f32) -> Result<Array, ArrayError> {
         self.constant_f32(shape.clone(), vec![value; shape.element_count()])
+    }
+
+    /// Adds a deterministic or best-effort random-uniform `f32` array.
+    pub fn random_uniform_f32(
+        &self,
+        shape: Shape,
+        low: f32,
+        high: f32,
+    ) -> Result<Array, ArrayError> {
+        if high <= low {
+            return Err(ArrayError::InvalidRandomUniformBounds { low, high });
+        }
+        let span = high - low;
+        let values = self.draw_random_f32_values(shape.element_count(), |rng| {
+            (rng.random::<f32>() * span) + low
+        })?;
+        self.constant_f32(shape, values)
+    }
+
+    /// Adds a deterministic or best-effort random-normal `f32` array.
+    pub fn random_normal_f32(
+        &self,
+        shape: Shape,
+        mean: f32,
+        stddev: f32,
+    ) -> Result<Array, ArrayError> {
+        if stddev <= 0.0 {
+            return Err(ArrayError::InvalidRandomNormalStddev { stddev });
+        }
+        let values = self.draw_random_normal_f32_values(shape.element_count(), mean, stddev)?;
+        self.constant_f32(shape, values)
+    }
+
+    /// Adds an `f32` arange vector.
+    pub fn arange_f32(&self, start: f32, stop: f32, step: f32) -> Result<Array, ArrayError> {
+        if step == 0.0 || (start < stop && step < 0.0) || (start > stop && step > 0.0) {
+            return Err(ArrayError::InvalidArangeStep { start, stop, step });
+        }
+        let mut values = Vec::new();
+        let mut current = start;
+        if step > 0.0 {
+            while current < stop {
+                values.push(current);
+                current += step;
+            }
+        } else {
+            while current > stop {
+                values.push(current);
+                current += step;
+            }
+        }
+        self.constant_f32(Shape::new(vec![values.len()]), values)
+    }
+
+    /// Adds an `f32` linspace vector with an inclusive stop value.
+    pub fn linspace_f32(&self, start: f32, stop: f32, count: usize) -> Result<Array, ArrayError> {
+        if count == 0 {
+            return Err(ArrayError::InvalidLinspaceCount);
+        }
+        let values = if count == 1 {
+            vec![start]
+        } else {
+            let step = (stop - start) / (count - 1) as f32;
+            (0..count)
+                .map(|index| start + (step * index as f32))
+                .collect::<Vec<_>>()
+        };
+        self.constant_f32(Shape::new(vec![count]), values)
+    }
+
+    /// Adds an `f32` eye matrix.
+    pub fn eye_f32(&self, rows: usize, cols: usize) -> Result<Array, ArrayError> {
+        let mut values = vec![0.0; rows.saturating_mul(cols)];
+        for diagonal in 0..rows.min(cols) {
+            values[diagonal * cols + diagonal] = 1.0;
+        }
+        self.constant_f32(Shape::new(vec![rows, cols]), values)
+    }
+
+    fn draw_random_f32_values<F>(&self, count: usize, mut draw: F) -> Result<Vec<f32>, ArrayError>
+    where
+        F: FnMut(&mut StdRng) -> f32,
+    {
+        let mut determinism = self.inner.determinism.borrow_mut();
+        let mut rng = determinism
+            .generator
+            .as_ref()
+            .map_or_else(StdRng::from_os_rng, GeneratorState::restored_rng);
+        let values = (0..count).map(|_| draw(&mut rng)).collect::<Vec<_>>();
+        if let Some(generator) = determinism.generator.as_mut() {
+            generator.draws = generator.draws.saturating_add(count as u64);
+        }
+        Ok(values)
+    }
+
+    fn draw_random_normal_f32_values(
+        &self,
+        count: usize,
+        mean: f32,
+        stddev: f32,
+    ) -> Result<Vec<f32>, ArrayError> {
+        let mut determinism = self.inner.determinism.borrow_mut();
+        let mut rng = determinism
+            .generator
+            .as_ref()
+            .map_or_else(StdRng::from_os_rng, GeneratorState::restored_rng);
+        let mut values = Vec::with_capacity(count);
+        let mut draws = 0_u64;
+        while values.len() < count {
+            let u1 = rng.random::<f32>().max(f32::MIN_POSITIVE);
+            let u2 = rng.random::<f32>();
+            draws = draws.saturating_add(2);
+            let radius = (-2.0 * u1.ln()).sqrt();
+            let theta = std::f32::consts::TAU * u2;
+            values.push(mean + (stddev * radius * theta.cos()));
+            if values.len() < count {
+                values.push(mean + (stddev * radius * theta.sin()));
+            }
+        }
+        if let Some(generator) = determinism.generator.as_mut() {
+            generator.draws = generator.draws.saturating_add(draws);
+        }
+        Ok(values)
     }
 
     /// Snapshots the current context graph with the provided output arrays.
@@ -587,7 +813,11 @@ pub struct Array {
 
 impl Array {
     fn from_tensor(context: Rc<ArrayContextInner>, stream: ArrayStream, tensor: Tensor) -> Self {
-        let graph = context.builder.borrow().clone().finish(vec![tensor.clone()]);
+        let graph = context
+            .builder
+            .borrow()
+            .clone()
+            .finish(vec![tensor.clone()]);
         Self {
             context,
             stream,
@@ -621,7 +851,11 @@ impl Array {
             let mut builder = self.context.builder.borrow_mut();
             op(&mut builder, &self.tensor, &other.tensor)?
         };
-        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Returns the owning public graph-construction context.
@@ -718,7 +952,11 @@ impl Array {
             .builder
             .borrow_mut()
             .reshape(&self.tensor, shape)?;
-        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Reorders axes using a logical view.
@@ -728,7 +966,11 @@ impl Array {
             .builder
             .borrow_mut()
             .permute(&self.tensor, axes)?;
-        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Convenience transpose that reverses the current axis order.
@@ -744,7 +986,11 @@ impl Array {
             .builder
             .borrow_mut()
             .slice(&self.tensor, axis, start, end)?;
-        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Selects one index along one axis and removes that axis.
@@ -754,7 +1000,11 @@ impl Array {
             .builder
             .borrow_mut()
             .select(&self.tensor, axis, index)?;
-        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Broadcasts the array to the provided target shape.
@@ -764,7 +1014,25 @@ impl Array {
             .builder
             .borrow_mut()
             .expand(&self.tensor, shape)?;
-        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
+    }
+
+    /// Casts the array to one logical dtype.
+    pub fn cast(&self, dtype: DType) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .cast(&self.tensor, dtype)?;
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
     }
 
     /// Concatenates multiple arrays along one axis.
@@ -853,24 +1121,21 @@ fn evaluate_graph_snapshot(
             OpKind::Concat { axis } => {
                 concat_dense_value(node.tensor(), node.inputs(), &values, *axis)?
             }
-            OpKind::Expand { shape } => expand_dense_value(
-                node.tensor(),
-                node.inputs(),
-                &values,
-                shape,
-            )?,
-            OpKind::ReduceSum { axis } => reduce_sum_dense_value(
-                node.tensor(),
-                node.inputs(),
-                &values,
-                *axis,
-            )?,
+            OpKind::Expand { shape } => {
+                expand_dense_value(node.tensor(), node.inputs(), &values, shape)?
+            }
+            OpKind::Cast { dtype } => {
+                cast_dense_value(node.tensor(), node.inputs(), &values, *dtype)?
+            }
+            OpKind::ReduceSum { axis } => {
+                reduce_sum_dense_value(node.tensor(), node.inputs(), &values, *axis)?
+            }
             other => {
                 return Err(ArrayError::MaterializationRefusal {
                     tensor: node.tensor().id(),
                     op: other.label().to_string(),
                     detail: String::from(
-                        "bounded explicit eval currently materializes only constant, detach, add, mul, matmul, reshape, permute, slice, select, concat, expand, and reduce_sum graphs",
+                        "bounded explicit eval currently materializes only constant, detach, add, mul, matmul, reshape, permute, slice, select, concat, expand, cast, and reduce_sum graphs",
                     ),
                 });
             }
@@ -924,11 +1189,14 @@ fn clone_input_value(
     inputs: &[TensorId],
     values: &BTreeMap<TensorId, DenseValue>,
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("detach"),
-        detail: String::from("detach requires one input"),
-    })?;
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
+            tensor: tensor.id(),
+            op: String::from("detach"),
+            detail: String::from("detach requires one input"),
+        })?;
     let source = values
         .get(&input)
         .cloned()
@@ -958,18 +1226,14 @@ where
             detail: String::from("binary ops require exactly two inputs"),
         });
     };
-    let left = values
-        .get(left_id)
-        .ok_or(ArrayError::MissingDependency {
-            tensor: tensor.id(),
-            input: *left_id,
-        })?;
-    let right = values
-        .get(right_id)
-        .ok_or(ArrayError::MissingDependency {
-            tensor: tensor.id(),
-            input: *right_id,
-        })?;
+    let left = values.get(left_id).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input: *left_id,
+    })?;
+    let right = values.get(right_id).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input: *right_id,
+    })?;
     if left.tensor.spec().shape() != right.tensor.spec().shape() {
         return Err(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
@@ -1001,24 +1265,17 @@ fn matmul_dense_value(
             detail: String::from("matmul requires exactly two inputs"),
         });
     };
-    let left = values
-        .get(left_id)
-        .ok_or(ArrayError::MissingDependency {
-            tensor: tensor.id(),
-            input: *left_id,
-        })?;
-    let right = values
-        .get(right_id)
-        .ok_or(ArrayError::MissingDependency {
-            tensor: tensor.id(),
-            input: *right_id,
-        })?;
+    let left = values.get(left_id).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input: *left_id,
+    })?;
+    let right = values.get(right_id).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input: *right_id,
+    })?;
     let left_shape = left.tensor.spec().shape();
     let right_shape = right.tensor.spec().shape();
-    let (m, k_left, k_right, n) = match (
-        left_shape.dims(),
-        right_shape.dims(),
-    ) {
+    let (m, k_left, k_right, n) = match (left_shape.dims(), right_shape.dims()) {
         ([m, k_left], [k_right, n]) => (*m, *k_left, *k_right, *n),
         _ => {
             return Err(ArrayError::MaterializationRefusal {
@@ -1058,17 +1315,18 @@ fn reshape_dense_value(
     inputs: &[TensorId],
     values: &BTreeMap<TensorId, DenseValue>,
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("reshape"),
-        detail: String::from("reshape requires one input"),
-    })?;
-    let value = values
-        .get(&input)
-        .ok_or(ArrayError::MissingDependency {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
-            input,
+            op: String::from("reshape"),
+            detail: String::from("reshape requires one input"),
         })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
     Ok(DenseValue {
         tensor: tensor.clone(),
         values: value.values.clone(),
@@ -1081,17 +1339,18 @@ fn permute_dense_value(
     values: &BTreeMap<TensorId, DenseValue>,
     axes: &[usize],
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("permute"),
-        detail: String::from("permute requires one input"),
-    })?;
-    let value = values
-        .get(&input)
-        .ok_or(ArrayError::MissingDependency {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
-            input,
+            op: String::from("permute"),
+            detail: String::from("permute requires one input"),
         })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
     let output_shape = tensor.spec().shape();
     let input_shape = value.tensor.spec().shape();
     let mut output = Vec::with_capacity(output_shape.element_count());
@@ -1118,17 +1377,18 @@ fn slice_dense_value(
     start: usize,
     end: usize,
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("slice"),
-        detail: String::from("slice requires one input"),
-    })?;
-    let value = values
-        .get(&input)
-        .ok_or(ArrayError::MissingDependency {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
-            input,
+            op: String::from("slice"),
+            detail: String::from("slice requires one input"),
         })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
     let output_shape = tensor.spec().shape();
     let input_shape = value.tensor.spec().shape();
     let mut output = Vec::with_capacity(output_shape.element_count());
@@ -1152,17 +1412,18 @@ fn select_dense_value(
     axis: usize,
     index: usize,
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("select"),
-        detail: String::from("select requires one input"),
-    })?;
-    let value = values
-        .get(&input)
-        .ok_or(ArrayError::MissingDependency {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
-            input,
+            op: String::from("select"),
+            detail: String::from("select requires one input"),
         })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
     let output_shape = tensor.spec().shape();
     let input_shape = value.tensor.spec().shape();
     let mut output = Vec::with_capacity(output_shape.element_count());
@@ -1196,10 +1457,13 @@ fn concat_dense_value(
     let tensors = inputs
         .iter()
         .map(|input| {
-            values.get(input).cloned().ok_or(ArrayError::MissingDependency {
-                tensor: tensor.id(),
-                input: *input,
-            })
+            values
+                .get(input)
+                .cloned()
+                .ok_or(ArrayError::MissingDependency {
+                    tensor: tensor.id(),
+                    input: *input,
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let output_shape = tensor.spec().shape();
@@ -1245,21 +1509,54 @@ fn expand_dense_value(
     values: &BTreeMap<TensorId, DenseValue>,
     shape: &Shape,
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("expand"),
-        detail: String::from("expand requires one input"),
-    })?;
-    let value = values
-        .get(&input)
-        .ok_or(ArrayError::MissingDependency {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
-            input,
+            op: String::from("expand"),
+            detail: String::from("expand requires one input"),
         })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
     let expanded = expand_values(value.tensor.spec().shape(), &value.values, shape);
     Ok(DenseValue {
         tensor: tensor.clone(),
         values: expanded,
+    })
+}
+
+fn cast_dense_value(
+    tensor: &Tensor,
+    inputs: &[TensorId],
+    values: &BTreeMap<TensorId, DenseValue>,
+    dtype: DType,
+) -> Result<DenseValue, ArrayError> {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
+            tensor: tensor.id(),
+            op: String::from("cast"),
+            detail: String::from("cast requires one input"),
+        })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
+    let converted = value
+        .values
+        .iter()
+        .map(|current| match dtype {
+            DType::F32 | DType::F16 | DType::BF16 => *current,
+            DType::I8 => current.round().clamp(i8::MIN as f32, i8::MAX as f32),
+        })
+        .collect::<Vec<_>>();
+    Ok(DenseValue {
+        tensor: tensor.clone(),
+        values: converted,
     })
 }
 
@@ -1269,23 +1566,37 @@ fn reduce_sum_dense_value(
     values: &BTreeMap<TensorId, DenseValue>,
     axis: Option<usize>,
 ) -> Result<DenseValue, ArrayError> {
-    let input = inputs.first().copied().ok_or(ArrayError::MaterializationRefusal {
-        tensor: tensor.id(),
-        op: String::from("reduce_sum"),
-        detail: String::from("reduce_sum requires one input"),
-    })?;
-    let value = values
-        .get(&input)
-        .ok_or(ArrayError::MissingDependency {
+    let input = inputs
+        .first()
+        .copied()
+        .ok_or(ArrayError::MaterializationRefusal {
             tensor: tensor.id(),
-            input,
+            op: String::from("reduce_sum"),
+            detail: String::from("reduce_sum requires one input"),
         })?;
+    let value = values.get(&input).ok_or(ArrayError::MissingDependency {
+        tensor: tensor.id(),
+        input,
+    })?;
     let (shape, output) = match axis {
         None => (Shape::scalar(), vec![value.values.iter().sum()]),
-        Some(axis) => reduce_sum_axis(tensor.id(), value.tensor.spec().shape(), &value.values, axis)?,
+        Some(axis) => reduce_sum_axis(
+            tensor.id(),
+            value.tensor.spec().shape(),
+            &value.values,
+            axis,
+        )?,
     };
     Ok(DenseValue {
-        tensor: Tensor::new(tensor.id(), TensorSpec::new(shape, value.tensor.spec().dtype(), value.tensor.spec().device().clone()), LazyOp::Constant),
+        tensor: Tensor::new(
+            tensor.id(),
+            TensorSpec::new(
+                shape,
+                value.tensor.spec().dtype(),
+                value.tensor.spec().device().clone(),
+            ),
+            LazyOp::Constant,
+        ),
         values: output,
     })
 }
@@ -1367,7 +1678,7 @@ mod tests {
         UnifiedMemoryCapability,
     };
     use psionic_core::{DType, Device, DeviceKind, Shape};
-    use psionic_runtime::DeviceDescriptor;
+    use psionic_runtime::{DeviceDescriptor, GeneratorScope};
 
     #[test]
     fn public_lazy_array_surface_builds_graph_backed_arithmetic() -> Result<(), ArrayError> {
@@ -1437,7 +1748,11 @@ mod tests {
 
         assert_eq!(graph.outputs(), &[detached.tensor_id(), sum.tensor_id()]);
         assert_eq!(
-            graph.nodes().iter().map(|node| node.op().label()).collect::<Vec<_>>(),
+            graph
+                .nodes()
+                .iter()
+                .map(|node| node.op().label())
+                .collect::<Vec<_>>(),
             vec!["input", "reduce_sum", "detach"]
         );
 
@@ -1454,7 +1769,10 @@ mod tests {
         let boundary = output.materialization_boundary();
         assert_eq!(
             boundary.explicit_triggers,
-            vec![MaterializationTrigger::Eval, MaterializationTrigger::AsyncEvalWait]
+            vec![
+                MaterializationTrigger::Eval,
+                MaterializationTrigger::AsyncEvalWait
+            ]
         );
         assert_eq!(
             boundary.implicit_policy,
@@ -1465,7 +1783,10 @@ mod tests {
         let evaluated = output.eval()?;
         assert_eq!(evaluated.receipt().trigger, MaterializationTrigger::Eval);
         assert_eq!(evaluated.receipt().stream_id, context.stream().stream_id());
-        assert_eq!(evaluated.receipt().device_id, context.device_handle().stable_id());
+        assert_eq!(
+            evaluated.receipt().device_id,
+            context.device_handle().stable_id()
+        );
         assert_eq!(evaluated.data.as_f32_slice(), Some(&[20.0][..]));
 
         let pending = output.async_eval()?;
@@ -1622,5 +1943,127 @@ mod tests {
         let inputs: &[Array] = &[];
         let error = Array::concat(inputs, 0).expect_err("concat should refuse empty inputs");
         assert_eq!(error, ArrayError::EmptyArrayList);
+    }
+
+    #[test]
+    fn public_lazy_array_random_cast_and_common_creation_families_stay_seeded(
+    ) -> Result<(), ArrayError> {
+        let left = ArrayContext::cpu_seeded(7)?;
+        let right = ArrayContext::cpu_seeded(7)?;
+        let initial_generator = left
+            .random_generator_state()
+            .expect("seeded context should expose generator state");
+        assert_eq!(
+            initial_generator.scope,
+            GeneratorScope::LocalDevice {
+                stable_device_id: left.device_handle().stable_id().to_string(),
+            }
+        );
+        assert_eq!(initial_generator.draws, 0);
+
+        let uniform_left = left.random_uniform_f32(Shape::new(vec![2, 2]), -1.0, 1.0)?;
+        let normal_left = left.random_normal_f32(Shape::new(vec![2, 2]), 0.0, 1.0)?;
+        let uniform_right = right.random_uniform_f32(Shape::new(vec![2, 2]), -1.0, 1.0)?;
+        let normal_right = right.random_normal_f32(Shape::new(vec![2, 2]), 0.0, 1.0)?;
+        let cast_left = uniform_left.cast(DType::I8)?;
+        let arange = left.arange_f32(0.0, 5.0, 1.5)?;
+        let linspace = left.linspace_f32(-1.0, 1.0, 5)?;
+        let eye = left.eye_f32(3, 4)?;
+
+        let uniform_left_eval = uniform_left.eval()?;
+        let uniform_right_eval = uniform_right.eval()?;
+        let normal_left_eval = normal_left.eval()?;
+        let normal_right_eval = normal_right.eval()?;
+        let cast_left_eval = cast_left.eval()?;
+        let arange_eval = arange.eval()?;
+        let linspace_eval = linspace.eval()?;
+        let eye_eval = eye.eval()?;
+
+        assert_eq!(
+            uniform_left_eval.data.as_f32_slice(),
+            uniform_right_eval.data.as_f32_slice()
+        );
+        assert_eq!(
+            normal_left_eval.data.as_f32_slice(),
+            normal_right_eval.data.as_f32_slice()
+        );
+        assert_eq!(cast_left.dtype(), DType::I8);
+        assert_eq!(cast_left_eval.dtype(), DType::I8);
+        let expected_cast = uniform_left_eval
+            .data
+            .as_f32_slice()
+            .expect("uniform eval should be dense")
+            .iter()
+            .map(|value| value.round().clamp(i8::MIN as f32, i8::MAX as f32))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            cast_left_eval.data.as_f32_slice(),
+            Some(expected_cast.as_slice())
+        );
+        assert_eq!(arange.shape(), &Shape::new(vec![4]));
+        assert_eq!(
+            arange_eval.data.as_f32_slice(),
+            Some(&[0.0, 1.5, 3.0, 4.5][..])
+        );
+        assert_eq!(linspace.shape(), &Shape::new(vec![5]));
+        assert_eq!(
+            linspace_eval.data.as_f32_slice(),
+            Some(&[-1.0, -0.5, 0.0, 0.5, 1.0][..])
+        );
+        assert_eq!(eye.shape(), &Shape::new(vec![3, 4]));
+        assert_eq!(
+            eye_eval.data.as_f32_slice(),
+            Some(
+                &[
+                    1.0, 0.0, 0.0, 0.0, //
+                    0.0, 1.0, 0.0, 0.0, //
+                    0.0, 0.0, 1.0, 0.0,
+                ][..]
+            )
+        );
+        assert_eq!(
+            left.random_generator_state()
+                .expect("seeded context should track draws")
+                .draws,
+            8
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_random_and_creation_families_refuse_invalid_parameters() {
+        let context = ArrayContext::cpu_seeded(11).expect("seeded context");
+
+        let uniform = context.random_uniform_f32(Shape::new(vec![1]), 2.0, 2.0);
+        assert_eq!(
+            uniform.expect_err("equal bounds should refuse"),
+            ArrayError::InvalidRandomUniformBounds {
+                low: 2.0,
+                high: 2.0,
+            }
+        );
+
+        let normal = context.random_normal_f32(Shape::new(vec![1]), 0.0, 0.0);
+        assert_eq!(
+            normal.expect_err("zero stddev should refuse"),
+            ArrayError::InvalidRandomNormalStddev { stddev: 0.0 }
+        );
+
+        let arange = context.arange_f32(0.0, 1.0, 0.0);
+        assert_eq!(
+            arange.expect_err("zero step should refuse"),
+            ArrayError::InvalidArangeStep {
+                start: 0.0,
+                stop: 1.0,
+                step: 0.0,
+            }
+        );
+
+        let linspace = context.linspace_f32(0.0, 1.0, 0);
+        assert_eq!(
+            linspace.expect_err("zero-count linspace should refuse"),
+            ArrayError::InvalidLinspaceCount
+        );
     }
 }

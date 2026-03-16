@@ -6518,6 +6518,7 @@ dependencies = [
  "psionic-core",
  "psionic-ir",
  "psionic-runtime",
+ "rand 0.9.2",
  "thiserror 2.0.17",
 ]
 

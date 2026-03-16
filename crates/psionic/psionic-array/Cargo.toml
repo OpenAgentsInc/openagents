@@ -17,4 +17,5 @@ path = "src/lib.rs"
 psionic-core = { path = "../psionic-core" }
 psionic-ir = { path = "../psionic-ir" }
 psionic-runtime = { path = "../psionic-runtime" }
+rand = { workspace = true }
 thiserror = { workspace = true }

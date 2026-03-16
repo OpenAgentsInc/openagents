@@ -282,6 +282,11 @@ pub enum OpKind {
         /// Requested target shape.
         shape: Shape,
     },
+    /// Tensor dtype cast.
+    Cast {
+        /// Requested target dtype.
+        dtype: DType,
+    },
     /// Full or axis-specific reduction.
     ReduceSum {
         /// Reduction axis. `None` means reduce all elements.
@@ -311,6 +316,7 @@ impl OpKind {
             Self::Select { .. } => "select",
             Self::Concat { .. } => "concat",
             Self::Expand { .. } => "expand",
+            Self::Cast { .. } => "cast",
             Self::ReduceSum { .. } => "reduce_sum",
             Self::BackendExtension { op } => op.label(),
         }
@@ -1406,6 +1412,11 @@ pub enum ExecutionOp {
         /// Requested target shape.
         shape: Shape,
     },
+    /// Tensor dtype cast.
+    Cast {
+        /// Requested target dtype.
+        dtype: DType,
+    },
     /// Full or axis-specific reduction.
     ReduceSum {
         /// Reduction axis. `None` means reduce all elements.
@@ -1435,6 +1446,7 @@ impl ExecutionOp {
             Self::Select { .. } => "select",
             Self::Concat { .. } => "concat",
             Self::Expand { .. } => "expand",
+            Self::Cast { .. } => "cast",
             Self::ReduceSum { .. } => "reduce_sum",
             Self::BackendExtension { op } => op.label(),
         }
@@ -1465,6 +1477,7 @@ impl ExecutionOp {
             OpKind::Expand { shape } => Self::Expand {
                 shape: shape.clone(),
             },
+            OpKind::Cast { dtype } => Self::Cast { dtype: *dtype },
             OpKind::ReduceSum { axis } => Self::ReduceSum { axis: *axis },
             OpKind::BackendExtension { op } => Self::BackendExtension { op: op.clone() },
         }
@@ -3651,6 +3664,12 @@ const BUILTIN_OPERATOR_SCHEMAS: &[OperatorSchema] = &[
         OperatorMetaExecutionKind::BuiltinInference,
     ),
     OperatorSchema::new(
+        "cast",
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::Composite,
+        OperatorMetaExecutionKind::BuiltinInference,
+    ),
+    OperatorSchema::new(
         "reduce_sum",
         OperatorArity::Fixed(1),
         OperatorImplementationKind::BackendKernel,
@@ -3940,6 +3959,7 @@ fn meta_execute_builtin(
         ExecutionOp::Select { axis, index } => meta_execute_select(&inputs[0], *axis, *index),
         ExecutionOp::Concat { axis } => meta_execute_concat(inputs, *axis),
         ExecutionOp::Expand { shape } => meta_execute_expand(&inputs[0], shape),
+        ExecutionOp::Cast { dtype } => meta_execute_cast(&inputs[0], *dtype),
         ExecutionOp::ReduceSum { axis } => meta_execute_reduce_sum(&inputs[0], *axis),
         ExecutionOp::BackendExtension { op } => meta_execute_backend_extension(op, inputs),
     }
@@ -4093,6 +4113,14 @@ fn meta_execute_expand(input: &TensorSpec, shape: &Shape) -> Result<TensorSpec, 
         });
     };
     Ok(input.with_layout(layout))
+}
+
+fn meta_execute_cast(input: &TensorSpec, dtype: DType) -> Result<TensorSpec, GraphError> {
+    Ok(TensorSpec::new(
+        input.shape().clone(),
+        dtype,
+        input.device().clone(),
+    ))
 }
 
 fn meta_execute_reduce_sum(
@@ -4507,6 +4535,17 @@ impl GraphBuilder {
         ))
     }
 
+    /// Casts a tensor to one logical dtype without changing shape or device.
+    pub fn cast(&mut self, input: &Tensor, dtype: DType) -> Result<Tensor, GraphError> {
+        let spec = self.meta_spec(&ExecutionOp::Cast { dtype }, &[input], None)?;
+        Ok(self.register(
+            LazyOp::Cast { dtype },
+            OpKind::Cast { dtype },
+            vec![input.id()],
+            spec,
+        ))
+    }
+
     /// Reduces a tensor to a scalar sum.
     pub fn reduce_sum(&mut self, input: &Tensor) -> Tensor {
         let spec = self
@@ -4839,6 +4878,7 @@ fn format_lazy_op(op: &LazyOp) -> String {
         LazyOp::Select { axis, index } => format!("select:axis={axis},index={index}"),
         LazyOp::Concat { axis } => format!("concat:axis={axis}"),
         LazyOp::Expand { shape } => format!("expand:shape={shape}"),
+        LazyOp::Cast { dtype } => format!("cast:dtype={dtype:?}"),
         LazyOp::ReduceSum { axis } => format_reduce_axis(*axis),
         LazyOp::BackendExtension { op } => format_backend_extension_payload(op),
     }
@@ -4863,6 +4903,7 @@ fn format_execution_payload(op: &ExecutionOp) -> String {
         ExecutionOp::Select { axis, index } => format!("axis={axis},index={index}"),
         ExecutionOp::Concat { axis } => format!("axis={axis}"),
         ExecutionOp::Expand { shape } => format!("shape={shape}"),
+        ExecutionOp::Cast { dtype } => format!("dtype={dtype:?}"),
         ExecutionOp::ReduceSum { axis } => format_reduce_axis(*axis),
         ExecutionOp::BackendExtension { op } => format_backend_extension_payload(op),
         _ => String::new(),
