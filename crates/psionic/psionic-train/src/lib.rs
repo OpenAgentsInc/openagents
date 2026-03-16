@@ -52,6 +52,7 @@ mod security_posture;
 mod stability;
 mod stage_program;
 mod tassadar;
+mod tassadar_executor_training;
 mod tassadar_sequence;
 mod worker_protocol;
 
@@ -87,6 +88,7 @@ pub use security_posture::*;
 pub use stability::*;
 pub use stage_program::*;
 pub use tassadar::*;
+pub use tassadar_executor_training::*;
 pub use tassadar_sequence::*;
 pub use worker_protocol::*;
 

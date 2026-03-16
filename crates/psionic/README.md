@@ -111,6 +111,12 @@ Current posture:
   2D lookup-head geometry claims, linear decode state, and a descriptor that
   marks the lane as next-token-only rather than pretending the trained model is
   already an exact executor
+- the fifth trained-executor follow-on bar now also exists in
+  `psionic-train` and `psionic-eval`: the executor transformer can now be
+  trained with teacher-forced next-token loss over the frozen Sudoku-v0
+  sequence corpus, and validation reports now expose exact-trace,
+  final-output, and halt-correctness metrics against the same CPU-reference
+  sequences used to build the dataset
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

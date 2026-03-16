@@ -43,7 +43,7 @@ impl TassadarExecutorTransformerConfig {
     pub fn sudoku_v0(tokenizer: &TassadarTraceTokenizer) -> Self {
         Self {
             vocab_size: tokenizer.vocabulary().len(),
-            max_sequence_tokens: 131_072,
+            max_sequence_tokens: 262_144,
             embedding_dim: 16,
             context_offsets: vec![1, 2, 4, 8, 16],
             constrained_lookup_head_dim: 2,
@@ -198,6 +198,52 @@ impl TassadarExecutorTransformerWeightBundle {
     pub fn output_bias_mut(&mut self) -> &mut [f32] {
         &mut self.output_bias
     }
+
+    fn refresh_metadata(&mut self, config: &TassadarExecutorTransformerConfig) {
+        let entries = vec![
+            (
+                WeightTensorMetadata::new(
+                    "token_embeddings",
+                    Shape::new(vec![config.vocab_size, config.embedding_dim]),
+                    DType::F32,
+                ),
+                self.token_embeddings.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "position_embeddings",
+                    Shape::new(vec![config.max_sequence_tokens, config.embedding_dim]),
+                    DType::F32,
+                ),
+                self.position_embeddings.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "output_projection",
+                    Shape::new(vec![config.hidden_width(), config.vocab_size]),
+                    DType::F32,
+                ),
+                self.output_projection.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "output_bias",
+                    Shape::new(vec![config.vocab_size]),
+                    DType::F32,
+                ),
+                self.output_bias.as_slice(),
+            ),
+            (
+                WeightTensorMetadata::new(
+                    "head_offsets",
+                    Shape::new(vec![config.context_offsets.len()]),
+                    DType::F32,
+                ),
+                self.head_offsets.as_slice(),
+            ),
+        ];
+        self.metadata = build_metadata(entries.as_slice());
+    }
 }
 
 /// Hidden-state and logits emitted by one forward pass.
@@ -281,6 +327,14 @@ impl TassadarExecutorTransformer {
     #[must_use]
     pub fn weights(&self) -> &TassadarExecutorTransformerWeightBundle {
         &self.weights
+    }
+
+    /// Refreshes the descriptor metadata after in-place training updates.
+    pub fn refresh_after_training(&mut self) {
+        self.weights.refresh_metadata(&self.descriptor.config);
+        self.descriptor.weights = self.weights.metadata().clone();
+        self.descriptor.claim_boundary =
+            TassadarExecutorTransformerClaimBoundary::GreedyDecodeUnvalidated;
     }
 
     /// Runs a next-token forward pass over one tokenized executor sequence.

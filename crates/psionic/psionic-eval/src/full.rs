@@ -12,6 +12,8 @@ mod apple_adapter;
 mod apple_adapter_benchmark;
 #[path = "tassadar.rs"]
 mod tassadar;
+#[path = "tassadar_executor_eval.rs"]
+mod tassadar_executor_eval;
 #[path = "tassadar_sequence.rs"]
 mod tassadar_sequence;
 
@@ -31,6 +33,7 @@ use thiserror::Error;
 pub use apple_adapter::*;
 pub use apple_adapter_benchmark::*;
 pub use tassadar::*;
+pub use tassadar_executor_eval::*;
 pub use tassadar_sequence::*;
 
 /// Human-readable crate ownership summary.

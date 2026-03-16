@@ -187,6 +187,11 @@ The current scope is:
   geometry claims, next-token logits over the fixed Tassadar vocabulary, and a
   claim boundary that stays honest about this being a trained sequence model
   rather than the already-exact handcrafted executor
+- landed trained-executor Phase 5 follow-on bar: `psionic-train` now runs
+  teacher-forced next-token optimization over the frozen Sudoku-v0 sequence
+  manifest, while `psionic-eval` surfaces exact-trace, final-output, and halt
+  correctness reports against the same CPU-reference sequences that generated
+  the training corpus
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
