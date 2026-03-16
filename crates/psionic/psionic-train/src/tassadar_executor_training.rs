@@ -8,7 +8,8 @@ use psionic_eval::{
     evaluate_tassadar_executor_transformer_with_target_cap,
 };
 use psionic_models::{
-    TassadarExecutorTransformer, TassadarExecutorTransformerError, TokenId, TokenSequence,
+    TassadarExecutorTrainableSurface, TassadarExecutorTransformer,
+    TassadarExecutorTransformerError, TokenId, TokenSequence,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -29,6 +30,10 @@ fn default_validate_every_epoch() -> bool {
 
 fn default_select_best_checkpoint_by_boundary() -> bool {
     true
+}
+
+fn default_trainable_surface() -> TassadarExecutorTrainableSurface {
+    TassadarExecutorTrainableSurface::OutputHeadOnly
 }
 
 /// One curriculum stage for the trained executor lane.
@@ -79,6 +84,9 @@ pub struct TassadarExecutorTrainingConfig {
     /// Optional cap over target tokens evaluated from each validation example.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_eval_target_tokens_per_example: Option<usize>,
+    /// Active trainable surface for the run.
+    #[serde(default = "default_trainable_surface")]
+    pub trainable_surface: TassadarExecutorTrainableSurface,
     /// Optional boundary curriculum preceding the terminal full-trace stage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub curriculum_stages: Vec<TassadarExecutorCurriculumStage>,
@@ -102,6 +110,7 @@ impl TassadarExecutorTrainingConfig {
             learning_rate: 0.05,
             max_train_target_tokens_per_example: Some(256),
             max_eval_target_tokens_per_example: None,
+            trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             curriculum_stages: Vec::new(),
             validate_every_epoch: true,
             select_best_checkpoint_by_boundary: true,
@@ -119,6 +128,7 @@ impl TassadarExecutorTrainingConfig {
             learning_rate: 0.05,
             max_train_target_tokens_per_example: None,
             max_eval_target_tokens_per_example: None,
+            trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             curriculum_stages: vec![
                 TassadarExecutorCurriculumStage::new("prompt_to_first_token", Some(1), 1),
                 TassadarExecutorCurriculumStage::new("prompt_to_first_2_tokens", Some(2), 1),
@@ -143,10 +153,21 @@ impl TassadarExecutorTrainingConfig {
             learning_rate: 0.05,
             max_train_target_tokens_per_example: Some(8),
             max_eval_target_tokens_per_example: Some(8),
+            trainable_surface: TassadarExecutorTrainableSurface::OutputHeadOnly,
             curriculum_stages: Vec::new(),
             validate_every_epoch: true,
             select_best_checkpoint_by_boundary: true,
         }
+    }
+
+    /// Overrides the trainable surface while preserving the rest of the config.
+    #[must_use]
+    pub const fn with_trainable_surface(
+        mut self,
+        trainable_surface: TassadarExecutorTrainableSurface,
+    ) -> Self {
+        self.trainable_surface = trainable_surface;
+        self
     }
 
     fn resolved_stages(&self) -> Vec<TassadarExecutorCurriculumStage> {
@@ -335,10 +356,15 @@ pub fn train_tassadar_executor_transformer(
     let manifest = build_tassadar_sequence_training_manifest(
         config.workload,
         config.dataset_version.as_str(),
+        config.trainable_surface,
     )?;
     let mut current_model = match config.workload {
-        TassadarSequenceWorkload::SudokuV0 => TassadarExecutorTransformer::sudoku_v0(),
-        TassadarSequenceWorkload::Sudoku9x9 => TassadarExecutorTransformer::sudoku_9x9(),
+        TassadarSequenceWorkload::SudokuV0 => {
+            TassadarExecutorTransformer::sudoku_v0_with_surface(config.trainable_surface)
+        }
+        TassadarSequenceWorkload::Sudoku9x9 => {
+            TassadarExecutorTransformer::sudoku_9x9_with_surface(config.trainable_surface)
+        }
     };
     let examples_by_id = bundle
         .dataset
@@ -358,18 +384,33 @@ pub fn train_tassadar_executor_transformer(
         for stage_epoch_index in 0..stage.epochs {
             current_epoch_batches.clear();
             for batch in &manifest.train_plan.batches {
+                let hidden_width = current_model.descriptor().config.hidden_width();
+                let vocab_size = current_model.descriptor().config.vocab_size;
+                let embedding_dim = current_model.descriptor().config.embedding_dim;
                 let sequence_ids = batch
                     .rows
                     .iter()
                     .flat_map(|row| row.source_sequences.iter())
                     .map(|sequence| sequence.sequence_id.clone())
                     .collect::<Vec<_>>();
-                let mut projection_grad = vec![
-                    0.0;
-                    current_model.descriptor().config.hidden_width()
-                        * current_model.descriptor().config.vocab_size
-                ];
-                let mut bias_grad = vec![0.0; current_model.descriptor().config.vocab_size];
+                let mut projection_grad = vec![0.0; hidden_width * vocab_size];
+                let mut bias_grad = vec![0.0; vocab_size];
+                let mut token_embedding_grad =
+                    config.trainable_surface.trains_token_embeddings().then(|| {
+                        vec![0.0; current_model.weights().token_embeddings().len()]
+                    });
+                let mut position_embedding_grad =
+                    config.trainable_surface.trains_position_embeddings().then(|| {
+                        vec![0.0; current_model.weights().position_embeddings().len()]
+                    });
+                let mut mixer_projection_grad = config
+                    .trainable_surface
+                    .trains_small_learned_mixer()
+                    .then(|| vec![0.0; hidden_width * hidden_width]);
+                let mut mixer_bias_grad = config
+                    .trainable_surface
+                    .trains_small_learned_mixer()
+                    .then(|| vec![0.0; hidden_width]);
                 let mut total_loss = 0.0_f32;
                 let mut target_token_count = 0_u32;
 
@@ -396,12 +437,15 @@ pub fn train_tassadar_executor_transformer(
                         (start_logit_index + max_target).min(forward.logits.len());
                     for logit_index in start_logit_index..end_logit_index {
                         let hidden = &forward.hidden_states[logit_index];
+                        let source_hidden = &forward.source_hidden_states[logit_index];
+                        let step_context = &forward.step_contexts[logit_index];
                         let logits = &forward.logits[logit_index];
                         let probabilities = softmax(logits.as_slice());
                         let target_token = sequence.as_slice()[logit_index + 1].as_u32() as usize;
                         let probability = probabilities[target_token].max(1e-8);
                         total_loss -= probability.ln();
                         target_token_count = target_token_count.saturating_add(1);
+                        let mut hidden_grad = vec![0.0; hidden_width];
 
                         for (token_index, probability) in probabilities.iter().enumerate() {
                             let delta = probability - f32::from(token_index == target_token);
@@ -410,6 +454,59 @@ pub fn train_tassadar_executor_transformer(
                                 let projection_index =
                                     hidden_index * probabilities.len() + token_index;
                                 projection_grad[projection_index] += hidden_value * delta;
+                                hidden_grad[hidden_index] += current_model.weights()
+                                    .output_projection()[projection_index]
+                                    * delta;
+                            }
+                        }
+
+                        let source_hidden_grad =
+                            if config.trainable_surface.trains_small_learned_mixer() {
+                                let mut source_hidden_grad = hidden_grad.clone();
+                                let mixer_projection =
+                                    current_model.weights().small_learned_mixer_projection();
+                                let mixer_projection_grad = mixer_projection_grad
+                                    .as_mut()
+                                    .expect("mixer projection grad should exist");
+                                let mixer_bias_grad = mixer_bias_grad
+                                    .as_mut()
+                                    .expect("mixer bias grad should exist");
+                                for output_index in 0..hidden_width {
+                                    mixer_bias_grad[output_index] += hidden_grad[output_index];
+                                    for input_index in 0..hidden_width {
+                                        let weight_index =
+                                            input_index * hidden_width + output_index;
+                                        mixer_projection_grad[weight_index] +=
+                                            source_hidden[input_index] * hidden_grad[output_index];
+                                        source_hidden_grad[input_index] +=
+                                            mixer_projection[weight_index]
+                                                * hidden_grad[output_index];
+                                    }
+                                }
+                                source_hidden_grad
+                            } else {
+                                hidden_grad
+                            };
+
+                        if let Some(token_embedding_grad) = token_embedding_grad.as_mut() {
+                            for (slot_index, token) in step_context.context_tokens.iter().enumerate()
+                            {
+                                let token_index = token.as_u32() as usize;
+                                let token_offset = token_index * embedding_dim;
+                                let hidden_offset = slot_index * embedding_dim;
+                                for dim in 0..embedding_dim {
+                                    token_embedding_grad[token_offset + dim] +=
+                                        source_hidden_grad[hidden_offset + dim];
+                                }
+                            }
+                        }
+                        if let Some(position_embedding_grad) = position_embedding_grad.as_mut() {
+                            let position_index = step_context.position as usize;
+                            let position_offset = position_index * embedding_dim;
+                            let hidden_offset = step_context.context_tokens.len() * embedding_dim;
+                            for dim in 0..embedding_dim {
+                                position_embedding_grad[position_offset + dim] +=
+                                    source_hidden_grad[hidden_offset + dim];
                             }
                         }
                     }
@@ -432,6 +529,46 @@ pub fn train_tassadar_executor_transformer(
                         .zip(bias_grad.iter())
                     {
                         *bias -= scale * gradient;
+                    }
+                    if let Some(token_embedding_grad) = token_embedding_grad.as_ref() {
+                        for (weight, gradient) in current_model
+                            .weights_mut()
+                            .token_embeddings_mut()
+                            .iter_mut()
+                            .zip(token_embedding_grad.iter())
+                        {
+                            *weight -= scale * gradient;
+                        }
+                    }
+                    if let Some(position_embedding_grad) = position_embedding_grad.as_ref() {
+                        for (weight, gradient) in current_model
+                            .weights_mut()
+                            .position_embeddings_mut()
+                            .iter_mut()
+                            .zip(position_embedding_grad.iter())
+                        {
+                            *weight -= scale * gradient;
+                        }
+                    }
+                    if let Some(mixer_projection_grad) = mixer_projection_grad.as_ref() {
+                        for (weight, gradient) in current_model
+                            .weights_mut()
+                            .small_learned_mixer_projection_mut()
+                            .iter_mut()
+                            .zip(mixer_projection_grad.iter())
+                        {
+                            *weight -= scale * gradient;
+                        }
+                    }
+                    if let Some(mixer_bias_grad) = mixer_bias_grad.as_ref() {
+                        for (weight, gradient) in current_model
+                            .weights_mut()
+                            .small_learned_mixer_bias_mut()
+                            .iter_mut()
+                            .zip(mixer_bias_grad.iter())
+                        {
+                            *weight -= scale * gradient;
+                        }
                     }
                     current_model.refresh_after_training();
                 }

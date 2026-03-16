@@ -22,6 +22,71 @@ pub enum TassadarExecutorTransformerClaimBoundary {
     GreedyDecodeUnvalidated,
 }
 
+/// Stable trainable-surface selector for the lookup-style executor family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorTrainableSurface {
+    /// Train the output projection and bias only.
+    OutputHeadOnly,
+    /// Train the output head plus token embeddings.
+    OutputHeadAndTokenEmbeddings,
+    /// Train the output head plus token and position embeddings.
+    OutputHeadAndEmbeddings,
+    /// Train the output head, embeddings, and one small residual mixer.
+    OutputHeadEmbeddingsAndSmallLearnedMixer,
+}
+
+impl TassadarExecutorTrainableSurface {
+    /// Returns a stable label for file names and reports.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OutputHeadOnly => "output_head_only",
+            Self::OutputHeadAndTokenEmbeddings => "output_head_and_token_embeddings",
+            Self::OutputHeadAndEmbeddings => "output_head_and_embeddings",
+            Self::OutputHeadEmbeddingsAndSmallLearnedMixer => {
+                "output_head_embeddings_and_small_learned_mixer"
+            }
+        }
+    }
+
+    /// Returns whether token embeddings are trainable.
+    #[must_use]
+    pub const fn trains_token_embeddings(self) -> bool {
+        matches!(
+            self,
+            Self::OutputHeadAndTokenEmbeddings
+                | Self::OutputHeadAndEmbeddings
+                | Self::OutputHeadEmbeddingsAndSmallLearnedMixer
+        )
+    }
+
+    /// Returns whether position embeddings are trainable.
+    #[must_use]
+    pub const fn trains_position_embeddings(self) -> bool {
+        matches!(
+            self,
+            Self::OutputHeadAndEmbeddings | Self::OutputHeadEmbeddingsAndSmallLearnedMixer
+        )
+    }
+
+    /// Returns whether the small learned mixer is active and trainable.
+    #[must_use]
+    pub const fn trains_small_learned_mixer(self) -> bool {
+        matches!(self, Self::OutputHeadEmbeddingsAndSmallLearnedMixer)
+    }
+}
+
+fn default_trainable_surface() -> TassadarExecutorTrainableSurface {
+    TassadarExecutorTrainableSurface::OutputHeadOnly
+}
+
+fn trainable_surface_is_output_head_only(
+    surface: &TassadarExecutorTrainableSurface,
+) -> bool {
+    *surface == TassadarExecutorTrainableSurface::OutputHeadOnly
+}
+
 /// Explicit config for the first trainable neural executor family.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExecutorTransformerConfig {
@@ -88,6 +153,12 @@ pub struct TassadarExecutorTransformerDescriptor {
     pub attention_geometry: TassadarAttentionGeometryContract,
     /// Explicit claim boundary.
     pub claim_boundary: TassadarExecutorTransformerClaimBoundary,
+    /// Active trainable surface carried by the descriptor.
+    #[serde(
+        default = "default_trainable_surface",
+        skip_serializing_if = "trainable_surface_is_output_head_only"
+    )]
+    pub trainable_surface: TassadarExecutorTrainableSurface,
     /// Model config.
     pub config: TassadarExecutorTransformerConfig,
     /// Weight bundle metadata.
@@ -110,11 +181,16 @@ pub struct TassadarExecutorTransformerWeightBundle {
     position_embeddings: Vec<f32>,
     output_projection: Vec<f32>,
     output_bias: Vec<f32>,
+    small_learned_mixer_projection: Vec<f32>,
+    small_learned_mixer_bias: Vec<f32>,
     head_offsets: Vec<f32>,
 }
 
 impl TassadarExecutorTransformerWeightBundle {
-    fn new(config: &TassadarExecutorTransformerConfig) -> Self {
+    fn new(
+        config: &TassadarExecutorTransformerConfig,
+        trainable_surface: TassadarExecutorTrainableSurface,
+    ) -> Self {
         let token_embeddings = seeded_values(
             "token_embeddings",
             config.vocab_size * config.embedding_dim,
@@ -131,13 +207,16 @@ impl TassadarExecutorTransformerWeightBundle {
             0.08,
         );
         let output_bias = vec![0.0; config.vocab_size];
+        let small_learned_mixer_projection =
+            vec![0.0; config.hidden_width() * config.hidden_width()];
+        let small_learned_mixer_bias = vec![0.0; config.hidden_width()];
         let head_offsets = config
             .context_offsets
             .iter()
             .map(|offset| *offset as f32)
             .collect::<Vec<_>>();
 
-        let entries = vec![
+        let mut entries = vec![
             (
                 WeightTensorMetadata::new(
                     "token_embeddings",
@@ -179,6 +258,26 @@ impl TassadarExecutorTransformerWeightBundle {
                 head_offsets.as_slice(),
             ),
         ];
+        if trainable_surface.trains_small_learned_mixer() {
+            entries.extend([
+                (
+                    WeightTensorMetadata::new(
+                        "small_learned_mixer_projection",
+                        Shape::new(vec![config.hidden_width(), config.hidden_width()]),
+                        DType::F32,
+                    ),
+                    small_learned_mixer_projection.as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        "small_learned_mixer_bias",
+                        Shape::new(vec![config.hidden_width()]),
+                        DType::F32,
+                    ),
+                    small_learned_mixer_bias.as_slice(),
+                ),
+            ]);
+        }
 
         Self {
             metadata: build_metadata(entries.as_slice()),
@@ -186,6 +285,8 @@ impl TassadarExecutorTransformerWeightBundle {
             position_embeddings,
             output_projection,
             output_bias,
+            small_learned_mixer_projection,
+            small_learned_mixer_bias,
             head_offsets,
         }
     }
@@ -199,6 +300,23 @@ impl TassadarExecutorTransformerWeightBundle {
     /// Returns mutable token embeddings for later training updates.
     pub fn token_embeddings_mut(&mut self) -> &mut [f32] {
         &mut self.token_embeddings
+    }
+
+    /// Returns the current token embeddings.
+    #[must_use]
+    pub fn token_embeddings(&self) -> &[f32] {
+        &self.token_embeddings
+    }
+
+    /// Returns mutable position embeddings for later training updates.
+    pub fn position_embeddings_mut(&mut self) -> &mut [f32] {
+        &mut self.position_embeddings
+    }
+
+    /// Returns the current position embeddings.
+    #[must_use]
+    pub fn position_embeddings(&self) -> &[f32] {
+        &self.position_embeddings
     }
 
     /// Returns mutable output projection weights for later training updates.
@@ -223,8 +341,34 @@ impl TassadarExecutorTransformerWeightBundle {
         &self.output_bias
     }
 
-    fn refresh_metadata(&mut self, config: &TassadarExecutorTransformerConfig) {
-        let entries = vec![
+    /// Returns mutable residual-mixer projection weights for later training updates.
+    pub fn small_learned_mixer_projection_mut(&mut self) -> &mut [f32] {
+        &mut self.small_learned_mixer_projection
+    }
+
+    /// Returns the residual-mixer projection.
+    #[must_use]
+    pub fn small_learned_mixer_projection(&self) -> &[f32] {
+        &self.small_learned_mixer_projection
+    }
+
+    /// Returns mutable residual-mixer bias weights for later training updates.
+    pub fn small_learned_mixer_bias_mut(&mut self) -> &mut [f32] {
+        &mut self.small_learned_mixer_bias
+    }
+
+    /// Returns the residual-mixer bias.
+    #[must_use]
+    pub fn small_learned_mixer_bias(&self) -> &[f32] {
+        &self.small_learned_mixer_bias
+    }
+
+    fn refresh_metadata(
+        &mut self,
+        config: &TassadarExecutorTransformerConfig,
+        trainable_surface: TassadarExecutorTrainableSurface,
+    ) {
+        let mut entries = vec![
             (
                 WeightTensorMetadata::new(
                     "token_embeddings",
@@ -266,6 +410,26 @@ impl TassadarExecutorTransformerWeightBundle {
                 self.head_offsets.as_slice(),
             ),
         ];
+        if trainable_surface.trains_small_learned_mixer() {
+            entries.extend([
+                (
+                    WeightTensorMetadata::new(
+                        "small_learned_mixer_projection",
+                        Shape::new(vec![config.hidden_width(), config.hidden_width()]),
+                        DType::F32,
+                    ),
+                    self.small_learned_mixer_projection.as_slice(),
+                ),
+                (
+                    WeightTensorMetadata::new(
+                        "small_learned_mixer_bias",
+                        Shape::new(vec![config.hidden_width()]),
+                        DType::F32,
+                    ),
+                    self.small_learned_mixer_bias.as_slice(),
+                ),
+            ]);
+        }
         self.metadata = build_metadata(entries.as_slice());
     }
 }
@@ -273,10 +437,23 @@ impl TassadarExecutorTransformerWeightBundle {
 /// Hidden-state and logits emitted by one forward pass.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TassadarExecutorTransformerForwardPass {
+    /// Lookup-only hidden state before any optional learned mixer.
+    pub source_hidden_states: Vec<Vec<f32>>,
     /// Hidden state for each next-token prediction position.
     pub hidden_states: Vec<Vec<f32>>,
     /// Vocabulary logits for each prediction position.
     pub logits: Vec<Vec<f32>>,
+    /// Context tokens and positions used to build each hidden state.
+    pub step_contexts: Vec<TassadarExecutorTransformerStepContext>,
+}
+
+/// One step-local context used to build a hidden state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorTransformerStepContext {
+    /// Context tokens selected by the lookup heads.
+    pub context_tokens: Vec<TokenId>,
+    /// Position index used for the position embedding.
+    pub position: u32,
 }
 
 /// Decode refusal for the neural executor family.
@@ -348,9 +525,15 @@ impl TassadarExecutorTransformer {
     /// Creates the canonical small Sudoku-v0 executor transformer.
     #[must_use]
     pub fn sudoku_v0() -> Self {
+        Self::sudoku_v0_with_surface(TassadarExecutorTrainableSurface::OutputHeadOnly)
+    }
+
+    /// Creates the canonical small Sudoku-v0 executor transformer for one surface.
+    #[must_use]
+    pub fn sudoku_v0_with_surface(trainable_surface: TassadarExecutorTrainableSurface) -> Self {
         let tokenizer = TassadarTraceTokenizer::new();
         let config = TassadarExecutorTransformerConfig::sudoku_v0(&tokenizer);
-        let weights = TassadarExecutorTransformerWeightBundle::new(&config);
+        let weights = TassadarExecutorTransformerWeightBundle::new(&config, trainable_surface);
         let descriptor = TassadarExecutorTransformerDescriptor {
             model: ModelDescriptor::new(Self::MODEL_ID, Self::MODEL_FAMILY, "v0"),
             executor_family: TassadarExecutorFamily::WasmTraceExecutor,
@@ -366,6 +549,7 @@ impl TassadarExecutorTransformer {
                 hull_cache_eligible: true,
             },
             claim_boundary: TassadarExecutorTransformerClaimBoundary::NextTokenOnly,
+            trainable_surface,
             config,
             weights: weights.metadata().clone(),
         };
@@ -379,9 +563,15 @@ impl TassadarExecutorTransformer {
     /// Creates the first 9x9 Sudoku-class executor transformer.
     #[must_use]
     pub fn sudoku_9x9() -> Self {
+        Self::sudoku_9x9_with_surface(TassadarExecutorTrainableSurface::OutputHeadOnly)
+    }
+
+    /// Creates the first 9x9 Sudoku-class executor transformer for one surface.
+    #[must_use]
+    pub fn sudoku_9x9_with_surface(trainable_surface: TassadarExecutorTrainableSurface) -> Self {
         let tokenizer = TassadarTraceTokenizer::new();
         let config = TassadarExecutorTransformerConfig::sudoku_9x9(&tokenizer);
-        let weights = TassadarExecutorTransformerWeightBundle::new(&config);
+        let weights = TassadarExecutorTransformerWeightBundle::new(&config, trainable_surface);
         let descriptor = TassadarExecutorTransformerDescriptor {
             model: ModelDescriptor::new(Self::SUDOKU_9X9_MODEL_ID, Self::MODEL_FAMILY, "v0"),
             executor_family: TassadarExecutorFamily::WasmTraceExecutor,
@@ -397,6 +587,7 @@ impl TassadarExecutorTransformer {
                 hull_cache_eligible: true,
             },
             claim_boundary: TassadarExecutorTransformerClaimBoundary::NextTokenOnly,
+            trainable_surface,
             config,
             weights: weights.metadata().clone(),
         };
@@ -428,6 +619,12 @@ impl TassadarExecutorTransformer {
     #[must_use]
     pub fn weights(&self) -> &TassadarExecutorTransformerWeightBundle {
         &self.weights
+    }
+
+    /// Returns the active trainable surface.
+    #[must_use]
+    pub const fn trainable_surface(&self) -> TassadarExecutorTrainableSurface {
+        self.descriptor.trainable_surface
     }
 
     /// Returns whether the descriptor advertises one decode mode.
@@ -474,7 +671,8 @@ impl TassadarExecutorTransformer {
 
     /// Refreshes the descriptor metadata after in-place training updates.
     pub fn refresh_after_training(&mut self) {
-        self.weights.refresh_metadata(&self.descriptor.config);
+        self.weights
+            .refresh_metadata(&self.descriptor.config, self.descriptor.trainable_surface);
         self.descriptor.weights = self.weights.metadata().clone();
         self.descriptor.claim_boundary =
             TassadarExecutorTransformerClaimBoundary::GreedyDecodeUnvalidated;
@@ -520,17 +718,25 @@ impl TassadarExecutorTransformer {
             });
         }
         let mut hidden_states = Vec::new();
+        let mut source_hidden_states = Vec::new();
         let mut logits = Vec::new();
+        let mut step_contexts = Vec::new();
         for position in 1..sequence.len() {
             let prefix = &sequence.as_slice()[..position];
-            let hidden_state = self.hidden_state(prefix, position)?;
+            let step_context = self.step_context(prefix, position)?;
+            let source_hidden_state = self.hidden_state_from_step_context(&step_context)?;
+            let hidden_state = self.apply_small_learned_mixer(source_hidden_state.as_slice())?;
             let step_logits = self.project_logits(hidden_state.as_slice())?;
+            source_hidden_states.push(source_hidden_state);
             hidden_states.push(hidden_state);
             logits.push(step_logits);
+            step_contexts.push(step_context);
         }
         Ok(TassadarExecutorTransformerForwardPass {
+            source_hidden_states,
             hidden_states,
             logits,
+            step_contexts,
         })
     }
 
@@ -626,50 +832,115 @@ impl TassadarExecutorTransformer {
         Ok(TokenId(best_index as u32))
     }
 
-    fn hidden_state(
+    fn hidden_state_from_decode_state(
+        &self,
+        state: &TassadarExecutorTransformerDecodeState,
+        decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
+        let step_context = self.step_context_from_decode_state(state, decode_mode)?;
+        let hidden = self.hidden_state_from_step_context(&step_context)?;
+        self.apply_small_learned_mixer(hidden.as_slice())
+    }
+
+    fn step_context(
         &self,
         prefix: &[TokenId],
         position: usize,
-    ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
+    ) -> Result<TassadarExecutorTransformerStepContext, TassadarExecutorTransformerError> {
         if position >= self.descriptor.config.max_sequence_tokens {
             return Err(TassadarExecutorTransformerError::SequenceTooLong {
                 token_count: position + 1,
                 max_supported: self.descriptor.config.max_sequence_tokens,
             });
         }
-
-        let config = &self.descriptor.config;
-        let mut hidden = Vec::with_capacity(config.hidden_width());
-        for offset in &config.context_offsets {
-            let token = prefix
-                .len()
-                .checked_sub(*offset)
-                .and_then(|index| prefix.get(index).copied())
-                .unwrap_or_else(|| self.tokenizer.vocabulary().bos_id());
-            hidden.extend_from_slice(self.token_embedding(token)?);
-        }
-        hidden.extend_from_slice(self.position_embedding(position));
-        Ok(hidden)
+        let context_tokens = self
+            .descriptor
+            .config
+            .context_offsets
+            .iter()
+            .map(|offset| {
+                prefix
+                    .len()
+                    .checked_sub(*offset)
+                    .and_then(|index| prefix.get(index).copied())
+                    .unwrap_or_else(|| self.tokenizer.vocabulary().bos_id())
+            })
+            .collect::<Vec<_>>();
+        Ok(TassadarExecutorTransformerStepContext {
+            context_tokens,
+            position: position as u32,
+        })
     }
 
-    fn hidden_state_from_decode_state(
+    fn step_context_from_decode_state(
         &self,
         state: &TassadarExecutorTransformerDecodeState,
         decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<TassadarExecutorTransformerStepContext, TassadarExecutorTransformerError> {
+        let config = &self.descriptor.config;
+        let context_tokens = config
+            .context_offsets
+            .iter()
+            .map(|offset| {
+                if *offset > state.next_position {
+                    Ok(self.tokenizer.vocabulary().bos_id())
+                } else {
+                    let target_position = state.next_position - *offset;
+                    self.lookup_token_from_kv(
+                        state.kv_points.as_slice(),
+                        target_position,
+                        decode_mode,
+                    )
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(TassadarExecutorTransformerStepContext {
+            context_tokens,
+            position: state.next_position as u32,
+        })
+    }
+
+    fn hidden_state_from_step_context(
+        &self,
+        step_context: &TassadarExecutorTransformerStepContext,
     ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
         let config = &self.descriptor.config;
         let mut hidden = Vec::with_capacity(config.hidden_width());
-        for offset in &config.context_offsets {
-            let token = if *offset > state.next_position {
-                self.tokenizer.vocabulary().bos_id()
-            } else {
-                let target_position = state.next_position - *offset;
-                self.lookup_token_from_kv(state.kv_points.as_slice(), target_position, decode_mode)?
-            };
-            hidden.extend_from_slice(self.token_embedding(token)?);
+        for token in &step_context.context_tokens {
+            hidden.extend_from_slice(self.token_embedding(*token)?);
         }
-        hidden.extend_from_slice(self.position_embedding(state.next_position));
+        hidden.extend_from_slice(self.position_embedding(step_context.position as usize));
         Ok(hidden)
+    }
+
+    fn apply_small_learned_mixer(
+        &self,
+        hidden_state: &[f32],
+    ) -> Result<Vec<f32>, TassadarExecutorTransformerError> {
+        let hidden_width = self.descriptor.config.hidden_width();
+        if hidden_state.len() != hidden_width {
+            return Err(TassadarExecutorTransformerError::HiddenWidthMismatch {
+                expected: hidden_width,
+                actual: hidden_state.len(),
+            });
+        }
+        if !self
+            .descriptor
+            .trainable_surface
+            .trains_small_learned_mixer()
+        {
+            return Ok(hidden_state.to_vec());
+        }
+        let mut mixed = hidden_state.to_vec();
+        for output_index in 0..hidden_width {
+            let mut value = self.weights.small_learned_mixer_bias[output_index];
+            for (input_index, hidden_value) in hidden_state.iter().enumerate() {
+                let weight_index = input_index * hidden_width + output_index;
+                value += hidden_value * self.weights.small_learned_mixer_projection[weight_index];
+            }
+            mixed[output_index] += value;
+        }
+        Ok(mixed)
     }
 
     fn lookup_token_from_kv(
