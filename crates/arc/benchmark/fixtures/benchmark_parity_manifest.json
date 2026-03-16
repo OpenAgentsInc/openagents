@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "ARC-210 publishes one bounded offline/local benchmark parity fixture bundle over the currently landed Rust surfaces: exact-match summary aggregation, task-checkpoint persistence, methodology RHAE scoring, interactive checkpoint bundles, recording reload, deterministic replay, and corrupted-checkpoint refusal. Competition policy, scorecard lifecycle, and JSONL compatibility remain follow-on issues.",
+  "exact_match": {
+    "benchmark": "arc_agi2",
+    "case_ids": [
+      "agi2-multi-attempt-partial",
+      "agi2-missing-pair-scores-zero"
+    ],
+    "expected": {
+      "total_tasks": 2,
+      "exact_match_tasks": 0,
+      "total_pairs": 4,
+      "pairs_correct": 2,
+      "mean_task_score": 0.5,
+      "pair_accuracy": 0.5
+    }
+  },
+  "task_checkpoint": {
+    "task_id": "parity-static-checkpoint",
+    "benchmark": "arc_agi2",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "test_pair_index": 0,
+        "prediction": { "width": 1, "height": 1, "cells": [7] },
+        "cost_usd": 0.25,
+        "tokens_input": 11,
+        "tokens_output": 7,
+        "duration_millis": 150,
+        "recorded_at_unix_s": 100
+      },
+      {
+        "attempt_index": 0,
+        "test_pair_index": 1,
+        "error": "timeout",
+        "cost_usd": 0.5,
+        "tokens_input": 13,
+        "tokens_output": 0,
+        "duration_millis": 200,
+        "recorded_at_unix_s": 120
+      }
+    ],
+    "next_attempts": [
+      {
+        "test_pair_index": 0,
+        "max_attempts": 2,
+        "expected_attempt_index": 1
+      },
+      {
+        "test_pair_index": 1,
+        "max_attempts": 1,
+        "expected_attempt_index": null
+      }
+    ],
+    "expected": {
+      "total_cost_usd": 0.75,
+      "total_tokens_input": 24,
+      "total_tokens_output": 7
+    }
+  },
+  "interactive_cases": [
+    {
+      "case_id": "demo-perfect-win",
+      "checkpoint_id": "parity-perfect-win",
+      "costs": {
+        "total_cost_usd": 1.5,
+        "total_tokens_input": 101,
+        "total_tokens_output": 33
+      },
+      "checkpoint_timestamp_unix_s": 200,
+      "expected": {
+        "total_actions": 12,
+        "resets": 0,
+        "levels_completed": 2,
+        "win_levels": 2,
+        "completed": true,
+        "final_state": "win",
+        "overall_score": 1.0,
+        "step_count": 13,
+        "next_step_index": 13,
+        "checkpoint_files": [
+          "costs.json",
+          "metadata.json",
+          "recording.json",
+          "scorecard.json",
+          "step_summaries.json"
+        ]
+      }
+    },
+    {
+      "case_id": "demo-partial-run",
+      "checkpoint_id": "parity-partial-run",
+      "costs": {
+        "total_cost_usd": 0.5,
+        "total_tokens_input": 80,
+        "total_tokens_output": 12
+      },
+      "checkpoint_timestamp_unix_s": 201,
+      "expected": {
+        "total_actions": 7,
+        "resets": 0,
+        "levels_completed": 1,
+        "win_levels": 2,
+        "completed": false,
+        "final_state": "not_finished",
+        "overall_score": 0.33333334,
+        "step_count": 8,
+        "next_step_index": 8,
+        "checkpoint_files": [
+          "costs.json",
+          "metadata.json",
+          "recording.json",
+          "scorecard.json",
+          "step_summaries.json"
+        ]
+      }
+    }
+  ],
+  "refusal_case": {
+    "case_id": "demo-perfect-win",
+    "checkpoint_id": "parity-corrupt-digest",
+    "costs": {
+      "total_cost_usd": 1.5,
+      "total_tokens_input": 101,
+      "total_tokens_output": 33
+    },
+    "checkpoint_timestamp_unix_s": 300,
+    "corrupted_recording_digest": "deadbeef"
+  }
+}

@@ -659,7 +659,7 @@ Master issue:
 | `ARC-207` / [#3686](https://github.com/OpenAgentsInc/openagents/issues/3686) | landed | Implement interactive RHAE scoring, scorecards, recordings, and per-step summaries for ARC-AGI-3. |
 | `ARC-208` / [#3687](https://github.com/OpenAgentsInc/openagents/issues/3687) | landed | Port checkpoint, resume, and run-manifest behavior from the benchmarking repos. |
 | `ARC-209` / [#3688](https://github.com/OpenAgentsInc/openagents/issues/3688) | landed | Add typed benchmark summaries and repeated-run aggregation over `psionic-eval` and `psionic-research`. |
-| `ARC-210` / [#3689](https://github.com/OpenAgentsInc/openagents/issues/3689) | planned | Publish benchmark parity fixtures covering exact-match, RHAE, checkpoints, recordings, and replay. |
+| `ARC-210` / [#3689](https://github.com/OpenAgentsInc/openagents/issues/3689) | landed | Publish benchmark parity fixtures covering exact-match, RHAE, checkpoints, recordings, and replay. |
 
 ## Epic 3: Static Solver Program
 
@@ -804,6 +804,8 @@ This is the recommended dependency order for the ARC subtree.
 
 Epic 3 MUST NOT start until exact-match and RHAE benchmark parity fixtures are
 green.
+
+That gate is now satisfied in bounded form by `ARC-210`.
 
 ### Phase 1: lock governance and shared contracts
 
