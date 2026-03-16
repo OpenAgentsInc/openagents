@@ -1079,10 +1079,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The public transform layer exposes grad, value_and_grad, vjp, jvp, vmap, checkpoint, compile-as-transform, and explicit symbolic or shapeless compile boundaries with typed refusals.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, and jvp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, and explicit higher-order-transform refusal anchors, but vmap, checkpoint, and compile-as-transform remain open.",
+                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, and vmap objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, and explicit cast plus backend-extension refusal for bounded vmap coverage, but checkpoint, custom_vjp, and compile-as-transform remain open.",
             ),
             boundary_note: String::from(
-                "Do not infer full MLX transform closure from the first reverse-plus-forward public slice; higher-order transforms and compile contracts remain open.",
+                "Do not infer full MLX transform closure from the first reverse-plus-forward plus bounded-vmap slice; checkpoint, custom_vjp, jacobian, and compile contracts remain open.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1312,22 +1312,39 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
             ),
         },
         MlxParityHarnessFamily {
-            family_id: String::from("vmap_custom_vjp"),
+            family_id: String::from("vmap"),
             acceptance_category: String::from("transform-compile"),
             upstream_sources: vec![
                 String::from("tests/vmap_tests.cpp"),
-                String::from("tests/custom_vjp_tests.cpp"),
                 String::from("python/tests/test_vmap.py"),
             ],
-            current_outcome: MlxParityHarnessOutcome::Refusal,
-            psionic_hook_commands: vec![String::from(
-                "cargo test -p psionic-ir tests::program_transform_capability_matrix_tracks_seeded_transform_and_future_cases -- --exact --nocapture",
-            )],
+            current_outcome: MlxParityHarnessOutcome::Pass,
+            psionic_hook_commands: vec![
+                String::from(
+                    "cargo test -p psionic-ir autodiff::tests::public_vmap_transform_batches_reference_graph_outputs -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-ir tests::program_transform_capability_matrix_tracks_seeded_transform_and_future_cases -- --exact --nocapture",
+                ),
+            ],
             summary: String::from(
-                "The seeded higher-order-transform family currently refuses explicitly through the program-transform capability matrix.",
+                "The seeded vmap family can now point at a public single-lane-to-batched transform with explicit cast and backend-extension refusals in the capability matrix.",
             ),
             boundary_note: String::from(
-                "A typed refusal is honest progress, but it is not a ported transform family.",
+                "This is a bounded public vmap pass, not proof that checkpoint, custom_vjp, jacobian, or compile-as-transform are complete.",
+            ),
+        },
+        MlxParityHarnessFamily {
+            family_id: String::from("custom_vjp"),
+            acceptance_category: String::from("transform-compile"),
+            upstream_sources: vec![String::from("tests/custom_vjp_tests.cpp")],
+            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            psionic_hook_commands: Vec::new(),
+            summary: String::from(
+                "The upstream custom_vjp family remains explicitly tracked, but there is no public Psionic custom_vjp surface yet.",
+            ),
+            boundary_note: String::from(
+                "Bounded vmap support does not imply custom_vjp or checkpoint coverage.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1440,13 +1457,13 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("seeded_transform_compile_export_parity_anchors"),
             matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "Seeded parity anchors now exist for autograd, compile, export/import, and explicit higher-order-transform refusal.",
+                "Seeded parity anchors now exist for autograd, vmap, compile, and export/import, with custom_vjp still tracked honestly as unsupported.",
             ),
             evidence_refs: vec![
                 String::from("MLX parity family `autograd` = pass"),
+                String::from("MLX parity family `vmap` = pass"),
                 String::from("MLX parity family `compile` = pass"),
                 String::from("MLX parity family `export_import` = pass"),
-                String::from("MLX parity family `vmap_custom_vjp` = refusal"),
             ],
             blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
@@ -1525,7 +1542,9 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("ArrayScalar"),
                 String::from("Tree<Array>"),
                 String::from("PendingAsyncEval"),
-                String::from("MlxAcceptanceMatrixReport::array-runtime-surface = implemented_early"),
+                String::from(
+                    "MlxAcceptanceMatrixReport::array-runtime-surface = implemented_early",
+                ),
             ],
             blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
@@ -1536,19 +1555,19 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_transform_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Convertible,
             summary: String::from(
-                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, and jvp objects above AutodiffGraph, but higher-order transforms and compile-as-transform are still incomplete.",
+                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, jvp, and bounded vmap objects above AutodiffGraph, but checkpoint, custom_vjp, jacobian, and compile-as-transform are still incomplete.",
             ),
             evidence_refs: vec![
                 String::from("grad"),
                 String::from("value_and_grad"),
                 String::from("vjp"),
                 String::from("jvp"),
+                String::from("vmap"),
                 String::from("MlxParityHarnessReport"),
                 String::from("MlxAcceptanceMatrixReport::transform-compile = partial"),
                 String::from("ProgramTransformCapabilityMatrixReport"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-203 (#3842)"),
                 String::from("PMLX-204 (#3843)"),
                 String::from("PMLX-205 (#3844)"),
                 String::from("PMLX-206 (#3845)"),
@@ -1902,10 +1921,10 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        builtin_mlx_acceptance_matrix_report, builtin_mlx_compatibility_matrix_report,
-        builtin_mlx_compatibility_scope_report, builtin_mlx_parity_harness_report,
-        builtin_semantics_claim_report, MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture,
-        MlxCompatibilityMatrixStatus, MlxParityHarnessOutcome, SemanticsClaimPosture,
+        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, MlxCompatibilityMatrixStatus,
+        MlxParityHarnessOutcome, SemanticsClaimPosture, builtin_mlx_acceptance_matrix_report,
+        builtin_mlx_compatibility_matrix_report, builtin_mlx_compatibility_scope_report,
+        builtin_mlx_parity_harness_report, builtin_semantics_claim_report,
     };
 
     #[test]
@@ -1937,52 +1956,66 @@ mod tests {
             report.upstream_version_window.review_checkout_date,
             "2026-03-16"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let mlx_class = report
             .compatibility_terms
             .iter()
             .find(|term| term.term_id == "mlx_class")
             .expect("missing mlx_class term");
-        assert!(mlx_class
-            .required_properties
-            .iter()
-            .any(|property| property.contains("implemented natively")));
-        assert!(mlx_class
-            .forbidden_shortcuts
-            .iter()
-            .any(|shortcut| shortcut.contains("unversioned claims")));
+        assert!(
+            mlx_class
+                .required_properties
+                .iter()
+                .any(|property| property.contains("implemented natively"))
+        );
+        assert!(
+            mlx_class
+                .forbidden_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("unversioned claims"))
+        );
 
         let mlx_compatible = report
             .compatibility_terms
             .iter()
             .find(|term| term.term_id == "mlx_compatible")
             .expect("missing mlx_compatible term");
-        assert!(mlx_compatible
-            .required_properties
-            .iter()
-            .any(|property| property.contains("supported, convertible, and unsupported")));
-        assert!(mlx_compatible
-            .forbidden_shortcuts
-            .iter()
-            .any(|shortcut| shortcut.contains("tip-of-tree MLX coverage")));
+        assert!(
+            mlx_compatible
+                .required_properties
+                .iter()
+                .any(|property| property.contains("supported, convertible, and unsupported"))
+        );
+        assert!(
+            mlx_compatible
+                .forbidden_shortcuts
+                .iter()
+                .any(|shortcut| shortcut.contains("tip-of-tree MLX coverage"))
+        );
 
-        assert!(report
-            .explicit_rules
-            .iter()
-            .any(|rule| rule.contains("inclusive v0.31.0 through v0.31.1")));
-        assert!(report
-            .explicit_rules
-            .iter()
-            .any(|rule| rule.contains("does not widen the supported release window")));
+        assert!(
+            report
+                .explicit_rules
+                .iter()
+                .any(|rule| rule.contains("inclusive v0.31.0 through v0.31.1"))
+        );
+        assert!(
+            report
+                .explicit_rules
+                .iter()
+                .any(|rule| rule.contains("does not widen the supported release window"))
+        );
     }
 
     #[test]
-    fn mlx_acceptance_matrix_report_declares_all_named_closure_categories_and_filtering(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_acceptance_matrix_report_declares_all_named_closure_categories_and_filtering()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_mlx_acceptance_matrix_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(
@@ -1997,10 +2030,12 @@ mod tests {
             report.report_posture,
             MlxAcceptanceMatrixPosture::TrackingOnly
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         for category_id in [
             "array-runtime-surface",
@@ -2052,8 +2087,8 @@ mod tests {
     }
 
     #[test]
-    fn mlx_parity_harness_report_tracks_seeded_pass_refusal_and_unsupported_families(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_parity_harness_report_tracks_seeded_pass_refusal_and_unsupported_families()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_mlx_parity_harness_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(
@@ -2068,10 +2103,12 @@ mod tests {
             report.oracle_window,
             "ml-explore/mlx:v0.31.0..v0.31.1:seed_v0"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let autograd = report
             .families
@@ -2084,10 +2121,21 @@ mod tests {
         let vmap = report
             .families
             .iter()
-            .find(|family| family.family_id == "vmap_custom_vjp")
+            .find(|family| family.family_id == "vmap")
             .expect("missing vmap family");
-        assert_eq!(vmap.current_outcome, MlxParityHarnessOutcome::Refusal);
+        assert_eq!(vmap.current_outcome, MlxParityHarnessOutcome::Pass);
         assert!(!vmap.psionic_hook_commands.is_empty());
+
+        let custom_vjp = report
+            .families
+            .iter()
+            .find(|family| family.family_id == "custom_vjp")
+            .expect("missing custom_vjp family");
+        assert_eq!(
+            custom_vjp.current_outcome,
+            MlxParityHarnessOutcome::Unsupported
+        );
+        assert!(custom_vjp.psionic_hook_commands.is_empty());
 
         let distributed = report
             .families
@@ -2128,8 +2176,8 @@ mod tests {
     }
 
     #[test]
-    fn mlx_compatibility_matrix_report_tracks_supported_convertible_and_unsupported_rows(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn mlx_compatibility_matrix_report_tracks_supported_convertible_and_unsupported_rows()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_mlx_compatibility_matrix_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(
@@ -2144,10 +2192,12 @@ mod tests {
             report.oracle_window,
             "ml-explore/mlx:v0.31.0..v0.31.1:matrix_v0"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let governance = report
             .surfaces
@@ -2211,8 +2261,8 @@ mod tests {
     }
 
     #[test]
-    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn semantics_claim_report_marks_seeded_evidence_and_future_compatibility_targets()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_semantics_claim_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.claim_vocabulary_version, "pytorch_claim_v1");
@@ -2220,10 +2270,12 @@ mod tests {
             report.overall_posture,
             SemanticsClaimPosture::SeededEvidenceOnly
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         for area_id in [
             "operator_semantics",

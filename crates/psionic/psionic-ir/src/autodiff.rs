@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use psionic_core::{
     DType, Device, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, Shape, Tensor,
@@ -147,6 +147,57 @@ pub const fn gradient_support_for_op(op: &OpKind) -> AutodiffGradientSupport {
         },
         OpKind::BackendExtension { .. } => AutodiffGradientSupport::Unsupported {
             reason: AutodiffUnsupportedGradientReason::BackendExtensionFamily,
+        },
+    }
+}
+
+/// Typed support classification for public `vmap` over one graph op.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "support", rename_all = "snake_case")]
+pub enum VmapSupport {
+    /// Public `vmap` semantics are implemented for this op family.
+    Implemented,
+    /// Public `vmap` semantics are intentionally unsupported for now.
+    Unsupported {
+        /// Stable reason code for the refusal family.
+        reason: VmapUnsupportedReason,
+    },
+}
+
+/// Stable refusal family for unsupported public `vmap` coverage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VmapUnsupportedReason {
+    /// Dtype-cast ops are intentionally excluded from the first bounded
+    /// public `vmap` surface.
+    CastFamily,
+    /// Backend-extension op families still require dedicated vectorization
+    /// contracts.
+    BackendExtensionFamily,
+}
+
+/// Returns the public `vmap` support posture for one graph op.
+#[must_use]
+pub const fn vmap_support_for_op(op: &OpKind) -> VmapSupport {
+    match op {
+        OpKind::Input { .. }
+        | OpKind::Constant { .. }
+        | OpKind::Detach
+        | OpKind::Add
+        | OpKind::Mul
+        | OpKind::Matmul
+        | OpKind::Reshape
+        | OpKind::Permute { .. }
+        | OpKind::Slice { .. }
+        | OpKind::Select { .. }
+        | OpKind::Concat { .. }
+        | OpKind::Expand { .. }
+        | OpKind::ReduceSum { .. } => VmapSupport::Implemented,
+        OpKind::Cast { .. } => VmapSupport::Unsupported {
+            reason: VmapUnsupportedReason::CastFamily,
+        },
+        OpKind::BackendExtension { .. } => VmapSupport::Unsupported {
+            reason: VmapUnsupportedReason::BackendExtensionFamily,
         },
     }
 }
@@ -428,7 +479,9 @@ pub enum ReverseModeTransformError {
         dtype: DType,
     },
     /// `grad` and `value_and_grad` currently require a singleton output.
-    #[error("reverse-mode transform `{transform}` requires a singleton output; tensor `{tensor_id}` has shape {shape}")]
+    #[error(
+        "reverse-mode transform `{transform}` requires a singleton output; tensor `{tensor_id}` has shape {shape}"
+    )]
     NonSingletonOutput {
         /// Stable transform label.
         transform: String,
@@ -640,6 +693,182 @@ pub struct JvpTransformResult {
     pub tangent_values: BTreeMap<TensorId, TensorData>,
 }
 
+/// One public mapped-input binding for `vmap`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VmapInputBinding {
+    /// Graph input tensor that receives a batched runtime value.
+    pub input: TensorId,
+    /// Runtime batch axis inserted into that input.
+    pub axis: usize,
+}
+
+/// Stable target signature for one public `vmap` transform.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VmapTransformSignature {
+    /// Output tensor whose lane values are stacked into the batched result.
+    pub output: TensorId,
+    /// Graph inputs that receive batched runtime values.
+    pub mapped_inputs: Vec<VmapInputBinding>,
+    /// Axis where the output batch dimension is inserted.
+    pub output_axis: usize,
+}
+
+/// Typed error returned by the public `vmap` transform layer.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum VmapTransformError {
+    /// The requested tensor is not present in the graph.
+    #[error("vmap transform graph does not contain tensor `{tensor_id}`")]
+    UnknownTensor {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// `vmap` currently requires at least one mapped graph input.
+    #[error("vmap transform requires at least one mapped graph input")]
+    MissingMappedInputs,
+    /// One mapped target does not refer to a graph input tensor.
+    #[error("vmap transform target `{tensor_id}` is not a graph input")]
+    NonInputTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One mapped graph input was declared more than once.
+    #[error("vmap transform target `{tensor_id}` was declared more than once")]
+    DuplicateMappedInput {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One requested mapped-input axis is outside the bounded supported range.
+    #[error("vmap transform target `{tensor_id}` uses invalid batch axis {axis} for rank {rank}")]
+    InvalidInputAxis {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Requested axis.
+        axis: usize,
+        /// Unbatched tensor rank.
+        rank: usize,
+    },
+    /// The requested output axis is outside the bounded supported range.
+    #[error("vmap transform output `{tensor_id}` uses invalid output axis {axis} for rank {rank}")]
+    InvalidOutputAxis {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Requested axis.
+        axis: usize,
+        /// Unbatched output rank.
+        rank: usize,
+    },
+    /// One requested target uses a dtype outside the bounded `vmap` surface.
+    #[error("vmap transform target `{tensor_id}` uses unsupported dtype `{dtype:?}`")]
+    UnsupportedTargetDType {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Observed dtype.
+        dtype: DType,
+    },
+    /// One graph input required by the `vmap` signature was not provided.
+    #[error("vmap transform target `{tensor_id}` requires a batched runtime input")]
+    MissingMappedInput {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One mapped runtime input used an unsupported storage family.
+    #[error("vmap transform target `{tensor_id}` must use dense `f32` runtime data")]
+    MappedInputDenseF32Required {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One mapped runtime input length does not match whole unbatched lanes.
+    #[error(
+        "vmap transform target `{tensor_id}` length mismatch: expected a whole-number multiple of lane size {lane_len}, found {actual_len}"
+    )]
+    MappedInputLengthMismatch {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Logical element count for one unbatched lane.
+        lane_len: usize,
+        /// Observed runtime payload length.
+        actual_len: usize,
+    },
+    /// Mapped runtime inputs must agree on one batch size.
+    #[error(
+        "vmap transform target `{tensor_id}` batch size mismatch: expected {expected_batch_size}, found {actual_batch_size}"
+    )]
+    BatchSizeMismatch {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Established batch size from an earlier mapped input.
+        expected_batch_size: usize,
+        /// Observed batch size for this input.
+        actual_batch_size: usize,
+    },
+    /// One graph op is outside the bounded current `vmap` support matrix.
+    #[error("vmap transform used unsupported op `{op}` at tensor `{tensor_id}`")]
+    UnsupportedOp {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Stable op label.
+        op: String,
+    },
+    /// One forward output value was missing after lane evaluation.
+    #[error("vmap transform output `{tensor_id}` did not materialize a forward value")]
+    MissingOutputValue {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One lower-layer reference-evaluation operation failed.
+    #[error(transparent)]
+    ReferenceEvaluation(#[from] ReferenceEvaluationError),
+}
+
+impl VmapTransformError {
+    /// Returns the canonical refusal when the public `vmap` layer intentionally
+    /// refuses one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedTargetDType { tensor_id, .. }
+            | Self::MappedInputDenseF32Required { tensor_id } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}")),
+            ),
+            Self::UnsupportedOp { tensor_id, op } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}:{op}")),
+            ),
+            Self::ReferenceEvaluation(error) => error.refusal(),
+            Self::UnknownTensor { .. }
+            | Self::MissingMappedInputs
+            | Self::NonInputTarget { .. }
+            | Self::DuplicateMappedInput { .. }
+            | Self::InvalidInputAxis { .. }
+            | Self::InvalidOutputAxis { .. }
+            | Self::MissingMappedInput { .. }
+            | Self::MappedInputLengthMismatch { .. }
+            | Self::BatchSizeMismatch { .. }
+            | Self::MissingOutputValue { .. } => None,
+        }
+    }
+}
+
+/// Materialized result from one public `vmap` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VmapTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: VmapTransformSignature,
+    /// Batched output value produced by stacking the lane outputs.
+    pub value: TensorData,
+    /// Per-lane output values before stacking.
+    pub lane_outputs: Vec<TensorData>,
+}
+
 /// First-class public `grad` transform over one autodiff graph.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GradTransform {
@@ -808,6 +1037,77 @@ impl JvpTransform {
     }
 }
 
+/// First-class public `vmap` transform over one single-lane graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VmapTransform {
+    graph: AutodiffGraph,
+    signature: VmapTransformSignature,
+}
+
+impl VmapTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &VmapTransformSignature {
+        &self.signature
+    }
+
+    /// Materializes the batched output by evaluating the single-lane graph once
+    /// per runtime batch element.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+    ) -> Result<VmapTransformResult, VmapTransformError> {
+        let (batch_size, mapped_inputs) =
+            validate_and_seed_vmap_inputs(&self.graph, &self.signature, inputs)?;
+        let output_node = self.graph.graph().node(self.signature.output).ok_or(
+            VmapTransformError::UnknownTensor {
+                tensor_id: self.signature.output,
+            },
+        )?;
+        let lane_shape = output_node.tensor().spec().shape().clone();
+        let mut lane_outputs = Vec::with_capacity(batch_size);
+
+        for lane in 0..batch_size {
+            let mut lane_inputs = inputs.clone();
+            for binding in &self.signature.mapped_inputs {
+                let mapped_input = mapped_inputs.get(&binding.input).ok_or(
+                    VmapTransformError::MissingMappedInput {
+                        tensor_id: binding.input,
+                    },
+                )?;
+                lane_inputs.insert(
+                    binding.input,
+                    TensorData::F32(select_values(
+                        mapped_input.values.as_slice(),
+                        &mapped_input.batched_shape,
+                        binding.axis,
+                        lane,
+                    )),
+                );
+            }
+            let lane_values = evaluate_graph(self.graph.graph(), &lane_inputs)?;
+            let lane_output = lane_values.get(&self.signature.output).cloned().ok_or(
+                VmapTransformError::MissingOutputValue {
+                    tensor_id: self.signature.output,
+                },
+            )?;
+            lane_outputs.push(lane_output);
+        }
+
+        let value = stack_vmap_lane_outputs(
+            lane_outputs.as_slice(),
+            &lane_shape,
+            self.signature.output_axis,
+            self.signature.output,
+        )?;
+        Ok(VmapTransformResult {
+            signature: self.signature.clone(),
+            value,
+            lane_outputs,
+        })
+    }
+}
+
 /// Creates one public `grad` transform over the provided output and primal targets.
 pub fn grad(
     graph: &AutodiffGraph,
@@ -861,6 +1161,21 @@ pub fn jvp(
 ) -> Result<JvpTransform, ForwardModeTransformError> {
     let signature = validate_jvp_transform_signature(graph, output, primal_targets)?;
     Ok(JvpTransform {
+        graph: graph.clone(),
+        signature,
+    })
+}
+
+/// Creates one public `vmap` transform over the provided output and mapped
+/// graph inputs.
+pub fn vmap(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    mapped_inputs: &[VmapInputBinding],
+    output_axis: usize,
+) -> Result<VmapTransform, VmapTransformError> {
+    let signature = validate_vmap_transform_signature(graph, output, mapped_inputs, output_axis)?;
+    Ok(VmapTransform {
         graph: graph.clone(),
         signature,
     })
@@ -1489,6 +1804,184 @@ fn ensure_supported_forward_mode_target(tensor: &Tensor) -> Result<(), ForwardMo
             dtype: tensor.spec().dtype(),
         })
     }
+}
+
+fn validate_vmap_transform_signature(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    mapped_inputs: &[VmapInputBinding],
+    output_axis: usize,
+) -> Result<VmapTransformSignature, VmapTransformError> {
+    for node in graph.graph().nodes() {
+        if let VmapSupport::Unsupported { .. } = vmap_support_for_op(node.op()) {
+            return Err(VmapTransformError::UnsupportedOp {
+                tensor_id: node.tensor().id(),
+                op: String::from(node.op().label()),
+            });
+        }
+    }
+
+    let output_node = graph
+        .graph()
+        .node(output)
+        .ok_or(VmapTransformError::UnknownTensor { tensor_id: output })?;
+    ensure_supported_vmap_target(output_node.tensor())?;
+    if output_axis > output_node.tensor().spec().shape().rank() {
+        return Err(VmapTransformError::InvalidOutputAxis {
+            tensor_id: output,
+            axis: output_axis,
+            rank: output_node.tensor().spec().shape().rank(),
+        });
+    }
+    if mapped_inputs.is_empty() {
+        return Err(VmapTransformError::MissingMappedInputs);
+    }
+
+    let mut seen = BTreeSet::new();
+    for binding in mapped_inputs {
+        let node = graph
+            .graph()
+            .node(binding.input)
+            .ok_or(VmapTransformError::UnknownTensor {
+                tensor_id: binding.input,
+            })?;
+        if !matches!(node.op(), OpKind::Input { .. }) {
+            return Err(VmapTransformError::NonInputTarget {
+                tensor_id: binding.input,
+            });
+        }
+        if !seen.insert(binding.input) {
+            return Err(VmapTransformError::DuplicateMappedInput {
+                tensor_id: binding.input,
+            });
+        }
+        ensure_supported_vmap_target(node.tensor())?;
+        if binding.axis > node.tensor().spec().shape().rank() {
+            return Err(VmapTransformError::InvalidInputAxis {
+                tensor_id: binding.input,
+                axis: binding.axis,
+                rank: node.tensor().spec().shape().rank(),
+            });
+        }
+    }
+
+    Ok(VmapTransformSignature {
+        output,
+        mapped_inputs: mapped_inputs.to_vec(),
+        output_axis,
+    })
+}
+
+fn ensure_supported_vmap_target(tensor: &Tensor) -> Result<(), VmapTransformError> {
+    if tensor.spec().dtype() == DType::F32 {
+        Ok(())
+    } else {
+        Err(VmapTransformError::UnsupportedTargetDType {
+            tensor_id: tensor.id(),
+            dtype: tensor.spec().dtype(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ValidatedMappedVmapInput {
+    values: Vec<f32>,
+    batched_shape: Shape,
+}
+
+fn validate_and_seed_vmap_inputs(
+    graph: &AutodiffGraph,
+    signature: &VmapTransformSignature,
+    inputs: &BTreeMap<TensorId, TensorData>,
+) -> Result<(usize, BTreeMap<TensorId, ValidatedMappedVmapInput>), VmapTransformError> {
+    let mut batch_size = None;
+    let mut validated = BTreeMap::new();
+    for binding in &signature.mapped_inputs {
+        let input = inputs
+            .get(&binding.input)
+            .ok_or(VmapTransformError::MissingMappedInput {
+                tensor_id: binding.input,
+            })?;
+        let values =
+            input
+                .as_f32_slice()
+                .ok_or(VmapTransformError::MappedInputDenseF32Required {
+                    tensor_id: binding.input,
+                })?;
+        let node = graph
+            .graph()
+            .node(binding.input)
+            .ok_or(VmapTransformError::UnknownTensor {
+                tensor_id: binding.input,
+            })?;
+        let lane_shape = node.tensor().spec().shape();
+        let lane_len = lane_shape.element_count();
+        let current_batch_size = if lane_len == 0 {
+            if !values.is_empty() {
+                return Err(VmapTransformError::MappedInputLengthMismatch {
+                    tensor_id: binding.input,
+                    lane_len,
+                    actual_len: values.len(),
+                });
+            }
+            0
+        } else if values.len() % lane_len != 0 {
+            return Err(VmapTransformError::MappedInputLengthMismatch {
+                tensor_id: binding.input,
+                lane_len,
+                actual_len: values.len(),
+            });
+        } else {
+            values.len() / lane_len
+        };
+        if let Some(expected_batch_size) = batch_size {
+            if expected_batch_size != current_batch_size {
+                return Err(VmapTransformError::BatchSizeMismatch {
+                    tensor_id: binding.input,
+                    expected_batch_size,
+                    actual_batch_size: current_batch_size,
+                });
+            }
+        } else {
+            batch_size = Some(current_batch_size);
+        }
+        validated.insert(
+            binding.input,
+            ValidatedMappedVmapInput {
+                values: values.to_vec(),
+                batched_shape: Shape::new(insert_axis(
+                    lane_shape.dims(),
+                    binding.axis,
+                    current_batch_size,
+                )),
+            },
+        );
+    }
+    Ok((batch_size.unwrap_or(0), validated))
+}
+
+fn stack_vmap_lane_outputs(
+    lane_outputs: &[TensorData],
+    lane_shape: &Shape,
+    output_axis: usize,
+    output: TensorId,
+) -> Result<TensorData, VmapTransformError> {
+    let stacked = lane_outputs
+        .iter()
+        .map(|lane_output| {
+            lane_output.as_f32_slice().map(<[f32]>::to_vec).ok_or(
+                VmapTransformError::UnsupportedTargetDType {
+                    tensor_id: output,
+                    dtype: DType::F32,
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(TensorData::F32(stack_values(
+        stacked.as_slice(),
+        lane_shape,
+        output_axis,
+    )))
 }
 
 fn validate_and_seed_tangent_inputs(
@@ -2190,6 +2683,17 @@ impl AutodiffGraphBuilder {
         Ok(self.wrap(tensor, requires_grad))
     }
 
+    /// Casts a tensor into a different logical dtype.
+    pub fn cast(
+        &mut self,
+        input: &AutodiffTensor,
+        dtype: DType,
+    ) -> Result<AutodiffTensor, GraphError> {
+        let requires_grad = self.any_requires_grad(&[input]);
+        let tensor = self.builder.cast(input.tensor(), dtype)?;
+        Ok(self.wrap(tensor, requires_grad))
+    }
+
     /// Reduces a tensor to a scalar sum.
     #[must_use]
     pub fn reduce_sum(&mut self, input: &AutodiffTensor) -> AutodiffTensor {
@@ -2797,6 +3301,19 @@ fn concat_values(parts: &[(Shape, Vec<f32>)], axis: usize) -> Vec<f32> {
     output
 }
 
+fn stack_values(parts: &[Vec<f32>], lane_shape: &Shape, axis: usize) -> Vec<f32> {
+    let output_shape = Shape::new(insert_axis(lane_shape.dims(), axis, parts.len()));
+    let mut output = vec![0.0; output_shape.element_count()];
+    for (lane_index, values) in parts.iter().enumerate() {
+        for (input_index, value) in values.iter().copied().enumerate() {
+            let mut coords = unravel_index(input_index, lane_shape.dims());
+            coords.insert(axis, lane_index);
+            output[ravel_index(&coords, output_shape.dims())] = value;
+        }
+    }
+    output
+}
+
 fn expand_values(values: &[f32], input_shape: &Shape, target_shape: &Shape) -> Vec<f32> {
     let mut output = vec![0.0; target_shape.element_count()];
     let rank_padding = target_shape.rank().saturating_sub(input_shape.rank());
@@ -2871,9 +3388,10 @@ mod tests {
     use psionic_core::{DType, Device, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData};
 
     use crate::{
-        grad, gradient_support_for_op, jvp, value_and_grad, vjp, AutodiffContext, AutodiffError,
-        AutodiffGradientSupport, AutodiffGraphBuilder, AutodiffUnsupportedGradientReason,
-        ForwardModeTransformError, ReverseModeTransformError, TensorId,
+        AutodiffContext, AutodiffError, AutodiffGradientSupport, AutodiffGraphBuilder,
+        AutodiffUnsupportedGradientReason, ForwardModeTransformError, ReverseModeTransformError,
+        TensorId, VmapInputBinding, VmapSupport, VmapTransformError, VmapUnsupportedReason, grad,
+        gradient_support_for_op, jvp, value_and_grad, vjp, vmap, vmap_support_for_op,
     };
 
     #[test]
@@ -2902,8 +3420,8 @@ mod tests {
     }
 
     #[test]
-    fn reverse_mode_autodiff_accumulates_shared_paths_and_honors_detach(
-    ) -> Result<(), Box<dyn Error>> {
+    fn reverse_mode_autodiff_accumulates_shared_paths_and_honors_detach()
+    -> Result<(), Box<dyn Error>> {
         let mut builder =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
@@ -3041,8 +3559,61 @@ mod tests {
     }
 
     #[test]
-    fn reverse_mode_autodiff_covers_select_concat_and_reshape_primitives(
-    ) -> Result<(), Box<dyn Error>> {
+    fn vmap_support_matrix_marks_primitives_casts_and_backend_extensions_explicitly() {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let input = builder.input("x", Shape::new(vec![2, 2]), DType::F32, true);
+        let row = builder.select(&input, 0, 0).expect("select");
+        let row = builder
+            .reshape(&row, Shape::new(vec![1, 2]))
+            .expect("reshape");
+        let tail = builder.slice(&input, 0, 1, 2).expect("slice");
+        let combined = builder.concat(&[row, tail], 0).expect("concat");
+        let expanded = builder
+            .expand(&combined, Shape::new(vec![2, 2]))
+            .expect("expand");
+        let permuted = builder.permute(&expanded, vec![1, 0]).expect("permute");
+        let casted = builder.cast(&permuted, DType::I8).expect("cast");
+        let primitive_graph = builder.finish(vec![casted.clone()]);
+
+        for node in primitive_graph.graph().nodes() {
+            let expected = if matches!(node.op(), crate::OpKind::Cast { .. }) {
+                VmapSupport::Unsupported {
+                    reason: VmapUnsupportedReason::CastFamily,
+                }
+            } else {
+                VmapSupport::Implemented
+            };
+            assert_eq!(vmap_support_for_op(node.op()), expected);
+        }
+
+        let mut extension_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let ext_input = extension_builder.input("x", Shape::new(vec![1, 2]), DType::F32, true);
+        let ext_weight = extension_builder.input("weight", Shape::new(vec![2]), DType::F32, true);
+        let normalized = extension_builder
+            .rms_norm(&ext_input, &ext_weight, 1e-5)
+            .expect("rms_norm");
+        let extension_graph = extension_builder.finish(vec![normalized]);
+        let Some(node) = extension_graph
+            .graph()
+            .nodes()
+            .iter()
+            .find(|node| matches!(node.op(), crate::OpKind::BackendExtension { .. }))
+        else {
+            panic!("backend extension node should exist");
+        };
+        assert_eq!(
+            vmap_support_for_op(node.op()),
+            VmapSupport::Unsupported {
+                reason: VmapUnsupportedReason::BackendExtensionFamily,
+            }
+        );
+    }
+
+    #[test]
+    fn reverse_mode_autodiff_covers_select_concat_and_reshape_primitives()
+    -> Result<(), Box<dyn Error>> {
         let mut builder =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let x = builder.input("x", Shape::new(vec![2, 2]), DType::F32, true);
@@ -3172,8 +3743,8 @@ mod tests {
     }
 
     #[test]
-    fn public_reverse_mode_transforms_expose_grad_value_and_grad_and_vjp(
-    ) -> Result<(), Box<dyn Error>> {
+    fn public_reverse_mode_transforms_expose_grad_value_and_grad_and_vjp()
+    -> Result<(), Box<dyn Error>> {
         let mut grad_builder =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let x = grad_builder.input("x", Shape::new(vec![2]), DType::F32, true);
@@ -3232,8 +3803,8 @@ mod tests {
     }
 
     #[test]
-    fn public_reverse_mode_transforms_refuse_invalid_targets_and_zero_disconnected_paths(
-    ) -> Result<(), Box<dyn Error>> {
+    fn public_reverse_mode_transforms_refuse_invalid_targets_and_zero_disconnected_paths()
+    -> Result<(), Box<dyn Error>> {
         let mut invalid_builder =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let tracked = invalid_builder.input("tracked", Shape::new(vec![2]), DType::F32, true);
@@ -3358,6 +3929,122 @@ mod tests {
             ),
             Err(ForwardModeTransformError::UnexpectedTangentTarget {
                 tensor_id: other.id(),
+            })
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_vmap_transform_batches_reference_graph_outputs() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let bias = builder.input("bias", Shape::new(vec![2]), DType::F32, false);
+        let squared = builder.mul(&x, &x)?;
+        let output = builder.add(&squared, &bias)?;
+        let graph = builder.finish(vec![output.clone()]);
+        let inputs = BTreeMap::from([
+            (x.id(), TensorData::F32(vec![1.0, 2.0, 3.0, 4.0])),
+            (bias.id(), TensorData::F32(vec![10.0, 20.0])),
+        ]);
+
+        let transform = vmap(
+            &graph,
+            output.id(),
+            &[VmapInputBinding {
+                input: x.id(),
+                axis: 0,
+            }],
+            1,
+        )?;
+        let result = transform.apply(&inputs)?;
+
+        assert_eq!(dense_tensor(&result.value), vec![11.0, 19.0, 24.0, 36.0]);
+        assert_eq!(result.lane_outputs.len(), 2);
+        assert_eq!(dense_tensor(&result.lane_outputs[0]), vec![11.0, 24.0]);
+        assert_eq!(dense_tensor(&result.lane_outputs[1]), vec![19.0, 36.0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_vmap_transform_refuses_unsupported_ops_and_bad_batch_inputs()
+    -> Result<(), Box<dyn Error>> {
+        let mut cast_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let cast_input = cast_builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let cast_output = cast_builder.cast(&cast_input, DType::I8)?;
+        let cast_graph = cast_builder.finish(vec![cast_output.clone()]);
+        assert_eq!(
+            vmap(
+                &cast_graph,
+                cast_output.id(),
+                &[VmapInputBinding {
+                    input: cast_input.id(),
+                    axis: 0,
+                }],
+                0,
+            ),
+            Err(VmapTransformError::UnsupportedOp {
+                tensor_id: cast_output.id(),
+                op: String::from("cast"),
+            })
+        );
+
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let left = builder.input("left", Shape::new(vec![2]), DType::F32, true);
+        let right = builder.input("right", Shape::new(vec![2]), DType::F32, true);
+        let output = builder.add(&left, &right)?;
+        let graph = builder.finish(vec![output.clone()]);
+
+        assert_eq!(
+            vmap(
+                &graph,
+                output.id(),
+                &[
+                    VmapInputBinding {
+                        input: left.id(),
+                        axis: 0,
+                    },
+                    VmapInputBinding {
+                        input: left.id(),
+                        axis: 1,
+                    },
+                ],
+                0,
+            ),
+            Err(VmapTransformError::DuplicateMappedInput {
+                tensor_id: left.id(),
+            })
+        );
+
+        let transform = vmap(
+            &graph,
+            output.id(),
+            &[
+                VmapInputBinding {
+                    input: left.id(),
+                    axis: 0,
+                },
+                VmapInputBinding {
+                    input: right.id(),
+                    axis: 0,
+                },
+            ],
+            0,
+        )?;
+        let bad_inputs = BTreeMap::from([
+            (left.id(), TensorData::F32(vec![1.0, 2.0, 3.0, 4.0])),
+            (right.id(), TensorData::F32(vec![5.0, 6.0])),
+        ]);
+        assert_eq!(
+            transform.apply(&bad_inputs),
+            Err(VmapTransformError::BatchSizeMismatch {
+                tensor_id: right.id(),
+                expected_batch_size: 2,
+                actual_batch_size: 1,
             })
         );
 
