@@ -620,6 +620,20 @@ Its declared scope is:
   exactness, `7439` bps aggregate exactness), while still leaving `0/2` exact
   traces and the first-divergence bucket at target index `1`; the companion
   audit is `docs/audits/2026-03-16-tassadar-phase-13-trainable-surface-audit.md`
+- landed trained-executor Phase 15 bar from the post-audit issue spine:
+  `psionic-models` now carries a separate bounded
+  `TassadarExecutorAttentionTransformer` family with layered causal hard-max
+  attention, fixed 2D head geometry, explicit per-layer semantics, and honest
+  hull fallback, while `psionic-eval` and `psionic-research` now materialize a
+  bounded same-corpus comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1`
+  with `architecture_comparison_report.json` plus per-family run bundles; the
+  committed report keeps the claim boundary explicit by showing the new family
+  is architecturally closer to the article but still materially worse on the
+  bounded 4x4 window (`0` bps first-target / first-32 exactness and `1333`
+  target tok/s, with hull fallback) than the preserved lookup baseline
+  (`10000` / `6563` bps and `32000` target tok/s, with direct hull decode), so
+  this phase lands as a research-candidate result rather than a promotion bar
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
@@ -821,6 +835,7 @@ is tracked under the post-audit umbrella
   [#3814](https://github.com/OpenAgentsInc/openagents/issues/3814)
 - Phase 15 add a true executor-attention candidate family:
   [#3815](https://github.com/OpenAgentsInc/openagents/issues/3815)
+  landed as a bounded research candidate; does not close the Phase 14 gate
 - Phase 16 persist and review the first honest 9x9 run:
   [#3816](https://github.com/OpenAgentsInc/openagents/issues/3816)
 - Phase 17 add a bounded proof-oriented / compile-to-weights executor lane:

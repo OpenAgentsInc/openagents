@@ -1,0 +1,59 @@
+{
+  "family_kind": "executor_attention_candidate",
+  "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+  "model_descriptor_digest": "cfafadd8472a4b526e293405401282669d53491ffcd0a7ad518d54c6de88d310",
+  "trained_weight_digest": "5e3ae4b654d6d9ddca12e9297e8a300fe2666128f2461d43cc2764ec85e4c6b0",
+  "claim_boundary": "research_windowed_decode_only",
+  "attention_mode": "layered_causal_hard_max_lookup",
+  "layer_count": 7,
+  "head_count": 18,
+  "head_dim": 2,
+  "prompt_window_token_cap": 256,
+  "target_token_cap": 32,
+  "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention, but only as a bounded windowed research lane with hull fallback",
+  "correctness": {
+    "aggregate_target_token_exactness_bps": 0,
+    "first_target_exactness_bps": 0,
+    "first_8_token_exactness_bps": 0,
+    "first_32_token_exactness_bps": 0,
+    "exact_trace_case_count": 0
+  },
+  "speed": {
+    "decode_mode": "reference_linear",
+    "neural_tokens_per_second": 1333,
+    "cpu_tokens_per_second": 32000
+  },
+  "requested_hull_decode": {
+    "requested_decode_mode": "hull_cache",
+    "effective_decode_mode": "reference_linear",
+    "fallback_decode_mode": "reference_linear",
+    "hull_decode_posture": "fallback_to_reference_linear"
+  },
+  "case_reports": [
+    {
+      "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+      "case_id": "sudoku_v0_validation_a",
+      "target_token_count": 32,
+      "target_token_exactness_bps": 0,
+      "first_target_exactness_bps": 0,
+      "first_8_token_exactness_bps": 0,
+      "first_32_token_exactness_bps": 0,
+      "matched_target_token_count": 0,
+      "first_divergence_index": 0,
+      "exact_trace_match": false
+    },
+    {
+      "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+      "case_id": "sudoku_v0_validation_b",
+      "target_token_count": 32,
+      "target_token_exactness_bps": 0,
+      "first_target_exactness_bps": 0,
+      "first_8_token_exactness_bps": 0,
+      "first_32_token_exactness_bps": 0,
+      "matched_target_token_count": 0,
+      "first_divergence_index": 0,
+      "exact_trace_match": false
+    }
+  ],
+  "report_digest": "0ddd8e0883e5aa87ee3986492d9612afabfab37cbbe5d4a79be2bada31a1bb3d"
+}

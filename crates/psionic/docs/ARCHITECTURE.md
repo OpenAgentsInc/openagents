@@ -244,6 +244,36 @@ The current scope is:
   that keeps the promotion gate explicit: the real 9x9 workload is in-tree,
   but 4x4 first-target and short-trace exactness are still blocking honest 9x9
   promotion
+- landed trained-executor Phase 12 follow-on bar: `psionic-eval` now emits
+  first-target / first-8 / first-32 boundary exactness plus divergence and
+  first-token-confusion reports, `psionic-train` now supports an explicit
+  boundary curriculum with per-epoch validation and boundary-ranked checkpoint
+  selection, and the committed follow-on run bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_boundary_v1` records the
+  first honest post-audit boundary improvement (`10000` bps first-target
+  exactness, divergence moved to target index `1`) while still failing the
+  later gates (`5000` bps first-32 exactness, `0/2` exact traces)
+- landed trained-executor Phase 13 follow-on bar: the lookup-family executor
+  now records a stable trainable surface in descriptors, manifests,
+  checkpoints, and run bundles, `psionic-train` now supports controlled output
+  head / embedding / small-mixer surfaces, and `psionic-research` now commits a
+  same-corpus ablation root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1`
+  where only `output_head_embeddings_and_small_learned_mixer` materially beats
+  the preserved baseline (`3750` bps first-8 exactness, `5625` bps first-32
+  exactness) while still leaving `0/2` exact traces
+- landed trained-executor Phase 15 follow-on bar: `psionic-models` now carries
+  a separate bounded `TassadarExecutorAttentionTransformer` family with layered
+  full-prefix causal hard-max attention, fixed 2D head geometry, explicit
+  per-layer semantics, and truthful hull fallback, while `psionic-eval` and
+  `psionic-research` now persist a bounded same-corpus comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1`;
+  the resulting report keeps the claim boundary explicit by showing the new
+  family is architecturally closer to the article but still worse than the
+  preserved lookup baseline on the bounded 4x4 window (`0` bps first-target /
+  first-32 exactness and `1333` target tok/s, versus `10000` / `6563` bps and
+  `32000` target tok/s for the lookup baseline), so this phase lands as a
+  research candidate rather than a promotion result
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

@@ -191,6 +191,20 @@ Current posture:
   the first `32`, but still leaves `0/2` exact validation traces and the first
   divergence bucket at target index `1`, so this is a truthful next-surface
   recommendation rather than a promotion claim
+- the fifteenth trained-executor follow-on bar from the post-audit issue spine
+  now also exists in `psionic-models`, `psionic-eval`, `psionic-research`,
+  `docs/audits/`, and a new bounded same-corpus comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1`:
+  `psionic-models` now carries a separate layered causal-attention
+  `TassadarExecutorAttentionTransformer` family with explicit 2D head geometry,
+  per-layer semantics, and truthful hull fallback, while `psionic-research`
+  now persists `architecture_comparison_report.json` plus per-family run bundles
+  against the preserved Phase 13 lookup baseline; that report keeps the claim
+  boundary honest by showing that the new family is architecturally closer to
+  the article but still materially worse on the bounded 4x4 window (`0` bps
+  first-target / first-32 exactness and `1333` target tok/s, versus the lookup
+  baseline at `10000` / `6563` bps and `32000` target tok/s), so this is a
+  research-family landing rather than a promotion or parity claim
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons
