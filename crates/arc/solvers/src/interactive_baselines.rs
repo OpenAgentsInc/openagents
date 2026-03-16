@@ -425,6 +425,24 @@ mod tests {
     use super::*;
 
     fn context_with_actions(available_actions: Vec<ArcActionKind>) -> ArcInteractiveSessionContext {
+        let latest_frame = ArcSessionFrame {
+            game_id: ArcTaskId::new("baseline-fixture").expect("task id should validate"),
+            guid: "baseline-guid".to_owned(),
+            frames: vec![ArcFrameData::new(1, 1, vec![0]).expect("frame should validate")],
+            game_state: ArcGameState::NotFinished,
+            levels_completed: 0,
+            win_levels: 1,
+            action: ArcAction::Reset,
+            available_actions,
+            full_reset: true,
+        };
+        let context_retention =
+            crate::interactive_context::ArcInteractiveContextRetentionPolicy::default();
+        let prompt_policy = crate::interactive_context::ArcInteractivePromptPolicy::default();
+        let budget = arc_core::ArcInteractiveBudget::new(4)
+            .expect("budget should validate")
+            .state(0)
+            .expect("budget state should validate");
         ArcInteractiveSessionContext {
             benchmark: arc_core::ArcBenchmark::ArcAgi3,
             game_id: ArcTaskId::new("baseline-fixture").expect("task id should validate"),
@@ -435,22 +453,25 @@ mod tests {
             step_index: 1,
             actions_taken: 0,
             remaining_actions: 4,
-            budget: arc_core::ArcInteractiveBudget::new(4)
-                .expect("budget should validate")
-                .state(0)
-                .expect("budget state should validate"),
-            latest_frame: ArcSessionFrame {
-                game_id: ArcTaskId::new("baseline-fixture").expect("task id should validate"),
-                guid: "baseline-guid".to_owned(),
-                frames: vec![ArcFrameData::new(1, 1, vec![0]).expect("frame should validate")],
-                game_state: ArcGameState::NotFinished,
-                levels_completed: 0,
-                win_levels: 1,
-                action: ArcAction::Reset,
-                available_actions,
-                full_reset: true,
-            },
+            budget,
+            progress: crate::interactive_context::build_progress_state(&latest_frame, budget),
+            latest_frame: latest_frame.clone(),
             history: Vec::new(),
+            omitted_history_steps: 0,
+            context_retention: context_retention.clone(),
+            prompt_policy: prompt_policy.clone(),
+            memory: crate::interactive_context::ArcInteractiveSessionMemory::empty(
+                &context_retention,
+            ),
+            prompt_plan: crate::interactive_context::build_prompt_plan(
+                &prompt_policy,
+                crate::interactive_context::build_progress_state(&latest_frame, budget),
+                &latest_frame,
+                &[],
+                0,
+                &crate::interactive_context::ArcInteractiveSessionMemory::empty(&context_retention),
+                None,
+            ),
             resume_state: None,
         }
     }

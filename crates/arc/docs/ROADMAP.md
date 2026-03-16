@@ -748,7 +748,7 @@ Master issue:
 | `ARC-405` / [#3804](https://github.com/OpenAgentsInc/openagents/issues/3804) | planned | Export typed trajectory bundles through the generalized Psionic environment/receipt path once `PLIB-512` and `PLIB-513` land. |
 | `ARC-406` / [#3805](https://github.com/OpenAgentsInc/openagents/issues/3805) | planned | Add repeated interactive benchmark runs over the Psionic eval bridge once `PLIB-514` lands. |
 | `ARC-407` / [#3806](https://github.com/OpenAgentsInc/openagents/issues/3806) | landed | Added a reusable `arc-solvers` interactive parity report surface plus a manifest-driven runner harness that compares local/offline and remote/online episodes for action execution, checkpoint-resume completion, recording parity, and scorecard closeout while documenting the expected environment/operation-mode divergences explicitly. |
-| `ARC-408` / [#3807](https://github.com/OpenAgentsInc/openagents/issues/3807) | planned | Add memory/context and prompt-policy surfaces that remain subordinate to typed action and score contracts. |
+| `ARC-408` / [#3807](https://github.com/OpenAgentsInc/openagents/issues/3807) | landed | Added bounded interactive context-retention and prompt-policy surfaces in `arc-solvers`, including typed retained-history and session-memory contracts, structured prompt-plan sections, runner-owned checkpoint context handoff, explicit resume-policy compatibility refusal, and fixture-backed tests proving bounded local context exposure plus checkpoint-resume continuity. |
 
 ## Epic 5: ARC-ML Over Psionic
 

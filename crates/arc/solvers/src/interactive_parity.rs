@@ -326,6 +326,7 @@ struct ComparableCheckpointHandoff<'a> {
     terminal: bool,
     agent_name: &'a str,
     agent_state: &'a Option<Value>,
+    context_state: &'a Option<crate::interactive_context::ArcInteractiveContextCheckpointState>,
 }
 
 fn comparable_checkpoint_handoff(
@@ -337,6 +338,7 @@ fn comparable_checkpoint_handoff(
         terminal: artifacts.checkpoint_handoff.terminal,
         agent_name: &artifacts.checkpoint_handoff.agent_name,
         agent_state: &artifacts.checkpoint_handoff.agent_state,
+        context_state: &artifacts.checkpoint_handoff.context_state,
     }
 }
 
@@ -561,6 +563,7 @@ mod tests {
                 terminal: false,
                 agent_name: "parity-agent".to_owned(),
                 agent_state: Some(serde_json::json!({ "cursor": 0 })),
+                context_state: None,
             },
             turn_results: Vec::new(),
             execution_outcome: arc_core::ArcInteractiveExecutionOutcome::Refused {
