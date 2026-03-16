@@ -3,9 +3,11 @@
 //! This crate intentionally lands the first bounded framework-distributed
 //! slices: explicit group initialization from current mesh facts, honest
 //! singleton fallback, global-group reuse, plan-backed subgroup split
-//! semantics, and a reference-first collective helper layer above that group
-//! surface. Backend-family transport mapping and broader helper families still
-//! land later.
+//! semantics, a reference-first collective helper layer above that group
+//! surface, and a bounded launch/config planning shell that maps explicit
+//! hostfile-like input onto Psionic cluster, sandbox, and mesh truth.
+//! Backend-family transport mapping and broader helper families still land
+//! later.
 
 #![cfg_attr(
     test,
@@ -15,13 +17,25 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    path::{Component, Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard, OnceLock},
 };
 
 use psionic_array::{Array, ArrayContext, ArrayError};
+use psionic_cluster::{
+    ClusterBackendReadinessStatus, ClusterMembershipRecord, ClusterMembershipStatus,
+    ClusterNodeTelemetry, ClusterState,
+};
 use psionic_core::{DType, Shape};
 use psionic_runtime::{
-    ClusterCommunicationClass, TrainingDeviceMeshContext, TrainingElasticMembershipContext,
+    ClusterCommitAuthorityEvidence, ClusterCommunicationClass, ClusterCommunicationEligibility,
+    ClusterExecutionContext, ClusterExecutionDisposition, ClusterSelectedNode,
+    ClusterTransportClass, TrainingDeviceMeshAxis, TrainingDeviceMeshAxisKind,
+    TrainingDeviceMeshContext, TrainingElasticMembershipContext,
+};
+use psionic_sandbox::{
+    ProviderSandboxEntrypointType, ProviderSandboxEnvironmentVar, ProviderSandboxExecutionClass,
+    ProviderSandboxJobRequest, ProviderSandboxProfile, ProviderSandboxResourceRequest,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -29,6 +43,20 @@ use thiserror::Error;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "public framework-distributed groups and bounded collective helpers above Psionic runtime mesh truth";
+
+const RESERVED_DISTRIBUTED_ENV_KEYS: [&str; 11] = [
+    "PSIONIC_DISTRIBUTED_RANK",
+    "PSIONIC_DISTRIBUTED_LOCAL_RANK",
+    "PSIONIC_DISTRIBUTED_WORLD_SIZE",
+    "PSIONIC_DISTRIBUTED_NODE_ID",
+    "PSIONIC_DISTRIBUTED_CLUSTER_ID",
+    "PSIONIC_DISTRIBUTED_CLUSTER_STATE_DIGEST",
+    "PSIONIC_DISTRIBUTED_TOPOLOGY_DIGEST",
+    "PSIONIC_DISTRIBUTED_MESH_ID",
+    "PSIONIC_DISTRIBUTED_MESH_REVISION",
+    "PSIONIC_DISTRIBUTED_EFFECTIVE_BACKEND",
+    "PSIONIC_DISTRIBUTED_GROUP_ID",
+];
 
 /// Requested distributed backend family for the public group surface.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -554,6 +582,330 @@ impl DistributedPointToPointOptions {
     }
 }
 
+/// One hostfile-like entry describing one framework-visible rank target.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedHostfileEntry {
+    /// Stable node identifier that must already exist in authoritative cluster state.
+    pub node_id: String,
+    /// Number of local ranks requested on that node.
+    pub slots: usize,
+    /// Optional control-plane address declared by the hostfile for validation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advertised_addr: Option<String>,
+}
+
+impl DistributedHostfileEntry {
+    /// Creates one hostfile-like entry with one slot by default.
+    #[must_use]
+    pub fn new(node_id: impl Into<String>) -> Self {
+        Self {
+            node_id: node_id.into(),
+            slots: 1,
+            advertised_addr: None,
+        }
+    }
+
+    /// Overrides the number of requested local ranks on the node.
+    #[must_use]
+    pub fn with_slots(mut self, slots: usize) -> Self {
+        self.slots = slots.max(1);
+        self
+    }
+
+    /// Attaches an explicit control-plane address for validation against cluster truth.
+    #[must_use]
+    pub fn with_advertised_addr(mut self, advertised_addr: impl Into<String>) -> Self {
+        self.advertised_addr = Some(advertised_addr.into());
+        self
+    }
+}
+
+/// Public launch/config input for the bounded framework-distributed planning shell.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedLaunchConfig {
+    /// Stable launch identifier for the planned job family.
+    pub launch_id: String,
+    /// Node that is planning or admitting the launch against authoritative cluster truth.
+    pub scheduler_node_id: String,
+    /// Requested MLX-style distributed backend family.
+    pub requested_backend: DistributedBackend,
+    /// Effective Psionic runtime backend the selected nodes must be ready to run.
+    pub effective_backend: String,
+    /// Sandbox execution class used for every planned rank.
+    pub execution_class: ProviderSandboxExecutionClass,
+    /// Entrypoint interpretation for the sandbox jobs.
+    pub entrypoint_type: ProviderSandboxEntrypointType,
+    /// Entrypoint string carried into each sandbox request.
+    pub entrypoint: String,
+    /// Optional inline payload carried into each sandbox request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<String>,
+    /// Argument vector passed to each sandbox request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<String>,
+    /// Workspace root for each sandbox request.
+    pub workspace_root: PathBuf,
+    /// Expected output paths relative to the workspace root.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expected_outputs: Vec<String>,
+    /// Requested timeout for each sandbox request.
+    pub timeout_request_s: u64,
+    /// Requested network posture for each sandbox request.
+    pub network_request: String,
+    /// Requested filesystem posture for each sandbox request.
+    pub filesystem_request: String,
+    /// Base environment variables applied to each sandbox request before distributed keys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environment: Vec<ProviderSandboxEnvironmentVar>,
+    /// Requested resource envelope for each sandbox request.
+    #[serde(default)]
+    pub resource_request: ProviderSandboxResourceRequest,
+    /// Optional payout reference preserved on each sandbox request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_reference: Option<String>,
+    /// Optional verification posture preserved on each sandbox request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_posture: Option<String>,
+    /// Provider identifier preserved on each sandbox request.
+    pub provider_id: String,
+    /// Optional compute product identifier override; defaults to the execution-class product.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compute_product_id: Option<String>,
+    /// Explicit hostfile-like launch targets in rank order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hostfile_entries: Vec<DistributedHostfileEntry>,
+    /// Explicit transport class attributed to the launch plan.
+    pub transport: ClusterTransportClass,
+    /// Optional explicit mesh axes; defaults to one data-parallel axis over world size.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub axes: Vec<TrainingDeviceMeshAxis>,
+}
+
+impl DistributedLaunchConfig {
+    /// Creates one bounded launch/config request with conservative defaults.
+    #[must_use]
+    pub fn new(
+        launch_id: impl Into<String>,
+        scheduler_node_id: impl Into<String>,
+        effective_backend: impl Into<String>,
+        entrypoint: impl Into<String>,
+        workspace_root: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            launch_id: launch_id.into(),
+            scheduler_node_id: scheduler_node_id.into(),
+            requested_backend: DistributedBackend::Any,
+            effective_backend: effective_backend.into(),
+            execution_class: ProviderSandboxExecutionClass::PosixExec,
+            entrypoint_type: ProviderSandboxEntrypointType::WorkspaceFile,
+            entrypoint: entrypoint.into(),
+            payload: None,
+            arguments: Vec::new(),
+            workspace_root: workspace_root.into(),
+            expected_outputs: Vec::new(),
+            timeout_request_s: 60,
+            network_request: String::from("disabled"),
+            filesystem_request: String::from("workspace_only"),
+            environment: Vec::new(),
+            resource_request: ProviderSandboxResourceRequest::default(),
+            payout_reference: None,
+            verification_posture: None,
+            provider_id: String::from("psionic-distributed"),
+            compute_product_id: None,
+            hostfile_entries: Vec::new(),
+            transport: ClusterTransportClass::TrustedLanStream,
+            axes: Vec::new(),
+        }
+    }
+
+    /// Overrides the requested distributed backend family.
+    #[must_use]
+    pub const fn with_requested_backend(mut self, requested_backend: DistributedBackend) -> Self {
+        self.requested_backend = requested_backend;
+        self
+    }
+
+    /// Overrides the sandbox execution class.
+    #[must_use]
+    pub const fn with_execution_class(
+        mut self,
+        execution_class: ProviderSandboxExecutionClass,
+    ) -> Self {
+        self.execution_class = execution_class;
+        self
+    }
+
+    /// Overrides the entrypoint interpretation.
+    #[must_use]
+    pub const fn with_entrypoint_type(
+        mut self,
+        entrypoint_type: ProviderSandboxEntrypointType,
+    ) -> Self {
+        self.entrypoint_type = entrypoint_type;
+        self
+    }
+
+    /// Attaches an inline payload for every sandbox request.
+    #[must_use]
+    pub fn with_payload(mut self, payload: impl Into<String>) -> Self {
+        self.payload = Some(payload.into());
+        self
+    }
+
+    /// Replaces the argument vector.
+    #[must_use]
+    pub fn with_arguments(mut self, arguments: Vec<String>) -> Self {
+        self.arguments = arguments;
+        self
+    }
+
+    /// Replaces the expected-output set.
+    #[must_use]
+    pub fn with_expected_outputs(mut self, expected_outputs: Vec<String>) -> Self {
+        self.expected_outputs = expected_outputs;
+        self
+    }
+
+    /// Overrides the timeout request for each sandbox job.
+    #[must_use]
+    pub fn with_timeout_request_s(mut self, timeout_request_s: u64) -> Self {
+        self.timeout_request_s = timeout_request_s.max(1);
+        self
+    }
+
+    /// Overrides the network request.
+    #[must_use]
+    pub fn with_network_request(mut self, network_request: impl Into<String>) -> Self {
+        self.network_request = network_request.into();
+        self
+    }
+
+    /// Overrides the filesystem request.
+    #[must_use]
+    pub fn with_filesystem_request(mut self, filesystem_request: impl Into<String>) -> Self {
+        self.filesystem_request = filesystem_request.into();
+        self
+    }
+
+    /// Replaces the base environment set.
+    #[must_use]
+    pub fn with_environment(mut self, environment: Vec<ProviderSandboxEnvironmentVar>) -> Self {
+        self.environment = environment;
+        self
+    }
+
+    /// Replaces the resource envelope.
+    #[must_use]
+    pub fn with_resource_request(
+        mut self,
+        resource_request: ProviderSandboxResourceRequest,
+    ) -> Self {
+        self.resource_request = resource_request;
+        self
+    }
+
+    /// Attaches a payout reference.
+    #[must_use]
+    pub fn with_payout_reference(mut self, payout_reference: impl Into<String>) -> Self {
+        self.payout_reference = Some(payout_reference.into());
+        self
+    }
+
+    /// Attaches a verification posture.
+    #[must_use]
+    pub fn with_verification_posture(mut self, verification_posture: impl Into<String>) -> Self {
+        self.verification_posture = Some(verification_posture.into());
+        self
+    }
+
+    /// Overrides the provider identifier used in sandbox requests.
+    #[must_use]
+    pub fn with_provider_id(mut self, provider_id: impl Into<String>) -> Self {
+        self.provider_id = provider_id.into();
+        self
+    }
+
+    /// Overrides the compute-product identifier used in sandbox requests.
+    #[must_use]
+    pub fn with_compute_product_id(mut self, compute_product_id: impl Into<String>) -> Self {
+        self.compute_product_id = Some(compute_product_id.into());
+        self
+    }
+
+    /// Replaces the hostfile-like launch targets.
+    #[must_use]
+    pub fn with_hostfile_entries(
+        mut self,
+        hostfile_entries: Vec<DistributedHostfileEntry>,
+    ) -> Self {
+        self.hostfile_entries = hostfile_entries;
+        self
+    }
+
+    /// Overrides the transport class attributed to the launch plan.
+    #[must_use]
+    pub const fn with_transport(mut self, transport: ClusterTransportClass) -> Self {
+        self.transport = transport;
+        self
+    }
+
+    /// Replaces the explicit mesh axes.
+    #[must_use]
+    pub fn with_axes(mut self, axes: Vec<TrainingDeviceMeshAxis>) -> Self {
+        self.axes = axes;
+        self
+    }
+}
+
+/// One per-rank launch assignment emitted by the bounded planning shell.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedLaunchAssignment {
+    /// Stable node identifier receiving this rank.
+    pub node_id: String,
+    /// Global rank inside the launch plan.
+    pub rank: usize,
+    /// Local rank inside the selected node.
+    pub local_rank: usize,
+    /// Group member identity materialized for this rank.
+    pub member: DistributedGroupMember,
+    /// Local bootstrap payload this rank would use to initialize the group.
+    pub group_bootstrap: DistributedGroupBootstrap,
+    /// Final environment variables passed to the sandbox job.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environment: Vec<ProviderSandboxEnvironmentVar>,
+    /// Sandbox request that would launch the rank.
+    pub sandbox_job: ProviderSandboxJobRequest,
+}
+
+/// Machine-readable result of one bounded distributed launch/config plan.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedLaunchPlan {
+    /// Stable launch identifier.
+    pub launch_id: String,
+    /// Stable digest over the planned launch.
+    pub plan_digest: String,
+    /// Requested MLX-style backend family.
+    pub requested_backend: DistributedBackend,
+    /// Effective Psionic runtime backend for the launch.
+    pub effective_backend: String,
+    /// Total number of planned ranks.
+    pub world_size: usize,
+    /// Original hostfile-like entries in rank order.
+    pub hostfile_entries: Vec<DistributedHostfileEntry>,
+    /// Runtime-visible elastic-membership facts for the planned world.
+    pub elastic_membership: TrainingElasticMembershipContext,
+    /// Runtime-visible device-mesh facts for the planned world.
+    pub device_mesh: TrainingDeviceMeshContext,
+    /// Stable distributed-group identifier implied by the plan.
+    pub group_id: String,
+    /// Ordered group members implied by the plan.
+    pub members: Vec<DistributedGroupMember>,
+    /// Cluster execution evidence describing the planned launch.
+    pub cluster_execution: ClusterExecutionContext,
+    /// Ordered per-rank launch assignments.
+    pub assignments: Vec<DistributedLaunchAssignment>,
+}
+
 /// Initialization failure for the public distributed group surface.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum DistributedInitError {
@@ -821,6 +1173,239 @@ pub enum DistributedCollectiveError {
     },
 }
 
+/// Launch/config failure for the public framework-distributed planning shell.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DistributedLaunchError {
+    /// Launch planning reuses the public distributed-group bootstrap validation.
+    #[error(transparent)]
+    GroupInit(#[from] DistributedInitError),
+    /// The current issue still keeps named MLX backend families out of the public plan.
+    #[error(
+        "public distributed launch/config cannot map backend family `{backend}` yet; backend-family mapping remains later work"
+    )]
+    BackendFamilyMappingPending {
+        /// Requested distributed backend family.
+        backend: DistributedBackend,
+    },
+    /// One hostfile-like input produced no usable entries.
+    #[error("public distributed hostfile must contain at least one entry")]
+    HostfileEmpty,
+    /// One hostfile line declared the same node twice.
+    #[error("public distributed hostfile duplicates node `{node_id}`")]
+    DuplicateHostfileNodeId {
+        /// Node identifier that appeared more than once.
+        node_id: String,
+    },
+    /// One hostfile line requested an invalid slot count.
+    #[error("public distributed hostfile line {line} has invalid slots `{value}`")]
+    InvalidHostfileSlots {
+        /// One-based hostfile line number.
+        line: usize,
+        /// Raw slot value that refused.
+        value: String,
+    },
+    /// One hostfile line carried an unsupported directive.
+    #[error("public distributed hostfile line {line} has unsupported token `{token}`")]
+    UnsupportedHostfileToken {
+        /// One-based hostfile line number.
+        line: usize,
+        /// Unsupported token.
+        token: String,
+    },
+    /// The current bounded launch planner only supports one rank per node.
+    #[error(
+        "public distributed launch/config currently supports one rank per node only; node `{node_id}` requested slots={slots}"
+    )]
+    MultiSlotHostfileEntryUnsupported {
+        /// Node that requested more than one rank.
+        node_id: String,
+        /// Requested slot count.
+        slots: usize,
+    },
+    /// One hostfile node does not exist in the authoritative cluster state.
+    #[error(
+        "public distributed launch/config node `{node_id}` is not present in the cluster state"
+    )]
+    ClusterNodeMissing {
+        /// Node identifier that was missing.
+        node_id: String,
+    },
+    /// One hostfile node is not an active ready member.
+    #[error(
+        "public distributed launch/config node `{node_id}` is not ready for new work; found membership status `{status:?}`"
+    )]
+    ClusterNodeNotReady {
+        /// Node identifier that refused planning.
+        node_id: String,
+        /// Membership status observed in cluster truth.
+        status: ClusterMembershipStatus,
+    },
+    /// One explicit hostfile address disagreed with authoritative cluster truth.
+    #[error(
+        "public distributed launch/config node `{node_id}` hostfile address `{hostfile_addr}` does not match cluster address `{cluster_addr}`"
+    )]
+    HostfileAddressMismatch {
+        /// Node identifier that mismatched.
+        node_id: String,
+        /// Address declared by the hostfile entry.
+        hostfile_addr: String,
+        /// Address declared by authoritative cluster state.
+        cluster_addr: String,
+    },
+    /// The plan requires node telemetry for backend readiness checks.
+    #[error("public distributed launch/config node `{node_id}` is missing cluster telemetry")]
+    ClusterTelemetryMissing {
+        /// Node identifier that lacked telemetry.
+        node_id: String,
+    },
+    /// The selected runtime backend is not ready on one node.
+    #[error(
+        "public distributed launch/config backend `{backend}` is not ready on node `{node_id}`; found readiness `{status:?}`"
+    )]
+    BackendNotReady {
+        /// Node identifier that refused planning.
+        node_id: String,
+        /// Effective runtime backend requested by the launch.
+        backend: String,
+        /// Readiness observed in cluster telemetry.
+        status: ClusterBackendReadinessStatus,
+    },
+    /// The planning node must itself exist in cluster truth.
+    #[error(
+        "public distributed launch/config scheduler node `{node_id}` is not present in the cluster state"
+    )]
+    SchedulerNodeMissing {
+        /// Scheduler/coordinator node id.
+        node_id: String,
+    },
+    /// The sandbox profile must match the requested execution class.
+    #[error(
+        "public distributed launch/config execution class `{requested:?}` does not match sandbox profile class `{profile:?}`"
+    )]
+    SandboxExecutionClassMismatch {
+        /// Execution class requested by the launch config.
+        requested: ProviderSandboxExecutionClass,
+        /// Execution class carried by the sandbox profile.
+        profile: ProviderSandboxExecutionClass,
+    },
+    /// The sandbox runtime is not currently ready for the selected profile.
+    #[error(
+        "public distributed launch/config sandbox profile `{profile_id}` is not runtime-ready for `{execution_class:?}`"
+    )]
+    SandboxRuntimeNotReady {
+        /// Sandbox profile identifier.
+        profile_id: String,
+        /// Execution class requested by the launch config.
+        execution_class: ProviderSandboxExecutionClass,
+    },
+    /// Requested timeout exceeded the sandbox profile limit.
+    #[error(
+        "public distributed launch/config timeout {requested_timeout_s}s exceeds sandbox profile limit {profile_limit_s}s"
+    )]
+    TimeoutExceedsSandboxProfile {
+        /// Timeout requested by the launch config.
+        requested_timeout_s: u64,
+        /// Timeout limit enforced by the sandbox profile.
+        profile_limit_s: u64,
+    },
+    /// Zero-second timeout is invalid for sandbox jobs.
+    #[error("public distributed launch/config timeout_request_s must be greater than zero")]
+    TimeoutRequestZero,
+    /// Requested resource envelope exceeded the sandbox profile limit.
+    #[error(
+        "public distributed launch/config {resource} request {requested} exceeds sandbox profile limit {profile_limit}"
+    )]
+    ResourceRequestExceedsSandboxProfile {
+        /// Resource kind that exceeded the profile.
+        resource: &'static str,
+        /// Requested resource value.
+        requested: u64,
+        /// Profile limit for that resource.
+        profile_limit: u64,
+    },
+    /// Requested network posture disagreed with the selected sandbox profile.
+    #[error(
+        "public distributed launch/config network request `{requested}` does not match sandbox profile network mode `{profile}`"
+    )]
+    NetworkRequestMismatch {
+        /// Requested network posture.
+        requested: String,
+        /// Network mode enforced by the sandbox profile.
+        profile: String,
+    },
+    /// Requested filesystem posture disagreed with the selected sandbox profile.
+    #[error(
+        "public distributed launch/config filesystem request `{requested}` does not match sandbox profile filesystem mode `{profile}`"
+    )]
+    FilesystemRequestMismatch {
+        /// Requested filesystem posture.
+        requested: String,
+        /// Filesystem mode enforced by the sandbox profile.
+        profile: String,
+    },
+    /// This sandbox profile forbids environment injection, including required distributed keys.
+    #[error(
+        "public distributed launch/config sandbox profile `{profile_id}` forbids injected environment, so required distributed keys cannot be emitted"
+    )]
+    SandboxEnvironmentInjectionForbidden {
+        /// Sandbox profile identifier.
+        profile_id: String,
+    },
+    /// The compute product must remain aligned to the sandbox execution class.
+    #[error(
+        "public distributed launch/config compute product `{compute_product_id}` does not match execution-class product `{expected_product_id}`"
+    )]
+    ComputeProductIdMismatch {
+        /// Compute product requested by the launch config.
+        compute_product_id: String,
+        /// Product identifier implied by the execution class.
+        expected_product_id: String,
+    },
+    /// Inline payload entrypoints require explicit payload content.
+    #[error("public distributed launch/config inline payload entrypoints require payload content")]
+    InlinePayloadMissing,
+    /// Command entrypoints remain bounded to container execution, matching sandbox truth.
+    #[error(
+        "public distributed launch/config command entrypoints are only supported for container execution, not `{execution_class:?}`"
+    )]
+    CommandEntrypointUnsupported {
+        /// Execution class requested by the launch config.
+        execution_class: ProviderSandboxExecutionClass,
+    },
+    /// Workspace-file entrypoints must stay inside the workspace root.
+    #[error(
+        "public distributed launch/config workspace entrypoint `{entrypoint}` must be a non-empty relative workspace path without parent traversal"
+    )]
+    InvalidWorkspaceEntrypoint {
+        /// Invalid workspace-relative entrypoint.
+        entrypoint: String,
+    },
+    /// Expected outputs must stay inside the workspace root.
+    #[error(
+        "public distributed launch/config expected output `{path}` must be a relative workspace path without parent traversal"
+    )]
+    InvalidExpectedOutput {
+        /// Invalid output path.
+        path: String,
+    },
+    /// Base environment may not override distributed reserved keys.
+    #[error("public distributed launch/config cannot override reserved environment key `{key}`")]
+    ReservedEnvironmentOverride {
+        /// Reserved environment key.
+        key: String,
+    },
+    /// Explicit mesh axes must multiply to the selected world size.
+    #[error(
+        "public distributed launch/config mesh axes multiply to {axis_product}, but world size is {world_size}"
+    )]
+    AxisProductMismatch {
+        /// Product of declared axis extents.
+        axis_product: usize,
+        /// Planned world size.
+        world_size: usize,
+    },
+}
+
 #[derive(Clone, Debug)]
 struct DistributedGroupState {
     group_id: String,
@@ -836,6 +1421,31 @@ struct DistributedGroupState {
 #[derive(Default)]
 struct GlobalDistributedGroups {
     groups: BTreeMap<DistributedBackend, Arc<DistributedGroupState>>,
+}
+
+struct DistributedLaunchEnvironmentFacts<'a> {
+    rank: usize,
+    local_rank: usize,
+    world_size: usize,
+    node_id: &'a str,
+    cluster_id: &'a str,
+    cluster_state_digest: &'a str,
+    topology_digest: &'a str,
+    device_mesh: &'a TrainingDeviceMeshContext,
+    group_id: &'a str,
+    effective_backend: &'a str,
+}
+
+struct DistributedLaunchDigestFacts<'a> {
+    cluster_id: &'a str,
+    cluster_state_digest: &'a str,
+    topology_digest: &'a str,
+    elastic_membership: &'a TrainingElasticMembershipContext,
+    device_mesh: &'a TrainingDeviceMeshContext,
+    group_id: &'a str,
+    members: &'a [DistributedGroupMember],
+    cluster_execution: &'a ClusterExecutionContext,
+    assignments: &'a [DistributedLaunchAssignment],
 }
 
 /// Public framework-visible distributed group handle.
@@ -1322,6 +1932,272 @@ pub fn recv_like(
     )
 }
 
+/// Parses one hostfile-like string into explicit launch targets.
+pub fn parse_hostfile(
+    hostfile: &str,
+) -> Result<Vec<DistributedHostfileEntry>, DistributedLaunchError> {
+    let mut entries = Vec::new();
+    let mut seen_node_ids = BTreeSet::new();
+    for (line_index, raw_line) in hostfile.lines().enumerate() {
+        let line = raw_line
+            .split_once('#')
+            .map_or(raw_line, |(without_comment, _)| without_comment)
+            .trim();
+        if line.is_empty() {
+            continue;
+        }
+        let line_number = line_index.saturating_add(1);
+        let mut tokens = line.split_whitespace();
+        let Some(node_id) = tokens.next() else {
+            continue;
+        };
+        let mut entry = DistributedHostfileEntry::new(node_id);
+        for token in tokens {
+            if let Some(value) = token.strip_prefix("slots=") {
+                let slots = value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|slots| *slots > 0)
+                    .ok_or_else(|| DistributedLaunchError::InvalidHostfileSlots {
+                        line: line_number,
+                        value: value.to_string(),
+                    })?;
+                entry = entry.with_slots(slots);
+            } else if let Some(value) = token.strip_prefix("addr=") {
+                entry = entry.with_advertised_addr(value);
+            } else {
+                return Err(DistributedLaunchError::UnsupportedHostfileToken {
+                    line: line_number,
+                    token: token.to_string(),
+                });
+            }
+        }
+        if !seen_node_ids.insert(entry.node_id.clone()) {
+            return Err(DistributedLaunchError::DuplicateHostfileNodeId {
+                node_id: entry.node_id,
+            });
+        }
+        entries.push(entry);
+    }
+    if entries.is_empty() {
+        return Err(DistributedLaunchError::HostfileEmpty);
+    }
+    Ok(entries)
+}
+
+/// Plans one bounded framework-distributed launch against cluster and sandbox truth.
+pub fn plan_launch(
+    cluster_state: &ClusterState,
+    sandbox_profile: &ProviderSandboxProfile,
+    config: DistributedLaunchConfig,
+) -> Result<DistributedLaunchPlan, DistributedLaunchError> {
+    if config.requested_backend != DistributedBackend::Any {
+        return Err(DistributedLaunchError::BackendFamilyMappingPending {
+            backend: config.requested_backend,
+        });
+    }
+    if config.hostfile_entries.is_empty() {
+        return Err(DistributedLaunchError::HostfileEmpty);
+    }
+    validate_launch_config(cluster_state, sandbox_profile, &config)?;
+
+    let cluster_state_digest = cluster_state.stable_digest();
+    let topology_digest = cluster_state.topology_digest();
+    let world_size = config.hostfile_entries.len();
+    let membership_epoch = cluster_state
+        .last_applied_event_index()
+        .map_or(1, |index| index.as_u64());
+    let active_node_ids = config
+        .hostfile_entries
+        .iter()
+        .map(|entry| entry.node_id.clone())
+        .collect::<Vec<_>>();
+    let axes = if config.axes.is_empty() {
+        vec![TrainingDeviceMeshAxis::new(
+            "data_parallel",
+            TrainingDeviceMeshAxisKind::DataParallel,
+            world_size,
+        )]
+    } else {
+        config.axes.clone()
+    };
+    let elastic_membership = TrainingElasticMembershipContext::new(
+        membership_epoch,
+        cluster_state_digest.clone(),
+        topology_digest.clone(),
+        active_node_ids.clone(),
+    );
+    let device_mesh = TrainingDeviceMeshContext::new(
+        format!("{}.mesh", config.launch_id),
+        membership_epoch,
+        config.effective_backend.clone(),
+        ClusterCommunicationClass::TensorCollectiveMesh,
+        elastic_membership.clone(),
+        active_node_ids,
+    )
+    .with_axes(axes);
+
+    let members = config
+        .hostfile_entries
+        .iter()
+        .enumerate()
+        .map(|(rank, entry)| {
+            DistributedGroupMember::new(
+                entry.node_id.clone(),
+                rank,
+                rank,
+                format!("{}:0", config.effective_backend),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let representative_state = build_bootstrapped_state(
+        config.requested_backend,
+        DistributedGroupBootstrap::new(
+            device_mesh.clone(),
+            config.hostfile_entries[0].node_id.clone(),
+            members.clone(),
+        ),
+    )
+    .map_err(DistributedLaunchError::from)?;
+    let group_id = representative_state.group_id;
+
+    let selected_nodes = config
+        .hostfile_entries
+        .iter()
+        .map(|entry| {
+            ClusterSelectedNode::new(entry.node_id.clone(), config.effective_backend.clone())
+        })
+        .collect::<Vec<_>>();
+    let communication_eligibility = ClusterCommunicationEligibility::new(
+        config.effective_backend.clone(),
+        ClusterCommunicationClass::TensorCollectiveMesh,
+    )
+    .with_supported_classes(vec![ClusterCommunicationClass::TensorCollectiveMesh])
+    .with_detail(
+        "framework distributed launch plan requires tensor_collective_mesh across selected nodes",
+    );
+    let single_node = config.hostfile_entries.len() == 1;
+    let disposition = if single_node {
+        if config.hostfile_entries[0].node_id == config.scheduler_node_id {
+            ClusterExecutionDisposition::LocalOnly
+        } else {
+            ClusterExecutionDisposition::RemoteWholeRequest
+        }
+    } else {
+        ClusterExecutionDisposition::Sharded
+    };
+    let mut cluster_execution = ClusterExecutionContext::new(
+        cluster_state.cluster_id().as_str(),
+        cluster_state_digest.clone(),
+        topology_digest.clone(),
+        config.scheduler_node_id.clone(),
+        config.transport,
+        disposition,
+    )
+    .with_communication_eligibility(communication_eligibility)
+    .with_selected_nodes(selected_nodes)
+    .with_placement_diagnostic(format!(
+        "planned from explicit distributed hostfile with {} entries",
+        config.hostfile_entries.len()
+    ));
+    if let Some(commit_authority) = cluster_commit_authority_evidence(cluster_state) {
+        cluster_execution = cluster_execution.with_commit_authority(commit_authority);
+    }
+
+    let compute_product_id = config
+        .compute_product_id
+        .clone()
+        .unwrap_or_else(|| config.execution_class.product_id().to_string());
+    let assignments = config
+        .hostfile_entries
+        .iter()
+        .zip(members.iter())
+        .enumerate()
+        .map(|(rank, (entry, member))| {
+            let local_rank = 0;
+            let group_bootstrap = DistributedGroupBootstrap::new(
+                device_mesh.clone(),
+                entry.node_id.clone(),
+                members.clone(),
+            );
+            let environment = launch_environment(
+                config.environment.as_slice(),
+                &DistributedLaunchEnvironmentFacts {
+                    rank,
+                    local_rank,
+                    world_size,
+                    node_id: entry.node_id.as_str(),
+                    cluster_id: cluster_state.cluster_id().as_str(),
+                    cluster_state_digest: cluster_state_digest.as_str(),
+                    topology_digest: topology_digest.as_str(),
+                    device_mesh: &device_mesh,
+                    group_id: group_id.as_str(),
+                    effective_backend: config.effective_backend.as_str(),
+                },
+            );
+            let sandbox_job = ProviderSandboxJobRequest {
+                job_id: format!("{}.rank{rank}", config.launch_id),
+                provider_id: config.provider_id.clone(),
+                compute_product_id: compute_product_id.clone(),
+                execution_class: config.execution_class,
+                entrypoint_type: config.entrypoint_type,
+                entrypoint: config.entrypoint.clone(),
+                payload: config.payload.clone(),
+                arguments: config.arguments.clone(),
+                workspace_root: config.workspace_root.clone(),
+                expected_outputs: config.expected_outputs.clone(),
+                timeout_request_s: config.timeout_request_s,
+                network_request: config.network_request.clone(),
+                filesystem_request: config.filesystem_request.clone(),
+                environment: environment.clone(),
+                resource_request: config.resource_request.clone(),
+                payout_reference: config.payout_reference.clone(),
+                verification_posture: config.verification_posture.clone(),
+            };
+            DistributedLaunchAssignment {
+                node_id: entry.node_id.clone(),
+                rank,
+                local_rank,
+                member: member.clone(),
+                group_bootstrap,
+                environment,
+                sandbox_job,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let plan_digest = stable_launch_plan_digest(
+        &config,
+        &DistributedLaunchDigestFacts {
+            cluster_id: cluster_state.cluster_id().as_str(),
+            cluster_state_digest: cluster_state_digest.as_str(),
+            topology_digest: topology_digest.as_str(),
+            elastic_membership: &elastic_membership,
+            device_mesh: &device_mesh,
+            group_id: group_id.as_str(),
+            members: members.as_slice(),
+            cluster_execution: &cluster_execution,
+            assignments: assignments.as_slice(),
+        },
+    );
+
+    Ok(DistributedLaunchPlan {
+        launch_id: config.launch_id,
+        plan_digest,
+        requested_backend: config.requested_backend,
+        effective_backend: config.effective_backend,
+        world_size,
+        hostfile_entries: config.hostfile_entries,
+        elastic_membership,
+        device_mesh,
+        group_id,
+        members,
+        cluster_execution,
+        assignments,
+    })
+}
+
 fn resolve_collective_group(
     group: Option<DistributedGroup>,
 ) -> Result<DistributedGroup, DistributedCollectiveError> {
@@ -1329,6 +2205,510 @@ fn resolve_collective_group(
         Some(group) => Ok(group),
         None => Ok(init(DistributedInitOptions::new())?),
     }
+}
+
+fn validate_launch_config(
+    cluster_state: &ClusterState,
+    sandbox_profile: &ProviderSandboxProfile,
+    config: &DistributedLaunchConfig,
+) -> Result<(), DistributedLaunchError> {
+    if config.execution_class != sandbox_profile.execution_class {
+        return Err(DistributedLaunchError::SandboxExecutionClassMismatch {
+            requested: config.execution_class,
+            profile: sandbox_profile.execution_class,
+        });
+    }
+    if !sandbox_profile.runtime_ready {
+        return Err(DistributedLaunchError::SandboxRuntimeNotReady {
+            profile_id: sandbox_profile.profile_id.clone(),
+            execution_class: config.execution_class,
+        });
+    }
+    if config.timeout_request_s == 0 {
+        return Err(DistributedLaunchError::TimeoutRequestZero);
+    }
+    if config.timeout_request_s > sandbox_profile.timeout_limit_s {
+        return Err(DistributedLaunchError::TimeoutExceedsSandboxProfile {
+            requested_timeout_s: config.timeout_request_s,
+            profile_limit_s: sandbox_profile.timeout_limit_s,
+        });
+    }
+    if config
+        .resource_request
+        .cpu_limit
+        .is_some_and(|cpu_limit| cpu_limit > sandbox_profile.cpu_limit)
+    {
+        return Err(
+            DistributedLaunchError::ResourceRequestExceedsSandboxProfile {
+                resource: "cpu_limit",
+                requested: u64::from(config.resource_request.cpu_limit.unwrap_or_default()),
+                profile_limit: u64::from(sandbox_profile.cpu_limit),
+            },
+        );
+    }
+    if config
+        .resource_request
+        .memory_limit_mb
+        .is_some_and(|memory_limit_mb| memory_limit_mb > sandbox_profile.memory_limit_mb)
+    {
+        return Err(
+            DistributedLaunchError::ResourceRequestExceedsSandboxProfile {
+                resource: "memory_limit_mb",
+                requested: config.resource_request.memory_limit_mb.unwrap_or_default(),
+                profile_limit: sandbox_profile.memory_limit_mb,
+            },
+        );
+    }
+    if config
+        .resource_request
+        .disk_limit_mb
+        .is_some_and(|disk_limit_mb| disk_limit_mb > sandbox_profile.disk_limit_mb)
+    {
+        return Err(
+            DistributedLaunchError::ResourceRequestExceedsSandboxProfile {
+                resource: "disk_limit_mb",
+                requested: config.resource_request.disk_limit_mb.unwrap_or_default(),
+                profile_limit: sandbox_profile.disk_limit_mb,
+            },
+        );
+    }
+    if config.network_request.trim() != sandbox_profile.network_mode.trim() {
+        return Err(DistributedLaunchError::NetworkRequestMismatch {
+            requested: config.network_request.clone(),
+            profile: sandbox_profile.network_mode.clone(),
+        });
+    }
+    if config.filesystem_request.trim() != sandbox_profile.filesystem_mode.trim() {
+        return Err(DistributedLaunchError::FilesystemRequestMismatch {
+            requested: config.filesystem_request.clone(),
+            profile: sandbox_profile.filesystem_mode.clone(),
+        });
+    }
+    if sandbox_profile.secrets_mode.trim() == "none" {
+        return Err(
+            DistributedLaunchError::SandboxEnvironmentInjectionForbidden {
+                profile_id: sandbox_profile.profile_id.clone(),
+            },
+        );
+    }
+    if let Some(compute_product_id) = &config.compute_product_id {
+        let expected_product_id = config.execution_class.product_id();
+        if compute_product_id != expected_product_id {
+            return Err(DistributedLaunchError::ComputeProductIdMismatch {
+                compute_product_id: compute_product_id.clone(),
+                expected_product_id: expected_product_id.to_string(),
+            });
+        }
+    }
+    match config.entrypoint_type {
+        ProviderSandboxEntrypointType::InlinePayload => {
+            if config.payload.is_none() {
+                return Err(DistributedLaunchError::InlinePayloadMissing);
+            }
+        }
+        ProviderSandboxEntrypointType::WorkspaceFile => {
+            if !is_relative_workspace_path(config.entrypoint.as_str()) {
+                return Err(DistributedLaunchError::InvalidWorkspaceEntrypoint {
+                    entrypoint: config.entrypoint.clone(),
+                });
+            }
+        }
+        ProviderSandboxEntrypointType::Command => {
+            if config.execution_class != ProviderSandboxExecutionClass::ContainerExec {
+                return Err(DistributedLaunchError::CommandEntrypointUnsupported {
+                    execution_class: config.execution_class,
+                });
+            }
+        }
+    }
+    for expected_output in &config.expected_outputs {
+        if !is_relative_workspace_path(expected_output) {
+            return Err(DistributedLaunchError::InvalidExpectedOutput {
+                path: expected_output.clone(),
+            });
+        }
+    }
+    if config.hostfile_entries.is_empty() {
+        return Err(DistributedLaunchError::HostfileEmpty);
+    }
+    let axis_product = if config.axes.is_empty() {
+        config.hostfile_entries.len()
+    } else {
+        config
+            .axes
+            .iter()
+            .map(|axis| axis.extent)
+            .product::<usize>()
+    };
+    if axis_product != config.hostfile_entries.len() {
+        return Err(DistributedLaunchError::AxisProductMismatch {
+            axis_product,
+            world_size: config.hostfile_entries.len(),
+        });
+    }
+    if !cluster_state
+        .memberships()
+        .values()
+        .any(|record| record.identity.node_id.as_str() == config.scheduler_node_id)
+    {
+        return Err(DistributedLaunchError::SchedulerNodeMissing {
+            node_id: config.scheduler_node_id.clone(),
+        });
+    }
+    for environment in &config.environment {
+        if RESERVED_DISTRIBUTED_ENV_KEYS.contains(&environment.key.as_str()) {
+            return Err(DistributedLaunchError::ReservedEnvironmentOverride {
+                key: environment.key.clone(),
+            });
+        }
+    }
+
+    let mut seen_node_ids = BTreeSet::new();
+    for entry in &config.hostfile_entries {
+        if !seen_node_ids.insert(entry.node_id.clone()) {
+            return Err(DistributedLaunchError::DuplicateHostfileNodeId {
+                node_id: entry.node_id.clone(),
+            });
+        }
+        if entry.slots != 1 {
+            return Err(DistributedLaunchError::MultiSlotHostfileEntryUnsupported {
+                node_id: entry.node_id.clone(),
+                slots: entry.slots,
+            });
+        }
+        let membership = cluster_membership_record(cluster_state, entry.node_id.as_str())?;
+        if membership.status != ClusterMembershipStatus::Ready {
+            return Err(DistributedLaunchError::ClusterNodeNotReady {
+                node_id: entry.node_id.clone(),
+                status: membership.status,
+            });
+        }
+        if let Some(hostfile_addr) = &entry.advertised_addr {
+            let cluster_addr = membership
+                .advertised_addr
+                .map(|addr| addr.to_string())
+                .unwrap_or_else(|| String::from("<none>"));
+            if *hostfile_addr != cluster_addr {
+                return Err(DistributedLaunchError::HostfileAddressMismatch {
+                    node_id: entry.node_id.clone(),
+                    hostfile_addr: hostfile_addr.clone(),
+                    cluster_addr,
+                });
+            }
+        }
+        let telemetry = cluster_node_telemetry(cluster_state, entry.node_id.as_str())?;
+        let status = telemetry
+            .backend_readiness
+            .get(config.effective_backend.as_str())
+            .copied()
+            .unwrap_or(ClusterBackendReadinessStatus::Unknown);
+        if status != ClusterBackendReadinessStatus::Ready {
+            return Err(DistributedLaunchError::BackendNotReady {
+                node_id: entry.node_id.clone(),
+                backend: config.effective_backend.clone(),
+                status,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn cluster_membership_record<'a>(
+    cluster_state: &'a ClusterState,
+    node_id: &str,
+) -> Result<&'a ClusterMembershipRecord, DistributedLaunchError> {
+    cluster_state
+        .memberships()
+        .values()
+        .find(|record| record.identity.node_id.as_str() == node_id)
+        .ok_or_else(|| DistributedLaunchError::ClusterNodeMissing {
+            node_id: node_id.to_string(),
+        })
+}
+
+fn cluster_node_telemetry<'a>(
+    cluster_state: &'a ClusterState,
+    node_id: &str,
+) -> Result<&'a ClusterNodeTelemetry, DistributedLaunchError> {
+    cluster_state
+        .telemetry()
+        .iter()
+        .find(|(telemetry_node_id, _)| telemetry_node_id.as_str() == node_id)
+        .map(|(_, telemetry)| telemetry)
+        .ok_or_else(|| DistributedLaunchError::ClusterTelemetryMissing {
+            node_id: node_id.to_string(),
+        })
+}
+
+fn cluster_commit_authority_evidence(
+    cluster_state: &ClusterState,
+) -> Option<ClusterCommitAuthorityEvidence> {
+    cluster_state.commit_authority().map(|authority| {
+        ClusterCommitAuthorityEvidence::new(
+            authority.leader_id.as_str(),
+            authority.term.as_u64(),
+            authority.committed_event_index.as_u64(),
+            authority.fence_token,
+            authority.authority_digest,
+        )
+    })
+}
+
+fn launch_environment(
+    base_environment: &[ProviderSandboxEnvironmentVar],
+    facts: &DistributedLaunchEnvironmentFacts<'_>,
+) -> Vec<ProviderSandboxEnvironmentVar> {
+    let mut environment = base_environment.to_vec();
+    let distributed = [
+        sandbox_environment_var("PSIONIC_DISTRIBUTED_RANK", facts.rank.to_string()),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_LOCAL_RANK",
+            facts.local_rank.to_string(),
+        ),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_WORLD_SIZE",
+            facts.world_size.to_string(),
+        ),
+        sandbox_environment_var("PSIONIC_DISTRIBUTED_NODE_ID", facts.node_id.to_string()),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_CLUSTER_ID",
+            facts.cluster_id.to_string(),
+        ),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_CLUSTER_STATE_DIGEST",
+            facts.cluster_state_digest.to_string(),
+        ),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_TOPOLOGY_DIGEST",
+            facts.topology_digest.to_string(),
+        ),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_MESH_ID",
+            facts.device_mesh.mesh_id.clone(),
+        ),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_MESH_REVISION",
+            facts.device_mesh.mesh_revision.to_string(),
+        ),
+        sandbox_environment_var(
+            "PSIONIC_DISTRIBUTED_EFFECTIVE_BACKEND",
+            facts.effective_backend.to_string(),
+        ),
+        sandbox_environment_var("PSIONIC_DISTRIBUTED_GROUP_ID", facts.group_id.to_string()),
+    ];
+    environment.extend(distributed);
+    environment
+}
+
+fn sandbox_environment_var(
+    key: impl Into<String>,
+    value: impl Into<String>,
+) -> ProviderSandboxEnvironmentVar {
+    ProviderSandboxEnvironmentVar {
+        key: key.into(),
+        value: value.into(),
+    }
+}
+
+fn is_relative_workspace_path(path: &str) -> bool {
+    let candidate = Path::new(path);
+    !path.trim().is_empty()
+        && !candidate.is_absolute()
+        && !candidate
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+}
+
+fn stable_launch_plan_digest(
+    config: &DistributedLaunchConfig,
+    facts: &DistributedLaunchDigestFacts<'_>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_distributed_launch_plan|");
+    hasher.update(config.launch_id.as_bytes());
+    hasher.update(b"|scheduler|");
+    hasher.update(config.scheduler_node_id.as_bytes());
+    hasher.update(b"|backend|");
+    hasher.update(config.requested_backend.as_str().as_bytes());
+    hasher.update(b"|effective_backend|");
+    hasher.update(config.effective_backend.as_bytes());
+    hasher.update(b"|cluster_id|");
+    hasher.update(facts.cluster_id.as_bytes());
+    hasher.update(b"|cluster_state|");
+    hasher.update(facts.cluster_state_digest.as_bytes());
+    hasher.update(b"|topology|");
+    hasher.update(facts.topology_digest.as_bytes());
+    hasher.update(b"|transport|");
+    hasher.update(format!("{:?}", config.transport).as_bytes());
+    hasher.update(b"|execution_class|");
+    hasher.update(format!("{:?}", config.execution_class).as_bytes());
+    hasher.update(b"|entrypoint_type|");
+    hasher.update(format!("{:?}", config.entrypoint_type).as_bytes());
+    hasher.update(b"|entrypoint|");
+    hasher.update(config.entrypoint.as_bytes());
+    hasher.update(b"|payload|");
+    hasher.update(config.payload.as_deref().unwrap_or_default().as_bytes());
+    hasher.update(b"|workspace_root|");
+    hasher.update(
+        config
+            .workspace_root
+            .as_os_str()
+            .to_string_lossy()
+            .as_bytes(),
+    );
+    hasher.update(b"|timeout|");
+    hasher.update(config.timeout_request_s.to_le_bytes());
+    hasher.update(b"|network_request|");
+    hasher.update(config.network_request.as_bytes());
+    hasher.update(b"|filesystem_request|");
+    hasher.update(config.filesystem_request.as_bytes());
+    hasher.update(b"|provider_id|");
+    hasher.update(config.provider_id.as_bytes());
+    hasher.update(b"|compute_product|");
+    hasher.update(
+        config
+            .compute_product_id
+            .as_deref()
+            .unwrap_or(config.execution_class.product_id())
+            .as_bytes(),
+    );
+    hasher.update(b"|payout_reference|");
+    hasher.update(
+        config
+            .payout_reference
+            .as_deref()
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    hasher.update(b"|verification_posture|");
+    hasher.update(
+        config
+            .verification_posture
+            .as_deref()
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    hasher.update(b"|mesh|");
+    hasher.update(facts.device_mesh.mesh_id.as_bytes());
+    hasher.update(b"|mesh_revision|");
+    hasher.update(facts.device_mesh.mesh_revision.to_le_bytes());
+    hasher.update(b"|group_id|");
+    hasher.update(facts.group_id.as_bytes());
+    hasher.update(b"|elastic_membership_epoch|");
+    hasher.update(facts.elastic_membership.membership_epoch.to_le_bytes());
+    hasher.update(b"|elastic_cluster_state|");
+    hasher.update(facts.elastic_membership.cluster_state_digest.as_bytes());
+    hasher.update(b"|elastic_topology|");
+    hasher.update(facts.elastic_membership.topology_digest.as_bytes());
+    for node_id in &facts.elastic_membership.active_node_ids {
+        hasher.update(b"|elastic_node|");
+        hasher.update(node_id.as_bytes());
+    }
+    for axis in &facts.device_mesh.axes {
+        hasher.update(b"|axis|");
+        hasher.update(axis.axis_id.as_bytes());
+        hasher.update(b"|kind|");
+        hasher.update(format!("{:?}", axis.kind).as_bytes());
+        hasher.update(b"|extent|");
+        hasher.update(axis.extent.to_le_bytes());
+    }
+    for argument in &config.arguments {
+        hasher.update(b"|arg|");
+        hasher.update(argument.as_bytes());
+    }
+    for path in &config.expected_outputs {
+        hasher.update(b"|output|");
+        hasher.update(path.as_bytes());
+    }
+    for environment in &config.environment {
+        hasher.update(b"|base_env|");
+        hasher.update(environment.key.as_bytes());
+        hasher.update(b"|");
+        hasher.update(environment.value.as_bytes());
+    }
+    if let Some(cpu_limit) = config.resource_request.cpu_limit {
+        hasher.update(b"|cpu_limit|");
+        hasher.update(cpu_limit.to_le_bytes());
+    }
+    if let Some(memory_limit_mb) = config.resource_request.memory_limit_mb {
+        hasher.update(b"|memory_limit_mb|");
+        hasher.update(memory_limit_mb.to_le_bytes());
+    }
+    if let Some(disk_limit_mb) = config.resource_request.disk_limit_mb {
+        hasher.update(b"|disk_limit_mb|");
+        hasher.update(disk_limit_mb.to_le_bytes());
+    }
+    for entry in &config.hostfile_entries {
+        hasher.update(b"|host|");
+        hasher.update(entry.node_id.as_bytes());
+        hasher.update(b"|slots|");
+        hasher.update(entry.slots.to_le_bytes());
+        if let Some(advertised_addr) = &entry.advertised_addr {
+            hasher.update(b"|addr|");
+            hasher.update(advertised_addr.as_bytes());
+        }
+    }
+    for member in facts.members {
+        hasher.update(b"|member|");
+        hasher.update(member.node_id.as_bytes());
+        hasher.update(b"|rank|");
+        hasher.update(member.rank.to_le_bytes());
+        hasher.update(b"|shard|");
+        hasher.update(member.shard_id.to_le_bytes());
+        hasher.update(b"|device|");
+        hasher.update(member.device_label.as_bytes());
+    }
+    hasher.update(b"|cluster_execution_scheduler|");
+    hasher.update(facts.cluster_execution.scheduler_node_id.as_bytes());
+    hasher.update(b"|cluster_execution_disposition|");
+    hasher.update(format!("{:?}", facts.cluster_execution.disposition).as_bytes());
+    if let Some(commit_authority) = &facts.cluster_execution.commit_authority {
+        hasher.update(b"|commit_authority|");
+        hasher.update(commit_authority.coordinator_node_id.as_bytes());
+        hasher.update(b"|term|");
+        hasher.update(commit_authority.term.to_le_bytes());
+        hasher.update(b"|committed_index|");
+        hasher.update(commit_authority.committed_event_index.to_le_bytes());
+        hasher.update(b"|fence|");
+        hasher.update(commit_authority.fence_token.as_bytes());
+        hasher.update(b"|authority_digest|");
+        hasher.update(commit_authority.authority_digest.as_bytes());
+    }
+    for node in &facts.cluster_execution.selected_nodes {
+        hasher.update(b"|selected_node|");
+        hasher.update(node.node_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(node.runtime_backend.as_bytes());
+    }
+    for diagnostic in &facts.cluster_execution.placement_diagnostics {
+        hasher.update(b"|placement|");
+        hasher.update(diagnostic.as_bytes());
+    }
+    for assignment in facts.assignments {
+        hasher.update(b"|assignment|");
+        hasher.update(assignment.node_id.as_bytes());
+        hasher.update(b"|rank|");
+        hasher.update(assignment.rank.to_le_bytes());
+        hasher.update(b"|local_rank|");
+        hasher.update(assignment.local_rank.to_le_bytes());
+        hasher.update(b"|job_id|");
+        hasher.update(assignment.sandbox_job.job_id.as_bytes());
+        hasher.update(b"|sandbox_provider|");
+        hasher.update(assignment.sandbox_job.provider_id.as_bytes());
+        hasher.update(b"|sandbox_product|");
+        hasher.update(assignment.sandbox_job.compute_product_id.as_bytes());
+        hasher.update(b"|sandbox_timeout|");
+        hasher.update(assignment.sandbox_job.timeout_request_s.to_le_bytes());
+        hasher.update(b"|sandbox_entrypoint|");
+        hasher.update(assignment.sandbox_job.entrypoint.as_bytes());
+        for environment in &assignment.environment {
+            hasher.update(b"|assignment_env|");
+            hasher.update(environment.key.as_bytes());
+            hasher.update(b"|");
+            hasher.update(environment.value.as_bytes());
+        }
+    }
+    hex::encode(hasher.finalize())
 }
 
 fn validate_reference_element_count(
@@ -1738,10 +3118,15 @@ fn lock_distributed_test() -> MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, net::SocketAddr};
 
     use psionic_array::ArrayContext;
+    use psionic_cluster::{
+        AdmissionToken, ClusterEventIndex, ClusterId, ClusterLeadershipRecord, ClusterNamespace,
+        ClusterSnapshot, ClusterTerm, NodeEpoch, NodeId, NodeRole,
+    };
     use psionic_core::{DType, Shape};
+    use psionic_sandbox::ProviderSandboxRuntimeKind;
 
     fn sample_membership() -> TrainingElasticMembershipContext {
         TrainingElasticMembershipContext::new(
@@ -1784,6 +3169,132 @@ mod tests {
                 DistributedGroupMember::new("node-d", 3, 3, "cuda:3"),
             ],
         )
+    }
+
+    fn sample_cluster_id() -> ClusterId {
+        ClusterId::new(
+            &ClusterNamespace::new("psionic-lab"),
+            &AdmissionToken::new("launch-secret"),
+        )
+    }
+
+    fn sample_cluster_membership(
+        cluster_id: &ClusterId,
+        node_id: &str,
+        port: u16,
+        role: NodeRole,
+        status: ClusterMembershipStatus,
+    ) -> ClusterMembershipRecord {
+        ClusterMembershipRecord::new(
+            psionic_cluster::ClusterNodeIdentity {
+                cluster_id: cluster_id.clone(),
+                node_id: NodeId::new(node_id),
+                node_epoch: NodeEpoch::initial(),
+                role,
+                auth_public_key: format!("{node_id}-public-key"),
+                attestation: None,
+            },
+            Some(SocketAddr::from(([127, 0, 0, 1], port))),
+            status,
+        )
+    }
+
+    fn sample_cluster_state() -> ClusterState {
+        let cluster_id = sample_cluster_id();
+        let mut snapshot = ClusterSnapshot::new(cluster_id.clone());
+        snapshot.last_applied_event_index = Some(ClusterEventIndex::initial());
+        snapshot.memberships.insert(
+            NodeId::new("scheduler-a"),
+            sample_cluster_membership(
+                &cluster_id,
+                "scheduler-a",
+                4000,
+                NodeRole::CoordinatorOnly,
+                ClusterMembershipStatus::Ready,
+            ),
+        );
+        snapshot.memberships.insert(
+            NodeId::new("worker-a"),
+            sample_cluster_membership(
+                &cluster_id,
+                "worker-a",
+                4101,
+                NodeRole::ExecutorOnly,
+                ClusterMembershipStatus::Ready,
+            ),
+        );
+        snapshot.memberships.insert(
+            NodeId::new("worker-b"),
+            sample_cluster_membership(
+                &cluster_id,
+                "worker-b",
+                4102,
+                NodeRole::ExecutorOnly,
+                ClusterMembershipStatus::Ready,
+            ),
+        );
+        snapshot.telemetry.insert(
+            NodeId::new("worker-a"),
+            ClusterNodeTelemetry::new(NodeId::new("worker-a"))
+                .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready),
+        );
+        snapshot.telemetry.insert(
+            NodeId::new("worker-b"),
+            ClusterNodeTelemetry::new(NodeId::new("worker-b"))
+                .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready),
+        );
+        snapshot.leadership = Some(ClusterLeadershipRecord::new(
+            ClusterTerm::initial(),
+            NodeId::new("scheduler-a"),
+            ClusterEventIndex::initial(),
+        ));
+        ClusterState::from_snapshot(snapshot)
+    }
+
+    fn sample_sandbox_profile() -> ProviderSandboxProfile {
+        ProviderSandboxProfile {
+            profile_id: String::from("sandbox.posix.v1"),
+            profile_digest: String::from("sandbox-profile-digest"),
+            execution_class: ProviderSandboxExecutionClass::PosixExec,
+            runtime_family: String::from("posix"),
+            runtime_version: String::from("1.0"),
+            sandbox_engine: String::from("process"),
+            os_family: String::from("linux"),
+            arch: String::from("x86_64"),
+            cpu_limit: 8,
+            memory_limit_mb: 16_384,
+            disk_limit_mb: 32_768,
+            timeout_limit_s: 600,
+            network_mode: String::from("disabled"),
+            filesystem_mode: String::from("workspace_only"),
+            workspace_mode: String::from("workspace_only"),
+            artifact_output_mode: String::from("workspace_copy"),
+            secrets_mode: String::from("env_allowed"),
+            allowed_binaries: vec![String::from("bash")],
+            toolchain_inventory: vec![String::from("python3")],
+            container_image: None,
+            runtime_image_digest: None,
+            accelerator_policy: Some(String::from("gpu-optional")),
+            runtime_kind: ProviderSandboxRuntimeKind::Posix,
+            runtime_ready: true,
+            runtime_binary_path: Some(String::from("/usr/bin/env")),
+            capability_summary: String::from("Posix sandbox ready"),
+        }
+    }
+
+    fn sample_launch_config(
+        hostfile_entries: Vec<DistributedHostfileEntry>,
+    ) -> DistributedLaunchConfig {
+        DistributedLaunchConfig::new(
+            "launch.train.v1",
+            "scheduler-a",
+            "cuda",
+            "bin/train.sh",
+            "/tmp/psionic-distributed-launch",
+        )
+        .with_hostfile_entries(hostfile_entries)
+        .with_provider_id("provider-alpha")
+        .with_expected_outputs(vec![String::from("artifacts/weights.bin")])
     }
 
     #[test]
@@ -2484,6 +3995,228 @@ mod tests {
                 actual_shape: Shape::new(vec![2]),
                 expected_dtype: DType::F32,
                 actual_dtype: DType::I8,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_hostfile_accepts_comments_slots_and_addresses() {
+        let parsed = parse_hostfile(
+            "\n# comment\nworker-a slots=1 addr=127.0.0.1:4101\nworker-b addr=127.0.0.1:4102\n",
+        )
+        .expect("hostfile should parse valid entries");
+
+        assert_eq!(
+            parsed,
+            vec![
+                DistributedHostfileEntry::new("worker-a")
+                    .with_slots(1)
+                    .with_advertised_addr("127.0.0.1:4101"),
+                DistributedHostfileEntry::new("worker-b").with_advertised_addr("127.0.0.1:4102"),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_hostfile_refuses_duplicate_nodes_and_unknown_tokens() {
+        let duplicate = parse_hostfile("worker-a\nworker-a")
+            .expect_err("duplicate hostfile nodes should refuse");
+        assert_eq!(
+            duplicate,
+            DistributedLaunchError::DuplicateHostfileNodeId {
+                node_id: String::from("worker-a"),
+            }
+        );
+
+        let unsupported = parse_hostfile("worker-a gpu=1")
+            .expect_err("unsupported hostfile directives should refuse");
+        assert_eq!(
+            unsupported,
+            DistributedLaunchError::UnsupportedHostfileToken {
+                line: 1,
+                token: String::from("gpu=1"),
+            }
+        );
+    }
+
+    #[test]
+    fn plan_launch_emits_cluster_evidence_rank_assignments_and_reserved_environment() {
+        let cluster_state = sample_cluster_state();
+        let sandbox_profile = sample_sandbox_profile();
+        let config = sample_launch_config(vec![
+            DistributedHostfileEntry::new("worker-a").with_advertised_addr("127.0.0.1:4101"),
+            DistributedHostfileEntry::new("worker-b").with_advertised_addr("127.0.0.1:4102"),
+        ]);
+
+        let plan = plan_launch(&cluster_state, &sandbox_profile, config)
+            .expect("launch plan should be derived from cluster and sandbox truth");
+
+        assert_eq!(plan.world_size, 2);
+        assert_eq!(plan.assignments.len(), 2);
+        assert_eq!(
+            plan.members
+                .iter()
+                .map(|member| (member.node_id.as_str(), member.rank))
+                .collect::<Vec<_>>(),
+            vec![("worker-a", 0), ("worker-b", 1)]
+        );
+        assert_eq!(plan.cluster_execution.scheduler_node_id, "scheduler-a");
+        assert_eq!(plan.cluster_execution.selected_nodes.len(), 2);
+        assert_eq!(
+            plan.cluster_execution.commit_authority,
+            cluster_commit_authority_evidence(&cluster_state)
+        );
+        assert_eq!(
+            plan.assignments[0]
+                .environment
+                .iter()
+                .find(|env| env.key == "PSIONIC_DISTRIBUTED_GROUP_ID")
+                .map(|env| env.value.as_str()),
+            Some(plan.group_id.as_str())
+        );
+        assert_eq!(
+            plan.assignments[1]
+                .environment
+                .iter()
+                .find(|env| env.key == "PSIONIC_DISTRIBUTED_RANK")
+                .map(|env| env.value.as_str()),
+            Some("1")
+        );
+        assert_eq!(
+            plan.assignments[0].sandbox_job.compute_product_id,
+            ProviderSandboxExecutionClass::PosixExec.product_id()
+        );
+    }
+
+    #[test]
+    fn plan_launch_digest_is_stable_for_equal_inputs_and_changes_when_config_changes() {
+        let cluster_state = sample_cluster_state();
+        let sandbox_profile = sample_sandbox_profile();
+        let config = sample_launch_config(vec![
+            DistributedHostfileEntry::new("worker-a"),
+            DistributedHostfileEntry::new("worker-b"),
+        ]);
+
+        let first = plan_launch(&cluster_state, &sandbox_profile, config.clone())
+            .expect("first launch plan should succeed");
+        let second = plan_launch(&cluster_state, &sandbox_profile, config.clone())
+            .expect("second launch plan should succeed");
+        assert_eq!(first.plan_digest, second.plan_digest);
+
+        let changed = plan_launch(
+            &cluster_state,
+            &sandbox_profile,
+            config.with_provider_id("provider-beta"),
+        )
+        .expect("changed config should still succeed");
+        assert_ne!(first.plan_digest, changed.plan_digest);
+    }
+
+    #[test]
+    fn plan_launch_refuses_multi_slot_and_cluster_truth_mismatches() {
+        let cluster_state = sample_cluster_state();
+        let sandbox_profile = sample_sandbox_profile();
+
+        let multi_slot = plan_launch(
+            &cluster_state,
+            &sandbox_profile,
+            sample_launch_config(vec![
+                DistributedHostfileEntry::new("worker-a").with_slots(2),
+            ]),
+        )
+        .expect_err("multi-slot entries should refuse on the bounded launch surface");
+        assert_eq!(
+            multi_slot,
+            DistributedLaunchError::MultiSlotHostfileEntryUnsupported {
+                node_id: String::from("worker-a"),
+                slots: 2,
+            }
+        );
+
+        let address_mismatch = plan_launch(
+            &cluster_state,
+            &sandbox_profile,
+            sample_launch_config(vec![
+                DistributedHostfileEntry::new("worker-a").with_advertised_addr("127.0.0.1:9999"),
+            ]),
+        )
+        .expect_err("hostfile addresses must match cluster truth");
+        assert_eq!(
+            address_mismatch,
+            DistributedLaunchError::HostfileAddressMismatch {
+                node_id: String::from("worker-a"),
+                hostfile_addr: String::from("127.0.0.1:9999"),
+                cluster_addr: String::from("127.0.0.1:4101"),
+            }
+        );
+    }
+
+    #[test]
+    fn plan_launch_refuses_configs_that_would_fail_the_sandbox_contract() {
+        let cluster_state = sample_cluster_state();
+        let hostfile = vec![DistributedHostfileEntry::new("worker-a")];
+
+        let command_mismatch = plan_launch(
+            &cluster_state,
+            &sample_sandbox_profile(),
+            sample_launch_config(hostfile.clone())
+                .with_entrypoint_type(ProviderSandboxEntrypointType::Command),
+        )
+        .expect_err("non-container command entrypoints should refuse");
+        assert_eq!(
+            command_mismatch,
+            DistributedLaunchError::CommandEntrypointUnsupported {
+                execution_class: ProviderSandboxExecutionClass::PosixExec,
+            }
+        );
+
+        let compute_product_mismatch = plan_launch(
+            &cluster_state,
+            &sample_sandbox_profile(),
+            sample_launch_config(hostfile.clone())
+                .with_compute_product_id("sandbox.container.exec"),
+        )
+        .expect_err("mismatched compute-product ids should refuse");
+        assert_eq!(
+            compute_product_mismatch,
+            DistributedLaunchError::ComputeProductIdMismatch {
+                compute_product_id: String::from("sandbox.container.exec"),
+                expected_product_id: String::from("sandbox.posix.exec"),
+            }
+        );
+
+        let env_forbidden = plan_launch(
+            &cluster_state,
+            &ProviderSandboxProfile {
+                secrets_mode: String::from("none"),
+                ..sample_sandbox_profile()
+            },
+            sample_launch_config(hostfile.clone()),
+        )
+        .expect_err("profiles that forbid environment injection should refuse");
+        assert_eq!(
+            env_forbidden,
+            DistributedLaunchError::SandboxEnvironmentInjectionForbidden {
+                profile_id: String::from("sandbox.posix.v1"),
+            }
+        );
+
+        let resource_limit = plan_launch(
+            &cluster_state,
+            &sample_sandbox_profile(),
+            sample_launch_config(hostfile).with_resource_request(ProviderSandboxResourceRequest {
+                cpu_limit: Some(16),
+                memory_limit_mb: None,
+                disk_limit_mb: None,
+            }),
+        )
+        .expect_err("resource requests above the sandbox profile should refuse");
+        assert_eq!(
+            resource_limit,
+            DistributedLaunchError::ResourceRequestExceedsSandboxProfile {
+                resource: "cpu_limit",
+                requested: 16,
+                profile_limit: 8,
             }
         );
     }
