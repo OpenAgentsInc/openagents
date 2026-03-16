@@ -615,7 +615,8 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
   families.
 - **[docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md](docs/PROGRAM_TRANSFORM_CAPABILITY_MATRIX.md)** —
   canonical bounded capability matrix for functionalization, symbolic rewrites,
-  export-safe graphs, and explicit future higher-order transform refusal.
+  export-safe graphs, bounded public `vmap` / `jvp`, and explicit remaining
+  higher-order transform refusal.
 - **[docs/EXPORT_DEPLOYMENT_ARTIFACT_CONTRACTS.md](docs/EXPORT_DEPLOYMENT_ARTIFACT_CONTRACTS.md)** —
   canonical bounded exportable-graph and deployment-artifact contract surface
   for graph-first packaging independent of raw checkpoints.

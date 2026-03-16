@@ -563,6 +563,35 @@ impl Graph {
                     ),
                 })
             }
+            ProgramTransformFamily::Vmap => {
+                if let Some(node) = self
+                    .nodes()
+                    .iter()
+                    .find(|node| matches!(vmap_support_for_op(node.op()), VmapSupport::Unsupported { .. }))
+                {
+                    return Err(
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            format!(
+                                "program-transform family `{}` refuses graph op `{}` in the bounded current scope",
+                                family.label(),
+                                node.op().label()
+                            ),
+                        )
+                        .with_subject(format!("{}:{}", family.label(), node.op().label())),
+                    );
+                }
+                Ok(ProgramTransformCapabilityOutcome {
+                    family,
+                    policy,
+                    graph_digest: self.stable_digest(),
+                    artifact_digest: None,
+                    bounded_scope: String::from(
+                        "Current scope supports public vmap over dense f32 single-lane graphs by batching selected graph inputs at runtime, stacking one requested output, and refusing cast plus opaque backend-extension barriers explicitly.",
+                    ),
+                })
+            }
             ProgramTransformFamily::Jvp => {
                 if let Some(node) = self.nodes().iter().find(|node| {
                     matches!(
@@ -593,7 +622,7 @@ impl Graph {
                     ),
                 })
             }
-            ProgramTransformFamily::Vmap | ProgramTransformFamily::Jacobian => Err(
+            ProgramTransformFamily::Jacobian => Err(
                 PsionicRefusal::new(
                     PsionicRefusalCode::UnsupportedOp,
                     PsionicRefusalScope::Graph,
@@ -960,7 +989,9 @@ pub enum GraphExportContractError {
     Transform(#[from] GraphTransformError),
     #[error("exportable graph contract requires a non-empty entrypoint")]
     MissingEntrypoint,
-    #[error("exportable graph contract requires export-safe functionalization, found policy `{policy:?}`")]
+    #[error(
+        "exportable graph contract requires export-safe functionalization, found policy `{policy:?}`"
+    )]
     ExportSafePolicyRequired { policy: FunctionalizationPolicy },
     #[error("exportable graph contract requires at least one output tensor")]
     MissingOutputs,
@@ -1216,10 +1247,11 @@ impl ProgramTransformCapabilityMatrixReport {
 pub fn builtin_program_transform_capability_matrix_report() -> ProgramTransformCapabilityMatrixReport
 {
     let export_safe_graph = seeded_export_safe_alias_graph();
+    let cast_graph = seeded_cast_barrier_graph();
     let opaque_barrier_graph = seeded_opaque_barrier_graph();
 
     ProgramTransformCapabilityMatrixReport::new(
-        String::from("psionic_program_transform_v1"),
+        String::from("psionic_program_transform_v2"),
         vec![
             supported_program_transform_case(
                 "functionalization.export_safe_alias_graph",
@@ -1251,9 +1283,15 @@ pub fn builtin_program_transform_capability_matrix_report() -> ProgramTransformC
                 ProgramTransformFamily::ExportSafeGraph,
                 FunctionalizationPolicy::ExportSafeOnly,
             ),
+            supported_program_transform_case(
+                "vmap.primitive_dense_graph",
+                &export_safe_graph,
+                ProgramTransformFamily::Vmap,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            ),
             refused_program_transform_case(
-                "vmap.future_surface",
-                None,
+                "vmap.cast_barrier_graph",
+                Some(&cast_graph),
                 ProgramTransformFamily::Vmap,
                 FunctionalizationPolicy::PreserveOpaqueKernels,
             ),
@@ -1286,6 +1324,15 @@ fn seeded_export_safe_alias_graph() -> Graph {
         .add(&input, &expanded)
         .expect("seeded export-safe alias graph should add");
     builder.finish(vec![summed])
+}
+
+fn seeded_cast_barrier_graph() -> Graph {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+    let casted = builder
+        .cast(&input, DType::I8)
+        .expect("seeded cast graph should cast");
+    builder.finish(vec![casted])
 }
 
 fn seeded_opaque_barrier_graph() -> Graph {
@@ -5115,8 +5162,8 @@ pub fn builtin_operator_parity_matrix_report() -> Result<OperatorParityMatrixRep
 
 /// Returns the seeded advanced operator-program matrix report for the current
 /// bounded Psionic semantics surface.
-pub fn builtin_advanced_operator_program_matrix_report(
-) -> Result<AdvancedOperatorProgramMatrixReport, GraphError> {
+pub fn builtin_advanced_operator_program_matrix_report()
+-> Result<AdvancedOperatorProgramMatrixReport, GraphError> {
     let mut cases = Vec::new();
 
     cases.push(run_advanced_operator_program_supported_case(
@@ -5491,19 +5538,19 @@ mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
+        AdvancedOperatorProgramStatus, DType, ExecutionOp, ExecutionPlan, ExecutionStep,
+        ExtensionContractKind, FunctionalTensorKind, FunctionalizationPolicy, GraphBuilder,
+        GraphError, GraphTransformError, KernelDispatchKind, KernelRegistration,
+        MaskedMetaContract, MetaCapabilityProfile, MetaTensor, MetaTensorFamily,
+        MetaTensorFamilyKind, NestedMetaContract, OperatorArity, OperatorImplementationKind,
+        OperatorMetaExecutionKind, OperatorParityStatus, OperatorRegistry, ProgramTransformFamily,
+        RegisteredOperatorSchema, RegistryExtensionError, Shape, SparseMetaContract,
+        SparseMetaLayout, StorageAwareMetaContract, TensorFamilyCapabilityStatus,
+        TensorFamilyCapabilitySurface, TensorSpec, TransformBarrierKind,
         builtin_advanced_operator_program_matrix_report,
         builtin_extension_contract_semantics_report, builtin_operator_parity_matrix_report,
         builtin_program_transform_capability_matrix_report,
-        builtin_tensor_family_capability_matrix_report, AdvancedOperatorProgramStatus, DType,
-        ExecutionOp, ExecutionPlan, ExecutionStep, ExtensionContractKind, FunctionalTensorKind,
-        FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
-        KernelRegistration, MaskedMetaContract, MetaCapabilityProfile, MetaTensor,
-        MetaTensorFamily, MetaTensorFamilyKind, NestedMetaContract, OperatorArity,
-        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorParityStatus,
-        OperatorRegistry, ProgramTransformFamily, RegisteredOperatorSchema, RegistryExtensionError,
-        Shape, SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract,
-        TensorFamilyCapabilityStatus, TensorFamilyCapabilitySurface, TensorSpec,
-        TransformBarrierKind,
+        builtin_tensor_family_capability_matrix_report,
     };
 
     #[test]
@@ -5932,10 +5979,12 @@ mod tests {
         let report = builtin_tensor_family_capability_matrix_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.current_scope_window, "psionic_tensor_family_v1");
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("matrix_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
 
         let sparse_meta = report
             .cases
@@ -6144,11 +6193,13 @@ mod tests {
     fn program_transform_capability_matrix_tracks_seeded_transform_and_future_cases() {
         let report = builtin_program_transform_capability_matrix_report();
         assert_eq!(report.schema_version, 1);
-        assert_eq!(report.current_scope_window, "psionic_program_transform_v1");
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("matrix_digest=")));
+        assert_eq!(report.current_scope_window, "psionic_program_transform_v2");
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
 
         let mut builder = GraphBuilder::new(Device::cpu());
         let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
@@ -6199,15 +6250,29 @@ mod tests {
         assert_eq!(opaque_refusal.code, PsionicRefusalCode::UnsupportedOp);
         assert_eq!(opaque_refusal.scope, PsionicRefusalScope::Graph);
 
-        let vmap_refusal = export_safe_graph
+        let vmap_ready = export_safe_graph
             .program_transform_capability(
                 ProgramTransformFamily::Vmap,
                 FunctionalizationPolicy::PreserveOpaqueKernels,
             )
-            .expect_err("vmap should remain future work");
+            .expect("vmap should now be supported on primitive dense graphs");
+        assert_eq!(vmap_ready.family, ProgramTransformFamily::Vmap);
+
+        let mut cast_builder = GraphBuilder::new(Device::cpu());
+        let cast_input = cast_builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+        let cast_output = cast_builder
+            .cast(&cast_input, DType::I8)
+            .expect("cast barrier graph should build");
+        let cast_graph = cast_builder.finish(vec![cast_output]);
+        let vmap_refusal = cast_graph
+            .program_transform_capability(
+                ProgramTransformFamily::Vmap,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            )
+            .expect_err("cast graph should refuse vmap capability");
         assert_eq!(vmap_refusal.code, PsionicRefusalCode::UnsupportedOp);
         assert_eq!(vmap_refusal.scope, PsionicRefusalScope::Graph);
-        assert_eq!(vmap_refusal.subject.as_deref(), Some("vmap"));
+        assert_eq!(vmap_refusal.subject.as_deref(), Some("vmap:cast"));
     }
 
     #[test]
@@ -6218,10 +6283,12 @@ mod tests {
             report.current_scope_window,
             "psionic_extension_contracts_v1"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let custom_op = report
             .cases
@@ -6302,15 +6369,17 @@ mod tests {
     }
 
     #[test]
-    fn operator_parity_matrix_report_tracks_seeded_supported_and_refusal_cases(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn operator_parity_matrix_report_tracks_seeded_supported_and_refusal_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_operator_parity_matrix_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.oracle_family_window, "pytorch_opinfo_seed_v0");
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("matrix_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
 
         let add_case = report
             .cases
@@ -6354,18 +6423,20 @@ mod tests {
     }
 
     #[test]
-    fn advanced_operator_program_matrix_tracks_supported_and_refused_families(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn advanced_operator_program_matrix_tracks_supported_and_refused_families()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_advanced_operator_program_matrix_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(
             report.oracle_family_window,
             "pytorch_advanced_program_seed_v0"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("matrix_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
 
         let linalg_case = report
             .cases
