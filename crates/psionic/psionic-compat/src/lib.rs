@@ -120,6 +120,7 @@ pub enum SemanticsClaimError {
 /// PyTorch-facing posture.
 pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, SemanticsClaimError> {
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
+    let program_transforms = psionic_ir::builtin_program_transform_capability_matrix_report();
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
     let autocast = psionic_core::builtin_autocast_policy_matrix_report();
@@ -149,6 +150,19 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
                 String::from("#3735"),
                 String::from("#3726"),
             ],
+        ),
+        seeded_area(
+            "program_transform_semantics",
+            "Current claim is bounded to functionalization, symbolic-rewrite readiness, and export-safe graph handoff over graphs with explicit alias-root and barrier reporting, plus explicit future refusal for `vmap`, `jvp`, and `jacobian`.",
+            vec![SemanticsEvidenceRef::new(
+                "program_transform_capability_matrix",
+                program_transforms.matrix_digest,
+            )],
+            vec![
+                String::from("broaden transform capability beyond functionalization and export-safe graph readiness"),
+                String::from("connect export-safe graph capability to deployment artifact contracts"),
+            ],
+            vec![String::from("#3736")],
         ),
         seeded_area(
             "tensor_family_semantics",
@@ -274,9 +288,9 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             )],
             vec![
                 String::from("land symbolic-shape environments and guard simplification"),
-                String::from("land transform and export breadth above the current fake/meta slice"),
+                String::from("land export breadth above the current fake/meta slice"),
             ],
-            vec![String::from("#3731"), String::from("#3736")],
+            vec![String::from("#3736")],
         ),
         future_area(
             "checkpoint_and_model_io_interop",
@@ -423,6 +437,7 @@ mod tests {
 
         for area_id in [
             "operator_semantics",
+            "program_transform_semantics",
             "tensor_family_semantics",
             "advanced_dtype_semantics",
             "reproducibility_semantics",

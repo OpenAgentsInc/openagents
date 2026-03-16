@@ -490,6 +490,88 @@ impl Graph {
             report,
         })
     }
+
+    /// Evaluates whether one higher-level program-transform family is
+    /// supported on the current graph under the bounded current scope.
+    pub fn program_transform_capability(
+        &self,
+        family: ProgramTransformFamily,
+        policy: FunctionalizationPolicy,
+    ) -> Result<ProgramTransformCapabilityOutcome, PsionicRefusal> {
+        match family {
+            ProgramTransformFamily::Functionalization
+            | ProgramTransformFamily::SymbolicRewrite => {
+                let artifact = self
+                    .functionalize(policy)
+                    .map_err(|error| error.refusal().unwrap_or_else(|| {
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            error.to_string(),
+                        )
+                    }))?;
+                let bounded_scope = match family {
+                    ProgramTransformFamily::Functionalization => String::from(
+                        "Current scope supports graph functionalization with explicit alias roots, transform barriers, and export-safe-only refusal.",
+                    ),
+                    ProgramTransformFamily::SymbolicRewrite => String::from(
+                        "Current symbolic rewrite support is bounded to functionalized graphs with explicit alias or barrier metadata instead of a broad rewrite engine.",
+                    ),
+                    _ => unreachable!(),
+                };
+                Ok(ProgramTransformCapabilityOutcome {
+                    family,
+                    policy,
+                    graph_digest: self.stable_digest(),
+                    artifact_digest: Some(artifact.stable_digest()),
+                    bounded_scope,
+                })
+            }
+            ProgramTransformFamily::ExportSafeGraph => {
+                if !matches!(policy, FunctionalizationPolicy::ExportSafeOnly) {
+                    return Err(
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            "export-safe graph capability requires `export_safe_only` policy",
+                        )
+                        .with_subject("export_safe_graph"),
+                    );
+                }
+                let artifact = self
+                    .functionalize(policy)
+                    .map_err(|error| error.refusal().unwrap_or_else(|| {
+                        PsionicRefusal::new(
+                            PsionicRefusalCode::UnsupportedOp,
+                            PsionicRefusalScope::Graph,
+                            error.to_string(),
+                        )
+                    }))?;
+                Ok(ProgramTransformCapabilityOutcome {
+                    family,
+                    policy,
+                    graph_digest: self.stable_digest(),
+                    artifact_digest: Some(artifact.stable_digest()),
+                    bounded_scope: String::from(
+                        "Current scope treats export-safe graphs as functionalized graphs with no opaque transform barriers under `export_safe_only` policy.",
+                    ),
+                })
+            }
+            ProgramTransformFamily::Vmap
+            | ProgramTransformFamily::Jvp
+            | ProgramTransformFamily::Jacobian => Err(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "program-transform family `{}` is not yet implemented in the bounded current scope",
+                        family.label()
+                    ),
+                )
+                .with_subject(family.label()),
+            ),
+        }
+    }
 }
 
 /// Whether one tensor is a distinct value root or an alias-preserving view of an earlier value.
@@ -699,6 +781,311 @@ impl GraphTransformError {
             ),
         }
     }
+}
+
+/// Higher-level program-transform family tracked by the bounded current scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgramTransformFamily {
+    /// Graph functionalization with alias-root and barrier reporting.
+    Functionalization,
+    /// Symbolic rewrite readiness over functionalized graphs.
+    SymbolicRewrite,
+    /// Export-safe graph handoff.
+    ExportSafeGraph,
+    /// Future `vmap`-style transforms.
+    Vmap,
+    /// Future `jvp`-style transforms.
+    Jvp,
+    /// Future `jacobian`-style transforms.
+    Jacobian,
+}
+
+impl ProgramTransformFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Functionalization => "functionalization",
+            Self::SymbolicRewrite => "symbolic_rewrite",
+            Self::ExportSafeGraph => "export_safe_graph",
+            Self::Vmap => "vmap",
+            Self::Jvp => "jvp",
+            Self::Jacobian => "jacobian",
+        }
+    }
+}
+
+/// Outcome of evaluating one program-transform family on one graph.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramTransformCapabilityOutcome {
+    /// Transform family under test.
+    pub family: ProgramTransformFamily,
+    /// Functionalization policy used for the evaluation.
+    pub policy: FunctionalizationPolicy,
+    /// Stable source graph digest.
+    pub graph_digest: String,
+    /// Stable artifact digest when one functionalized graph exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_digest: Option<String>,
+    /// Plain-language bounded scope for the outcome.
+    pub bounded_scope: String,
+}
+
+/// Status for one bounded program-transform capability case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgramTransformCapabilityStatus {
+    /// The transform family is supported in the bounded current scope.
+    Supported,
+    /// The transform family is explicitly refused in the bounded current scope.
+    Refused,
+}
+
+/// One machine-readable bounded program-transform capability case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramTransformCapabilityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Transform family under test.
+    pub family: ProgramTransformFamily,
+    /// Functionalization policy used for the case.
+    pub policy: FunctionalizationPolicy,
+    /// Stable source graph digest when one graph exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph_digest: Option<String>,
+    /// Current status for the case.
+    pub status: ProgramTransformCapabilityStatus,
+    /// Stable artifact digest when one functionalized graph exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_digest: Option<String>,
+    /// Plain-language bounded scope.
+    pub bounded_scope: String,
+    /// Explicit refusal when the family remains unsupported today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable bounded report for program-transform capability semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramTransformCapabilityMatrixReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Seeded transform cases that define the current scope.
+    pub cases: Vec<ProgramTransformCapabilityCaseResult>,
+    /// Stable digest over the report contents.
+    pub matrix_digest: String,
+}
+
+impl ProgramTransformCapabilityMatrixReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<ProgramTransformCapabilityCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let matrix_digest =
+            stable_program_transform_capability_digest(current_scope_window.as_str(), &cases);
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{:?}",
+                case.case_id,
+                case.family.label(),
+                case.policy.label(),
+                case.status
+            ));
+        }
+        lines
+    }
+}
+
+/// Builds the canonical bounded program-transform capability matrix.
+pub fn builtin_program_transform_capability_matrix_report() -> ProgramTransformCapabilityMatrixReport
+{
+    let export_safe_graph = seeded_export_safe_alias_graph();
+    let opaque_barrier_graph = seeded_opaque_barrier_graph();
+
+    ProgramTransformCapabilityMatrixReport::new(
+        String::from("psionic_program_transform_v1"),
+        vec![
+            supported_program_transform_case(
+                "functionalization.export_safe_alias_graph",
+                &export_safe_graph,
+                ProgramTransformFamily::Functionalization,
+                FunctionalizationPolicy::ExportSafeOnly,
+            ),
+            supported_program_transform_case(
+                "symbolic_rewrite.export_safe_alias_graph",
+                &export_safe_graph,
+                ProgramTransformFamily::SymbolicRewrite,
+                FunctionalizationPolicy::ExportSafeOnly,
+            ),
+            supported_program_transform_case(
+                "symbolic_rewrite.preserve_opaque_barriers",
+                &opaque_barrier_graph,
+                ProgramTransformFamily::SymbolicRewrite,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            ),
+            supported_program_transform_case(
+                "export_safe_graph.export_safe_alias_graph",
+                &export_safe_graph,
+                ProgramTransformFamily::ExportSafeGraph,
+                FunctionalizationPolicy::ExportSafeOnly,
+            ),
+            refused_program_transform_case(
+                "export_safe_graph.opaque_backend_extension",
+                Some(&opaque_barrier_graph),
+                ProgramTransformFamily::ExportSafeGraph,
+                FunctionalizationPolicy::ExportSafeOnly,
+            ),
+            refused_program_transform_case(
+                "vmap.future_surface",
+                None,
+                ProgramTransformFamily::Vmap,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            ),
+            refused_program_transform_case(
+                "jvp.future_surface",
+                None,
+                ProgramTransformFamily::Jvp,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            ),
+            refused_program_transform_case(
+                "jacobian.future_surface",
+                None,
+                ProgramTransformFamily::Jacobian,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            ),
+        ],
+    )
+}
+
+fn seeded_export_safe_alias_graph() -> Graph {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+    let row = builder
+        .select(&input, 0, 0)
+        .expect("seeded export-safe alias graph should build");
+    let expanded = builder
+        .expand(&row, Shape::new(vec![2, 4]))
+        .expect("seeded export-safe alias graph should expand");
+    let summed = builder
+        .add(&input, &expanded)
+        .expect("seeded export-safe alias graph should add");
+    builder.finish(vec![summed])
+}
+
+fn seeded_opaque_barrier_graph() -> Graph {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![1, 4]), DType::F32);
+    let weight = builder
+        .constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0])
+        .expect("seeded opaque graph should build weight");
+    let normed = builder
+        .rms_norm(&input, &weight, 1e-5)
+        .expect("seeded opaque graph should build rms_norm");
+    builder.finish(vec![normed])
+}
+
+fn supported_program_transform_case(
+    case_id: &str,
+    graph: &Graph,
+    family: ProgramTransformFamily,
+    policy: FunctionalizationPolicy,
+) -> ProgramTransformCapabilityCaseResult {
+    let outcome = graph
+        .program_transform_capability(family, policy)
+        .expect("seeded program-transform case should resolve");
+    ProgramTransformCapabilityCaseResult {
+        case_id: String::from(case_id),
+        family,
+        policy,
+        graph_digest: Some(outcome.graph_digest),
+        status: ProgramTransformCapabilityStatus::Supported,
+        artifact_digest: outcome.artifact_digest,
+        bounded_scope: outcome.bounded_scope,
+        refusal: None,
+    }
+}
+
+fn refused_program_transform_case(
+    case_id: &str,
+    graph: Option<&Graph>,
+    family: ProgramTransformFamily,
+    policy: FunctionalizationPolicy,
+) -> ProgramTransformCapabilityCaseResult {
+    let refusal = if let Some(graph) = graph {
+        graph
+            .program_transform_capability(family, policy)
+            .expect_err("seeded program-transform case should refuse")
+    } else {
+        PsionicRefusal::new(
+            PsionicRefusalCode::UnsupportedOp,
+            PsionicRefusalScope::Graph,
+            format!(
+                "program-transform family `{}` is not yet implemented in the bounded current scope",
+                family.label()
+            ),
+        )
+        .with_subject(family.label())
+    };
+    ProgramTransformCapabilityCaseResult {
+        case_id: String::from(case_id),
+        family,
+        policy,
+        graph_digest: graph.map(Graph::stable_digest),
+        status: ProgramTransformCapabilityStatus::Refused,
+        artifact_digest: None,
+        bounded_scope: String::from(
+            "Current program-transform scope is bounded to functionalization and export-safe graph readiness; higher-order transforms remain explicit future work.",
+        ),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_program_transform_capability_digest(
+    current_scope_window: &str,
+    cases: &[ProgramTransformCapabilityCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("family={}", case.family.label()));
+        lines.push(format!("policy={}", case.policy.label()));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!("bounded_scope={}", case.bounded_scope));
+        if let Some(graph_digest) = &case.graph_digest {
+            lines.push(format!("graph_digest={graph_digest}"));
+        }
+        if let Some(artifact_digest) = &case.artifact_digest {
+            lines.push(format!("artifact_digest={artifact_digest}"));
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("refusal_code={:?}", refusal.code));
+            lines.push(format!("refusal_scope={:?}", refusal.scope));
+            lines.push(format!("refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    digest_lines(lines)
 }
 
 /// Executable operation payload emitted by the compiler layer.
@@ -3702,16 +4089,16 @@ mod tests {
     use psionic_core::{Device, PsionicRefusalCode, PsionicRefusalScope, QuantizationMode};
 
     use super::{
-        builtin_operator_parity_matrix_report, builtin_tensor_family_capability_matrix_report,
-        DType, ExecutionOp, ExecutionPlan, ExecutionStep, FunctionalTensorKind,
-        FunctionalizationPolicy, GraphBuilder, GraphError, GraphTransformError, KernelDispatchKind,
-        KernelRegistration, MaskedMetaContract, MetaCapabilityProfile, MetaTensor,
-        MetaTensorFamily, MetaTensorFamilyKind, NestedMetaContract, OperatorArity,
-        OperatorImplementationKind, OperatorMetaExecutionKind, OperatorParityStatus,
-        OperatorRegistry, RegisteredOperatorSchema, RegistryExtensionError, Shape,
-        SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract,
-        TensorFamilyCapabilityStatus, TensorFamilyCapabilitySurface, TensorSpec,
-        TransformBarrierKind,
+        builtin_operator_parity_matrix_report, builtin_program_transform_capability_matrix_report,
+        builtin_tensor_family_capability_matrix_report, DType, ExecutionOp, ExecutionPlan,
+        ExecutionStep, FunctionalTensorKind, FunctionalizationPolicy, GraphBuilder, GraphError,
+        GraphTransformError, KernelDispatchKind, KernelRegistration, MaskedMetaContract,
+        MetaCapabilityProfile, MetaTensor, MetaTensorFamily, MetaTensorFamilyKind,
+        NestedMetaContract, OperatorArity, OperatorImplementationKind, OperatorMetaExecutionKind,
+        OperatorParityStatus, OperatorRegistry, ProgramTransformFamily, RegisteredOperatorSchema,
+        RegistryExtensionError, Shape, SparseMetaContract, SparseMetaLayout,
+        StorageAwareMetaContract, TensorFamilyCapabilityStatus, TensorFamilyCapabilitySurface,
+        TensorSpec, TransformBarrierKind,
     };
 
     #[test]
@@ -4318,6 +4705,76 @@ mod tests {
         };
         assert_eq!(preserved.report.barriers.len(), 1);
         assert!(!preserved.report.is_export_safe());
+    }
+
+    #[test]
+    fn program_transform_capability_matrix_tracks_seeded_transform_and_future_cases() {
+        let report = builtin_program_transform_capability_matrix_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_program_transform_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("matrix_digest=")));
+
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+        let row = builder
+            .select(&input, 0, 0)
+            .expect("seeded export-safe graph should select");
+        let expanded = builder
+            .expand(&row, Shape::new(vec![2, 4]))
+            .expect("seeded export-safe graph should expand");
+        let summed = builder
+            .add(&input, &expanded)
+            .expect("seeded export-safe graph should add");
+        let export_safe_graph = builder.finish(vec![summed]);
+
+        let functionalized = export_safe_graph
+            .program_transform_capability(
+                ProgramTransformFamily::Functionalization,
+                FunctionalizationPolicy::ExportSafeOnly,
+            )
+            .expect("functionalization should be supported");
+        assert!(!functionalized.graph_digest.is_empty());
+        assert!(functionalized.artifact_digest.is_some());
+
+        let export_ready = export_safe_graph
+            .program_transform_capability(
+                ProgramTransformFamily::ExportSafeGraph,
+                FunctionalizationPolicy::ExportSafeOnly,
+            )
+            .expect("export-safe graph should be supported");
+        assert!(export_ready.artifact_digest.is_some());
+
+        let mut opaque_builder = GraphBuilder::new(Device::cpu());
+        let opaque_input = opaque_builder.input("input", Shape::new(vec![1, 4]), DType::F32);
+        let weight = opaque_builder
+            .constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0])
+            .expect("opaque graph should build weight");
+        let normed = opaque_builder
+            .rms_norm(&opaque_input, &weight, 1e-5)
+            .expect("opaque graph should build rms_norm");
+        let opaque_graph = opaque_builder.finish(vec![normed]);
+
+        let opaque_refusal = opaque_graph
+            .program_transform_capability(
+                ProgramTransformFamily::ExportSafeGraph,
+                FunctionalizationPolicy::ExportSafeOnly,
+            )
+            .expect_err("opaque graph should refuse export-safe capability");
+        assert_eq!(opaque_refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(opaque_refusal.scope, PsionicRefusalScope::Graph);
+
+        let vmap_refusal = export_safe_graph
+            .program_transform_capability(
+                ProgramTransformFamily::Vmap,
+                FunctionalizationPolicy::PreserveOpaqueKernels,
+            )
+            .expect_err("vmap should remain future work");
+        assert_eq!(vmap_refusal.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(vmap_refusal.scope, PsionicRefusalScope::Graph);
+        assert_eq!(vmap_refusal.subject.as_deref(), Some("vmap"));
     }
 
     #[test]
