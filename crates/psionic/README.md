@@ -561,6 +561,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/OPTIMIZER_PARITY_MATRIX.md](docs/OPTIMIZER_PARITY_MATRIX.md)** —
   canonical seeded optimizer parity artifact for the current PyTorch-derived
   `optim_db`-style single-step optimizer coverage slice.
+- **[docs/COMPILER_HYGIENE_PARITY_MATRIX.md](docs/COMPILER_HYGIENE_PARITY_MATRIX.md)** —
+  canonical seeded symbolic-shape, fake-tensor, and compiler-hygiene parity
+  artifact for the current PyTorch-derived compiler coverage slice.
 - **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
   inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training

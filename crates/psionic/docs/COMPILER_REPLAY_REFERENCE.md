@@ -63,3 +63,8 @@ inspectable execution identity. The compiler needs the same discipline. This
 gate gives ordinary development a small, deterministic regression harness for
 plan and topology identity before performance or product-level behavior changes
 start hiding the drift.
+
+For the bounded symbolic-shape, fake-tensor, and compiler-hygiene parity slice
+that now sits alongside replay, use
+`crates/psionic/docs/COMPILER_HYGIENE_PARITY_MATRIX.md` and
+`scripts/release/check-psionic-compiler-hygiene-parity.sh`.
