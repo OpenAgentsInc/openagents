@@ -1,0 +1,34 @@
+{
+  "run_id": "tassadar-executor-transformer-sudoku-v0-reference-run-v0",
+  "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+  "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
+  "training_manifest_digest": "d77cc0a8fdf53536e875d385756b48f999f08aad6c49d116db25a7dfb8d538af",
+  "trained_model_descriptor_digest": "f7e5b03300db4a8388edcee2967068e59be07be8189f6555b9517a678e826b2d",
+  "trained_weight_digest": "e2ee063f7eb7eff8d0d294d4030ce6b9c18cb0ca5ad23f9d58d67e0e50d0b32b",
+  "checkpoint_manifest_digest": "73b4e1f7cdedf902eb2aa66782baac696178bb749c85870b1c0607d91e01e8c8",
+  "step_reports": [
+    {
+      "global_step_index": 0,
+      "epoch_index": 0,
+      "batch_id": "03e41bb9c7b4129495d84049cbf005a7181b7e8bc97ac42c1ad63b7d0204ad02",
+      "sequence_ids": [
+        "tassadar.sequence.sudoku_v0_train_a",
+        "tassadar.sequence.sudoku_v0_train_b",
+        "tassadar.sequence.sudoku_v0_train_c",
+        "tassadar.sequence.sudoku_v0_train_d"
+      ],
+      "mean_loss_milli": 5720,
+      "target_token_count": 1024,
+      "cumulative_target_token_count": 1024
+    }
+  ],
+  "epoch_reports": [
+    {
+      "epoch_index": 0,
+      "step_count": 1,
+      "mean_loss_milli": 5720,
+      "target_token_count": 1024
+    }
+  ],
+  "report_digest": "eb176090800501a33cb575dae72c4b625e7c1f6647eeaa68a41489254057b3a3"
+}

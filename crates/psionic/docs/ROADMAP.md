@@ -552,6 +552,13 @@ Its declared scope is:
   validation exact-trace cases, `13` bps aggregate target exactness), which is
   precisely why the next phases are telemetry and postmortem rather than claim
   expansion
+- landed trained-executor Phase 8 bar from the post-audit issue spine:
+  `psionic-train` now augments that same committed run bundle with
+  `training_telemetry.json`, `exactness_curve.json`,
+  `trace_divergence_report.json`, and `failure_samples.json`, keeping
+  dataset/model/checkpoint identity bound into the analysis artifacts and
+  making the current first-run weakness explicit: all 8 cases diverge at the
+  first target token, with case exactness in the `9` to `16` bps range
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

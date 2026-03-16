@@ -141,6 +141,12 @@ These issues track the executor-specific work that is still missing:
     cases, `13` bps aggregate target exactness), so the repo now has a real
     first-run baseline rather than a false success claim
 - `#3784` Phase 8: add telemetry, trace logging, and failure-analysis artifacts
+  - implemented March 16, 2026: the same persisted run bundle now also carries
+    `training_telemetry.json`, `exactness_curve.json`,
+    `trace_divergence_report.json`, and `failure_samples.json`; those artifacts
+    show that all 8 decoded cases currently diverge at target token 0, with
+    case exactness between `9` and `16` bps, which is the real failure baseline
+    for the next run rather than a vague “weak model” summary
 - `#3785` Phase 9: review the first run and land the next-run plan
 - `#3786` Phase 10: add neural hull-cache decode for the trained executor model
 - `#3787` Phase 11: scale from Sudoku-v0 to real 9x9 Sudoku-class training
@@ -557,8 +563,10 @@ Do this fifth:
 - `#3783` is now done: the first honest Sudoku-v0 corpus and model config are
   frozen in one committed reference run bundle, including a persisted
   checkpoint and trained-model artifact
-- `#3784` and `#3785` are still next: add the telemetry/failure artifacts and
-  publish the postmortem plus next-run plan from the observed weak first run
+- `#3784` is now also done: the first run now has telemetry, trace-divergence,
+  and failure-sample artifacts instead of only a weak aggregate score
+- `#3785` is the remaining step in this phase: publish the postmortem plus
+  next-run plan from the now-observed failure pattern
 
 ### Phase F: Only then test the neural fast path and scale (`#3786`, `#3787`)
 
