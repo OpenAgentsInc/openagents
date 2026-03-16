@@ -11,8 +11,8 @@ use arc_core::{
     ArcAction, ArcActionKind, ArcBenchmark, ArcGameState, ArcOperationMode, ArcRecording,
     ArcRecordingEnvelopeId, ArcRefusalCode, ArcScorePolicyId, ArcScorecard, ArcSolveOutcome,
     ArcSolveRefusal, ArcSolveResultEnvelope, ArcTask, ArcTaskId, GridAnalysisSummary, SolveBudget,
-    TraceLocator, canonicalize_task, extract_relation_graph, summarize_grid,
-    summarize_task_dimensions,
+    TraceLocator, canonicalize_task, extract_relation_graph,
+    extract_train_correspondence_candidates, summarize_grid, summarize_task_dimensions,
 };
 
 #[test]
@@ -335,4 +335,40 @@ fn object_graph_extraction_is_deterministic() {
             && edge.target == arc_core::ObjectId(3)
             && edge.kind == arc_core::ObjectRelationKind::RowAligned
     }));
+}
+
+#[test]
+fn correspondence_candidates_match_train_objects_by_shape_and_degree() {
+    let fixture = fs::read_to_string("fixtures/correspondence_task.json")
+        .expect("correspondence fixture should be readable from the crate root");
+    let task: ArcTask = serde_json::from_str(&fixture).expect("fixture should deserialize");
+
+    let correspondence = extract_train_correspondence_candidates(&task)
+        .expect("correspondence candidates should extract");
+
+    assert_eq!(correspondence.len(), 1);
+    assert_eq!(correspondence[0].input_graph.objects.len(), 2);
+    assert_eq!(correspondence[0].output_graph.objects.len(), 2);
+    assert_eq!(
+        correspondence[0].candidates[0].input_object,
+        arc_core::ObjectId(0)
+    );
+    assert_eq!(
+        correspondence[0].candidates[0].output_object,
+        arc_core::ObjectId(0)
+    );
+    assert!(
+        correspondence[0].candidates[0]
+            .features
+            .same_shape_signature
+    );
+    assert_eq!(correspondence[0].candidates[0].score, 10);
+    assert_eq!(
+        correspondence[0].candidates[1].input_object,
+        arc_core::ObjectId(1)
+    );
+    assert_eq!(
+        correspondence[0].candidates[1].output_object,
+        arc_core::ObjectId(1)
+    );
 }
