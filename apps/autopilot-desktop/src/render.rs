@@ -663,6 +663,9 @@ fn local_sim_runtime_bootstrap_enabled() -> bool {
 fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
     let _ = PaneController::create_for_kind(state, pane_kind);
     match pane_kind {
+        PaneKind::GoOnline => {
+            let _ = ensure_mission_control_local_runtime_preflight(state);
+        }
         PaneKind::ProviderControl => {
             let _ = ensure_mission_control_local_runtime_preflight(state);
             state
