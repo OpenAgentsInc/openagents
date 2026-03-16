@@ -440,7 +440,7 @@ Turn current graph and autodiff substrate into MLX-class public transforms.
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
-| `PMLX-201` | planned | `Psionic MLX: expose grad, value_and_grad, and vjp as first-class public transforms` | Lift current reverse-mode substrate into a user-facing transform layer with stable signatures, typed refusals, and test coverage against MLX behavior. |
+| `PMLX-201` / [#3840](https://github.com/OpenAgentsInc/openagents/issues/3840) | done (2026-03-16) | `Psionic MLX: expose grad, value_and_grad, and vjp as first-class public transforms` | `psionic-ir` now exposes first-class public reverse-mode `grad`, `value_and_grad`, and `vjp` transform objects above `AutodiffGraph`, with typed target validation, explicit singleton-output rules for scalar transforms, disconnected-target zero cotangents, and public tests that anchor the MLX autograd parity family without overclaiming higher-order or compile closure. |
 | `PMLX-202` | planned | `Psionic MLX: add jvp and forward-mode autodiff to the public transform surface` | Extend the current autodiff substrate beyond reverse mode so the MLX lane can honestly support `jvp`-class use cases and transform composition. |
 | `PMLX-203` | planned | `Psionic MLX: add vmap with explicit unsupported-op refusals and parity fixtures` | Add automatic vectorization with a public refusal matrix so unsupported cases fail honestly instead of hiding gaps behind fallback behavior. |
 | `PMLX-204` | planned | `Psionic MLX: add checkpoint, custom_vjp, and custom transform registration hooks` | Expose gradient checkpointing and user-defined transform overrides in a reusable contract above IR internals. |
@@ -605,7 +605,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 
 ### Phase 3: land public transforms and compile
 
-- `PMLX-201`
+- `PMLX-201` done 2026-03-16
 - `PMLX-202`
 - `PMLX-203`
 - `PMLX-204`

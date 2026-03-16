@@ -243,7 +243,9 @@ Current posture:
   advanced-dtype plus autocast-style precision-policy semantics contract.
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types plus tensor-family capability matrices for dense,
-  sparse, nested, masked, and storage-aware semantics.
+  sparse, nested, masked, and storage-aware semantics, plus the first public
+  reverse-mode `grad` / `value_and_grad` / `vjp` transform objects above
+  `AutodiffGraph`.
 - `psionic-array`: first public lazy-array facade above `psionic-core` and
   `psionic-ir`, including context-owned graph construction, public device and
   stream handles with honest unified-memory flags and dependency-policy truth,
