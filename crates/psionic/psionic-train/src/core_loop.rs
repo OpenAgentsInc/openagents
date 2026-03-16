@@ -286,6 +286,148 @@ impl TrainingOptimizerConfig {
     }
 }
 
+/// Per-group scaling semantics layered above one optimizer config.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TrainingParameterGroupSemantics {
+    /// Learning-rate scale applied on top of the group's base optimizer rate.
+    pub learning_rate_scale: f32,
+    /// Weight-decay scale applied on top of the group's base optimizer decay.
+    pub weight_decay_scale: f32,
+}
+
+impl TrainingParameterGroupSemantics {
+    /// Creates explicit parameter-group semantics.
+    #[must_use]
+    pub const fn new(learning_rate_scale: f32, weight_decay_scale: f32) -> Self {
+        Self {
+            learning_rate_scale,
+            weight_decay_scale,
+        }
+    }
+}
+
+impl Default for TrainingParameterGroupSemantics {
+    fn default() -> Self {
+        Self::new(1.0, 1.0)
+    }
+}
+
+/// Scheduler family attached to one optimizer group.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingSchedulerKind {
+    /// No learning-rate change over time.
+    Constant,
+    /// Piecewise-decay schedule analogous to PyTorch `StepLR`.
+    StepLr,
+    /// Linear warmup analogous to common transformer training ramps.
+    LinearWarmup,
+    /// Cosine annealing over a fixed step budget.
+    CosineAnnealing,
+}
+
+/// Scheduler configuration for one optimizer group.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TrainingSchedulerConfig {
+    /// No learning-rate change over time.
+    Constant,
+    /// Decays the learning rate every `step_size` steps by `gamma`.
+    StepLr {
+        /// Step cadence for one decay event.
+        step_size: u64,
+        /// Multiplicative decay factor.
+        gamma: f32,
+    },
+    /// Linearly ramps from `start_factor * base_lr` to `base_lr`.
+    LinearWarmup {
+        /// Number of warmup steps.
+        warmup_steps: u64,
+        /// Starting scale relative to the base learning rate.
+        start_factor: f32,
+    },
+    /// Cosine-decays from `base_lr` toward `min_learning_rate`.
+    CosineAnnealing {
+        /// Total number of scheduled steps.
+        total_steps: u64,
+        /// Minimum learning rate reached at the end of the schedule.
+        min_learning_rate: f32,
+    },
+}
+
+impl TrainingSchedulerConfig {
+    /// Returns a constant schedule.
+    #[must_use]
+    pub const fn constant() -> Self {
+        Self::Constant
+    }
+
+    /// Returns a step-decay schedule.
+    #[must_use]
+    pub const fn step_lr(step_size: u64, gamma: f32) -> Self {
+        Self::StepLr { step_size, gamma }
+    }
+
+    /// Returns a linear warmup schedule.
+    #[must_use]
+    pub const fn linear_warmup(warmup_steps: u64, start_factor: f32) -> Self {
+        Self::LinearWarmup {
+            warmup_steps,
+            start_factor,
+        }
+    }
+
+    /// Returns a cosine annealing schedule.
+    #[must_use]
+    pub const fn cosine_annealing(total_steps: u64, min_learning_rate: f32) -> Self {
+        Self::CosineAnnealing {
+            total_steps,
+            min_learning_rate,
+        }
+    }
+
+    /// Returns the scheduler family label.
+    #[must_use]
+    pub const fn kind(&self) -> TrainingSchedulerKind {
+        match self {
+            Self::Constant => TrainingSchedulerKind::Constant,
+            Self::StepLr { .. } => TrainingSchedulerKind::StepLr,
+            Self::LinearWarmup { .. } => TrainingSchedulerKind::LinearWarmup,
+            Self::CosineAnnealing { .. } => TrainingSchedulerKind::CosineAnnealing,
+        }
+    }
+}
+
+/// Mutable scheduler state for one optimizer group.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TrainingSchedulerState {
+    /// Last step number the scheduler observed.
+    pub last_step: u64,
+    /// Last learning rate produced by the scheduler.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_learning_rate: Option<f32>,
+}
+
+/// Scheduler config plus mutable state for one parameter group.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TrainingSchedulerBinding {
+    /// Static scheduler configuration.
+    pub config: TrainingSchedulerConfig,
+    /// Mutable scheduler state.
+    pub state: TrainingSchedulerState,
+}
+
+impl TrainingSchedulerBinding {
+    /// Creates a new binding with zeroed scheduler state.
+    #[must_use]
+    pub fn new(config: TrainingSchedulerConfig) -> Self {
+        Self {
+            config,
+            state: TrainingSchedulerState::default(),
+        }
+    }
+}
+
 /// Optimizer-state residency class for one parameter group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -511,6 +653,12 @@ pub struct TrainingParameterGroupState {
     pub parameter: TrainingTensorBuffer,
     /// Optimizer config for this group.
     pub optimizer: TrainingOptimizerConfig,
+    /// Group-level scaling semantics applied on top of the optimizer config.
+    #[serde(default)]
+    pub parameter_semantics: TrainingParameterGroupSemantics,
+    /// Optional scheduler binding for this group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<TrainingSchedulerBinding>,
     /// Mutable optimizer state.
     pub optimizer_state: TrainingOptimizerState,
     /// Preferred residency policy.
@@ -541,11 +689,27 @@ impl TrainingParameterGroupState {
                 optimizer.momentum,
             ),
             optimizer,
+            parameter_semantics: TrainingParameterGroupSemantics::default(),
+            scheduler: None,
             optimizer_residency_policy,
             optimizer_residency: optimizer_residency_policy.idle_residency,
             parameter,
             applied_steps: 0,
         })
+    }
+
+    /// Attaches per-group scaling semantics.
+    #[must_use]
+    pub fn with_parameter_semantics(mut self, semantics: TrainingParameterGroupSemantics) -> Self {
+        self.parameter_semantics = semantics;
+        self
+    }
+
+    /// Attaches one scheduler binding.
+    #[must_use]
+    pub fn with_scheduler(mut self, scheduler: TrainingSchedulerConfig) -> Self {
+        self.scheduler = Some(TrainingSchedulerBinding::new(scheduler));
+        self
     }
 }
 
@@ -700,6 +864,13 @@ pub struct TrainingGroupTelemetry {
     pub class: TrainingParameterClass,
     /// Optimizer family.
     pub optimizer: TrainingOptimizerKind,
+    /// Effective learning rate applied to this group for the step.
+    pub effective_learning_rate: f32,
+    /// Effective weight decay applied to this group for the step.
+    pub effective_weight_decay: f32,
+    /// Optional scheduler family attached to the group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler_kind: Option<TrainingSchedulerKind>,
     /// Gradient norm before clipping.
     pub gradient_norm_l2: f32,
     /// Gradient norm after clipping.
@@ -1032,6 +1203,14 @@ struct GroupStepApplication {
     transitions: Vec<OptimizerResidencyTransition>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ResolvedGroupOptimizerStep {
+    optimizer: TrainingOptimizerConfig,
+    effective_learning_rate: f32,
+    effective_weight_decay: f32,
+    scheduler_kind: Option<TrainingSchedulerKind>,
+}
+
 fn validate_gradient_tensor(
     batch_id: &str,
     group_id: &str,
@@ -1075,14 +1254,21 @@ fn apply_group_step(
         &mut transitions,
     );
 
-    let parameter_values = group.parameter.as_f32_slice_mut(group.group_id.as_str())?;
     let gradient_norm_l2 = norm_l2(gradient_values);
     let (clipped_gradients, clipped_gradient_norm_l2, clipping_ratio) =
         clipped_gradients(gradient_values, group.optimizer.gradient_clip_norm);
+    let resolved_optimizer =
+        resolve_group_optimizer_step(group, group.applied_steps + 1).map_err(|error| {
+            TrainingCoreError::OptimizerStepFailed {
+                group_id: group.group_id.clone(),
+                message: error.to_string(),
+            }
+        })?;
+    let parameter_values = group.parameter.as_f32_slice_mut(group.group_id.as_str())?;
     let optimizer_report = crate::optimizer::apply_training_optimizer_step(
         parameter_values,
         clipped_gradients.as_slice(),
-        &group.optimizer,
+        &resolved_optimizer.optimizer,
         &mut group.optimizer_state,
         group.applied_steps.saturating_add(1),
     )
@@ -1107,6 +1293,9 @@ fn apply_group_step(
             group_id: group.group_id.clone(),
             class: group.class,
             optimizer: group.optimizer.kind,
+            effective_learning_rate: optimizer_report.effective_learning_rate,
+            effective_weight_decay: optimizer_report.effective_weight_decay,
+            scheduler_kind: resolved_optimizer.scheduler_kind,
             gradient_norm_l2,
             clipped_gradient_norm_l2,
             clipping_ratio,
@@ -1138,6 +1327,32 @@ fn maybe_transition_group(
     };
     group.optimizer_residency = target;
     transitions.push(transition);
+}
+
+fn resolve_group_optimizer_step(
+    group: &mut TrainingParameterGroupState,
+    step_number: u64,
+) -> Result<ResolvedGroupOptimizerStep, crate::TrainingOptimizerError> {
+    let mut optimizer = group.optimizer.clone();
+    optimizer.learning_rate *= group.parameter_semantics.learning_rate_scale;
+    optimizer.weight_decay *= group.parameter_semantics.weight_decay_scale;
+    let scheduler_kind = group
+        .scheduler
+        .as_ref()
+        .map(|binding| binding.config.kind());
+    if let Some(binding) = &mut group.scheduler {
+        optimizer.learning_rate = crate::optimizer::scheduled_learning_rate(
+            binding,
+            optimizer.learning_rate,
+            step_number,
+        )?;
+    }
+    Ok(ResolvedGroupOptimizerStep {
+        effective_learning_rate: optimizer.learning_rate,
+        effective_weight_decay: optimizer.weight_decay,
+        optimizer,
+        scheduler_kind,
+    })
 }
 
 fn clipped_gradients(gradients: &[f32], clip_norm: Option<f32>) -> (Vec<f32>, f32, Option<f32>) {
@@ -1177,6 +1392,14 @@ fn stable_training_step_receipt_digest(receipt: &TrainingStepReceipt) -> String 
     for telemetry in &receipt.group_telemetry {
         hasher.update(b"|group|");
         hasher.update(telemetry.group_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(telemetry.effective_learning_rate.to_bits().to_le_bytes());
+        hasher.update(b"|");
+        hasher.update(telemetry.effective_weight_decay.to_bits().to_le_bytes());
+        hasher.update(b"|");
+        if let Some(kind) = telemetry.scheduler_kind {
+            hasher.update(format!("{kind:?}").as_bytes());
+        }
         hasher.update(b"|");
         hasher.update(telemetry.gradient_norm_l2.to_bits().to_le_bytes());
         hasher.update(b"|");
@@ -1225,7 +1448,8 @@ mod tests {
         FixedBudgetTrainingRun, OptimizerResidencyTransitionReason, OptimizerStateResidency,
         TrainingCoreError, TrainingGradientBatch, TrainingLoopBudget, TrainingOptimizerConfig,
         TrainingOptimizerKind, TrainingOptimizerResidencyPolicy, TrainingParameterClass,
-        TrainingParameterGroupState, TrainingSessionState, TrainingStepInput, TrainingTensorBuffer,
+        TrainingParameterGroupSemantics, TrainingParameterGroupState, TrainingSchedulerConfig,
+        TrainingSessionState, TrainingStepInput, TrainingTensorBuffer,
     };
 
     fn training_spec(width: usize) -> TensorSpec {
@@ -1308,8 +1532,8 @@ mod tests {
     }
 
     #[test]
-    fn fixed_budget_training_loop_applies_updates_and_tracks_telemetry()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn fixed_budget_training_loop_applies_updates_and_tracks_telemetry(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let budget = TrainingLoopBudget::new(3, 2, 2)?;
         let embedding_group = group(
             "token_embed",
@@ -1385,17 +1609,15 @@ mod tests {
             outcome.receipts[0].group_telemetry[0].optimizer,
             TrainingOptimizerKind::Sgd
         );
-        assert!(
-            outcome.receipts[0]
-                .residency_transitions
-                .iter()
-                .any(|transition| {
-                    transition.group_id == "token_embed"
-                        && transition.reason == OptimizerResidencyTransitionReason::PrefetchForStep
-                        && transition.from == OptimizerStateResidency::Offloaded
-                        && transition.to == OptimizerStateResidency::DeviceResident
-                })
-        );
+        assert!(outcome.receipts[0]
+            .residency_transitions
+            .iter()
+            .any(|transition| {
+                transition.group_id == "token_embed"
+                    && transition.reason == OptimizerResidencyTransitionReason::PrefetchForStep
+                    && transition.from == OptimizerStateResidency::Offloaded
+                    && transition.to == OptimizerStateResidency::DeviceResident
+            }));
 
         let token_embed = run.parameter_group("token_embed").expect("embed group");
         let embed_values = token_embed
@@ -1420,8 +1642,8 @@ mod tests {
     }
 
     #[test]
-    fn autodiff_gradients_compose_with_fixed_budget_training_core()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn autodiff_gradients_compose_with_fixed_budget_training_core(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut autodiff =
             AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
         let weights = autodiff.input("weights", Shape::new(vec![2]), DType::F32, true);
@@ -1486,8 +1708,91 @@ mod tests {
     }
 
     #[test]
-    fn fixed_budget_training_loop_can_restore_from_latest_durable_checkpoint()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn fixed_budget_training_loop_tracks_scheduler_and_group_scaling_state(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let budget = TrainingLoopBudget::new(3, 3, 1)?;
+        let scheduled_group = group(
+            "scheduled_head",
+            TrainingParameterClass::Head,
+            vec![1.0, -1.0],
+            TrainingOptimizerConfig::sgd(0.2).with_weight_decay(0.1),
+            TrainingOptimizerResidencyPolicy::host_only(),
+        )?
+        .with_parameter_semantics(TrainingParameterGroupSemantics::new(0.5, 2.0))
+        .with_scheduler(TrainingSchedulerConfig::step_lr(2, 0.1));
+        let mut run = FixedBudgetTrainingRun::new(
+            "train-run-scheduler",
+            "train.scheduler",
+            budget,
+            vec![scheduled_group],
+        )?;
+
+        let inputs = vec![
+            TrainingStepInput::new(
+                TrainingGradientBatch::new(
+                    "batch-1",
+                    1.0,
+                    2,
+                    gradients(&[("scheduled_head", vec![0.1, -0.1])])?,
+                ),
+                10,
+                20,
+            ),
+            TrainingStepInput::new(
+                TrainingGradientBatch::new(
+                    "batch-2",
+                    0.8,
+                    2,
+                    gradients(&[("scheduled_head", vec![0.1, -0.1])])?,
+                ),
+                30,
+                40,
+            ),
+            TrainingStepInput::new(
+                TrainingGradientBatch::new(
+                    "batch-3",
+                    0.6,
+                    2,
+                    gradients(&[("scheduled_head", vec![0.1, -0.1])])?,
+                ),
+                50,
+                60,
+            ),
+        ];
+
+        let outcome = run.run_fixed_budget(inputs)?;
+        let telemetry = outcome
+            .receipts
+            .iter()
+            .map(|receipt| &receipt.group_telemetry[0])
+            .collect::<Vec<_>>();
+        assert_eq!(
+            telemetry[0].scheduler_kind,
+            Some(super::TrainingSchedulerKind::StepLr)
+        );
+        assert!((telemetry[0].effective_learning_rate - 0.1).abs() < 0.0001);
+        assert!((telemetry[1].effective_learning_rate - 0.1).abs() < 0.0001);
+        assert!((telemetry[2].effective_learning_rate - 0.01).abs() < 0.0001);
+        assert!(telemetry
+            .iter()
+            .all(|entry| (entry.effective_weight_decay - 0.2).abs() < 0.0001));
+
+        let scheduled = run
+            .parameter_group("scheduled_head")
+            .expect("scheduled group");
+        let scheduler = scheduled.scheduler.as_ref().expect("scheduler binding");
+        assert_eq!(scheduler.state.last_step, 3);
+        let last_learning_rate = scheduler
+            .state
+            .last_learning_rate
+            .expect("scheduler should record the last learning rate");
+        assert!((last_learning_rate - 0.01).abs() < 0.0001);
+        Ok(())
+    }
+
+    #[test]
+    fn fixed_budget_training_loop_can_restore_from_latest_durable_checkpoint(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let state = cluster_state(&[
             ("worker-a", ClusterMembershipStatus::Ready),
             ("worker-b", ClusterMembershipStatus::Ready),
@@ -1551,8 +1856,8 @@ mod tests {
     }
 
     #[test]
-    fn fixed_budget_training_loop_refuses_missing_gradients()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn fixed_budget_training_loop_refuses_missing_gradients(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let budget = TrainingLoopBudget::new(1, 1, 1)?;
         let parameter_group = group(
             "decoder_bias",

@@ -260,8 +260,9 @@ Current posture:
   and exact-equivalence reporting plus runtime capability/selection artifacts.
 - `psionic-train`: checkpoint/recovery truth, elastic membership, run graphs,
   rollout-worker protocol, orchestrator control, fixed-budget training core,
-  Apple training execution, Apple SFT/export, optional Apple draft-model
-  distillation, and the bounded `Tassadar` small-executor training lane.
+  parameter-group and scheduler semantics, Apple training execution, Apple
+  SFT/export, optional Apple draft-model distillation, and the bounded
+  `Tassadar` small-executor training lane.
 - `psionic-research`: typed experiment specs, bounded run manifests, result
   summaries, promotion records, and the `Tassadar` executor-variant research
   family with machine-readable sweep records for hillclimb/research loops.
