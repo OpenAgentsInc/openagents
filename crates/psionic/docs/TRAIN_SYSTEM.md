@@ -125,6 +125,10 @@ It already has real substrate for:
 - a bounded reusable CPU-reference core layer surface in `psionic-nn`,
   covering linear, embedding, norms, activations, dropout, conv, and pooling
   families above the same module/state substrate
+- a bounded reusable CPU-reference loss, initializer, and helper surface in
+  `psionic-nn`, covering `mse_loss`, `l1_loss`, `binary_cross_entropy_loss`,
+  `cross_entropy_loss`, `softmax_last_dim`, `log_softmax_last_dim`,
+  `sigmoid`, `one_hot`, `init_tensor`, and `init_parameter`
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity
@@ -369,9 +373,11 @@ The current path is:
    through `AppleFmGenerationSchema::with_title_hint(...)`, uses bounded greedy
    generation options during live eval/smoke, and backs `lookup_doc` /
    `lookup_code` eval cases with real repo retrieval instead of echo tools.
-   Benchmark reports now embed the full base/adapted `EvalRunState` receipts so
-   per-sample failures remain visible as model, model-request, or runtime
-   failures instead of collapsing into aggregate benchmark deltas.
+   Benchmark reports now embed the full base/adapted `EvalRunState` receipts and
+   a stable paired per-case receipt layer, so each weak case carries the request
+   envelope, expected output, base/adapted outputs, structured-output payloads,
+   observed tool-call transcripts, and copied model-request/runtime failure
+   details instead of collapsing into aggregate benchmark deltas.
 6. `autopilotctl training launch ...`, `autopilotctl training watch ...`,
    `autopilotctl training export ...`, and `autopilotctl training accept ...`
    provide the shipped app-owned operator flow, while

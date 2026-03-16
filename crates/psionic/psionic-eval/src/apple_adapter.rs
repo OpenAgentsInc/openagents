@@ -1316,6 +1316,12 @@ fn score_sample(
         String::from("apple_adapter.observed_output_text"),
         Value::String(observed.output_text.clone()),
     );
+    if !observed.observed_tool_calls.is_empty() {
+        metadata.insert(
+            String::from("apple_adapter.observed_tool_calls"),
+            serde_json::to_value(observed.observed_tool_calls.clone()).unwrap_or(Value::Null),
+        );
+    }
     metadata.insert(
         String::from("apple_adapter.expected_digest"),
         Value::String(sample.stable_digest.clone()),

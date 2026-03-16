@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use psionic_data::{
     AppleAdapterCorpusExpectedBehavior, AppleAdapterCorpusTaskFamily,
     AppleAdapterCuratedCorpusError, AppleAdapterCuratedCorpusManifest, AppleAdapterCuratedSplit,
-    AppleAdapterDatasetContract, AppleAdapterSampleKind, AppleAdapterTrainingSample,
+    AppleAdapterDatasetContract, AppleAdapterResponseFormat, AppleAdapterSampleKind,
+    AppleAdapterToolDefinition, AppleAdapterTrainingSample,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -12,9 +13,9 @@ use thiserror::Error;
 
 use crate::{
     AppleAdapterEvalError, AppleAdapterEvalHarness, AppleAdapterObservedSampleOutput,
-    BenchmarkAggregateSummary, BenchmarkExecutionMode, BenchmarkPackage, BenchmarkPackageKey,
-    EvalArtifact, EvalMetric, EvalRunMode, EvalRunState, EvalRunStatus, EvalRuntimeError,
-    EvalSampleRecord, EvalSampleStatus, EvalSummary,
+    AppleAdapterObservedToolCall, BenchmarkAggregateSummary, BenchmarkExecutionMode,
+    BenchmarkPackage, BenchmarkPackageKey, EvalArtifact, EvalMetric, EvalRunMode, EvalRunState,
+    EvalRunStatus, EvalRuntimeError, EvalSampleRecord, EvalSampleStatus, EvalSummary,
 };
 
 /// Canonical benchmark ref for the first real Apple adapter run.
@@ -128,6 +129,91 @@ pub struct AppleAdapterBenchmarkTaskFamilyDelta {
     pub improved_case_count: u32,
 }
 
+/// Stable request envelope used for one benchmark case.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterBenchmarkRequestEnvelope {
+    /// Curated sample kind.
+    pub sample_kind: AppleAdapterSampleKind,
+    /// Optional system instruction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_instruction: Option<String>,
+    /// User prompt passed to the runtime.
+    pub prompt: String,
+    /// Optional structured-output contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<AppleAdapterResponseFormat>,
+    /// Required tool contracts for the case.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_tools: Vec<AppleAdapterToolDefinition>,
+}
+
+/// One candidate receipt for a benchmark case.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterBenchmarkCandidateReceipt {
+    /// Base or adapted candidate.
+    pub candidate: AppleAdapterBenchmarkCandidate,
+    /// Terminal eval status.
+    pub status: EvalSampleStatus,
+    /// Aggregate score for the sample when one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_bps: Option<u32>,
+    /// Machine-legible failure summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_reason: Option<String>,
+    /// Plain observed text.
+    pub observed_output_text: String,
+    /// Optional observed structured output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_structured_output: Option<Value>,
+    /// Observed tool-call transcript.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observed_tool_calls: Vec<AppleAdapterObservedToolCall>,
+    /// Structured failure details copied from eval metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub structured_contract_failures: Vec<Value>,
+    /// Request-shape failures copied from eval metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_request_failures: Vec<Value>,
+    /// Runtime failure details copied from eval metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runtime_failures: Vec<Value>,
+    /// Per-sample metrics.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub metrics: Vec<EvalMetric>,
+    /// Verification facts captured for the sample.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<crate::EvalVerificationFacts>,
+}
+
+/// One fully paired benchmark-case receipt.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterBenchmarkCaseReceipt {
+    /// Stable benchmark case id.
+    pub case_id: String,
+    /// Curated sample kind.
+    pub sample_kind: AppleAdapterSampleKind,
+    /// Curated task family.
+    pub task_family: AppleAdapterCorpusTaskFamily,
+    /// Expected behavior class.
+    pub expected_behavior: AppleAdapterCorpusExpectedBehavior,
+    /// Source ids for the case.
+    pub source_ids: Vec<String>,
+    /// Stable request envelope.
+    pub request_envelope: AppleAdapterBenchmarkRequestEnvelope,
+    /// Expected output text from the dataset.
+    pub expected_output_text: String,
+    /// Stable expected output digest.
+    pub expected_output_digest: String,
+    /// Base candidate receipt.
+    pub base: AppleAdapterBenchmarkCandidateReceipt,
+    /// Adapted candidate receipt.
+    pub adapted: AppleAdapterBenchmarkCandidateReceipt,
+    /// Adapted minus base score delta.
+    pub score_delta_bps: i32,
+    /// Whether the adapted candidate improved over base.
+    pub improved: bool,
+}
+
 /// Final gate decision for the first real benchmark suite.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppleAdapterBaseVsAdapterAcceptance {
@@ -160,6 +246,8 @@ pub struct AppleAdapterBaseVsAdapterBenchmarkReport {
     pub adapted_summary: BenchmarkAggregateSummary,
     /// Per-case deltas.
     pub case_deltas: Vec<AppleAdapterBenchmarkCaseDelta>,
+    /// Fully paired per-case receipts.
+    pub case_receipts: Vec<AppleAdapterBenchmarkCaseReceipt>,
     /// Per-task-family deltas.
     pub task_family_deltas: Vec<AppleAdapterBenchmarkTaskFamilyDelta>,
     /// Final acceptance decision.
@@ -384,12 +472,23 @@ pub fn compare_curated_base_vs_adapter_runs(
         .iter()
         .map(|sample| (sample.sample_id.clone(), sample))
         .collect::<BTreeMap<_, _>>();
+    let dataset_samples = dataset
+        .samples
+        .iter()
+        .map(|sample| (sample.sample_id.as_str(), sample))
+        .collect::<BTreeMap<_, _>>();
 
     let mut case_deltas = Vec::new();
+    let mut case_receipts = Vec::new();
     let mut task_family_rollups: BTreeMap<AppleAdapterCorpusTaskFamily, (u64, u64, u32, u32)> =
         BTreeMap::new();
     for case in &benchmark_package.cases {
         let annotation = annotations.get(case.case_id.as_str()).ok_or_else(|| {
+            AppleAdapterBenchmarkError::MissingBenchmarkAnnotation {
+                sample_id: case.case_id.clone(),
+            }
+        })?;
+        let sample = dataset_samples.get(case.case_id.as_str()).ok_or_else(|| {
             AppleAdapterBenchmarkError::MissingBenchmarkAnnotation {
                 sample_id: case.case_id.clone(),
             }
@@ -423,6 +522,26 @@ pub fn compare_curated_base_vs_adapter_runs(
             adapted_status: adapted_sample.status,
             base_score_bps,
             adapted_score_bps,
+            score_delta_bps,
+            improved,
+        });
+        case_receipts.push(AppleAdapterBenchmarkCaseReceipt {
+            case_id: case.case_id.clone(),
+            sample_kind: sample.sample_kind,
+            task_family: annotation.task_family,
+            expected_behavior: annotation.expected_behavior,
+            source_ids: annotation.source_ids.clone(),
+            request_envelope: request_envelope_for_sample(sample),
+            expected_output_text: expected_output_text(sample),
+            expected_output_digest: sample.stable_digest.clone(),
+            base: candidate_receipt_from_record(
+                AppleAdapterBenchmarkCandidate::BaseModel,
+                base_sample,
+            ),
+            adapted: candidate_receipt_from_record(
+                AppleAdapterBenchmarkCandidate::AdaptedModel,
+                adapted_sample,
+            ),
             score_delta_bps,
             improved,
         });
@@ -488,6 +607,7 @@ pub fn compare_curated_base_vs_adapter_runs(
         base_summary,
         adapted_summary,
         case_deltas,
+        case_receipts,
         task_family_deltas,
         acceptance: AppleAdapterBaseVsAdapterAcceptance {
             accepted: reason_codes.is_empty(),
@@ -497,6 +617,93 @@ pub fn compare_curated_base_vs_adapter_runs(
             reason_codes,
         },
     })
+}
+
+fn request_envelope_for_sample(
+    sample: &AppleAdapterTrainingSample,
+) -> AppleAdapterBenchmarkRequestEnvelope {
+    AppleAdapterBenchmarkRequestEnvelope {
+        sample_kind: sample.sample_kind,
+        system_instruction: sample
+            .messages
+            .iter()
+            .find(|message| message.role == psionic_data::AppleAdapterMessageRole::System)
+            .map(|message| message.content.clone()),
+        prompt: sample
+            .messages
+            .iter()
+            .find(|message| message.role == psionic_data::AppleAdapterMessageRole::User)
+            .map(|message| message.content.clone())
+            .unwrap_or_default(),
+        response_format: sample.response_format.clone(),
+        required_tools: sample.tools.clone(),
+    }
+}
+
+fn expected_output_text(sample: &AppleAdapterTrainingSample) -> String {
+    sample
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == psionic_data::AppleAdapterMessageRole::Assistant)
+        .map(|message| message.content.clone())
+        .unwrap_or_default()
+}
+
+fn candidate_receipt_from_record(
+    candidate: AppleAdapterBenchmarkCandidate,
+    record: &EvalSampleRecord,
+) -> AppleAdapterBenchmarkCandidateReceipt {
+    AppleAdapterBenchmarkCandidateReceipt {
+        candidate,
+        status: record.status,
+        score_bps: record.score_bps,
+        error_reason: record.error_reason.clone(),
+        observed_output_text: metadata_string(record, "apple_adapter.observed_output_text", ""),
+        observed_structured_output: record
+            .metadata
+            .get("apple_adapter.observed_structured_output")
+            .cloned(),
+        observed_tool_calls: metadata_value::<Vec<AppleAdapterObservedToolCall>>(
+            record,
+            "apple_adapter.observed_tool_calls",
+        )
+        .unwrap_or_default(),
+        structured_contract_failures: metadata_value::<Vec<Value>>(
+            record,
+            "apple_adapter.structured_contract_failures",
+        )
+        .unwrap_or_default(),
+        model_request_failures: metadata_value::<Vec<Value>>(
+            record,
+            "apple_adapter.model_request_failures",
+        )
+        .unwrap_or_default(),
+        runtime_failures: metadata_value::<Vec<Value>>(record, "apple_adapter.runtime_failures")
+            .unwrap_or_default(),
+        metrics: record.metrics.clone(),
+        verification: record.verification.clone(),
+    }
+}
+
+fn metadata_string(record: &EvalSampleRecord, key: &str, fallback: &str) -> String {
+    record
+        .metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn metadata_value<T>(record: &EvalSampleRecord, key: &str) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    record
+        .metadata
+        .get(key)
+        .cloned()
+        .and_then(|value| serde_json::from_value::<T>(value).ok())
 }
 
 fn behavior_adjusted_benchmark_run(
@@ -1467,6 +1674,73 @@ mod tests {
                 &AppleAdapterBenchmarkAcceptanceReasonCode::ImprovedCaseCountBelowMinimum
             )
         );
+        Ok(())
+    }
+
+    #[test]
+    fn benchmark_report_case_receipts_surface_request_and_output_details()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = dataset_contract();
+        let corpus = corpus_manifest();
+        let benchmark_key = architecture_explainer_benchmark_key(&corpus)?;
+        let package = build_curated_benchmark_package(
+            &AppleAdapterEvalHarness::new(environment_bundle())?,
+            benchmark_key,
+            &dataset,
+            &corpus,
+            1,
+        )?;
+        let report = run_curated_base_vs_adapter_benchmark(
+            &AppleAdapterEvalHarness::new(environment_bundle())?,
+            &package,
+            &dataset,
+            &corpus,
+            base_outputs(&dataset),
+            exact_outputs(&dataset),
+            &AppleAdapterBaseVsAdapterAcceptancePolicy::architecture_explainer_default(),
+            1_000,
+            2_000,
+        )?;
+        assert_eq!(report.case_receipts.len(), report.case_deltas.len());
+
+        let structured_case_id = dataset
+            .samples
+            .iter()
+            .find(|sample| sample.response_format.is_some())
+            .map(|sample| sample.sample_id.clone())
+            .expect("structured case");
+        let structured_case = report
+            .case_receipts
+            .iter()
+            .find(|case| case.case_id == structured_case_id)
+            .expect("structured case receipt");
+        assert!(structured_case.request_envelope.response_format.is_some());
+        assert!(structured_case.base.observed_structured_output.is_some());
+        assert!(structured_case.adapted.observed_structured_output.is_some());
+        assert!(!structured_case.expected_output_text.is_empty());
+
+        let tool_case_id = dataset
+            .samples
+            .iter()
+            .find(|sample| !sample.tools.is_empty())
+            .map(|sample| sample.sample_id.clone())
+            .expect("tool case");
+        let tool_case = report
+            .case_receipts
+            .iter()
+            .find(|case| case.case_id == tool_case_id)
+            .expect("tool case receipt");
+        assert!(!tool_case.request_envelope.required_tools.is_empty());
+        assert_eq!(
+            tool_case.adapted.observed_tool_calls.len(),
+            tool_case.request_envelope.required_tools.len()
+        );
+        assert_eq!(
+            tool_case.base.observed_tool_calls.len(),
+            tool_case.request_envelope.required_tools.len()
+        );
+        assert!(!tool_case.base.observed_output_text.is_empty());
+        assert!(!tool_case.adapted.observed_output_text.is_empty());
         Ok(())
     }
 

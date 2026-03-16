@@ -805,6 +805,7 @@ fn render_markdown_report(report: &ArchitectureExplainerFirstRunReport) -> Strin
     } else {
         report.weak_case_ids.join(", ")
     };
+    let weak_case_details = benchmark_weak_case_details(benchmark);
     format!(
         "# Psionic Architecture Explainer First Real Run\n\n\
 Generated at: `{}`\n\n\
@@ -836,6 +837,8 @@ Generated at: `{}`\n\n\
 - improved_case_count: `{}`\n\
 - weak_case_ids: `{}`\n\
 - reason_codes: `{}`\n\n\
+## Weak Case Details\n\n\
+{}\n\n\
 ## Useful Adapter Gate\n\n\
 - runtime_smoke_required: `{}`\n\
 - runtime_smoke_satisfied: `{}`\n\
@@ -912,6 +915,7 @@ Generated at: `{}`\n\n\
             .map(|code| format!("{code:?}"))
             .collect::<Vec<_>>()
             .join(", "),
+        weak_case_details,
         report.useful_adapter_assessment.runtime_smoke_required,
         report.useful_adapter_assessment.runtime_smoke_satisfied,
         report.useful_adapter_assessment.useful_adapter_accepted,
@@ -926,6 +930,45 @@ Generated at: `{}`\n\n\
         report.launch_error.clone().unwrap_or_default(),
         report.acceptance_error.clone().unwrap_or_default(),
     )
+}
+
+fn benchmark_weak_case_details(report: &AppleAdapterBaseVsAdapterBenchmarkReport) -> String {
+    let weak_cases = report
+        .case_receipts
+        .iter()
+        .filter(|case| !case.improved)
+        .take(5)
+        .map(|case| {
+            format!(
+                "- `{}` family=`{:?}` base={} ({}) adapted={} ({})\n  expected: `{}`\n  base_output: `{}`\n  adapted_output: `{}`",
+                case.case_id,
+                case.task_family,
+                case.base.score_bps.unwrap_or(0),
+                case.base.error_reason.as_deref().unwrap_or("passed"),
+                case.adapted.score_bps.unwrap_or(0),
+                case.adapted.error_reason.as_deref().unwrap_or("passed"),
+                truncate_markdown_text(case.expected_output_text.as_str()),
+                truncate_markdown_text(case.base.observed_output_text.as_str()),
+                truncate_markdown_text(case.adapted.observed_output_text.as_str()),
+            )
+        })
+        .collect::<Vec<_>>();
+    if weak_cases.is_empty() {
+        String::from("none")
+    } else {
+        weak_cases.join("\n")
+    }
+}
+
+fn truncate_markdown_text(text: &str) -> String {
+    const LIMIT: usize = 140;
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= LIMIT {
+        normalized
+    } else {
+        let truncated = normalized.chars().take(LIMIT).collect::<String>();
+        format!("{truncated}...")
+    }
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> Result<T> {
