@@ -27,7 +27,7 @@ pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2";
 /// Canonical output root for the boundary-first attention-family comparison.
 pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_BOUNDARY_ATTENTION_OUTPUT_DIR: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6";
 /// Canonical machine-readable architecture-comparison artifact.
 pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE: &str =
     "architecture_comparison_report.json";
@@ -48,9 +48,9 @@ const TRAINED_ATTENTION_CHECKPOINT_STATE: &str =
 const TRAINED_ATTENTION_SOURCE_RUN_BUNDLE: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/run_bundle.json";
 const BOUNDARY_ATTENTION_CHECKPOINT_STATE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2/checkpoint_state.json";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/checkpoint_state.json";
 const BOUNDARY_ATTENTION_SOURCE_RUN_BUNDLE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2/run_bundle.json";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/run_bundle.json";
 const PROMPT_WINDOW_TOKEN_CAP: usize = 256;
 const TARGET_TOKEN_CAP: usize = 32;
 
@@ -216,7 +216,7 @@ pub fn run_tassadar_executor_architecture_comparison_with_boundary_attention(
         load_attention_candidate_from_checkpoint(BOUNDARY_ATTENTION_CHECKPOINT_STATE)?;
     run_tassadar_executor_architecture_comparison_with_attention_candidate(
         output_dir,
-        "v4",
+        "v6",
         &trained_attention,
         Some(String::from(BOUNDARY_ATTENTION_SOURCE_RUN_BUNDLE)),
     )

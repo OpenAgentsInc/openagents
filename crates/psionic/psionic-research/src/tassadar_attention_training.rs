@@ -16,17 +16,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-const TRAINED_ATTENTION_V1_CHECKPOINT_STATE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/checkpoint_state.json";
-const TRAINED_ATTENTION_V1_RUN_BUNDLE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/run_bundle.json";
+const BOUNDARY_ATTENTION_V2_CHECKPOINT_STATE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2/checkpoint_state.json";
+const BOUNDARY_ATTENTION_V2_RUN_BUNDLE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2/run_bundle.json";
 
 /// Canonical output root for the first bounded learned attention-family run.
 pub const TASSADAR_EXECUTOR_ATTENTION_TRAINING_OUTPUT_DIR: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1";
 /// Canonical output root for the first boundary-first attention-family run.
 pub const TASSADAR_EXECUTOR_ATTENTION_BOUNDARY_OUTPUT_DIR: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4";
 /// Canonical machine-readable training report artifact.
 pub const TASSADAR_EXECUTOR_ATTENTION_TRAINING_REPORT_FILE: &str = "training_report.json";
 /// Canonical machine-readable validation family report artifact.
@@ -150,6 +150,14 @@ pub struct TassadarExecutorAttentionTrainingConfig {
     /// trainable.
     #[serde(default)]
     pub train_relative_target_output_bias: bool,
+    /// Whether the bounded relative-target hidden-state-conditioned output
+    /// projection adapter should be trainable.
+    #[serde(default)]
+    pub train_relative_target_output_projection: bool,
+    /// Learning-rate multiplier applied only to the bounded relative-target
+    /// hidden-state-conditioned output projection adapter.
+    #[serde(default = "default_one")]
+    pub relative_target_output_projection_learning_rate_scale: f32,
 }
 
 impl TassadarExecutorAttentionTrainingConfig {
@@ -168,6 +176,8 @@ impl TassadarExecutorAttentionTrainingConfig {
             initial_run_bundle_ref: None,
             train_output_head: true,
             train_relative_target_output_bias: false,
+            train_relative_target_output_projection: false,
+            relative_target_output_projection_learning_rate_scale: 1.0,
         }
     }
 
@@ -175,10 +185,10 @@ impl TassadarExecutorAttentionTrainingConfig {
     #[must_use]
     pub fn boundary_curriculum_reference() -> Self {
         Self {
-            run_id: String::from("tassadar-executor-attention-sudoku-v0-boundary-v2"),
+            run_id: String::from("tassadar-executor-attention-sudoku-v0-boundary-v4"),
             dataset_version: String::from("train-v0"),
             epochs: 32,
-            learning_rate: 0.05,
+            learning_rate: 0.02,
             prompt_window_token_cap: 256,
             target_token_cap: 32,
             stages: vec![
@@ -208,11 +218,13 @@ impl TassadarExecutorAttentionTrainingConfig {
                     .with_early_prefix_weighting(8, 1.25),
             ],
             initial_checkpoint_state_ref: Some(String::from(
-                TRAINED_ATTENTION_V1_CHECKPOINT_STATE,
+                BOUNDARY_ATTENTION_V2_CHECKPOINT_STATE,
             )),
-            initial_run_bundle_ref: Some(String::from(TRAINED_ATTENTION_V1_RUN_BUNDLE)),
+            initial_run_bundle_ref: Some(String::from(BOUNDARY_ATTENTION_V2_RUN_BUNDLE)),
             train_output_head: false,
-            train_relative_target_output_bias: true,
+            train_relative_target_output_bias: false,
+            train_relative_target_output_projection: true,
+            relative_target_output_projection_learning_rate_scale: 8.0,
         }
     }
 }
@@ -306,6 +318,10 @@ pub struct TassadarExecutorAttentionCheckpointState {
     /// Trained bounded relative-target output-bias adapter values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relative_target_output_bias: Vec<f32>,
+    /// Trained bounded relative-target hidden-state-conditioned output
+    /// projection adapter values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relative_target_output_projection: Vec<f32>,
     /// Stable digest over the persisted state.
     pub state_digest: String,
 }
@@ -324,6 +340,10 @@ impl TassadarExecutorAttentionCheckpointState {
             output_projection: model.weights().output_projection().to_vec(),
             output_bias: model.weights().output_bias().to_vec(),
             relative_target_output_bias: model.weights().relative_target_output_bias().to_vec(),
+            relative_target_output_projection: model
+                .weights()
+                .relative_target_output_projection()
+                .to_vec(),
             state_digest: String::new(),
         };
         checkpoint.state_digest =
@@ -360,6 +380,16 @@ impl TassadarExecutorAttentionCheckpointState {
                 actual: self.relative_target_output_bias.len(),
             });
         }
+        if !self.relative_target_output_projection.is_empty()
+            && model.weights().relative_target_output_projection().len()
+                != self.relative_target_output_projection.len()
+        {
+            return Err(TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
+                tensor: String::from("relative_target_output_projection"),
+                expected: model.weights().relative_target_output_projection().len(),
+                actual: self.relative_target_output_projection.len(),
+            });
+        }
         model
             .weights_mut()
             .output_projection_mut()
@@ -373,6 +403,12 @@ impl TassadarExecutorAttentionCheckpointState {
                 .weights_mut()
                 .relative_target_output_bias_mut()
                 .copy_from_slice(self.relative_target_output_bias.as_slice());
+        }
+        if !self.relative_target_output_projection.is_empty() {
+            model
+                .weights_mut()
+                .relative_target_output_projection_mut()
+                .copy_from_slice(self.relative_target_output_projection.as_slice());
         }
         model.refresh_after_training();
         Ok(model)
@@ -537,7 +573,7 @@ pub fn train_tassadar_executor_attention_windowed(
     let total_epochs = total_stage_epochs(config);
 
     emit_tassadar_progress(format!(
-        "tassadar_attention_progress phase=train_start run={} epochs={} stages={} learning_rate={:.6} prompt_cap={} validation_target_cap={} train_examples={} validation_examples={}",
+        "tassadar_attention_progress phase=train_start run={} epochs={} stages={} learning_rate={:.6} prompt_cap={} validation_target_cap={} train_examples={} validation_examples={} train_output_head={} train_relative_target_output_bias={} train_relative_target_output_projection={} projection_lr_scale={:.4}",
         config.run_id,
         total_epochs,
         config.stages.len(),
@@ -546,6 +582,10 @@ pub fn train_tassadar_executor_attention_windowed(
         config.target_token_cap,
         train_examples.len(),
         bundle.dataset.split_examples(TassadarSequenceSplit::Validation).len(),
+        config.train_output_head,
+        config.train_relative_target_output_bias,
+        config.train_relative_target_output_projection,
+        config.relative_target_output_projection_learning_rate_scale,
     ));
     let mut global_epoch_index = 0_u32;
 
@@ -572,6 +612,10 @@ pub fn train_tassadar_executor_attention_windowed(
             let mut relative_target_output_bias_grad = vec![
                 0.0;
                 model.weights().relative_target_output_bias().len()
+            ];
+            let mut relative_target_output_projection_grad = vec![
+                0.0;
+                model.weights().relative_target_output_projection().len()
             ];
             let mut total_loss = 0.0_f32;
             let mut total_target_tokens = 0_u32;
@@ -612,6 +656,11 @@ pub fn train_tassadar_executor_attention_windowed(
                         adjusted_logits.as_mut_slice(),
                         target_index,
                     );
+                    model.apply_relative_target_output_projection_in_place(
+                        adjusted_logits.as_mut_slice(),
+                        &forward.hidden_states[logit_index],
+                        target_index,
+                    );
                     sequence_loss += accumulate_attention_output_step_gradients(
                         &forward.hidden_states[logit_index],
                         adjusted_logits.as_slice(),
@@ -629,6 +678,11 @@ pub fn train_tassadar_executor_attention_windowed(
                         },
                         if config.train_relative_target_output_bias {
                             Some(relative_target_output_bias_grad.as_mut_slice())
+                        } else {
+                            None
+                        },
+                        if config.train_relative_target_output_projection {
+                            Some(relative_target_output_projection_grad.as_mut_slice())
                         } else {
                             None
                         },
@@ -684,6 +738,18 @@ pub fn train_tassadar_executor_attention_windowed(
                         .zip(relative_target_output_bias_grad.iter())
                     {
                         *bias -= scale * gradient;
+                    }
+                }
+                if config.train_relative_target_output_projection {
+                    let projection_scale =
+                        scale * config.relative_target_output_projection_learning_rate_scale;
+                    for (weight, gradient) in model
+                        .weights_mut()
+                        .relative_target_output_projection_mut()
+                        .iter_mut()
+                        .zip(relative_target_output_projection_grad.iter())
+                    {
+                        *weight -= projection_scale * gradient;
                     }
                 }
                 model.refresh_after_training();
@@ -879,6 +945,7 @@ fn accumulate_attention_output_step_gradients(
     projection_grad: Option<&mut [f32]>,
     bias_grad: Option<&mut [f32]>,
     relative_target_output_bias_grad: Option<&mut [f32]>,
+    relative_target_output_projection_grad: Option<&mut [f32]>,
     relative_target_index: usize,
     vocab_size: usize,
 ) -> f32 {
@@ -888,7 +955,9 @@ fn accumulate_attention_output_step_gradients(
     let mut projection_grad = projection_grad;
     let mut bias_grad = bias_grad;
     let mut relative_target_output_bias_grad = relative_target_output_bias_grad;
+    let mut relative_target_output_projection_grad = relative_target_output_projection_grad;
     let relative_target_bias_offset = relative_target_index * vocab_size;
+    let relative_target_projection_offset = relative_target_index * hidden.len() * vocab_size;
     for (token_index, probability) in probabilities.iter().enumerate() {
         let delta = (probability - f32::from(token_index == target_token_index)) * loss_scale;
         if let Some(bias_grad) = bias_grad.as_deref_mut() {
@@ -906,6 +975,18 @@ fn accumulate_attention_output_step_gradients(
             let bias_index = relative_target_bias_offset + token_index;
             if bias_index < relative_target_output_bias_grad.len() {
                 relative_target_output_bias_grad[bias_index] += delta;
+            }
+        }
+        if let Some(relative_target_output_projection_grad) =
+            relative_target_output_projection_grad.as_deref_mut()
+        {
+            for (hidden_index, hidden_value) in hidden.iter().enumerate() {
+                let projection_index =
+                    relative_target_projection_offset + hidden_index * vocab_size + token_index;
+                if projection_index < relative_target_output_projection_grad.len() {
+                    relative_target_output_projection_grad[projection_index] +=
+                        hidden_value * delta;
+                }
             }
         }
     }
@@ -986,6 +1067,10 @@ where
 
 const fn default_true() -> bool {
     true
+}
+
+const fn default_one() -> f32 {
+    1.0
 }
 
 #[cfg(test)]
