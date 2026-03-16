@@ -316,6 +316,7 @@ dependencies = [
  "arc-client",
  "arc-core",
  "axum 0.8.8",
+ "psionic-environments",
  "psionic-serve",
  "serde",
  "serde_json",

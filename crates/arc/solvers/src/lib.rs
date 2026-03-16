@@ -20,6 +20,7 @@ pub mod interactive_adcr;
 pub mod interactive_baselines;
 pub mod interactive_context;
 pub mod interactive_parity;
+pub mod interactive_receipts;
 pub mod interpreter;
 pub mod mdl;
 pub mod model;
@@ -30,13 +31,13 @@ pub mod transductive;
 pub mod verifier;
 
 pub use arbiter::{
-    PortfolioArbiter, PortfolioArbiterCandidateScore, PortfolioArbiterConfig,
-    PortfolioArbiterError, PortfolioArbiterRun, SecondAttemptCandidateGate,
-    SecondAttemptPolicyOutcome, PORTFOLIO_ARBITER_BOUNDARY_SUMMARY,
+    PORTFOLIO_ARBITER_BOUNDARY_SUMMARY, PortfolioArbiter, PortfolioArbiterCandidateScore,
+    PortfolioArbiterConfig, PortfolioArbiterError, PortfolioArbiterRun, SecondAttemptCandidateGate,
+    SecondAttemptPolicyOutcome,
 };
 pub use dsl::{
-    ArcDslTier, ArcGridBinding, ArcGridExpr, ArcObjectSelector, ArcObjectTransform, ArcProgram,
-    ArcProgramMetadata, ArcSymbol, ArcSymbolError, ARC_SOLVER_BOUNDARY_SUMMARY,
+    ARC_SOLVER_BOUNDARY_SUMMARY, ArcDslTier, ArcGridBinding, ArcGridExpr, ArcObjectSelector,
+    ArcObjectTransform, ArcProgram, ArcProgramMetadata, ArcSymbol, ArcSymbolError,
 };
 pub use interactive::{
     ArcInteractiveAgent, ArcInteractiveAgentDefinition, ArcInteractiveAgentError,
@@ -46,10 +47,10 @@ pub use interactive::{
     ArcInteractiveRunnerError, ArcInteractiveSessionContext, INTERACTIVE_RUNNER_BOUNDARY_SUMMARY,
 };
 pub use interactive_adcr::{
-    ArcAdcrAnalysis, ArcAdcrBaselineAgent, ArcAdcrConfig, ArcAdcrConfigError,
-    ArcAdcrHumanAction, ArcAdcrHumanActionError, ArcAdcrMode, ArcAdcrProgressDelta,
-    ArcAdcrPromptTemplates, ArcAdcrReplayFallbackPolicy, ArcAdcrReplayProgram,
-    ArcAdcrReplayProgramError, INTERACTIVE_ADCR_BOUNDARY_SUMMARY,
+    ArcAdcrAnalysis, ArcAdcrBaselineAgent, ArcAdcrConfig, ArcAdcrConfigError, ArcAdcrHumanAction,
+    ArcAdcrHumanActionError, ArcAdcrMode, ArcAdcrProgressDelta, ArcAdcrPromptTemplates,
+    ArcAdcrReplayFallbackPolicy, ArcAdcrReplayProgram, ArcAdcrReplayProgramError,
+    INTERACTIVE_ADCR_BOUNDARY_SUMMARY,
 };
 pub use interactive_baselines::{
     ArcRandomBaselineAgent, ArcRandomBaselineConfig, ArcRandomBaselineConfigError,
@@ -65,10 +66,16 @@ pub use interactive_context::{
     INTERACTIVE_CONTEXT_BOUNDARY_SUMMARY,
 };
 pub use interactive_parity::{
-    compare_interactive_run_artifacts, ArcInteractiveRunnerExpectedDifference,
-    ArcInteractiveRunnerExpectedDifferenceField, ArcInteractiveRunnerParityField,
-    ArcInteractiveRunnerParityMismatch, ArcInteractiveRunnerParityOutcome,
-    ArcInteractiveRunnerParityReport,
+    ArcInteractiveRunnerExpectedDifference, ArcInteractiveRunnerExpectedDifferenceField,
+    ArcInteractiveRunnerParityField, ArcInteractiveRunnerParityMismatch,
+    ArcInteractiveRunnerParityOutcome, ArcInteractiveRunnerParityReport,
+    compare_interactive_run_artifacts,
+};
+pub use interactive_receipts::{
+    ArcInteractiveReplayLocator, ArcInteractiveScoreDelta, ArcInteractiveTrajectoryBundle,
+    ArcInteractiveTrajectoryExport, ArcInteractiveTrajectoryExportError,
+    ArcInteractiveTrajectoryTurn, INTERACTIVE_RECEIPTS_BOUNDARY_SUMMARY,
+    arc_interactive_environment_package,
 };
 pub use interpreter::{ArcInterpreter, ArcInterpreterError};
 pub use mdl::{
@@ -80,9 +87,10 @@ pub use model::{
     BudgetLedger, BudgetLedgerError, CandidateDeduplicationDecision, CandidateDeduplicationStatus,
     CandidateDeduplicator, CandidateIdentity, CandidateIdentityError, Hypothesis, HypothesisError,
     HypothesisId, HypothesisKind, PlannedActionStep, RefusalEnvelope, RefusalEnvelopeError,
-    SecondAttemptDistinctness, SecondAttemptDistinctnessField, SolveAttemptEnvelope,
-    SolveAttemptEnvelopeError, SolveAttemptStatus, SolveAttemptVerificationSummary, SolverIdError,
-    SolverLaneId, SolverPhase, SolverRefusalCode, TaskBudget, SOLVER_MODEL_BOUNDARY_SUMMARY,
+    SOLVER_MODEL_BOUNDARY_SUMMARY, SecondAttemptDistinctness, SecondAttemptDistinctnessField,
+    SolveAttemptEnvelope, SolveAttemptEnvelopeError, SolveAttemptStatus,
+    SolveAttemptVerificationSummary, SolverIdError, SolverLaneId, SolverPhase, SolverRefusalCode,
+    TaskBudget,
 };
 pub use recursive::{
     ArcRecursiveTinyModelBootstrap, ArcRecursiveTinyModelBootstrapMode,
@@ -93,15 +101,15 @@ pub use recursive::{
     RECURSIVE_TINY_MODEL_LANE_ID,
 };
 pub use symbolic::{
-    SymbolicLane, SymbolicLaneConfig, SymbolicLaneError, SymbolicLaneRun,
-    SymbolicOutputTransformRepair, SymbolicRepairAttempt, SymbolicRepairOperator,
-    SymbolicSeedTemplate, SYMBOLIC_LANE_BOUNDARY_SUMMARY, SYMBOLIC_LANE_ID,
+    SYMBOLIC_LANE_BOUNDARY_SUMMARY, SYMBOLIC_LANE_ID, SymbolicLane, SymbolicLaneConfig,
+    SymbolicLaneError, SymbolicLaneRun, SymbolicOutputTransformRepair, SymbolicRepairAttempt,
+    SymbolicRepairOperator, SymbolicSeedTemplate,
 };
 pub use trace::{
-    read_trace_bundle_json_file, replay_trace_bundle, write_trace_bundle_json_file,
     ArbiterDecision, LaneBatchStatus, LaneProposalBatch, ProposalPhase, SolverTraceBundle,
-    TraceBundleError, TraceBundleManifest, TraceBundleReplayReport, TracedLaneProposal,
-    TRACE_BUNDLE_BOUNDARY_SUMMARY,
+    TRACE_BUNDLE_BOUNDARY_SUMMARY, TraceBundleError, TraceBundleManifest, TraceBundleReplayReport,
+    TracedLaneProposal, read_trace_bundle_json_file, replay_trace_bundle,
+    write_trace_bundle_json_file,
 };
 pub use transductive::{
     ArcLocalModelAdapter, ArcTransductiveAdapterRequest, ArcTransductiveAdapterResponse,
@@ -112,7 +120,7 @@ pub use transductive::{
 pub use verifier::{
     ArcCommonVerifier, ArcVerifierAugmentation, ArcVerifierConfig, ArcVerifierError,
     CandidateVerifier, FalsificationCheckKind, FalsificationCheckResult, FalsificationCheckStatus,
-    PairVerificationResult, VerificationReport, VERIFIER_BOUNDARY_SUMMARY,
+    PairVerificationResult, VERIFIER_BOUNDARY_SUMMARY, VerificationReport,
 };
 
 /// Stable role summary for downstream ARC crates.
