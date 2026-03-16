@@ -246,7 +246,8 @@ Current posture:
   sparse, nested, masked, and storage-aware semantics.
 - `psionic-array`: first public lazy-array facade above `psionic-core` and
   `psionic-ir`, including a context-owned graph builder, graph-backed
-  arithmetic, and snapshot graph export for the current output set.
+  arithmetic, explicit `eval` / `async_eval` boundaries, and snapshot graph
+  export for the current output set.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

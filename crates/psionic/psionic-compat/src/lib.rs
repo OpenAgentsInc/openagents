@@ -1057,10 +1057,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "A public lazy array type exists with explicit eval and async_eval posture, public device and stream handles, creation and view families, deterministic random and cast behavior, and safe host materialization boundaries.",
             ),
             current_repo_truth: String::from(
-                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with context-owned graph construction, graph-backed arithmetic, and snapshot graph export, but eval, device-stream execution, broader creation and view families, random, and host-materialization boundaries remain open.",
+                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with context-owned graph construction, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, and an explicit-only implicit-materialization policy, but device-stream execution, broader creation and view families, random, and host-materialization boundaries remain open.",
             ),
             boundary_note: String::from(
-                "Do not claim MLX-class array closure from the first public facade alone; the category stays open until PMLX-102 through PMLX-106 land too.",
+                "Do not claim MLX-class array closure from the first public facade plus eval contract alone; the category stays open until PMLX-103 through PMLX-106 land too.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1245,12 +1245,14 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("python/tests/test_memory.py"),
             ],
             current_outcome: MlxParityHarnessOutcome::Unsupported,
-            psionic_hook_commands: Vec::new(),
+            psionic_hook_commands: vec![String::from(
+                "cargo test -p psionic-array tests::public_lazy_array_eval_and_async_eval_stay_explicit -- --exact --nocapture",
+            )],
             summary: String::from(
-                "Device, eval, scheduler, and memory families are named in the harness, but MLX-class public backend closure is not claimed yet.",
+                "Device, eval, scheduler, and memory families remain named and unsupported even though psionic-array now exposes explicit eval and deferred async-eval boundaries.",
             ),
             boundary_note: String::from(
-                "Backend substrate and diagnostics alone are not enough to mark the upstream runtime families ported.",
+                "Explicit eval boundaries are still not the same thing as MLX-class device, stream, allocator, or runtime-memory parity.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1473,22 +1475,23 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_array_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Convertible,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with graph-backed arithmetic and snapshot graph export, but the broader MLX array surface is still incomplete.",
+                "psionic-array now exposes a first public lazy-array facade with graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, and explicit-only materialization boundaries, but the broader MLX array surface is still incomplete.",
             ),
             evidence_refs: vec![
                 String::from("ArrayContext"),
                 String::from("Array"),
+                String::from("EvaluatedArray"),
+                String::from("PendingAsyncEval"),
                 String::from("MlxAcceptanceMatrixReport::array-runtime-surface = partial"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-102 (#3835)"),
                 String::from("PMLX-103 (#3836)"),
                 String::from("PMLX-104 (#3837)"),
                 String::from("PMLX-105 (#3838)"),
                 String::from("PMLX-106 (#3839)"),
             ],
             boundary_note: String::from(
-                "The first public facade is not the same thing as full supported MLX array closure.",
+                "The first public facade plus eval contract is not the same thing as full supported MLX array closure.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2073,6 +2076,14 @@ mod tests {
             MlxParityHarnessOutcome::Unsupported
         );
         assert!(distributed.psionic_hook_commands.is_empty());
+
+        let eval = report
+            .families
+            .iter()
+            .find(|family| family.family_id == "device_eval_memory")
+            .expect("missing device/eval/memory family");
+        assert_eq!(eval.current_outcome, MlxParityHarnessOutcome::Unsupported);
+        assert!(!eval.psionic_hook_commands.is_empty());
 
         let filtered =
             report.filter_to_families(&[String::from("autograd"), String::from("distributed")])?;

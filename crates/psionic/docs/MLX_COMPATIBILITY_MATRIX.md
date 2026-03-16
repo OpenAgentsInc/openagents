@@ -1,8 +1,9 @@
 # Psionic MLX Compatibility Matrix
 
 > Status: canonical `PMLX-005` / `#3833` reference record, updated 2026-03-16
-> after landing `PMLX-101` / `#3834` in `psionic-array` and refreshing the
-> public-array row from `unsupported` to `convertible`.
+> after landing `PMLX-101` / `#3834` and `PMLX-102` / `#3835` in
+> `psionic-array` and refreshing the public-array row while keeping it
+> `convertible`.
 
 This document is the bounded adoption matrix for the Psionic MLX roadmap.
 
@@ -58,7 +59,7 @@ docs:
 | `graph_first_function_export_bridge` | `convertible` | Psionic-native exportable-graph and deployment-artifact contracts exist and can support later bounded MLX function compatibility work. | `PMLX-402`, `PMLX-403` | This is a native bridge substrate, not current `.mlxfn` support. |
 | `portable_model_io_bridge` | `convertible` | Portable model IO through safetensors manifests and GGUF import can support later bounded MLX migration paths. | `PMLX-302`, `PMLX-401` | Portable model IO is not the same thing as native MLX weight or module-state compatibility. |
 | `module_state_tree_bridge` | `convertible` | Deterministic module state-tree and state-dict contracts already exist in `psionic-nn`. | `PMLX-301`, `PMLX-302` | Bridge substrate does not mean public MLX `save_weights` / `load_weights` support exists. |
-| `public_mlx_array_api` | `convertible` | `psionic-array` now exposes a first public lazy-array facade with graph-backed arithmetic and snapshot graph export, but the broader MLX array surface is still incomplete. | `PMLX-102` through `PMLX-106` | The first public facade is not the same thing as full supported MLX array closure. |
+| `public_mlx_array_api` | `convertible` | `psionic-array` now exposes a first public lazy-array facade with graph-backed arithmetic, explicit `eval` / deferred `async_eval`, replay-stable eval receipts, and explicit-only materialization boundaries, but the broader MLX array surface is still incomplete. | `PMLX-103` through `PMLX-106` | The first public facade plus eval contract is not the same thing as full supported MLX array closure. |
 | `public_mlx_transform_api` | `unsupported` | No public MLX-class transform API exists beyond seeded anchors and explicit future refusals. | `PMLX-201` through `PMLX-206` | Seeded autograd or compile anchors do not imply supported MLX public transforms. |
 | `public_mlx_nn_optimizer_api` | `unsupported` | No public MLX-class `nn`, loss, initializer, optimizer, or scheduler API exists today. | `PMLX-301` through `PMLX-307` | Current `psionic-nn` and `psionic-train` primitives are not themselves a supported MLX public `nn` surface. |
 | `mlxfn_interop` | `unsupported` | There is no `.mlxfn` import or export support in Psionic today. | `PMLX-402`, `PMLX-403` | Native graph-first export substrate does not imply `.mlxfn` compatibility. |
