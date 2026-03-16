@@ -1,14 +1,16 @@
 //! Public lazy array facade above `psionic-core` and `psionic-ir`.
 //!
 //! This first surface is intentionally narrow. It establishes a user-facing
-//! lazy array handle, graph-backed arithmetic, and explicit evaluation
-//! semantics above the lower graph builder substrate without claiming device-
-//! stream execution or broader MLX-class array closure yet.
+//! lazy array handle, public device and stream contracts, graph-backed
+//! arithmetic, and explicit evaluation semantics above the lower graph builder
+//! substrate without claiming full runtime scheduling or broader MLX-class
+//! array closure yet.
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
-use psionic_core::{DType, Device, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec};
+use psionic_core::{DType, Device, DeviceKind, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec};
 use psionic_ir::{Graph, GraphBuilder, GraphError, OpKind};
+use psionic_runtime::{DeviceDescriptor, DeviceInventoryQualifiers, DeviceMemoryClass};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -16,8 +18,9 @@ pub const CRATE_ROLE: &str = "public lazy array facade above psionic-core and ps
 
 #[derive(Debug)]
 struct ArrayContextInner {
-    device: Device,
+    device: ArrayDevice,
     builder: RefCell<GraphBuilder>,
+    next_stream_id: RefCell<u32>,
 }
 
 /// Error type raised by the public lazy-array facade.
@@ -26,6 +29,16 @@ pub enum ArrayError {
     /// Two arrays came from different public graph-construction contexts.
     #[error("array operations require arrays from the same ArrayContext")]
     MixedContexts,
+    /// One stream belongs to a different device than the owning context.
+    #[error("stream {stream_id} belongs to device `{stream_device}` instead of `{context_device}`")]
+    StreamDeviceMismatch {
+        /// Stream identifier.
+        stream_id: u32,
+        /// Stream device label.
+        stream_device: String,
+        /// Context device label.
+        context_device: String,
+    },
     /// One graph input was never bound to a materialized value.
     #[error("cannot evaluate unresolved input `{name}` for tensor {tensor}")]
     UnboundInput {
@@ -55,6 +68,191 @@ pub enum ArrayError {
     /// The lower graph builder rejected the requested operation.
     #[error(transparent)]
     Graph(#[from] GraphError),
+}
+
+/// Honest current unified-memory posture for one public array device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnifiedMemoryCapability {
+    /// Pure host execution with no separate accelerator memory.
+    HostOnly,
+    /// Shared host/device memory is explicitly supported.
+    SharedHostDevice,
+    /// Dedicated accelerator memory is explicitly advertised.
+    DedicatedDevice,
+    /// The runtime has not yet reported unified-memory posture.
+    Unknown,
+}
+
+/// Public device handle for the MLX-class array layer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayDevice {
+    descriptor: DeviceDescriptor,
+    inventory: DeviceInventoryQualifiers,
+    unified_memory: UnifiedMemoryCapability,
+}
+
+impl ArrayDevice {
+    /// Builds a public array-device handle from runtime-owned device truth.
+    #[must_use]
+    pub fn from_descriptor(descriptor: DeviceDescriptor) -> Self {
+        let inventory = descriptor.inventory_qualifiers();
+        let unified_memory = match inventory.memory_class {
+            DeviceMemoryClass::HostOnly => UnifiedMemoryCapability::HostOnly,
+            DeviceMemoryClass::SharedHostDevice => UnifiedMemoryCapability::SharedHostDevice,
+            DeviceMemoryClass::DedicatedDevice => UnifiedMemoryCapability::DedicatedDevice,
+        };
+        Self {
+            descriptor,
+            inventory,
+            unified_memory,
+        }
+    }
+
+    /// Builds a logical-only handle when runtime discovery metadata is absent.
+    #[must_use]
+    pub fn logical(device: Device) -> Self {
+        let backend = device.kind().to_string();
+        let unified_memory = match device.kind() {
+            DeviceKind::Cpu => Some(true),
+            _ => None,
+        };
+        Self::from_descriptor(DeviceDescriptor {
+            backend,
+            device,
+            device_name: None,
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: None,
+            unified_memory,
+            feature_flags: Vec::new(),
+            amd_metadata: None,
+            nvidia_metadata: None,
+        })
+    }
+
+    /// Returns the lower runtime device descriptor.
+    #[must_use]
+    pub fn descriptor(&self) -> &DeviceDescriptor {
+        &self.descriptor
+    }
+
+    /// Returns reusable inventory qualifiers derived from runtime truth.
+    #[must_use]
+    pub fn inventory(&self) -> &DeviceInventoryQualifiers {
+        &self.inventory
+    }
+
+    /// Returns the logical device identifier.
+    #[must_use]
+    pub fn device(&self) -> &Device {
+        &self.descriptor.device
+    }
+
+    /// Returns the backend family name.
+    #[must_use]
+    pub fn backend(&self) -> &str {
+        &self.descriptor.backend
+    }
+
+    /// Returns the friendly device name when known.
+    #[must_use]
+    pub fn device_name(&self) -> Option<&str> {
+        self.descriptor.device_name.as_deref()
+    }
+
+    /// Returns the current unified-memory posture.
+    #[must_use]
+    pub const fn unified_memory_capability(&self) -> UnifiedMemoryCapability {
+        self.unified_memory
+    }
+
+    /// Returns whether the runtime explicitly reports shared host/device memory.
+    #[must_use]
+    pub const fn supports_unified_memory(&self) -> bool {
+        matches!(self.unified_memory, UnifiedMemoryCapability::HostOnly | UnifiedMemoryCapability::SharedHostDevice)
+    }
+
+    /// Returns the stable inventory device identifier.
+    #[must_use]
+    pub fn stable_id(&self) -> &str {
+        &self.inventory.stable_device_id
+    }
+}
+
+/// Public stream kind for the bounded array-runtime layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamKind {
+    /// The stream is the default stream for the device.
+    Default,
+    /// The stream was created explicitly by the caller.
+    Explicit,
+}
+
+/// Honest current dependency posture between public streams.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamDependencyPolicy {
+    /// Work on the same stream is already ordered.
+    InOrderSameStream,
+    /// Different streams on the same device need an explicit fence or sync edge.
+    ExplicitFenceRequired,
+    /// Different devices require an explicit transfer or broader runtime coordination.
+    CrossDeviceTransferRequired,
+}
+
+/// Public stream handle for the bounded array-runtime layer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArrayStream {
+    stream_id: u32,
+    device: ArrayDevice,
+    kind: StreamKind,
+}
+
+impl ArrayStream {
+    fn default_for(device: ArrayDevice) -> Self {
+        Self {
+            stream_id: 0,
+            device,
+            kind: StreamKind::Default,
+        }
+    }
+
+    fn explicit(stream_id: u32, device: ArrayDevice) -> Self {
+        Self {
+            stream_id,
+            device,
+            kind: StreamKind::Explicit,
+        }
+    }
+
+    /// Returns the stream identifier.
+    #[must_use]
+    pub const fn stream_id(&self) -> u32 {
+        self.stream_id
+    }
+
+    /// Returns the stream kind.
+    #[must_use]
+    pub const fn kind(&self) -> StreamKind {
+        self.kind
+    }
+
+    /// Returns the owning device for the stream.
+    #[must_use]
+    pub fn device(&self) -> &ArrayDevice {
+        &self.device
+    }
+
+    /// Returns the dependency policy for scheduling work after `upstream`.
+    #[must_use]
+    pub fn dependency_policy_after(&self, upstream: &Self) -> StreamDependencyPolicy {
+        if self.device.device() != upstream.device.device() {
+            StreamDependencyPolicy::CrossDeviceTransferRequired
+        } else if self.stream_id == upstream.stream_id {
+            StreamDependencyPolicy::InOrderSameStream
+        } else {
+            StreamDependencyPolicy::ExplicitFenceRequired
+        }
+    }
 }
 
 /// Explicit materialization trigger for the current lazy-array surface.
@@ -115,6 +313,10 @@ pub struct EvalReceipt {
     pub trigger: MaterializationTrigger,
     /// Replay boundary for the evaluated snapshot.
     pub replay_boundary: ReplayBoundary,
+    /// Stable device identifier that owned the evaluation boundary.
+    pub device_id: String,
+    /// Stream identifier used for the current bounded evaluation path.
+    pub stream_id: u32,
 }
 
 /// Materialized output from one explicit lazy-array evaluation call.
@@ -182,6 +384,7 @@ pub enum AsyncEvalStatus {
 pub struct PendingAsyncEval {
     graph: Graph,
     outputs: Vec<Array>,
+    stream: ArrayStream,
 }
 
 impl PendingAsyncEval {
@@ -197,6 +400,7 @@ impl PendingAsyncEval {
             &self.graph,
             self.outputs.as_slice(),
             MaterializationTrigger::AsyncEvalWait,
+            &self.stream,
         )
     }
 }
@@ -216,17 +420,34 @@ struct DenseValue {
 #[derive(Clone, Debug)]
 pub struct ArrayContext {
     inner: Rc<ArrayContextInner>,
+    stream: ArrayStream,
 }
 
 impl ArrayContext {
     /// Creates a context pinned to one device.
     #[must_use]
     pub fn new(device: Device) -> Self {
+        let device = ArrayDevice::logical(device);
+        Self::with_device(device)
+    }
+
+    /// Creates a context pinned to one runtime-described device.
+    #[must_use]
+    pub fn from_device_descriptor(descriptor: DeviceDescriptor) -> Self {
+        Self::with_device(ArrayDevice::from_descriptor(descriptor))
+    }
+
+    /// Creates a context pinned to one public array-device handle.
+    #[must_use]
+    pub fn with_device(device: ArrayDevice) -> Self {
+        let stream = ArrayStream::default_for(device.clone());
         Self {
             inner: Rc::new(ArrayContextInner {
-                builder: RefCell::new(GraphBuilder::new(device.clone())),
+                builder: RefCell::new(GraphBuilder::new(device.device().clone())),
                 device,
+                next_stream_id: RefCell::new(1),
             }),
+            stream,
         }
     }
 
@@ -236,17 +457,56 @@ impl ArrayContext {
         Self::new(Device::cpu())
     }
 
-    /// Returns the device assigned to the context.
+    /// Returns the logical device assigned to the context.
     #[must_use]
     pub fn device(&self) -> &Device {
+        self.inner.device.device()
+    }
+
+    /// Returns the public device handle assigned to the context.
+    #[must_use]
+    pub fn device_handle(&self) -> &ArrayDevice {
         &self.inner.device
+    }
+
+    /// Returns the currently selected stream for the context.
+    #[must_use]
+    pub fn stream(&self) -> &ArrayStream {
+        &self.stream
+    }
+
+    /// Allocates a new explicit stream handle on the current device.
+    #[must_use]
+    pub fn new_stream(&self) -> ArrayStream {
+        let stream_id = {
+            let mut next = self.inner.next_stream_id.borrow_mut();
+            let stream_id = *next;
+            *next += 1;
+            stream_id
+        };
+        ArrayStream::explicit(stream_id, self.inner.device.clone())
+    }
+
+    /// Returns a sibling context that uses the provided stream.
+    pub fn with_stream(&self, stream: ArrayStream) -> Result<Self, ArrayError> {
+        if stream.device().device() != self.device() {
+            return Err(ArrayError::StreamDeviceMismatch {
+                stream_id: stream.stream_id(),
+                stream_device: stream.device().device().to_string(),
+                context_device: self.device().to_string(),
+            });
+        }
+        Ok(Self {
+            inner: self.inner.clone(),
+            stream,
+        })
     }
 
     /// Adds a named input array to the current lazy graph.
     #[must_use]
     pub fn input(&self, name: impl Into<String>, shape: Shape, dtype: DType) -> Array {
         let tensor = self.inner.builder.borrow_mut().input(name, shape, dtype);
-        Array::from_tensor(self.inner.clone(), tensor)
+        Array::from_tensor(self.inner.clone(), self.stream.clone(), tensor)
     }
 
     /// Adds an `f32` constant array to the current lazy graph.
@@ -256,7 +516,7 @@ impl ArrayContext {
         values: impl Into<Vec<f32>>,
     ) -> Result<Array, ArrayError> {
         let tensor = self.inner.builder.borrow_mut().constant_f32(shape, values)?;
-        Ok(Array::from_tensor(self.inner.clone(), tensor))
+        Ok(Array::from_tensor(self.inner.clone(), self.stream.clone(), tensor))
     }
 
     /// Snapshots the current context graph with the provided output arrays.
@@ -278,7 +538,7 @@ impl ArrayContext {
     /// CPU-reference path.
     pub fn eval(&self, outputs: &[Array]) -> Result<Vec<EvaluatedArray>, ArrayError> {
         let graph = self.graph_for(outputs)?;
-        evaluate_graph_snapshot(&graph, outputs, MaterializationTrigger::Eval)
+        evaluate_graph_snapshot(&graph, outputs, MaterializationTrigger::Eval, &self.stream)
     }
 
     /// Captures a replay-stable deferred evaluation ticket for the requested
@@ -288,6 +548,7 @@ impl ArrayContext {
         Ok(PendingAsyncEval {
             graph,
             outputs: outputs.to_vec(),
+            stream: self.stream.clone(),
         })
     }
 }
@@ -296,15 +557,17 @@ impl ArrayContext {
 #[derive(Clone, Debug)]
 pub struct Array {
     context: Rc<ArrayContextInner>,
+    stream: ArrayStream,
     tensor: Tensor,
     graph: Graph,
 }
 
 impl Array {
-    fn from_tensor(context: Rc<ArrayContextInner>, tensor: Tensor) -> Self {
+    fn from_tensor(context: Rc<ArrayContextInner>, stream: ArrayStream, tensor: Tensor) -> Self {
         let graph = context.builder.borrow().clone().finish(vec![tensor.clone()]);
         Self {
             context,
+            stream,
             tensor,
             graph,
         }
@@ -335,7 +598,7 @@ impl Array {
             let mut builder = self.context.builder.borrow_mut();
             op(&mut builder, &self.tensor, &other.tensor)?
         };
-        Ok(Self::from_tensor(self.context.clone(), tensor))
+        Ok(Self::from_tensor(self.context.clone(), self.stream.clone(), tensor))
     }
 
     /// Returns the owning public graph-construction context.
@@ -343,6 +606,7 @@ impl Array {
     pub fn context(&self) -> ArrayContext {
         ArrayContext {
             inner: self.context.clone(),
+            stream: self.stream.clone(),
         }
     }
 
@@ -376,6 +640,18 @@ impl Array {
         self.tensor.spec().device()
     }
 
+    /// Returns the public device handle for the array context.
+    #[must_use]
+    pub fn device_handle(&self) -> &ArrayDevice {
+        &self.context.device
+    }
+
+    /// Returns the public stream handle for the array.
+    #[must_use]
+    pub fn stream(&self) -> &ArrayStream {
+        &self.stream
+    }
+
     /// Returns the lazy operation provenance for this array.
     #[must_use]
     pub fn lazy_op(&self) -> &LazyOp {
@@ -406,6 +682,12 @@ impl Array {
         self.context().async_eval(&[self.clone()])
     }
 
+    /// Returns the dependency policy for using this array after `upstream`.
+    #[must_use]
+    pub fn dependency_policy_after(&self, upstream: &Self) -> StreamDependencyPolicy {
+        self.stream.dependency_policy_after(upstream.stream())
+    }
+
     /// Adds two arrays using the lower IR broadcast semantics.
     pub fn add(&self, other: &Self) -> Result<Self, ArrayError> {
         self.binary_op(other, GraphBuilder::add)
@@ -425,14 +707,14 @@ impl Array {
     #[must_use]
     pub fn detach(&self) -> Self {
         let tensor = self.context.builder.borrow_mut().detach(&self.tensor);
-        Self::from_tensor(self.context.clone(), tensor)
+        Self::from_tensor(self.context.clone(), self.stream.clone(), tensor)
     }
 
     /// Reduces the array to a scalar sum.
     #[must_use]
     pub fn sum(&self) -> Self {
         let tensor = self.context.builder.borrow_mut().reduce_sum(&self.tensor);
-        Self::from_tensor(self.context.clone(), tensor)
+        Self::from_tensor(self.context.clone(), self.stream.clone(), tensor)
     }
 }
 
@@ -440,6 +722,7 @@ fn evaluate_graph_snapshot(
     graph: &Graph,
     requested_outputs: &[Array],
     trigger: MaterializationTrigger,
+    stream: &ArrayStream,
 ) -> Result<Vec<EvaluatedArray>, ArrayError> {
     let mut values = BTreeMap::<TensorId, DenseValue>::new();
 
@@ -489,6 +772,8 @@ fn evaluate_graph_snapshot(
         outputs: requested_outputs.iter().map(Array::tensor_id).collect(),
         trigger,
         replay_boundary: ReplayBoundary::GraphSnapshot,
+        device_id: stream.device().stable_id().to_string(),
+        stream_id: stream.stream_id(),
     };
 
     requested_outputs
@@ -780,10 +1065,11 @@ fn ravel_index(indices: &[usize], dims: &[usize]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        ArrayContext, ArrayError, AsyncEvalStatus, ImplicitMaterializationPolicy,
-        MaterializationTrigger, ReplayBoundary,
+        ArrayContext, ArrayError, AsyncEvalStatus, ImplicitMaterializationPolicy, StreamDependencyPolicy,
+        StreamKind, UnifiedMemoryCapability, MaterializationTrigger, ReplayBoundary,
     };
-    use psionic_core::{DType, Shape};
+    use psionic_core::{DType, Device, DeviceKind, Shape};
+    use psionic_runtime::DeviceDescriptor;
 
     #[test]
     fn public_lazy_array_surface_builds_graph_backed_arithmetic() -> Result<(), ArrayError> {
@@ -880,6 +1166,8 @@ mod tests {
 
         let evaluated = output.eval()?;
         assert_eq!(evaluated.receipt().trigger, MaterializationTrigger::Eval);
+        assert_eq!(evaluated.receipt().stream_id, context.stream().stream_id());
+        assert_eq!(evaluated.receipt().device_id, context.device_handle().stable_id());
         assert_eq!(evaluated.data.as_f32_slice(), Some(&[20.0][..]));
 
         let pending = output.async_eval()?;
@@ -889,6 +1177,10 @@ mod tests {
         assert_eq!(
             evaluated_async.receipt().trigger,
             MaterializationTrigger::AsyncEvalWait
+        );
+        assert_eq!(
+            evaluated_async.receipt().stream_id,
+            context.stream().stream_id()
         );
         assert_eq!(evaluated_async.data.as_f32_slice(), Some(&[20.0][..]));
 
@@ -908,5 +1200,87 @@ mod tests {
                 name: String::from("x"),
             }
         );
+    }
+
+    #[test]
+    fn public_lazy_array_device_handles_preserve_unified_memory_truth() {
+        let metal = ArrayContext::from_device_descriptor(DeviceDescriptor {
+            backend: String::from("metal"),
+            device: Device::new(DeviceKind::Metal, 0, Some(String::from("metal:0"))),
+            device_name: Some(String::from("Apple GPU")),
+            supported_dtypes: vec![DType::F32, DType::F16],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(24 * 1024 * 1024 * 1024),
+            unified_memory: Some(true),
+            feature_flags: vec![String::from("unified_memory")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        });
+        assert_eq!(
+            metal.device_handle().unified_memory_capability(),
+            UnifiedMemoryCapability::SharedHostDevice
+        );
+        assert!(metal.device_handle().supports_unified_memory());
+        assert_eq!(metal.stream().kind(), StreamKind::Default);
+        assert_eq!(metal.stream().stream_id(), 0);
+
+        let cuda = ArrayContext::from_device_descriptor(DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("CUDA GPU")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        });
+        assert_eq!(
+            cuda.device_handle().unified_memory_capability(),
+            UnifiedMemoryCapability::DedicatedDevice
+        );
+        assert!(!cuda.device_handle().supports_unified_memory());
+    }
+
+    #[test]
+    fn public_lazy_array_streams_report_dependency_policy_honestly() -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let default_stream = context.stream().clone();
+        let explicit_stream = context.new_stream();
+        let same_device_context = context.with_stream(explicit_stream.clone())?;
+        let array_a = context.constant_f32(Shape::new(vec![1]), vec![1.0])?;
+        let array_b = same_device_context.constant_f32(Shape::new(vec![1]), vec![2.0])?;
+
+        assert_eq!(
+            array_b.dependency_policy_after(&array_a),
+            StreamDependencyPolicy::ExplicitFenceRequired
+        );
+        assert_eq!(
+            array_a.dependency_policy_after(&array_a),
+            StreamDependencyPolicy::InOrderSameStream
+        );
+        assert_eq!(explicit_stream.kind(), StreamKind::Explicit);
+        assert_ne!(explicit_stream.stream_id(), default_stream.stream_id());
+
+        let cuda_context = ArrayContext::from_device_descriptor(DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("CUDA GPU")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        });
+        let array_c = cuda_context.constant_f32(Shape::new(vec![1]), vec![3.0])?;
+        assert_eq!(
+            array_c.dependency_policy_after(&array_a),
+            StreamDependencyPolicy::CrossDeviceTransferRequired
+        );
+
+        Ok(())
     }
 }

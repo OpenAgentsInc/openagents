@@ -16,4 +16,5 @@ path = "src/lib.rs"
 [dependencies]
 psionic-core = { path = "../psionic-core" }
 psionic-ir = { path = "../psionic-ir" }
+psionic-runtime = { path = "../psionic-runtime" }
 thiserror = { workspace = true }

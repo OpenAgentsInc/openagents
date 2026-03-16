@@ -1,9 +1,9 @@
 # Psionic MLX Parity Harness
 
 > Status: canonical `PMLX-004` / `#3832` reference record, updated 2026-03-16
-> after landing `PMLX-101` / `#3834` and `PMLX-102` / `#3835` in
-> `psionic-array` and refreshing the array-family anchor notes without
-> overclaiming parity.
+> after landing `PMLX-101` / `#3834`, `PMLX-102` / `#3835`, and
+> `PMLX-103` / `#3836` in `psionic-array` and refreshing the array-family
+> anchor notes without overclaiming parity.
 
 This document defines the seeded upstream MLX test families that Psionic uses
 to ground later MLX parity claims.
@@ -58,7 +58,7 @@ The seeded harness is explicitly tied to the frozen MLX oracle window from
 | --- | --- | --- | --- | --- |
 | `array_core` | `unsupported` | `tests/array_tests.cpp`, `python/tests/test_array.py`, `python/tests/test_constants.py`, `python/tests/test_bf16.py`, `python/tests/test_double.py` | `cargo test -p psionic-array tests::public_lazy_array_surface_builds_graph_backed_arithmetic -- --exact --nocapture` | A first public lazy-array facade now exists, but there is still no seeded upstream MLX array-core parity pass. |
 | `ops_numeric` | `unsupported` | `tests/ops_tests.cpp`, `tests/creations_tests.cpp`, `tests/arg_reduce_tests.cpp`, `tests/einsum_tests.cpp`, `tests/random_tests.cpp`, `python/tests/test_ops.py`, `python/tests/test_reduce.py`, `python/tests/test_einsum.py`, `python/tests/test_random.py` | `cargo test -p psionic-array tests::public_lazy_array_surface_builds_graph_backed_arithmetic -- --exact --nocapture` | The first public numeric ops now exist in `psionic-array`, but they are not yet a seeded upstream MLX numeric parity family. |
-| `device_eval_memory` | `unsupported` | `tests/device_tests.cpp`, `tests/eval_tests.cpp`, `tests/allocator_tests.cpp`, `tests/gpu_tests.cpp`, `tests/scheduler_tests.cpp`, `python/tests/test_device.py`, `python/tests/test_eval.py`, `python/tests/test_memory.py` | `cargo test -p psionic-array tests::public_lazy_array_eval_and_async_eval_stay_explicit -- --exact --nocapture` | Explicit eval boundaries now exist in `psionic-array`, but there is still no MLX-class device, stream, allocator, or runtime-memory parity. |
+| `device_eval_memory` | `unsupported` | `tests/device_tests.cpp`, `tests/eval_tests.cpp`, `tests/allocator_tests.cpp`, `tests/gpu_tests.cpp`, `tests/scheduler_tests.cpp`, `python/tests/test_device.py`, `python/tests/test_eval.py`, `python/tests/test_memory.py` | `cargo test -p psionic-array tests::public_lazy_array_device_handles_preserve_unified_memory_truth -- --exact --nocapture`; `cargo test -p psionic-array tests::public_lazy_array_streams_report_dependency_policy_honestly -- --exact --nocapture` | Public device and stream handles now exist in `psionic-array`, but there is still no MLX-class allocator, scheduler, or runtime-memory parity. |
 | `autograd` | `pass` | `tests/autograd_tests.cpp`, `python/tests/test_autograd.py` | `cargo test -p psionic-ir autodiff::tests::reverse_mode_autodiff_materializes_matmul_chain_gradients -- --exact --nocapture` | This is a seeded pass, not proof that the public MLX transform API is complete. |
 | `vmap_custom_vjp` | `refusal` | `tests/vmap_tests.cpp`, `tests/custom_vjp_tests.cpp`, `python/tests/test_vmap.py` | `cargo test -p psionic-ir tests::program_transform_capability_matrix_tracks_seeded_transform_and_future_cases -- --exact --nocapture` | A typed refusal is honest progress, but not a ported transform family. |
 | `compile` | `pass` | `tests/compile_tests.cpp`, `python/tests/test_compile.py`, `python/tests/test_graph.py` | `cargo test -p psionic-compiler tests::compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases -- --exact --nocapture` | This is a seeded compile-family pass, not proof that the public MLX compile surface exists. |
