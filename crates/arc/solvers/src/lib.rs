@@ -16,6 +16,7 @@
 pub mod arbiter;
 pub mod dsl;
 pub mod interactive;
+pub mod interactive_adcr;
 pub mod interactive_baselines;
 pub mod interactive_context;
 pub mod interactive_parity;
@@ -43,6 +44,12 @@ pub use interactive::{
     ArcInteractiveEnvironmentKind, ArcInteractiveGameStep, ArcInteractiveRunArtifacts,
     ArcInteractiveRunner, ArcInteractiveRunnerConfig, ArcInteractiveRunnerConfigError,
     ArcInteractiveRunnerError, ArcInteractiveSessionContext, INTERACTIVE_RUNNER_BOUNDARY_SUMMARY,
+};
+pub use interactive_adcr::{
+    ArcAdcrAnalysis, ArcAdcrBaselineAgent, ArcAdcrConfig, ArcAdcrConfigError,
+    ArcAdcrHumanAction, ArcAdcrHumanActionError, ArcAdcrMode, ArcAdcrProgressDelta,
+    ArcAdcrPromptTemplates, ArcAdcrReplayFallbackPolicy, ArcAdcrReplayProgram,
+    ArcAdcrReplayProgramError, INTERACTIVE_ADCR_BOUNDARY_SUMMARY,
 };
 pub use interactive_baselines::{
     ArcRandomBaselineAgent, ArcRandomBaselineConfig, ArcRandomBaselineConfigError,

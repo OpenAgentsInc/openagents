@@ -1728,7 +1728,13 @@ bounded form: the runner exposes typed retained history, versioned
 context-retention and prompt-policy contracts, structured prompt-plan sections,
 and bounded session memory that survives checkpoint resume through
 runner-owned context handoff state while refusing resume explicitly when the
-configured policy no longer matches the retained checkpoint context.
+configured policy no longer matches the retained checkpoint context. `ARC-403`
+is now also landed in bounded form: `arc-solvers` ships an ADCR-style baseline
+lane with explicit Analyze/Decide/Convert/Review phases, baseline-local prompt
+templates and scratchpad memory, checkpointable ADCR cursor/state, and both
+heuristic and replay-program modes, while fixture-backed local/remote runs keep
+the lane on the shared interactive runner rather than promoting ADCR-specific
+prompt glue into the contract itself.
 
 ### Phase 5: Psionic primitive expansion
 
