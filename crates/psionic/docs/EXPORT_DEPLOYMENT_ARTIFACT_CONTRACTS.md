@@ -3,7 +3,9 @@
 > Status: canonical `PLIB-221` / `#3736` reference record, updated 2026-03-16
 > after landing the first bounded exportable-graph and deployment-artifact
 > contracts in `crates/psionic/psionic-ir/src/lib.rs` and
-> `crates/psionic/psionic-compiler/src/lib.rs`.
+> `crates/psionic/psionic-compiler/src/lib.rs`, and after landing the first
+> native `.psifn` function-artifact layer in
+> `crates/psionic/psionic-function-io/src/lib.rs`.
 
 This document records the current bounded export and deployment surface for
 Psionic.
@@ -31,6 +33,16 @@ scripts/release/check-psionic-export-deployment-artifact-contracts.sh
 - `ExportDeploymentArtifactSemanticsReport`
 - `builtin_export_deployment_artifact_semantics_report()`
 
+`psionic-function-io` now exposes:
+
+- `FunctionArtifact`
+- `FunctionCompileBundle`
+- `FunctionArtifactReceipt`
+- `encode_function_artifact(...)`
+- `decode_function_artifact(...)`
+- `save_function_artifact_path(...)`
+- `load_function_artifact_path(...)`
+
 ## Current Honest Posture
 
 Today Psionic has a first graph-first handoff contract, but it does **not**
@@ -41,6 +53,8 @@ The bounded seeded surface now makes these seams explicit:
 - export-safe functionalized graph contracts with named input/output bindings
 - deployment artifact bundles over lowered execution plans
 - topology-aware deployment bundles when explicit execution topology exists
+- native `.psifn` artifacts that bind graph contracts to optional compiler,
+  trace-family, and deployment bundle evidence
 - explicit refusal for opaque backend-extension graphs that are not export-safe
 - explicit refusal for graph-digest mismatches between the export envelope and
   the compiled deployment artifact

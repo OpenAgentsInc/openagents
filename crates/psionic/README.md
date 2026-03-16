@@ -316,6 +316,10 @@ Current posture:
   single-array `npy`, multi-array `npz`, multi-array `safetensors`, and a
   bounded dense GGUF import/export bridge that dequantizes GGUF block storage
   to logical `f32` on import instead of hiding storage changes.
+- `psionic-function-io`: public native `.psifn` function artifact companion
+  above `psionic-ir` and `psionic-compiler`, with digest-bound export-safe
+  graphs, optional compiler artifacts, trace-family identity, optional
+  deployment bundle binding, and stable import/export receipts.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and
