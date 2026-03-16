@@ -13,6 +13,7 @@ The machine-readable companion artifacts are:
 - `exactness_curve.json`
 - `trace_divergence_report.json`
 - `failure_samples.json`
+- `neural_hull_benchmark_report.json`
 
 ## Bottom Line
 
@@ -27,6 +28,28 @@ The dominant failure is immediate prompt-to-trace collapse:
 That means the next run should not chase hull-cache, 9x9 Sudoku, or larger
 claims yet. The correct next step is to fix the boundary transition and make
 the model learn the first few trace tokens reliably.
+
+## Phase 10 Follow-Up
+
+Phase 10 has now been landed after this postmortem was first written.
+
+`neural_hull_benchmark_report.json` shows that the trained model now has a real
+model-KV hull decode path that:
+
+- matches the explicit model-KV linear path on all `8/8` benchmarked cases
+- uses the direct hull path on all `8/8` cases with `0` fallbacks and `0`
+  refusals
+- improves benchmarked decode throughput from `21,860` to `42,172` target
+  tok/s over a `4,096`-token per-case window
+
+That closes the fast-path benchmark gap, but it does **not** change the
+underlying model-quality conclusion of this postmortem:
+
+- validation exact-trace is still `0/2`
+- neural exact prefix cases are still `0/8`
+
+So the gating logic for Phase 11 remains the same: do not mistake neural
+hull-path speedup for learned executor correctness.
 
 ## Findings
 
@@ -85,7 +108,7 @@ Target:
 
 Target:
 
-- materially exceed the current `13` bps aggregate validation baseline
+- materially exceed the current `15` bps aggregate validation baseline
 - show monotonic progress on boundary metrics
 
 ### 3. Expand the trainable surface only if needed
@@ -104,7 +127,6 @@ Target:
 
 Do not advance:
 
-- Phase 10 neural hull-cache decode
 - Phase 11 9x9 Sudoku-class scale-out
 
 until the 4x4 lane clears the boundary and short-trace exactness gates above.

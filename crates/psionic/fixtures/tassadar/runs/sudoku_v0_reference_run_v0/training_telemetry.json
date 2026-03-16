@@ -3,9 +3,9 @@
   "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
   "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
   "training_manifest_digest": "d77cc0a8fdf53536e875d385756b48f999f08aad6c49d116db25a7dfb8d538af",
-  "trained_model_descriptor_digest": "f7e5b03300db4a8388edcee2967068e59be07be8189f6555b9517a678e826b2d",
+  "trained_model_descriptor_digest": "bee69ac40b233f02cefa4cbe5d5e2e5474cb6909a4f65ff6154fd37be47b10c5",
   "trained_weight_digest": "e2ee063f7eb7eff8d0d294d4030ce6b9c18cb0ca5ad23f9d58d67e0e50d0b32b",
-  "checkpoint_manifest_digest": "73b4e1f7cdedf902eb2aa66782baac696178bb749c85870b1c0607d91e01e8c8",
+  "checkpoint_manifest_digest": "cd294586f51fdc9f746348955b229f8d2bdce990f157986581d2d3feac7557a5",
   "step_reports": [
     {
       "global_step_index": 0,
@@ -30,5 +30,5 @@
       "target_token_count": 1024
     }
   ],
-  "report_digest": "eb176090800501a33cb575dae72c4b625e7c1f6647eeaa68a41489254057b3a3"
+  "report_digest": "b62627315d6563c70ab667468d9d8d7fbba172c641a6b3c039313719bb529c6a"
 }

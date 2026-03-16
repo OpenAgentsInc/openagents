@@ -7,7 +7,7 @@
     "max_train_target_tokens_per_example": 256
   },
   "training_manifest_digest": "d77cc0a8fdf53536e875d385756b48f999f08aad6c49d116db25a7dfb8d538af",
-  "trained_model_descriptor_digest": "f7e5b03300db4a8388edcee2967068e59be07be8189f6555b9517a678e826b2d",
+  "trained_model_descriptor_digest": "bee69ac40b233f02cefa4cbe5d5e2e5474cb6909a4f65ff6154fd37be47b10c5",
   "trained_weight_digest": "e2ee063f7eb7eff8d0d294d4030ce6b9c18cb0ca5ad23f9d58d67e0e50d0b32b",
   "batch_reports": [
     {
@@ -28,7 +28,7 @@
     "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
     "split": "validation",
     "claim_boundary": "greedy_decode_unvalidated",
-    "aggregate_target_token_exactness_bps": 13,
+    "aggregate_target_token_exactness_bps": 15,
     "exact_trace_case_count": 0,
     "final_output_exact_case_count": 0,
     "halt_exact_case_count": 0,
@@ -36,12 +36,12 @@
       {
         "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
         "case_id": "sudoku_v0_validation_a",
-        "target_token_exactness_bps": 14,
+        "target_token_exactness_bps": 15,
         "exact_trace_match": false,
         "final_output_match": false,
         "halt_match": false,
         "reference_target_digest": "83ae30d2e0726b9a415ef1b1efb019a7aa27b41430f6147c7eb4e2140fd25a5c",
-        "predicted_target_digest": "a34d0b50f32ef905908d69056f6146736996c979a6301198fe2252154fd16c69",
+        "predicted_target_digest": "af261d1a20b95c36a4239bf715f37215f5734d65f5c0b396f999e77760d426f2",
         "failures": [
           "exact_trace_mismatch",
           "final_output_mismatch",
@@ -51,12 +51,12 @@
       {
         "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
         "case_id": "sudoku_v0_validation_b",
-        "target_token_exactness_bps": 13,
+        "target_token_exactness_bps": 16,
         "exact_trace_match": false,
         "final_output_match": false,
         "halt_match": false,
         "reference_target_digest": "01259db546e7392f6d842ea7883556d3fe396c31ad53743bc20b464329b263ff",
-        "predicted_target_digest": "a34d0b50f32ef905908d69056f6146736996c979a6301198fe2252154fd16c69",
+        "predicted_target_digest": "62c8bb5e5760ca9f9f2b070f305ae23de03d8f32f8a098489010ffe2e670163d",
         "failures": [
           "exact_trace_mismatch",
           "final_output_mismatch",
@@ -65,5 +65,5 @@
       }
     ]
   },
-  "report_digest": "aaf760743d82a19333604d36a61c3d1cba92463acefb6000412f75c3b7c18078"
+  "report_digest": "f26ad5aa954cc7851d15aec6e777cfe8cc3fb621cff3d967963a24830c179964"
 }

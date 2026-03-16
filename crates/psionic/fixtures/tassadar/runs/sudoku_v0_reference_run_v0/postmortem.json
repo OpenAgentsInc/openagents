@@ -2,7 +2,7 @@
   "run_id": "tassadar-executor-transformer-sudoku-v0-reference-run-v0",
   "dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
   "dataset_digest": "16ea0ae576ac0fbf86044e4c812e1ff43565624974b8781cf2530b9f326a224d",
-  "trained_model_descriptor_digest": "f7e5b03300db4a8388edcee2967068e59be07be8189f6555b9517a678e826b2d",
+  "trained_model_descriptor_digest": "bee69ac40b233f02cefa4cbe5d5e2e5474cb6909a4f65ff6154fd37be47b10c5",
   "findings": [
     {
       "finding_id": "prompt_trace_boundary_collapse",
@@ -13,7 +13,7 @@
       "metrics": {
         "case_count": 8,
         "first_divergence_zero_cases": 8,
-        "exactness_bps_min": 9,
+        "exactness_bps_min": 15,
         "exactness_bps_max": 16
       },
       "supporting_artifacts": [
@@ -55,5 +55,5 @@
       ]
     }
   ],
-  "report_digest": "dfd60d9f0defbddc33c1e76050f8de7def86b2076210687927001c9753f27218"
+  "report_digest": "6700884e37b5cca7c310aa20891c6e9d164ccfbdfb5ed6c02e0fdb8ca93ab88e"
 }

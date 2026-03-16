@@ -213,7 +213,7 @@ That now includes one intentionally narrow executor-training answer:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0`; the
   current committed run is intentionally recorded as low exactness
   (`validation_exact_trace_case_count = 0/2`, aggregate target exactness
-  `13` bps), which makes it useful as a real learning baseline rather than as
+  `15` bps), which makes it useful as a real learning baseline rather than as
   benchmark theater
 - the train-side learning loop artifacts now also exist for that same run:
   `psionic-train` can augment the persisted bundle with
@@ -224,11 +224,22 @@ That now includes one intentionally narrow executor-training answer:
   machine-readable failure baseline the next curriculum/model iteration needs
 - the post-run review loop now also exists for that same run:
   `psionic-train` can emit `postmortem.json` and `next_run_plan.json`, and the
-  repo now carries a human-readable companion review in
-  `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`; the current plan
-  keeps the next run disciplined by prioritizing boundary curriculum and larger
-  optimization budget first, and by explicitly gating hull-cache / 9x9 work on
-  better 4x4 exactness evidence
+  repo keeps the resulting plan bound to the same persisted run identity;
+  `docs/audits/2026-03-16-tassadar-first-run-postmortem.md` is the
+  human-readable companion review, and the current plan keeps the next run
+  disciplined by prioritizing boundary curriculum and larger optimization
+  budget first, and by explicitly gating 9x9 scale claims on better 4x4
+  exactness evidence
+- the neural fast-path benchmark loop now also exists for that same run:
+  `psionic-models` now exposes explicit model-KV decode state plus
+  machine-legible decode selection, `psionic-eval` can compare the trained
+  model’s explicit linear-scan KV path against a real hull-cache KV path and
+  direct CPU execution, and `psionic-train` can persist
+  `neural_hull_benchmark_report.json` into the committed run bundle; the
+  current committed Sudoku-v0 run shows `8/8` hull-vs-linear prefix agreement
+  with no fallbacks or refusals and about `1.93x` hull speedup (`42,172` vs
+  `21,860` target tok/s over a `4,096`-token per-case window), while exactness
+  remains `0/8`, which is the right claim boundary for the lane today
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

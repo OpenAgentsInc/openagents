@@ -40,7 +40,8 @@
       "includes_memory_snapshots": true
     },
     "supported_decode_modes": [
-      "reference_linear"
+      "reference_linear",
+      "hull_cache"
     ],
     "attention_mode": "hard_max_lookup",
     "attention_geometry": {
@@ -124,23 +125,23 @@
       "artifacts": []
     }
   },
-  "training_report_digest": "aaf760743d82a19333604d36a61c3d1cba92463acefb6000412f75c3b7c18078",
-  "linear_benchmark_report_digest": "707ba6bec45587dafa1cd811146d6777bd0e4b7d6195abb7c6428041449a133f",
+  "training_report_digest": "f26ad5aa954cc7851d15aec6e777cfe8cc3fb621cff3d967963a24830c179964",
+  "linear_benchmark_report_digest": "ddb93a249f330a848c6afea0fe7031aa37dbbcab1d33dfee58ffdd58c9cf70d5",
   "checkpoint_manifest": {
     "stream_id": "checkpoint://tassadar-executor-transformer-sudoku-v0-reference-run-v0.checkpoint.epoch_0001",
-    "manifest_digest": "73b4e1f7cdedf902eb2aa66782baac696178bb749c85870b1c0607d91e01e8c8",
+    "manifest_digest": "cd294586f51fdc9f746348955b229f8d2bdce990f157986581d2d3feac7557a5",
     "subject": "checkpoint",
-    "object_digest": "03683052c89797fd3ea29c513562f5d0f56751e24f0a02812fc6bd7067b65edc",
+    "object_digest": "ca22e0fbfe4c948608becb539f61688884ef741c6c2c685de647123e5f373c21",
     "total_bytes": 503549,
     "chunk_count": 123,
     "chunk_bytes": 4096,
     "encoding": "raw_binary",
-    "provenance_digest": "a3ce787f925c9e7b16308bd6e05ec716ee0cca580631dc5e5e1a23bae9200a50",
+    "provenance_digest": "c0e0630ff27ef922f3d0f52dd4b0f6852dd71cf4d3fae38be493cd978c6350c3",
     "checkpoint_binding": {
       "checkpoint_family": "train.tassadar.executor_transformer",
       "checkpoint_ref": "checkpoint://tassadar-executor-transformer-sudoku-v0-reference-run-v0.checkpoint.epoch_0001",
       "step": 1
     }
   },
-  "artifact_digest": "6296d111b6e458b1642458c4910d234a4409a3bc717d8d5bf8113163486dd204"
+  "artifact_digest": "0917a6477e50beba8c5dd53fd63a1d79ded8498aab73f249b96822edd9282089"
 }

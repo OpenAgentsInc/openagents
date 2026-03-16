@@ -9,8 +9,8 @@ use psionic_datastream::{
     DatastreamSubjectKind,
 };
 use psionic_eval::{
-    EvalArtifact, TassadarExecutorLinearBenchmarkReport, benchmark_tassadar_executor_linear_decode,
-    build_tassadar_sudoku_v0_sequence_dataset,
+    benchmark_tassadar_executor_linear_decode, build_tassadar_sudoku_v0_sequence_dataset,
+    EvalArtifact, TassadarExecutorLinearBenchmarkReport,
 };
 use psionic_models::{
     TassadarExecutorTransformer, TassadarExecutorTransformerDescriptor,
@@ -21,9 +21,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
+    build_tassadar_sudoku_v0_sequence_training_manifest, train_tassadar_executor_transformer,
     TassadarExecutorTrainingConfig, TassadarExecutorTrainingError, TassadarExecutorTrainingReport,
     TassadarSequenceTrainingError, TassadarSequenceTrainingManifest,
-    build_tassadar_sudoku_v0_sequence_training_manifest, train_tassadar_executor_transformer,
 };
 
 /// Stable schema version for persisted Tassadar reference-run bundles.
@@ -40,6 +40,8 @@ pub const TASSADAR_EXECUTOR_REFERENCE_RUN_OUTPUT_DIR: &str =
 const TRAINING_MANIFEST_FILE: &str = "training_manifest.json";
 const TRAINING_REPORT_FILE: &str = "training_report.json";
 const LINEAR_BENCHMARK_REPORT_FILE: &str = "linear_benchmark_report.json";
+pub const TASSADAR_EXECUTOR_NEURAL_HULL_BENCHMARK_REPORT_FILE: &str =
+    "neural_hull_benchmark_report.json";
 const CHECKPOINT_ARTIFACT_FILE: &str = "checkpoint_artifact.json";
 const CHECKPOINT_STATE_FILE: &str = "checkpoint_state.json";
 const CHECKPOINT_MANIFEST_FILE: &str = "checkpoint_manifest.json";
@@ -255,6 +257,9 @@ pub struct TassadarExecutorReferenceRunBundle {
     pub training_report_digest: String,
     /// Persisted benchmark report digest.
     pub linear_benchmark_report_digest: String,
+    /// Persisted neural hull benchmark report digest when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub neural_hull_benchmark_report_digest: Option<String>,
     /// Persisted checkpoint artifact digest.
     pub checkpoint_artifact_digest: String,
     /// Persisted model artifact digest.
@@ -294,6 +299,7 @@ impl TassadarExecutorReferenceRunBundle {
             trained_weight_digest: training_report.trained_weight_digest.clone(),
             training_report_digest: training_report.report_digest.clone(),
             linear_benchmark_report_digest: benchmark_digest,
+            neural_hull_benchmark_report_digest: None,
             checkpoint_artifact_digest: checkpoint_artifact.artifact_digest.clone(),
             model_artifact_digest: model_artifact.artifact_digest.clone(),
             artifacts,
@@ -565,14 +571,14 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        CHECKPOINT_STATE_FILE, MODEL_ARTIFACT_FILE, RUN_BUNDLE_FILE, TRAINING_REPORT_FILE,
-        TassadarExecutorCheckpointState, execute_tassadar_training_run,
-        tassadar_executor_reference_run_config,
+        execute_tassadar_training_run, tassadar_executor_reference_run_config,
+        TassadarExecutorCheckpointState, CHECKPOINT_STATE_FILE, MODEL_ARTIFACT_FILE,
+        RUN_BUNDLE_FILE, TRAINING_REPORT_FILE,
     };
 
     #[test]
-    fn persisted_reference_run_writes_reconstructable_artifacts()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn persisted_reference_run_writes_reconstructable_artifacts(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let bundle = execute_tassadar_training_run(
             temp.path(),

@@ -7,62 +7,63 @@
   "tokenizer_digest": "1c9a6e64cc81a028756ff1ed8cf507b0f69bbd9f7da7ef7293cb85a30ec5d857",
   "vocabulary_digest": "a1ee06319f535f18ad9d0e43e6dcca7a1ba94413f5995fa3823215e36b795af7",
   "training_manifest_digest": "d77cc0a8fdf53536e875d385756b48f999f08aad6c49d116db25a7dfb8d538af",
-  "trained_model_descriptor_digest": "f7e5b03300db4a8388edcee2967068e59be07be8189f6555b9517a678e826b2d",
+  "trained_model_descriptor_digest": "bee69ac40b233f02cefa4cbe5d5e2e5474cb6909a4f65ff6154fd37be47b10c5",
   "trained_weight_digest": "e2ee063f7eb7eff8d0d294d4030ce6b9c18cb0ca5ad23f9d58d67e0e50d0b32b",
-  "training_report_digest": "aaf760743d82a19333604d36a61c3d1cba92463acefb6000412f75c3b7c18078",
-  "linear_benchmark_report_digest": "707ba6bec45587dafa1cd811146d6777bd0e4b7d6195abb7c6428041449a133f",
-  "checkpoint_artifact_digest": "e45fe31c282e7a0e1f6674714058e0b1da87d45054799e608f8c29b7169b3948",
-  "model_artifact_digest": "6296d111b6e458b1642458c4910d234a4409a3bc717d8d5bf8113163486dd204",
+  "training_report_digest": "f26ad5aa954cc7851d15aec6e777cfe8cc3fb621cff3d967963a24830c179964",
+  "linear_benchmark_report_digest": "ddb93a249f330a848c6afea0fe7031aa37dbbcab1d33dfee58ffdd58c9cf70d5",
+  "neural_hull_benchmark_report_digest": "58abf6df4d2d2ac34b61b4f64a9a4cb14952c2538143d865c3448c9ea24f9cbd",
+  "checkpoint_artifact_digest": "0a8886b6a9a5571e12bd2f37bd599ddf4cf202efb3ce6b8e9d3741be33269c91",
+  "model_artifact_digest": "0917a6477e50beba8c5dd53fd63a1d79ded8498aab73f249b96822edd9282089",
   "artifacts": [
     {
       "artifact_kind": "tassadar_checkpoint_artifact",
       "artifact_ref": "checkpoint_artifact.json",
-      "artifact_digest": "d1fcf558ca7c65010132c5cfcb4081ebcbc29f925027aef6641817446e4cccab"
+      "artifact_digest": "d1f0073fd97acdfc5a9f2f7b6bfa54ccd7ce540d54f3cfb734e0b135c3a900f0"
     },
     {
       "artifact_kind": "tassadar_checkpoint_manifest",
       "artifact_ref": "checkpoint_manifest.json",
-      "artifact_digest": "88b4e3d9faebbb2570d5a9d41a126f77080c34a92de7a95dfa8c04736e615185"
+      "artifact_digest": "53fab5200675f2e8ce991a2abea6edfa110599b30fc903495846718b9eb1ee17"
     },
     {
       "artifact_kind": "tassadar_checkpoint_state",
       "artifact_ref": "checkpoint_state.json",
-      "artifact_digest": "c9aede016ad03a742ab8b9a8c62c94c8a8d390b24721d44eaebf2068d6eb7a34"
+      "artifact_digest": "dceafebf0f79e24b55375abc410534f367058c9257eb4dda88d1f57feb9f9448"
     },
     {
       "artifact_kind": "tassadar_exactness_curve",
       "artifact_ref": "exactness_curve.json",
-      "artifact_digest": "d35ad452b564bf5a30a99c2d1dee426a48db5e8258307c364796bf8f95bb2f6e"
+      "artifact_digest": "d819331eb7de9612bf810f2016b5dc327ee13fc20243b02836b0b5a5c5b67451"
     },
     {
       "artifact_kind": "tassadar_failure_samples",
       "artifact_ref": "failure_samples.json",
-      "artifact_digest": "a382fefb4902f725d8fb4384bc29448134d2aa057f9bbf1e0c11cce985f1541f"
+      "artifact_digest": "a3ffe524108c5cbf32ed2e84c533ce724d021f4c2dfa091efb5bab2464100200"
     },
     {
       "artifact_kind": "tassadar_linear_benchmark_report",
       "artifact_ref": "linear_benchmark_report.json",
-      "artifact_digest": "3b15158f2c43cd6092ec58579770fb24a7223e4e3f9190452b5692ca24422eed"
+      "artifact_digest": "ccb0151ee8d3123f5ac22137f634af5de9b33598ca03a7d6dbde833ada4e581a"
     },
     {
       "artifact_kind": "tassadar_model_artifact",
       "artifact_ref": "model_artifact.json",
-      "artifact_digest": "f71885712d82a1ec10e6c89351d6c63ae879b62832ff0372c2970470bd749e40"
+      "artifact_digest": "4729a99e02360c4a5d24aa2466c297699a9fd4937e0d00a323bdaff9db2ff733"
     },
     {
       "artifact_kind": "tassadar_next_run_plan",
       "artifact_ref": "next_run_plan.json",
-      "artifact_digest": "abeda69016f727df33d6b26093e2e0746048987cb753862ea809979a6d20dd9d"
+      "artifact_digest": "3c13c44b539688cf39573991866625373b724ae84b645d06f162c5b72c3dda64"
     },
     {
       "artifact_kind": "tassadar_postmortem",
       "artifact_ref": "postmortem.json",
-      "artifact_digest": "056c85fa2120cfcc3438874f5e4b8f80e8cb55b44b699e18a85b2f93eb03928c"
+      "artifact_digest": "eaabe6736c77f1958195d1b57a93e295d49d7bae567f501b8cdceb32296fbee7"
     },
     {
       "artifact_kind": "tassadar_trace_divergence_report",
       "artifact_ref": "trace_divergence_report.json",
-      "artifact_digest": "fe489cd8bee94529503ed03c3bc794e73ab097e341dddfdd92b65da682870472"
+      "artifact_digest": "2d41ceb78ec374bbd53e13303ac604b3d76b961aef51aca04f0f2cca7b3d61d6"
     },
     {
       "artifact_kind": "tassadar_training_manifest",
@@ -72,13 +73,18 @@
     {
       "artifact_kind": "tassadar_training_report",
       "artifact_ref": "training_report.json",
-      "artifact_digest": "8bda161bfdbe9db15078d9183b31a0e2fc5a136a64be9492ebbbbdd39942e950"
+      "artifact_digest": "0478dd941434335f61ec372cb885359fa8470b772d2901ae32af45b3b3cbbb93"
     },
     {
       "artifact_kind": "tassadar_training_telemetry",
       "artifact_ref": "training_telemetry.json",
-      "artifact_digest": "85cd281ffc1cfbf0345c71f9321a3eb54e2972032af7c9dd73db185f7e8452f0"
+      "artifact_digest": "7c9777dc6a4ac822850aa3f073a7d682cd6fe9b4552ad05b5a6a271d3f35035e"
+    },
+    {
+      "artifact_kind": "tassadar_neural_hull_benchmark_report",
+      "artifact_ref": "neural_hull_benchmark_report.json",
+      "artifact_digest": "f7b3dfac85edb03e474bbc8f9942b2f81683b023fda7af6814a8c435349797ae"
     }
   ],
-  "bundle_digest": "987e799f29caf19e58ecd71d0b16f36597931e65047c12783dacfde416e56911"
+  "bundle_digest": "e6ce2cc2854b10fdec50ff0d1082596c086059ed06af2cbccbce6501652b95f9"
 }
