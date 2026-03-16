@@ -39,6 +39,16 @@ Article reviewed:
 - "Can LLMs Be Computers?"
 - published March 11, 2026
 - user-provided full text in this conversation
+- user-provided follow-up author statements in this conversation:
+  - the demonstrated transformer uses handcrafted weights with a proof of
+    correctness tied to the WebAssembly spec
+  - the point is to give LLMs inner computational ability, not replace
+    conventional computers
+  - direct CPU execution is still orders faster, but the transformer overhead
+    is argued to be closer to a constant-factor gap than the quadratic growth
+    of standard decoding
+  - learned or grown internal circuits are a next-step direction, with
+    SUBLEQ-style precedents noted by the author
 
 OpenAgents sources reviewed:
 
@@ -94,10 +104,15 @@ That means:
 - it is framework-core, model-runtime, cache, proof, and eval work first
 - it is not current MVP product scope
 - it should start on CPU as a reference lane
+- it should target WebAssembly semantics first, because that is where the
+  author says the correctness proof is anchored
 - it should not be bolted into `psionic.text_generation` as an invisible
   alternate kernel path for ordinary decoder models
+- it should be positioned as inner computational substrate for larger reasoning
+  systems, not as a replacement for native execution
 
-The article really proposes four distinct things:
+The article plus the follow-up author clarifications really propose five
+distinct things:
 
 1. a restricted transformer regime
    - especially 2D head geometry
@@ -105,9 +120,12 @@ The article really proposes four distinct things:
    - interpreter state encoded as generated tokens
 3. a specialized fast decoding path
    - hard-max or sparse retrieval over a hull-style cache
-4. a longer-term compiler path
-   - source program -> interpreter/runtime artifact -> possibly directly into
-     weights
+4. a proof-oriented execution target
+   - handcrafted weights and a correctness story tied to a WebAssembly-spec
+     executor
+5. a longer-term compiler and learning path
+   - source program -> Wasm/runtime artifact -> possibly directly into weights,
+     and later learned or grown circuit families
 
 Psionic already has the right owner split for this:
 
@@ -126,20 +144,26 @@ Psionic already has the right owner split for this:
 
 The best near-term path is:
 
-1. define a Psionic-native executor trace ABI and benchmark package family
+1. define a Psionic-native, WebAssembly-first executor trace ABI and benchmark
+   package family
 2. land a CPU-only reference executor model using programmatic fixture weights
    before training claims
-3. add runtime-visible decode-path identity and a first hull-cache
+3. benchmark it both against linear transformer decoding and against a direct
+   CPU Wasm interpreter so the constant-factor story stays honest
+4. add runtime-visible decode-path identity and a first hull-cache
    implementation behind strict equivalence checks
-4. add a dedicated served executor product only after the trace and proof
-   surfaces are honest
-5. only later connect that lane to hybrid planner-plus-executor routing
+5. only later connect that lane to hybrid planner-plus-executor routing and
+   broader model augmentation
 
 The wrong path is:
 
 - trying to retrofit current GPT-OSS or Apple FM lanes into this regime
 - claiming that a generic chat model now "computes internally" because Psionic
   added another attention optimization
+- claiming this replaces ordinary CPU execution rather than augmenting model
+  internals
+- inventing a private VM target before Psionic has a truthful WebAssembly-first
+  lane
 - treating direct program-to-weight compilation as the first milestone
 
 ## What The Article Actually Contributes
@@ -161,8 +185,21 @@ The durable ideas are:
     history scans to logarithmic retrieval in the structured executor regime
 - explicit program execution inside the model
   - C -> WebAssembly-style program -> interpreter-like execution trace
+- proof-oriented construction
+  - the author says the demonstrated weights are handcrafted and carry a
+    correctness argument tied to the WebAssembly spec
 - hybrid future architecture
   - slower general reasoning model plus a faster exact-computation executor
+- model augmentation, not computer replacement
+  - the point is to give LLMs inner computational ability, not displace a
+    direct CPU interpreter
+- asymptotic rather than absolute speed parity
+  - direct CPU execution is still orders faster, so the interesting win is
+    improved scaling inside transformer inference rather than beating a native
+    interpreter
+- a learnable follow-on direction
+  - learned or grown internal circuits are a later step, with SUBLEQ-style
+    precedents explicitly in view
 
 That is a narrower and more implementable claim than:
 
@@ -171,6 +208,13 @@ That is a narrower and more implementable claim than:
 - "general LLM serving is solved by this one trick"
 
 The honest Psionic adaptation must preserve that narrowness.
+
+It also needs to preserve the clarified posture:
+
+- WebAssembly-first, not bespoke-ISA-first
+- inner-computation augmentation, not "replace computers"
+- proof and exactness before performance marketing
+- learned-circuit ambitions later, not as the bootstrap story
 
 ## Why This Fits Psionic Better Than Most Repo Surfaces
 
@@ -203,15 +247,16 @@ The cleanest way to think about the article in Psionic terms is:
 | append-only execution trace | `psionic-models`, `psionic-runtime` | explicit trace token ABI plus digest-bound trace artifacts |
 | hard-max or sparse lookup attention | `psionic-core`, `psionic-ir`, `psionic-runtime` | typed extension/capability path, CPU-first reference semantics |
 | hull-based fast retrieval cache | `psionic-runtime` | optional decode-path with explicit cache algorithm id and proof surface |
-| C/Wasm-to-executor program pipeline | new Psionic-adjacent program artifact layer, then `psionic-models` and `psionic-runtime` | start as digest-bound artifacts and fixtures before direct weight compilation |
+| C/Wasm-to-executor program pipeline | new Psionic-adjacent program artifact layer, then `psionic-models` and `psionic-runtime` | start WebAssembly-first as digest-bound artifacts and fixtures before direct weight compilation |
 | exactness benchmarks | `psionic-environments`, `psionic-eval` | Sudoku, arithmetic, Hungarian, and micro-Wasm benchmark packages |
-| executor serving | `psionic-serve` | dedicated served product surface, not folded into ordinary chat |
-| planner-executor hybrid routing | `psionic-router` plus product/controller above Psionic | later hybrid lane after executor truth exists |
+| executor serving | `psionic-serve` | dedicated executor surface if needed, but primarily as substrate for planner/model augmentation rather than standalone "replacement compute" marketing |
+| planner-executor hybrid routing | `psionic-router` plus product/controller above Psionic | later hybrid lane after WebAssembly-first executor truth exists |
 
 This is the key conclusion:
 
 > the first honest Psionic target is not "faster ordinary serving." It is "a
-> truthful executor model family with its own runtime contracts."
+> truthful WebAssembly-first executor model family with its own runtime
+> contracts."
 
 ## What Psionic Already Has That Helps
 
@@ -230,6 +275,8 @@ Psionic is not starting from zero.
 That means Psionic can start with:
 
 - tiny, exact, fixture-backed executor models
+- handcrafted or programmatically constructed weights whose behavior is narrow
+  enough to prove against a spec
 - without waiting for a full training pipeline
 
 That is the correct first milestone.
@@ -305,6 +352,15 @@ It is:
 
 The article still conflicts with current Psionic truth in important ways.
 
+The author clarifications tighten two requirements this audit should state
+plainly:
+
+- Psionic should target WebAssembly semantics first, because that is where the
+  published correctness story actually attaches.
+- Psionic should benchmark against direct CPU execution honestly, because the
+  value claim is asymptotic behavior inside transformer inference, not native
+  CPU replacement.
+
 ### 1. Psionic does not yet model executor-class attention semantics
 
 Current `BackendExtensionOp` supports:
@@ -341,6 +397,7 @@ describe this executor lane.
 But this lane needs more explicit model-family truth:
 
 - executor trace ABI version
+- supported WebAssembly subset or profile
 - supported opcode vocabulary digest
 - whether the model is an executor or an ordinary decoder
 - whether the runtime path is standard KV or hull-cache-eligible
@@ -400,6 +457,8 @@ This lane needs different green bars:
 - exact halt-state equivalence
 - exact output equivalence
 - exact cache-algorithm equivalence against a reference decoder
+- exact equivalence against a direct CPU WebAssembly reference runner on the
+  supported subset
 - benchmark-package correctness over long horizons
 
 ### 6. Psionic train is not yet ready for the article's training story
@@ -409,6 +468,7 @@ The article also hints at:
 - training large 2D-head models
 - hybrid executors plus general models
 - direct compilation of programs into weights
+- learned or grown internal circuits
 
 Psionic should not pretend the current train subtree is already ready to carry
 that whole program.
@@ -461,6 +521,11 @@ That means a dedicated family with explicit:
 - program binding
 - exactness claims
 
+It should also be framed explicitly as:
+
+- a way to give larger models internal exact-computation capacity
+- not a claim that Psionic will replace ordinary computers or native runtimes
+
 ### 2. CPU-first exactness as the reference path
 
 The article's most useful systems claim is not GPU flashiness.
@@ -468,7 +533,7 @@ The article's most useful systems claim is not GPU flashiness.
 It is:
 
 - exact long trace execution
-- at high speed
+- with much better scaling than standard autoregressive decoding
 - on CPU
 
 That aligns with Psionic's own rule that CPU is the canonical reference lane.
@@ -479,6 +544,15 @@ So the first honest implementation target is:
 - exact
 - benchmarked
 - proof-bearing
+
+But Psionic should also state this plainly:
+
+- the executor lane will still be slower than direct CPU execution for the same
+  program
+- the relevant claim is better asymptotic behavior than traditional
+  autoregressive decoding on long execution traces
+- every benchmark report should show both native Wasm CPU baseline and
+  transformer-executor throughput
 
 ### 3. Append-only execution traces as first-class runtime artifacts
 
@@ -496,7 +570,23 @@ That means:
 
 This should integrate naturally with runtime manifests and proof bundles.
 
-### 4. Two-bucket execution state
+For this lane, those artifacts should be anchored to WebAssembly-compatible
+program identity first.
+
+### 4. WebAssembly-first program targeting
+
+The author's clarification materially changes the target recommendation.
+
+Psionic should not invent a private toy VM as its primary substrate.
+
+It should start with:
+
+- a narrow, explicit WebAssembly subset or profile
+- spec-compatible program artifacts
+- a direct CPU reference interpreter or runtime for parity
+- trace vocab and proof surfaces that name the supported Wasm profile
+
+### 5. Two-bucket execution state
 
 The article's trace model strongly suggests a two-bucket posture:
 
@@ -509,7 +599,7 @@ Psionic should adapt that as:
 - bounded decode-step state as explicit runtime context
 - explicit accounting for when the fast path is active
 
-### 5. Exactness-first benchmark packages
+### 6. Exactness-first benchmark packages
 
 Psionic should not treat demos as proof.
 
@@ -518,11 +608,19 @@ The lane needs benchmark packages for:
 - exact arithmetic
 - stack and memory microprograms
 - control-flow microprograms
+- micro-Wasm programs with spec-reference outputs
 - Sudoku
 - Hungarian/min-cost matching
 - longer trace workloads that stress the fast path
 
-### 6. Hybrid planner-plus-executor routing later
+Those benchmark packages should always include:
+
+- direct CPU WebAssembly runtime throughput
+- transformer linear-reference throughput
+- hull-cache throughput where validated
+- exactness deltas across all three
+
+### 7. Hybrid planner-plus-executor routing later
 
 The article's hybrid vision is good, but it comes later.
 
@@ -533,6 +631,11 @@ Psionic should eventually support:
 - router/runtime truth about when one handed work to the other
 
 But that is later than the executor lane itself.
+
+That later hybrid is also the right product framing:
+
+- planner and reasoner models gain inner computational ability
+- Psionic does not market this as "the model is now your new CPU"
 
 ## What OpenAgents Should Not Copy
 
@@ -585,6 +688,7 @@ Only after that is credible should Psionic pursue:
 
 - compiling logic directly into weights
 - or training large executor families
+- or learned-circuit growth beyond the initial handcrafted and proved regime
 
 ### 5. Do not skip equivalence and proof work
 
@@ -598,6 +702,21 @@ So Psionic must require:
 - exact halting behavior
 
 before it claims the fast path is real.
+
+### 6. Do not skip the native CPU baseline
+
+The author explicitly says direct CPU execution is still orders faster.
+
+So Psionic should not publish performance claims that compare only:
+
+- standard transformer decode
+- versus hull-cache transformer decode
+
+It also needs:
+
+- direct CPU WebAssembly execution as the honest baseline
+- explicit overhead ratios
+- clear language that the asymptotic win is inside the transformer regime
 
 ## Recommended Psionic Architecture
 
@@ -615,6 +734,7 @@ Needed additions:
 - executor model descriptor
 - trace vocabulary metadata
 - execution-trace ABI version
+- WebAssembly profile compatibility declaration
 - attention geometry contract
 - decode-mode capability declaration
 - program artifact compatibility contract
@@ -623,6 +743,7 @@ Likely examples:
 
 - `ExecutorModelDescriptor`
 - `ExecutionTraceAbi`
+- `WebAssemblyProfileCompatibility`
 - `AttentionGeometryContract`
 - `ExecutorDecodeMode`
 
@@ -645,6 +766,7 @@ Needed additions:
 
 - executor-specific attention semantics
 - explicit fast-path capability gates
+- WebAssembly-first reference execution path
 - linear reference decoder
 - hull-cache decoder
 - exact-step parity harnesses
@@ -666,6 +788,7 @@ Needed additions:
 
 - trace proof artifact family
 - program artifact lineage fields
+- WebAssembly profile and reference-runner identity fields
 - decode-path identity fields
 - cache algorithm identity fields
 - executor-specific validation references
@@ -687,6 +810,7 @@ Needed additions:
 - executor environment packages
 - exactness metrics
 - throughput metrics
+- native CPU baseline metrics
 - experiment families for decode path and model-architecture variants
 
 This should be benchmark-package-first, not demo-first.
@@ -707,6 +831,11 @@ Later additions:
 This is later because a served product should sit on top of a truthful
 runtime, not serve as the runtime's prototype.
 
+The primary strategic value is still likely:
+
+- an internal compute substrate for richer planner models
+- with a standalone served surface only where that is operationally useful
+
 ## Concrete Implementation Path
 
 The path below is intentionally dependency-ordered.
@@ -724,6 +853,8 @@ Concretely:
 - treat this as a Psionic library and research program
 - do not widen current compute-market MVP around it
 - do not reframe current text-generation product claims around it
+- state explicitly that the goal is inner computational ability for models, not
+  replacement of ordinary CPU execution
 
 ### Phase 1: Land a CPU reference executor fixture
 
@@ -735,21 +866,26 @@ Goals:
 Concretely:
 
 - add one tiny executor-class fixture model using `WeightFormat::ProgrammaticFixture`
-- define one minimal trace ABI:
+- define one minimal WebAssembly-first trace ABI:
   - instruction tokens
   - commit events
   - output events
   - halt events
-- support tiny reference programs:
-  - stack push/pop
+- support a narrow Wasm subset with tiny reference programs:
+  - local or stack push/pop
   - add/sub/mul
   - simple branching
-  - simple memory lookup
+  - simple load/store or lookup
+- keep the construction and proof posture explicit:
+  - handcrafted or programmatically constructed weights
+  - spec-locked to the supported Wasm subset
 
 Success bar:
 
 - exact trace correctness on CPU
 - exact final output correctness
+- exact equivalence with a direct CPU Wasm reference runner on the supported
+  subset
 - deterministic replay
 
 This phase is the most important one because it proves the owner split and
@@ -766,11 +902,13 @@ Concretely:
 - define digest-bound program artifacts for:
   - source identity
   - compiler/toolchain identity
-  - emitted bytecode or executor program
+  - emitted WebAssembly bytecode or validated executor program
+  - supported Wasm profile or subset id
   - opcode vocabulary digest
 - define executor model descriptors with:
   - attention geometry contract
   - trace ABI contract
+  - Wasm profile compatibility
   - supported decode modes
   - exactness posture
 
@@ -789,6 +927,7 @@ Concretely:
   - arithmetic
   - memory-lookup microprograms
   - branch/control-flow microprograms
+  - micro-Wasm kernels
   - Sudoku
   - Hungarian/min-cost matching
 - add environment packages that bind:
@@ -802,6 +941,7 @@ Metrics should include:
 - final output exactness
 - step exactness
 - halt correctness
+- native CPU reference throughput
 - tokens or trace steps per second
 - trace artifact completeness
 
@@ -816,10 +956,12 @@ Concretely:
 - add executor-trace proof artifacts carrying:
   - trace digest
   - program digest
+  - Wasm profile id
   - model descriptor digest
   - decode mode
   - cache algorithm id
   - runtime backend
+  - reference-runner identity
   - validation reference
 - add manifest lineage from:
   - source program
@@ -841,7 +983,9 @@ Concretely:
 - implement a CPU hull-style cache or geometric retrieval structure for the
   executor lane
 - keep the linear reference decoder as the oracle
+- keep a direct CPU Wasm runner as the non-transformer baseline
 - add exact equivalence checks between:
+  - direct CPU reference execution
   - reference linear decode
   - fast-path decode
 
@@ -850,7 +994,8 @@ Success bar:
 - identical trace digests on supported workloads
 - explicit refusal when a workload/model/cache mode is outside the validated
   regime
-- real throughput win on long trace workloads
+- real throughput win over linear transformer decode on long trace workloads
+- explicit measurement of remaining overhead versus direct CPU execution
 
 This is where the article's main technical claim should be tested.
 
@@ -865,6 +1010,7 @@ Concretely:
 - expose runtime capability fields such as:
   - `supports_executor_trace`
   - `supports_hull_decode`
+  - `supported_wasm_profiles`
   - `supported_attention_modes`
   - `validated_trace_abi_versions`
 - emit runtime diagnostics that say when Psionic fell back from:
@@ -891,6 +1037,8 @@ Concretely:
 - keep product semantics explicit:
   - this is executor streaming
   - not ordinary chat completion
+  - and primarily useful as a computation substrate for broader reasoning
+    systems
 
 ### Phase 8: Add research families for architecture and cache experiments
 
@@ -903,6 +1051,7 @@ Concretely:
 - extend `psionic-research` or sibling research surfaces to cover:
   - executor model architecture variants
   - trace ABI variants
+  - WebAssembly subset or profile variants
   - decode cache variants
   - attention mode variants
 - treat benchmark packages and trace proofs as the evaluator backend
@@ -924,6 +1073,8 @@ Concretely:
   - larger 2D-head executor models
   - direct program-to-weight compilation
   - hybrid learned-plus-compiled executor systems
+  - learned-circuit growth, including minimal-instruction or SUBLEQ-like
+    research lines where useful
 
 This is late because it depends on:
 
@@ -947,6 +1098,7 @@ Probable additions:
 Likely new claims:
 
 - exact trace vocab
+- supported Wasm subset or profile
 - decode mode compatibility
 - head-dimension restrictions
 - supported attention semantics
@@ -973,6 +1125,7 @@ Probable additions:
 - hull-cache or equivalent geometric cache data structure
 - executor trace runtime reports
 - cache algorithm identity
+- Wasm reference-runner identity and parity surfaces
 - exact-trace parity helpers
 - executor trace proof artifacts
 
@@ -992,6 +1145,7 @@ Probable additions:
 - executor environment package family
 - executor benchmark packages
 - exactness and throughput scoring contracts
+- required direct CPU reference baselines
 
 ### 6. `psionic-research`
 
@@ -999,27 +1153,30 @@ Probable additions later:
 
 - architecture or decode-cache experiment families
 - promotion criteria based on exactness plus throughput
+- later learned-circuit experiment families once the Wasm-first lane is stable
 
 ## Recommended Priority Order
 
 If OpenAgents wants to pursue this article's ideas without destabilizing the
 current tree, the order should be:
 
-1. CPU executor fixture plus minimal trace ABI
-2. executor model and program artifact contracts
-3. environment and benchmark packages
+1. CPU executor fixture plus minimal WebAssembly-first trace ABI
+2. executor model and Wasm program artifact contracts
+3. environment and benchmark packages with direct CPU baselines
 4. executor proof bundles and trace digests
 5. hull-cache fast path with exact equivalence checks
-6. dedicated served executor product
-7. research families for architecture and cache variants
-8. larger training program and compile-to-weights exploration
-9. hybrid planner-plus-executor routing
+6. research families for architecture and cache variants
+7. dedicated served executor product where useful
+8. hybrid planner-plus-executor routing
+9. larger training program, compile-to-weights exploration, and learned-circuit
+   follow-ons
 
 Do not start with:
 
 - GPT-OSS retrofits
 - generic serving integration
 - accelerator kernel work
+- bespoke VM invention ahead of WebAssembly-first parity
 - direct program-to-weight compilation
 - product-scope MVP integration
 
@@ -1030,13 +1187,14 @@ but only if OpenAgents reads it correctly.
 
 The correct reading is not:
 
-> Psionic should turn every LLM into a computer.
+> Psionic should turn every LLM into a replacement for ordinary computers.
 
 The correct reading is:
 
-> Psionic should grow a new executor-class model/runtime lane for exact
-> long-horizon computation, with explicit trace ABI, explicit decode-path
-> identity, explicit benchmark packages, and explicit proof bundles.
+> Psionic should grow a new WebAssembly-first executor-class model/runtime lane
+> for exact long-horizon computation, with explicit trace ABI, explicit
+> decode-path identity, explicit benchmark packages, and explicit proof
+> bundles, so larger models can gain inner computational ability.
 
 That lane should begin as:
 
@@ -1046,12 +1204,19 @@ That lane should begin as:
 - proof-bearing
 - outside current MVP product scope
 
+It should also stay honest about performance:
+
+- native CPU execution remains the faster baseline
+- the meaningful systems claim is improved scaling inside transformer decoding
+- benchmark reports should always show that distinction directly
+
 Only after that is real should OpenAgents pursue:
 
 - hull-cache acceleration
-- served executor products
 - hybrid planner-plus-executor routing
+- standalone executor serving where it is actually useful
 - and eventually direct program-to-weight compilation
+- and later learned-circuit growth
 
 If handled that way, this article is a strong strategic input for Psionic.
 
