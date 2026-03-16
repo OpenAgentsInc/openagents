@@ -1249,6 +1249,22 @@ Changing only the following does NOT qualify as a materially distinct attempt:
 - beam ordering
 - evaluation ordering
 
+Current bounded landing:
+
+- `ARC-309` lands a typed portfolio arbiter in `arc-solvers::arbiter`
+- the arbiter consumes existing lane proposal batches plus verifier reports and
+  ranks candidates verifier-first using explicit feature weights over verifier
+  pass, exact fit, simplicity, stability, lane prior, local score, spuriousness
+  risk, compute spent, and cross-lane answer agreement
+- cross-lane agreement is now machine-legible through shared answer digests and
+  lane counts rather than through ad hoc consensus heuristics
+- second-attempt policy is now explicit: materially distinct alternatives are
+  derived from `Hypothesis::materially_distinct_from`, surfaced as typed gates,
+  and only permit attempt 2 when the top-ranked current answer is still not a
+  verifier-passing exact fit
+- later work may recalibrate weights on internal holdout, but must preserve the
+  typed score breakdown and distinctness gate surface
+
 ### 8.1 Public-eval hygiene rules
 
 The solver program must enforce these rules:
