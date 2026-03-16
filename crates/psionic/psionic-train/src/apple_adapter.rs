@@ -31,12 +31,21 @@ const APPLE_ADAPTER_FIDELITY_PLAN_ID: &str = "openagents.apple.token_sequence_re
 pub const APPLE_LIVE_REFERENCE_FEATURE_WIDTH: usize = 2048;
 /// LoRA rank used by the current live Rust-native Apple reference lane.
 pub const APPLE_LIVE_REFERENCE_LORA_RANK: usize = 32;
+/// Base-model compatibility anchor for the current live Apple Foundation Models lane.
+pub const APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE: &str =
+    "9799725ff8e851184037110b422d891ad3b92ec1";
 const APPLE_RUNTIME_KV_FEATURE_WIDTH: usize = 256;
 const APPLE_RUNTIME_FEED_FORWARD_WIDTH: usize = 6656;
 const APPLE_RUNTIME_SEGMENT0_LAYER_COUNT: usize = 35;
 const APPLE_RUNTIME_SEGMENT1_LAYER_COUNT: usize = 21;
 const APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER: usize = 30;
 const APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER: usize = 16;
+const APPLE_RUNTIME_BLOB_FILE_HEADER_BYTES: usize = 64;
+const APPLE_RUNTIME_BLOB_ENTRY_HEADER_BYTES: usize = 64;
+const APPLE_RUNTIME_BLOB_ALIGNMENT_BYTES: usize = 64;
+const APPLE_RUNTIME_BLOB_VERSION: u32 = 2;
+const APPLE_RUNTIME_BLOB_KIND_FP16: u32 = 1;
+const APPLE_RUNTIME_BLOB_ENTRY_MAGIC: u32 = 0xDEAD_BEEF;
 
 /// Precision posture for the first repo-owned Apple reference backend.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1222,7 +1231,7 @@ fn export_native_apple_runtime_asset_bytes(
         .iter()
         .map(|group| (group.group_id.clone(), group))
         .collect::<BTreeMap<_, _>>();
-    let mut bytes = Vec::new();
+    let mut payloads = Vec::with_capacity(templates.len());
     for (checkpoint_key, template) in templates {
         let target_id = checkpoint_key
             .trim_end_matches(".a_transpose")
@@ -1259,9 +1268,9 @@ fn export_native_apple_runtime_asset_bytes(
                 permutation.dim2,
             );
         }
-        bytes.extend(encode_f16_bytes(transformed.as_slice()));
+        payloads.push(encode_f16_bytes(transformed.as_slice()));
     }
-    Ok(bytes)
+    Ok(encode_apple_blob_storage_fp16(payloads.as_slice()))
 }
 
 fn transpose_matrix(values: &[f32], rows: usize, cols: usize) -> Vec<f32> {
@@ -1298,6 +1307,57 @@ fn encode_f16_bytes(values: &[f32]) -> Vec<u8> {
         bytes.extend_from_slice(&f16::from_f32(*value).to_bits().to_le_bytes());
     }
     bytes
+}
+
+fn encode_apple_blob_storage_fp16(payloads: &[Vec<u8>]) -> Vec<u8> {
+    let estimated_payload_bytes = payloads.iter().map(Vec::len).sum::<usize>();
+    let mut bytes = Vec::with_capacity(
+        APPLE_RUNTIME_BLOB_FILE_HEADER_BYTES
+            + payloads.len() * APPLE_RUNTIME_BLOB_ENTRY_HEADER_BYTES
+            + estimated_payload_bytes,
+    );
+    bytes.resize(APPLE_RUNTIME_BLOB_FILE_HEADER_BYTES, 0);
+    bytes[0..4].copy_from_slice(&(payloads.len() as u32).to_le_bytes());
+    bytes[4..8].copy_from_slice(&APPLE_RUNTIME_BLOB_VERSION.to_le_bytes());
+
+    for (index, payload) in payloads.iter().enumerate() {
+        let record_offset = align_up(bytes.len(), APPLE_RUNTIME_BLOB_ALIGNMENT_BYTES);
+        if record_offset > bytes.len() {
+            bytes.resize(record_offset, 0);
+        }
+        let payload_offset = record_offset + APPLE_RUNTIME_BLOB_ENTRY_HEADER_BYTES;
+        bytes.resize(payload_offset, 0);
+        bytes[record_offset..record_offset + 4]
+            .copy_from_slice(&APPLE_RUNTIME_BLOB_ENTRY_MAGIC.to_le_bytes());
+        bytes[record_offset + 4..record_offset + 8]
+            .copy_from_slice(&APPLE_RUNTIME_BLOB_KIND_FP16.to_le_bytes());
+        bytes[record_offset + 8..record_offset + 16]
+            .copy_from_slice(&(payload.len() as u64).to_le_bytes());
+        bytes[record_offset + 16..record_offset + 24]
+            .copy_from_slice(&(payload_offset as u64).to_le_bytes());
+        bytes.extend_from_slice(payload.as_slice());
+        if index + 1 < payloads.len() {
+            let next_offset = align_up(bytes.len(), APPLE_RUNTIME_BLOB_ALIGNMENT_BYTES);
+            if next_offset > bytes.len() {
+                bytes.resize(next_offset, 0);
+            }
+        }
+    }
+
+    bytes
+}
+
+fn align_up(value: usize, alignment: usize) -> usize {
+    if alignment <= 1 {
+        value
+    } else {
+        let remainder = value % alignment;
+        if remainder == 0 {
+            value
+        } else {
+            value + (alignment - remainder)
+        }
+    }
 }
 
 /// Runs the first honest Rust-native Apple adapter SFT lane and returns a valid `.fmadapter`.
@@ -3088,7 +3148,7 @@ mod tests {
             precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
             activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
             model: AppleAdapterReferenceModel {
-                base_model_signature: String::from("9799725ff8e851184037110b422d891ad3b92ec1"),
+                base_model_signature: String::from(APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE),
                 tokenizer_digest: String::from("apple-tokenizer-digest-v1"),
                 prompt_shaping_digest: String::from("apple-prompt-shaping-v1"),
                 input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
@@ -3232,6 +3292,23 @@ mod tests {
         assert_eq!(
             reread.lineage.package_format_version.as_deref(),
             Some(OPENAGENTS_APPLE_FMADAPTER_PACKAGE_FORMAT_VERSION)
+        );
+        let runtime_asset_bytes = std::fs::read(package_path.join("adapter_weights.bin"))?;
+        assert_eq!(runtime_asset_bytes.len(), 133_312_320);
+        assert_eq!(
+            &runtime_asset_bytes[0..4],
+            &((APPLE_RUNTIME_SEGMENT0_LAYER_COUNT * APPLE_RUNTIME_SEGMENT0_TEMPLATES.len()
+                + APPLE_RUNTIME_SEGMENT1_LAYER_COUNT * APPLE_RUNTIME_SEGMENT1_TEMPLATES.len())
+                as u32)
+                .to_le_bytes()
+        );
+        assert_eq!(
+            &runtime_asset_bytes[4..8],
+            &APPLE_RUNTIME_BLOB_VERSION.to_le_bytes()
+        );
+        assert_eq!(
+            &runtime_asset_bytes[64..68],
+            &APPLE_RUNTIME_BLOB_ENTRY_MAGIC.to_le_bytes()
         );
         assert_eq!(reread.package_digest, outcome.summary.package_digest);
         assert_eq!(

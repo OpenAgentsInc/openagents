@@ -18,10 +18,9 @@ use psionic_data::{
 };
 use psionic_eval::{
     AppleAdapterBaseVsAdapterBenchmarkReport, AppleAdapterEvalHarness,
-    AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCall,
-    EvalExecutionStrategyFacts, EvalTimerIntegrityFacts, EvalVerificationFacts,
-    architecture_explainer_benchmark_key, build_curated_benchmark_package,
-    run_curated_base_vs_adapter_benchmark,
+    AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCall, EvalExecutionStrategyFacts,
+    EvalTimerIntegrityFacts, EvalVerificationFacts, architecture_explainer_benchmark_key,
+    build_curated_benchmark_package, run_curated_base_vs_adapter_benchmark,
 };
 use psionic_train::AppleAdapterExperimentManifest;
 use reqwest::blocking::Client;
@@ -181,8 +180,9 @@ pub fn run_architecture_explainer_reference_cycle(
     let (launched_run, launch_error) = match launch_run(launch_request.clone()) {
         Ok(run) => (run, None),
         Err(error) => (
-            locate_failed_reference_run(&launch_request, &prior_run_ids)
-                .with_context(|| format!("operator launch failed before report generation: {error}"))?,
+            locate_failed_reference_run(&launch_request, &prior_run_ids).with_context(|| {
+                format!("operator launch failed before report generation: {error}")
+            })?,
             Some(error),
         ),
     };
@@ -341,11 +341,12 @@ fn derive_reference_runtime_profile(
     apple_fm_base_url: &str,
     expected_base_model_signature: Option<&str>,
 ) -> Result<AppleAdapterRuntimeCompatibilityProfile> {
-    let client = AppleFmBridgeClient::new(apple_fm_base_url)
-        .with_context(|| format!("failed to build Apple FM bridge client for {apple_fm_base_url}"))?;
-    let health = client
-        .health()
-        .with_context(|| format!("failed to fetch Apple FM bridge health from {apple_fm_base_url}"))?;
+    let client = AppleFmBridgeClient::new(apple_fm_base_url).with_context(|| {
+        format!("failed to build Apple FM bridge client for {apple_fm_base_url}")
+    })?;
+    let health = client.health().with_context(|| {
+        format!("failed to fetch Apple FM bridge health from {apple_fm_base_url}")
+    })?;
     if !health.model_available {
         let detail = health
             .availability_message
@@ -524,9 +525,10 @@ fn collect_live_runtime_outputs(
                         adapter: None,
                     },
                 ) {
-                    Ok(response) => {
-                        AppleAdapterObservedSampleOutput::from_text(sample.sample_id.clone(), response.output)
-                    }
+                    Ok(response) => AppleAdapterObservedSampleOutput::from_text(
+                        sample.sample_id.clone(),
+                        response.output,
+                    ),
                     Err(error) => runtime_error_observed_output(
                         sample.sample_id.as_str(),
                         error.to_string(),

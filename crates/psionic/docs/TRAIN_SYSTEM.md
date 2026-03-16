@@ -205,12 +205,15 @@ The current path is:
    checkpoint emission, and staged `.fmadapter` package construction.
 4. The current operator path in
    `apps/autopilot-desktop/src/apple_adapter_training_control.rs` now calls
-   that Rust-native Psionic executor directly for the authoritative train
-   phase. A real operator run (`rust-native-3768-validation-1773641773075`)
-   completed the Rust train step, wrote repo-owned checkpoints, wrote a staged
-   package, and then failed later at the bridge-backed adapter-load gate. That
-   means training is now Rust-native in the shipped path, while export/runtime
-   parity is still an explicit downstream gate rather than a solved fact.
+   that Rust-native Psionic executor directly for the authoritative train and
+   export path. A fresh live operator validation run
+   (`rust-native-3769-validation-1773643126445`) completed the Rust train
+   step, wrote repo-owned checkpoints, emitted a Rust-native Apple
+   `adapter_weights.bin` blob-storage container, staged the final package, and
+   then completed the bridge-backed held-out eval plus runtime-smoke path with
+   `runtime_smoke_passed=true`. That means the narrow shipped Apple
+   train/export lane is now Rust-native end to end, even though later issues
+   still remain around eval fidelity, telemetry, UI, and cleanup.
 5. `psionic-eval` runs the held-out and benchmark-style adapter harnesses, and
    the bridge-backed runtime-smoke path proves the exported package can be
    loaded and exercised against the live Apple FM runtime. That smoke path now
@@ -246,15 +249,16 @@ The shipped Apple reference lane is intentionally narrow:
 - the current live operator activation-checkpoint posture is `disabled`
 - tokenizer and packing truth now come from a repo-owned Apple-compatible
   transcript preprocessor, not an Apple-exact tokenizer oracle
-- the current live operator export attempt is repo-owned, but live bridge
-  acceptance still fails for the staged Rust-exported package, so the end to
-  end Apple-valid runtime-asset boundary is not honestly complete yet
+- the current live operator export is repo-owned and bridge-accepted for the
+  narrow reference lane, with `adapter_weights.bin` emitted as the same
+  64-byte-aligned Core ML blob-storage family Apple accepts rather than as raw
+  concatenated fp16 bytes
 - the higher-level optional follow-on is draft-model distillation, not a second
   generic full-model trainer
 
 That is why the right current claim is "the repo now ships a Rust-native
-authoritative Apple train phase with an unresolved export/runtime parity gate"
-rather than "Psionic now has complete Rust-native distributed Apple FM
+authoritative Apple train/export lane for one narrow single-host reference
+path" rather than "Psionic now has complete Rust-native distributed Apple FM
 training."
 
 ### Relationship To Cluster And Distributed Training Substrate

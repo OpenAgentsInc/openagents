@@ -13,9 +13,9 @@ pub use openagents_provider_substrate::{
     ProviderAdapterTrainingSettlementTrigger, ProviderAdvertisedProduct,
     ProviderAppleAdapterHostingAvailability, ProviderAppleAdapterHostingEntry,
     ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderBlocker,
-    ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
-    ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
-    ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
+    ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls, ProviderInventoryRow,
+    ProviderMode, ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
+    derive_provider_products, detect_sandbox_supply,
 };
 use psionic_apple_fm::{
     AppleFmAdapterInventoryEntry, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
@@ -26,8 +26,7 @@ pub type LocalInferenceBackend = ProviderBackendKind;
 pub type EarnFailureClass = ProviderFailureClass;
 pub type ProviderInventoryProductToggleTarget = ProviderComputeProduct;
 
-const APPLE_ADAPTER_REFERENCE_ENVIRONMENT_REF: &str =
-    "env.openagents.apple_adapter.helpdesk.core";
+const APPLE_ADAPTER_REFERENCE_ENVIRONMENT_REF: &str = "env.openagents.apple_adapter.helpdesk.core";
 const APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF: &str =
     "policy://validator/apple_adapter/helpdesk";
 const APPLE_ADAPTER_REFERENCE_CHECKPOINT_FAMILY: &str = "apple_adapter";
@@ -513,7 +512,11 @@ mod tests {
 
         let availability = runtime.availability();
 
-        assert!(availability.adapter_training_contributor.contributor_supported);
+        assert!(
+            availability
+                .adapter_training_contributor
+                .contributor_supported
+        );
         assert!(
             availability
                 .adapter_training_contributor
@@ -543,9 +546,7 @@ mod tests {
             vec![APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF.to_string()]
         );
         assert_eq!(
-            availability
-                .adapter_training_contributor
-                .settlement_trigger,
+            availability.adapter_training_contributor.settlement_trigger,
             Some(ProviderAdapterTrainingSettlementTrigger::AcceptedContribution)
         );
     }
