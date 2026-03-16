@@ -393,6 +393,290 @@ impl AutodiffBackwardResult {
     }
 }
 
+/// Stable target signature for one reverse-mode transform.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReverseModeTransformSignature {
+    /// Output tensor differentiated by the transform.
+    pub output: TensorId,
+    /// Primal tensors whose cotangents are exposed by the transform.
+    pub primal_targets: Vec<TensorId>,
+}
+
+/// Typed error returned by the public reverse-mode transform layer.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum ReverseModeTransformError {
+    /// One requested transform tensor is not present in the graph.
+    #[error("reverse-mode transform graph does not contain tensor `{tensor_id}`")]
+    UnknownTensor {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One requested primal target is not gradient-bearing.
+    #[error("reverse-mode transform target `{tensor_id}` is not gradient-tracked")]
+    UntrackedTarget {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One requested target uses a dtype outside the bounded reverse-mode surface.
+    #[error(
+        "reverse-mode transform target `{tensor_id}` uses unsupported gradient dtype `{dtype:?}`"
+    )]
+    UnsupportedTargetDType {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Observed dtype.
+        dtype: DType,
+    },
+    /// `grad` and `value_and_grad` currently require a singleton output.
+    #[error("reverse-mode transform `{transform}` requires a singleton output; tensor `{tensor_id}` has shape {shape}")]
+    NonSingletonOutput {
+        /// Stable transform label.
+        transform: String,
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+        /// Observed output shape.
+        shape: Shape,
+    },
+    /// One forward output value was missing after evaluation.
+    #[error("reverse-mode transform output `{tensor_id}` did not materialize a forward value")]
+    MissingForwardValue {
+        /// Stable tensor identifier.
+        tensor_id: TensorId,
+    },
+    /// One lower autodiff operation refused the requested transform.
+    #[error(transparent)]
+    Autodiff(#[from] AutodiffError),
+}
+
+impl ReverseModeTransformError {
+    /// Returns the canonical refusal when the transform layer intentionally
+    /// refuses one unsupported family.
+    #[must_use]
+    pub fn refusal(&self) -> Option<PsionicRefusal> {
+        match self {
+            Self::UnsupportedTargetDType { tensor_id, .. } => Some(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedGradient,
+                    PsionicRefusalScope::Autodiff,
+                    self.to_string(),
+                )
+                .with_subject(format!("{tensor_id:?}")),
+            ),
+            Self::Autodiff(error) => error.refusal(),
+            Self::UnknownTensor { .. }
+            | Self::UntrackedTarget { .. }
+            | Self::NonSingletonOutput { .. }
+            | Self::MissingForwardValue { .. } => None,
+        }
+    }
+}
+
+/// Materialized result from one public `grad` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GradTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: ReverseModeTransformSignature,
+    /// Materialized gradients for each requested primal target.
+    pub gradients: BTreeMap<TensorId, TensorData>,
+    /// Underlying autodiff result retained for debugging or plan inspection.
+    pub backward_result: AutodiffBackwardResult,
+}
+
+/// Materialized result from one public `value_and_grad` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ValueAndGradTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: ReverseModeTransformSignature,
+    /// Forward value for the differentiated output tensor.
+    pub value: TensorData,
+    /// Materialized gradients for each requested primal target.
+    pub gradients: BTreeMap<TensorId, TensorData>,
+    /// Underlying autodiff result retained for debugging or plan inspection.
+    pub backward_result: AutodiffBackwardResult,
+}
+
+/// Materialized result from one public `vjp` transform call.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VjpTransformResult {
+    /// Stable signature used to build the transform.
+    pub signature: ReverseModeTransformSignature,
+    /// Forward value for the differentiated output tensor.
+    pub value: TensorData,
+    /// Materialized cotangents for each requested primal target.
+    pub cotangents: BTreeMap<TensorId, TensorData>,
+    /// Underlying autodiff result retained for debugging or plan inspection.
+    pub backward_result: AutodiffBackwardResult,
+}
+
+/// First-class public `grad` transform over one autodiff graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GradTransform {
+    graph: AutodiffGraph,
+    signature: ReverseModeTransformSignature,
+}
+
+impl GradTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &ReverseModeTransformSignature {
+        &self.signature
+    }
+
+    /// Materializes the requested gradients for one set of primal inputs.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+    ) -> Result<GradTransformResult, ReverseModeTransformError> {
+        let backward_result = self
+            .graph
+            .backward_materialized(self.signature.output, inputs)?;
+        let gradients = collect_requested_gradients(
+            &self.graph,
+            &backward_result,
+            self.signature.primal_targets.as_slice(),
+        )?;
+        Ok(GradTransformResult {
+            signature: self.signature.clone(),
+            gradients,
+            backward_result,
+        })
+    }
+}
+
+/// First-class public `value_and_grad` transform over one autodiff graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ValueAndGradTransform {
+    graph: AutodiffGraph,
+    signature: ReverseModeTransformSignature,
+}
+
+impl ValueAndGradTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &ReverseModeTransformSignature {
+        &self.signature
+    }
+
+    /// Materializes the forward value and requested gradients for one input set.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+    ) -> Result<ValueAndGradTransformResult, ReverseModeTransformError> {
+        let backward_result = self
+            .graph
+            .backward_materialized(self.signature.output, inputs)?;
+        let value = backward_result
+            .forward_values
+            .get(&self.signature.output)
+            .cloned()
+            .ok_or(ReverseModeTransformError::MissingForwardValue {
+                tensor_id: self.signature.output,
+            })?;
+        let gradients = collect_requested_gradients(
+            &self.graph,
+            &backward_result,
+            self.signature.primal_targets.as_slice(),
+        )?;
+        Ok(ValueAndGradTransformResult {
+            signature: self.signature.clone(),
+            value,
+            gradients,
+            backward_result,
+        })
+    }
+}
+
+/// First-class public `vjp` transform over one autodiff graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VjpTransform {
+    graph: AutodiffGraph,
+    signature: ReverseModeTransformSignature,
+}
+
+impl VjpTransform {
+    /// Returns the stable signature for the transform.
+    #[must_use]
+    pub fn signature(&self) -> &ReverseModeTransformSignature {
+        &self.signature
+    }
+
+    /// Materializes the forward value and requested cotangents using one explicit upstream seed.
+    pub fn apply(
+        &self,
+        inputs: &BTreeMap<TensorId, TensorData>,
+        seed: TensorData,
+    ) -> Result<VjpTransformResult, ReverseModeTransformError> {
+        let backward_result = self.graph.backward_materialized_with_seed(
+            self.signature.output,
+            inputs,
+            Some(seed),
+        )?;
+        let value = backward_result
+            .forward_values
+            .get(&self.signature.output)
+            .cloned()
+            .ok_or(ReverseModeTransformError::MissingForwardValue {
+                tensor_id: self.signature.output,
+            })?;
+        let cotangents = collect_requested_gradients(
+            &self.graph,
+            &backward_result,
+            self.signature.primal_targets.as_slice(),
+        )?;
+        Ok(VjpTransformResult {
+            signature: self.signature.clone(),
+            value,
+            cotangents,
+            backward_result,
+        })
+    }
+}
+
+/// Creates one public `grad` transform over the provided output and primal targets.
+pub fn grad(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<GradTransform, ReverseModeTransformError> {
+    let signature =
+        validate_reverse_mode_transform_signature(graph, output, primal_targets, Some("grad"))?;
+    Ok(GradTransform {
+        graph: graph.clone(),
+        signature,
+    })
+}
+
+/// Creates one public `value_and_grad` transform over the provided output and primal targets.
+pub fn value_and_grad(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<ValueAndGradTransform, ReverseModeTransformError> {
+    let signature = validate_reverse_mode_transform_signature(
+        graph,
+        output,
+        primal_targets,
+        Some("value_and_grad"),
+    )?;
+    Ok(ValueAndGradTransform {
+        graph: graph.clone(),
+        signature,
+    })
+}
+
+/// Creates one public `vjp` transform over the provided output and primal targets.
+pub fn vjp(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+) -> Result<VjpTransform, ReverseModeTransformError> {
+    let signature = validate_reverse_mode_transform_signature(graph, output, primal_targets, None)?;
+    Ok(VjpTransform {
+        graph: graph.clone(),
+        signature,
+    })
+}
+
 /// Autodiff-aware graph bundle with per-tensor tracking posture.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AutodiffGraph {
@@ -893,6 +1177,90 @@ impl AutodiffGraph {
             gradients,
         })
     }
+}
+
+fn validate_reverse_mode_transform_signature(
+    graph: &AutodiffGraph,
+    output: TensorId,
+    primal_targets: &[TensorId],
+    singleton_transform: Option<&str>,
+) -> Result<ReverseModeTransformSignature, ReverseModeTransformError> {
+    let output_node = graph
+        .graph()
+        .node(output)
+        .ok_or(ReverseModeTransformError::UnknownTensor { tensor_id: output })?;
+    ensure_supported_transform_target(output_node.tensor())?;
+    if let Some(transform) = singleton_transform {
+        if output_node.tensor().spec().shape().element_count() != 1 {
+            return Err(ReverseModeTransformError::NonSingletonOutput {
+                transform: String::from(transform),
+                tensor_id: output,
+                shape: output_node.tensor().spec().shape().clone(),
+            });
+        }
+    }
+
+    for target in primal_targets {
+        let node = graph
+            .graph()
+            .node(*target)
+            .ok_or(ReverseModeTransformError::UnknownTensor { tensor_id: *target })?;
+        if !graph.requires_grad(*target) {
+            return Err(ReverseModeTransformError::UntrackedTarget { tensor_id: *target });
+        }
+        ensure_supported_transform_target(node.tensor())?;
+    }
+
+    Ok(ReverseModeTransformSignature {
+        output,
+        primal_targets: primal_targets.to_vec(),
+    })
+}
+
+fn ensure_supported_transform_target(tensor: &Tensor) -> Result<(), ReverseModeTransformError> {
+    if tensor.spec().dtype() == DType::F32 {
+        Ok(())
+    } else {
+        Err(ReverseModeTransformError::UnsupportedTargetDType {
+            tensor_id: tensor.id(),
+            dtype: tensor.spec().dtype(),
+        })
+    }
+}
+
+fn collect_requested_gradients(
+    graph: &AutodiffGraph,
+    backward_result: &AutodiffBackwardResult,
+    primal_targets: &[TensorId],
+) -> Result<BTreeMap<TensorId, TensorData>, ReverseModeTransformError> {
+    primal_targets
+        .iter()
+        .map(|target| {
+            let gradient = if let Some(gradient) = backward_result.gradient(*target) {
+                gradient.clone()
+            } else {
+                zero_gradient_for_target(graph, *target)?
+            };
+            Ok((*target, gradient))
+        })
+        .collect()
+}
+
+fn zero_gradient_for_target(
+    graph: &AutodiffGraph,
+    tensor_id: TensorId,
+) -> Result<TensorData, ReverseModeTransformError> {
+    let node = graph
+        .graph()
+        .node(tensor_id)
+        .ok_or(ReverseModeTransformError::UnknownTensor { tensor_id })?;
+    Ok(TensorData::F32(vec![
+        0.0;
+        node.tensor()
+            .spec()
+            .shape()
+            .element_count()
+    ]))
 }
 
 /// Autodiff-aware wrapper over the canonical graph builder.
@@ -1759,8 +2127,9 @@ mod tests {
     use psionic_core::{DType, Device, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorData};
 
     use crate::{
-        gradient_support_for_op, AutodiffContext, AutodiffError, AutodiffGradientSupport,
-        AutodiffGraphBuilder, AutodiffUnsupportedGradientReason, TensorId,
+        grad, gradient_support_for_op, value_and_grad, vjp, AutodiffContext, AutodiffError,
+        AutodiffGradientSupport, AutodiffGraphBuilder, AutodiffUnsupportedGradientReason,
+        ReverseModeTransformError, TensorId,
     };
 
     #[test]
@@ -2058,12 +2427,144 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn public_reverse_mode_transforms_expose_grad_value_and_grad_and_vjp(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut grad_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = grad_builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let doubled = grad_builder.add(&x, &x)?;
+        let loss = grad_builder.reduce_sum(&doubled);
+        let grad_graph = grad_builder.finish(vec![loss.clone()]);
+        let inputs = BTreeMap::from([(x.id(), TensorData::F32(vec![1.0, 2.0]))]);
+
+        let grad_transform = grad(&grad_graph, loss.id(), &[x.id()])?;
+        let grad_result = grad_transform.apply(&inputs)?;
+        assert_eq!(
+            dense_tensor(
+                grad_result
+                    .gradients
+                    .get(&x.id())
+                    .expect("grad result should include x")
+            ),
+            vec![2.0, 2.0]
+        );
+
+        let value_and_grad_transform = value_and_grad(&grad_graph, loss.id(), &[x.id()])?;
+        let value_and_grad_result = value_and_grad_transform.apply(&inputs)?;
+        assert_eq!(dense_tensor(&value_and_grad_result.value), vec![6.0]);
+        assert_eq!(
+            dense_tensor(
+                value_and_grad_result
+                    .gradients
+                    .get(&x.id())
+                    .expect("value_and_grad should include x")
+            ),
+            vec![2.0, 2.0]
+        );
+
+        let mut vjp_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let vx = vjp_builder.input("vx", Shape::new(vec![2]), DType::F32, true);
+        let bias = vjp_builder.constant_f32(Shape::new(vec![2]), vec![1.0, -1.0])?;
+        let output = vjp_builder.add(&vx, &bias)?;
+        let vjp_graph = vjp_builder.finish(vec![output.clone()]);
+        let vjp_inputs = BTreeMap::from([(vx.id(), TensorData::F32(vec![3.0, 1.0]))]);
+
+        let vjp_transform = vjp(&vjp_graph, output.id(), &[vx.id()])?;
+        let vjp_result = vjp_transform.apply(&vjp_inputs, TensorData::F32(vec![0.5, 2.0]))?;
+        assert_eq!(dense_tensor(&vjp_result.value), vec![4.0, 0.0]);
+        assert_eq!(
+            dense_tensor(
+                vjp_result
+                    .cotangents
+                    .get(&vx.id())
+                    .expect("vjp should include vx")
+            ),
+            vec![0.5, 2.0]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_reverse_mode_transforms_refuse_invalid_targets_and_zero_disconnected_paths(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut invalid_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let tracked = invalid_builder.input("tracked", Shape::new(vec![2]), DType::F32, true);
+        let untracked = invalid_builder.input("untracked", Shape::new(vec![2]), DType::F32, false);
+        let nonscalar = invalid_builder.add(&tracked, &tracked)?;
+        let invalid_graph = invalid_builder.finish(vec![nonscalar.clone()]);
+
+        assert_eq!(
+            grad(&invalid_graph, nonscalar.id(), &[tracked.id()]),
+            Err(ReverseModeTransformError::NonSingletonOutput {
+                transform: String::from("grad"),
+                tensor_id: nonscalar.id(),
+                shape: Shape::new(vec![2]),
+            })
+        );
+        assert_eq!(
+            value_and_grad(&invalid_graph, nonscalar.id(), &[tracked.id()]),
+            Err(ReverseModeTransformError::NonSingletonOutput {
+                transform: String::from("value_and_grad"),
+                tensor_id: nonscalar.id(),
+                shape: Shape::new(vec![2]),
+            })
+        );
+        assert_eq!(
+            vjp(&invalid_graph, nonscalar.id(), &[untracked.id()]),
+            Err(ReverseModeTransformError::UntrackedTarget {
+                tensor_id: untracked.id(),
+            })
+        );
+
+        let mut zero_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = zero_builder.input("x", Shape::new(vec![2]), DType::F32, true);
+        let y = zero_builder.input("y", Shape::new(vec![2]), DType::F32, true);
+        let loss = zero_builder.reduce_sum(&x);
+        let zero_graph = zero_builder.finish(vec![loss.clone()]);
+        let zero_transform = grad(&zero_graph, loss.id(), &[x.id(), y.id()])?;
+        let zero_inputs = BTreeMap::from([
+            (x.id(), TensorData::F32(vec![2.0, -1.0])),
+            (y.id(), TensorData::F32(vec![9.0, 5.0])),
+        ]);
+        let zero_result = zero_transform.apply(&zero_inputs)?;
+
+        assert_eq!(
+            dense_tensor(
+                zero_result
+                    .gradients
+                    .get(&x.id())
+                    .expect("x gradient should be present")
+            ),
+            vec![1.0, 1.0]
+        );
+        assert_eq!(
+            dense_tensor(
+                zero_result
+                    .gradients
+                    .get(&y.id())
+                    .expect("y gradient should be synthesized as zeros")
+            ),
+            vec![0.0, 0.0]
+        );
+
+        Ok(())
+    }
+
     fn dense_gradient(result: &super::AutodiffBackwardResult, tensor_id: TensorId) -> Vec<f32> {
         let gradient = result
             .gradient(tensor_id)
             .expect("gradient should be present");
-        let TensorData::F32(values) = gradient else {
-            panic!("expected dense f32 gradient");
+        dense_tensor(gradient)
+    }
+
+    fn dense_tensor(data: &TensorData) -> Vec<f32> {
+        let TensorData::F32(values) = data else {
+            panic!("expected dense f32 tensor");
         };
         values.clone()
     }
