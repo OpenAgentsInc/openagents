@@ -145,6 +145,16 @@ pub struct ArchitectureExplainerFirstRunReport {
     pub authority_base_url: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArchitectureExplainerAdapterBenchmarkReport {
+    pub schema_version: u16,
+    pub generated_at_epoch_ms: u64,
+    pub benchmark_corpus_manifest_path: String,
+    pub adapter_package_path: String,
+    pub benchmark_report: AppleAdapterBaseVsAdapterBenchmarkReport,
+    pub weak_case_ids: Vec<String>,
+}
+
 pub fn run_architecture_explainer_reference_cycle(
     config: &ArchitectureExplainerFirstRunConfig,
 ) -> Result<ArchitectureExplainerFirstRunReport> {
@@ -168,6 +178,7 @@ pub fn run_architecture_explainer_reference_cycle(
         license: config.license.clone(),
         apple_fm_base_url: config.apple_fm_base_url.clone(),
         expected_base_model_signature: Some(manifest.base_model_signature.clone()),
+        experiment_manifest_path: Some(config.experiment_manifest_path.display().to_string()),
     };
 
     let prior_run_ids = operator_status()
@@ -291,6 +302,92 @@ pub fn run_architecture_explainer_reference_cycle(
     };
     write_report_outputs(config, &report)?;
     Ok(report)
+}
+
+pub fn benchmark_architecture_explainer_adapter_package(
+    config: &ArchitectureExplainerFirstRunConfig,
+    adapter_package_path: &Path,
+) -> Result<ArchitectureExplainerAdapterBenchmarkReport> {
+    let manifest = read_json::<AppleAdapterExperimentManifest>(
+        config.experiment_manifest_path.as_path(),
+        "experiment manifest",
+    )?;
+    manifest.validate()?;
+    let corpus = read_json::<AppleAdapterCuratedCorpusManifest>(
+        config.corpus_manifest_path.as_path(),
+        "benchmark corpus manifest",
+    )?;
+    corpus.validate()?;
+
+    let runtime_profile = derive_reference_runtime_profile(
+        config.apple_fm_base_url.as_str(),
+        Some(manifest.base_model_signature.as_str()),
+    )?;
+    let train_dataset = load_dataset(config.train_dataset_path.as_path(), &runtime_profile)
+        .context("failed to reload train dataset for benchmark environment")?;
+    let benchmark_runtime_profile = runtime_profile_with_dataset_defaults(
+        &runtime_profile,
+        &load_dataset(config.benchmark_dataset_path.as_path(), &runtime_profile)
+            .context("failed to prime benchmark dataset defaults")?,
+    );
+    let benchmark_dataset = load_dataset(
+        config.benchmark_dataset_path.as_path(),
+        &benchmark_runtime_profile,
+    )
+    .context("failed to load benchmark dataset")?;
+    let run_id = format!(
+        "benchmark-existing-{}",
+        current_epoch_ms()
+    );
+    let benchmark_environment =
+        build_environment_bundle(run_id.as_str(), &train_dataset, &benchmark_dataset)?;
+    let benchmark_harness = AppleAdapterEvalHarness::new(benchmark_environment.clone())?;
+    let benchmark_key = architecture_explainer_benchmark_key(&corpus)?;
+    let benchmark_package = build_curated_benchmark_package(
+        &benchmark_harness,
+        benchmark_key,
+        &benchmark_dataset,
+        &corpus,
+        1,
+    )?;
+    let base_outputs = collect_live_runtime_outputs(
+        config.apple_fm_base_url.as_str(),
+        &benchmark_dataset,
+        None,
+        run_id.as_str(),
+    )?;
+    let adapted_outputs = collect_live_runtime_outputs(
+        config.apple_fm_base_url.as_str(),
+        &benchmark_dataset,
+        Some(adapter_package_path),
+        run_id.as_str(),
+    )?;
+    let started_at_ms = current_epoch_ms();
+    let benchmark_report = run_curated_base_vs_adapter_benchmark(
+        &benchmark_harness,
+        &benchmark_package,
+        &benchmark_dataset,
+        &corpus,
+        base_outputs,
+        adapted_outputs,
+        &manifest.acceptance_policy,
+        started_at_ms,
+        started_at_ms.saturating_add(100),
+    )?;
+    let weak_case_ids = benchmark_report
+        .case_deltas
+        .iter()
+        .filter(|delta| !delta.improved)
+        .map(|delta| delta.case_id.clone())
+        .collect::<Vec<_>>();
+    Ok(ArchitectureExplainerAdapterBenchmarkReport {
+        schema_version: REPORT_SCHEMA_VERSION,
+        generated_at_epoch_ms: current_epoch_ms(),
+        benchmark_corpus_manifest_path: config.corpus_manifest_path.display().to_string(),
+        adapter_package_path: adapter_package_path.display().to_string(),
+        benchmark_report,
+        weak_case_ids,
+    })
 }
 
 fn authority_client(
@@ -505,13 +602,13 @@ fn collect_live_runtime_outputs(
                 }
             } else {
                 match client.respond_in_session(
-                session.id.as_str(),
-                &AppleFmSessionRespondRequest {
-                    prompt,
-                    options: apple_eval_generation_options(),
-                    adapter: None,
-                },
-            ) {
+                    session.id.as_str(),
+                    &AppleFmSessionRespondRequest {
+                        prompt,
+                        options: apple_eval_generation_options(),
+                        adapter: None,
+                    },
+                ) {
                     Ok(response) => AppleAdapterObservedSampleOutput::from_text(
                         sample.sample_id.clone(),
                         response.output,

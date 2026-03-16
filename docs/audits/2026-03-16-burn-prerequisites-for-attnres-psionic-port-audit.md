@@ -327,6 +327,40 @@ Required rule:
 This is the Burn dashboard lesson translated correctly into OpenAgents
 ownership boundaries.
 
+## Overlap With ROADMAP_MLX
+
+These prerequisites are not a separate framework program competing with
+`crates/psionic/docs/ROADMAP_MLX.md`.
+
+They map directly onto the early reusable MLX-class issue families already
+named there:
+
+| Burn/AttnRes prerequisite | `ROADMAP_MLX.md` overlap |
+| --- | --- |
+| parameter identity and traversal | `PMLX-301` |
+| module-state save/load discipline | `PMLX-302` |
+| linear, embedding, norms, activations, and dropout as shared layers | `PMLX-303` |
+| losses and helper surface needed for tiny training | `PMLX-304` |
+| optimizer shell above `psionic-train` primitives | `PMLX-305` |
+| AttnRes-enabling array/view closure | `PMLX-104` |
+| AttnRes-enabling public reverse-mode transform closure | `PMLX-201` |
+
+That means the right sequencing is:
+
+1. Close the AttnRes-enabling subset of `PMLX-104`, `PMLX-201`, and
+   `PMLX-301` through `PMLX-305`.
+2. Land the AttnRes model-family, tiny trainer, checkpoint path, and WGPUI lab
+   on top of that shared framework slice.
+3. Resume the broader MLX issue queue after the first bounded consumer is
+   honest.
+
+What should not happen:
+
+- a second AttnRes-only module or parameter-tree layer
+- a second optimizer-state mapping contract
+- a second module-state save/load contract
+- a WGPUI lab that arrives before the shared runtime or train snapshot truth
+
 ## Burn Ideas That Are Not Prerequisites
 
 These should stay behind unless a later general Psionic need appears.

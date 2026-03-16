@@ -177,6 +177,53 @@ Psionic already has strong lower-layer fit for this work:
 
 What is missing is the MLX-shaped public semantics layer above that substrate.
 
+## Overlap With AttnRes And Burn Prerequisite Audits
+
+Two local docs now describe a bounded model-family forcing function that
+overlaps this roadmap:
+
+- `../../../docs/audits/2026-03-16-attnres-port-into-psionic-and-wgpui-audit.md`
+- `../../../docs/audits/2026-03-16-burn-prerequisites-for-attnres-psionic-port-audit.md`
+
+The overlap is real, but these docs should not be merged.
+
+The owner split should stay:
+
+- `ROADMAP_MLX.md` owns the reusable framework program
+- the AttnRes audit owns one bounded model-family and WGPUI consumer plan
+- the Burn prerequisite audit explains why some framework pieces are genuine
+  prerequisites rather than optional cleanup
+
+The shared overlap is concentrated in a small subset of the MLX issue queue:
+
+| Shared concern | MLX issue family | AttnRes/Burn implication |
+| --- | --- | --- |
+| public array and view semantics needed by AttnRes | `PMLX-104` | AttnRes should consume the shared array/view surface instead of adding model-local tensor helpers |
+| public reverse-mode transform surface on the trainable path | `PMLX-201` | AttnRes tiny training should not invent a second autodiff posture outside the MLX-class public transform layer |
+| module tree, parameter identity, and freeze posture | `PMLX-301` | This is the same prerequisite identified by the Burn audit for optimizer state and checkpoint truth |
+| module-state save/load and naming discipline | `PMLX-302` | AttnRes should reuse the shared module-state contract and only keep Burn import as an optional migration bridge |
+| core layer surface | `PMLX-303` | Linear, embedding, norm, activation, and dropout closure are the same reusable framework needs AttnRes exposes |
+| losses and `nn` helpers | `PMLX-304` | AttnRes needs the same loss and helper surface the MLX lane already plans to own |
+| public optimizer shell above train primitives | `PMLX-305` | Burn's parameter-identity lesson maps directly onto this issue family |
+
+The execution rule is:
+
+- do not start AttnRes by creating a parallel framework branch outside this
+  roadmap
+- close the AttnRes-enabling subset of `PMLX-104`, `PMLX-201`, and
+  `PMLX-301` through `PMLX-305` first
+- then land the AttnRes model-family, train-reference, and app-owned WGPUI lab
+  on top of those shared surfaces
+- only after that first consumer is honest should the program widen again into
+  broader MLX transforms, quantized-module breadth, export breadth,
+  distributed semantics, and compatibility shells
+
+So the right decision is:
+
+- keep the docs separate
+- share the early framework slice
+- use AttnRes as the first bounded forcing-function consumer of that slice
+
 ## Ecosystem Evidence From `~/code/ivanf`
 
 Reviewing `~/code/ivanf` clarified that "full MLX port" means more than the
@@ -501,15 +548,24 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 - `PMLX-205`
 - `PMLX-206`
 
-### Phase 4: land `nn`, optimizers, and quantized modules
+### Phase 4: land the first reusable `nn` slice, using AttnRes as the first forcing function
+
+First close the AttnRes-enabling shared framework slice:
 
 - `PMLX-301`
 - `PMLX-302`
 - `PMLX-303`
 - `PMLX-304`
 - `PMLX-305`
+
+Then widen to broader MLX `nn` breadth:
+
 - `PMLX-306`
 - `PMLX-307`
+
+Before Phase 5 breadth, use that shared slice to land the bounded AttnRes port
+described in the local audits rather than opening an AttnRes-only framework
+track in parallel.
 
 ### Phase 5: finish export, serialization, memory, and debug tooling
 
