@@ -16,6 +16,7 @@
 pub mod arbiter;
 pub mod dsl;
 pub mod interactive;
+pub mod interactive_baselines;
 pub mod interactive_parity;
 pub mod interpreter;
 pub mod mdl;
@@ -41,6 +42,11 @@ pub use interactive::{
     ArcInteractiveEnvironmentKind, ArcInteractiveGameStep, ArcInteractiveRunArtifacts,
     ArcInteractiveRunner, ArcInteractiveRunnerConfig, ArcInteractiveRunnerConfigError,
     ArcInteractiveRunnerError, ArcInteractiveSessionContext, INTERACTIVE_RUNNER_BOUNDARY_SUMMARY,
+};
+pub use interactive_baselines::{
+    ArcRandomBaselineAgent, ArcRandomBaselineConfig, ArcRandomBaselineConfigError,
+    ArcScriptedBaselineAgent, ArcScriptedBaselineConfigError, ArcScriptedBaselineProgram,
+    ArcScriptedFallbackPolicy, INTERACTIVE_BASELINES_BOUNDARY_SUMMARY,
 };
 pub use interactive_parity::{
     compare_interactive_run_artifacts, ArcInteractiveRunnerExpectedDifference,

@@ -1718,6 +1718,11 @@ manifest-driven harness that compares local/offline and remote/online runner
 episodes for action execution, checkpoint resume, recording bodies, and
 scorecard closeout while documenting expected environment/operation-mode
 divergences explicitly instead of treating them as incidental mismatches.
+`ARC-402` is now also landed in bounded form: `arc-solvers` ships a
+checkpointable seeded-random baseline plus a deterministic scripted-program
+baseline that both run through the shared interactive runner and emit typed
+recordings, checkpoint bundles, turn results, execution outcomes, and remote
+scorecard summaries rather than ad hoc logs.
 
 ### Phase 5: Psionic primitive expansion
 
