@@ -1,22 +1,25 @@
 //! CPU backend for Psionic.
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use psionic_compiler::compile_graph;
 use psionic_core::{
     BackendExtensionKind, BackendExtensionOp, DType, Device, QuantizationMode, Shape, TensorData,
-    TensorId, TensorSpec,
+    TensorId, TensorSpec, ViewSemantics,
 };
 use psionic_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use psionic_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
     BackendExtensionSupport, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
-    BufferResidency, BufferStorageKind, CacheAction, CacheKind, CacheObservation,
-    CompilePathEvidence, CompilePathTemperature, DeviceDescriptor, DeviceDiscovery,
-    ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
-    ExecutionPlanCacheState, ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport,
-    KernelCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-    RuntimeError, RuntimeHealth,
+    BufferResidency, BufferStorageContract, BufferStorageIdentity, BufferStorageKind, CacheAction,
+    CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature, DeviceDescriptor,
+    DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy,
+    ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, HealthStatus,
+    KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
+    QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -26,12 +29,20 @@ const CPU_POOL_MAX_CACHED_BUFFERS: usize = 64;
 const CPU_POOL_MAX_CACHED_BYTES: u64 = 8 * 1024 * 1024;
 const CPU_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
 const CPU_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1024 * 1024;
+static NEXT_CPU_STORAGE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Host-resident tensor buffer for CPU execution.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CpuBuffer {
     spec: TensorSpec,
+    storage_contract: BufferStorageContract,
     storage: CpuBufferStorage,
+}
+
+impl PartialEq for CpuBuffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.spec == other.spec && self.storage == other.storage
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +73,7 @@ impl CpuBuffer {
         }
         Ok(Self {
             spec,
+            storage_contract: owned_storage_contract(),
             storage: CpuBufferStorage::Dense(data),
         })
     }
@@ -81,6 +93,7 @@ impl CpuBuffer {
         }
         Ok(Self {
             spec,
+            storage_contract: owned_storage_contract(),
             storage: CpuBufferStorage::Dense(data),
         })
     }
@@ -135,6 +148,7 @@ impl CpuBuffer {
         }
         Ok(Self {
             spec,
+            storage_contract: owned_storage_contract(),
             storage: CpuBufferStorage::QuantizedBlocks {
                 mode,
                 layout,
@@ -148,6 +162,7 @@ impl CpuBuffer {
     pub fn zeros(spec: &TensorSpec) -> Self {
         Self {
             spec: spec.clone(),
+            storage_contract: owned_storage_contract(),
             storage: CpuBufferStorage::Dense(vec![0.0; spec.storage_size()]),
         }
     }
@@ -190,7 +205,24 @@ impl CpuBuffer {
 
     fn view_of(source: &CpuBuffer, spec: TensorSpec) -> Result<Self, RuntimeError> {
         match &source.storage {
-            CpuBufferStorage::Dense(data) => Self::from_storage_f32(spec, data.clone()),
+            CpuBufferStorage::Dense(data) => {
+                let view_semantics = spec
+                    .layout()
+                    .view_semantics_relative_to(source.spec.layout())
+                    .ok_or_else(|| {
+                        RuntimeError::Backend(String::from(
+                            "view spec must stay within source storage span",
+                        ))
+                    })?;
+                Ok(Self {
+                    spec,
+                    storage_contract: BufferStorageContract {
+                        identity: source.storage_contract.identity,
+                        view_semantics,
+                    },
+                    storage: CpuBufferStorage::Dense(data.clone()),
+                })
+            }
             CpuBufferStorage::QuantizedBlocks { .. } => Err(RuntimeError::Backend(String::from(
                 "views of quantized cpu buffers are unsupported",
             ))),
@@ -227,6 +259,17 @@ impl BufferHandle for CpuBuffer {
                 }
             }
         }
+    }
+
+    fn storage_contract(&self) -> Option<BufferStorageContract> {
+        Some(self.storage_contract)
+    }
+}
+
+fn owned_storage_contract() -> BufferStorageContract {
+    BufferStorageContract {
+        identity: BufferStorageIdentity(NEXT_CPU_STORAGE_ID.fetch_add(1, Ordering::Relaxed)),
+        view_semantics: ViewSemantics::Dense,
     }
 }
 
@@ -761,8 +804,14 @@ impl Default for CpuBackend {
 #[derive(Clone, Debug)]
 struct CpuAllocatorPool {
     policy: AllocatorPoolPolicy,
-    cached: HashMap<TensorSpec, Vec<Vec<f32>>>,
+    cached: HashMap<TensorSpec, Vec<CachedDenseCpuBuffer>>,
     state: AllocatorPoolState,
+}
+
+#[derive(Clone, Debug)]
+struct CachedDenseCpuBuffer {
+    identity: BufferStorageIdentity,
+    data: Vec<f32>,
 }
 
 impl CpuAllocatorPool {
@@ -777,19 +826,23 @@ impl CpuAllocatorPool {
     fn allocate(&mut self, spec: &TensorSpec) -> CpuBuffer {
         if self.policy.mode == AllocatorPoolMode::ExactTensorSpec {
             if let Some(entries) = self.cached.get_mut(spec) {
-                if let Some(mut data) = entries.pop() {
+                if let Some(mut cached) = entries.pop() {
                     if entries.is_empty() {
                         self.cached.remove(spec);
                     }
-                    data.fill(0.0);
+                    cached.data.fill(0.0);
                     self.state.cached_buffers = self.state.cached_buffers.saturating_sub(1);
                     self.state.cached_bytes = self
                         .state
                         .cached_bytes
-                        .saturating_sub(buffer_bytes_from_len(data.len()));
+                        .saturating_sub(buffer_bytes_from_len(cached.data.len()));
                     return CpuBuffer {
                         spec: spec.clone(),
-                        storage: CpuBufferStorage::Dense(data),
+                        storage_contract: BufferStorageContract {
+                            identity: cached.identity,
+                            view_semantics: ViewSemantics::Dense,
+                        },
+                        storage: CpuBufferStorage::Dense(cached.data),
                     };
                 }
             }
@@ -801,6 +854,9 @@ impl CpuAllocatorPool {
         if self.policy.mode != AllocatorPoolMode::ExactTensorSpec {
             return;
         }
+        if buffer.storage_contract.view_semantics != ViewSemantics::Dense {
+            return;
+        }
         let CpuBufferStorage::Dense(data) = buffer.storage else {
             return;
         };
@@ -810,7 +866,13 @@ impl CpuAllocatorPool {
         {
             return;
         }
-        self.cached.entry(buffer.spec).or_default().push(data);
+        self.cached
+            .entry(buffer.spec)
+            .or_default()
+            .push(CachedDenseCpuBuffer {
+                identity: buffer.storage_contract.identity,
+                data,
+            });
         self.state.cached_buffers += 1;
         self.state.cached_bytes = self.state.cached_bytes.saturating_add(bytes);
     }
@@ -1480,14 +1542,16 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use psionic_core::{BackendExtensionKind, DType, Device, QuantizationMode, Shape, TensorSpec};
+    use psionic_core::{
+        BackendExtensionKind, DType, Device, QuantizationMode, Shape, TensorSpec, ViewSemantics,
+    };
     use psionic_ir::GraphBuilder;
     use psionic_runtime::{
         Allocator, AllocatorPoolMode, BackendSelectionState, BufferHandle, DeviceDiscovery,
         HealthStatus, RuntimeError, ServedProductBackendPolicy,
     };
 
-    use super::CpuBackend;
+    use super::{CpuAllocatorPool, CpuBackend, CpuBuffer, cpu_allocator_pool_policy};
 
     #[test]
     fn cpu_backend_reports_default_device() -> Result<(), psionic_runtime::RuntimeError> {
@@ -1726,6 +1790,75 @@ mod tests {
             Some(&[2.0, 4.0, 6.0, 5.0, 7.0, 9.0][..])
         );
         assert_eq!(reduced_output.as_f32_slice(), Some(&[12.0, 21.0][..]));
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_buffer_views_preserve_storage_identity_and_view_semantics() -> Result<(), RuntimeError> {
+        let source = CpuBuffer::from_f32(
+            TensorSpec::new(Shape::new(vec![2, 3]), DType::F32, Device::cpu()),
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        )?;
+        let view_spec = TensorSpec::from_layout(
+            source
+                .spec()
+                .layout()
+                .selected(0, 0)
+                .ok_or_else(|| RuntimeError::Backend(String::from("select view should exist")))?,
+            DType::F32,
+            Device::cpu(),
+        );
+        let view = CpuBuffer::view_of(&source, view_spec)?;
+        let broadcast_spec = TensorSpec::from_layout(
+            view.spec().layout().expanded(&Shape::new(vec![2, 3])).ok_or_else(|| {
+                RuntimeError::Backend(String::from("broadcast view should exist"))
+            })?,
+            DType::F32,
+            Device::cpu(),
+        );
+        let broadcast = CpuBuffer::view_of(&view, broadcast_spec)?;
+
+        let source_contract = source.storage_contract();
+        let view_contract = view.storage_contract();
+        let broadcast_contract = broadcast.storage_contract();
+        assert!(source_contract.is_some());
+        assert!(view_contract.is_some());
+        assert!(broadcast_contract.is_some());
+        let Some(source_contract) = source_contract else {
+            return Err(RuntimeError::Backend(String::from("source contract missing")));
+        };
+        let Some(view_contract) = view_contract else {
+            return Err(RuntimeError::Backend(String::from("view contract missing")));
+        };
+        let Some(broadcast_contract) = broadcast_contract else {
+            return Err(RuntimeError::Backend(String::from("broadcast contract missing")));
+        };
+
+        assert_eq!(source_contract.view_semantics, ViewSemantics::Dense);
+        assert_eq!(view_contract.identity, source_contract.identity);
+        assert_eq!(view_contract.view_semantics, ViewSemantics::AliasView);
+        assert_eq!(broadcast_contract.identity, source_contract.identity);
+        assert_eq!(broadcast_contract.view_semantics, ViewSemantics::BroadcastView);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_allocator_pool_reuses_dense_storage_identity() -> Result<(), RuntimeError> {
+        let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
+        let mut pool = CpuAllocatorPool::new(cpu_allocator_pool_policy());
+        let buffer = pool.allocate(&spec);
+        let first_contract = buffer.storage_contract().ok_or_else(|| {
+            RuntimeError::Backend(String::from("allocated buffer should expose storage contract"))
+        })?;
+        pool.recycle(buffer);
+
+        let reused = pool.allocate(&spec);
+        let reused_contract = reused.storage_contract().ok_or_else(|| {
+            RuntimeError::Backend(String::from("reused buffer should expose storage contract"))
+        })?;
+
+        assert_eq!(reused_contract.identity, first_contract.identity);
+        assert_eq!(reused_contract.view_semantics, ViewSemantics::Dense);
         Ok(())
     }
 

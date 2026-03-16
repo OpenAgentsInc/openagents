@@ -61,6 +61,33 @@ impl DType {
             (Self::F16, Self::I8) | (Self::I8, Self::F16) => Some(Self::F16),
         }
     }
+
+    /// Returns the coarse dtype family used by current framework-core
+    /// contracts.
+    #[must_use]
+    pub const fn class(self) -> DTypeClass {
+        match self {
+            Self::F32 | Self::F16 | Self::BF16 => DTypeClass::FloatingPoint,
+            Self::I8 => DTypeClass::SignedInteger,
+        }
+    }
+
+    /// Returns whether the dtype can act as the logical view over quantized
+    /// GGML/GGUF block storage in the current surface.
+    #[must_use]
+    pub const fn supports_quantized_logical_storage(self) -> bool {
+        matches!(self, Self::F32)
+    }
+}
+
+/// Coarse dtype family exposed by the compact Psionic tensor surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DTypeClass {
+    /// Floating-point arithmetic dtype.
+    FloatingPoint,
+    /// Signed integer arithmetic dtype.
+    SignedInteger,
 }
 
 /// Quantization mode for stored model weights.
@@ -448,6 +475,38 @@ impl fmt::Display for Shape {
     }
 }
 
+/// Reachable storage span for one tensor layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LayoutStorageSpan {
+    /// Inclusive starting storage index.
+    pub start: usize,
+    /// Exclusive ending storage index.
+    pub end_exclusive: usize,
+}
+
+/// Logical view posture for one tensor layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewSemantics {
+    /// Dense row-major tensor layout.
+    Dense,
+    /// Alias-preserving non-broadcast view into an existing storage span.
+    AliasView,
+    /// Zero-stride broadcast view into an existing storage span.
+    BroadcastView,
+}
+
+/// Typed alias relation between a derived layout and one source layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LayoutAliasRelation {
+    /// Source storage span that the derived layout must stay within.
+    pub source_span: LayoutStorageSpan,
+    /// Derived reachable storage span.
+    pub derived_span: LayoutStorageSpan,
+    /// View posture of the derived layout.
+    pub semantics: ViewSemantics,
+}
+
 /// Layout metadata for a logical tensor view.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Layout {
@@ -520,6 +579,27 @@ impl Layout {
         *self == Self::contiguous(self.shape.clone())
     }
 
+    /// Returns the reachable storage span for the layout.
+    #[must_use]
+    pub fn storage_span(&self) -> LayoutStorageSpan {
+        LayoutStorageSpan {
+            start: self.offset,
+            end_exclusive: self.storage_size(),
+        }
+    }
+
+    /// Returns the view posture for the layout.
+    #[must_use]
+    pub fn view_semantics(&self) -> ViewSemantics {
+        if self.is_broadcast_view() {
+            ViewSemantics::BroadcastView
+        } else if self.is_contiguous() && self.offset == 0 {
+            ViewSemantics::Dense
+        } else {
+            ViewSemantics::AliasView
+        }
+    }
+
     /// Returns whether the layout is a zero-stride broadcast view over a
     /// smaller source span.
     #[must_use]
@@ -536,6 +616,33 @@ impl Layout {
     #[must_use]
     pub fn is_alias_preserving_transform_of(&self, source: &Self) -> bool {
         self.offset >= source.offset && self.storage_size() <= source.storage_size()
+    }
+
+    /// Returns the typed alias relation to `source` when the derived layout
+    /// stays within the source storage span.
+    #[must_use]
+    pub fn alias_relation_to_source(&self, source: &Self) -> Option<LayoutAliasRelation> {
+        self.view_semantics_relative_to(source)
+            .map(|semantics| LayoutAliasRelation {
+                source_span: source.storage_span(),
+                derived_span: self.storage_span(),
+                semantics,
+            })
+    }
+
+    /// Returns the derived view posture relative to `source` when the layout
+    /// stays within the source storage span.
+    #[must_use]
+    pub fn view_semantics_relative_to(&self, source: &Self) -> Option<ViewSemantics> {
+        self.is_alias_preserving_transform_of(source).then(|| {
+            if self.is_broadcast_view() {
+                ViewSemantics::BroadcastView
+            } else if self == source {
+                ViewSemantics::Dense
+            } else {
+                ViewSemantics::AliasView
+            }
+        })
     }
 
     /// Returns a permuted layout if `order` is valid.
@@ -837,7 +944,7 @@ fn is_permutation(order: &[usize]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{DType, Device, DeviceKind, Layout, Shape, TensorSpec};
+    use super::{DType, DTypeClass, Device, DeviceKind, Layout, Shape, TensorSpec, ViewSemantics};
 
     #[test]
     fn scalar_shape_counts_as_one_element() {
@@ -968,5 +1075,47 @@ mod tests {
         assert!(sliced.is_alias_preserving_transform_of(&source));
         assert!(selected.is_alias_preserving_transform_of(&source));
         assert!(expanded.is_alias_preserving_transform_of(&source));
+    }
+
+    #[test]
+    fn layout_alias_relation_tracks_dense_and_broadcast_views() {
+        let source = Layout::contiguous(Shape::new(vec![2, 3]));
+        let sliced = source.sliced(0, 1, 2);
+        assert!(sliced.is_some());
+        let Some(sliced) = sliced else {
+            return;
+        };
+        let broadcast = Layout::contiguous(Shape::new(vec![1, 3])).expanded(&Shape::new(vec![4, 3]));
+        assert!(broadcast.is_some());
+        let Some(broadcast) = broadcast else {
+            return;
+        };
+
+        let sliced_relation = sliced.alias_relation_to_source(&source);
+        assert!(sliced_relation.is_some());
+        let Some(sliced_relation) = sliced_relation else {
+            return;
+        };
+        assert_eq!(sliced_relation.semantics, ViewSemantics::AliasView);
+        assert_eq!(sliced_relation.source_span.start, 0);
+
+        let broadcast_source = Layout::contiguous(Shape::new(vec![1, 3]));
+        let broadcast_relation = broadcast.alias_relation_to_source(&broadcast_source);
+        assert!(broadcast_relation.is_some());
+        let Some(broadcast_relation) = broadcast_relation else {
+            return;
+        };
+        assert_eq!(broadcast_relation.semantics, ViewSemantics::BroadcastView);
+        assert_eq!(broadcast_relation.derived_span.end_exclusive, 3);
+    }
+
+    #[test]
+    fn dtype_contracts_mark_current_quantized_and_dense_surface() {
+        assert_eq!(DType::F32.class(), DTypeClass::FloatingPoint);
+        assert_eq!(DType::BF16.class(), DTypeClass::FloatingPoint);
+        assert_eq!(DType::I8.class(), DTypeClass::SignedInteger);
+        assert!(DType::F32.supports_quantized_logical_storage());
+        assert!(!DType::F16.supports_quantized_logical_storage());
+        assert!(!DType::I8.supports_quantized_logical_storage());
     }
 }

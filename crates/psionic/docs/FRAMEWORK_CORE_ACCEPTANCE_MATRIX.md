@@ -89,7 +89,7 @@ first.
 
 | Category | Current status | What a green category would mean | Current repo truth | Canonical hooks | Open gap / refusal discipline |
 | --- | --- | --- | --- | --- | --- |
-| Tensor semantics | `implemented_early` | typed tensor identity, shape/layout transforms, alias-preserving view rules, broadcast-compatible binary shape semantics, reduction shape rules, dtype promotion, and quantized payload containers behave deterministically enough to anchor compiler and IO layers | `psionic-core` now owns explicit broadcast and dtype-promotion rules plus alias-preserving view predicates, while `psionic-ir` lowers broadcasted binary ops through explicit `expand` views instead of backend-only coincidence | `psionic-core`, `psionic-ir`, and `psionic-backend-cpu` tensor-semantics tests | Keep the category honest: the shared semantics are now explicit, but this is still not a blanket claim that every backend already executes every promoted dtype or advanced storage family |
+| Tensor semantics | `implemented_early` | typed tensor identity, shape/layout transforms, alias-preserving view rules, storage identity and view posture contracts, broadcast-compatible binary shape semantics, reduction shape rules, dtype promotion, and quantized payload containers behave deterministically enough to anchor compiler and IO layers | `psionic-core` now owns explicit broadcast, dtype-promotion, dtype-class, quantized-logical-storage, layout storage-span, and alias/view-semantic rules, `psionic-runtime` now exposes a backend-visible `BufferStorageContract`, and `psionic-ir` lowers broadcasted binary ops through explicit `expand` views instead of backend-only coincidence | `psionic-core`, `psionic-runtime`, `psionic-ir`, and `psionic-backend-cpu` tensor-semantics tests | Keep the category honest: the shared semantics are now explicit, but this is still not a blanket claim that every backend already executes every promoted dtype or advanced storage family |
 | Autodiff and optimizer behavior | `implemented_early` | reverse-mode autodiff, detach semantics, training-mode gradient rules, broad current primitive-family coverage, and reusable optimizer families are all machine-checkable and not hidden inside one training loop | `psionic-ir` now owns autodiff-aware graph construction, an explicit gradient-support matrix, symbolic backward plans, dense reference materialization, full current primitive-family gradient regression tests, and typed refusal across current backend-extension families, while `psionic-train` owns the reusable optimizer and distributed-optimizer contracts layered above it | `psionic-ir` autodiff tests plus `psionic-train` integration, optimizer, and distributed-optimizer tests | Keep the category honest: the current primitive-family surface is broadly covered, but backend-extension gradients still refuse explicitly and later operator families remain outside this runner |
 | Model and state IO | `implemented_early` | model weights, optimizer state, adapter deltas, tokenizer bindings, and manifest receipts roundtrip through stable formats without losing role or spec truth | `psionic-train::model_io` already owns safetensors export/import, GGUF import, tensor-role manifests, and typed artifact receipts | `psionic-train` model-IO roundtrip and GGUF inventory tests | Do not treat a serving-family loader alone as full model-state IO closure; state-dict and optimizer-state roundtrip must stay in scope |
 | Compiler lowering and realize path | `implemented_early` | compile lowering is deterministic, topology-sensitive, extension-aware, schema-backed, fake- or meta-executable, and replayable from named fixtures instead of being only an internal implementation detail | `psionic-ir` now publishes a built-in operator registry with explicit schema, implementation-family, meta-execution contracts, shape-only graph/plan execution, and capability-gated refusal behavior, while `psionic-compiler` owns deterministic lowering, topology-sensitive digests, and fixture-backed replay tests above that IR surface | `psionic-ir` operator-registry and meta-execution tests plus `psionic-compiler` compile-graph and `process_replay` tests | Do not claim framework-core closure if lowering stays green only on one happy-path fixture while operator schemas, meta validation, fake execution, graph identity, or topology sensitivity drift |
@@ -109,19 +109,29 @@ Current shipped foundation:
 - `TensorSpec` keeps device and dtype explicit
 - layout expand/permute/slice/select rules are deterministic and can be checked
   as alias-preserving transforms over the source storage span
+- layout storage spans, view posture, and alias relations are machine-legible
+  rather than backend-only convention
 - broadcast-compatible binary shape rules are explicit in `psionic-core` and
   realized in `psionic-ir` through inserted `expand` views
 - mixed `I8`/`F16`/`BF16`/`F32` binary ops use an explicit small promotion table
+- dtype class and quantized logical-storage eligibility are explicit in
+  `psionic-core`
 - quantized tensor payload containers exist as typed data, not log-only blobs
+- backend-visible storage identity is explicit in `psionic-runtime` and the CPU
+  reference backend preserves it through dense views and allocator reuse
 
 Canonical hooks:
 
 - `cargo test -p psionic-core tests::tensor_spec_retains_device_and_dtype -- --exact`
 - `cargo test -p psionic-core tests::shape_broadcast_merges_trailing_singleton_axes -- --exact`
 - `cargo test -p psionic-core tests::dtype_promotion_prefers_widest_supported_representation -- --exact`
+- `cargo test -p psionic-core tests::dtype_contracts_mark_current_quantized_and_dense_surface -- --exact`
 - `cargo test -p psionic-core tests::derived_views_remain_alias_preserving_transforms -- --exact`
+- `cargo test -p psionic-core tests::layout_alias_relation_tracks_dense_and_broadcast_views -- --exact`
 - `cargo test -p psionic-core tests::layout_expand_uses_zero_strides -- --exact`
 - `cargo test -p psionic-core tests::layout_permute_updates_shape_and_strides -- --exact`
+- `cargo test -p psionic-backend-cpu --lib tests::cpu_buffer_views_preserve_storage_identity_and_view_semantics -- --exact`
+- `cargo test -p psionic-backend-cpu --lib tests::cpu_allocator_pool_reuses_dense_storage_identity -- --exact`
 - `cargo test -p psionic-ir --lib tests::binary_ops_broadcast_inputs_through_explicit_expand_views -- --exact`
 - `cargo test -p psionic-backend-cpu --lib tests::cpu_backend_executes_broadcast_add_over_index_views -- --exact`
 
