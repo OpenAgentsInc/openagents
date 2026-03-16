@@ -19,7 +19,7 @@ pub use parity::*;
 pub use proof::*;
 use psionic_core::{
     BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
-    TensorId, TensorSpec,
+    TensorId, TensorSpec, ViewSemantics,
 };
 use psionic_ir::ExecutionPlan;
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -9042,6 +9042,25 @@ pub trait BufferHandle {
     fn storage_kind(&self) -> BufferStorageKind {
         BufferStorageKind::DenseF32
     }
+
+    /// Returns the storage identity and view posture for the buffer when the
+    /// backend exposes it.
+    fn storage_contract(&self) -> Option<BufferStorageContract> {
+        None
+    }
+}
+
+/// Stable storage identity for one backend-owned buffer family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BufferStorageIdentity(pub u64);
+
+/// Runtime-visible storage identity plus view posture for one buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BufferStorageContract {
+    /// Stable logical storage identity.
+    pub identity: BufferStorageIdentity,
+    /// View posture over that storage.
+    pub view_semantics: ViewSemantics,
 }
 
 /// Physical residency of a backend-owned buffer.
