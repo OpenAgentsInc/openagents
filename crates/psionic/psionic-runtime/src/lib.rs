@@ -4911,6 +4911,248 @@ pub enum SamplingStrategy {
     Sample,
 }
 
+/// High-level determinism posture for one runtime path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeterminismMode {
+    /// Permit runtime-owned nondeterministic behavior such as OS-seeded RNG.
+    BestEffort,
+    /// Require one replayable seeded generator but allow non-kernel determinism gaps elsewhere.
+    SeededReplay,
+    /// Require one replayable seeded generator plus explicit deterministic-algorithm posture.
+    Strict,
+}
+
+/// Declared deterministic-algorithm posture for one runtime contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeterministicAlgorithmPolicy {
+    /// Deterministic kernels are preferred when available, but not mandatory.
+    PreferDeterministic,
+    /// The caller requires deterministic kernels or an explicit typed refusal.
+    RequireDeterministic,
+}
+
+/// Stable generator family for replayable runtime randomness.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RngAlgorithmKind {
+    /// Runtime replayable `StdRng` seed discipline.
+    StdRngV1,
+}
+
+/// Stable derivation scope for one replayable generator state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum GeneratorScope {
+    /// Root generator for one runtime contract.
+    Root,
+    /// Decode-token generator on one runtime.
+    Decode,
+    /// Eval-time generator on one runtime.
+    Eval,
+    /// Generator derived for one stable local device.
+    LocalDevice {
+        /// Stable device identifier surfaced by runtime discovery.
+        stable_device_id: String,
+    },
+    /// Generator derived for one distributed rank.
+    DistributedRank {
+        /// Stable collective or replica-group identifier.
+        replica_group: String,
+        /// Rank inside that group.
+        rank: usize,
+        /// Declared world size for the group.
+        world_size: usize,
+    },
+}
+
+/// Replayable generator state for runtime-owned randomness.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeneratorState {
+    /// Stable generator family.
+    pub algorithm: RngAlgorithmKind,
+    /// Stable seed used to reconstruct the generator.
+    pub seed: u64,
+    /// Number of stochastic draws already consumed from the generator.
+    pub draws: u64,
+    /// Derivation scope for the generator.
+    pub scope: GeneratorScope,
+}
+
+impl GeneratorState {
+    /// Creates one root runtime generator from a stable seed.
+    #[must_use]
+    pub const fn root(seed: u64) -> Self {
+        Self {
+            algorithm: RngAlgorithmKind::StdRngV1,
+            seed,
+            draws: 0,
+            scope: GeneratorScope::Root,
+        }
+    }
+
+    /// Derives one child generator under a stable scope.
+    #[must_use]
+    pub fn derive_child(&self, scope: GeneratorScope) -> Self {
+        Self {
+            algorithm: self.algorithm,
+            seed: stable_child_generator_seed(self.seed, &scope),
+            draws: 0,
+            scope,
+        }
+    }
+
+    /// Returns a sampler-ready RNG reconstructed from the stored seed and draw count.
+    #[must_use]
+    pub fn restored_rng(&self) -> StdRng {
+        let mut rng = StdRng::seed_from_u64(self.seed);
+        for _ in 0..self.draws {
+            let _ = rng.random::<f32>();
+        }
+        rng
+    }
+}
+
+/// Typed failure from the framework-core determinism contract.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DeterminismContractError {
+    /// Deterministic modes require an explicit generator seed.
+    #[error("determinism mode `{mode:?}` requires a replayable generator state")]
+    MissingGeneratorState {
+        /// Determinism mode that required the generator.
+        mode: DeterminismMode,
+    },
+    /// One distributed-rank derivation used invalid bounds.
+    #[error(
+        "distributed generator derivation requires rank < world_size and non-zero world_size; found rank={rank} world_size={world_size}"
+    )]
+    InvalidDistributedRank {
+        /// Requested rank.
+        rank: usize,
+        /// Declared world size.
+        world_size: usize,
+    },
+}
+
+/// Runtime-owned determinism contract for replayable randomness.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeDeterminismContract {
+    /// High-level determinism posture.
+    pub mode: DeterminismMode,
+    /// Deterministic-algorithm posture for the runtime path.
+    pub algorithm_policy: DeterministicAlgorithmPolicy,
+    /// Replayable generator state when the path is seeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generator: Option<GeneratorState>,
+}
+
+impl RuntimeDeterminismContract {
+    /// Returns a best-effort runtime determinism contract.
+    #[must_use]
+    pub const fn best_effort() -> Self {
+        Self {
+            mode: DeterminismMode::BestEffort,
+            algorithm_policy: DeterministicAlgorithmPolicy::PreferDeterministic,
+            generator: None,
+        }
+    }
+
+    /// Returns a seeded replay contract from one root seed.
+    #[must_use]
+    pub const fn seeded(seed: u64) -> Self {
+        Self {
+            mode: DeterminismMode::SeededReplay,
+            algorithm_policy: DeterministicAlgorithmPolicy::PreferDeterministic,
+            generator: Some(GeneratorState::root(seed)),
+        }
+    }
+
+    /// Returns a strict deterministic contract from one root seed.
+    #[must_use]
+    pub const fn strict(seed: u64) -> Self {
+        Self {
+            mode: DeterminismMode::Strict,
+            algorithm_policy: DeterministicAlgorithmPolicy::RequireDeterministic,
+            generator: Some(GeneratorState::root(seed)),
+        }
+    }
+
+    /// Validates that required seeded state is present for the configured mode.
+    pub fn validate(&self) -> Result<(), DeterminismContractError> {
+        if self.mode != DeterminismMode::BestEffort && self.generator.is_none() {
+            return Err(DeterminismContractError::MissingGeneratorState { mode: self.mode });
+        }
+        Ok(())
+    }
+
+    /// Returns the replayable generator state when the contract requires one.
+    pub fn generator(&self) -> Result<&GeneratorState, DeterminismContractError> {
+        self.validate()?;
+        self.generator
+            .as_ref()
+            .ok_or(DeterminismContractError::MissingGeneratorState { mode: self.mode })
+    }
+
+    /// Derives one stable child generator for a local device.
+    pub fn derive_local_device_generator(
+        &self,
+        stable_device_id: impl Into<String>,
+    ) -> Result<GeneratorState, DeterminismContractError> {
+        Ok(self.generator()?.derive_child(GeneratorScope::LocalDevice {
+            stable_device_id: stable_device_id.into(),
+        }))
+    }
+
+    /// Derives one stable child generator for a distributed rank.
+    pub fn derive_distributed_rank_generator(
+        &self,
+        replica_group: impl Into<String>,
+        rank: usize,
+        world_size: usize,
+    ) -> Result<GeneratorState, DeterminismContractError> {
+        if world_size == 0 || rank >= world_size {
+            return Err(DeterminismContractError::InvalidDistributedRank { rank, world_size });
+        }
+        Ok(self
+            .generator()?
+            .derive_child(GeneratorScope::DistributedRank {
+                replica_group: replica_group.into(),
+                rank,
+                world_size,
+            }))
+    }
+
+    /// Captures checkpoint-stable determinism state for later restore.
+    pub fn checkpoint_state(
+        &self,
+        checkpoint: TrainingCheckpointReference,
+    ) -> Result<GeneratorCheckpointState, DeterminismContractError> {
+        self.validate()?;
+        Ok(GeneratorCheckpointState {
+            checkpoint,
+            determinism: self.clone(),
+        })
+    }
+}
+
+/// Checkpoint-stable determinism snapshot for runtime-owned randomness.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeneratorCheckpointState {
+    /// Checkpoint identity bound to the snapshot.
+    pub checkpoint: TrainingCheckpointReference,
+    /// Determinism contract restored with the checkpoint.
+    pub determinism: RuntimeDeterminismContract,
+}
+
+impl GeneratorCheckpointState {
+    /// Restores the runtime determinism contract from one checkpoint snapshot.
+    #[must_use]
+    pub fn restore(&self) -> RuntimeDeterminismContract {
+        self.determinism.clone()
+    }
+}
+
 /// Reusable runtime sampling policy for token selection.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SamplingPolicy {
@@ -4981,6 +5223,7 @@ impl SamplingPolicy {
 #[derive(Clone, Debug)]
 pub struct TokenSampler {
     policy: SamplingPolicy,
+    generator_state: Option<GeneratorState>,
     rng: StdRng,
 }
 
@@ -4988,19 +5231,44 @@ impl TokenSampler {
     /// Creates a token sampler for one runtime policy.
     #[must_use]
     pub fn new(policy: &SamplingPolicy) -> Self {
-        let rng = policy
-            .seed
-            .map_or_else(StdRng::from_os_rng, StdRng::seed_from_u64);
+        let generator_state = policy.seed.map(GeneratorState::root);
+        let rng = generator_state
+            .as_ref()
+            .map_or_else(StdRng::from_os_rng, GeneratorState::restored_rng);
         Self {
             policy: policy.clone(),
+            generator_state,
             rng,
         }
+    }
+
+    /// Creates a sampler from an explicit runtime determinism contract.
+    pub fn from_determinism_contract(
+        policy: &SamplingPolicy,
+        contract: &RuntimeDeterminismContract,
+    ) -> Result<Self, DeterminismContractError> {
+        contract.validate()?;
+        let generator_state = contract.generator.clone();
+        let rng = generator_state
+            .as_ref()
+            .map_or_else(StdRng::from_os_rng, GeneratorState::restored_rng);
+        Ok(Self {
+            policy: policy.clone(),
+            generator_state,
+            rng,
+        })
     }
 
     /// Returns the runtime sampling policy.
     #[must_use]
     pub fn policy(&self) -> &SamplingPolicy {
         &self.policy
+    }
+
+    /// Returns the replayable generator state when the sampler is seeded.
+    #[must_use]
+    pub fn generator_state(&self) -> Option<GeneratorState> {
+        self.generator_state.clone()
     }
 
     /// Selects the next token from logits and prior token history.
@@ -5012,8 +5280,43 @@ impl TokenSampler {
         {
             return select_argmax_token(&adjusted_logits);
         }
-        sample_token_index(&mut self.rng, &adjusted_logits, &self.policy)
+        let token = sample_token_index(&mut self.rng, &adjusted_logits, &self.policy);
+        if token.is_some() {
+            if let Some(generator_state) = self.generator_state.as_mut() {
+                generator_state.draws = generator_state.draws.saturating_add(1);
+            }
+        }
+        token
     }
+}
+
+fn stable_child_generator_seed(seed: u64, scope: &GeneratorScope) -> u64 {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_runtime_generator_child|");
+    hasher.update(seed.to_string().as_bytes());
+    match scope {
+        GeneratorScope::Root => hasher.update(b"root"),
+        GeneratorScope::Decode => hasher.update(b"decode"),
+        GeneratorScope::Eval => hasher.update(b"eval"),
+        GeneratorScope::LocalDevice { stable_device_id } => {
+            hasher.update(b"local_device|");
+            hasher.update(stable_device_id.as_bytes());
+        }
+        GeneratorScope::DistributedRank {
+            replica_group,
+            rank,
+            world_size,
+        } => {
+            hasher.update(b"distributed_rank|");
+            hasher.update(replica_group.as_bytes());
+            hasher.update(rank.to_string().as_bytes());
+            hasher.update(world_size.to_string().as_bytes());
+        }
+    }
+    let digest = hasher.finalize();
+    let mut seed_bytes = [0_u8; 8];
+    seed_bytes.copy_from_slice(&digest[..8]);
+    u64::from_be_bytes(seed_bytes)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -9378,41 +9681,43 @@ mod tests {
         ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
         ClusterSelectedNode, ClusterServingSemantics, ClusterSettlementProvenanceInput,
         ClusterTransportClass, ClusterTrustPosture, ClusterWarmRoutePosture,
-        DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery,
+        DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeterminismContractError,
+        DeterminismMode, DeterministicAlgorithmPolicy, DeviceDescriptor, DeviceDiscovery,
         DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
         ExecutionBackend, ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
         ExecutionPartition, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
         ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan,
         GenerationSchedulerFallbackCount, GenerationSchedulerFallbackReason,
-        GenerationSchedulerMetrics, GenerationSchedulerPolicy, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, KvResidencyAccounting,
-        KvResidencyExternalLocator, KvResidencyMovement, KvResidencyMovementKind, KvResidencyTier,
-        KvResidencyTierState, LoadedModelMemoryState, LoadedModelResidency, LoadedModelState,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
-        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
-        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationDispatchRequest,
-        QuantizationDispatchWorkload, QuantizationExecution, QuantizationKernelStrategy,
-        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
-        ResidencyPressureAction, RuntimeDispatchPlan, RuntimeDispatchPolicy, RuntimeError,
-        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-        RuntimeWorkClass, RuntimeWorkItem, SamplingPolicy, SamplingStrategy,
-        SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
-        SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
-        SandboxExecutionResourceSummary, SandboxFilesystemPolicy, SandboxFilesystemRoot,
-        SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
-        SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
-        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        SettlementLinkageInput, ShardedModelArtifactRef, ShardedModelLayoutKind,
-        ShardedModelManifest, ShardedModelManifestError, SignedClusterEvidenceBundle,
-        ThroughputClass, TokenSampler, TrainingCheckpointAvailability, TrainingCheckpointReference,
-        TrainingCollectiveContext, TrainingCollectiveKind, TrainingCollectiveQuantization,
-        TrainingDeviceMeshAxis, TrainingDeviceMeshAxisKind, TrainingDeviceMeshContext,
-        TrainingElasticMembershipContext, TrainingRecoveryContext, TrainingRecoveryPosture,
-        apply_sampling_penalties, benchmark_dispatch_plan, benchmark_quantization_dispatch,
+        GenerationSchedulerMetrics, GenerationSchedulerPolicy, GeneratorScope, HealthStatus,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        KvResidencyAccounting, KvResidencyExternalLocator, KvResidencyMovement,
+        KvResidencyMovementKind, KvResidencyTier, KvResidencyTierState, LoadedModelMemoryState,
+        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationDispatchRequest, QuantizationDispatchWorkload, QuantizationExecution,
+        QuantizationKernelStrategy, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
+        QueuePolicy, ResidencyPressureAction, RuntimeDeterminismContract, RuntimeDispatchPlan,
+        RuntimeDispatchPolicy, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        RuntimeTransitionKind, RuntimeTransitionLog, RuntimeWorkClass, RuntimeWorkItem,
+        SamplingPolicy, SamplingStrategy, SandboxAcceleratorAccess,
+        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
+        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        SandboxFilesystemPolicy, SandboxFilesystemRoot, SandboxIsolationBoundary,
+        SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy, SandboxResourceLimits,
+        ServedArtifactIdentity, ServedProductBackendPolicy, ServedProductFallbackAction,
+        ServedProductFallbackLattice, ServedProductFallbackTrigger, SettlementLinkageInput,
+        ShardedModelArtifactRef, ShardedModelLayoutKind, ShardedModelManifest,
+        ShardedModelManifestError, SignedClusterEvidenceBundle, ThroughputClass, TokenSampler,
+        TrainingCheckpointAvailability, TrainingCheckpointReference, TrainingCollectiveContext,
+        TrainingCollectiveKind, TrainingCollectiveQuantization, TrainingDeviceMeshAxis,
+        TrainingDeviceMeshAxisKind, TrainingDeviceMeshContext, TrainingElasticMembershipContext,
+        TrainingRecoveryContext, TrainingRecoveryPosture, apply_sampling_penalties,
+        benchmark_dispatch_plan, benchmark_quantization_dispatch,
         default_cache_invalidation_policy, plan_model_admission,
     };
 
@@ -10778,6 +11083,108 @@ mod tests {
         }
 
         assert_eq!(left_draws, right_draws);
+    }
+
+    #[test]
+    fn strict_determinism_contract_refuses_missing_generator_state() {
+        let contract = RuntimeDeterminismContract {
+            mode: DeterminismMode::Strict,
+            algorithm_policy: DeterministicAlgorithmPolicy::RequireDeterministic,
+            generator: None,
+        };
+
+        assert_eq!(
+            contract.validate(),
+            Err(DeterminismContractError::MissingGeneratorState {
+                mode: DeterminismMode::Strict,
+            })
+        );
+    }
+
+    #[test]
+    fn runtime_determinism_contract_derives_stable_local_and_distributed_generators()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let contract = RuntimeDeterminismContract::strict(17);
+
+        let local_a = contract.derive_local_device_generator("cuda:1")?;
+        let local_a_again = contract.derive_local_device_generator("cuda:1")?;
+        let local_b = contract.derive_local_device_generator("cuda:2")?;
+        assert_eq!(local_a, local_a_again);
+        assert_ne!(local_a.seed, local_b.seed);
+        assert_eq!(
+            local_a.scope,
+            GeneratorScope::LocalDevice {
+                stable_device_id: String::from("cuda:1"),
+            }
+        );
+
+        let rank0 = contract.derive_distributed_rank_generator("tensor_parallel", 0, 2)?;
+        let rank1 = contract.derive_distributed_rank_generator("tensor_parallel", 1, 2)?;
+        assert_ne!(rank0.seed, rank1.seed);
+        assert_eq!(
+            rank0.scope,
+            GeneratorScope::DistributedRank {
+                replica_group: String::from("tensor_parallel"),
+                rank: 0,
+                world_size: 2,
+            }
+        );
+        assert_eq!(
+            contract.derive_distributed_rank_generator("tensor_parallel", 2, 2),
+            Err(DeterminismContractError::InvalidDistributedRank {
+                rank: 2,
+                world_size: 2,
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn token_sampler_generator_state_restores_after_checkpoint()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Sample,
+            temperature: Some(0.9),
+            top_k: Some(3),
+            top_p: Some(0.95),
+            repeat_penalty: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            seed: None,
+        };
+        let logits = vec![3.0, 2.9, 2.8];
+        let history = Vec::new();
+        let contract = RuntimeDeterminismContract::strict(42);
+        let mut sampler = TokenSampler::from_determinism_contract(&policy, &contract)?;
+
+        let first = sampler.select_next_token(&logits, &history);
+        assert!(first.is_some());
+        let checkpoint_contract = RuntimeDeterminismContract {
+            generator: sampler.generator_state(),
+            ..contract.clone()
+        };
+        let checkpoint = TrainingCheckpointReference::new(
+            "train.decoder",
+            "checkpoint-stream",
+            "manifest-1",
+            "object-1",
+            "node-a",
+            7,
+            "cluster-state-1",
+            "topology-1",
+            1000,
+        )
+        .with_checkpoint_ref("step-7")
+        .with_step(7)
+        .with_durable_at_ms(1010);
+        let snapshot = checkpoint_contract.checkpoint_state(checkpoint)?;
+        let restored = snapshot.restore();
+        let mut resumed = TokenSampler::from_determinism_contract(&policy, &restored)?;
+
+        let original_next = sampler.select_next_token(&logits, &history);
+        let restored_next = resumed.select_next_token(&logits, &history);
+        assert_eq!(original_next, restored_next);
+        Ok(())
     }
 
     #[test]
