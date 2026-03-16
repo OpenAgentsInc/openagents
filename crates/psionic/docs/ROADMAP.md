@@ -39,8 +39,8 @@
 - An implemented-early executor-class reference lane codenamed `Tassadar` now
   exists as WebAssembly-first, CPU-reference-first, library-owned work rather
   than MVP product scope, with Phase 3 benchmark/environment packages, Phase 4
-  proof/lineage surfaces, and the first Phase 5 hull-cache fast path now
-  landed above it.
+  proof/lineage surfaces, the first Phase 5 hull-cache fast path, and the
+  first Phase 6 runtime capability/selection truth now landed above it.
 
 ## Why This Doc Exists
 
@@ -498,6 +498,10 @@ Its declared scope is:
   subset, typed refusal for backward-branch workloads outside that subset, and
   benchmark reporting for hull-cache throughput, speedup over linear decode,
   and remaining gap vs direct CPU
+- landed Phase 6 bar: machine-legible runtime capability reports plus
+  direct/fallback/refused decode selection diagnostics covering hull-cache,
+  approximate sparse-top-k fallback, unsupported ABI/profile requests, and
+  model-effective decode mismatches
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -523,8 +527,10 @@ The current issue spine is:
   [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
 - Phase 5 hull-cache fast path behind exact equivalence:
   [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
+- Phase 6 typed runtime capability and fallback diagnostics:
+  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 
-What Phases 1 through 5 now concretely provide:
+What Phases 1 through 6 now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -547,6 +553,12 @@ What Phases 1 through 5 now concretely provide:
   fast-path subset fail explicitly rather than silently falling back
 - hull-cache throughput, linear-decode speedup, and direct-CPU gap reporting in
   the same benchmark package family
+- one machine-legible `TassadarRuntimeCapabilityReport`
+- one machine-legible `TassadarExecutorSelectionDiagnostic` that can say
+  direct, fallback, or refused before execution begins
+- explicit approximate sparse-top-k to exact reference fallback reporting
+- explicit unsupported ABI/profile and model-effective decode refusal reporting
+- runtime capability and selection artifacts in the eval benchmark surface
 - one emitted `TassadarTraceArtifact` plus `TassadarTraceProofArtifact`
 - runtime-manifest lineage from source program through model descriptor and
   emitted trace artifact
@@ -556,8 +568,6 @@ What Phases 1 through 5 now concretely provide:
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
 
-- typed runtime capability and refusal surfaces:
-  [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - dedicated executor serving where useful
 - hybrid planner-plus-executor routing
 
