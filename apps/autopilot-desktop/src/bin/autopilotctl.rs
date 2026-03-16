@@ -2695,6 +2695,87 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             run.authority.accepted_outcome_id.as_deref().unwrap_or("-"),
             run.authority.training_run_id.as_deref().unwrap_or("-")
         ));
+        lines.push(format!(
+            "training operator live: id={} phase={} heartbeat_ms={} elapsed_ms={} phase_elapsed_ms={} eta_ms={} epoch={}/{} steps={}/{} eval_samples={}/{} loss={} checkpoint={}",
+            run.run_id,
+            run.progress.current_phase.as_deref().unwrap_or("-"),
+            run.progress
+                .last_heartbeat_at_epoch_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .run_elapsed_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .phase_elapsed_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .eta_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .current_epoch
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .expected_epochs
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .completed_steps
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .expected_steps
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .completed_eval_samples
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .expected_eval_samples
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress.latest_loss_label.as_deref().unwrap_or("-"),
+            run.progress.last_checkpoint_path.as_deref().unwrap_or("-")
+        ));
+        for event in run.recent_events.iter().rev().take(4) {
+            lines.push(format!(
+                "training operator event: id={} seq={} phase={} kind={} detail={} epoch={}/{} step={}/{} eval_sample={}#{}/{} loss={} eta_ms={} checkpoint={}",
+                run.run_id,
+                event.sequence,
+                event.phase,
+                event.kind,
+                event.detail,
+                event.epoch_index
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.expected_epochs
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.step_index
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.expected_steps
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.eval_sample_id.as_deref().unwrap_or("-"),
+                event.eval_sample_index
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.expected_eval_samples
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.loss_label.as_deref().unwrap_or("-"),
+                event.eta_ms
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event.checkpoint_path.as_deref().unwrap_or("-")
+            ));
+        }
     }
     if let Some(error) = snapshot.training.last_error.as_deref() {
         lines.push(format!("training last_error: {error}"));
@@ -3960,6 +4041,139 @@ fn print_training_text(payload: &Value) {
                 .and_then(Value::as_str)
                 .unwrap_or("-")
         );
+        println!(
+            "training operator live: id={} phase={} heartbeat_ms={} elapsed_ms={} phase_elapsed_ms={} eta_ms={} epoch={}/{} steps={}/{} eval_samples={}/{} loss={} checkpoint={}",
+            run.get("run_id").and_then(Value::as_str).unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("current_phase"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("last_heartbeat_at_epoch_ms"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("run_elapsed_ms"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("phase_elapsed_ms"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("eta_ms"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("current_epoch"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("expected_epochs"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("completed_steps"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("expected_steps"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("completed_eval_samples"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("expected_eval_samples"))
+                .and_then(Value::as_u64)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.get("progress")
+                .and_then(|value| value.get("latest_loss_label"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("last_checkpoint_path"))
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        );
+        for event in run
+            .get("recent_events")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .rev()
+            .take(4)
+        {
+            println!(
+                "training operator event: id={} seq={} phase={} kind={} detail={} epoch={}/{} step={}/{} eval_sample={}#{}/{} loss={} eta_ms={} checkpoint={}",
+                run.get("run_id").and_then(Value::as_str).unwrap_or("-"),
+                event
+                    .get("sequence")
+                    .and_then(Value::as_u64)
+                    .unwrap_or_default(),
+                event.get("phase").and_then(Value::as_str).unwrap_or("-"),
+                event.get("kind").and_then(Value::as_str).unwrap_or("-"),
+                event.get("detail").and_then(Value::as_str).unwrap_or("-"),
+                event
+                    .get("epoch_index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("expected_epochs")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("step_index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("expected_steps")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("eval_sample_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                event
+                    .get("eval_sample_index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("expected_eval_samples")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("loss_label")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                event
+                    .get("eta_ms")
+                    .and_then(Value::as_u64)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                event
+                    .get("checkpoint_path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-")
+            );
+        }
     }
 }
 
@@ -5461,6 +5675,46 @@ mod tests {
                 adapter_identifier: Some("weather-helper".to_string()),
                 authority:
                     autopilot_desktop::desktop_control::DesktopControlAppleAdapterOperatorAuthorityStatus::default(),
+                progress: autopilot_desktop::desktop_control::DesktopControlAppleAdapterOperatorProgressStatus {
+                    current_phase: Some("training".to_string()),
+                    run_started_at_epoch_ms: Some(2),
+                    phase_started_at_epoch_ms: Some(2),
+                    last_heartbeat_at_epoch_ms: Some(4),
+                    run_elapsed_ms: Some(2_000),
+                    phase_elapsed_ms: Some(1_500),
+                    eta_ms: Some(750),
+                    current_epoch: Some(1),
+                    expected_epochs: Some(1),
+                    completed_steps: Some(21),
+                    expected_steps: Some(64),
+                    latest_loss_label: Some("0.125000".to_string()),
+                    completed_eval_samples: Some(1),
+                    expected_eval_samples: Some(3),
+                    last_checkpoint_path: Some("/tmp/apple-run-1/checkpoints/final".to_string()),
+                },
+                recent_events: vec![
+                    autopilot_desktop::desktop_control::DesktopControlAppleAdapterOperatorEventStatus {
+                        sequence: 7,
+                        event_id: "apple-run-1-telemetry-000007".to_string(),
+                        occurred_at_epoch_ms: 4,
+                        phase: "training".to_string(),
+                        kind: "heartbeat".to_string(),
+                        detail: "Apple adapter training heartbeat step=21/64 eta_ms=750"
+                            .to_string(),
+                        epoch_index: Some(1),
+                        expected_epochs: Some(1),
+                        step_index: Some(21),
+                        expected_steps: Some(64),
+                        eval_sample_id: None,
+                        eval_sample_index: None,
+                        expected_eval_samples: None,
+                        loss_label: Some("0.125000".to_string()),
+                        eta_ms: Some(750),
+                        checkpoint_path: Some(
+                            "/tmp/apple-run-1/checkpoints/final".to_string(),
+                        ),
+                    },
+                ],
                 last_action: Some("Completed repo-native Apple adapter launch".to_string()),
                 last_error: None,
                 log_lines: vec!["launch complete".to_string()],
@@ -5518,6 +5772,16 @@ mod tests {
             lines
                 .iter()
                 .any(|line| line.contains("training operator run: id=apple-run-1"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training operator live: id=apple-run-1 phase=training"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("training operator event: id=apple-run-1 seq=7"))
         );
     }
 

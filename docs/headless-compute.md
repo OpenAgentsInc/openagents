@@ -197,6 +197,23 @@ It also renders decentralized adapter window and contribution lines so scripted
 operation no longer requires dropping down to raw kernel API calls to inspect
 the latest contributor outcomes.
 
+For the Apple adapter operator specifically, the same status surface now carries
+live run telemetry rather than only coarse terminal states. While a run is
+active, `autopilotctl training status` renders:
+
+- a `training operator live:` line with the current phase, heartbeat timestamp,
+  run and phase elapsed time, ETA, epoch and step counters, held-out eval
+  progress, latest observed loss, and the latest checkpoint path
+- recent typed `training operator event:` lines for major lifecycle points such
+  as training start, epoch start, step completion, held-out eval samples,
+  export, runtime smoke, and acceptance
+
+`autopilotctl training launch ...` now returns immediately after the app-owned
+operator run is created. The long-running train/eval/export/runtime-smoke work
+continues in the background, and the status/event surfaces above are the
+supported way to follow progress without waiting for the original launch command
+to exit.
+
 `autopilotctl proof status` now drills into recent delivery proofs instead of
 stopping at a count. The payload includes proof posture, topology and
 provisioning labels, linked challenge state, settlement outcomes, and review

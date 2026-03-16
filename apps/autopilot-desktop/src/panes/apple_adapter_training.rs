@@ -1007,9 +1007,54 @@ pub(crate) fn detail_lines_for_run(
                 .unwrap_or("-"),
             run.authority.accepted_outcome_id.as_deref().unwrap_or("-")
         ),
+        format!(
+            "Live phase / heartbeat: {} / {}",
+            run.progress.current_phase.as_deref().unwrap_or("-"),
+            run.progress
+                .last_heartbeat_at_epoch_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        ),
+        format!(
+            "Live elapsed / ETA: {} / {}",
+            run.progress
+                .run_elapsed_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .eta_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        ),
+        format!(
+            "Live epoch / eval / checkpoint: {}/{} // {}/{} // {}",
+            run.progress
+                .current_epoch
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .expected_epochs
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .completed_eval_samples
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress
+                .expected_eval_samples
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            run.progress.last_checkpoint_path.as_deref().unwrap_or("-")
+        ),
         format!("Last action: {}", run.last_action.as_deref().unwrap_or("-")),
         format!("Last error: {}", run.last_error.as_deref().unwrap_or("-")),
     ];
+    for event in run.recent_events.iter().rev().take(3) {
+        lines.push(format!(
+            "Recent event {} // {} // {}",
+            event.kind, event.phase, event.detail
+        ));
+    }
     if let Some(training_run_id) = run.authority.training_run_id.as_deref() {
         let matching_windows = training_status
             .windows
@@ -1650,7 +1695,7 @@ mod tests {
             &previous_run_ids,
             &DesktopControlActionResponse {
                 success: true,
-                message: "Completed Apple adapter operator launch for apple-run-2".to_string(),
+                message: "Started Apple adapter operator launch for apple-run-2".to_string(),
                 payload: None,
                 snapshot_revision: None,
                 state_signature: None,
@@ -1662,7 +1707,7 @@ mod tests {
         assert_eq!(pane_state.selected_run_id.as_deref(), Some("apple-run-2"));
         assert_eq!(
             pane_state.last_action.as_deref(),
-            Some("Completed Apple adapter operator launch for apple-run-2")
+            Some("Started Apple adapter operator launch for apple-run-2")
         );
         assert!(pane_state.last_error.is_none());
     }

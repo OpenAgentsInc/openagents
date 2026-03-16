@@ -537,6 +537,45 @@ pub struct DesktopControlAppleAdapterOperatorAuthorityStatus {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAppleAdapterOperatorProgressStatus {
+    pub current_phase: Option<String>,
+    pub run_started_at_epoch_ms: Option<u64>,
+    pub phase_started_at_epoch_ms: Option<u64>,
+    pub last_heartbeat_at_epoch_ms: Option<u64>,
+    pub run_elapsed_ms: Option<u64>,
+    pub phase_elapsed_ms: Option<u64>,
+    pub eta_ms: Option<u64>,
+    pub current_epoch: Option<u64>,
+    pub expected_epochs: Option<u64>,
+    pub completed_steps: Option<u64>,
+    pub expected_steps: Option<u64>,
+    pub latest_loss_label: Option<String>,
+    pub completed_eval_samples: Option<u64>,
+    pub expected_eval_samples: Option<u64>,
+    pub last_checkpoint_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAppleAdapterOperatorEventStatus {
+    pub sequence: u64,
+    pub event_id: String,
+    pub occurred_at_epoch_ms: u64,
+    pub phase: String,
+    pub kind: String,
+    pub detail: String,
+    pub epoch_index: Option<u64>,
+    pub expected_epochs: Option<u64>,
+    pub step_index: Option<u64>,
+    pub expected_steps: Option<u64>,
+    pub eval_sample_id: Option<String>,
+    pub eval_sample_index: Option<u64>,
+    pub expected_eval_samples: Option<u64>,
+    pub loss_label: Option<String>,
+    pub eta_ms: Option<u64>,
+    pub checkpoint_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlAppleAdapterOperatorRunStatus {
     pub run_id: String,
     pub package_name: String,
@@ -568,6 +607,10 @@ pub struct DesktopControlAppleAdapterOperatorRunStatus {
     pub package_digest: Option<String>,
     pub adapter_identifier: Option<String>,
     pub authority: DesktopControlAppleAdapterOperatorAuthorityStatus,
+    #[serde(default)]
+    pub progress: DesktopControlAppleAdapterOperatorProgressStatus,
+    #[serde(default)]
+    pub recent_events: Vec<DesktopControlAppleAdapterOperatorEventStatus>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
     pub log_lines: Vec<String>,
@@ -3828,20 +3871,22 @@ fn launch_apple_adapter_training_action(
     license: &str,
     apple_fm_base_url: &str,
 ) -> DesktopControlActionResponse {
-    match crate::apple_adapter_training_control::launch_run(AppleAdapterOperatorLaunchRequest {
-        train_dataset_path: train_dataset_path.to_string(),
-        held_out_dataset_path: held_out_dataset_path.to_string(),
-        package_name: package_name.to_string(),
-        author: author.to_string(),
-        description: description.to_string(),
-        license: license.to_string(),
-        apple_fm_base_url: apple_fm_base_url.to_string(),
-        expected_base_model_signature: None,
-    }) {
+    match crate::apple_adapter_training_control::launch_run_async(
+        AppleAdapterOperatorLaunchRequest {
+            train_dataset_path: train_dataset_path.to_string(),
+            held_out_dataset_path: held_out_dataset_path.to_string(),
+            package_name: package_name.to_string(),
+            author: author.to_string(),
+            description: description.to_string(),
+            license: license.to_string(),
+            apple_fm_base_url: apple_fm_base_url.to_string(),
+            expected_base_model_signature: None,
+        },
+    ) {
         Ok(run) => training_action_payload_response(
             state,
             false,
-            format!("Completed Apple adapter operator launch for {}", run.run_id),
+            format!("Started Apple adapter operator launch for {}", run.run_id),
         ),
         Err(error) => DesktopControlActionResponse::error(error),
     }
@@ -5510,6 +5555,48 @@ fn map_operator_run_status(
                 .clone(),
             accepted_outcome_id: run.authority_refs.accepted_outcome_id.clone(),
         },
+        progress: DesktopControlAppleAdapterOperatorProgressStatus {
+            current_phase: run
+                .progress
+                .current_phase
+                .map(|phase| phase.label().to_string()),
+            run_started_at_epoch_ms: run.progress.run_started_at_epoch_ms,
+            phase_started_at_epoch_ms: run.progress.phase_started_at_epoch_ms,
+            last_heartbeat_at_epoch_ms: run.progress.last_heartbeat_at_epoch_ms,
+            run_elapsed_ms: run.progress.run_elapsed_ms,
+            phase_elapsed_ms: run.progress.phase_elapsed_ms,
+            eta_ms: run.progress.eta_ms,
+            current_epoch: run.progress.current_epoch,
+            expected_epochs: run.progress.expected_epochs,
+            completed_steps: run.progress.completed_steps,
+            expected_steps: run.progress.expected_steps,
+            latest_loss_label: run.progress.latest_loss.map(|loss| format!("{loss:.6}")),
+            completed_eval_samples: run.progress.completed_eval_samples,
+            expected_eval_samples: run.progress.expected_eval_samples,
+            last_checkpoint_path: run.progress.last_checkpoint_path.clone(),
+        },
+        recent_events: run
+            .recent_events
+            .iter()
+            .map(|event| DesktopControlAppleAdapterOperatorEventStatus {
+                sequence: event.sequence,
+                event_id: event.event_id.clone(),
+                occurred_at_epoch_ms: event.occurred_at_epoch_ms,
+                phase: event.phase.label().to_string(),
+                kind: event.kind.label().to_string(),
+                detail: event.detail.clone(),
+                epoch_index: event.epoch_index,
+                expected_epochs: event.expected_epochs,
+                step_index: event.step_index,
+                expected_steps: event.expected_steps,
+                eval_sample_id: event.eval_sample_id.clone(),
+                eval_sample_index: event.eval_sample_index,
+                expected_eval_samples: event.expected_eval_samples,
+                loss_label: event.loss.map(|loss| format!("{loss:.6}")),
+                eta_ms: event.eta_ms,
+                checkpoint_path: event.checkpoint_path.clone(),
+            })
+            .collect(),
         last_action: run.last_action.clone(),
         last_error: run.last_error.clone(),
         log_lines: run.log_lines.clone(),
