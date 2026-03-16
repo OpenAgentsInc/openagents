@@ -7,6 +7,8 @@
 >
 > This is now the canonical roadmap for `crates/arc/*`.
 > `crates/arc/spec.md` remains the canonical architecture and ownership spec.
+> `crates/arc/docs/CAPABILITY_MATRIX.md` remains the canonical current-state
+> capability matrix.
 > `crates/arc/docs/CLAIMS.md` remains the canonical claim-vocabulary doc.
 > `crates/arc/docs/INDEX.md` remains the compact ARC docs entrypoint.
 > `crates/arc/docs/UPSTREAM_TARGETS.md` remains the canonical first-pass
@@ -795,7 +797,7 @@ on Python-only workflows.
 
 | ID | Status | Work |
 | --- | --- | --- |
-| `ARC-601` | planned | Publish capability matrices for contracts, engine/runtime parity, solver lanes, and ARC-ML readiness. |
+| `ARC-601` / [#3808](https://github.com/OpenAgentsInc/openagents/issues/3808) | landed | Published `crates/arc/docs/CAPABILITY_MATRIX.md` as the canonical current-state matrix for subtree capabilities, solver lanes, and ARC-AGI-3 preview-vs-release drift, with explicit landed / bounded / blocked / unknown status rows. |
 | `ARC-602` | planned | Curate fixture corpora for parser/objectization, engine parity, score parity, recording replay, and checkpoint resume. |
 | `ARC-603` | planned | Write operator docs for local benchmark runs, remote runs, compatibility-server checks, and fixture replay. |
 | `ARC-604` | planned | Add non-Python smoke suites proving core static and interactive paths work without Python sidecars. |
@@ -851,6 +853,9 @@ That gate is now satisfied in bounded form by `ARC-210`.
 ### Phase 6: harden evidence and operator workflows
 
 13. `ARC-601` through `ARC-606`
+    `ARC-601` is now landed in bounded form: `crates/arc/docs/CAPABILITY_MATRIX.md`
+    is the canonical compact matrix for current subtree capability claims and
+    ARC-AGI-3 preview drift.
 
 ## Program Risks And Dependency Hazards
 

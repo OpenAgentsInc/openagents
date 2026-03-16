@@ -56,11 +56,14 @@ binding constraints.
 
 ## 0.2 Doc Authority
 
-The ARC subtree currently has four canonical documents with different roles:
+The ARC subtree currently has canonical documents with different roles:
 
 - `crates/arc/docs/INDEX.md`
   - compact entrypoint linking the current canonical ARC docs and future
     acceptance-matrix anchors
+- `crates/arc/docs/CAPABILITY_MATRIX.md`
+  - canonical current-state matrix for landed vs bounded vs blocked vs unknown
+    ARC capability claims and ARC-AGI-3 preview drift
 - `crates/arc/docs/spec.md`
   - canonical architecture, ownership, and crate-boundary spec
 - `crates/arc/docs/ROADMAP.md`
