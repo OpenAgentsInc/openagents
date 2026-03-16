@@ -17,6 +17,8 @@ pub const TASSADAR_CPU_REFERENCE_RUNNER_ID: &str = "tassadar.cpu_reference.v1";
 pub const TASSADAR_FIXTURE_RUNNER_ID: &str = "tassadar.fixture_runner.v1";
 /// Stable hull-cache runner identifier for the Phase 5 lane.
 pub const TASSADAR_HULL_CACHE_RUNNER_ID: &str = "tassadar.hull_cache_runner.v1";
+/// Stable sparse-top-k runner identifier for the Phase 8 lane.
+pub const TASSADAR_SPARSE_TOP_K_RUNNER_ID: &str = "tassadar.sparse_top_k_runner.v1";
 /// Stable runtime backend identifier for the current Tassadar reference lane.
 pub const TASSADAR_RUNTIME_BACKEND_ID: &str = "cpu";
 /// Stable opcode-vocabulary family identifier for the Phase 2 artifact lane.
@@ -36,7 +38,7 @@ pub enum TassadarExecutorDecodeMode {
     ReferenceLinear,
     /// Hull-cache geometric fast path.
     HullCache,
-    /// Approximate sparse top-k decode request that currently falls back to exact reference decoding.
+    /// Sparse top-k decode path on the validated executor subset.
     SparseTopK,
 }
 
@@ -70,7 +72,7 @@ pub enum TassadarExecutorCacheAlgorithm {
     LinearScanKvCache,
     /// Hull-backed geometric cache.
     HullSupportCache,
-    /// Sparse top-k approximate cache lookups.
+    /// Sparse top-k cache lookups.
     SparseTopKCache,
 }
 
@@ -94,8 +96,8 @@ pub enum TassadarRuntimeAttentionMode {
     ReferenceLinear,
     /// Exact hard-max hull lookup over the validated fast-path subset.
     HardMaxHull,
-    /// Approximate sparse top-k attention that currently degrades to exact reference decoding.
-    SparseTopKApproximate,
+    /// Validated sparse top-k attention on the current executor subset.
+    SparseTopKValidated,
 }
 
 /// Runtime capability report for the current Tassadar executor lane.
@@ -107,6 +109,8 @@ pub struct TassadarRuntimeCapabilityReport {
     pub supports_executor_trace: bool,
     /// Whether exact hull-cache decode is available on a validated subset.
     pub supports_hull_decode: bool,
+    /// Whether validated sparse-top-k decode is available on a validated subset.
+    pub supports_sparse_top_k_decode: bool,
     /// Stable Wasm profiles accepted by the runtime.
     pub supported_wasm_profiles: Vec<String>,
     /// Stable attention families the runtime can speak about honestly.
@@ -129,6 +133,7 @@ impl TassadarRuntimeCapabilityReport {
             runtime_backend: String::from(TASSADAR_RUNTIME_BACKEND_ID),
             supports_executor_trace: true,
             supports_hull_decode: true,
+            supports_sparse_top_k_decode: true,
             supported_wasm_profiles: vec![
                 String::from(TassadarWasmProfileId::CoreI32V1.as_str()),
                 String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
@@ -136,12 +141,13 @@ impl TassadarRuntimeCapabilityReport {
             supported_attention_modes: vec![
                 TassadarRuntimeAttentionMode::ReferenceLinear,
                 TassadarRuntimeAttentionMode::HardMaxHull,
-                TassadarRuntimeAttentionMode::SparseTopKApproximate,
+                TassadarRuntimeAttentionMode::SparseTopKValidated,
             ],
             validated_trace_abi_versions: vec![TASSADAR_TRACE_ABI_VERSION],
             supported_decode_modes: vec![
                 TassadarExecutorDecodeMode::ReferenceLinear,
                 TassadarExecutorDecodeMode::HullCache,
+                TassadarExecutorDecodeMode::SparseTopK,
             ],
             default_decode_mode: TassadarExecutorDecodeMode::ReferenceLinear,
             exact_fallback_decode_mode: TassadarExecutorDecodeMode::ReferenceLinear,
@@ -167,8 +173,8 @@ pub enum TassadarExecutorSelectionState {
 pub enum TassadarExecutorSelectionReason {
     /// Hull-cache is outside the validated control-flow subset.
     HullCacheControlFlowUnsupported,
-    /// Approximate sparse decode is not yet validated and falls back to exact decoding.
-    ApproximateModeRequiresExactFallback,
+    /// Sparse top-k is outside the current validated subset and falls back to exact decoding.
+    SparseTopKValidationUnsupported,
     /// The program targeted a different Wasm profile than the runtime supports.
     UnsupportedWasmProfile,
     /// The caller requested an ABI schema version this runtime has not validated.
@@ -1976,6 +1982,30 @@ pub enum TassadarExecutionRefusal {
         /// Unsupported backward target pc.
         target_pc: usize,
     },
+    /// The Phase 8 sparse-top-k path does not yet support this control-flow shape.
+    #[error(
+        "sparse-top-k path does not support backward branch target {} at pc {}",
+        target_pc,
+        pc
+    )]
+    SparseTopKBackwardBranchUnsupported {
+        /// Program counter of the unsupported branch instruction.
+        pc: usize,
+        /// Unsupported backward target pc.
+        target_pc: usize,
+    },
+    /// The Phase 8 sparse-top-k path only validates programs up to one bounded length.
+    #[error(
+        "sparse-top-k path does not support instruction count {} beyond validated limit {}",
+        instruction_count,
+        max_supported
+    )]
+    SparseTopKProgramTooLong {
+        /// Program instruction count.
+        instruction_count: usize,
+        /// Maximum validated instruction count for sparse-top-k.
+        max_supported: usize,
+    },
     /// The fixture table and execution behavior diverged.
     #[error(
         "fixture rule mismatch for `{}`: expected pops={} pushes={}, got pops={} pushes={}",
@@ -2017,9 +2047,9 @@ pub enum TassadarExecutionRefusal {
         /// Actual runner-independent behavior digest.
         actual_digest: String,
     },
-    /// The direct, linear, and hull-cache paths diverged on a validated workload.
+    /// The direct, linear, hull-cache, and sparse-top-k paths diverged on a validated workload.
     #[error(
-        "exact equivalence mismatch for program `{program_id}`: cpu={cpu_reference_digest} linear={reference_linear_digest} hull={hull_cache_digest}"
+        "exact equivalence mismatch for program `{program_id}`: cpu={cpu_reference_digest} linear={reference_linear_digest} hull={hull_cache_digest} sparse={sparse_top_k_digest}"
     )]
     ExactEquivalenceMismatch {
         /// Program identifier being compared.
@@ -2030,6 +2060,8 @@ pub enum TassadarExecutionRefusal {
         reference_linear_digest: String,
         /// Behavior digest from the hull-cache fast path.
         hull_cache_digest: String,
+        /// Behavior digest from the sparse-top-k path.
+        sparse_top_k_digest: String,
     },
 }
 
@@ -2262,7 +2294,88 @@ impl TassadarHullCacheRunner {
     }
 }
 
-/// Exact-equivalence report across CPU, linear, and hull-cache execution paths.
+/// Sparse-top-k runner for the validated Phase 8 subset.
+#[derive(Clone, Debug)]
+pub struct TassadarSparseTopKRunner {
+    profile: TassadarWasmProfile,
+    trace_abi: TassadarTraceAbi,
+    weights: TassadarFixtureWeights,
+    top_k: usize,
+}
+
+impl Default for TassadarSparseTopKRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TassadarSparseTopKRunner {
+    /// Current validated sparse-top-k width.
+    pub const VALIDATED_TOP_K: usize = 1;
+
+    /// Creates the canonical sparse-top-k runner.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            profile: TassadarWasmProfile::core_i32_v1(),
+            trace_abi: TassadarTraceAbi::core_i32_v1(),
+            weights: TassadarFixtureWeights::core_i32_v1(),
+            top_k: Self::VALIDATED_TOP_K,
+        }
+    }
+
+    /// Creates a sparse-top-k runner for one supported profile.
+    #[must_use]
+    pub fn for_profile(profile: TassadarWasmProfile) -> Option<Self> {
+        let trace_abi = tassadar_trace_abi_for_profile_id(profile.profile_id.as_str())?;
+        let weights = tassadar_fixture_weights_for_profile_id(profile.profile_id.as_str())?;
+        Some(Self {
+            profile,
+            trace_abi,
+            weights,
+            top_k: Self::VALIDATED_TOP_K,
+        })
+    }
+
+    /// Creates a sparse-top-k runner that matches one validated program profile.
+    pub fn for_program(program: &TassadarProgram) -> Result<Self, TassadarExecutionRefusal> {
+        let Some(profile) = tassadar_wasm_profile_for_id(program.profile_id.as_str()) else {
+            return Err(TassadarExecutionRefusal::ProfileMismatch {
+                expected: format!(
+                    "{}, {}",
+                    TassadarWasmProfileId::CoreI32V1.as_str(),
+                    TassadarWasmProfileId::CoreI32V2.as_str()
+                ),
+                actual: program.profile_id.clone(),
+            });
+        };
+        Self::for_profile(profile).ok_or(TassadarExecutionRefusal::ProfileMismatch {
+            expected: format!(
+                "{}, {}",
+                TassadarWasmProfileId::CoreI32V1.as_str(),
+                TassadarWasmProfileId::CoreI32V2.as_str()
+            ),
+            actual: program.profile_id.clone(),
+        })
+    }
+
+    /// Executes one validated Tassadar program against the sparse-top-k path.
+    pub fn execute(
+        &self,
+        program: &TassadarProgram,
+    ) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+        execute_program_sparse_top_k(
+            program,
+            &self.profile,
+            &self.trace_abi,
+            TASSADAR_SPARSE_TOP_K_RUNNER_ID,
+            Some(&self.weights),
+            self.top_k,
+        )
+    }
+}
+
+/// Exact-equivalence report across CPU, linear, hull-cache, and sparse-top-k execution paths.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExactEquivalenceReport {
     /// Stable program identifier.
@@ -2273,6 +2386,8 @@ pub struct TassadarExactEquivalenceReport {
     pub reference_linear: TassadarExecution,
     /// Hull-cache fast-path execution.
     pub hull_cache: TassadarExecution,
+    /// Sparse-top-k execution on the validated subset.
+    pub sparse_top_k: TassadarExecution,
 }
 
 impl TassadarExactEquivalenceReport {
@@ -2281,6 +2396,7 @@ impl TassadarExactEquivalenceReport {
     pub fn trace_digest_equal(&self) -> bool {
         self.cpu_reference.trace_digest() == self.reference_linear.trace_digest()
             && self.cpu_reference.trace_digest() == self.hull_cache.trace_digest()
+            && self.cpu_reference.trace_digest() == self.sparse_top_k.trace_digest()
     }
 
     /// Returns whether outputs match exactly across all paths.
@@ -2288,6 +2404,7 @@ impl TassadarExactEquivalenceReport {
     pub fn outputs_equal(&self) -> bool {
         self.cpu_reference.outputs == self.reference_linear.outputs
             && self.cpu_reference.outputs == self.hull_cache.outputs
+            && self.cpu_reference.outputs == self.sparse_top_k.outputs
     }
 
     /// Returns whether halt reasons match exactly across all paths.
@@ -2295,12 +2412,14 @@ impl TassadarExactEquivalenceReport {
     pub fn halt_equal(&self) -> bool {
         self.cpu_reference.halt_reason == self.reference_linear.halt_reason
             && self.cpu_reference.halt_reason == self.hull_cache.halt_reason
+            && self.cpu_reference.halt_reason == self.sparse_top_k.halt_reason
     }
 
     /// Ensures trace, outputs, and halt reason all match across the three paths.
     pub fn require_exact(&self) -> Result<(), TassadarExecutionRefusal> {
         if self.cpu_reference.behavior_digest() == self.reference_linear.behavior_digest()
             && self.cpu_reference.behavior_digest() == self.hull_cache.behavior_digest()
+            && self.cpu_reference.behavior_digest() == self.sparse_top_k.behavior_digest()
         {
             Ok(())
         } else {
@@ -2309,6 +2428,7 @@ impl TassadarExactEquivalenceReport {
                 cpu_reference_digest: self.cpu_reference.behavior_digest(),
                 reference_linear_digest: self.reference_linear.behavior_digest(),
                 hull_cache_digest: self.hull_cache.behavior_digest(),
+                sparse_top_k_digest: self.sparse_top_k.behavior_digest(),
             })
         }
     }
@@ -2338,6 +2458,7 @@ pub fn run_tassadar_exact_equivalence(
         cpu_reference: TassadarCpuReferenceRunner::for_program(program)?.execute(program)?,
         reference_linear: TassadarFixtureRunner::for_program(program)?.execute(program)?,
         hull_cache: TassadarHullCacheRunner::for_program(program)?.execute(program)?,
+        sparse_top_k: TassadarSparseTopKRunner::for_program(program)?.execute(program)?,
     };
     report.require_exact()?;
     Ok(report)
@@ -2471,22 +2592,83 @@ pub fn diagnose_tassadar_executor_request(
                 model_supported_decode_modes: model_supported_decode_modes.clone(),
             },
         },
-        TassadarExecutorDecodeMode::SparseTopK => TassadarExecutorSelectionDiagnostic {
-            program_id: program.program_id.clone(),
-            runtime_backend: capability.runtime_backend.clone(),
-            requested_profile_id: program.profile_id.clone(),
-            requested_trace_abi_version,
-            requested_decode_mode,
-            effective_decode_mode: Some(capability.exact_fallback_decode_mode),
-            selection_state: TassadarExecutorSelectionState::Fallback,
-            selection_reason: Some(
-                TassadarExecutorSelectionReason::ApproximateModeRequiresExactFallback,
-            ),
-            detail: format!(
-                "approximate sparse-top-k decode is not validated yet; falling back to exact `{}`",
-                capability.exact_fallback_decode_mode.as_str()
-            ),
-            model_supported_decode_modes: model_supported_decode_modes.clone(),
+        TassadarExecutorDecodeMode::SparseTopK => match validate_sparse_top_k_program(program) {
+            Ok(()) => TassadarExecutorSelectionDiagnostic {
+                program_id: program.program_id.clone(),
+                runtime_backend: capability.runtime_backend.clone(),
+                requested_profile_id: program.profile_id.clone(),
+                requested_trace_abi_version,
+                requested_decode_mode,
+                effective_decode_mode: Some(TassadarExecutorDecodeMode::SparseTopK),
+                selection_state: TassadarExecutorSelectionState::Direct,
+                selection_reason: None,
+                detail: String::from(
+                    "sparse-top-k decode requested and supported on the validated subset",
+                ),
+                model_supported_decode_modes: model_supported_decode_modes.clone(),
+            },
+            Err(TassadarExecutionRefusal::SparseTopKBackwardBranchUnsupported {
+                pc,
+                target_pc,
+            }) => TassadarExecutorSelectionDiagnostic {
+                program_id: program.program_id.clone(),
+                runtime_backend: capability.runtime_backend.clone(),
+                requested_profile_id: program.profile_id.clone(),
+                requested_trace_abi_version,
+                requested_decode_mode,
+                effective_decode_mode: Some(capability.exact_fallback_decode_mode),
+                selection_state: TassadarExecutorSelectionState::Fallback,
+                selection_reason: Some(
+                    TassadarExecutorSelectionReason::SparseTopKValidationUnsupported,
+                ),
+                detail: format!(
+                    "backward branch at pc {} to target {} is outside the validated sparse-top-k subset; falling back to `{}`",
+                    pc,
+                    target_pc,
+                    capability.exact_fallback_decode_mode.as_str()
+                ),
+                model_supported_decode_modes: model_supported_decode_modes.clone(),
+            },
+            Err(TassadarExecutionRefusal::SparseTopKProgramTooLong {
+                instruction_count,
+                max_supported,
+            }) => TassadarExecutorSelectionDiagnostic {
+                program_id: program.program_id.clone(),
+                runtime_backend: capability.runtime_backend.clone(),
+                requested_profile_id: program.profile_id.clone(),
+                requested_trace_abi_version,
+                requested_decode_mode,
+                effective_decode_mode: Some(capability.exact_fallback_decode_mode),
+                selection_state: TassadarExecutorSelectionState::Fallback,
+                selection_reason: Some(
+                    TassadarExecutorSelectionReason::SparseTopKValidationUnsupported,
+                ),
+                detail: format!(
+                    "instruction count {} exceeds validated sparse-top-k limit {}; falling back to `{}`",
+                    instruction_count,
+                    max_supported,
+                    capability.exact_fallback_decode_mode.as_str()
+                ),
+                model_supported_decode_modes: model_supported_decode_modes.clone(),
+            },
+            Err(other) => TassadarExecutorSelectionDiagnostic {
+                program_id: program.program_id.clone(),
+                runtime_backend: capability.runtime_backend.clone(),
+                requested_profile_id: program.profile_id.clone(),
+                requested_trace_abi_version,
+                requested_decode_mode,
+                effective_decode_mode: Some(capability.exact_fallback_decode_mode),
+                selection_state: TassadarExecutorSelectionState::Fallback,
+                selection_reason: Some(
+                    TassadarExecutorSelectionReason::SparseTopKValidationUnsupported,
+                ),
+                detail: format!(
+                    "requested sparse-top-k decode fell back to `{}` because the validated subset rejected the program: {}",
+                    capability.exact_fallback_decode_mode.as_str(),
+                    other
+                ),
+                model_supported_decode_modes: model_supported_decode_modes.clone(),
+            },
         },
     };
 
@@ -2567,9 +2749,25 @@ pub fn execute_tassadar_executor_request(
                 effective_decode_mode: None,
                 ..diagnostic.clone()
             })?,
-        TassadarExecutorDecodeMode::SparseTopK => unreachable!(
-            "sparse-top-k requests should always resolve to an exact fallback before execution"
-        ),
+        TassadarExecutorDecodeMode::SparseTopK => TassadarSparseTopKRunner::for_program(program)
+            .map_err(|error| TassadarExecutorSelectionDiagnostic {
+                detail: format!(
+                    "sparse-top-k runner could not be constructed for profile `{}`: {error}",
+                    program.profile_id
+                ),
+                selection_state: TassadarExecutorSelectionState::Refused,
+                selection_reason: diagnostic.selection_reason,
+                effective_decode_mode: None,
+                ..diagnostic.clone()
+            })?
+            .execute(program)
+            .map_err(|error| TassadarExecutorSelectionDiagnostic {
+                detail: format!("sparse-top-k execution refused after selection: {error}"),
+                selection_state: TassadarExecutorSelectionState::Refused,
+                selection_reason: diagnostic.selection_reason,
+                effective_decode_mode: None,
+                ..diagnostic.clone()
+            })?,
     };
 
     Ok(TassadarExecutorExecutionReport {
@@ -3100,6 +3298,156 @@ fn execute_program_hull_cache(
     ))
 }
 
+fn execute_program_sparse_top_k(
+    program: &TassadarProgram,
+    profile: &TassadarWasmProfile,
+    trace_abi: &TassadarTraceAbi,
+    runner_id: &str,
+    fixture_weights: Option<&TassadarFixtureWeights>,
+    top_k: usize,
+) -> Result<TassadarExecution, TassadarExecutionRefusal> {
+    program.validate_against(profile)?;
+    validate_sparse_top_k_program(program)?;
+
+    let mut pc = 0usize;
+    let mut steps = Vec::new();
+    let mut state = TassadarSparseTopKState {
+        stack: Vec::new(),
+        locals: vec![0; program.local_count],
+        memory: program.initial_memory.clone(),
+        outputs: Vec::new(),
+        local_recent_write_steps: vec![Vec::new(); program.local_count],
+        memory_recent_write_steps: vec![Vec::new(); program.initial_memory.len()],
+    };
+    let mut step_index = 0usize;
+    let mut halt_reason = TassadarHaltReason::FellOffEnd;
+
+    while pc < program.instructions.len() {
+        if step_index >= profile.max_steps {
+            return Err(TassadarExecutionRefusal::StepLimitExceeded {
+                max_steps: profile.max_steps,
+            });
+        }
+
+        let instruction = program.instructions[pc].clone();
+        let stack_before = state.stack.clone();
+        let opcode = instruction.opcode();
+        let rule = match fixture_weights {
+            Some(weights) => Some(
+                weights
+                    .rule_for(opcode)
+                    .ok_or(TassadarExecutionRefusal::FixtureRuleMissing { opcode })?,
+            ),
+            None => None,
+        };
+        let mut next_pc = pc + 1;
+        let event = match instruction.clone() {
+            TassadarInstruction::LocalGet { local } => {
+                let value = sparse_top_k_local_value(
+                    usize::from(local),
+                    steps.as_slice(),
+                    &state.local_recent_write_steps,
+                    &state.locals,
+                );
+                state.stack.push(value);
+                TassadarTraceEvent::LocalGet { local, value }
+            }
+            TassadarInstruction::I32Load { slot } => {
+                let value = sparse_top_k_memory_value(
+                    usize::from(slot),
+                    program.initial_memory.as_slice(),
+                    steps.as_slice(),
+                    &state.memory_recent_write_steps,
+                    &state.memory,
+                );
+                state.stack.push(value);
+                TassadarTraceEvent::Load { slot, value }
+            }
+            _ => execute_instruction(
+                &instruction,
+                pc,
+                &mut next_pc,
+                &mut state.stack,
+                &mut state.locals,
+                &mut state.memory,
+                &mut state.outputs,
+                &mut halt_reason,
+            )?,
+        };
+
+        if let Some(rule) = rule {
+            let observed = observed_rule_signature(&instruction, &event);
+            if rule.pops != observed.pops || rule.pushes != observed.pushes {
+                return Err(TassadarExecutionRefusal::FixtureRuleMismatch {
+                    opcode,
+                    expected_pops: rule.pops,
+                    expected_pushes: rule.pushes,
+                    actual_pops: observed.pops,
+                    actual_pushes: observed.pushes,
+                });
+            }
+        }
+        match event {
+            TassadarTraceEvent::LocalSet { local, .. } => {
+                record_sparse_top_k_write(
+                    &mut state.local_recent_write_steps[usize::from(local)],
+                    step_index,
+                    top_k,
+                );
+            }
+            TassadarTraceEvent::Store { slot, .. } => {
+                record_sparse_top_k_write(
+                    &mut state.memory_recent_write_steps[usize::from(slot)],
+                    step_index,
+                    top_k,
+                );
+            }
+            _ => {}
+        }
+
+        steps.push(TassadarTraceStep {
+            step_index,
+            pc,
+            next_pc,
+            instruction: instruction.clone(),
+            event,
+            stack_before,
+            stack_after: state.stack.clone(),
+            locals_after: state.locals.clone(),
+            memory_after: state.memory.clone(),
+        });
+
+        step_index += 1;
+        if matches!(instruction, TassadarInstruction::Return) {
+            return Ok(build_tassadar_execution(
+                program,
+                trace_abi,
+                runner_id,
+                steps,
+                state.outputs,
+                state.locals,
+                state.memory,
+                state.stack,
+                halt_reason,
+            ));
+        }
+
+        pc = next_pc;
+    }
+
+    Ok(build_tassadar_execution(
+        program,
+        trace_abi,
+        runner_id,
+        steps,
+        state.outputs,
+        state.locals,
+        state.memory,
+        state.stack,
+        halt_reason,
+    ))
+}
+
 fn validate_hull_cache_program(program: &TassadarProgram) -> Result<(), TassadarExecutionRefusal> {
     for (pc, instruction) in program.instructions.iter().enumerate() {
         if let TassadarInstruction::BrIf { target_pc } = instruction {
@@ -3114,6 +3462,83 @@ fn validate_hull_cache_program(program: &TassadarProgram) -> Result<(), Tassadar
         }
     }
     Ok(())
+}
+
+fn validate_sparse_top_k_program(
+    program: &TassadarProgram,
+) -> Result<(), TassadarExecutionRefusal> {
+    const SPARSE_TOP_K_MAX_PROGRAM_LEN: usize = 64;
+    if program.instructions.len() > SPARSE_TOP_K_MAX_PROGRAM_LEN {
+        return Err(TassadarExecutionRefusal::SparseTopKProgramTooLong {
+            instruction_count: program.instructions.len(),
+            max_supported: SPARSE_TOP_K_MAX_PROGRAM_LEN,
+        });
+    }
+    for (pc, instruction) in program.instructions.iter().enumerate() {
+        if let TassadarInstruction::BrIf { target_pc } = instruction {
+            if usize::from(*target_pc) <= pc {
+                return Err(
+                    TassadarExecutionRefusal::SparseTopKBackwardBranchUnsupported {
+                        pc,
+                        target_pc: usize::from(*target_pc),
+                    },
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Default)]
+struct TassadarSparseTopKState {
+    stack: Vec<i32>,
+    locals: Vec<i32>,
+    memory: Vec<i32>,
+    outputs: Vec<i32>,
+    local_recent_write_steps: Vec<Vec<usize>>,
+    memory_recent_write_steps: Vec<Vec<usize>>,
+}
+
+fn record_sparse_top_k_write(history: &mut Vec<usize>, step_index: usize, top_k: usize) {
+    history.insert(0, step_index);
+    if history.len() > top_k {
+        history.truncate(top_k);
+    }
+}
+
+fn sparse_top_k_local_value(
+    local: usize,
+    steps: &[TassadarTraceStep],
+    recent_write_steps: &[Vec<usize>],
+    locals: &[i32],
+) -> i32 {
+    recent_write_steps[local]
+        .iter()
+        .find_map(
+            |index| match steps.get(*index).map(|step| step.event.clone()) {
+                Some(TassadarTraceEvent::LocalSet { value, .. }) => Some(value),
+                _ => None,
+            },
+        )
+        .unwrap_or(locals[local])
+}
+
+fn sparse_top_k_memory_value(
+    slot: usize,
+    initial_memory: &[i32],
+    steps: &[TassadarTraceStep],
+    recent_write_steps: &[Vec<usize>],
+    memory: &[i32],
+) -> i32 {
+    recent_write_steps[slot]
+        .iter()
+        .find_map(
+            |index| match steps.get(*index).map(|step| step.event.clone()) {
+                Some(TassadarTraceEvent::Store { value, .. }) => Some(value),
+                _ => None,
+            },
+        )
+        .unwrap_or(memory.get(slot).copied().unwrap_or(initial_memory[slot]))
 }
 
 fn hull_cache_local_value(
@@ -4055,12 +4480,12 @@ mod tests {
         TassadarExecutorSelectionReason, TassadarExecutorSelectionState, TassadarFixtureRunner,
         TassadarHullCacheRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
         TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
-        TassadarTraceAbi, TassadarWasmProfile, TassadarWasmProfileId,
-        build_tassadar_execution_evidence_bundle,
-        diagnose_tassadar_executor_request, execute_tassadar_executor_request,
-        replay_tassadar_execution, run_tassadar_exact_equivalence, run_tassadar_exact_parity,
-        tassadar_article_class_corpus, tassadar_runtime_capability_report,
-        tassadar_validation_corpus,
+        TassadarSparseTopKRunner, TassadarTraceAbi, TassadarWasmProfile,
+        TassadarWasmProfileId,
+        build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
+        execute_tassadar_executor_request, replay_tassadar_execution,
+        run_tassadar_exact_equivalence, run_tassadar_exact_parity, tassadar_article_class_corpus,
+        tassadar_runtime_capability_report, tassadar_validation_corpus,
     };
 
     #[test]
@@ -4168,8 +4593,10 @@ mod tests {
             vec![
                 TassadarExecutorDecodeMode::ReferenceLinear,
                 TassadarExecutorDecodeMode::HullCache,
+                TassadarExecutorDecodeMode::SparseTopK,
             ]
         );
+        assert!(capability.supports_sparse_top_k_decode);
     }
 
     #[test]
@@ -4185,6 +4612,8 @@ mod tests {
                 .expect("article-class fixture runner should resolve");
             TassadarHullCacheRunner::for_program(&case.program)
                 .expect("article-class hull runner should resolve");
+            TassadarSparseTopKRunner::for_program(&case.program)
+                .expect("article-class sparse runner should resolve");
         }
     }
 
@@ -4249,7 +4678,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_selection_surfaces_sparse_top_k_exact_fallback() {
+    fn runtime_selection_is_direct_on_validated_sparse_top_k_workloads() {
         let case = tassadar_validation_corpus()
             .into_iter()
             .next()
@@ -4261,12 +4690,48 @@ mod tests {
             Some(&[
                 TassadarExecutorDecodeMode::ReferenceLinear,
                 TassadarExecutorDecodeMode::HullCache,
+                TassadarExecutorDecodeMode::SparseTopK,
+            ]),
+        );
+        assert_eq!(
+            diagnostic.selection_state,
+            TassadarExecutorSelectionState::Direct
+        );
+        assert_eq!(
+            diagnostic.effective_decode_mode,
+            Some(TassadarExecutorDecodeMode::SparseTopK)
+        );
+        assert_eq!(diagnostic.selection_reason, None);
+    }
+
+    #[test]
+    fn runtime_selection_surfaces_sparse_top_k_fallback_on_unsupported_shape() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let program = TassadarProgram::new(
+            "tassadar.sparse_top_k.backward_branch.v1",
+            &profile,
+            0,
+            0,
+            vec![
+                TassadarInstruction::I32Const { value: 0 },
+                TassadarInstruction::BrIf { target_pc: 0 },
+                TassadarInstruction::Return,
+            ],
+        );
+        let diagnostic = diagnose_tassadar_executor_request(
+            &program,
+            TassadarExecutorDecodeMode::SparseTopK,
+            TassadarTraceAbi::core_i32_v1().schema_version,
+            Some(&[
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+                TassadarExecutorDecodeMode::SparseTopK,
             ]),
         );
         assert!(diagnostic.is_fallback());
         assert_eq!(
             diagnostic.selection_reason,
-            Some(TassadarExecutorSelectionReason::ApproximateModeRequiresExactFallback)
+            Some(TassadarExecutorSelectionReason::SparseTopKValidationUnsupported)
         );
         assert_eq!(
             diagnostic.effective_decode_mode,

@@ -602,10 +602,16 @@ fn validate_executor_variant(
                 )));
             }
         }
-        TassadarExecutorDecodeCacheKind::SparseTopK
-        | TassadarExecutorDecodeCacheKind::StandardKv => {
+        TassadarExecutorDecodeCacheKind::SparseTopK => {
+            if executor.decode_cache.sparse_top_k != Some(1) {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "current Tassadar research backend only validates sparse-top-k candidates with sparse_top_k=1",
+                )));
+            }
+        }
+        TassadarExecutorDecodeCacheKind::StandardKv => {
             return Err(ResearchRunnerError::InvalidInvocation(String::from(
-                "current Tassadar research backend does not yet support sparse-top-k or standard-kv executor candidates",
+                "current Tassadar research backend does not yet support standard-kv executor candidates",
             )));
         }
     }
@@ -718,8 +724,21 @@ fn build_executor_benchmark_stats(
                 direct_count.saturating_mul(10_000) / case_count
             }
         }
-        TassadarExecutorDecodeCacheKind::SparseTopK
-        | TassadarExecutorDecodeCacheKind::StandardKv => 0,
+        TassadarExecutorDecodeCacheKind::SparseTopK => {
+            let direct_count = saturating_i64_from_usize(
+                report
+                    .case_reports
+                    .iter()
+                    .filter(|case| !case.sparse_top_k_used_decode_fallback)
+                    .count(),
+            );
+            if case_count == 0 {
+                0
+            } else {
+                direct_count.saturating_mul(10_000) / case_count
+            }
+        }
+        TassadarExecutorDecodeCacheKind::StandardKv => 0,
     };
     let candidate_speedup_ratio_micros =
         average_ratio_micros(report.case_reports.iter().map(|case| {
@@ -728,8 +747,10 @@ fn build_executor_benchmark_stats(
                 TassadarExecutorDecodeCacheKind::HullCache => {
                     case.hull_cache_speedup_over_reference_linear
                 }
-                TassadarExecutorDecodeCacheKind::SparseTopK
-                | TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
+                TassadarExecutorDecodeCacheKind::SparseTopK => {
+                    case.sparse_top_k_speedup_over_reference_linear
+                }
+                TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
             }
         }));
     let candidate_cpu_gap_ratio_micros =
@@ -742,8 +763,10 @@ fn build_executor_benchmark_stats(
                 TassadarExecutorDecodeCacheKind::HullCache => {
                     case.hull_cache_remaining_gap_vs_cpu_reference
                 }
-                TassadarExecutorDecodeCacheKind::SparseTopK
-                | TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
+                TassadarExecutorDecodeCacheKind::SparseTopK => {
+                    case.sparse_top_k_remaining_gap_vs_cpu_reference
+                }
+                TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
             }
         }));
     ExecutorBenchmarkStats {
@@ -1523,14 +1546,15 @@ mod tests {
             "run-reference",
             TassadarExecutorDecodeCacheKind::ReferenceLinear,
         );
-        let (_records, sweep) = ResearchRunner::execute_local_sweep(
-            "sweep.tassadar.1",
-            &[hull, reference],
-        )
-        .expect("sweep should succeed");
+        let (_records, sweep) =
+            ResearchRunner::execute_local_sweep("sweep.tassadar.1", &[hull, reference])
+                .expect("sweep should succeed");
         assert_eq!(sweep.family, ExperimentFamilyKind::ExecutorVariants);
         assert_eq!(sweep.entries.len(), 2);
-        assert_eq!(sweep.winning_candidate_id.as_deref(), Some("candidate-hull"));
+        assert_eq!(
+            sweep.winning_candidate_id.as_deref(),
+            Some("candidate-hull")
+        );
         assert!(!sweep.sweep_digest.is_empty());
     }
 }
