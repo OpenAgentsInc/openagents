@@ -2,7 +2,7 @@
 
 > Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`,
 > `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, `PMLX-005` / `#3833`,
-> `PMLX-101` / `#3834`, and `PMLX-102` / `#3835`,
+> `PMLX-101` / `#3834`, `PMLX-102` / `#3835`, and `PMLX-103` / `#3836`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -417,7 +417,7 @@ Expose a real MLX-class lazy array surface above current Psionic core crates.
 | --- | --- | --- | --- |
 | `PMLX-101` / [#3834](https://github.com/OpenAgentsInc/openagents/issues/3834) | done (2026-03-16) | `Psionic MLX: add a public lazy array facade above psionic-core and psionic-ir` | `psionic-array` now publishes `ArrayContext` and `Array` as the first public lazy-array facade above `psionic-core` and `psionic-ir`, with context-owned graph construction, graph-backed arithmetic, and snapshot graph export; explicit `eval`, device-stream, view-family, random, and host-materialization work remains in `PMLX-102` through `PMLX-106`. |
 | `PMLX-102` / [#3835](https://github.com/OpenAgentsInc/openagents/issues/3835) | done (2026-03-16) | `Psionic MLX: define explicit eval and async_eval semantics plus materialization boundaries` | `psionic-array` now exposes explicit `eval` and deferred `async_eval(...).wait()` entrypoints, emits replay-stable `EvalReceipt` records over graph-snapshot digests, and publishes an explicit-only implicit-materialization policy; device-stream scheduling, broader host interop, and MLX-class runtime breadth remain in later Epic 1 issues. |
-| `PMLX-103` | planned | `Psionic MLX: publish device and stream APIs with unified-memory capability flags` | Add public device and stream handles, dependency scheduling, and a capability-based unified-memory model that is honest on Apple, CUDA, and future backends. |
+| `PMLX-103` / [#3836](https://github.com/OpenAgentsInc/openagents/issues/3836) | done (2026-03-16) | `Psionic MLX: publish device and stream APIs with unified-memory capability flags` | `psionic-array` now publishes `ArrayDevice` and `ArrayStream`, can lift runtime-owned `DeviceDescriptor` truth into the public array layer, exposes honest unified-memory capability flags plus stream-dependency policy, and binds contexts and eval receipts to explicit device/stream identity; broader array/runtime breadth remains in `PMLX-104` through `PMLX-106`. |
 | `PMLX-104` | planned | `Psionic MLX: widen array creation, indexing, view, reshape, slice, concat, and broadcast families` | Close the public array-surface gap for standard construction and view families needed for MLX-style code and for later transform or module layers. |
 | `PMLX-105` | planned | `Psionic MLX: add random, dtype-cast, and common creation families with deterministic policy` | Expose MLX-class random and creation APIs above the current deterministic RNG substrate, keeping seeded replay and device-scoped determinism explicit. |
 | `PMLX-106` | planned | `Psionic MLX: define host interop, scalar item access, and tree utility boundaries` | Add safe host-materialization, scalar extraction, and tree utility contracts so higher layers can preserve lazy semantics without hidden eager fallbacks. |
@@ -597,7 +597,7 @@ ecosystem inside Psionic rather than only as a low-level framework port.
 
 - `PMLX-101` done 2026-03-16
 - `PMLX-102` done 2026-03-16
-- `PMLX-103`
+- `PMLX-103` done 2026-03-16
 - `PMLX-104`
 - `PMLX-105`
 - `PMLX-106`

@@ -245,9 +245,10 @@ Current posture:
   execution-plan types plus tensor-family capability matrices for dense,
   sparse, nested, masked, and storage-aware semantics.
 - `psionic-array`: first public lazy-array facade above `psionic-core` and
-  `psionic-ir`, including a context-owned graph builder, graph-backed
-  arithmetic, explicit `eval` / `async_eval` boundaries, and snapshot graph
-  export for the current output set.
+  `psionic-ir`, including context-owned graph construction, public device and
+  stream handles with honest unified-memory flags and dependency-policy truth,
+  graph-backed arithmetic, explicit `eval` / `async_eval` boundaries, and
+  snapshot graph export for the current output set.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and
