@@ -20,6 +20,28 @@
     <string>@MARKETING_VERSION@</string>
     <key>CFBundleVersion</key>
     <string>@BUILD_VERSION@</string>
+    <key>BuildMachineOSBuild</key>
+    <string>@BUILD_MACHINE_OS_BUILD@</string>
+    <key>DTCompiler</key>
+    <string>@DT_COMPILER@</string>
+    <key>DTPlatformBuild</key>
+    <string>@DT_PLATFORM_BUILD@</string>
+    <key>DTPlatformName</key>
+    <string>@DT_PLATFORM_NAME@</string>
+    <key>DTPlatformVersion</key>
+    <string>@DT_PLATFORM_VERSION@</string>
+    <key>DTSDKBuild</key>
+    <string>@DT_SDK_BUILD@</string>
+    <key>DTSDKName</key>
+    <string>@DT_SDK_NAME@</string>
+    <key>DTXcode</key>
+    <string>@DT_XCODE@</string>
+    <key>DTXcodeBuild</key>
+    <string>@DT_XCODE_BUILD@</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
     <key>LSBackgroundOnly</key>
     <true/>
     <key>LSMinimumSystemVersion</key>

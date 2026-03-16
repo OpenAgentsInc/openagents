@@ -35,10 +35,9 @@ use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext
 use psionic_adapters::{AppleFmAdapterPackage, AppleFmAdapterPackageMetadata};
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
-    AppleFmGeneratedContent, AppleFmGenerationSchema, AppleFmHealthResponse,
-    AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
-    AppleFmSessionStructuredGenerationRequest, AppleFmTool, AppleFmToolCallError,
-    AppleFmToolDefinition, DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmGenerationOptions, AppleFmGenerationSchema, AppleFmHealthResponse,
+    AppleFmSamplingMode, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
+    AppleFmSessionStructuredGenerationRequest, DEFAULT_APPLE_FM_MODEL_ID,
 };
 use psionic_data::{
     APPLE_ADAPTER_DEFAULT_INSTRUCTION, AppleAdapterDatasetContract, AppleAdapterMessageRole,
@@ -54,9 +53,9 @@ use psionic_environments::{
     EnvironmentRubricScoreKind, EnvironmentToolContract, EnvironmentToolInterface,
 };
 use psionic_eval::{
-    AppleAdapterEvalHarness, AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCall,
-    AppleAdapterRuntimeDriftReport, AppleAdapterRuntimeSmokeReceipt,
-    AppleAdapterRuntimeSmokeRequest, EvalArtifact, EvalMetric, EvalRunState,
+    AppleAdapterEvalHarness, AppleAdapterObservedSampleOutput, AppleAdapterRuntimeDriftReport,
+    AppleAdapterRuntimeSmokeReceipt, AppleAdapterRuntimeSmokeRequest, EvalArtifact, EvalMetric,
+    EvalRunState,
 };
 use psionic_train::{
     APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
@@ -71,6 +70,8 @@ use psionic_train::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+use crate::apple_repo_lookup_tools::{AppleRepoLookupRecorder, build_repo_lookup_tools};
 
 const APPLE_TRAINING_SCHEMA_VERSION: u16 = 1;
 const APPLE_TRAINING_STATE_FILENAME: &str = "apple-adapter-training.json";
@@ -2856,22 +2857,8 @@ fn run_local_held_out_eval(
                     sample.sample_id
                 )
             })?;
-        let tool_recorder =
-            std::sync::Arc::new(Mutex::new(Vec::<AppleAdapterObservedToolCall>::new()));
-        let tools = sample
-            .tools
-            .iter()
-            .map(|tool| {
-                Ok(std::sync::Arc::new(RecordingTool {
-                    definition: AppleFmToolDefinition::new(
-                        tool.function.name.clone(),
-                        tool.function.description.clone(),
-                        AppleFmGenerationSchema::new(tool.function.arguments.clone())?,
-                    ),
-                    recorder: tool_recorder.clone(),
-                }) as std::sync::Arc<dyn AppleFmTool>)
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let tool_recorder = AppleRepoLookupRecorder::default();
+        let tools = build_repo_lookup_tools(sample.tools.as_slice(), tool_recorder.clone())?;
         let session = client
             .create_session_with_tools(
                 &AppleFmSessionCreateRequest {
@@ -2899,10 +2886,11 @@ fn run_local_held_out_eval(
                 session.id.as_str(),
                 &AppleFmSessionStructuredGenerationRequest {
                     prompt,
-                    schema: AppleFmGenerationSchema::new(
+                    schema: AppleFmGenerationSchema::with_title_hint(
                         response_format.json_schema.schema.clone(),
+                        Some(response_format.json_schema.name.as_str()),
                     )?,
-                    options: None,
+                    options: apple_eval_generation_options(),
                     adapter: None,
                 },
             ) {
@@ -2922,7 +2910,7 @@ fn run_local_held_out_eval(
                 session.id.as_str(),
                 &AppleFmSessionRespondRequest {
                     prompt,
-                    options: None,
+                    options: apple_eval_generation_options(),
                     adapter: None,
                 },
             ) {
@@ -2937,15 +2925,7 @@ fn run_local_held_out_eval(
                 ),
             }
         };
-        let observed_tool_calls = tool_recorder
-            .lock()
-            .map_err(|_| anyhow!("Apple adapter eval tool recorder lock poisoned"))?
-            .clone();
-        let observed_output = if observed_tool_calls.is_empty() {
-            observed_output
-        } else {
-            observed_output.with_tool_calls(observed_tool_calls)
-        };
+        let observed_output = tool_recorder.attach_to_output(observed_output)?;
         let _ = client.delete_session(session.id.as_str());
         observed_outputs.push(observed_output);
     }
@@ -2973,10 +2953,25 @@ fn runtime_error_observed_output(
     observed
         .metadata
         .insert(String::from("runtime_error"), Value::String(error));
+    observed.metadata.insert(
+        String::from("apple_adapter.runtime_failures"),
+        json!([{
+            "failure_code": "bridge_request_failed",
+            "detail": observed
+                .metadata
+                .get("runtime_error")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        }]),
+    );
     if structured {
         observed = observed.with_structured_output(Value::Null);
     }
     observed
+}
+
+pub(crate) fn apple_eval_generation_options() -> Option<AppleFmGenerationOptions> {
+    AppleFmGenerationOptions::new(Some(AppleFmSamplingMode::greedy()), None, Some(96)).ok()
 }
 
 fn run_local_runtime_smoke(
@@ -3034,7 +3029,7 @@ fn build_runtime_smoke_request(
         structured_prompt: None,
         structured_schema: None,
         expected_structured_output: None,
-        options: None,
+        options: apple_eval_generation_options(),
     }
 }
 
@@ -3351,36 +3346,6 @@ fn with_controller<T>(
         .lock()
         .map_err(|_| "Apple adapter training controller lock poisoned".to_string())?;
     f(&mut controller)
-}
-
-#[derive(Clone)]
-struct RecordingTool {
-    definition: AppleFmToolDefinition,
-    recorder: std::sync::Arc<Mutex<Vec<AppleAdapterObservedToolCall>>>,
-}
-
-impl AppleFmTool for RecordingTool {
-    fn definition(&self) -> AppleFmToolDefinition {
-        self.definition.clone()
-    }
-
-    fn call(&self, arguments: AppleFmGeneratedContent) -> Result<String, AppleFmToolCallError> {
-        let argument_payload = arguments.content.clone();
-        let mut recorder = self.recorder.lock().map_err(|_| {
-            AppleFmToolCallError::new(self.definition.name.clone(), "tool recorder lock poisoned")
-        })?;
-        recorder.push(AppleAdapterObservedToolCall {
-            tool_name: self.definition.name.clone(),
-            succeeded: true,
-            arguments: Some(argument_payload.clone()),
-        });
-        serde_json::to_string(&json!({
-            "tool_name": self.definition.name,
-            "arguments": argument_payload,
-            "ok": true,
-        }))
-        .map_err(|error| AppleFmToolCallError::new(self.definition.name.clone(), error.to_string()))
-    }
 }
 
 trait FinalizeComputeEvaluationRunRequestExt {

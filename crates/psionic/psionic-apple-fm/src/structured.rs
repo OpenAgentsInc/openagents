@@ -42,6 +42,16 @@ pub struct AppleFmGenerationSchema {
 impl AppleFmGenerationSchema {
     /// Builds a validated schema wrapper from a raw JSON value.
     pub fn new(schema: Value) -> Result<Self, AppleFmStructuredValueError> {
+        Self::with_title_hint(schema, None)
+    }
+
+    /// Builds a validated schema wrapper from a raw JSON value plus an
+    /// optional title hint for Apple runtime normalization.
+    pub fn with_title_hint(
+        mut schema: Value,
+        title_hint: Option<&str>,
+    ) -> Result<Self, AppleFmStructuredValueError> {
+        sanitize_generated_schema(&mut schema, title_hint);
         let schema = Self { schema };
         schema.validate()?;
         Ok(schema)
@@ -59,13 +69,12 @@ impl AppleFmGenerationSchema {
 
     /// Builds a schema from a Rust type derived with `schemars::JsonSchema`.
     pub fn from_type<T: JsonSchema>() -> Result<Self, AppleFmStructuredValueError> {
-        let mut schema = serde_json::to_value(schema_for!(T)).map_err(|error| {
+        let schema = serde_json::to_value(schema_for!(T)).map_err(|error| {
             AppleFmStructuredValueError::SchemaEncode {
                 error: error.to_string(),
             }
         })?;
-        sanitize_generated_schema(&mut schema, Some(T::schema_name().as_ref()));
-        Self::new(schema)
+        Self::with_title_hint(schema, Some(T::schema_name().as_ref()))
     }
 
     /// Serializes the schema to a compact JSON string.
@@ -358,6 +367,26 @@ mod tests {
         let error = AppleFmGenerationSchema::from_json_str("\"not a schema\"")
             .expect_err("non-object schema should fail");
         assert_eq!(error, AppleFmStructuredValueError::InvalidSchemaRoot);
+    }
+
+    #[test]
+    fn raw_schema_normalizes_title_and_property_order_for_runtime_use() {
+        let schema = AppleFmGenerationSchema::with_title_hint(
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "apple_lane": {"type": "string"},
+                    "runtime_validation": {"type": "string"}
+                },
+                "required": ["apple_lane", "runtime_validation"]
+            }),
+            Some("AppleLaneStatus"),
+        )
+        .expect("normalize raw runtime schema");
+        let schema_json = schema.clone_json_value();
+        assert_eq!(schema_json["title"], "AppleLaneStatus");
+        assert_eq!(schema_json["additionalProperties"], false);
+        assert!(schema_json["x-order"].is_array());
     }
 
     #[test]

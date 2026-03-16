@@ -15,7 +15,7 @@ This is a codebase-grounded audit of the current tree, not a wish list.
 
 ## Executive Summary
 
-Update after `#3768` and `#3769` on 2026-03-16:
+Update after `#3768`, `#3769`, and `#3770` on 2026-03-16:
 
 - the shipped Apple operator path no longer uses Python for the train phase or
   the export phase
@@ -30,6 +30,15 @@ Update after `#3768` and `#3769` on 2026-03-16:
   runtime smoke with `runtime_smoke_passed=true`, `runtime_asset_size_bytes`
   `133312320`, and the live Apple base-model signature
   `9799725ff8e851184037110b422d891ad3b92ec1`
+- the Apple runtime parity follow-on now uses shared repo-backed `lookup_doc`
+  and `lookup_code` tool handlers in
+  `apps/autopilot-desktop/src/apple_repo_lookup_tools.rs`, normalizes guided
+  generation schemas through
+  `psionic_apple_fm::AppleFmGenerationSchema::with_title_hint(...)`, caps live
+  eval requests with bounded greedy generation options, and emits full
+  benchmark `base_eval_run` and `adapted_eval_run` receipts so sample failures
+  are classified as model, model-request, or runtime failures instead of being
+  hidden behind aggregate benchmark deltas
 
 The shipped train/export lane is therefore now Rust-native end to end.
 Python still exists in-tree only as the external oracle and cleanup target in
@@ -137,7 +146,8 @@ The train system doc already says this precisely:
 - `crates/psionic/docs/TRAIN_SYSTEM.md`
 
 The repo-native backend is currently a narrower reference backend.
-The live Apple-valid runtime asset path is still the toolkit wrapper.
+The earlier version of this audit said the live Apple-valid runtime asset path
+was still the toolkit wrapper. That is no longer true after `#3769`.
 
 ### 4. The operator telemetry is currently coarse and mostly post-hoc
 
@@ -261,30 +271,36 @@ That contract does not exist today for the Apple operator path.
 These problems are separate from the Python dependency, but they matter for a
 credible Rust-only replacement:
 
-### 1. The tool-eval harness is still too fake
+### 1. The tool-eval harness used to be too fake
 
-The benchmark and held-out harnesses currently use recording tools in:
+Before `#3770`, the benchmark and held-out harnesses used recording tools in:
 
 - `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
 - `apps/autopilot-desktop/src/apple_architecture_explainer_reference_run.rs`
 
-Those tools currently record the call and echo synthetic JSON.
-They do not actually read repo docs or code.
+Those tools used to record the call and echo synthetic JSON.
+They did not actually read repo docs or code.
 
-That means the current `lookup_doc` or `lookup_code` style tasks are not backed
-by real retrieval during eval.
+After `#3770`, both harnesses share real repo-backed lookup tools in
+`apps/autopilot-desktop/src/apple_repo_lookup_tools.rs`. Benchmark and held-out
+receipts now carry the lookup events plus model-request or harness failure
+metadata when a tool call goes wrong.
 
-### 2. Structured-generation parity is still incomplete
+### 2. Structured-generation parity used to be incomplete
 
-The recent run still hit invalid structured-generation behavior on the Apple
-runtime for the schema-backed sample.
+Before `#3770`, the recent run still hit invalid structured-generation behavior
+on the Apple runtime for the schema-backed sample.
 
-That means the Rust-only path cannot stop at "text-only adapter answers".
-It also needs:
+The Rust-only path therefore needed:
 
 - correct guided-generation schema normalization
 - runtime-valid structured request construction
 - parity coverage for the structured eval lane
+
+After `#3770`, raw eval schemas are normalized through
+`AppleFmGenerationSchema::with_title_hint(...)`, live eval requests use bounded
+greedy generation options, and the structured sample now terminates as a normal
+model mismatch instead of an invalid-schema runtime failure.
 
 ### 3. The current operator status surface reports the truth too late
 
@@ -367,10 +383,14 @@ Acceptance:
 ### 3. Psionic Apple Runtime Parity: make structured-generation and tool-calling
 evals fully valid against the Apple runtime
 
+Status:
+
+- implemented in `#3770`
+
 Why:
 
-- the current runs still expose invalid structured schema behavior
-- tool-backed eval currently uses echo tools instead of real retrieval
+- the earlier runs exposed invalid structured schema behavior
+- tool-backed eval used echo tools instead of real retrieval
 
 Deliverables:
 
@@ -384,7 +404,8 @@ Acceptance:
 
 - structured eval samples run without invalid-schema failures
 - tool-eval samples use real lookup results
-- benchmark results are measuring the intended behavior, not a fake tool shim
+- held-out and benchmark receipts surface model, model-request, and runtime
+  failure reasons instead of only aggregate deltas
 
 ### 4. Psionic Apple Operator Telemetry: add a typed live event stream for
 training, eval, export, and smoke

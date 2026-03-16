@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -9,8 +8,7 @@ use openagents_kernel_core::authority::HttpKernelAuthorityClient;
 use psionic_apple_fm::{
     AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
     AppleFmGenerationSchema, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
-    AppleFmSessionStructuredGenerationRequest, AppleFmTool, AppleFmToolDefinition,
-    DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmSessionStructuredGenerationRequest, DEFAULT_APPLE_FM_MODEL_ID,
 };
 use psionic_data::{
     AppleAdapterCuratedCorpusManifest, AppleAdapterDatasetContract, AppleAdapterMessageRole,
@@ -18,9 +16,9 @@ use psionic_data::{
 };
 use psionic_eval::{
     AppleAdapterBaseVsAdapterBenchmarkReport, AppleAdapterEvalHarness,
-    AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCall, EvalExecutionStrategyFacts,
-    EvalTimerIntegrityFacts, EvalVerificationFacts, architecture_explainer_benchmark_key,
-    build_curated_benchmark_package, run_curated_base_vs_adapter_benchmark,
+    AppleAdapterObservedSampleOutput, EvalExecutionStrategyFacts, EvalTimerIntegrityFacts,
+    EvalVerificationFacts, architecture_explainer_benchmark_key, build_curated_benchmark_package,
+    run_curated_base_vs_adapter_benchmark,
 };
 use psionic_train::AppleAdapterExperimentManifest;
 use reqwest::blocking::Client;
@@ -28,9 +26,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::apple_adapter_training_control::{
     AppleAdapterOperatorLaunchRequest, AppleAdapterOperatorRunStatus, accept_run,
-    build_environment_bundle, export_run, launch_run, load_dataset, operator_status,
-    runtime_profile_from_summary, runtime_profile_with_dataset_defaults,
+    apple_eval_generation_options, build_environment_bundle, export_run, launch_run, load_dataset,
+    operator_status, runtime_profile_from_summary, runtime_profile_with_dataset_defaults,
 };
+use crate::apple_repo_lookup_tools::{AppleRepoLookupRecorder, build_repo_lookup_tools};
 use crate::kernel_control::build_remote_authority_client;
 
 const REPORT_SCHEMA_VERSION: u16 = 1;
@@ -453,21 +452,8 @@ fn collect_live_runtime_outputs(
                         sample.sample_id
                     )
                 })?;
-            let tool_recorder = Arc::new(Mutex::new(Vec::<AppleAdapterObservedToolCall>::new()));
-            let tools = sample
-                .tools
-                .iter()
-                .map(|tool| {
-                    Ok(Arc::new(ArchitectureExplainerRecordingTool {
-                        definition: AppleFmToolDefinition::new(
-                            tool.function.name.clone(),
-                            tool.function.description.clone(),
-                            AppleFmGenerationSchema::new(tool.function.arguments.clone())?,
-                        ),
-                        recorder: tool_recorder.clone(),
-                    }) as Arc<dyn AppleFmTool>)
-                })
-                .collect::<Result<Vec<_>>>()?;
+            let tool_recorder = AppleRepoLookupRecorder::default();
+            let tools = build_repo_lookup_tools(sample.tools.as_slice(), tool_recorder.clone())?;
             let session = client
                 .create_session_with_tools(
                     &AppleFmSessionCreateRequest {
@@ -498,10 +484,11 @@ fn collect_live_runtime_outputs(
                     session.id.as_str(),
                     &AppleFmSessionStructuredGenerationRequest {
                         prompt,
-                        schema: AppleFmGenerationSchema::new(
+                        schema: AppleFmGenerationSchema::with_title_hint(
                             response_format.json_schema.schema.clone(),
+                            Some(response_format.json_schema.name.as_str()),
                         )?,
-                        options: None,
+                        options: apple_eval_generation_options(),
                         adapter: None,
                     },
                 ) {
@@ -518,13 +505,13 @@ fn collect_live_runtime_outputs(
                 }
             } else {
                 match client.respond_in_session(
-                    session.id.as_str(),
-                    &AppleFmSessionRespondRequest {
-                        prompt,
-                        options: None,
-                        adapter: None,
-                    },
-                ) {
+                session.id.as_str(),
+                &AppleFmSessionRespondRequest {
+                    prompt,
+                    options: apple_eval_generation_options(),
+                    adapter: None,
+                },
+            ) {
                     Ok(response) => AppleAdapterObservedSampleOutput::from_text(
                         sample.sample_id.clone(),
                         response.output,
@@ -536,16 +523,7 @@ fn collect_live_runtime_outputs(
                     ),
                 }
             };
-
-            let observed_tool_calls = tool_recorder
-                .lock()
-                .map_err(|_| anyhow!("Apple benchmark tool recorder lock poisoned"))?
-                .clone();
-            let observed_output = if observed_tool_calls.is_empty() {
-                observed_output
-            } else {
-                observed_output.with_tool_calls(observed_tool_calls)
-            };
+            let observed_output = tool_recorder.attach_to_output(observed_output)?;
             let _ = client.delete_session(session.id.as_str());
             Ok(observed_output)
         })();
@@ -599,6 +577,17 @@ fn runtime_error_observed_output(
     observed.metadata.insert(
         String::from("runtime_error"),
         serde_json::Value::String(error),
+    );
+    observed.metadata.insert(
+        String::from("apple_adapter.runtime_failures"),
+        serde_json::json!([{
+            "failure_code": "bridge_request_failed",
+            "detail": observed
+                .metadata
+                .get("runtime_error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+        }]),
     );
     if structured {
         observed = observed.with_structured_output(serde_json::Value::Null);
@@ -774,39 +763,4 @@ fn current_epoch_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
-}
-
-#[derive(Clone)]
-struct ArchitectureExplainerRecordingTool {
-    definition: AppleFmToolDefinition,
-    recorder: Arc<Mutex<Vec<AppleAdapterObservedToolCall>>>,
-}
-
-impl AppleFmTool for ArchitectureExplainerRecordingTool {
-    fn definition(&self) -> AppleFmToolDefinition {
-        self.definition.clone()
-    }
-
-    fn call(
-        &self,
-        arguments: psionic_apple_fm::AppleFmGeneratedContent,
-    ) -> Result<String, psionic_apple_fm::AppleFmToolCallError> {
-        let mut recorder = self.recorder.lock().map_err(|_| {
-            psionic_apple_fm::AppleFmToolCallError::new(
-                self.definition.name.clone(),
-                "tool recorder lock poisoned",
-            )
-        })?;
-        recorder.push(AppleAdapterObservedToolCall {
-            tool_name: self.definition.name.clone(),
-            succeeded: true,
-            arguments: Some(arguments.content.clone()),
-        });
-        Ok(serde_json::json!({
-            "tool": self.definition.name,
-            "arguments": arguments.content,
-            "status": "ok"
-        })
-        .to_string())
-    }
 }

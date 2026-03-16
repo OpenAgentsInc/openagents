@@ -150,10 +150,13 @@ If none of these yield an existing binary, the app may try to **auto-build** onc
 - **Build** (from repo root):
   `cd swift/foundation-bridge && ./build.sh`
   Produces **`bin/foundation-bridge`** plus a signed
-  **`bin/FoundationBridge.app`** helper bundle. The bridge is written in
-  **Swift**, so the build requires the **Swift compiler** (Xcode from the App
-  Store, or **`xcode-select --install`** for Command Line Tools only—no full
-  Xcode needed).
+  **`bin/FoundationBridge.app`** helper bundle. The build script now writes
+  Xcode/SDK bundle metadata and prefers a real local signing identity in this
+  order: `Apple Development`, `Developer ID Application`, `Apple Distribution`,
+  then ad-hoc as a final fallback. The bridge is written in **Swift**, so the
+  build requires the **Swift compiler** (Xcode from the App Store, or
+  **`xcode-select --install`** for Command Line Tools only—no full Xcode
+  needed).
 - **Run**:
   `open -n -g ./bin/FoundationBridge.app --args 11435`
   Default port **11435**. Optional low-level debug path: `./bin/foundation-bridge 8080` for a different port (and set `OPENAGENTS_APPLE_FM_BASE_URL` accordingly).

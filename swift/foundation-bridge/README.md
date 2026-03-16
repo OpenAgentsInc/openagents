@@ -14,10 +14,13 @@ HTTP server that exposes Apple's Foundation Models via an OpenAI-compatible API.
 ./build.sh
 ```
 
-This compiles the binary to `../../bin/foundation-bridge` and ad-hoc signs it so
-macOS will launch the rebuilt sidecar locally. It also writes a signed
-`../../bin/FoundationBridge.app` bundle with an `Info.plist`, which is the
-preferred launch surface for the desktop app on Apple Intelligence systems.
+This compiles the binary to `../../bin/foundation-bridge` and signs it for
+local launch. When a real signing identity is available in the keychain,
+`build.sh` prefers `Apple Development`, then `Developer ID Application`, then
+`Apple Distribution`; if none are available it falls back to ad-hoc signing.
+It also writes a signed `../../bin/FoundationBridge.app` bundle with an
+`Info.plist` that includes Xcode and SDK metadata, which is the preferred
+launch surface for the desktop app on Apple Intelligence systems.
 
 ## Usage
 
