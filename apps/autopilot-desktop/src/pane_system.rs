@@ -2667,21 +2667,18 @@ pub fn mission_control_layout_for_mode(
     );
 
     let compact_right_column = buy_mode_enabled && right_column.size.height <= 500.0;
-    let active_jobs_height = if buy_mode_enabled {
-        if compact_right_column {
-            72.0
+    let (min_active_jobs_height, preferred_active_jobs_height, target_active_jobs_height) =
+        if buy_mode_enabled {
+            if compact_right_column {
+                (72.0, 92.0, 144.0)
+            } else {
+                (104.0, 132.0, 220.0)
+            }
         } else {
-            (right_column.size.height * 0.18).clamp(84.0, 104.0)
-        }
-    } else {
-        (128.0 * scale).max(84.0_f32.min(body_height))
-    };
-    let active_jobs_panel = Bounds::new(
-        right_column.origin.x,
-        right_column.origin.y,
-        right_column.size.width,
-        active_jobs_height,
-    );
+            let preferred = (128.0 * scale).max(84.0_f32.min(body_height));
+            (84.0, preferred, 212.0)
+        };
+    let mut active_jobs_height = preferred_active_jobs_height.max(min_active_jobs_height);
     let min_log_stream_height: f32 = if compact_right_column { 132.0 } else { 153.0 };
     let preferred_load_funds_height: f32 = if buy_mode_enabled {
         if compact_right_column { 196.0 } else { 212.0 }
@@ -2698,7 +2695,7 @@ pub fn mission_control_layout_for_mode(
     } else {
         176.0
     };
-    let buy_mode_panel = if buy_mode_enabled {
+    let buy_mode_height = if buy_mode_enabled {
         let top_gaps = panel_gap * 3.0;
         let max_buy_mode_height = (right_column.size.height
             - active_jobs_height
@@ -2722,19 +2719,9 @@ pub fn mission_control_layout_for_mode(
                 .min(max_buy_mode_height - buy_mode_height);
             buy_mode_height += responsive_growth;
         }
-        Bounds::new(
-            right_column.origin.x,
-            active_jobs_panel.max_y() + panel_gap,
-            right_column.size.width,
-            buy_mode_height,
-        )
+        buy_mode_height
     } else {
-        Bounds::new(
-            right_column.origin.x,
-            active_jobs_panel.max_y(),
-            right_column.size.width,
-            0.0,
-        )
+        0.0
     };
     let top_gaps = if buy_mode_enabled {
         panel_gap * 3.0
@@ -2742,7 +2729,7 @@ pub fn mission_control_layout_for_mode(
         panel_gap * 2.0
     };
     let remaining_after_top =
-        (right_column.size.height - active_jobs_height - buy_mode_panel.size.height - top_gaps)
+        (right_column.size.height - active_jobs_height - buy_mode_height - top_gaps)
             .max(0.0);
     let max_load_funds_height = (remaining_after_top - min_log_stream_height).max(0.0);
     let mut load_funds_height = if max_load_funds_height <= 0.0 {
@@ -2758,6 +2745,38 @@ pub fn mission_control_layout_for_mode(
             .min(max_load_funds_height - load_funds_height);
         load_funds_height += responsive_growth;
     }
+    let mut log_stream_height =
+        (right_column.size.height - active_jobs_height - buy_mode_height - load_funds_height
+            - top_gaps)
+            .max(0.0);
+    if log_stream_height > min_log_stream_height {
+        let active_growth = (target_active_jobs_height - active_jobs_height)
+            .max(0.0)
+            .min(log_stream_height - min_log_stream_height);
+        active_jobs_height += active_growth;
+        log_stream_height -= active_growth;
+    }
+    let active_jobs_panel = Bounds::new(
+        right_column.origin.x,
+        right_column.origin.y,
+        right_column.size.width,
+        active_jobs_height,
+    );
+    let buy_mode_panel = if buy_mode_enabled {
+        Bounds::new(
+            right_column.origin.x,
+            active_jobs_panel.max_y() + panel_gap,
+            right_column.size.width,
+            buy_mode_height,
+        )
+    } else {
+        Bounds::new(
+            right_column.origin.x,
+            active_jobs_panel.max_y(),
+            right_column.size.width,
+            0.0,
+        )
+    };
     let load_funds_origin_y = if buy_mode_enabled {
         buy_mode_panel.max_y() + panel_gap
     } else {
@@ -2774,7 +2793,7 @@ pub fn mission_control_layout_for_mode(
         right_column.origin.x,
         log_origin_y,
         right_column.size.width,
-        (right_column.max_y() - log_origin_y).max(0.0),
+        log_stream_height,
     );
 
     MissionControlPaneLayout {
@@ -7954,6 +7973,7 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
+        mission_control_layout_for_mode,
         mission_control_load_funds_layout, mission_control_load_funds_scroll_viewport_bounds,
         network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
         network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
@@ -8851,5 +8871,15 @@ mod tests {
         let compact_layout = mission_control_load_funds_layout(compact_content, true);
         assert!(compact_layout.controls_column.size.height < 152.0);
         assert!(compact_layout.amount_input.origin.y >= compact_viewport.origin.y + 24.0);
+    }
+
+    #[test]
+    fn mission_control_active_jobs_panel_grows_with_taller_right_column() {
+        let shorter = mission_control_layout_for_mode(Bounds::new(0.0, 0.0, 1040.0, 620.0), true);
+        let taller = mission_control_layout_for_mode(Bounds::new(0.0, 0.0, 1040.0, 860.0), true);
+
+        assert!(taller.active_jobs_panel.size.height > shorter.active_jobs_panel.size.height);
+        assert!(taller.log_stream.size.height >= shorter.log_stream.size.height);
+        assert!(taller.load_funds_panel.size.height >= shorter.load_funds_panel.size.height);
     }
 }
