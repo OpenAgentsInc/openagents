@@ -74,6 +74,24 @@ RLM sources reviewed:
 - `~/code/rlm/tests/test_local_repl.py`
 - `~/code/rlm/tests/repl/test_custom_tools.py`
 
+Backroom historical sources reviewed:
+
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/frlm/docs/README.md`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/frlm/docs/ARCHITECTURE.md`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/frlm/src/trace.rs`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/rlm/docs/README.md`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/rlm/docs/ARCHITECTURE.md`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/rlm/docs/METHODS.md`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/rlm/docs/PROVENANCE.md`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/pylon/src/cli/rlm.rs`
+- `~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/pylon/src/db/rlm.rs`
+- `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/crates/compute/docs/FRLM_TOOLS.md`
+- `~/code/backroom/openagents-rust-deprecation-2026-02-11/openagents/crates/adjutant/docs/README.md`
+- `~/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/autopilot/reference/context-failures.md`
+- `~/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/autopilot/dse/dse.md`
+- `~/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/autopilot/dse/rlm-trace-mining.md`
+- `~/code/backroom/openagents-doc-archive/2026-02-21-stale-doc-pass-2/docs/autopilot/dse/RLM_UNIFIED_ROADMAP.md`
+
 ## Executive Summary
 
 RLM is not a model runtime.
@@ -137,6 +155,29 @@ The recommended plan is:
 2. build a Psionic-native reference harness for recursive long-context tasks
 3. add receipt-bearing subcall graphs, budgets, and result lineage
 4. only then expose recursive fan-out as a compute/labor product lane
+
+Reading `~/code/backroom` strengthens that conclusion rather than weakening
+it.
+
+The archive shows OpenAgents already moved the idea away from "Python REPL
+recursion" in three different directions:
+
+- `pylon rlm` plus `frlm`
+  - federated fan-out with sats budgets, quorum policy, verification tiers,
+    and trace-native execution
+- a Rust `rlm` crate
+  - provenance-first tools and symbolic recursion
+- a later DSE `rlm_lite.v1` design
+  - RLM as an inference-time strategy with two-bucket context,
+    VarSpace/BlobRefs, structured actions, fail-closed budgets, and
+    deterministic trace blobs
+
+That archive history changes the practical recommendation in one important
+way:
+
+> the best OpenAgents RLM ideas are not "prompt-exec Python loops." They are
+> "typed recursive strategy, provenance-first evidence, fail-closed budgets,
+> and federated fan-out with traceable economics."
 
 ## What RLM Actually Is
 
@@ -253,6 +294,99 @@ This audit therefore treats RLM as:
 
 - not MVP
 - but still a high-value later compute/labor demand engine
+
+## What The Backroom Adds
+
+Reading `~/code/backroom` makes the historical picture more precise.
+
+OpenAgents did not only have one RLM idea. It had at least three distinct
+iterations:
+
+### 1. `pylon rlm` and `frlm`: federated recursive fan-out
+
+The old Pylon path was not just a vague "maybe swarm this later" plan.
+
+It had:
+
+- a dedicated `pylon rlm` CLI
+- a separate `rlm.db`
+- explicit sats budgets
+- quorum policy
+- verification tiers
+- local fallback
+- trace events such as:
+  - `SubQueryExecute`
+  - `BudgetReserve`
+  - `BudgetSettle`
+  - `VerifyRedundant`
+  - `FallbackLocal`
+
+That is useful because it shows a realistic future compute-market shape for
+recursive fan-out:
+
+- child executions can carry venue, budget, and verification posture
+- not every recursive branch has to be treated as an opaque local prompt trick
+
+### 2. The archived Rust `rlm` crate: provenance-first symbolic recursion
+
+The archived Rust `rlm` crate is materially more aligned with current
+OpenAgents boundaries than the external Python repo.
+
+Its durable ideas were:
+
+- `SpanRef`-style evidence with path, commit, line range, byte range, and
+  content hash
+- environment tools that return provenance-bearing results
+- a multi-phase router/extractor/reducer/verifier posture
+- symbolic recursion
+  - code/kernel drives chunk traversal and aggregation rather than asking the
+    LM to verbalize O(N) subcalls
+
+This is an important correction to the naive reading of RLM.
+
+The archive explicitly argued that "tool-call recursion disguised as Python
+code" is the wrong shape for large-N work, and that the right answer is
+code-driven traversal plus bounded LM extraction/synthesis.
+
+That fits Psionic much better than arbitrary REPL execution.
+
+### 3. DSE `rlm_lite.v1`: RLM as an inference-time strategy
+
+The later DSE docs are the clearest archive signal for what should survive.
+
+That design treated RLM as:
+
+- an inference-time strategy, not a separate product shell
+- a two-bucket context posture
+  - token space stays bounded
+  - long context lives in programmatic/artifact space
+- a structured JSON action DSL rather than arbitrary code execution
+- artifact-pinned strategy ids and budget profiles
+- fail-closed execution unless recursive limits are explicitly pinned
+- deterministic trace blobs that can be mined and distilled into compiled fast
+  paths later
+
+This is unusually compatible with the current Psionic and kernel split.
+
+It preserves:
+
+- replayability
+- auditable budgets
+- typed artifacts
+- operator-visible traces
+
+without making RLM a hidden runtime authority.
+
+### 4. The strongest archive-grounded lessons
+
+The backroom material strengthens four recommendations in this audit:
+
+1. prefer symbolic recursion and typed action kernels over arbitrary REPL code
+2. prefer provenance-bearing evidence refs over raw text-only trajectories
+3. prefer strategy ids, fail-closed budgets, and deterministic trace refs over
+   ad hoc local loops
+4. treat exploratory recursive runs as inputs to distillation and promotion,
+   not as the only long-term execution path
 
 ## Where RLM Fits In The Current Owner Split
 
@@ -711,6 +845,77 @@ RLM's abstraction over:
 is directionally useful. OpenAgents should preserve that kind of environment
 independence, but with Psionic-native runtime and receipt semantics.
 
+### 7. Two-bucket context posture
+
+The backroom docs repeatedly converged on one specific insight:
+
+> RLM is most useful when it keeps token space small and moves long context
+> into programmatic/artifact space.
+
+That means the best OpenAgents adaptation is not "give the controller more
+prompt."
+
+It is:
+
+- large corpora stay as artifact/blob refs
+- controllers see previews, spans, summaries, and typed handles
+- receipts record context pressure and how much content actually entered token
+  space
+
+This maps unusually well onto Psionic artifact and receipt discipline.
+
+### 8. Symbolic recursion and typed action kernels
+
+The strongest technical correction in the backroom `rlm` docs is that the LM
+should not be required to verbalize the whole recursive tree.
+
+The durable pattern is:
+
+- code or kernel drives chunk traversal
+- the controller emits bounded actions
+- local LM calls do extraction, reduction, or synthesis
+- arbitrary code execution is optional and isolated rather than being the
+  default recursive substrate
+
+That strongly suggests Psionic should prefer typed recursive controllers or
+action kernels over raw REPL-driven recursion for production-facing work.
+
+### 9. Provenance-first evidence surfaces
+
+Archived Rust `rlm` work used `SpanRef`-style evidence with:
+
+- path
+- commit
+- line range
+- byte range
+- content hash
+
+That is a much better fit for OpenAgents than free-form narrative traces alone.
+
+Recursive workloads should therefore consume and emit:
+
+- typed evidence refs
+- provenance-bearing tool outputs
+- validator-readable citations
+
+not only natural-language summaries of what the system thinks it read.
+
+### 10. Exploratory trace mining into compiled tactics
+
+The later DSE plan had the right long-term idea:
+
+- RLM runs are exploratory passes
+- traces are mined for recurring tactics
+- those tactics are distilled into typed pipelines, signatures, or policies
+- RLM remains the fallback for novelty and high-context cases
+
+This is a particularly strong fit for:
+
+- `psionic-research`
+- environment packages
+- eval-run promotion
+- later controller-side optimization loops
+
 ## What OpenAgents Should Not Copy From RLM
 
 These are the parts to reject or sharply limit.
@@ -723,10 +928,15 @@ Do not copy this into Psionic product truth.
 
 Useful as a prototype, wrong as long-term transport truth.
 
-### 3. Prompt-only control of recursive planning
+### 3. LM-authored recursive trees as the core control mechanism
 
-OpenAgents should progressively move recursive planning into more typed
-contracts and policy surfaces, not leave the whole system as prompt discipline.
+The archived `rlm` methods docs made an important correction here:
+
+- do not ask the model to verbalize O(N) subcalls for large-N work
+- do not treat tool-call recursion disguised as Python code as the core method
+
+OpenAgents should prefer symbolic recursion where code or kernels drive the
+traversal and the LM handles bounded local inference.
 
 ### 4. Trajectory logs as the only replay surface
 
@@ -774,6 +984,9 @@ Concretely:
 
 - create one reference benchmark/environment package for recursive long-context
   tasks
+- model at least two execution styles from the archive:
+  - a symbolic local strategy
+  - an FRLM-style fan-out strategy with explicit venue and verification posture
 - run it through:
   - `psionic-sandbox`
   - `psionic-serve`
@@ -796,21 +1009,30 @@ Concretely:
 
 - add parent/child receipt linkage for sandbox and served subcalls
 - add session-scoped execution ids for recursive workflows
+- add strategy ids for direct vs recursive execution modes
+- add venue, verification-tier, and budget-reserve or settle facts for child
+  executions
 - add typed budget and timeout propagation facts
-- add summary-checkpoint artifacts for long-context compaction
+- add deterministic trace refs and summary-checkpoint artifacts for
+  long-context compaction
 
 This is where RLM starts improving Psionic substrate directly.
 
-### Phase 3: Add persistent bounded workspaces to `psionic-sandbox`
+### Phase 3: Add persistent bounded workspaces and two-bucket context to `psionic-sandbox`
 
 Goals:
 
-- support stateful agentic sessions safely and replayably
+- support stateful agentic sessions and long-context handling safely and
+  replayably
 
 Concretely:
 
 - add bounded persistent sandbox sessions
 - add session snapshot and restore receipts
+- keep long context in artifact or handle space rather than inline prompt state
+- add context-pressure measurement and explicit recursive-trigger policy
+- if a controller loop is added, prefer a typed action DSL or equivalent
+  bounded kernel surface over arbitrary Python execution
 - distinguish:
   - one-shot jobs
   - persistent recursive sessions
@@ -828,6 +1050,10 @@ Concretely:
 
 - revive the idea behind job kind `5940` as a narrow recursive subquery family
 - let a root workload fan out into subordinate compute jobs
+- carry FRLM-like execution facts per child:
+  - venue
+  - quorum or verification posture
+  - local fallback if policy allows
 - use compute products and delivery proofs for each child execution
 - retain one parent execution graph that ties the subtree together
 
@@ -869,8 +1095,16 @@ Only after the core execution and accepted-outcome path is real.
 If the workload proves valuable, the next step should be:
 
 - a Rust-native recursive controller or orchestration layer
-- likely above Psionic runtime but close to Psionic sandbox/serve
+- likely above Psionic runtime but close to Psionic sandbox, serve, and
+  research surfaces
 - still distinct from kernel authority
+
+It should inherit the best archive ideas:
+
+- symbolic recursion
+- provenance-bearing evidence refs
+- strategy-pinned budgets
+- deterministic trace artifacts
 
 The rule should be:
 
@@ -919,6 +1153,16 @@ The right architectural reading is:
 > OpenAgents should adapt RLM as a recursive orchestration and demand pattern
 > above Psionic, use Psionic to execute and evidence the subcalls, and use the
 > kernel to accept, verify, and settle the resulting outcomes.
+
+After reading the backroom archive, that recommendation becomes more specific:
+
+- salvage the FRLM ideas around venue, budget, verification, and trace-native
+  fan-out
+- salvage the Rust `rlm` ideas around provenance-first tools and symbolic
+  recursion
+- salvage the DSE `rlm_lite.v1` ideas around two-bucket context, fail-closed
+  budgets, and trace-to-distillation loops
+- do not revive the Python REPL runtime or the old bundled Pylon product shape
 
 If handled that way, RLM can push the stack in the right direction:
 
