@@ -1,0 +1,19 @@
+[package]
+name = "arc-benchmark"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "ARC benchmark scoring, score summaries, and benchmark-facing report contracts"
+
+[lints]
+workspace = true
+
+[dependencies]
+arc-core = { path = "../core" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

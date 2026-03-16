@@ -451,8 +451,10 @@ The current baseline is intentionally thin.
 ### Foundations already present
 
 - `crates/arc/spec.md` now fixes the crate split and owner boundaries
-- `crates/arc/core` now exists as the first live ARC workspace crate with
-  explicit `schema`, `analysis`, and `envelopes` module boundaries
+- `crates/arc/core`, `crates/arc/datasets`, `crates/arc/engine`,
+  `crates/arc/client`, and `crates/arc/benchmark` now exist in the workspace
+  with the first live contract, dataset, engine, client, compatibility, parity,
+  and exact-match scoring surfaces
 - the 2026-03-15 audit maps the relevant ARC Prize repos into the crate plan
 - the upstream Python sources and protocol docs have already been audited
 - Psionic already offers meaningful substrate for dataset manifests, eval runs,
@@ -460,10 +462,10 @@ The current baseline is intentionally thin.
 
 ### Biggest current gaps
 
-- only `arc-core` exists so far; the rest of the `crates/arc/*` Rust crate
-  family is still absent
-- there is no benchmark-truth crate computing exact-match and RHAE in Rust
-- there is no deterministic engine parity harness in-tree yet
+- `arc-solvers` and `arc-ml` still do not exist
+- `arc-benchmark` now exists and exact-match static scoring is landed, but the
+  crate still does not cover interactive RHAE, checkpoints, recordings,
+  scorecard lifecycle, or repeated-run summaries
 - there is not yet a benchmark-truthful REST/runtime parity layer for
   local/remote ARC-AGI-3 flows; the bounded local compatibility server is now
   in-tree, the wrapper-level local-vs-remote parity harness is now in-tree,
@@ -652,7 +654,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-206` / [#3685](https://github.com/OpenAgentsInc/openagents/issues/3685) | planned | Create `crates/arc/benchmark` and implement exact-match static scoring for ARC-AGI-1 and ARC-AGI-2. |
+| `ARC-206` / [#3685](https://github.com/OpenAgentsInc/openagents/issues/3685) | landed | Create `crates/arc/benchmark` and implement exact-match static scoring for ARC-AGI-1 and ARC-AGI-2. |
 | `ARC-207` / [#3686](https://github.com/OpenAgentsInc/openagents/issues/3686) | planned | Implement interactive RHAE scoring, scorecards, recordings, and per-step summaries for ARC-AGI-3. |
 | `ARC-208` / [#3687](https://github.com/OpenAgentsInc/openagents/issues/3687) | planned | Port checkpoint, resume, and run-manifest behavior from the benchmarking repos. |
 | `ARC-209` / [#3688](https://github.com/OpenAgentsInc/openagents/issues/3688) | planned | Add typed benchmark summaries and repeated-run aggregation over `psionic-eval` and `psionic-research`. |
