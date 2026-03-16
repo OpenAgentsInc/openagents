@@ -1,14 +1,23 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use psionic_eval::{
+    TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF, TASSADAR_ARTICLE_CLASS_BENCHMARK_REF,
+    TASSADAR_BENCHMARK_ENVIRONMENT_REF, TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF,
+    TassadarBenchmarkReport, run_tassadar_article_class_benchmark,
+    run_tassadar_reference_fixture_benchmark,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    ExperimentArtifactKind, ExperimentArtifactOutput, ExperimentBudget, ExperimentFailureReason,
-    ExperimentFamily, ExperimentMetric, ExperimentReceiptKind, ExperimentReceiptRef,
-    ExperimentResult, ExperimentRunStatus, ExperimentScore, ExperimentSpec,
+    ExperimentArtifactKind, ExperimentArtifactOutput, ExperimentBudget, ExperimentComparisonError,
+    ExperimentFailureReason, ExperimentFamily, ExperimentMetric, ExperimentReceiptKind,
+    ExperimentReceiptRef, ExperimentResult, ExperimentRunStatus, ExperimentScore,
+    ExperimentScoreEvaluationError, ExperimentSpec, ResearchSweepEntry, ResearchSweepRecord,
+    TassadarExecutorAttentionMode, TassadarExecutorBenchmarkTarget,
+    TassadarExecutorDecodeCacheKind, TassadarExecutorExperimentSpec,
 };
 
 /// Invocation contract passed to the compiled research runner.
@@ -140,6 +149,32 @@ pub enum ResearchRunnerError {
     /// The runner could not persist one output file.
     #[error("failed to persist runner artifacts at {path}: {detail}")]
     PersistFailure { path: String, detail: String },
+    /// The executor benchmark backend failed.
+    #[error("tassadar benchmark failed: {0}")]
+    TassadarBenchmark(String),
+}
+
+/// Failure while executing or comparing a sweep of comparable research runs.
+#[derive(Debug, Error)]
+pub enum ResearchSweepError {
+    /// The sweep carried no runs.
+    #[error("research sweep is empty")]
+    EmptySweep,
+    /// One member failed to execute.
+    #[error(transparent)]
+    Runner(#[from] ResearchRunnerError),
+    /// A result could not be evaluated under the shared score contract.
+    #[error(transparent)]
+    Evaluation(#[from] ExperimentScoreEvaluationError),
+    /// Two evaluations could not be compared.
+    #[error(transparent)]
+    Comparison(#[from] ExperimentComparisonError),
+    /// One member belonged to a different family.
+    #[error("research sweep family mismatch: expected {expected}, found {actual}")]
+    FamilyMismatch { expected: String, actual: String },
+    /// One member used a different score contract.
+    #[error("research sweep score contract mismatch: expected {expected}, found {actual}")]
+    ScoreContractMismatch { expected: String, actual: String },
 }
 
 /// Executes bounded research experiments under an explicit runtime or sandbox profile.
@@ -239,59 +274,70 @@ impl ResearchRunner {
             });
         }
 
-        let scores = synthesize_scores(&invocation.spec);
-        let metrics = synthesize_metrics(&invocation.spec, estimated_runtime_ms);
-        let stdout_log = format!(
-            "run_id={} family={} profile_mode={:?} profile_ref={} status=succeeded score_count={} metric_count={}",
-            invocation.run_id,
-            invocation.spec.family.kind().label(),
-            profile_mode,
-            profile_ref,
-            scores.len(),
-            metrics.len()
-        );
-        let stderr_log = String::new();
-        let stdout_sha256 = stable_text_digest(stdout_log.as_str());
-        let stderr_sha256 = stable_text_digest(stderr_log.as_str());
-        let receipt = ResearchExecutionReceipt::new(
-            invocation,
-            profile_mode,
-            profile_ref.as_str(),
-            ExperimentRunStatus::Succeeded,
-            estimated_runtime_ms,
-            stdout_sha256.as_str(),
-            stderr_sha256.as_str(),
-        );
-        let mut receipt_refs = vec![receipt.as_receipt_ref()];
-        receipt_refs.extend(additional_receipt_refs(invocation, estimated_runtime_ms));
-        let artifact_outputs = vec![ExperimentArtifactOutput::new(
-            ExperimentArtifactKind::Auxiliary,
-            format!(
-                "artifact://research/{}/{}",
-                invocation.spec.family.kind().label(),
-                invocation.spec.candidate_id
+        match &invocation.spec.family {
+            ExperimentFamily::ExecutorVariants { executor } => execute_executor_variants(
+                invocation,
+                executor,
+                profile_mode,
+                profile_ref.as_str(),
+                estimated_runtime_ms,
             ),
-            stable_artifact_digest(invocation),
-        )];
-        let result = ExperimentResult::new(
-            invocation.run_id.clone(),
-            &invocation.spec,
-            invocation.started_at_ms,
-            invocation.started_at_ms + estimated_runtime_ms,
-            ExperimentRunStatus::Succeeded,
-            scores,
-            metrics,
-            receipt_refs,
-            artifact_outputs,
-            stdout_sha256,
-            stderr_sha256,
-        );
-        Ok(ResearchRunnerRecord {
-            result,
-            receipt,
-            stdout_log,
-            stderr_log,
-        })
+            _ => {
+                let scores = synthesize_scores(&invocation.spec);
+                let metrics = synthesize_metrics(&invocation.spec, estimated_runtime_ms);
+                let stdout_log = format!(
+                    "run_id={} family={} profile_mode={:?} profile_ref={} status=succeeded score_count={} metric_count={}",
+                    invocation.run_id,
+                    invocation.spec.family.kind().label(),
+                    profile_mode,
+                    profile_ref,
+                    scores.len(),
+                    metrics.len()
+                );
+                let stderr_log = String::new();
+                let stdout_sha256 = stable_text_digest(stdout_log.as_str());
+                let stderr_sha256 = stable_text_digest(stderr_log.as_str());
+                let receipt = ResearchExecutionReceipt::new(
+                    invocation,
+                    profile_mode,
+                    profile_ref.as_str(),
+                    ExperimentRunStatus::Succeeded,
+                    estimated_runtime_ms,
+                    stdout_sha256.as_str(),
+                    stderr_sha256.as_str(),
+                );
+                let mut receipt_refs = vec![receipt.as_receipt_ref()];
+                receipt_refs.extend(additional_receipt_refs(invocation, estimated_runtime_ms));
+                let artifact_outputs = vec![ExperimentArtifactOutput::new(
+                    ExperimentArtifactKind::Auxiliary,
+                    format!(
+                        "artifact://research/{}/{}",
+                        invocation.spec.family.kind().label(),
+                        invocation.spec.candidate_id
+                    ),
+                    stable_artifact_digest(invocation),
+                )];
+                let result = ExperimentResult::new(
+                    invocation.run_id.clone(),
+                    &invocation.spec,
+                    invocation.started_at_ms,
+                    invocation.started_at_ms + estimated_runtime_ms,
+                    ExperimentRunStatus::Succeeded,
+                    scores,
+                    metrics,
+                    receipt_refs,
+                    artifact_outputs,
+                    stdout_sha256,
+                    stderr_sha256,
+                );
+                Ok(ResearchRunnerRecord {
+                    result,
+                    receipt,
+                    stdout_log,
+                    stderr_log,
+                })
+            }
+        }
     }
 
     /// Persists a completed runner record to manifest and log files.
@@ -340,6 +386,572 @@ impl ResearchRunner {
             stdout_path,
             stderr_path,
         })
+    }
+
+    /// Executes a comparable sweep of bounded research runs and returns the
+    /// per-run records plus one machine-readable sweep summary.
+    pub fn execute_local_sweep(
+        sweep_id: impl Into<String>,
+        invocations: &[ResearchRunnerInvocation],
+    ) -> Result<(Vec<ResearchRunnerRecord>, ResearchSweepRecord), ResearchSweepError> {
+        let Some(first) = invocations.first() else {
+            return Err(ResearchSweepError::EmptySweep);
+        };
+        let family = first.spec.family.kind();
+        let contract_digest = first.spec.score_contract.contract_digest.clone();
+        let mut records = Vec::with_capacity(invocations.len());
+        let mut entries = Vec::with_capacity(invocations.len());
+        let mut winning_run_id = None;
+        let mut winning_candidate_id = None;
+        let mut winning_evaluation = None;
+
+        for invocation in invocations {
+            if invocation.spec.family.kind() != family {
+                return Err(ResearchSweepError::FamilyMismatch {
+                    expected: family.label().to_string(),
+                    actual: invocation.spec.family.kind().label().to_string(),
+                });
+            }
+            if invocation.spec.score_contract.contract_digest != contract_digest {
+                return Err(ResearchSweepError::ScoreContractMismatch {
+                    expected: contract_digest.clone(),
+                    actual: invocation.spec.score_contract.contract_digest.clone(),
+                });
+            }
+
+            let record = Self::execute_local(invocation)?;
+            let evaluation = invocation
+                .spec
+                .score_contract
+                .evaluate_result(&record.result)?;
+            if let Some(current_winner) = &winning_evaluation {
+                if evaluation.compare_same_contract(current_winner)?.is_gt() {
+                    winning_run_id = Some(record.result.run_id.clone());
+                    winning_candidate_id = Some(record.result.candidate_id.clone());
+                    winning_evaluation = Some(evaluation.clone());
+                }
+            } else {
+                winning_run_id = Some(record.result.run_id.clone());
+                winning_candidate_id = Some(record.result.candidate_id.clone());
+                winning_evaluation = Some(evaluation.clone());
+            }
+
+            entries.push(ResearchSweepEntry {
+                run_id: record.result.run_id.clone(),
+                candidate_id: record.result.candidate_id.clone(),
+                result_digest: record.result.result_digest.clone(),
+                weighted_score: evaluation.weighted_score,
+                hard_gate_failed: evaluation.hard_gate_failed,
+            });
+            records.push(record);
+        }
+
+        let sweep = ResearchSweepRecord::new(
+            sweep_id,
+            family,
+            contract_digest,
+            entries,
+            winning_run_id,
+            winning_candidate_id,
+        );
+        Ok((records, sweep))
+    }
+}
+
+fn execute_executor_variants(
+    invocation: &ResearchRunnerInvocation,
+    executor: &TassadarExecutorExperimentSpec,
+    profile_mode: RunnerProfileMode,
+    profile_ref: &str,
+    estimated_runtime_ms: u64,
+) -> Result<ResearchRunnerRecord, ResearchRunnerError> {
+    validate_executor_variant(invocation, executor)?;
+    let report = run_executor_benchmark(executor)?;
+    let stats = build_executor_benchmark_stats(executor, &report, estimated_runtime_ms);
+    let scores = build_executor_scores(invocation, &stats);
+    let metrics = build_executor_metrics(&stats);
+    let stdout_log = format!(
+        "run_id={} family={} benchmark_target={:?} benchmark_ref={} decode_cache={:?} attention_mode={:?} profile_mode={:?} profile_ref={} status=succeeded case_count={} exactness_bps={} candidate_speedup_ratio_micros={} candidate_cpu_gap_ratio_micros={}",
+        invocation.run_id,
+        invocation.spec.family.kind().label(),
+        executor.benchmark_target,
+        executor.benchmark_ref,
+        executor.decode_cache.cache_kind,
+        executor.decode_cache.attention_mode,
+        profile_mode,
+        profile_ref,
+        stats.case_count,
+        stats.exactness_bps,
+        stats.candidate_speedup_ratio_micros,
+        stats.candidate_cpu_gap_ratio_micros
+    );
+    let stderr_log = String::new();
+    let stdout_sha256 = stable_text_digest(stdout_log.as_str());
+    let stderr_sha256 = stable_text_digest(stderr_log.as_str());
+    let receipt = ResearchExecutionReceipt::new(
+        invocation,
+        profile_mode,
+        profile_ref,
+        ExperimentRunStatus::Succeeded,
+        estimated_runtime_ms,
+        stdout_sha256.as_str(),
+        stderr_sha256.as_str(),
+    );
+    let mut receipt_refs = vec![receipt.as_receipt_ref()];
+    receipt_refs.push(build_executor_eval_receipt(invocation, &report)?);
+    let artifact_outputs = build_executor_artifact_outputs(invocation, &report)?;
+    let result = ExperimentResult::new(
+        invocation.run_id.clone(),
+        &invocation.spec,
+        invocation.started_at_ms,
+        invocation.started_at_ms + estimated_runtime_ms,
+        ExperimentRunStatus::Succeeded,
+        scores,
+        metrics,
+        receipt_refs,
+        artifact_outputs,
+        stdout_sha256,
+        stderr_sha256,
+    );
+    Ok(ResearchRunnerRecord {
+        result,
+        receipt,
+        stdout_log,
+        stderr_log,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct ExecutorBenchmarkStats {
+    exactness_bps: i64,
+    direct_selection_bps: i64,
+    candidate_speedup_ratio_micros: i64,
+    candidate_cpu_gap_ratio_micros: i64,
+    total_trace_steps: i64,
+    case_count: i64,
+    passed_case_count: i64,
+    wall_time_ms: i64,
+}
+
+fn validate_executor_variant(
+    invocation: &ResearchRunnerInvocation,
+    executor: &TassadarExecutorExperimentSpec,
+) -> Result<(), ResearchRunnerError> {
+    require_executor_artifact(invocation, ExperimentArtifactKind::BenchmarkSuite)?;
+    require_executor_artifact(invocation, ExperimentArtifactKind::ModelDescriptor)?;
+    require_executor_artifact(invocation, ExperimentArtifactKind::ProgramArtifact)?;
+    if executor.architecture.variant_id.trim().is_empty()
+        || executor.architecture.model_id.trim().is_empty()
+        || executor.trace_abi.variant_id.trim().is_empty()
+        || executor.trace_abi.abi_id.trim().is_empty()
+        || executor.wasm_profile.variant_id.trim().is_empty()
+        || executor.wasm_profile.profile_id.trim().is_empty()
+        || executor.decode_cache.variant_id.trim().is_empty()
+    {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "executor experiment surfaces must declare non-empty variant and model ids",
+        )));
+    }
+    if !executor.architecture.handcrafted_weights {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "current Tassadar research family only supports handcrafted-weight candidates",
+        )));
+    }
+    if executor.trace_abi.abi_id != "tassadar.trace.v1" || executor.trace_abi.schema_version != 1 {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "unsupported Tassadar trace ABI {}@{}",
+            executor.trace_abi.abi_id, executor.trace_abi.schema_version
+        )));
+    }
+    let (expected_benchmark_ref, expected_environment_ref, expected_profile_id) =
+        expected_executor_target_contract(executor.benchmark_target);
+    if executor.benchmark_ref != expected_benchmark_ref {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "benchmark_ref mismatch: expected `{expected_benchmark_ref}`, found `{}`",
+            executor.benchmark_ref
+        )));
+    }
+    if executor.environment_ref != expected_environment_ref {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "environment_ref mismatch: expected `{expected_environment_ref}`, found `{}`",
+            executor.environment_ref
+        )));
+    }
+    if executor.wasm_profile.profile_id != expected_profile_id {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "profile_id mismatch for benchmark target {:?}: expected `{expected_profile_id}`, found `{}`",
+            executor.benchmark_target, executor.wasm_profile.profile_id
+        )));
+    }
+    if executor.decode_cache.attention_mode != TassadarExecutorAttentionMode::HardMax {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "current Tassadar research backend only supports hard-max attention experiments",
+        )));
+    }
+    if !executor.decode_cache.exact_required {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "current Tassadar research backend requires exact_required=true",
+        )));
+    }
+    match executor.decode_cache.cache_kind {
+        TassadarExecutorDecodeCacheKind::ReferenceLinear
+        | TassadarExecutorDecodeCacheKind::HullCache => {
+            if executor.decode_cache.sparse_top_k.is_some() {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "sparse_top_k must be unset for exact reference-linear or hull-cache candidates",
+                )));
+            }
+        }
+        TassadarExecutorDecodeCacheKind::SparseTopK
+        | TassadarExecutorDecodeCacheKind::StandardKv => {
+            return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                "current Tassadar research backend does not yet support sparse-top-k or standard-kv executor candidates",
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn require_executor_artifact(
+    invocation: &ResearchRunnerInvocation,
+    kind: ExperimentArtifactKind,
+) -> Result<(), ResearchRunnerError> {
+    if invocation
+        .spec
+        .base_artifacts
+        .iter()
+        .any(|artifact| artifact.kind == kind)
+    {
+        Ok(())
+    } else {
+        Err(ResearchRunnerError::InvalidInvocation(format!(
+            "executor experiment is missing required base artifact kind `{kind:?}`"
+        )))
+    }
+}
+
+fn expected_executor_target_contract(
+    target: TassadarExecutorBenchmarkTarget,
+) -> (&'static str, &'static str, &'static str) {
+    match target {
+        TassadarExecutorBenchmarkTarget::ValidationCorpus => (
+            TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF,
+            TASSADAR_BENCHMARK_ENVIRONMENT_REF,
+            "core_i32_v1",
+        ),
+        TassadarExecutorBenchmarkTarget::ArticleClass => (
+            TASSADAR_ARTICLE_CLASS_BENCHMARK_REF,
+            TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF,
+            "core_i32_v2",
+        ),
+    }
+}
+
+fn run_executor_benchmark(
+    executor: &TassadarExecutorExperimentSpec,
+) -> Result<TassadarBenchmarkReport, ResearchRunnerError> {
+    let report = match executor.benchmark_target {
+        TassadarExecutorBenchmarkTarget::ValidationCorpus => {
+            run_tassadar_reference_fixture_benchmark(executor.benchmark_version.as_str())
+        }
+        TassadarExecutorBenchmarkTarget::ArticleClass => {
+            run_tassadar_article_class_benchmark(executor.benchmark_version.as_str())
+        }
+    }
+    .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
+    if report.suite.benchmark_package.key.benchmark_ref != executor.benchmark_ref {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "benchmark report returned `{}` but executor experiment declared `{}`",
+            report.suite.benchmark_package.key.benchmark_ref, executor.benchmark_ref
+        )));
+    }
+    if report.suite.benchmark_package.environment.environment_ref != executor.environment_ref {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "benchmark report returned environment `{}` but executor experiment declared `{}`",
+            report.suite.benchmark_package.environment.environment_ref, executor.environment_ref
+        )));
+    }
+    Ok(report)
+}
+
+fn build_executor_benchmark_stats(
+    executor: &TassadarExecutorExperimentSpec,
+    report: &TassadarBenchmarkReport,
+    estimated_runtime_ms: u64,
+) -> ExecutorBenchmarkStats {
+    let case_count = saturating_i64_from_usize(report.case_reports.len());
+    let passed_case_count = saturating_i64_from_usize(
+        report
+            .case_reports
+            .iter()
+            .filter(|case| case.score_bps == 10_000)
+            .count(),
+    );
+    let total_trace_steps = report
+        .case_reports
+        .iter()
+        .map(|case| saturating_i64_from_u64(case.trace_steps))
+        .sum();
+    let exactness_sum: i64 = report
+        .case_reports
+        .iter()
+        .map(|case| i64::from(case.score_bps))
+        .sum();
+    let exactness_bps = if case_count == 0 {
+        0
+    } else {
+        exactness_sum / case_count
+    };
+    let direct_selection_bps = match executor.decode_cache.cache_kind {
+        TassadarExecutorDecodeCacheKind::ReferenceLinear => 10_000,
+        TassadarExecutorDecodeCacheKind::HullCache => {
+            let direct_count = saturating_i64_from_usize(
+                report
+                    .case_reports
+                    .iter()
+                    .filter(|case| !case.used_decode_fallback)
+                    .count(),
+            );
+            if case_count == 0 {
+                0
+            } else {
+                direct_count.saturating_mul(10_000) / case_count
+            }
+        }
+        TassadarExecutorDecodeCacheKind::SparseTopK
+        | TassadarExecutorDecodeCacheKind::StandardKv => 0,
+    };
+    let candidate_speedup_ratio_micros =
+        average_ratio_micros(report.case_reports.iter().map(|case| {
+            match executor.decode_cache.cache_kind {
+                TassadarExecutorDecodeCacheKind::ReferenceLinear => 1.0,
+                TassadarExecutorDecodeCacheKind::HullCache => {
+                    case.hull_cache_speedup_over_reference_linear
+                }
+                TassadarExecutorDecodeCacheKind::SparseTopK
+                | TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
+            }
+        }));
+    let candidate_cpu_gap_ratio_micros =
+        average_ratio_micros(report.case_reports.iter().map(|case| {
+            match executor.decode_cache.cache_kind {
+                TassadarExecutorDecodeCacheKind::ReferenceLinear => {
+                    case.cpu_reference_steps_per_second
+                        / case.reference_linear_steps_per_second.max(1e-9)
+                }
+                TassadarExecutorDecodeCacheKind::HullCache => {
+                    case.hull_cache_remaining_gap_vs_cpu_reference
+                }
+                TassadarExecutorDecodeCacheKind::SparseTopK
+                | TassadarExecutorDecodeCacheKind::StandardKv => 0.0,
+            }
+        }));
+    ExecutorBenchmarkStats {
+        exactness_bps,
+        direct_selection_bps,
+        candidate_speedup_ratio_micros,
+        candidate_cpu_gap_ratio_micros,
+        total_trace_steps,
+        case_count,
+        passed_case_count,
+        wall_time_ms: saturating_i64_from_u64(estimated_runtime_ms),
+    }
+}
+
+fn build_executor_scores(
+    invocation: &ResearchRunnerInvocation,
+    stats: &ExecutorBenchmarkStats,
+) -> Vec<ExperimentScore> {
+    invocation
+        .spec
+        .score_contract
+        .metrics
+        .iter()
+        .map(|metric| {
+            ExperimentScore::new(
+                metric.metric_id.clone(),
+                metric.unit.clone(),
+                executor_metric_value(stats, metric.metric_id.as_str()),
+            )
+        })
+        .collect()
+}
+
+fn build_executor_metrics(stats: &ExecutorBenchmarkStats) -> Vec<ExperimentMetric> {
+    vec![
+        ExperimentMetric::new("wall_time_ms", "milliseconds", stats.wall_time_ms),
+        ExperimentMetric::new("executor_exactness_bps", "bps", stats.exactness_bps),
+        ExperimentMetric::new(
+            "executor_direct_selection_bps",
+            "bps",
+            stats.direct_selection_bps,
+        ),
+        ExperimentMetric::new(
+            "executor_candidate_speedup_ratio_micros",
+            "ratio_micros",
+            stats.candidate_speedup_ratio_micros,
+        ),
+        ExperimentMetric::new(
+            "executor_candidate_cpu_gap_ratio_micros",
+            "ratio_micros",
+            stats.candidate_cpu_gap_ratio_micros,
+        ),
+        ExperimentMetric::new(
+            "executor_total_trace_steps",
+            "steps",
+            stats.total_trace_steps,
+        ),
+        ExperimentMetric::new("executor_case_count", "count", stats.case_count),
+        ExperimentMetric::new(
+            "executor_passed_case_count",
+            "count",
+            stats.passed_case_count,
+        ),
+    ]
+}
+
+fn executor_metric_value(stats: &ExecutorBenchmarkStats, metric_id: &str) -> i64 {
+    if metric_id.contains("exactness") {
+        stats.exactness_bps
+    } else if metric_id.contains("direct_selection") {
+        stats.direct_selection_bps
+    } else if metric_id.contains("speedup") {
+        stats.candidate_speedup_ratio_micros
+    } else if metric_id.contains("cpu_gap") || metric_id.contains("gap") {
+        stats.candidate_cpu_gap_ratio_micros
+    } else if metric_id.contains("trace_steps") {
+        stats.total_trace_steps
+    } else if metric_id.contains("passed_case_count") {
+        stats.passed_case_count
+    } else if metric_id.contains("case_count") {
+        stats.case_count
+    } else {
+        stats.wall_time_ms
+    }
+}
+
+fn build_executor_eval_receipt(
+    invocation: &ResearchRunnerInvocation,
+    report: &TassadarBenchmarkReport,
+) -> Result<ExperimentReceiptRef, ResearchRunnerError> {
+    let eval_run_bytes = serde_json::to_vec(&report.eval_run)
+        .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
+    Ok(ExperimentReceiptRef::new(
+        ExperimentReceiptKind::EvalRun,
+        format!(
+            "receipt://eval/{}/{}",
+            invocation.spec.experiment_id, invocation.run_id
+        ),
+        stable_bytes_digest(eval_run_bytes.as_slice()),
+    ))
+}
+
+fn build_executor_artifact_outputs(
+    invocation: &ResearchRunnerInvocation,
+    report: &TassadarBenchmarkReport,
+) -> Result<Vec<ExperimentArtifactOutput>, ResearchRunnerError> {
+    let benchmark_report_bytes = serde_json::to_vec(report)
+        .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
+    let benchmark_suite_bytes = serde_json::to_vec(&report.suite.benchmark_package)
+        .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
+    let program_artifact_bytes = serde_json::to_vec(&report.suite.artifacts)
+        .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
+    Ok(vec![
+        ExperimentArtifactOutput::new(
+            ExperimentArtifactKind::BenchmarkReport,
+            format!(
+                "artifact://research/{}/benchmark_report",
+                invocation.spec.candidate_id
+            ),
+            stable_bytes_digest(benchmark_report_bytes.as_slice()),
+        ),
+        ExperimentArtifactOutput::new(
+            ExperimentArtifactKind::BenchmarkSuite,
+            report.suite.benchmark_package.key.storage_key(),
+            stable_bytes_digest(benchmark_suite_bytes.as_slice()),
+        ),
+        ExperimentArtifactOutput::new(
+            ExperimentArtifactKind::ProgramArtifact,
+            format!(
+                "artifact://research/{}/program_artifacts",
+                invocation.spec.candidate_id
+            ),
+            stable_bytes_digest(program_artifact_bytes.as_slice()),
+        ),
+        ExperimentArtifactOutput::new(
+            ExperimentArtifactKind::RuntimeManifest,
+            format!(
+                "artifact://research/{}/runtime_manifests",
+                invocation.spec.candidate_id
+            ),
+            collect_eval_artifact_digest(report, "tassadar_runtime_manifest.json"),
+        ),
+        ExperimentArtifactOutput::new(
+            ExperimentArtifactKind::ExecutionProofBundle,
+            format!(
+                "artifact://research/{}/execution_proof_bundles",
+                invocation.spec.candidate_id
+            ),
+            collect_eval_artifact_digest(report, "tassadar_execution_proof_bundle.json"),
+        ),
+    ])
+}
+
+fn collect_eval_artifact_digest(report: &TassadarBenchmarkReport, artifact_kind: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_research_eval_artifact_set|");
+    hasher.update(artifact_kind.as_bytes());
+    for sample in &report.eval_run.samples {
+        for artifact in &sample.artifacts {
+            if artifact.artifact_kind == artifact_kind {
+                hasher.update(b"|artifact_ref|");
+                hasher.update(artifact.artifact_ref.as_bytes());
+                hasher.update(b"|artifact_digest|");
+                hasher.update(artifact.artifact_digest.as_bytes());
+            }
+        }
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn average_ratio_micros(values: impl Iterator<Item = f64>) -> i64 {
+    let mut total = 0.0_f64;
+    let mut count = 0_u64;
+    for value in values {
+        total += value;
+        count = count.saturating_add(1);
+    }
+    if count == 0 {
+        return 0;
+    }
+    ratio_to_micros(total / (count as f64))
+}
+
+fn ratio_to_micros(value: f64) -> i64 {
+    if !value.is_finite() {
+        return 0;
+    }
+    let scaled = value * 1_000_000.0;
+    if scaled >= i64::MAX as f64 {
+        i64::MAX
+    } else if scaled <= i64::MIN as f64 {
+        i64::MIN
+    } else {
+        scaled.round() as i64
+    }
+}
+
+fn saturating_i64_from_usize(value: usize) -> i64 {
+    match i64::try_from(value) {
+        Ok(value) => value,
+        Err(_) => i64::MAX,
+    }
+}
+
+fn saturating_i64_from_u64(value: u64) -> i64 {
+    match i64::try_from(value) {
+        Ok(value) => value,
+        Err(_) => i64::MAX,
     }
 }
 
@@ -394,6 +1006,16 @@ fn estimate_runtime_ms(spec: &ExperimentSpec) -> u64 {
                     .iter()
                     .map(|env| env.timeout_ms / 100)
                     .sum::<u64>()
+        }
+        ExperimentFamily::ExecutorVariants { executor } => {
+            let target_base = match executor.benchmark_target {
+                TassadarExecutorBenchmarkTarget::ValidationCorpus => 2_500,
+                TassadarExecutorBenchmarkTarget::ArticleClass => 4_500,
+            };
+            target_base
+                + executor.wasm_profile.max_steps.saturating_mul(2)
+                + u64::from(executor.wasm_profile.max_program_len) * 4
+                + u64::from(executor.architecture.layer_count) * 40
         }
     }
 }
@@ -503,6 +1125,9 @@ fn synthetic_metric_value(spec: &ExperimentSpec, metric_id: &str) -> i64 {
                 i64::try_from(estimate_runtime_ms(spec)).unwrap_or(i64::MAX)
             }
         }
+        ExperimentFamily::ExecutorVariants { .. } => {
+            i64::try_from(estimate_runtime_ms(spec)).unwrap_or(i64::MAX)
+        }
     }
 }
 
@@ -545,6 +1170,7 @@ fn additional_receipt_refs(
             ),
             stable_aux_receipt_digest(invocation, "validator_verdict", estimated_runtime_ms),
         )],
+        ExperimentFamily::ExecutorVariants { .. } => Vec::new(),
         _ => Vec::new(),
     }
 }
@@ -559,8 +1185,12 @@ fn stable_artifact_digest(invocation: &ResearchRunnerInvocation) -> String {
 }
 
 fn stable_text_digest(text: &str) -> String {
+    stable_bytes_digest(text.as_bytes())
+}
+
+fn stable_bytes_digest(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
+    hasher.update(bytes);
     hex::encode(hasher.finalize())
 }
 
@@ -618,13 +1248,20 @@ fn stable_research_execution_receipt_digest(
 
 #[cfg(test)]
 mod tests {
+    use psionic_eval::{
+        TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF, TASSADAR_ARTICLE_CLASS_BENCHMARK_REF,
+    };
     use tempfile::tempdir;
 
     use crate::{
         CandidateMutation, ExperimentArtifactKind, ExperimentArtifactRef, ExperimentBudget,
         ExperimentFamily, ExperimentFamilyKind, ExperimentRunStatus, ExperimentScoreContract,
         ExperimentThreshold, ResearchRunner, ResearchRunnerInvocation, ScoreDirection,
-        ScoreMetricSpec, ServingSchedulerPolicy,
+        ScoreMetricSpec, ServingSchedulerPolicy, TassadarExecutorArchitectureVariant,
+        TassadarExecutorAttentionMode, TassadarExecutorBenchmarkTarget,
+        TassadarExecutorDecodeCacheKind, TassadarExecutorDecodeCacheVariant,
+        TassadarExecutorExperimentSpec, TassadarExecutorTraceAbiVariant,
+        TassadarExecutorWasmProfileVariant,
     };
 
     fn sample_serving_invocation() -> ResearchRunnerInvocation {
@@ -673,6 +1310,113 @@ mod tests {
             ),
         );
         ResearchRunnerInvocation::new("run-a", spec, 1_000)
+    }
+
+    fn sample_executor_invocation(
+        candidate_id: &str,
+        run_id: &str,
+        cache_kind: TassadarExecutorDecodeCacheKind,
+    ) -> ResearchRunnerInvocation {
+        let spec = crate::ExperimentSpec::new(
+            "exp.tassadar.1",
+            candidate_id,
+            ExperimentFamily::ExecutorVariants {
+                executor: TassadarExecutorExperimentSpec::new(
+                    TassadarExecutorBenchmarkTarget::ArticleClass,
+                    TASSADAR_ARTICLE_CLASS_BENCHMARK_REF,
+                    "2026.03.16",
+                    TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF,
+                    TassadarExecutorArchitectureVariant::new(
+                        format!("{candidate_id}.arch"),
+                        "tassadar.executor.article_class.v2",
+                        2,
+                        7,
+                        36,
+                        true,
+                    ),
+                    TassadarExecutorTraceAbiVariant::new(
+                        format!("{candidate_id}.abi"),
+                        "tassadar.trace.v1",
+                        1,
+                        true,
+                        true,
+                        true,
+                        true,
+                    ),
+                    TassadarExecutorWasmProfileVariant::new(
+                        format!("{candidate_id}.profile"),
+                        "core_i32_v2",
+                        8,
+                        16,
+                        128,
+                        512,
+                    ),
+                    TassadarExecutorDecodeCacheVariant::new(
+                        format!("{candidate_id}.cache"),
+                        cache_kind,
+                        TassadarExecutorAttentionMode::HardMax,
+                        None,
+                        true,
+                    ),
+                ),
+            },
+            vec![
+                ExperimentArtifactRef::new(
+                    ExperimentArtifactKind::BenchmarkSuite,
+                    format!("{}@2026.03.16", TASSADAR_ARTICLE_CLASS_BENCHMARK_REF),
+                    "benchmark-suite-digest",
+                ),
+                ExperimentArtifactRef::new(
+                    ExperimentArtifactKind::ModelDescriptor,
+                    "model://tassadar/article_class_fixture",
+                    "model-descriptor-digest",
+                ),
+                ExperimentArtifactRef::new(
+                    ExperimentArtifactKind::ProgramArtifact,
+                    "artifact://tassadar/article_class/programs",
+                    "program-artifact-digest",
+                ),
+            ],
+            CandidateMutation::new(
+                format!("{candidate_id}.mutation"),
+                Some(String::from("baseline")),
+                ExperimentFamilyKind::ExecutorVariants,
+                vec![
+                    String::from("tassadar.executor.decode_cache"),
+                    String::from("tassadar.executor.wasm_profile"),
+                ],
+            ),
+            crate::ExperimentRuntimeProfile::new("runner-digest-executor")
+                .with_runtime_profile_ref("runtime://research/local"),
+            ExperimentBudget::new(20_000, "runs/tassadar"),
+            ExperimentScoreContract::new(
+                "tassadar.executor.score.v1",
+                ExperimentFamilyKind::ExecutorVariants,
+                vec![
+                    ScoreMetricSpec::new(
+                        "executor_exactness_bps",
+                        "bps",
+                        ScoreDirection::Maximize,
+                        6_000,
+                    )
+                    .with_hard_gate(ExperimentThreshold::at_least(10_000)),
+                    ScoreMetricSpec::new(
+                        "executor_candidate_speedup_ratio_micros",
+                        "ratio_micros",
+                        ScoreDirection::Maximize,
+                        3_000,
+                    ),
+                    ScoreMetricSpec::new(
+                        "executor_candidate_cpu_gap_ratio_micros",
+                        "ratio_micros",
+                        ScoreDirection::Minimize,
+                        1_000,
+                    )
+                    .with_hard_gate(ExperimentThreshold::at_most(5_000_000)),
+                ],
+            ),
+        );
+        ResearchRunnerInvocation::new(run_id, spec, 2_000)
     }
 
     #[test]
@@ -725,5 +1469,68 @@ mod tests {
         assert!(artifacts.result_path.exists());
         assert!(artifacts.stdout_path.exists());
         assert!(artifacts.stderr_path.exists());
+    }
+
+    #[test]
+    fn runner_executes_executor_experiment_end_to_end() {
+        let invocation = sample_executor_invocation(
+            "candidate-hull",
+            "run-hull",
+            TassadarExecutorDecodeCacheKind::HullCache,
+        );
+        let record = ResearchRunner::execute_local(&invocation).expect("runner should succeed");
+        assert_eq!(record.result.status, ExperimentRunStatus::Succeeded);
+        assert_eq!(record.result.family, ExperimentFamilyKind::ExecutorVariants);
+        assert!(
+            record
+                .result
+                .receipt_refs
+                .iter()
+                .any(|receipt| receipt.kind == crate::ExperimentReceiptKind::EvalRun)
+        );
+        assert!(
+            record
+                .result
+                .artifact_outputs
+                .iter()
+                .any(|artifact| artifact.kind == ExperimentArtifactKind::BenchmarkReport)
+        );
+        assert!(
+            record
+                .result
+                .artifact_outputs
+                .iter()
+                .any(|artifact| artifact.kind == ExperimentArtifactKind::ExecutionProofBundle)
+        );
+        assert!(
+            record
+                .result
+                .artifact_outputs
+                .iter()
+                .any(|artifact| artifact.kind == ExperimentArtifactKind::RuntimeManifest)
+        );
+    }
+
+    #[test]
+    fn execute_local_sweep_ranks_executor_candidates_reproducibly() {
+        let hull = sample_executor_invocation(
+            "candidate-hull",
+            "run-hull",
+            TassadarExecutorDecodeCacheKind::HullCache,
+        );
+        let reference = sample_executor_invocation(
+            "candidate-reference",
+            "run-reference",
+            TassadarExecutorDecodeCacheKind::ReferenceLinear,
+        );
+        let (_records, sweep) = ResearchRunner::execute_local_sweep(
+            "sweep.tassadar.1",
+            &[hull, reference],
+        )
+        .expect("sweep should succeed");
+        assert_eq!(sweep.family, ExperimentFamilyKind::ExecutorVariants);
+        assert_eq!(sweep.entries.len(), 2);
+        assert_eq!(sweep.winning_candidate_id.as_deref(), Some("candidate-hull"));
+        assert!(!sweep.sweep_digest.is_empty());
     }
 }

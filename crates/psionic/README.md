@@ -87,9 +87,12 @@ Current posture:
   `psionic-models`, and `psionic-eval`, with the `core_i32_v2` Wasm profile,
   profile-aware runner construction, and article-class exact benchmark
   coverage for `MicroWasmKernel`, `SudokuClass`, and `HungarianMatching`
+- its Phase 8A research family now exists in `psionic-research`, with a typed
+  executor-variant family, benchmark/proof/lineage-backed bounded runs, and
+  machine-readable sweep records for reproducible same-contract comparisons
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4/5/6/7A issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
@@ -98,7 +101,8 @@ Current posture:
   [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748) and
   [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749) and
   [#3760](https://github.com/OpenAgentsInc/openagents/issues/3760) and
-  [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761)
+  [#3761](https://github.com/OpenAgentsInc/openagents/issues/3761) and
+  [#3762](https://github.com/OpenAgentsInc/openagents/issues/3762)
 
 ## Crate Map
 
@@ -170,7 +174,8 @@ Current posture:
   Apple training execution, Apple SFT/export, and optional Apple draft-model
   distillation.
 - `psionic-research`: typed experiment specs, bounded run manifests, result
-  summaries, and promotion records for hillclimb/research loops.
+  summaries, promotion records, and the `Tassadar` executor-variant research
+  family with machine-readable sweep records for hillclimb/research loops.
 
 ### Support Tree
 

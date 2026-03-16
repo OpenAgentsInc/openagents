@@ -12,6 +12,7 @@ owned by `psionic-research`.
 - one result manifest
 - one score contract and evaluation
 - one promotion record
+- one machine-readable sweep record for same-contract candidate comparison
 
 It does not own:
 
@@ -53,9 +54,18 @@ The current shared family surface covers:
 - `TrainingPolicy`
 - `ValidatorPolicy`
 - `EnvironmentMix`
+- `ExecutorVariants`
 
 These families are intentionally typed policy surfaces. The research layer does
 not model arbitrary source patches as the default search contract.
+
+`ExecutorVariants` is currently exercised by the `Tassadar` lane. It records
+architecture, trace-ABI, Wasm-profile, decode-cache, and attention-mode
+surfaces, and the bounded runner evaluates those candidates against the real
+Tassadar benchmark backend rather than synthetic executor placeholders. The
+family treats benchmark packages, program/model artifacts, runtime manifests,
+execution-proof bundles, and benchmark reports as first-class experiment
+inputs/outputs.
 
 ## Comparison Rules
 
