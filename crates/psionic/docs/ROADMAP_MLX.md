@@ -469,7 +469,7 @@ quantized-module surface above current train primitives.
 | `PMLX-301` / [#3846](https://github.com/OpenAgentsInc/openagents/issues/3846) | done (2026-03-16) | `Psionic MLX: add a public Module tree with parameter, buffer, and freeze semantics` | `psionic-nn` now exposes a first public `Module` tree with explicit parameter versus buffer registration, trainable versus frozen posture, recursive parameter discovery with filtered trainable or frozen views, targeted freeze/unfreeze helpers, and deterministic state-tree/state-dict behavior. |
 | `PMLX-302` / [#3847](https://github.com/OpenAgentsInc/openagents/issues/3847) | done (2026-03-16) | `Psionic MLX: add save_weights and load_weights with strict and non-strict module-state behavior` | `psionic-nn::Module` now exposes bounded public `save_weights` / `save_weights_with_view` wrappers above deterministic module state naming plus `load_weights` defaulting to strict matching and `load_weights_with_mode` exposing explicit non-strict load behavior. |
 | `PMLX-303` / [#3848](https://github.com/OpenAgentsInc/openagents/issues/3848) | done (2026-03-16) | `Psionic MLX: land the core layer surface for linear, embedding, norms, activations, conv, pooling, and dropout` | `psionic-nn` now exposes a bounded public CPU-reference layer surface spanning `Linear`, `Embedding`, `LayerNorm`, `RmsNorm`, `Activation`, `Dropout`, `Conv1d`, `Conv2d`, `Pool1d`, and `Pool2d`, all built above the shared module/state substrate. |
-| `PMLX-304` | planned | `Psionic MLX: add losses, init families, and nn utility helpers` | Expose canonical loss functions, initialization utilities, and `nn` helper functions needed for practical training loops. |
+| `PMLX-304` / [#3849](https://github.com/OpenAgentsInc/openagents/issues/3849) | done (2026-03-16) | `Psionic MLX: add losses, init families, and nn utility helpers` | `psionic-nn` now exposes bounded CPU-reference losses, initializers, and helper functions including `mse_loss`, `l1_loss`, `binary_cross_entropy_loss`, `cross_entropy_loss`, `softmax_last_dim`, `log_softmax_last_dim`, `sigmoid`, `one_hot`, `init_tensor`, and `init_parameter` for practical tiny training loops above the shared module/state substrate. |
 | `PMLX-305` | planned | `Psionic MLX: build the public optimizer API on top of psionic-train optimizer primitives` | Reuse existing optimizer math, but publish a framework-native optimizer surface suitable for MLX-shaped model updates. |
 | `PMLX-306` | planned | `Psionic MLX: add scheduler families, parameter-group behavior, and multi-optimizer composition` | Extend the optimizer shell to cover learning-rate schedules, parameter groups, and MLX-style multi-optimizer behavior. |
 | `PMLX-307` | planned | `Psionic MLX: add quantized module families and module-level quantize behavior` | Expose module quantization and quantized layer wrappers above the existing quantization substrate without pretending file-format decode alone is quantization closure. |
@@ -619,7 +619,7 @@ First close the AttnRes-enabling shared framework slice:
 - `PMLX-301` done 2026-03-16
 - `PMLX-302` done 2026-03-16
 - `PMLX-303` done 2026-03-16
-- `PMLX-304`
+- `PMLX-304` done 2026-03-16
 - `PMLX-305`
 
 Then widen to broader MLX `nn` breadth:
