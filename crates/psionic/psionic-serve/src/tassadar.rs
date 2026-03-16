@@ -7,6 +7,7 @@ use psionic_runtime::{
     TassadarExecutionEvidenceBundle, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
     TassadarExecutorExecutionReport, TassadarExecutorSelectionDiagnostic, TassadarProgramArtifact,
     TassadarRuntimeCapabilityReport, TassadarTraceEvent, TassadarTraceStep,
+    tassadar_wasm_profile_for_id,
     build_tassadar_execution_evidence_bundle, execute_tassadar_executor_request,
 };
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,9 @@ use thiserror::Error;
 
 /// Dedicated served product identifier for the Tassadar executor lane.
 pub const EXECUTOR_TRACE_PRODUCT_ID: &str = "psionic.executor_trace";
+
+/// Dedicated planner-owned routing product for exact executor delegation.
+pub const PLANNER_EXECUTOR_ROUTE_PRODUCT_ID: &str = "psionic.planner_executor_route";
 
 /// Explicit request contract for the served Tassadar executor lane.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,6 +235,25 @@ pub enum TassadarExecutorServiceError {
     ExecutionRefusal(#[from] TassadarExecutionRefusal),
 }
 
+/// Pre-execution contract and selection report for one executor request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorPreflightReport {
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Product identifier.
+    pub product_id: String,
+    /// Served executor model descriptor that evaluated the request.
+    pub model_descriptor: TassadarExecutorModelDescriptor,
+    /// Runtime capability report visible to the caller.
+    pub runtime_capability: TassadarRuntimeCapabilityReport,
+    /// Contract error when the request failed before decode selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_error: Option<TassadarExecutorContractError>,
+    /// Decode selection diagnostic when contract validation succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<TassadarExecutorSelectionDiagnostic>,
+}
+
 /// Pull-driven local stream for explicit executor-trace products.
 #[derive(Clone, Debug, Default)]
 pub struct LocalTassadarExecutorStream {
@@ -309,6 +332,36 @@ impl LocalTassadarExecutorService {
         Ok(LocalTassadarExecutorStream::from_events(
             stream_events_for_outcome(fixture, outcome),
         ))
+    }
+
+    /// Resolves the explicit model and selection truth without executing the program.
+    pub fn preflight(
+        &self,
+        request: &TassadarExecutorRequest,
+    ) -> Result<TassadarExecutorPreflightReport, TassadarExecutorServiceError> {
+        self.validate_product(request)?;
+        let fixture = self.resolve_fixture(request)?;
+        let descriptor = fixture.descriptor().clone();
+        let runtime_capability = fixture.runtime_capability_report();
+        let contract_error = descriptor
+            .validate_program_artifact(&request.program_artifact, request.requested_decode_mode)
+            .err();
+        let selection = if contract_error.is_none() {
+            Some(fixture.runtime_selection_diagnostic(
+                &request.program_artifact.validated_program,
+                request.requested_decode_mode,
+            ))
+        } else {
+            None
+        };
+        Ok(TassadarExecutorPreflightReport {
+            request_id: request.request_id.clone(),
+            product_id: request.product_id.clone(),
+            model_descriptor: descriptor,
+            runtime_capability,
+            contract_error,
+            selection,
+        })
     }
 
     fn validate_product(
@@ -431,6 +484,830 @@ impl LocalTassadarExecutorService {
     }
 }
 
+/// Planner-visible fallback behavior when executor routing is not taken.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarPlannerFallbackPolicy {
+    /// Refuse the planner request rather than silently degrading it.
+    Refuse,
+    /// Return a typed planner fallback summary while preserving executor truth.
+    PlannerSummary,
+}
+
+/// Planner-visible budget for one exact-computation subproblem.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerRoutingBudget {
+    /// Maximum accepted validated-program length.
+    pub max_program_len: usize,
+    /// Maximum accepted trace-step budget inferred from the targeted profile.
+    pub max_trace_steps: usize,
+    /// Maximum accepted environment refs carried into lineage.
+    pub max_environment_refs: usize,
+}
+
+impl TassadarPlannerRoutingBudget {
+    /// Creates one explicit routing budget.
+    #[must_use]
+    pub fn new(max_program_len: usize, max_trace_steps: usize, max_environment_refs: usize) -> Self {
+        Self {
+            max_program_len,
+            max_trace_steps,
+            max_environment_refs,
+        }
+    }
+}
+
+impl Default for TassadarPlannerRoutingBudget {
+    fn default() -> Self {
+        Self::new(128, 512, 8)
+    }
+}
+
+/// Planner-visible policy for exact executor delegation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerRoutingPolicy {
+    /// Whether exact executor delegation is enabled at all.
+    pub allow_executor_delegation: bool,
+    /// Whether planner routing may accept runtime decode fallback.
+    pub allow_runtime_decode_fallback: bool,
+    /// Whether routing requires the requested decode path to remain direct.
+    pub require_direct_decode: bool,
+    /// Whether proof-bearing executor evidence must remain present on success.
+    pub require_proof_bundle: bool,
+    /// Typed behavior when executor routing is skipped or refused.
+    pub fallback_policy: TassadarPlannerFallbackPolicy,
+}
+
+impl TassadarPlannerRoutingPolicy {
+    /// Returns the canonical truthful planner routing policy.
+    #[must_use]
+    pub fn exact_executor_default() -> Self {
+        Self {
+            allow_executor_delegation: true,
+            allow_runtime_decode_fallback: true,
+            require_direct_decode: false,
+            require_proof_bundle: true,
+            fallback_policy: TassadarPlannerFallbackPolicy::Refuse,
+        }
+    }
+
+    /// Replaces the fallback behavior.
+    #[must_use]
+    pub fn with_fallback_policy(mut self, fallback_policy: TassadarPlannerFallbackPolicy) -> Self {
+        self.fallback_policy = fallback_policy;
+        self
+    }
+}
+
+impl Default for TassadarPlannerRoutingPolicy {
+    fn default() -> Self {
+        Self::exact_executor_default()
+    }
+}
+
+/// Planner-owned exact-computation subproblem routed into Tassadar.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerExecutorSubproblem {
+    /// Stable subproblem identifier.
+    pub subproblem_id: String,
+    /// Human-readable planner objective for the exact executor call.
+    pub objective: String,
+    /// Optional explicit executor model id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_model_id: Option<String>,
+    /// Digest-bound program artifact submitted to the executor.
+    pub program_artifact: TassadarProgramArtifact,
+    /// Requested decode mode for the exact executor path.
+    pub requested_decode_mode: TassadarExecutorDecodeMode,
+    /// Ordered environment refs carried into executor lineage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environment_refs: Vec<String>,
+}
+
+impl TassadarPlannerExecutorSubproblem {
+    /// Creates one exact-computation subproblem.
+    #[must_use]
+    pub fn new(
+        subproblem_id: impl Into<String>,
+        objective: impl Into<String>,
+        program_artifact: TassadarProgramArtifact,
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> Self {
+        Self {
+            subproblem_id: subproblem_id.into(),
+            objective: objective.into(),
+            requested_model_id: None,
+            program_artifact,
+            requested_decode_mode,
+            environment_refs: Vec::new(),
+        }
+    }
+
+    /// Pins execution to one explicit executor model.
+    #[must_use]
+    pub fn with_requested_model_id(mut self, requested_model_id: impl Into<String>) -> Self {
+        self.requested_model_id = Some(requested_model_id.into());
+        self
+    }
+
+    /// Carries environment refs into the executor lineage.
+    #[must_use]
+    pub fn with_environment_refs(mut self, mut environment_refs: Vec<String>) -> Self {
+        environment_refs.sort();
+        environment_refs.dedup();
+        self.environment_refs = environment_refs;
+        self
+    }
+}
+
+/// Stable planner-owned request for exact executor delegation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerRoutingRequest {
+    /// Stable planner request identifier.
+    pub request_id: String,
+    /// Product identifier. Must be `psionic.planner_executor_route`.
+    pub product_id: String,
+    /// Stable planner session identifier.
+    pub planner_session_id: String,
+    /// Planner model identifier making the exact-computation request.
+    pub planner_model_id: String,
+    /// Exact-computation subproblem to delegate.
+    pub subproblem: TassadarPlannerExecutorSubproblem,
+    /// Planner routing policy.
+    pub routing_policy: TassadarPlannerRoutingPolicy,
+    /// Planner routing budget.
+    pub routing_budget: TassadarPlannerRoutingBudget,
+}
+
+impl TassadarPlannerRoutingRequest {
+    /// Creates one planner-owned exact routing request.
+    #[must_use]
+    pub fn new(
+        request_id: impl Into<String>,
+        planner_session_id: impl Into<String>,
+        planner_model_id: impl Into<String>,
+        subproblem: TassadarPlannerExecutorSubproblem,
+    ) -> Self {
+        Self {
+            request_id: request_id.into(),
+            product_id: String::from(PLANNER_EXECUTOR_ROUTE_PRODUCT_ID),
+            planner_session_id: planner_session_id.into(),
+            planner_model_id: planner_model_id.into(),
+            subproblem,
+            routing_policy: TassadarPlannerRoutingPolicy::default(),
+            routing_budget: TassadarPlannerRoutingBudget::default(),
+        }
+    }
+
+    /// Replaces the routing policy.
+    #[must_use]
+    pub fn with_routing_policy(mut self, routing_policy: TassadarPlannerRoutingPolicy) -> Self {
+        self.routing_policy = routing_policy;
+        self
+    }
+
+    /// Replaces the routing budget.
+    #[must_use]
+    pub fn with_routing_budget(mut self, routing_budget: TassadarPlannerRoutingBudget) -> Self {
+        self.routing_budget = routing_budget;
+        self
+    }
+
+    /// Returns a stable digest over the planner routing request.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        stable_digest(b"tassadar_planner_routing_request|", self)
+    }
+}
+
+/// Planner-visible route state after policy and executor resolution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarPlannerRouteState {
+    /// The request delegated successfully into Tassadar.
+    Delegated,
+    /// The planner received an explicit typed fallback.
+    PlannerFallback,
+    /// The routing contract refused the request.
+    Refused,
+}
+
+/// Planner-visible reason for a route decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarPlannerRouteReason {
+    /// Planner policy disabled exact executor delegation.
+    PlannerPolicyDisabled,
+    /// Validated-program length exceeded planner budget.
+    ProgramLengthBudgetExceeded,
+    /// Profile-backed trace-step budget exceeded planner budget.
+    TraceStepBudgetExceeded,
+    /// Environment refs exceeded planner budget.
+    EnvironmentRefBudgetExceeded,
+    /// Planner policy disallowed runtime decode fallback.
+    ExecutorDecodeFallbackDisallowed,
+    /// Planner policy required a direct decode path.
+    ExecutorDirectPathRequired,
+    /// Executor model/program contract was invalid.
+    ExecutorContractRejected,
+    /// Executor selection refused the request before execution.
+    ExecutorSelectionRefused,
+    /// Executor service rejected the request before delegation.
+    ExecutorServiceRejected,
+}
+
+/// Replay-stable planner routing decision with executor truth attached.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerRoutingDecision {
+    /// Stable digest for the planner request.
+    pub planner_request_digest: String,
+    /// Stable digest for the routing decision itself.
+    pub routing_digest: String,
+    /// Stable planner request identifier.
+    pub planner_request_id: String,
+    /// Stable planner session identifier.
+    pub planner_session_id: String,
+    /// Planner model identifier that requested the route.
+    pub planner_model_id: String,
+    /// Planner-owned product identifier.
+    pub planner_product_id: String,
+    /// Executor-trace product delegated to by the router.
+    pub executor_product_id: String,
+    /// Stable subproblem identifier.
+    pub subproblem_id: String,
+    /// Requested decode mode.
+    pub requested_decode_mode: TassadarExecutorDecodeMode,
+    /// Effective decode mode after runtime selection, when execution remained viable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_decode_mode: Option<TassadarExecutorDecodeMode>,
+    /// Stable digest for the executor request when one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor_request_digest: Option<String>,
+    /// Route state exposed back to the planner.
+    pub route_state: TassadarPlannerRouteState,
+    /// Route reason when routing did not delegate directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_reason: Option<TassadarPlannerRouteReason>,
+    /// Budget policy consulted during route selection.
+    pub routing_budget: TassadarPlannerRoutingBudget,
+    /// Fallback and decode policy consulted during route selection.
+    pub routing_policy: TassadarPlannerRoutingPolicy,
+    /// Runtime capability report preserved across the planner boundary.
+    pub runtime_capability: TassadarRuntimeCapabilityReport,
+    /// Executor selection diagnostic preserved across the planner boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<TassadarExecutorSelectionDiagnostic>,
+    /// Contract error preserved when model/program pairing failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contract_error: Option<TassadarExecutorContractError>,
+    /// Human-readable route summary safe for logs or UI.
+    pub detail: String,
+}
+
+impl TassadarPlannerRoutingDecision {
+    fn new(
+        request: &TassadarPlannerRoutingRequest,
+        executor_request_digest: Option<String>,
+        runtime_capability: TassadarRuntimeCapabilityReport,
+        selection: Option<TassadarExecutorSelectionDiagnostic>,
+        contract_error: Option<TassadarExecutorContractError>,
+        route_state: TassadarPlannerRouteState,
+        route_reason: Option<TassadarPlannerRouteReason>,
+        detail: String,
+    ) -> Self {
+        #[derive(Serialize)]
+        struct RoutingDigestInput<'a> {
+            planner_request_digest: &'a str,
+            planner_request_id: &'a str,
+            planner_session_id: &'a str,
+            planner_model_id: &'a str,
+            planner_product_id: &'a str,
+            subproblem_id: &'a str,
+            requested_decode_mode: TassadarExecutorDecodeMode,
+            effective_decode_mode: Option<TassadarExecutorDecodeMode>,
+            executor_request_digest: Option<&'a str>,
+            route_state: TassadarPlannerRouteState,
+            route_reason: Option<TassadarPlannerRouteReason>,
+            routing_budget: &'a TassadarPlannerRoutingBudget,
+            routing_policy: &'a TassadarPlannerRoutingPolicy,
+            runtime_capability: &'a TassadarRuntimeCapabilityReport,
+            selection: &'a Option<TassadarExecutorSelectionDiagnostic>,
+            contract_error: &'a Option<TassadarExecutorContractError>,
+            detail: &'a str,
+        }
+
+        let planner_request_digest = request.stable_digest();
+        let effective_decode_mode = selection.as_ref().and_then(|value| value.effective_decode_mode);
+        let routing_digest = stable_digest(
+            b"tassadar_planner_routing_decision|",
+            &RoutingDigestInput {
+                planner_request_digest: planner_request_digest.as_str(),
+                planner_request_id: request.request_id.as_str(),
+                planner_session_id: request.planner_session_id.as_str(),
+                planner_model_id: request.planner_model_id.as_str(),
+                planner_product_id: request.product_id.as_str(),
+                subproblem_id: request.subproblem.subproblem_id.as_str(),
+                requested_decode_mode: request.subproblem.requested_decode_mode,
+                effective_decode_mode,
+                executor_request_digest: executor_request_digest.as_deref(),
+                route_state,
+                route_reason,
+                routing_budget: &request.routing_budget,
+                routing_policy: &request.routing_policy,
+                runtime_capability: &runtime_capability,
+                selection: &selection,
+                contract_error: &contract_error,
+                detail: detail.as_str(),
+            },
+        );
+        Self {
+            planner_request_digest,
+            routing_digest,
+            planner_request_id: request.request_id.clone(),
+            planner_session_id: request.planner_session_id.clone(),
+            planner_model_id: request.planner_model_id.clone(),
+            planner_product_id: request.product_id.clone(),
+            executor_product_id: String::from(EXECUTOR_TRACE_PRODUCT_ID),
+            subproblem_id: request.subproblem.subproblem_id.clone(),
+            requested_decode_mode: request.subproblem.requested_decode_mode,
+            effective_decode_mode,
+            executor_request_digest,
+            route_state,
+            route_reason,
+            routing_budget: request.routing_budget.clone(),
+            routing_policy: request.routing_policy.clone(),
+            runtime_capability,
+            selection,
+            contract_error,
+            detail,
+        }
+    }
+}
+
+/// Planner-visible successful exact delegation result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerCompletedResponse {
+    /// Replay-stable routing decision.
+    pub routing_decision: TassadarPlannerRoutingDecision,
+    /// Completed exact executor response with proof-bearing evidence.
+    pub executor_response: TassadarExecutorResponse,
+}
+
+/// Planner-visible typed fallback preserving executor truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerFallbackResponse {
+    /// Replay-stable routing decision.
+    pub routing_decision: TassadarPlannerRoutingDecision,
+    /// Human-readable planner fallback summary.
+    pub fallback_summary: String,
+    /// Executor refusal preserved when one existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor_refusal: Option<TassadarExecutorRefusalResponse>,
+}
+
+/// Planner-visible typed refusal preserving executor truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarPlannerRefusalResponse {
+    /// Replay-stable routing decision.
+    pub routing_decision: TassadarPlannerRoutingDecision,
+    /// Human-readable refusal detail.
+    pub detail: String,
+    /// Executor refusal preserved when one existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor_refusal: Option<TassadarExecutorRefusalResponse>,
+}
+
+/// Planner-visible outcome for one exact executor routing request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum TassadarPlannerRoutingOutcome {
+    /// The planner delegated successfully into Tassadar.
+    Completed {
+        /// Completed exact routing response.
+        response: TassadarPlannerCompletedResponse,
+    },
+    /// The planner received an explicit typed fallback instead of exact execution.
+    Fallback {
+        /// Typed fallback response.
+        fallback: TassadarPlannerFallbackResponse,
+    },
+    /// The routing contract refused the request.
+    Refused {
+        /// Typed refusal response.
+        refusal: TassadarPlannerRefusalResponse,
+    },
+}
+
+/// Planner-owned request validation errors for hybrid exact routing.
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TassadarPlannerRouterError {
+    /// The request targeted a different planner-owned product family.
+    #[error("unsupported Tassadar planner routing product `{product_id}`")]
+    UnsupportedProduct {
+        /// Product identifier supplied by the caller.
+        product_id: String,
+    },
+}
+
+/// Local planner router that delegates exact subproblems into Tassadar.
+#[derive(Clone, Debug, Default)]
+pub struct LocalTassadarPlannerRouter {
+    executor_service: LocalTassadarExecutorService,
+}
+
+impl LocalTassadarPlannerRouter {
+    /// Creates the default local planner router.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            executor_service: LocalTassadarExecutorService::new(),
+        }
+    }
+
+    /// Replaces the backing local executor service.
+    #[must_use]
+    pub fn with_executor_service(
+        mut self,
+        executor_service: LocalTassadarExecutorService,
+    ) -> Self {
+        self.executor_service = executor_service;
+        self
+    }
+
+    /// Routes one planner-owned exact subproblem into Tassadar when policy allows.
+    pub fn route(
+        &self,
+        request: &TassadarPlannerRoutingRequest,
+    ) -> Result<TassadarPlannerRoutingOutcome, TassadarPlannerRouterError> {
+        self.validate_product(request)?;
+        let executor_request = self.executor_request_for(request);
+        let executor_request_digest = executor_request.stable_digest();
+        let preflight = match self.executor_service.preflight(&executor_request) {
+            Ok(preflight) => preflight,
+            Err(TassadarExecutorServiceError::UnknownModel { model_id }) => {
+                let capability = TassadarRuntimeCapabilityReport::current();
+                let detail = format!("planner requested unknown Tassadar executor model `{model_id}`");
+                return Ok(self.policy_terminal_outcome(
+                    request,
+                    Some(executor_request_digest),
+                    capability,
+                    None,
+                    None,
+                    TassadarPlannerRouteReason::ExecutorServiceRejected,
+                    detail,
+                    None,
+                ));
+            }
+            Err(TassadarExecutorServiceError::UnsupportedProduct { product_id }) => {
+                let capability = TassadarRuntimeCapabilityReport::current();
+                let detail =
+                    format!("planner delegated to unsupported Tassadar executor product `{product_id}`");
+                return Ok(self.policy_terminal_outcome(
+                    request,
+                    Some(executor_request_digest),
+                    capability,
+                    None,
+                    None,
+                    TassadarPlannerRouteReason::ExecutorServiceRejected,
+                    detail,
+                    None,
+                ));
+            }
+            Err(TassadarExecutorServiceError::ExecutionRefusal(refusal)) => {
+                let capability = TassadarRuntimeCapabilityReport::current();
+                let detail = format!(
+                    "executor service rejected planner request before delegation: {refusal}"
+                );
+                return Ok(self.policy_terminal_outcome(
+                    request,
+                    Some(executor_request_digest),
+                    capability,
+                    None,
+                    None,
+                    TassadarPlannerRouteReason::ExecutorServiceRejected,
+                    detail,
+                    None,
+                ));
+            }
+        };
+
+        if !request.routing_policy.allow_executor_delegation {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                preflight.selection,
+                preflight.contract_error,
+                TassadarPlannerRouteReason::PlannerPolicyDisabled,
+                String::from("planner policy disabled exact Tassadar delegation"),
+                None,
+            ));
+        }
+
+        let program_len = request.subproblem.program_artifact.validated_program.instructions.len();
+        if program_len > request.routing_budget.max_program_len {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                preflight.selection,
+                preflight.contract_error,
+                TassadarPlannerRouteReason::ProgramLengthBudgetExceeded,
+                format!(
+                    "validated program uses {} instructions which exceeds planner budget {}",
+                    program_len, request.routing_budget.max_program_len
+                ),
+                None,
+            ));
+        }
+
+        let conservative_trace_steps = route_trace_step_budget(&request.subproblem.program_artifact);
+        if conservative_trace_steps > request.routing_budget.max_trace_steps {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                preflight.selection,
+                preflight.contract_error,
+                TassadarPlannerRouteReason::TraceStepBudgetExceeded,
+                format!(
+                    "profile-backed trace-step budget {} exceeds planner budget {}",
+                    conservative_trace_steps, request.routing_budget.max_trace_steps
+                ),
+                None,
+            ));
+        }
+
+        if request.subproblem.environment_refs.len() > request.routing_budget.max_environment_refs {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                preflight.selection,
+                preflight.contract_error,
+                TassadarPlannerRouteReason::EnvironmentRefBudgetExceeded,
+                format!(
+                    "environment ref count {} exceeds planner budget {}",
+                    request.subproblem.environment_refs.len(),
+                    request.routing_budget.max_environment_refs
+                ),
+                None,
+            ));
+        }
+
+        if let Some(contract_error) = preflight.contract_error {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                preflight.selection,
+                Some(contract_error.clone()),
+                TassadarPlannerRouteReason::ExecutorContractRejected,
+                contract_error.to_string(),
+                None,
+            ));
+        }
+
+        let selection = preflight
+            .selection
+            .expect("preflight should include selection when contract validation succeeds");
+        if selection.effective_decode_mode.is_none() {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                Some(selection.clone()),
+                None,
+                TassadarPlannerRouteReason::ExecutorSelectionRefused,
+                selection.detail.clone(),
+                None,
+            ));
+        }
+        if !request.routing_policy.allow_runtime_decode_fallback && selection.is_fallback() {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                Some(selection.clone()),
+                None,
+                TassadarPlannerRouteReason::ExecutorDecodeFallbackDisallowed,
+                format!(
+                    "planner policy disallowed runtime decode fallback: {}",
+                    selection.detail
+                ),
+                None,
+            ));
+        }
+        if request.routing_policy.require_direct_decode && selection.is_fallback() {
+            return Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                preflight.runtime_capability,
+                Some(selection.clone()),
+                None,
+                TassadarPlannerRouteReason::ExecutorDirectPathRequired,
+                format!(
+                    "planner policy required a direct decode path: {}",
+                    selection.detail
+                ),
+                None,
+            ));
+        }
+
+        match self.executor_service.execute(&executor_request) {
+            Ok(TassadarExecutorOutcome::Completed { response }) => {
+                if request.routing_policy.require_proof_bundle
+                    && response.evidence_bundle.proof_bundle.product_id != EXECUTOR_TRACE_PRODUCT_ID
+                {
+                    let capability = response.runtime_capability.clone();
+                    let selection = Some(response.execution_report.selection.clone());
+                    return Ok(self.policy_terminal_outcome(
+                        request,
+                        Some(executor_request_digest),
+                        capability,
+                        selection,
+                        None,
+                        TassadarPlannerRouteReason::ExecutorServiceRejected,
+                        String::from(
+                            "completed executor response was missing the required proof-bearing product identity",
+                        ),
+                        None,
+                    ));
+                }
+                let detail = format!(
+                    "planner delegated exact subproblem `{}` into Tassadar via `{}`",
+                    request.subproblem.subproblem_id, EXECUTOR_TRACE_PRODUCT_ID
+                );
+                let routing_decision = TassadarPlannerRoutingDecision::new(
+                    request,
+                    Some(executor_request_digest),
+                    response.runtime_capability.clone(),
+                    Some(response.execution_report.selection.clone()),
+                    None,
+                    TassadarPlannerRouteState::Delegated,
+                    None,
+                    detail,
+                );
+                Ok(TassadarPlannerRoutingOutcome::Completed {
+                    response: TassadarPlannerCompletedResponse {
+                        routing_decision,
+                        executor_response: response,
+                    },
+                })
+            }
+            Ok(TassadarExecutorOutcome::Refused { refusal }) => Ok(self.policy_terminal_outcome(
+                request,
+                Some(executor_request_digest),
+                refusal.runtime_capability.clone(),
+                refusal.selection.clone(),
+                refusal.contract_error.clone(),
+                TassadarPlannerRouteReason::ExecutorSelectionRefused,
+                refusal.detail.clone(),
+                Some(refusal),
+            )),
+            Err(TassadarExecutorServiceError::UnknownModel { model_id }) => {
+                let capability = TassadarRuntimeCapabilityReport::current();
+                let detail = format!("planner requested unknown Tassadar executor model `{model_id}`");
+                Ok(self.policy_terminal_outcome(
+                    request,
+                    Some(executor_request_digest),
+                    capability,
+                    None,
+                    None,
+                    TassadarPlannerRouteReason::ExecutorServiceRejected,
+                    detail,
+                    None,
+                ))
+            }
+            Err(TassadarExecutorServiceError::UnsupportedProduct { product_id }) => {
+                let capability = TassadarRuntimeCapabilityReport::current();
+                let detail =
+                    format!("planner delegated to unsupported Tassadar executor product `{product_id}`");
+                Ok(self.policy_terminal_outcome(
+                    request,
+                    Some(executor_request_digest),
+                    capability,
+                    None,
+                    None,
+                    TassadarPlannerRouteReason::ExecutorServiceRejected,
+                    detail,
+                    None,
+                ))
+            }
+            Err(TassadarExecutorServiceError::ExecutionRefusal(refusal)) => {
+                let capability = TassadarRuntimeCapabilityReport::current();
+                let detail = format!(
+                    "executor service rejected planner request before delegation: {refusal}"
+                );
+                Ok(self.policy_terminal_outcome(
+                    request,
+                    Some(executor_request_digest),
+                    capability,
+                    None,
+                    None,
+                    TassadarPlannerRouteReason::ExecutorServiceRejected,
+                    detail,
+                    None,
+                ))
+            }
+        }
+    }
+
+    fn validate_product(
+        &self,
+        request: &TassadarPlannerRoutingRequest,
+    ) -> Result<(), TassadarPlannerRouterError> {
+        if request.product_id == PLANNER_EXECUTOR_ROUTE_PRODUCT_ID {
+            Ok(())
+        } else {
+            Err(TassadarPlannerRouterError::UnsupportedProduct {
+                product_id: request.product_id.clone(),
+            })
+        }
+    }
+
+    fn executor_request_for(
+        &self,
+        request: &TassadarPlannerRoutingRequest,
+    ) -> TassadarExecutorRequest {
+        let mut executor_request = TassadarExecutorRequest::new(
+            format!("{}::{}", request.request_id, request.subproblem.subproblem_id),
+            request.subproblem.program_artifact.clone(),
+            request.subproblem.requested_decode_mode,
+        )
+        .with_environment_refs(request.subproblem.environment_refs.clone());
+        if let Some(requested_model_id) = request.subproblem.requested_model_id.as_deref() {
+            executor_request = executor_request.with_requested_model_id(requested_model_id);
+        }
+        executor_request
+    }
+
+    fn policy_terminal_outcome(
+        &self,
+        request: &TassadarPlannerRoutingRequest,
+        executor_request_digest: Option<String>,
+        runtime_capability: TassadarRuntimeCapabilityReport,
+        selection: Option<TassadarExecutorSelectionDiagnostic>,
+        contract_error: Option<TassadarExecutorContractError>,
+        route_reason: TassadarPlannerRouteReason,
+        detail: String,
+        executor_refusal: Option<TassadarExecutorRefusalResponse>,
+    ) -> TassadarPlannerRoutingOutcome {
+        let route_state = match request.routing_policy.fallback_policy {
+            TassadarPlannerFallbackPolicy::Refuse => TassadarPlannerRouteState::Refused,
+            TassadarPlannerFallbackPolicy::PlannerSummary => TassadarPlannerRouteState::PlannerFallback,
+        };
+        let routing_decision = TassadarPlannerRoutingDecision::new(
+            request,
+            executor_request_digest,
+            runtime_capability,
+            selection,
+            contract_error,
+            route_state,
+            Some(route_reason),
+            detail.clone(),
+        );
+        match request.routing_policy.fallback_policy {
+            TassadarPlannerFallbackPolicy::Refuse => TassadarPlannerRoutingOutcome::Refused {
+                refusal: TassadarPlannerRefusalResponse {
+                    routing_decision,
+                    detail,
+                    executor_refusal,
+                },
+            },
+            TassadarPlannerFallbackPolicy::PlannerSummary => {
+                TassadarPlannerRoutingOutcome::Fallback {
+                    fallback: TassadarPlannerFallbackResponse {
+                        routing_decision,
+                        fallback_summary: detail,
+                        executor_refusal,
+                    },
+                }
+            }
+        }
+    }
+}
+
+fn route_trace_step_budget(program_artifact: &TassadarProgramArtifact) -> usize {
+    tassadar_wasm_profile_for_id(program_artifact.wasm_profile_id.as_str())
+        .map_or_else(
+            || program_artifact.validated_program.instructions.len(),
+            |profile| profile.max_steps,
+        )
+}
+
+fn stable_digest<T>(prefix: &[u8], value: &T) -> String
+where
+    T: Serialize,
+{
+    let encoded = serde_json::to_vec(value).expect("Tassadar planner routing value should serialize");
+    let mut hasher = Sha256::new();
+    hasher.update(prefix);
+    hasher.update(encoded);
+    hex::encode(hasher.finalize())
+}
+
 fn stream_events_for_outcome(
     fixture: &TassadarExecutorFixture,
     outcome: TassadarExecutorOutcome,
@@ -478,13 +1355,18 @@ fn stream_events_for_outcome(
 
 #[cfg(test)]
 mod tests {
+    use psionic_models::TassadarExecutorFixture;
     use super::{
-        EXECUTOR_TRACE_PRODUCT_ID, LocalTassadarExecutorService, TassadarExecutorOutcome,
-        TassadarExecutorRequest, TassadarExecutorServiceError, TassadarExecutorStreamEvent,
+        EXECUTOR_TRACE_PRODUCT_ID, LocalTassadarExecutorService, LocalTassadarPlannerRouter,
+        PLANNER_EXECUTOR_ROUTE_PRODUCT_ID, TassadarExecutorOutcome, TassadarExecutorRequest,
+        TassadarExecutorServiceError, TassadarExecutorStreamEvent,
+        TassadarPlannerExecutorSubproblem, TassadarPlannerFallbackPolicy,
+        TassadarPlannerRouteReason, TassadarPlannerRouterError, TassadarPlannerRoutingBudget,
+        TassadarPlannerRoutingOutcome, TassadarPlannerRoutingPolicy, TassadarPlannerRoutingRequest,
     };
     use psionic_runtime::{
-        TassadarExecutorDecodeMode, TassadarProgramArtifact, TassadarTraceAbi, TassadarWasmProfile,
-        tassadar_validation_corpus,
+        TassadarExecutorDecodeMode, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
+        TassadarTraceAbi, TassadarWasmProfile, tassadar_validation_corpus,
     };
 
     fn request_for_case(case_id: &str) -> TassadarExecutorRequest {
@@ -606,6 +1488,167 @@ mod tests {
         assert_eq!(
             error,
             TassadarExecutorServiceError::UnsupportedProduct {
+                product_id: String::from("psionic.text_generation"),
+            }
+        );
+    }
+
+    fn planner_request_for_case(case_id: &str) -> TassadarPlannerRoutingRequest {
+        TassadarPlannerRoutingRequest::new(
+            format!("planner-request-{case_id}"),
+            "session-alpha",
+            "planner-fixture-v0",
+            TassadarPlannerExecutorSubproblem::new(
+                format!("subproblem-{case_id}"),
+                "exact arithmetic subproblem",
+                request_for_case(case_id).program_artifact,
+                TassadarExecutorDecodeMode::HullCache,
+            )
+            .with_environment_refs(vec![String::from("env.openagents.tassadar.benchmark")]),
+        )
+    }
+
+    fn backward_branch_sparse_artifact() -> TassadarProgramArtifact {
+        let profile = TassadarWasmProfile::core_i32_v2();
+        let trace_abi = TassadarTraceAbi::core_i32_v2();
+        let program = TassadarProgram::new(
+            "tassadar.backward_branch_sparse.v1",
+            &profile,
+            1,
+            0,
+            vec![
+                TassadarInstruction::I32Const { value: 1 },
+                TassadarInstruction::LocalSet { local: 0 },
+                TassadarInstruction::LocalGet { local: 0 },
+                TassadarInstruction::BrIf { target_pc: 2 },
+                TassadarInstruction::I32Const { value: 9 },
+                TassadarInstruction::Output,
+                TassadarInstruction::Return,
+            ],
+        );
+        TassadarProgramArtifact::fixture_reference(
+            "artifact://tassadar/backward_branch_sparse",
+            &profile,
+            &trace_abi,
+            program,
+        )
+        .expect("backward branch fixture should build")
+    }
+
+    #[test]
+    fn planner_router_delegates_completed_exact_request_with_full_executor_truth() {
+        let router = LocalTassadarPlannerRouter::new();
+        let request = planner_request_for_case("locals_add");
+
+        let outcome = router.route(&request).expect("planner route should succeed");
+        match outcome {
+            TassadarPlannerRoutingOutcome::Completed { response } => {
+                assert_eq!(
+                    response.routing_decision.planner_product_id,
+                    PLANNER_EXECUTOR_ROUTE_PRODUCT_ID
+                );
+                assert_eq!(
+                    response.routing_decision.executor_product_id,
+                    EXECUTOR_TRACE_PRODUCT_ID
+                );
+                assert_eq!(response.executor_response.final_outputs(), &[12]);
+                assert_eq!(
+                    response.executor_response.evidence_bundle.proof_bundle.product_id,
+                    EXECUTOR_TRACE_PRODUCT_ID
+                );
+                assert_eq!(
+                    response.routing_decision.effective_decode_mode,
+                    Some(TassadarExecutorDecodeMode::HullCache)
+                );
+                assert!(response.routing_decision.selection.is_some());
+                assert!(!response.routing_decision.routing_digest.is_empty());
+            }
+            other => panic!("expected delegated completion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn planner_router_can_return_typed_fallback_when_policy_disallows_runtime_decode_fallback() {
+        let router = LocalTassadarPlannerRouter::new().with_executor_service(
+            LocalTassadarExecutorService::new().with_fixture(TassadarExecutorFixture::core_i32_v2()),
+        );
+        let request = TassadarPlannerRoutingRequest::new(
+            "planner-request-sparse-fallback",
+            "session-beta",
+            "planner-fixture-v0",
+            TassadarPlannerExecutorSubproblem::new(
+                "subproblem-sparse-fallback",
+                "exact sparse top-k subproblem",
+                backward_branch_sparse_artifact(),
+                TassadarExecutorDecodeMode::SparseTopK,
+            ),
+        )
+        .with_routing_budget(TassadarPlannerRoutingBudget::new(128, 512, 8))
+        .with_routing_policy(
+            TassadarPlannerRoutingPolicy::exact_executor_default()
+                .with_fallback_policy(TassadarPlannerFallbackPolicy::PlannerSummary),
+        );
+        let request = TassadarPlannerRoutingRequest {
+            subproblem: request
+                .subproblem
+                .with_requested_model_id(TassadarExecutorFixture::ARTICLE_CLASS_MODEL_ID),
+            routing_policy: TassadarPlannerRoutingPolicy {
+                allow_runtime_decode_fallback: false,
+                ..request.routing_policy
+            },
+            ..request
+        };
+
+        let outcome = router.route(&request).expect("planner route should be typed");
+        match outcome {
+            TassadarPlannerRoutingOutcome::Fallback { fallback } => {
+                assert_eq!(
+                    fallback.routing_decision.route_reason,
+                    Some(TassadarPlannerRouteReason::ExecutorDecodeFallbackDisallowed)
+                );
+                assert!(fallback
+                    .routing_decision
+                    .selection
+                    .as_ref()
+                    .is_some_and(|selection| selection.is_fallback()));
+                assert!(fallback.fallback_summary.contains("disallowed"));
+            }
+            other => panic!("expected typed fallback, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn planner_router_refuses_when_program_exceeds_budget() {
+        let router = LocalTassadarPlannerRouter::new();
+        let request = planner_request_for_case("memory_roundtrip").with_routing_budget(
+            TassadarPlannerRoutingBudget::new(4, 512, 8),
+        );
+
+        let outcome = router.route(&request).expect("planner route should be typed");
+        match outcome {
+            TassadarPlannerRoutingOutcome::Refused { refusal } => {
+                assert_eq!(
+                    refusal.routing_decision.route_reason,
+                    Some(TassadarPlannerRouteReason::ProgramLengthBudgetExceeded)
+                );
+                assert!(refusal.detail.contains("exceeds planner budget"));
+            }
+            other => panic!("expected budget refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn planner_router_rejects_non_planner_product_id() {
+        let router = LocalTassadarPlannerRouter::new();
+        let mut request = planner_request_for_case("locals_add");
+        request.product_id = String::from("psionic.text_generation");
+
+        let error = router
+            .route(&request)
+            .expect_err("wrong planner product should fail before routing");
+        assert_eq!(
+            error,
+            TassadarPlannerRouterError::UnsupportedProduct {
                 product_id: String::from("psionic.text_generation"),
             }
         );
