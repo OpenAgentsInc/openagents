@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
 use serde::de::{self, Deserializer};
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// First version of the shared ARC Rust-native contract surface.
@@ -146,6 +148,14 @@ impl ArcGrid {
         let index = usize::from(y) * usize::from(self.width) + usize::from(x);
         self.cells.get(index).copied()
     }
+
+    pub fn canonical_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(self)
+    }
+
+    pub fn contract_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(self)
+    }
 }
 
 impl Serialize for ArcGrid {
@@ -210,6 +220,33 @@ impl ArcTask {
             return Err(ArcTaskError::MissingTestInputs);
         }
         Ok(Self { id, train, test })
+    }
+
+    pub fn canonical_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(self)
+    }
+
+    pub fn contract_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(self)
+    }
+
+    pub fn canonical_body_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(&ArcTaskBodyWire {
+            train: self.train.clone(),
+            test: self.test.clone(),
+        })
+    }
+
+    pub fn body_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(&ArcTaskBodyWire {
+            train: self.train.clone(),
+            test: self.test.clone(),
+        })
+    }
+
+    pub fn derived_task_id(&self) -> Result<ArcTaskId, ContractSerializationError> {
+        let digest = self.body_digest()?;
+        Ok(ArcTaskId(format!("task-{}", &digest[..16])))
     }
 }
 
@@ -430,6 +467,14 @@ impl ArcFrameData {
     pub fn pixels(&self) -> &[u8] {
         &self.pixels
     }
+
+    pub fn canonical_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(self)
+    }
+
+    pub fn contract_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(self)
+    }
 }
 
 impl Serialize for ArcFrameData {
@@ -503,6 +548,14 @@ impl ArcRecording {
             steps,
         })
     }
+
+    pub fn canonical_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(self)
+    }
+
+    pub fn contract_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(self)
+    }
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -534,6 +587,16 @@ pub struct ArcScorecard {
     pub levels: Vec<ArcLevelScore>,
 }
 
+impl ArcScorecard {
+    pub fn canonical_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(self)
+    }
+
+    pub fn contract_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(self)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct ArcGridWire {
     width: u8,
@@ -545,8 +608,10 @@ struct ArcGridWire {
 struct ArcActionWire {
     kind: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     x: Option<u8>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     y: Option<u8>,
 }
 
@@ -557,6 +622,12 @@ struct ArcFrameDataWire {
     pixels: Vec<u8>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct ArcTaskBodyWire {
+    train: Vec<ArcExample>,
+    test: Vec<ArcGrid>,
+}
+
 fn reject_unexpected_coordinates(action: &ArcActionWire) -> Result<(), ArcActionError> {
     if action.x.is_some() || action.y.is_some() {
         return Err(ArcActionError::UnexpectedCoordinates {
@@ -564,4 +635,50 @@ fn reject_unexpected_coordinates(action: &ArcActionWire) -> Result<(), ArcAction
         });
     }
     Ok(())
+}
+
+pub fn canonical_json_string<T>(value: &T) -> Result<String, ContractSerializationError>
+where
+    T: Serialize,
+{
+    let value = serde_json::to_value(value)?;
+    let canonical_value = canonicalize_json_value(value);
+    serde_json::to_string(&canonical_value).map_err(Into::into)
+}
+
+pub fn canonical_sha256_hex<T>(value: &T) -> Result<String, ContractSerializationError>
+where
+    T: Serialize,
+{
+    let canonical_json = canonical_json_string(value)?;
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_json.as_bytes());
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[derive(Debug, Error)]
+pub enum ContractSerializationError {
+    #[error("failed to serialize ARC contract canonically: {0}")]
+    Serde(#[from] serde_json::Error),
+}
+
+fn canonicalize_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.into_iter().map(canonicalize_json_value).collect())
+        }
+        serde_json::Value::Object(map) => {
+            let sorted = map
+                .into_iter()
+                .map(|(key, value)| (key, canonicalize_json_value(value)))
+                .collect::<BTreeMap<_, _>>();
+
+            let mut canonical = serde_json::Map::new();
+            for (key, value) in sorted {
+                canonical.insert(key, value);
+            }
+            serde_json::Value::Object(canonical)
+        }
+        scalar => scalar,
+    }
 }

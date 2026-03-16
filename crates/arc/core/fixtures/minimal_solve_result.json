@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "task_id": "demo-bridge-task",
+  "budget": {
+    "max_attempts": 4,
+    "max_steps": 64,
+    "max_runtime_millis": 2000
+  },
+  "attempts_used": 2,
+  "trace_locator": "trace://arc-core/demo-bridge-task/attempt-1",
+  "outcome": {
+    "Refused": {
+      "code": "BudgetExhausted",
+      "detail": "attempt budget spent"
+    }
+  }
+}
