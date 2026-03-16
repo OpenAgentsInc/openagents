@@ -1930,7 +1930,8 @@ mod tests {
             }]),
         ];
 
-        let held_out = harness.run_held_out_eval("eval.apple.failure_tolerant", &dataset, observed, 1, 2)?;
+        let held_out =
+            harness.run_held_out_eval("eval.apple.failure_tolerant", &dataset, observed, 1, 2)?;
         assert_eq!(held_out.status, crate::EvalRunStatus::Finalized);
         assert_eq!(
             held_out.summary.as_ref().expect("summary").passed_samples,

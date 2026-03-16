@@ -3736,12 +3736,18 @@ fn print_training_text(payload: &Value) {
     {
         println!(
             "training window: id={} run={} stage={} status={} revision={} counts={}/{}/{}/{}/{}/{} uploaded={} held_out_bps={} benchmark_bps={} runtime_smoke={} promotion_ready={} promotion={} accepted_outcome={} gates={} holds={}",
-            window.get("window_id").and_then(Value::as_str).unwrap_or("-"),
+            window
+                .get("window_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
             window
                 .get("training_run_id")
                 .and_then(Value::as_str)
                 .unwrap_or("-"),
-            window.get("stage_id").and_then(Value::as_str).unwrap_or("-"),
+            window
+                .get("stage_id")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
             window.get("status").and_then(Value::as_str).unwrap_or("-"),
             window
                 .get("contributor_set_revision_id")
@@ -5340,8 +5346,9 @@ mod tests {
         snapshot.training.contributor.latest_assignment_id = Some("assignment-1".to_string());
         snapshot.training.contributor.latest_payout_state =
             Some("accepted_pending_settlement".to_string());
-        snapshot.training.contributor.readiness_detail =
-            Some("Contributor prerequisites satisfy the latest decentralized adapter window".to_string());
+        snapshot.training.contributor.readiness_detail = Some(
+            "Contributor prerequisites satisfy the latest decentralized adapter window".to_string(),
+        );
         snapshot.training.operator.available = true;
         snapshot.training.operator.workflow_state = "running".to_string();
         snapshot.training.operator.run_count = 1;

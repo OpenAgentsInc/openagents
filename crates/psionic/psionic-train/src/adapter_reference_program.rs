@@ -22,9 +22,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    AdapterArtifactRetentionPolicy, AdapterArtifactStorageError, AdapterArtifactStorageState,
-    AdapterAggregationRule,
-    AdapterClusterCoordinationError, AdapterClusterMembershipReceipt,
+    AdapterAggregationRule, AdapterArtifactRetentionPolicy, AdapterArtifactStorageError,
+    AdapterArtifactStorageState, AdapterClusterCoordinationError, AdapterClusterMembershipReceipt,
     AdapterClusterWindowPlanReceipt, AdapterContributionArtifactDisposition,
     AdapterContributionArtifactReceipt, AdapterContributionExecutionSummary,
     AdapterContributionProgress, AdapterContributionProvenanceBundle,

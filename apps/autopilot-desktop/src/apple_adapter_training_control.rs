@@ -59,9 +59,10 @@ use psionic_eval::{
     AppleAdapterRuntimeSmokeRequest, EvalArtifact, EvalMetric, EvalRunState,
 };
 use psionic_train::{
-    APPLE_LIVE_REFERENCE_FEATURE_WIDTH, AppleAdapterActivationCheckpointPolicy,
-    AppleAdapterExecutionConfig, AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel,
-    AppleAdapterSftRunOutcome, AppleAdapterSftRunRequest, AppleAdapterToolkitExportOutcome,
+    APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+    AppleAdapterActivationCheckpointPolicy, AppleAdapterExecutionConfig,
+    AppleAdapterPrecisionPolicy, AppleAdapterReferenceModel, AppleAdapterSftRunOutcome,
+    AppleAdapterSftRunRequest, AppleAdapterToolkitExportOutcome,
     AppleAdapterToolkitExportRequest, AppleAdapterToolkitPrecision,
     AppleAdapterToolkitTrainingOutcome, AppleAdapterToolkitTrainingRequest,
     AppleAdapterTrainingExecutionBackend, TrainingLoopBudget, TrainingOptimizerConfig,
@@ -524,14 +525,14 @@ fn execute_launch_pipeline(
     let mut runtime_profile =
         derive_runtime_compatibility_profile(request.apple_fm_base_url.as_str())
             .map_err(|error| error.to_string())?;
-    if let Some(signature) = request
+    let expected_base_model_signature = request
         .expected_base_model_signature
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-    {
-        runtime_profile = runtime_profile.with_base_model_signature(signature.to_string());
-    }
+        .unwrap_or(APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE);
+    runtime_profile =
+        runtime_profile.with_base_model_signature(expected_base_model_signature.to_string());
     with_controller(|controller| {
         controller.push_log(
             run_id,

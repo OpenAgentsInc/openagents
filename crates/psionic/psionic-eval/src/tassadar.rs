@@ -1562,7 +1562,7 @@ mod tests {
         );
         assert!(
             report
-                .case_reports
+            .case_reports
                 .iter()
                 .all(|case| case.hull_cache_speedup_over_reference_linear > 1.0)
         );

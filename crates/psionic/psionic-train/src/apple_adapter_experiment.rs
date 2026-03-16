@@ -585,7 +585,8 @@ mod tests {
             ],
             lora_rank: 4,
             max_steps: 8,
-            acceptance_policy: AppleAdapterBaseVsAdapterAcceptancePolicy::architecture_explainer_default(),
+            acceptance_policy:
+                AppleAdapterBaseVsAdapterAcceptancePolicy::architecture_explainer_default(),
         }
     }
 
@@ -675,12 +676,16 @@ mod tests {
             detect_experiment_regression(&ledger).expect("regression should be detected");
         assert_eq!(regression.baseline_run_id, "run-1");
         assert_eq!(regression.candidate_run_id, "run-2");
-        assert!(regression
-            .reason_codes
-            .contains(&AppleAdapterExperimentRegressionReasonCode::AcceptanceDropped));
-        assert!(regression
-            .reason_codes
-            .contains(&AppleAdapterExperimentRegressionReasonCode::AggregateScoreDropped));
+        assert!(
+            regression
+                .reason_codes
+                .contains(&AppleAdapterExperimentRegressionReasonCode::AcceptanceDropped)
+        );
+        assert!(
+            regression
+                .reason_codes
+                .contains(&AppleAdapterExperimentRegressionReasonCode::AggregateScoreDropped)
+        );
     }
 
     #[test]

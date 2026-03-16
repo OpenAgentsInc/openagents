@@ -1,7 +1,7 @@
 # Apple `.fmadapter` Package Spec
 
 > Status: canonical repo-owned `.fmadapter` package reference for the retained
-> OpenAgents repo as of 2026-03-14.
+> OpenAgents repo as of 2026-03-16.
 
 ## Why This Doc Exists
 
@@ -44,6 +44,31 @@ Every valid package must contain:
 
 - `metadata.json`
 - `adapter_weights.bin`
+
+## `adapter_weights.bin` Payload Contract
+
+For the live Apple adapter lane, `adapter_weights.bin` is not just raw
+concatenated fp16 bytes.
+
+It is a Core ML blob-storage container:
+
+- the file starts with one 64-byte file header
+- bytes `0..4` are the tensor-record count as little-endian `u32`
+- bytes `4..8` are the current blob-storage version as little-endian `u32`
+  (`2` in the retained toolkit oracle and current Rust-native writer)
+- each tensor record starts at a 64-byte-aligned offset
+- each tensor record begins with one 64-byte header:
+  - bytes `0..4`: magic `0xdeadbeef` as little-endian `u32`
+  - bytes `4..8`: blob kind (`1` for fp16 payloads in the current adapter lane)
+  - bytes `8..16`: payload byte length as little-endian `u64`
+  - bytes `16..24`: absolute payload offset as little-endian `u64`
+- tensor payload bytes are fp16 little-endian data
+- records are padded to the next 64-byte boundary between payloads
+
+Bridge acceptance depends on that container shape. A package with correct
+metadata and correct tensor values can still be rejected if
+`adapter_weights.bin` is emitted as raw bytes instead of this blob-storage
+layout.
 
 ## Optional Draft-Model Inventory
 
@@ -90,6 +115,9 @@ Common exporter keys:
 - It is the primary compatibility anchor between the adapter package and the
   Apple base model family.
 - Package import should refuse obviously malformed signatures.
+- The current live Apple reference lane in this repo uses
+  `9799725ff8e851184037110b422d891ad3b92ec1` when the runtime does not surface
+  a more specific explicit signature.
 
 ### `loraRank`
 

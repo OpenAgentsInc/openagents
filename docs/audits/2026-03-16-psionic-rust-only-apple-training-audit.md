@@ -4,46 +4,51 @@
 
 This audit answers four specific questions:
 
-1. Why the current Apple adapter training lane still invokes Python.
-2. Why that means the lane is still not honestly Rust-only Psionic.
-3. Why the current operator experience goes silent for long stretches instead of
-   surfacing live progress.
-4. What GitHub issue program is required to replace the remaining Python path
-   with Rust-owned Psionic code and add real telemetry.
+1. Why the Apple adapter lane originally still invoked Python.
+2. What changed once the Rust-native training and export issues landed.
+3. Why the current operator experience still goes silent for long stretches
+   instead of surfacing live progress.
+4. What GitHub issue program still remains for telemetry, gates, and final
+   cleanup of the legacy toolkit path.
 
 This is a codebase-grounded audit of the current tree, not a wish list.
 
 ## Executive Summary
 
-Update after `#3768` on 2026-03-16:
+Update after `#3768` and `#3769` on 2026-03-16:
 
-- the shipped Apple operator path no longer uses Python for the train phase
+- the shipped Apple operator path no longer uses Python for the train phase or
+  the export phase
 - `apps/autopilot-desktop/src/apple_adapter_training_control.rs` now launches
   the repo-owned `AppleAdapterTrainingExecutionBackend` through
   `run_apple_adapter_sft_export(...)`
 - a real operator run,
   `rust-native-3768-validation-1773641773075`, completed the Rust train step,
   wrote repo-owned checkpoints, and staged a `.fmadapter`
-- that same run then failed at the live bridge adapter-load gate, so the lane
-  is still not honestly Rust-only end to end
+- the follow-on live operator run,
+  `rust-native-3769-validation-1773643126445`, completed held-out eval and
+  runtime smoke with `runtime_smoke_passed=true`, `runtime_asset_size_bytes`
+  `133312320`, and the live Apple base-model signature
+  `9799725ff8e851184037110b422d891ad3b92ec1`
 
-We are therefore still using Python only because the Apple-valid export parity
-problem is not closed yet and the toolkit path remains the external oracle in
-`crates/psionic/psionic-train/src/apple_toolkit.rs`.
+The shipped train/export lane is therefore now Rust-native end to end.
+Python still exists in-tree only as the external oracle and cleanup target in
+`crates/psionic/psionic-train/src/apple_toolkit.rs`; it is no longer the
+authoritative live train/export path.
 
 That wrapper is not incidental:
 
 - it discovers a toolkit checkout on disk
 - it discovers a Python interpreter inside the toolkit virtualenv
 - it launches `python -m export.export_fmadapter`
-- the bridge-accepted runtime payload contract is still judged against that
-  external path until the native exporter passes the live bridge gate
+- the toolkit path is still the parity oracle and cleanup target until the
+  final gate/removal issues land
 
 So the honest current answer is:
 
-> the Apple operator lane is now Rust-executed for training, but it is still
-> not honestly Rust-only because the native export/runtime path is not yet
-> bridge-accepted without the toolkit oracle.
+> the Apple operator lane is now Rust-executed for training and export, but
+> the repo still carries Python toolkit debt until the remaining gate and
+> cleanup issues remove that oracle path from the tree entirely.
 
 That is also why the operator UI and CLI feel blind during long runs:
 
@@ -53,14 +58,14 @@ That is also why the operator UI and CLI feel blind during long runs:
 - progress, loss updates, checkpoint milestones, and export phases are not
   streamed
 
-The current lane is therefore failing two separate goals:
+The current lane is therefore failing one major remaining goal:
 
-1. It is not Rust-only.
-2. It does not expose live step telemetry during long-running work.
+1. It still does not expose live step telemetry during long-running work.
 
 ## Current Code Reality
 
-### 1. The live Apple export parity oracle is still the Python toolkit wrapper
+### 1. The Python toolkit wrapper is no longer the live path, but it is still
+an oracle and cleanup liability
 
 The current authoritative wrapper is:
 
@@ -79,11 +84,11 @@ The current export command is built as:
 
 - `python -m export.export_fmadapter ...`
 
-This is no longer the live train-phase codepath after `#3768`, but it remains
-the external export oracle the native path still has to match.
+This is no longer the live train or export codepath after `#3768` and `#3769`,
+but it remains the external oracle the native path was validated against and
+the cleanup target for later issues.
 
-### 2. The app-owned operator flow now uses Rust for training but still needs
-the native exporter to reach bridge acceptance
+### 2. The app-owned operator flow now uses Rust for both training and export
 
 The relevant orchestrator is:
 
@@ -98,12 +103,11 @@ The current launch flow now does this:
 5. stages the resulting `.fmadapter`
 6. runs held-out eval and bridge-backed runtime acceptance
 
-So the heavy lifting for the train phase is now Rust. The missing piece is that
-the staged native export still failed to load through the live bridge in the
-first validation run.
+So the heavy lifting for both train and export is now Rust in the shipped path.
+The remaining missing pieces are telemetry, gate enforcement, and final cleanup
+of the obsolete toolkit path.
 
-### 3. Psionic now has an authoritative Rust Apple training path, but export
-parity is still not complete
+### 3. Psionic now has authoritative Rust Apple training and export paths
 
 The Rust-side reference surfaces exist in:
 
@@ -124,9 +128,9 @@ desktop operator lane.
 
 But they are still not yet the same thing as:
 
-- a Rust-native Apple-valid `.fmadapter` exporter that emits the exact runtime
-  payload Apple accepts through the live bridge
-- an honestly Rust-only end-to-end Apple lane
+- a telemetry-rich operator lane with typed live progress
+- a fully gated and cleanup-complete repo where the legacy toolkit path can no
+  longer silently creep back into the shipped Apple flow
 
 The train system doc already says this precisely:
 
@@ -333,11 +337,17 @@ Acceptance:
 ### 2. Psionic Apple Export: implement a Rust-native Apple-valid runtime-asset
 writer and delete Python export from the live path
 
+Status:
+
+- implemented in `#3769`
+
 Why:
 
-- the current authoritative export still shells out to
+- the old authoritative export shelled out to
   `python -m export.export_fmadapter`
-- Rust does not yet own the final Apple-valid adapter payload contract
+- Rust had to own the final Apple-valid adapter payload contract, including the
+  Core ML blob-storage container shape and the correct live base-model
+  signature
 
 Deliverables:
 

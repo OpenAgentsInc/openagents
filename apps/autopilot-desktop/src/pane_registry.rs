@@ -1162,7 +1162,10 @@ mod tests {
         let spec = pane_spec_by_command_id("pane.apple_adapter_training")
             .expect("apple adapter training command should resolve to a pane spec");
         assert_eq!(spec.kind, PaneKind::AppleAdapterTraining);
-        assert!(spec.singleton, "apple adapter training pane must be singleton");
+        assert!(
+            spec.singleton,
+            "apple adapter training pane must be singleton"
+        );
         assert!(
             !spec.startup,
             "apple adapter training pane should remain opt-in instead of opening at startup"

@@ -402,8 +402,7 @@ fn paint_preflight_panel(
         ),
         format!(
             "Contribution receipts: {} total // contributor state {}",
-            training_status.contribution_count,
-            training_status.contributor.assignment_state
+            training_status.contribution_count, training_status.contributor.assignment_state
         ),
         format!(
             "Contributor node: {}",
@@ -1743,18 +1742,20 @@ mod tests {
             ..DesktopControlAppleAdapterOperatorRunStatus::default()
         };
         let training = DesktopControlTrainingStatus {
-            windows: vec![crate::desktop_control::DesktopControlAdapterTrainingWindowStatus {
-                window_id: "window-1".to_string(),
-                training_run_id: "train-1".to_string(),
-                stage_id: "stage-a".to_string(),
-                status: "active".to_string(),
-                total_contributions: 2,
-                accepted_contributions: 1,
-                uploaded_contributions: 1,
-                promotion_ready: false,
-                accepted_outcome_id: Some("accepted-1".to_string()),
-                ..crate::desktop_control::DesktopControlAdapterTrainingWindowStatus::default()
-            }],
+            windows: vec![
+                crate::desktop_control::DesktopControlAdapterTrainingWindowStatus {
+                    window_id: "window-1".to_string(),
+                    training_run_id: "train-1".to_string(),
+                    stage_id: "stage-a".to_string(),
+                    status: "active".to_string(),
+                    total_contributions: 2,
+                    accepted_contributions: 1,
+                    uploaded_contributions: 1,
+                    promotion_ready: false,
+                    accepted_outcome_id: Some("accepted-1".to_string()),
+                    ..crate::desktop_control::DesktopControlAdapterTrainingWindowStatus::default()
+                },
+            ],
             contributor: crate::desktop_control::DesktopControlTrainingContributorStatus {
                 assignment_state: "awaiting_assignment".to_string(),
                 match_eligible: true,
