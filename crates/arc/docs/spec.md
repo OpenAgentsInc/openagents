@@ -1319,8 +1319,11 @@ The system must already expose:
 - `arc-engine` owns deterministic state transition and local replay.
 - `arc-client` owns remote/local transport wrappers and compatibility-server
   behavior.
+- `arc-core` owns shared interactive budget, reset-kind, refusal, per-turn,
+  and execution-outcome envelopes.
 - `arc-solvers` owns action-selection policy, the typed interactive runner,
-  agent registry, and checkpoint handoff contracts.
+  agent registry, checkpoint handoff contracts, and the mapping from
+  environment/client errors into the shared interactive refusal taxonomy.
 - `arc-benchmark` owns RHAE scoring, recordings, scorecards, and episode
   summaries.
 
@@ -1358,6 +1361,20 @@ open scorecard per key, one open environment per card, no inflight reads, and
 close-time materialization of untouched environments. Its score fields still
 remain bounded placeholders until `arc-benchmark` and the remaining
 online/runtime parity issues land.
+
+The currently landed `arc-solvers` interactive runner now emits explicit
+machine-readable turn and terminal contracts rather than silently stopping on
+transport errors or loop conditions. The shared contract names are:
+
+- `ArcInteractiveBudget` / `ArcInteractiveBudgetState`
+- `ArcInteractiveResetKind`
+- `ArcInteractiveRefusal` / `ArcInteractiveRefusalCode`
+- `ArcInteractiveTurnResult`
+- `ArcInteractiveExecutionOutcome`
+
+The runner must use those envelopes to make invalid action, exhausted budget,
+terminal-state, closed-scorecard, and policy-refusal outcomes inspectable in
+the same artifact family as successful interactive episodes.
 
 Competition-mode semantics must be modeled explicitly:
 
