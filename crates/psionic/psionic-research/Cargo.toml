@@ -17,6 +17,7 @@ path = "src/lib.rs"
 hex = { workspace = true }
 psionic-eval = { path = "../psionic-eval" }
 psionic-models = { path = "../psionic-models" }
+psionic-train = { path = "../psionic-train" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

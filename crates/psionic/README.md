@@ -107,9 +107,14 @@ Current posture:
   executor artifacts carrying exact program binding, runtime-contract truth,
   and compile-time proof/runtime-manifest lineage, plus explicit 2D-head family
   geometry and compiled-weight suite outputs in research runs
+- its Phase 9D learned-plus-compiled and learned-circuit research program now
+  exists in `psionic-research`, with a typed research-only family that
+  benchmarks explicit proxy surfaces against the handcrafted Wasm baseline and
+  the bounded small-executor training lane while keeping proof expectations and
+  claim boundaries machine-legible
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A/9B/9C issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5/6/7A/7B/8A/8B/9A/9B/9C/9D issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
@@ -123,7 +128,8 @@ Current posture:
   [#3763](https://github.com/OpenAgentsInc/openagents/issues/3763) and
   [#3764](https://github.com/OpenAgentsInc/openagents/issues/3764) and
   [#3765](https://github.com/OpenAgentsInc/openagents/issues/3765) and
-  [#3766](https://github.com/OpenAgentsInc/openagents/issues/3766)
+  [#3766](https://github.com/OpenAgentsInc/openagents/issues/3766) and
+  [#3767](https://github.com/OpenAgentsInc/openagents/issues/3767)
 
 ## Crate Map
 

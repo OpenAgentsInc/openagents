@@ -670,9 +670,24 @@ What Phases 1 through 9B now concretely provide:
 - one non-handwavy program-to-weight exploration path that stays honest about
   being program-specialized and compile-time verified rather than a generic
   learned compile-to-weights runtime
+- one typed learned-plus-compiled and learned-circuit research family in
+  `psionic-research`, with explicit research-line, instruction-set,
+  execution-proxy, claim-boundary, and proof-expectation surfaces
+- one benchmarkable circuit-research runner path that always compares back to
+  the handcrafted Wasm baseline and the bounded small-executor training lane
+  on the validation corpus
+- explicit claim-boundary enforcement so learned-circuit research results stay
+  `research_only` unless they are literally using the bounded
+  `validation_corpus_only` trained-small comparator path
+- first-class trained-small receipt artifacts plus compiled-weight suite
+  artifacts inside the same research result contract
+- a truthful bridge to SUBLEQ and minimal-instruction exploration that keeps
+  those lines in research space without claiming that a learned-circuit runtime
+  product is already shipped
 
 Later phases remain dependency-ordered by the March 15 audit and now continue
-through the open Phase 9D issue:
+through the current closed Phase 9D issue spine, with no remaining open
+Tassadar executor-phase issues from that March 15 audit:
 
 - hybrid learned-plus-compiled and learned-circuit executor research:
   [#3767](https://github.com/OpenAgentsInc/openagents/issues/3767)
