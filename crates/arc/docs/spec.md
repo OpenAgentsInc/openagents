@@ -1095,6 +1095,23 @@ Required behavior:
 - expose calibrated score or uncertainty
 - support exact output shape prediction
 
+Current bounded landing:
+
+- `ARC-306` lands a typed bounded transductive lane in
+  `arc-solvers::transductive`
+- the lane renders canonical static ARC tasks into a stable prompt, routes that
+  prompt through a local-model adapter, and records the adapter request/response
+  as typed solver-domain data
+- the first concrete adapter is Psionic-backed through
+  `psionic_serve::TextGenerationExecutor`, but ARC keeps prompt shape, parse
+  policy, refusal behavior, and proposal construction in `arc-solvers`
+- current bounded scope supports exactly one static test input, one forward pass
+  per candidate, and JSON-grid answers only; parse failures and unsupported task
+  shapes surface as explicit refusals instead of implicit fallthrough
+- later work may add test-time adaptation, iterative refinement, and calibrated
+  uncertainty, but must continue to use the same hypothesis, verifier, budget,
+  and trace-bundle contracts
+
 ### 7.5 Lane C: recursive tiny-model lane
 
 Required behavior:
@@ -1336,6 +1353,13 @@ for:
 - model inventory
 - structured inference surfaces
 - execution receipts and evidence
+
+Current bounded landing:
+
+- `ARC-306` uses `psionic-serve` only as the local text-generation execution
+  substrate for the transductive lane adapter
+- ARC-owned prompt rendering, candidate parsing, and refusal semantics remain in
+  `arc-solvers`; Psionic does not absorb ARC task formatting or solver policy
 
 ### 10.4 `arc-solvers` and `arc-benchmark` -> environment substrate
 

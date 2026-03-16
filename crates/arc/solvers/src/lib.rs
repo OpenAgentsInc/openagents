@@ -18,6 +18,7 @@ pub mod interpreter;
 pub mod model;
 pub mod symbolic;
 pub mod trace;
+pub mod transductive;
 pub mod verifier;
 
 pub use dsl::{
@@ -45,6 +46,12 @@ pub use trace::{
     TRACE_BUNDLE_BOUNDARY_SUMMARY, TraceBundleError, TraceBundleManifest, TraceBundleReplayReport,
     TracedLaneProposal, read_trace_bundle_json_file, replay_trace_bundle,
     write_trace_bundle_json_file,
+};
+pub use transductive::{
+    ArcLocalModelAdapter, ArcTransductiveAdapterRequest, ArcTransductiveAdapterResponse,
+    ArcTransductiveLane, ArcTransductiveLaneConfig, ArcTransductiveLaneError,
+    ArcTransductiveLaneRun, ArcTransductivePrompt, PsionicTextGenerationAdapter,
+    TRANSDUCTIVE_LANE_BOUNDARY_SUMMARY, TRANSDUCTIVE_LANE_ID,
 };
 pub use verifier::{
     ArcCommonVerifier, ArcVerifierAugmentation, ArcVerifierConfig, ArcVerifierError,
