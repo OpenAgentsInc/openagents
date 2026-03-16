@@ -496,7 +496,7 @@ from an MLX-class framework.
 | `PMLX-401` / [#3853](https://github.com/OpenAgentsInc/openagents/issues/3853) | done (2026-03-16) | `Psionic MLX: add general array save and load APIs for npy, npz, safetensors, and gguf families` | `psionic-array-io` now owns bounded public array artifact IO above `psionic-array`, with stable receipts, explicit dtype and quantization truth, `npy` / `npz` / `safetensors` save/load, and dense GGUF import/export that discloses quantized GGUF dequantization on import instead of hiding it inside model-local loaders. |
 | `PMLX-402` / [#3854](https://github.com/OpenAgentsInc/openagents/issues/3854) | done (2026-03-16) | `Psionic MLX: add a Psionic-native function export and import artifact above the IR` | `psionic-function-io` now owns a first native `.psifn` artifact above `psionic-ir` and `psionic-compiler`, with digest-bound export-safe graphs, optional compiler artifacts, optional trace-family identity, optional deployment bundle binding, and stable import/export receipts that refuse graph, trace, or deployment drift instead of hiding it inside ad hoc packaging code. |
 | `PMLX-403` / [#3855](https://github.com/OpenAgentsInc/openagents/issues/3855) | done (2026-03-16) | `Psionic MLX: add bounded mlxfn import and export compatibility on top of the native function artifact` | `psionic-function-io` now exposes a bounded `.mlxfn` shell on top of the native `.psifn` artifact, with stable compatibility receipts and honest refusal for unsupported version, trace-count, shapeless, keyword-input, device, primitive, and dtype cases instead of implying full MLX portability. |
-| `PMLX-404` | planned | `Psionic MLX: expose memory-reporting and cache-control APIs to the public framework surface` | Publish active, peak, and cache memory counters plus cache-limit and reset controls above the current runtime diagnostics. |
+| `PMLX-404` / [#3856](https://github.com/OpenAgentsInc/openagents/issues/3856) | done (2026-03-16) | `Psionic MLX: expose memory-reporting and cache-control APIs to the public framework surface` | `psionic-array` now exposes bounded public runtime resource reporting with active, peak, and cache-memory counters plus explicit cache-limit and reset controls above the reference eval substrate, reusing `psionic-runtime` policy and cache-report types instead of inventing a parallel accounting path. |
 | `PMLX-405` | planned | `Psionic MLX: expose backend debug, logging, and capture hooks for Metal and CUDA lanes` | Turn internal backend debug and profiling substrate into public framework tooling rather than leaving it as lane-local implementation detail. |
 | `PMLX-406` | planned | `Psionic MLX: add a custom kernel authoring and extension surface for accelerated backends` | Publish the user-facing hook layer for MLX-class custom kernels and extensions while preserving Psionic's explicit backend capability and refusal truth. |
 
@@ -634,12 +634,12 @@ track in parallel.
 
 ### Phase 5: finish export, serialization, memory, and debug tooling
 
-- `PMLX-401`
-- `PMLX-402`
-- `PMLX-404`
+- `PMLX-401` done 2026-03-16
+- `PMLX-402` done 2026-03-16
+- `PMLX-403` done 2026-03-16
+- `PMLX-404` done 2026-03-16
 - `PMLX-405`
 - `PMLX-406`
-- `PMLX-403`
 
 ### Phase 6: land framework-distributed semantics above collectives and cluster truth
 
