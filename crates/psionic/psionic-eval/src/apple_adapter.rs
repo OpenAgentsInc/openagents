@@ -1216,10 +1216,8 @@ fn score_sample(
                 }
                 Some(false) => {
                     if let Some(code) = harness_failures.get(tool.function.name.as_str()) {
-                        failure_reasons.push(format!(
-                            "harness_failure:{}:{}",
-                            tool.function.name, code
-                        ));
+                        failure_reasons
+                            .push(format!("harness_failure:{}:{}", tool.function.name, code));
                     } else if let Some(code) =
                         model_request_failures.get(tool.function.name.as_str())
                     {
@@ -1228,10 +1226,8 @@ fn score_sample(
                             tool.function.name, code
                         ));
                     } else {
-                        failure_reasons.push(format!(
-                            "model_behavior:tool_failed:{}",
-                            tool.function.name
-                        ));
+                        failure_reasons
+                            .push(format!("model_behavior:tool_failed:{}", tool.function.name));
                     }
                 }
                 None => {
@@ -1285,9 +1281,23 @@ fn score_sample(
         serde_json::to_value(sample.sample_kind).unwrap_or(Value::Null),
     );
     metadata.insert(
+        String::from("apple_adapter.expected_output_text"),
+        Value::String(expected_text.to_string()),
+    );
+    metadata.insert(
+        String::from("apple_adapter.observed_output_text"),
+        Value::String(observed.output_text.clone()),
+    );
+    metadata.insert(
         String::from("apple_adapter.expected_digest"),
         Value::String(sample.stable_digest.clone()),
     );
+    if let Some(structured_output) = observed.structured_output.as_ref() {
+        metadata.insert(
+            String::from("apple_adapter.observed_structured_output"),
+            structured_output.clone(),
+        );
+    }
 
     Ok(EvalSampleRecord {
         sample_id: sample.sample_id.clone(),

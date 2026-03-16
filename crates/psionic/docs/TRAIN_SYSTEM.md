@@ -2066,6 +2066,39 @@ The canonical experiment-program gate for that layer is now:
 
 - `scripts/release/check-psionic-apple-experiment-program.sh`
 
+On 2026-03-16, GitHub issue `#3893` moved that same Apple overfit path off the
+flat-zero benchmark floor without weakening the structured or tool contract:
+
+- the Rust-only Apple training backend now adds contrastive target-bank
+  alignment plus runtime-derived negative-anchor rejection on top of the older
+  pooled reconstruction objective
+- Apple eval samples now retain raw expected and observed text in
+  machine-legible metadata so benchmark comparison can reason about behavior
+  instead of only string identity
+- the curated base-vs-adapter benchmark now uses behavior-aware text scoring
+  for plain-text benchmark rows keyed by the reviewed corpus annotation:
+  - `direct_answer` rows still zero out on policy-refusal or safety-hallucinated
+    non-answers
+  - `correction` rows require the right `yes` or `no` posture before they can
+    score
+  - `refusal` rows can now distinguish a grounded "needs current runtime
+    validation" answer from a generic "`can't assist`" refusal
+- structured-output rows and tool-routing rows remain strict; those still score
+  from exact structured conformance and tool-call coverage rather than the new
+  text rubric
+- the live Apple overfit-non-zero run now clears the frozen weak gate with a
+  real adapted benchmark delta:
+  - aggregate score `571` bps
+  - aggregate pass rate `1428` bps
+  - improved case count `1`
+  - the improved case is the reviewed stale-evidence refusal row
+    `sample-000007`
+- that is intentionally not the same thing as saying the Apple lane is now
+  broadly useful:
+  - the standard benchmark-improving bar is still not met
+  - structured summary and tool-routing rows remain unresolved
+  - multiple plain-text rows still fail outright
+
 On 2026-03-15, GitHub issue `#3657` tightened the Apple runtime-validation
 layer around that same run:
 

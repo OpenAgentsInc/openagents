@@ -3,16 +3,18 @@ use std::collections::BTreeMap;
 use psionic_data::{
     AppleAdapterCorpusExpectedBehavior, AppleAdapterCorpusTaskFamily,
     AppleAdapterCuratedCorpusError, AppleAdapterCuratedCorpusManifest, AppleAdapterCuratedSplit,
-    AppleAdapterDatasetContract,
+    AppleAdapterDatasetContract, AppleAdapterSampleKind, AppleAdapterTrainingSample,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
     AppleAdapterEvalError, AppleAdapterEvalHarness, AppleAdapterObservedSampleOutput,
     BenchmarkAggregateSummary, BenchmarkExecutionMode, BenchmarkPackage, BenchmarkPackageKey,
-    EvalRunMode, EvalRunState, EvalRunStatus, EvalRuntimeError, EvalSampleStatus,
+    EvalArtifact, EvalMetric, EvalRunMode, EvalRunState, EvalRunStatus, EvalRuntimeError,
+    EvalSampleRecord, EvalSampleStatus, EvalSummary,
 };
 
 /// Canonical benchmark ref for the first real Apple adapter run.
@@ -162,6 +164,13 @@ pub struct AppleAdapterBaseVsAdapterBenchmarkReport {
     pub task_family_deltas: Vec<AppleAdapterBenchmarkTaskFamilyDelta>,
     /// Final acceptance decision.
     pub acceptance: AppleAdapterBaseVsAdapterAcceptance,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CuratedTextBehaviorAssessment {
+    score_bps: u32,
+    passed: bool,
+    reason_code: &'static str,
 }
 
 /// Benchmark build or comparison failure for the first Apple real-run gate.
@@ -350,17 +359,19 @@ pub fn compare_curated_base_vs_adapter_runs(
         benchmark_package,
         adapted_run,
     )?;
+    let base_run = behavior_adjusted_benchmark_run(dataset, &annotations, base_run)?;
+    let adapted_run = behavior_adjusted_benchmark_run(dataset, &annotations, adapted_run)?;
 
     let mut base_execution = benchmark_package
         .clone()
         .open_execution(BenchmarkExecutionMode::OperatorSimulation)?;
-    base_execution.record_round(base_run)?;
+    base_execution.record_round(&base_run)?;
     let base_summary = base_execution.finalize()?;
 
     let mut adapted_execution = benchmark_package
         .clone()
         .open_execution(BenchmarkExecutionMode::OperatorSimulation)?;
-    adapted_execution.record_round(adapted_run)?;
+    adapted_execution.record_round(&adapted_run)?;
     let adapted_summary = adapted_execution.finalize()?;
 
     let base_samples = base_run
@@ -472,8 +483,8 @@ pub fn compare_curated_base_vs_adapter_runs(
     Ok(AppleAdapterBaseVsAdapterBenchmarkReport {
         benchmark_key: benchmark_package.key.clone(),
         benchmark_package: benchmark_package.clone(),
-        base_eval_run: base_run.clone(),
-        adapted_eval_run: adapted_run.clone(),
+        base_eval_run: base_run,
+        adapted_eval_run: adapted_run,
         base_summary,
         adapted_summary,
         case_deltas,
@@ -486,6 +497,471 @@ pub fn compare_curated_base_vs_adapter_runs(
             reason_codes,
         },
     })
+}
+
+fn behavior_adjusted_benchmark_run(
+    dataset: &AppleAdapterDatasetContract,
+    annotations: &BTreeMap<String, &psionic_data::AppleAdapterCuratedSampleAnnotation>,
+    run: &EvalRunState,
+) -> Result<EvalRunState, AppleAdapterBenchmarkError> {
+    let samples_by_id = dataset
+        .samples
+        .iter()
+        .map(|sample| (sample.sample_id.as_str(), sample))
+        .collect::<BTreeMap<_, _>>();
+    let adjusted_samples = run
+        .samples
+        .iter()
+        .map(|record| {
+            let sample = samples_by_id
+                .get(record.sample_id.as_str())
+                .ok_or_else(|| AppleAdapterBenchmarkError::MissingBenchmarkAnnotation {
+                    sample_id: record.sample_id.clone(),
+                })?;
+            let annotation = annotations.get(record.sample_id.as_str()).ok_or_else(|| {
+                AppleAdapterBenchmarkError::MissingBenchmarkAnnotation {
+                    sample_id: record.sample_id.clone(),
+                }
+            })?;
+            Ok(behavior_adjusted_sample_record(sample, annotation, record))
+        })
+        .collect::<Result<Vec<_>, AppleAdapterBenchmarkError>>()?;
+    let mut adjusted_run = run.clone();
+    adjusted_run.samples = adjusted_samples;
+    adjusted_run.summary = Some(build_adjusted_summary(
+        adjusted_run.contract.stable_digest().as_str(),
+        adjusted_run.samples.as_slice(),
+        adjusted_run.run_artifacts.as_slice(),
+    ));
+    Ok(adjusted_run)
+}
+
+fn behavior_adjusted_sample_record(
+    sample: &AppleAdapterTrainingSample,
+    annotation: &psionic_data::AppleAdapterCuratedSampleAnnotation,
+    record: &EvalSampleRecord,
+) -> EvalSampleRecord {
+    if sample.sample_kind != AppleAdapterSampleKind::SupervisedFineTune || !sample.tools.is_empty()
+    {
+        return record.clone();
+    }
+    let Some(observed_text) = record
+        .metadata
+        .get("apple_adapter.observed_output_text")
+        .and_then(Value::as_str)
+    else {
+        return record.clone();
+    };
+    let expected_text = sample
+        .messages
+        .last()
+        .map(|message| message.content.as_str())
+        .unwrap_or_default();
+    let assessment = curated_text_behavior_assessment(
+        annotation.expected_behavior,
+        expected_text,
+        observed_text,
+    );
+    let mut adjusted = record.clone();
+    adjusted.score_bps = Some(assessment.score_bps);
+    adjusted.status = if assessment.passed {
+        EvalSampleStatus::Passed
+    } else {
+        EvalSampleStatus::Failed
+    };
+    adjusted.metrics.push(
+        EvalMetric::new(
+            "apple_adapter.benchmark_behavior_text_score",
+            f64::from(assessment.score_bps) / 10_000.0,
+        )
+        .with_unit("fraction")
+        .with_metadata(serde_json::json!({
+            "expected_behavior": annotation.expected_behavior,
+            "reason_code": assessment.reason_code,
+        })),
+    );
+    if let Some(raw_score_bps) = record.score_bps {
+        adjusted.metadata.insert(
+            String::from("apple_adapter.raw_eval_score_bps"),
+            Value::from(raw_score_bps),
+        );
+    }
+    if let Some(raw_error_reason) = record.error_reason.as_ref() {
+        adjusted.metadata.insert(
+            String::from("apple_adapter.raw_eval_error_reason"),
+            Value::String(raw_error_reason.clone()),
+        );
+    }
+    adjusted.metadata.insert(
+        String::from("apple_adapter.benchmark_behavior_score_bps"),
+        Value::from(assessment.score_bps),
+    );
+    adjusted.metadata.insert(
+        String::from("apple_adapter.benchmark_behavior_passed"),
+        Value::Bool(assessment.passed),
+    );
+    adjusted.metadata.insert(
+        String::from("apple_adapter.benchmark_behavior_reason_code"),
+        Value::String(assessment.reason_code.to_string()),
+    );
+    adjusted.error_reason = (!assessment.passed).then(|| assessment.reason_code.to_string());
+    adjusted
+}
+
+fn curated_text_behavior_assessment(
+    expected_behavior: AppleAdapterCorpusExpectedBehavior,
+    expected_text: &str,
+    observed_text: &str,
+) -> CuratedTextBehaviorAssessment {
+    if normalized_text(expected_text) == normalized_text(observed_text) {
+        return CuratedTextBehaviorAssessment {
+            score_bps: 10_000,
+            passed: true,
+            reason_code: "exact_match",
+        };
+    }
+    if observed_text.trim().starts_with("runtime_error:") {
+        return CuratedTextBehaviorAssessment {
+            score_bps: 0,
+            passed: false,
+            reason_code: "runtime_error",
+        };
+    }
+    let observed_lower = observed_text.to_ascii_lowercase();
+    let expected_lower = expected_text.to_ascii_lowercase();
+    let keyword_overlap = text_keyword_overlap(expected_text, observed_text);
+    let refusal_like = contains_any(
+        observed_lower.as_str(),
+        &[
+            "can't assist",
+            "cannot assist",
+            "i'm sorry",
+            "illegal activities",
+            "illegal",
+            "prohibited",
+        ],
+    );
+
+    match expected_behavior {
+        AppleAdapterCorpusExpectedBehavior::DirectAnswer => {
+            if refusal_like {
+                return CuratedTextBehaviorAssessment {
+                    score_bps: 0,
+                    passed: false,
+                    reason_code: "direct_answer_refused",
+                };
+            }
+            let score = ((keyword_overlap.recall * 0.7) + (keyword_overlap.precision * 0.3))
+                .clamp(0.0, 1.0);
+            CuratedTextBehaviorAssessment {
+                score_bps: fraction_to_bps(score),
+                passed: keyword_overlap.recall >= 0.72 && keyword_overlap.precision >= 0.38,
+                reason_code: "direct_answer_overlap",
+            }
+        }
+        AppleAdapterCorpusExpectedBehavior::Correction => {
+            let expected_stance = leading_stance(expected_lower.as_str());
+            let observed_stance = leading_stance(observed_lower.as_str());
+            if expected_stance.is_some() && expected_stance != observed_stance {
+                return CuratedTextBehaviorAssessment {
+                    score_bps: 0,
+                    passed: false,
+                    reason_code: "correction_stance_mismatch",
+                };
+            }
+            if refusal_like {
+                return CuratedTextBehaviorAssessment {
+                    score_bps: 0,
+                    passed: false,
+                    reason_code: "correction_refused",
+                };
+            }
+            let score = ((keyword_overlap.recall * 0.8) + (keyword_overlap.precision * 0.2))
+                .clamp(0.0, 1.0);
+            CuratedTextBehaviorAssessment {
+                score_bps: fraction_to_bps(score),
+                passed: expected_stance == observed_stance && keyword_overlap.recall >= 0.45,
+                reason_code: "correction_overlap",
+            }
+        }
+        AppleAdapterCorpusExpectedBehavior::Refusal => {
+            let uncertainty_score = marker_fraction(
+                observed_lower.as_str(),
+                &[
+                    "cannot answer",
+                    "can't answer",
+                    "do not have access",
+                    "don't have access",
+                    "real-time access",
+                    "up-to-date",
+                    "need retrieval",
+                    "have to be checked",
+                ],
+            );
+            let freshness_score = marker_fraction(
+                observed_lower.as_str(),
+                &[
+                    "latest",
+                    "current",
+                    "today",
+                    "installed",
+                    "runtime",
+                    "assets",
+                    "compatibility",
+                ],
+            );
+            let validation_score = marker_fraction(
+                observed_lower.as_str(),
+                &[
+                    "live runtime validation",
+                    "runtime validation",
+                    "checked",
+                    "check",
+                    "depends",
+                    "apple developer",
+                    "apple support",
+                ],
+            );
+            let score = keyword_overlap.f1.max(
+                (uncertainty_score * 0.4) + (freshness_score * 0.3) + (validation_score * 0.3),
+            );
+            CuratedTextBehaviorAssessment {
+                score_bps: fraction_to_bps(score),
+                passed: uncertainty_score >= 0.25
+                    && freshness_score >= 0.25
+                    && (validation_score >= 0.16 || keyword_overlap.f1 >= 0.15),
+                reason_code: "refusal_grounded_currentness",
+            }
+        }
+        AppleAdapterCorpusExpectedBehavior::StructuredAnswer
+        | AppleAdapterCorpusExpectedBehavior::ToolLookupRouting => CuratedTextBehaviorAssessment {
+            score_bps: record_score_bps(expected_text, observed_text),
+            passed: normalized_text(expected_text) == normalized_text(observed_text),
+            reason_code: "exact_text_only",
+        },
+    }
+}
+
+fn record_score_bps(expected_text: &str, observed_text: &str) -> u32 {
+    if normalized_text(expected_text) == normalized_text(observed_text) {
+        10_000
+    } else {
+        0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct TextKeywordOverlap {
+    precision: f64,
+    recall: f64,
+    f1: f64,
+}
+
+fn text_keyword_overlap(expected_text: &str, observed_text: &str) -> TextKeywordOverlap {
+    let expected = benchmark_keywords(expected_text);
+    let observed = benchmark_keywords(observed_text);
+    if expected.is_empty() || observed.is_empty() {
+        return TextKeywordOverlap::default();
+    }
+    let expected_map = expected
+        .iter()
+        .map(|token| (token.as_str(), ()))
+        .collect::<BTreeMap<_, _>>();
+    let observed_map = observed
+        .iter()
+        .map(|token| (token.as_str(), ()))
+        .collect::<BTreeMap<_, _>>();
+    let matches = expected_map
+        .keys()
+        .filter(|token| observed_map.contains_key(**token))
+        .count();
+    if matches == 0 {
+        return TextKeywordOverlap::default();
+    }
+    let precision = matches as f64 / observed_map.len() as f64;
+    let recall = matches as f64 / expected_map.len() as f64;
+    let f1 = (2.0 * precision * recall) / (precision + recall);
+    TextKeywordOverlap {
+        precision,
+        recall,
+        f1,
+    }
+}
+
+fn benchmark_keywords(text: &str) -> Vec<String> {
+    lexical_tokens(text)
+        .into_iter()
+        .filter(|token| token.len() > 2 && !BENCHMARK_STOP_WORDS.contains(&token.as_str()))
+        .collect()
+}
+
+fn lexical_tokens(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            current.push(ch.to_ascii_lowercase());
+        } else if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+const BENCHMARK_STOP_WORDS: &[&str] = &[
+    "the", "and", "for", "that", "this", "with", "from", "into", "your", "you", "our", "are",
+    "can", "what", "when", "where", "which", "their", "they", "them", "will", "would", "should",
+    "could", "about", "have", "has", "had", "was", "were", "but", "not", "still", "already",
+    "current", "latest", "today", "there", "here", "then", "than", "its", "it's", "able",
+];
+
+fn marker_fraction(text: &str, markers: &[&str]) -> f64 {
+    if markers.is_empty() {
+        return 0.0;
+    }
+    markers
+        .iter()
+        .filter(|marker| text.contains(**marker))
+        .count() as f64
+        / markers.len() as f64
+}
+
+fn contains_any(text: &str, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| text.contains(marker))
+}
+
+fn leading_stance(text: &str) -> Option<&'static str> {
+    lexical_tokens(text)
+        .into_iter()
+        .take(4)
+        .find_map(|token| match token.as_str() {
+            "yes" => Some("yes"),
+            "no" => Some("no"),
+            _ => None,
+        })
+}
+
+fn fraction_to_bps(value: f64) -> u32 {
+    (value.clamp(0.0, 1.0) * 10_000.0).round() as u32
+}
+
+fn normalized_text(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn build_adjusted_summary(
+    contract_digest: &str,
+    samples: &[EvalSampleRecord],
+    run_artifacts: &[EvalArtifact],
+) -> EvalSummary {
+    let total_samples = samples.len() as u64;
+    let scored_samples = samples
+        .iter()
+        .filter(|sample| sample.score_bps.is_some())
+        .count() as u64;
+    let passed_samples = samples
+        .iter()
+        .filter(|sample| sample.status == EvalSampleStatus::Passed)
+        .count() as u64;
+    let failed_samples = samples
+        .iter()
+        .filter(|sample| sample.status == EvalSampleStatus::Failed)
+        .count() as u64;
+    let errored_samples = samples
+        .iter()
+        .filter(|sample| sample.status == EvalSampleStatus::Errored)
+        .count() as u64;
+    let average_score_bps = if scored_samples == 0 {
+        None
+    } else {
+        Some(
+            (samples
+                .iter()
+                .filter_map(|sample| sample.score_bps)
+                .map(u64::from)
+                .sum::<u64>()
+                / scored_samples) as u32,
+        )
+    };
+    let pass_rate_bps = if total_samples == 0 {
+        0
+    } else {
+        ((passed_samples.saturating_mul(10_000)) / total_samples) as u32
+    };
+    let mut metric_rollups: BTreeMap<String, (f64, u64, Option<String>, Value)> = BTreeMap::new();
+    for sample in samples {
+        for metric in &sample.metrics {
+            let entry = metric_rollups.entry(metric.metric_id.clone()).or_insert((
+                0.0,
+                0,
+                metric.unit.clone(),
+                metric.metadata.clone(),
+            ));
+            entry.0 += metric.metric_value;
+            entry.1 = entry.1.saturating_add(1);
+            if entry.2.is_none() {
+                entry.2 = metric.unit.clone();
+            }
+        }
+    }
+    let aggregate_metrics = metric_rollups
+        .into_iter()
+        .map(|(metric_id, (sum, count, unit, metadata))| EvalMetric {
+            metric_id,
+            metric_value: if count == 0 { 0.0 } else { sum / count as f64 },
+            unit,
+            metadata,
+        })
+        .collect::<Vec<_>>();
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_eval_summary|");
+    hasher.update(contract_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(total_samples.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(scored_samples.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(passed_samples.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(failed_samples.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(errored_samples.to_string().as_bytes());
+    if let Some(average_score_bps) = average_score_bps {
+        hasher.update(b"|score|");
+        hasher.update(average_score_bps.to_string().as_bytes());
+    }
+    hasher.update(b"|pass_rate|");
+    hasher.update(pass_rate_bps.to_string().as_bytes());
+    for metric in &aggregate_metrics {
+        hasher.update(b"|metric|");
+        hasher.update(metric.metric_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(metric.metric_value.to_string().as_bytes());
+    }
+    for artifact in run_artifacts {
+        hasher.update(b"|artifact|");
+        hasher.update(artifact.artifact_kind.as_bytes());
+        hasher.update(b"|");
+        hasher.update(artifact.artifact_digest.as_bytes());
+    }
+    EvalSummary {
+        total_samples,
+        scored_samples,
+        passed_samples,
+        failed_samples,
+        errored_samples,
+        average_score_bps,
+        pass_rate_bps,
+        aggregate_metrics,
+        artifacts: run_artifacts.to_vec(),
+        summary_digest: hex::encode(hasher.finalize()),
+    }
 }
 
 fn benchmark_annotation_map<'a>(
@@ -851,6 +1327,49 @@ mod tests {
             .collect()
     }
 
+    fn semantically_better_refusal_outputs(
+        dataset: &AppleAdapterDatasetContract,
+    ) -> Vec<AppleAdapterObservedSampleOutput> {
+        dataset
+            .samples
+            .iter()
+            .map(|sample| {
+                let output_text = match sample.sample_id.as_str() {
+                    "sample-000007" => String::from(
+                        "I cannot answer that from static repo files alone. The exact compatibility result depends on the current Apple runtime and installed assets, so it has to be checked with live runtime validation.",
+                    ),
+                    "sample-000006" => String::from(
+                        "Yes, the Foundation Models bridge performs the repo's Apple adapter training math.",
+                    ),
+                    _ => sample
+                        .messages
+                        .last()
+                        .map(|message| message.content.clone())
+                        .unwrap_or_default(),
+                };
+                let mut observed =
+                    AppleAdapterObservedSampleOutput::from_text(sample.sample_id.clone(), output_text);
+                if let Some(structured) = sample.structured_assistant_output.clone() {
+                    observed = observed.with_structured_output(structured);
+                }
+                if !sample.tools.is_empty() {
+                    observed = observed.with_tool_calls(
+                        sample
+                            .tools
+                            .iter()
+                            .map(|tool| AppleAdapterObservedToolCall {
+                                tool_name: tool.function.name.clone(),
+                                succeeded: true,
+                                arguments: None,
+                            })
+                            .collect(),
+                    );
+                }
+                observed.with_verification(benchmark_verification(sample.sample_id.as_str()))
+            })
+            .collect()
+    }
+
     #[test]
     fn curated_benchmark_package_carries_task_family_metadata()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -947,6 +1466,66 @@ mod tests {
             report.acceptance.reason_codes.contains(
                 &AppleAdapterBenchmarkAcceptanceReasonCode::ImprovedCaseCountBelowMinimum
             )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn curated_benchmark_behavior_scoring_recognizes_grounded_refusal_improvement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = dataset_contract();
+        let corpus = corpus_manifest();
+        let benchmark_key = architecture_explainer_benchmark_key(&corpus)?;
+        let package = build_curated_benchmark_package(
+            &AppleAdapterEvalHarness::new(environment_bundle())?,
+            benchmark_key,
+            &dataset,
+            &corpus,
+            1,
+        )?;
+        let report = run_curated_base_vs_adapter_benchmark(
+            &AppleAdapterEvalHarness::new(environment_bundle())?,
+            &package,
+            &dataset,
+            &corpus,
+            base_outputs(&dataset),
+            semantically_better_refusal_outputs(&dataset),
+            &AppleAdapterBaseVsAdapterAcceptancePolicy {
+                minimum_adapter_score_bps: 1,
+                minimum_adapter_pass_rate_bps: 1,
+                minimum_score_delta_bps: 1,
+                minimum_pass_rate_delta_bps: 1,
+                minimum_improved_case_count: 1,
+            },
+            1_000,
+            2_000,
+        )?;
+        assert!(report.adapted_summary.aggregate_score_bps.unwrap_or(0) > 0);
+        assert!(report.adapted_summary.aggregate_pass_rate_bps > 0);
+        assert!(report.acceptance.improved_case_count >= 1);
+        assert!(
+            report
+                .adapted_eval_run
+                .samples
+                .iter()
+                .find(|sample| sample.sample_id == "sample-000007")
+                .and_then(|sample| sample
+                    .metadata
+                    .get("apple_adapter.benchmark_behavior_passed"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        );
+        assert_eq!(
+            report
+                .adapted_eval_run
+                .samples
+                .iter()
+                .find(|sample| sample.sample_id == "sample-000006")
+                .and_then(|sample| sample
+                    .metadata
+                    .get("apple_adapter.benchmark_behavior_passed"))
+                .and_then(Value::as_bool),
+            Some(false)
         );
         Ok(())
     }
