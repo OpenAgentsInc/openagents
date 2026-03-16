@@ -1734,7 +1734,12 @@ lane with explicit Analyze/Decide/Convert/Review phases, baseline-local prompt
 templates and scratchpad memory, checkpointable ADCR cursor/state, and both
 heuristic and replay-program modes, while fixture-backed local/remote runs keep
 the lane on the shared interactive runner rather than promoting ADCR-specific
-prompt glue into the contract itself.
+prompt glue into the contract itself. `ARC-405` is now also landed in bounded
+form: `arc-solvers` owns a typed trajectory bundle that preserves frames,
+actions, refusals, score deltas, checkpoints, and replay locators while
+exporting the same episode through generalized `psionic-environments` turn
+receipts and a final session summary instead of collapsing ARC evidence into ad
+hoc prompt text.
 
 ### Phase 5: Psionic primitive expansion
 
@@ -1802,7 +1807,8 @@ Acceptance:
 23. Add repair operators.
 24. Add common verifier and arbiter.
 25. Add budget controller and trace bundle writer.
-26. Add baseline interactive agents and prompt policies.
+26. Add baseline interactive agents, prompt policies, and trajectory receipt
+    export.
 
 ### Phase 5: model work
 
