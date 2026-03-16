@@ -141,6 +141,8 @@ The current scope is:
 - owner: `crates/psionic/*`
 - first target: WebAssembly-first executor semantics
 - landed Phase 1 bar: CPU reference fixture plus exact parity harness
+- landed Phase 2 bar: digest-bound program artifacts plus explicit
+  model/program compatibility contracts
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -154,9 +156,13 @@ The current non-goals are:
 - not app-owned UX or orchestration work
 - not a claim that native CPU execution is being replaced
 
-Phase 0 and Phase 1 are tracked in
-[#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
-[#3744](https://github.com/OpenAgentsInc/openagents/issues/3744).
+Phase 0 through Phase 2 are now tracked in
+[#3743](https://github.com/OpenAgentsInc/openagents/issues/3743),
+[#3744](https://github.com/OpenAgentsInc/openagents/issues/3744), and
+[#3745](https://github.com/OpenAgentsInc/openagents/issues/3745), with the
+next active spine continuing at
+[#3746](https://github.com/OpenAgentsInc/openagents/issues/3746) through
+[#3749](https://github.com/OpenAgentsInc/openagents/issues/3749).
 
 ## System Status At A Glance
 
@@ -178,7 +184,7 @@ Phase 0 and Phase 1 are tracked in
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, deterministic reference sessions, digest-pinned package aliases, mixed-surface composition groups, and train/eval parity receipts, while kernel/Nexus now own environment, checkpoint-family, validator-policy, benchmark-package, and training-policy registry truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
-| Executor-class in-model compute lane | `implemented_early` | WebAssembly-first, CPU-reference-first `Tassadar` reference lane now exists in `psionic-runtime` and `psionic-models` with a machine-legible Wasm profile, append-only trace ABI, CPU reference runner, fixture runner, exact parity harness, deterministic replay helpers, typed refusal surfaces, and a `ProgrammaticFixture` model descriptor; it is still not current MVP product scope |
+| Executor-class in-model compute lane | `implemented_early` | WebAssembly-first, CPU-reference-first `Tassadar` reference lane now exists in `psionic-runtime` and `psionic-models` with a machine-legible Wasm profile, append-only trace ABI, CPU reference runner, fixture runner, exact parity harness, deterministic replay helpers, typed refusal surfaces, digest-bound program artifacts, and explicit model/program compatibility descriptors; it is still not current MVP product scope |
 
 Recent issue closure changed one important reading of this table:
 

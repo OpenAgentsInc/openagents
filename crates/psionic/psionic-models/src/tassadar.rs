@@ -1,9 +1,11 @@
 use psionic_core::{DType, QuantizationMode, Shape};
 use psionic_runtime::{
-    TassadarFixtureWeights as RuntimeTassadarFixtureWeights, TassadarTraceAbi, TassadarWasmProfile,
+    TassadarExecutorDecodeMode, TassadarFixtureWeights as RuntimeTassadarFixtureWeights,
+    TassadarProgramArtifact, TassadarTraceAbi, TassadarWasmProfile,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 use crate::{
     ModelArtifactGovernance, ModelDescriptor, ModelIngressSurface, ModelInteropBoundary,
@@ -11,11 +13,173 @@ use crate::{
     WeightTensorMetadata,
 };
 
+/// Stable executor-family identity distinct from ordinary decoder families.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorFamily {
+    /// WebAssembly-first append-only trace executor.
+    WasmTraceExecutor,
+}
+
+/// Attention regime declared by one Tassadar executor descriptor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorAttentionMode {
+    /// Programmatic Phase 1 reference fixture rather than a full attention-backed executor.
+    ReferenceFixture,
+    /// Standard softmax-backed executor decode.
+    StandardSoftmax,
+    /// Hard-max lookup executor regime.
+    HardMaxLookup,
+    /// Sparse top-k lookup executor regime.
+    SparseTopKLookup,
+}
+
+/// Exactness posture claimed by one Tassadar executor descriptor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorExactnessPosture {
+    /// Exact trace, halt, and output behavior is part of the contract.
+    ExactTraceAndOutput,
+    /// Only final outputs are exact; intermediate traces may differ.
+    ExactOutputOnly,
+}
+
+/// Attention-geometry claims declared by one Tassadar executor descriptor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarAttentionGeometryContract {
+    /// Head dimension for lookup-constrained heads when one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub constrained_lookup_head_dim: Option<usize>,
+    /// Whether the descriptor is eligible for the future hull-cache fast path.
+    pub hull_cache_eligible: bool,
+}
+
+impl TassadarAttentionGeometryContract {
+    /// Returns the current Phase 2 reference-fixture geometry contract.
+    #[must_use]
+    pub fn reference_fixture() -> Self {
+        Self {
+            constrained_lookup_head_dim: None,
+            hull_cache_eligible: false,
+        }
+    }
+}
+
+/// Machine-legible compatibility contract between executor models and program artifacts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorCompatibility {
+    /// Stable executor-family identity.
+    pub executor_family: TassadarExecutorFamily,
+    /// Stable trace ABI identifier.
+    pub trace_abi_id: String,
+    /// Stable trace ABI schema version.
+    pub trace_abi_version: u16,
+    /// Stable Wasm profile identifier.
+    pub wasm_profile_id: String,
+    /// Stable opcode vocabulary digest expected by the descriptor.
+    pub opcode_vocabulary_digest: String,
+    /// Decode modes this descriptor can support honestly.
+    pub supported_decode_modes: Vec<TassadarExecutorDecodeMode>,
+    /// Declared attention regime for the descriptor.
+    pub attention_mode: TassadarExecutorAttentionMode,
+    /// Declared geometry constraints relevant to decode compatibility.
+    pub attention_geometry: TassadarAttentionGeometryContract,
+    /// Declared exactness posture for the descriptor.
+    pub exactness_posture: TassadarExecutorExactnessPosture,
+}
+
+impl TassadarExecutorCompatibility {
+    /// Returns the canonical Phase 2 reference-fixture compatibility contract.
+    #[must_use]
+    pub fn reference_fixture(profile: &TassadarWasmProfile, trace_abi: &TassadarTraceAbi) -> Self {
+        Self {
+            executor_family: TassadarExecutorFamily::WasmTraceExecutor,
+            trace_abi_id: trace_abi.abi_id.clone(),
+            trace_abi_version: trace_abi.schema_version,
+            wasm_profile_id: profile.profile_id.clone(),
+            opcode_vocabulary_digest: profile.opcode_vocabulary_digest(),
+            supported_decode_modes: vec![TassadarExecutorDecodeMode::ReferenceLinear],
+            attention_mode: TassadarExecutorAttentionMode::ReferenceFixture,
+            attention_geometry: TassadarAttentionGeometryContract::reference_fixture(),
+            exactness_posture: TassadarExecutorExactnessPosture::ExactTraceAndOutput,
+        }
+    }
+
+    /// Returns whether one decode mode is explicitly supported.
+    #[must_use]
+    pub fn supports_decode_mode(&self, decode_mode: TassadarExecutorDecodeMode) -> bool {
+        self.supported_decode_modes.contains(&decode_mode)
+    }
+}
+
+/// Typed compatibility failures when pairing a program artifact with an executor model descriptor.
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TassadarExecutorContractError {
+    /// The program artifact is not internally self-consistent.
+    #[error("program artifact is internally inconsistent: {message}")]
+    ProgramArtifactInconsistent {
+        /// Internal artifact-consistency failure summary.
+        message: String,
+    },
+    /// The artifact targeted a different Wasm profile than the descriptor.
+    #[error("Wasm profile mismatch: expected `{expected}`, got `{actual}`")]
+    WasmProfileMismatch {
+        /// Expected descriptor profile identifier.
+        expected: String,
+        /// Actual artifact profile identifier.
+        actual: String,
+    },
+    /// The artifact targeted a different trace ABI identifier.
+    #[error("trace ABI mismatch: expected `{expected}`, got `{actual}`")]
+    TraceAbiMismatch {
+        /// Expected descriptor trace ABI identifier.
+        expected: String,
+        /// Actual artifact trace ABI identifier.
+        actual: String,
+    },
+    /// The artifact targeted a different trace ABI schema version.
+    #[error("trace ABI version mismatch: expected `{expected}`, got `{actual}`")]
+    TraceAbiVersionMismatch {
+        /// Expected descriptor trace ABI schema version.
+        expected: u16,
+        /// Actual artifact trace ABI schema version.
+        actual: u16,
+    },
+    /// The artifact carried a different opcode-vocabulary digest than the descriptor.
+    #[error("opcode vocabulary digest mismatch: expected `{expected}`, got `{actual}`")]
+    OpcodeVocabularyDigestMismatch {
+        /// Expected descriptor opcode vocabulary digest.
+        expected: String,
+        /// Actual artifact opcode vocabulary digest.
+        actual: String,
+    },
+    /// The artifact's validated program profile no longer matches the descriptor.
+    #[error("validated program profile mismatch: expected `{expected}`, got `{actual}`")]
+    ProgramProfileMismatch {
+        /// Expected descriptor/program profile identifier.
+        expected: String,
+        /// Actual validated-program profile identifier.
+        actual: String,
+    },
+    /// The caller requested a decode mode this descriptor does not support.
+    #[error("decode mode `{requested:?}` is unsupported; descriptor supports {supported:?}")]
+    DecodeModeUnsupported {
+        /// Requested decode mode.
+        requested: TassadarExecutorDecodeMode,
+        /// Supported decode modes declared by the descriptor.
+        supported: Vec<TassadarExecutorDecodeMode>,
+    },
+}
+
 /// Executor-class model descriptor for the Phase 1 Tassadar fixture lane.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExecutorModelDescriptor {
     /// Shared model metadata.
     pub model: ModelDescriptor,
+    /// Machine-legible executor/program compatibility contract.
+    pub compatibility: TassadarExecutorCompatibility,
     /// Machine-legible supported Wasm-first profile.
     pub profile: TassadarWasmProfile,
     /// Append-only trace ABI declaration.
@@ -32,12 +196,14 @@ impl TassadarExecutorModelDescriptor {
     #[must_use]
     pub fn new(
         model: ModelDescriptor,
+        compatibility: TassadarExecutorCompatibility,
         profile: TassadarWasmProfile,
         trace_abi: TassadarTraceAbi,
         weights: WeightBundleMetadata,
     ) -> Self {
         Self {
             model,
+            compatibility,
             profile,
             trace_abi,
             weights,
@@ -70,6 +236,61 @@ impl TassadarExecutorModelDescriptor {
             serving_surface: ModelServingSurface::PsionicNative,
             runtime_surface: ModelRuntimeSurface::PsionicNative,
         }
+    }
+
+    /// Validates one digest-bound program artifact against this descriptor.
+    pub fn validate_program_artifact(
+        &self,
+        artifact: &TassadarProgramArtifact,
+        requested_decode_mode: TassadarExecutorDecodeMode,
+    ) -> Result<(), TassadarExecutorContractError> {
+        if artifact.wasm_profile_id != self.compatibility.wasm_profile_id {
+            return Err(TassadarExecutorContractError::WasmProfileMismatch {
+                expected: self.compatibility.wasm_profile_id.clone(),
+                actual: artifact.wasm_profile_id.clone(),
+            });
+        }
+        if artifact.trace_abi_id != self.compatibility.trace_abi_id {
+            return Err(TassadarExecutorContractError::TraceAbiMismatch {
+                expected: self.compatibility.trace_abi_id.clone(),
+                actual: artifact.trace_abi_id.clone(),
+            });
+        }
+        if artifact.trace_abi_version != self.compatibility.trace_abi_version {
+            return Err(TassadarExecutorContractError::TraceAbiVersionMismatch {
+                expected: self.compatibility.trace_abi_version,
+                actual: artifact.trace_abi_version,
+            });
+        }
+        if artifact.opcode_vocabulary_digest != self.compatibility.opcode_vocabulary_digest {
+            return Err(
+                TassadarExecutorContractError::OpcodeVocabularyDigestMismatch {
+                    expected: self.compatibility.opcode_vocabulary_digest.clone(),
+                    actual: artifact.opcode_vocabulary_digest.clone(),
+                },
+            );
+        }
+        if artifact.validated_program.profile_id != self.profile.profile_id {
+            return Err(TassadarExecutorContractError::ProgramProfileMismatch {
+                expected: self.profile.profile_id.clone(),
+                actual: artifact.validated_program.profile_id.clone(),
+            });
+        }
+        if !self
+            .compatibility
+            .supports_decode_mode(requested_decode_mode)
+        {
+            return Err(TassadarExecutorContractError::DecodeModeUnsupported {
+                requested: requested_decode_mode,
+                supported: self.compatibility.supported_decode_modes.clone(),
+            });
+        }
+        artifact.validate_internal_consistency().map_err(|error| {
+            TassadarExecutorContractError::ProgramArtifactInconsistent {
+                message: error.to_string(),
+            }
+        })?;
+        Ok(())
     }
 }
 
@@ -142,8 +363,10 @@ impl TassadarExecutorFixture {
         let trace_abi = TassadarTraceAbi::core_i32_v1();
         let runtime_weights = RuntimeTassadarFixtureWeights::core_i32_v1();
         let weight_bundle = build_weight_bundle(&runtime_weights, &profile, &trace_abi);
+        let compatibility = TassadarExecutorCompatibility::reference_fixture(&profile, &trace_abi);
         let descriptor = TassadarExecutorModelDescriptor::new(
             ModelDescriptor::new(Self::MODEL_ID, Self::MODEL_FAMILY, "v0"),
+            compatibility,
             profile,
             trace_abi,
             weight_bundle.metadata().clone(),
@@ -322,10 +545,11 @@ fn infer_executor_ingress_surface(
 #[cfg(test)]
 mod tests {
     use psionic_runtime::{
-        run_tassadar_exact_parity, tassadar_validation_corpus, TassadarFixtureRunner,
+        run_tassadar_exact_parity, tassadar_validation_corpus, TassadarExecutorDecodeMode,
+        TassadarFixtureRunner, TassadarProgramArtifact, TassadarTraceAbi,
     };
 
-    use super::TassadarExecutorFixture;
+    use super::{TassadarExecutorContractError, TassadarExecutorFixture};
     use crate::{ModelIngressSurface, ModelRuntimeSurface, ModelServingSurface, WeightFormat};
 
     #[test]
@@ -397,5 +621,165 @@ mod tests {
             );
             run_tassadar_exact_parity(&case.program).expect("exact parity should hold");
         }
+    }
+
+    #[test]
+    fn tassadar_descriptor_accepts_matching_program_artifact() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .expect("artifact should be compatible");
+    }
+
+    #[test]
+    fn tassadar_descriptor_rejects_trace_abi_mismatch() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let mut artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        artifact.trace_abi_id = String::from("tassadar.trace.other.v1");
+        let error = fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .expect_err("trace ABI mismatch should refuse");
+        assert_eq!(
+            error,
+            TassadarExecutorContractError::TraceAbiMismatch {
+                expected: fixture.descriptor().trace_abi.abi_id.clone(),
+                actual: String::from("tassadar.trace.other.v1"),
+            }
+        );
+    }
+
+    #[test]
+    fn tassadar_descriptor_rejects_opcode_vocabulary_mismatch() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let mut artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        artifact.opcode_vocabulary_digest = String::from("sha256:not-the-real-vocab");
+        let error = fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .expect_err("opcode mismatch should refuse");
+        assert_eq!(
+            error,
+            TassadarExecutorContractError::OpcodeVocabularyDigestMismatch {
+                expected: fixture
+                    .descriptor()
+                    .compatibility
+                    .opcode_vocabulary_digest
+                    .clone(),
+                actual: String::from("sha256:not-the-real-vocab"),
+            }
+        );
+    }
+
+    #[test]
+    fn tassadar_descriptor_rejects_unsupported_decode_mode() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        let error = fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::HullCache)
+            .expect_err("unsupported decode mode should refuse");
+        assert_eq!(
+            error,
+            TassadarExecutorContractError::DecodeModeUnsupported {
+                requested: TassadarExecutorDecodeMode::HullCache,
+                supported: vec![TassadarExecutorDecodeMode::ReferenceLinear],
+            }
+        );
+    }
+
+    #[test]
+    fn tassadar_descriptor_rejects_internally_inconsistent_artifact() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let mut artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        artifact.validated_program_digest = String::from("sha256:stale");
+        let error = fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .expect_err("inconsistent artifact should refuse");
+        assert!(matches!(
+            error,
+            TassadarExecutorContractError::ProgramArtifactInconsistent { .. }
+        ));
+    }
+
+    #[test]
+    fn tassadar_descriptor_rejects_trace_abi_version_mismatch() {
+        let fixture = TassadarExecutorFixture::new();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let mut artifact = TassadarProgramArtifact::fixture_reference(
+            "tassadar.locals_add.artifact.v1",
+            &fixture.descriptor().profile,
+            &fixture.descriptor().trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        artifact.trace_abi_version = TassadarTraceAbi::core_i32_v1().schema_version + 1;
+        let error = fixture
+            .descriptor()
+            .validate_program_artifact(&artifact, TassadarExecutorDecodeMode::ReferenceLinear)
+            .expect_err("trace ABI version mismatch should refuse");
+        assert_eq!(
+            error,
+            TassadarExecutorContractError::TraceAbiVersionMismatch {
+                expected: fixture.descriptor().trace_abi.schema_version,
+                actual: TassadarTraceAbi::core_i32_v1().schema_version + 1,
+            }
+        );
     }
 }

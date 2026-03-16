@@ -61,11 +61,14 @@ Current posture:
   ability
 - its Phase 1 reference substrate now exists in `psionic-runtime` and
   `psionic-models`
+- its Phase 2 artifact/compatibility contract now exists as digest-bound
+  program artifacts plus explicit executor compatibility descriptors
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its Phase 0 and Phase 1 issue spine is tracked in
+- its landed Phase 0/1/2 issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
-  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
+  [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745)
 
 ## Crate Map
 

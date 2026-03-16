@@ -8,6 +8,18 @@ pub const TASSADAR_TRACE_ABI_VERSION: u16 = 1;
 pub const TASSADAR_CPU_REFERENCE_RUNNER_ID: &str = "tassadar.cpu_reference.v1";
 /// Stable fixture runner identifier for the Phase 1 lane.
 pub const TASSADAR_FIXTURE_RUNNER_ID: &str = "tassadar.fixture_runner.v1";
+/// Stable opcode-vocabulary family identifier for the Phase 2 artifact lane.
+pub const TASSADAR_OPCODE_VOCABULARY_ID: &str = "tassadar.opcodes.v1";
+
+/// Stable decode modes for the Tassadar executor lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarExecutorDecodeMode {
+    /// Linear reference decode path over the executor trace.
+    ReferenceLinear,
+    /// Future hull-cache geometric fast path.
+    HullCache,
+}
 
 /// Machine-legible supported WebAssembly-first profile for the Phase 1 lane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -262,6 +274,21 @@ impl TassadarWasmProfile {
     pub fn supports(&self, opcode: TassadarOpcode) -> bool {
         self.allowed_opcodes.contains(&opcode)
     }
+
+    /// Returns a stable digest for the supported opcode vocabulary.
+    #[must_use]
+    pub fn opcode_vocabulary_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(TASSADAR_OPCODE_VOCABULARY_ID.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.profile_id.as_bytes());
+        hasher.update(b"\n");
+        for opcode in &self.allowed_opcodes {
+            hasher.update(opcode.mnemonic().as_bytes());
+            hasher.update(b"\n");
+        }
+        hex::encode(hasher.finalize())
+    }
 }
 
 impl Default for TassadarWasmProfile {
@@ -302,6 +329,25 @@ impl TassadarTraceAbi {
             includes_local_snapshots: true,
             includes_memory_snapshots: true,
         }
+    }
+
+    /// Returns a stable digest over the ABI compatibility surface.
+    #[must_use]
+    pub fn compatibility_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.abi_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.schema_version.to_be_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.profile_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update([
+            u8::from(self.append_only),
+            u8::from(self.includes_stack_snapshots),
+            u8::from(self.includes_local_snapshots),
+            u8::from(self.includes_memory_snapshots),
+        ]);
+        hex::encode(hasher.finalize())
     }
 }
 
@@ -422,6 +468,12 @@ impl TassadarProgram {
         self
     }
 
+    /// Returns a stable digest over the validated program payload.
+    #[must_use]
+    pub fn program_digest(&self) -> String {
+        hex::encode(Sha256::digest(serde_json::to_vec(self).unwrap_or_default()))
+    }
+
     fn validate_against(
         &self,
         profile: &TassadarWasmProfile,
@@ -497,6 +549,305 @@ impl TassadarProgram {
         }
         Ok(())
     }
+}
+
+/// Source-language family for one digest-bound Tassadar program artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarProgramSourceKind {
+    /// Hand-authored fixture or reference program checked into the repo.
+    Fixture,
+    /// Lowered from a C source file.
+    CSource,
+    /// Lowered from Rust or a Rust-adjacent source program.
+    RustSource,
+    /// Lowered from a Wasm text-format module.
+    WasmText,
+    /// Imported from an already-built Wasm binary module.
+    WasmBinary,
+}
+
+/// Source-identity facts for one digest-bound Tassadar program artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarProgramSourceIdentity {
+    /// Source-language family.
+    pub source_kind: TassadarProgramSourceKind,
+    /// Stable source identifier such as a fixture name or source path label.
+    pub source_name: String,
+    /// Stable digest for the source input to the lowering pipeline.
+    pub source_digest: String,
+}
+
+impl TassadarProgramSourceIdentity {
+    /// Creates one explicit source-identity record.
+    #[must_use]
+    pub fn new(
+        source_kind: TassadarProgramSourceKind,
+        source_name: impl Into<String>,
+        source_digest: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_kind,
+            source_name: source_name.into(),
+            source_digest: source_digest.into(),
+        }
+    }
+
+    /// Creates one fixture-source record by hashing the validated program.
+    #[must_use]
+    pub fn fixture(program: &TassadarProgram) -> Self {
+        Self {
+            source_kind: TassadarProgramSourceKind::Fixture,
+            source_name: program.program_id.clone(),
+            source_digest: program.program_digest(),
+        }
+    }
+}
+
+/// Compiler/toolchain identity for one digest-bound Tassadar program artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarCompilerToolchainIdentity {
+    /// Stable compiler or lowering-pipeline family label.
+    pub compiler_family: String,
+    /// Stable compiler or lowering-pipeline version label.
+    pub compiler_version: String,
+    /// Stable lowering target or target triple label.
+    pub target: String,
+    /// Stable lowering stages or feature flags selected for the artifact.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipeline_features: Vec<String>,
+}
+
+impl TassadarCompilerToolchainIdentity {
+    /// Creates one explicit compiler/toolchain identity.
+    #[must_use]
+    pub fn new(
+        compiler_family: impl Into<String>,
+        compiler_version: impl Into<String>,
+        target: impl Into<String>,
+    ) -> Self {
+        Self {
+            compiler_family: compiler_family.into(),
+            compiler_version: compiler_version.into(),
+            target: target.into(),
+            pipeline_features: Vec::new(),
+        }
+    }
+
+    /// Attaches stable lowering features or pipeline stages.
+    #[must_use]
+    pub fn with_pipeline_features(mut self, mut pipeline_features: Vec<String>) -> Self {
+        pipeline_features.sort();
+        pipeline_features.dedup();
+        self.pipeline_features = pipeline_features;
+        self
+    }
+}
+
+/// Digest-bound Tassadar program artifact ready to pair with executor models.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarProgramArtifact {
+    /// Stable artifact identifier.
+    pub artifact_id: String,
+    /// Stable digest over the identity-relevant artifact fields.
+    pub artifact_digest: String,
+    /// Source-identity facts for the artifact.
+    pub source_identity: TassadarProgramSourceIdentity,
+    /// Compiler/toolchain identity for the artifact.
+    pub toolchain_identity: TassadarCompilerToolchainIdentity,
+    /// Stable Wasm profile identifier.
+    pub wasm_profile_id: String,
+    /// Stable trace ABI identifier.
+    pub trace_abi_id: String,
+    /// Stable trace ABI schema version.
+    pub trace_abi_version: u16,
+    /// Stable opcode-vocabulary digest the artifact expects.
+    pub opcode_vocabulary_digest: String,
+    /// Stable digest over the validated program payload.
+    pub validated_program_digest: String,
+    /// Optional digest for the original Wasm binary module when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm_binary_digest: Option<String>,
+    /// Validated executor program carried by the artifact.
+    pub validated_program: TassadarProgram,
+}
+
+impl TassadarProgramArtifact {
+    /// Creates a digest-bound artifact from a validated program and explicit source/toolchain facts.
+    pub fn new(
+        artifact_id: impl Into<String>,
+        source_identity: TassadarProgramSourceIdentity,
+        toolchain_identity: TassadarCompilerToolchainIdentity,
+        profile: &TassadarWasmProfile,
+        trace_abi: &TassadarTraceAbi,
+        validated_program: TassadarProgram,
+    ) -> Result<Self, TassadarProgramArtifactError> {
+        if trace_abi.profile_id != profile.profile_id {
+            return Err(TassadarProgramArtifactError::TraceAbiProfileMismatch {
+                trace_abi_profile_id: trace_abi.profile_id.clone(),
+                wasm_profile_id: profile.profile_id.clone(),
+            });
+        }
+        if validated_program.profile_id != profile.profile_id {
+            return Err(TassadarProgramArtifactError::ProgramProfileMismatch {
+                expected: profile.profile_id.clone(),
+                actual: validated_program.profile_id.clone(),
+            });
+        }
+        validated_program
+            .validate_against(profile)
+            .map_err(
+                |error| TassadarProgramArtifactError::InvalidValidatedProgram {
+                    message: error.to_string(),
+                },
+            )?;
+
+        let validated_program_digest = validated_program.program_digest();
+        let mut artifact = Self {
+            artifact_id: artifact_id.into(),
+            artifact_digest: String::new(),
+            source_identity,
+            toolchain_identity,
+            wasm_profile_id: profile.profile_id.clone(),
+            trace_abi_id: trace_abi.abi_id.clone(),
+            trace_abi_version: trace_abi.schema_version,
+            opcode_vocabulary_digest: profile.opcode_vocabulary_digest(),
+            validated_program_digest,
+            wasm_binary_digest: None,
+            validated_program,
+        };
+        artifact.refresh_digest();
+        Ok(artifact)
+    }
+
+    /// Creates the canonical fixture artifact posture for a validated program.
+    pub fn fixture_reference(
+        artifact_id: impl Into<String>,
+        profile: &TassadarWasmProfile,
+        trace_abi: &TassadarTraceAbi,
+        validated_program: TassadarProgram,
+    ) -> Result<Self, TassadarProgramArtifactError> {
+        let source_identity = TassadarProgramSourceIdentity::fixture(&validated_program);
+        let toolchain_identity = TassadarCompilerToolchainIdentity::new(
+            "tassadar_fixture",
+            "v1",
+            profile.profile_id.as_str(),
+        )
+        .with_pipeline_features(vec![
+            String::from("validated_program"),
+            String::from("webassembly_first"),
+        ]);
+        Self::new(
+            artifact_id,
+            source_identity,
+            toolchain_identity,
+            profile,
+            trace_abi,
+            validated_program,
+        )
+    }
+
+    /// Attaches an original Wasm binary digest when one exists.
+    #[must_use]
+    pub fn with_wasm_binary_digest(mut self, wasm_binary_digest: impl Into<String>) -> Self {
+        self.wasm_binary_digest = Some(wasm_binary_digest.into());
+        self.refresh_digest();
+        self
+    }
+
+    /// Validates internal artifact consistency without pairing against a model descriptor.
+    pub fn validate_internal_consistency(&self) -> Result<(), TassadarProgramArtifactError> {
+        if self.validated_program_digest != self.validated_program.program_digest() {
+            return Err(
+                TassadarProgramArtifactError::ValidatedProgramDigestMismatch {
+                    expected: self.validated_program.program_digest(),
+                    actual: self.validated_program_digest.clone(),
+                },
+            );
+        }
+        let actual_digest = self.compute_digest();
+        if self.artifact_digest != actual_digest {
+            return Err(TassadarProgramArtifactError::ArtifactDigestMismatch {
+                expected: actual_digest,
+                actual: self.artifact_digest.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    fn refresh_digest(&mut self) {
+        self.artifact_digest = self.compute_digest();
+    }
+
+    fn compute_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.artifact_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.wasm_profile_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_abi_id.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.trace_abi_version.to_be_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.opcode_vocabulary_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(self.validated_program_digest.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(serde_json::to_vec(&self.source_identity).unwrap_or_default());
+        hasher.update(b"\n");
+        hasher.update(serde_json::to_vec(&self.toolchain_identity).unwrap_or_default());
+        hasher.update(b"\n");
+        if let Some(wasm_binary_digest) = &self.wasm_binary_digest {
+            hasher.update(wasm_binary_digest.as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+}
+
+/// Artifact-assembly failures for digest-bound Tassadar program artifacts.
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TassadarProgramArtifactError {
+    /// The ABI and Wasm profile targeted different execution profiles.
+    #[error(
+        "trace ABI profile `{trace_abi_profile_id}` does not match Wasm profile `{wasm_profile_id}`"
+    )]
+    TraceAbiProfileMismatch {
+        /// Profile identifier declared by the trace ABI.
+        trace_abi_profile_id: String,
+        /// Profile identifier declared by the Wasm profile.
+        wasm_profile_id: String,
+    },
+    /// The validated program targeted a different profile than the artifact profile.
+    #[error("validated program profile mismatch: expected `{expected}`, got `{actual}`")]
+    ProgramProfileMismatch {
+        /// Expected profile identifier.
+        expected: String,
+        /// Actual validated-program profile identifier.
+        actual: String,
+    },
+    /// The supplied validated program failed structural validation.
+    #[error("validated program is not internally valid: {message}")]
+    InvalidValidatedProgram {
+        /// Validation failure summary.
+        message: String,
+    },
+    /// The stored validated-program digest no longer matches the payload.
+    #[error("validated program digest mismatch: expected `{expected}`, actual `{actual}`")]
+    ValidatedProgramDigestMismatch {
+        /// Expected digest recomputed from the validated program.
+        expected: String,
+        /// Actual stored digest.
+        actual: String,
+    },
+    /// The stored artifact digest no longer matches the identity fields.
+    #[error("artifact digest mismatch: expected `{expected}`, actual `{actual}`")]
+    ArtifactDigestMismatch {
+        /// Expected digest recomputed from the artifact fields.
+        expected: String,
+        /// Actual stored digest.
+        actual: String,
+    },
 }
 
 /// One rule in the handcrafted/programmatic Tassadar fixture construction.
@@ -1928,8 +2279,10 @@ fn observed_rule_signature(
 mod tests {
     use super::{
         replay_tassadar_execution, run_tassadar_exact_parity, tassadar_validation_corpus,
-        TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarFixtureRunner,
-        TassadarInstruction, TassadarProgram, TassadarWasmProfile,
+        TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
+        TassadarFixtureRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
+        TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
+        TassadarTraceAbi, TassadarWasmProfile,
     };
 
     #[test]
@@ -2031,6 +2384,63 @@ mod tests {
                 pc: 0,
                 needed: 2,
                 available: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn program_artifact_is_digest_bound_and_internally_consistent() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let trace_abi = TassadarTraceAbi::core_i32_v1();
+        let case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        let artifact = TassadarProgramArtifact::new(
+            "tassadar.locals_add.artifact.v1",
+            TassadarProgramSourceIdentity::new(
+                TassadarProgramSourceKind::Fixture,
+                "locals_add",
+                "sha256:fixture-source",
+            ),
+            TassadarCompilerToolchainIdentity::new("clang", "18.1.0", "wasm32-unknown-unknown")
+                .with_pipeline_features(vec![String::from("phase2_artifact_contract")]),
+            &profile,
+            &trace_abi,
+            case.program,
+        )
+        .expect("artifact should assemble");
+        artifact
+            .validate_internal_consistency()
+            .expect("artifact should stay internally consistent");
+        assert_eq!(artifact.wasm_profile_id, profile.profile_id);
+        assert_eq!(
+            artifact.opcode_vocabulary_digest,
+            profile.opcode_vocabulary_digest()
+        );
+    }
+
+    #[test]
+    fn program_artifact_rejects_profile_mismatch() {
+        let profile = TassadarWasmProfile::core_i32_v1();
+        let trace_abi = TassadarTraceAbi::core_i32_v1();
+        let mut case = tassadar_validation_corpus()
+            .into_iter()
+            .next()
+            .expect("validation corpus");
+        case.program.profile_id = String::from("tassadar.wasm.other.v1");
+        let error = TassadarProgramArtifact::fixture_reference(
+            "tassadar.bad_profile.artifact.v1",
+            &profile,
+            &trace_abi,
+            case.program,
+        )
+        .expect_err("profile mismatch should refuse");
+        assert_eq!(
+            error,
+            TassadarProgramArtifactError::ProgramProfileMismatch {
+                expected: profile.profile_id,
+                actual: String::from("tassadar.wasm.other.v1"),
             }
         );
     }
