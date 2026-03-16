@@ -149,6 +149,7 @@ pub struct TassadarExecutorAttentionWeightBundle {
     output_projection: Vec<f32>,
     output_bias: Vec<f32>,
     relative_target_output_bias: Vec<f32>,
+    relative_target_output_projection: Vec<f32>,
 }
 
 impl TassadarExecutorAttentionWeightBundle {
@@ -225,6 +226,10 @@ impl TassadarExecutorAttentionWeightBundle {
             0.0;
             config.relative_target_bias_token_cap * config.vocab_size
         ];
+        let relative_target_output_projection = vec![
+            0.0;
+            config.relative_target_bias_token_cap * config.model_width * config.vocab_size
+        ];
 
         let mut entries = vec![
             (
@@ -271,6 +276,18 @@ impl TassadarExecutorAttentionWeightBundle {
                     DType::F32,
                 ),
                 relative_target_output_bias.as_slice(),
+            ));
+            entries.push((
+                WeightTensorMetadata::new(
+                    "relative_target_output_projection",
+                    Shape::new(vec![
+                        config.relative_target_bias_token_cap,
+                        config.model_width,
+                        config.vocab_size,
+                    ]),
+                    DType::F32,
+                ),
+                relative_target_output_projection.as_slice(),
             ));
         }
         for layer in 0..config.layer_count {
@@ -348,6 +365,7 @@ impl TassadarExecutorAttentionWeightBundle {
             output_projection,
             output_bias,
             relative_target_output_bias,
+            relative_target_output_projection,
         }
     }
 
@@ -389,6 +407,19 @@ impl TassadarExecutorAttentionWeightBundle {
     /// research training.
     pub fn relative_target_output_bias_mut(&mut self) -> &mut [f32] {
         &mut self.relative_target_output_bias
+    }
+
+    /// Returns the flattened relative-target hidden-state-conditioned output
+    /// projection adapter tensor.
+    #[must_use]
+    pub fn relative_target_output_projection(&self) -> &[f32] {
+        &self.relative_target_output_projection
+    }
+
+    /// Returns mutable relative-target hidden-state-conditioned output
+    /// projection adapter weights for bounded research training.
+    pub fn relative_target_output_projection_mut(&mut self) -> &mut [f32] {
+        &mut self.relative_target_output_projection
     }
 
     fn refresh_metadata(&mut self, config: &TassadarExecutorAttentionConfig) {
@@ -437,6 +468,18 @@ impl TassadarExecutorAttentionWeightBundle {
                     DType::F32,
                 ),
                 self.relative_target_output_bias.as_slice(),
+            ));
+            entries.push((
+                WeightTensorMetadata::new(
+                    "relative_target_output_projection",
+                    Shape::new(vec![
+                        config.relative_target_bias_token_cap,
+                        config.model_width,
+                        config.vocab_size,
+                    ]),
+                    DType::F32,
+                ),
+                self.relative_target_output_projection.as_slice(),
             ));
         }
         for layer in 0..config.layer_count {
@@ -1070,6 +1113,11 @@ impl TassadarExecutorAttentionTransformer {
             logits.as_mut_slice(),
             relative_target_index,
         );
+        self.apply_relative_target_output_projection_in_place(
+            logits.as_mut_slice(),
+            hidden,
+            relative_target_index,
+        );
         Ok(logits)
     }
 
@@ -1093,12 +1141,51 @@ impl TassadarExecutorAttentionTransformer {
         }
     }
 
+    /// Applies the bounded relative-target hidden-state-conditioned output
+    /// projection adapter to one logit slice in place.
+    pub fn apply_relative_target_output_projection_in_place(
+        &self,
+        logits: &mut [f32],
+        hidden: &[f32],
+        relative_target_index: usize,
+    ) {
+        let vocab_size = self.descriptor.config.vocab_size;
+        let model_width = self.descriptor.config.model_width;
+        if logits.len() != vocab_size
+            || hidden.len() != model_width
+            || relative_target_index >= self.descriptor.config.relative_target_bias_token_cap
+        {
+            return;
+        }
+        let block_len = model_width * vocab_size;
+        let start = relative_target_index * block_len;
+        let projection =
+            &self.weights.relative_target_output_projection[start..start + block_len];
+        for (hidden_index, hidden_value) in hidden.iter().enumerate() {
+            let row_start = hidden_index * vocab_size;
+            let row = &projection[row_start..row_start + vocab_size];
+            for (logit, weight) in logits.iter_mut().zip(row.iter()) {
+                *logit += hidden_value * weight;
+            }
+        }
+    }
+
     /// Returns whether the bounded relative-target output-bias adapter has any
     /// non-zero trained signal.
     #[must_use]
     pub fn has_relative_target_output_bias_signal(&self) -> bool {
         self.weights
             .relative_target_output_bias
+            .iter()
+            .any(|value| value.abs() > 1e-6)
+    }
+
+    /// Returns whether the bounded relative-target output projection adapter
+    /// has any non-zero trained signal.
+    #[must_use]
+    pub fn has_relative_target_output_projection_signal(&self) -> bool {
+        self.weights
+            .relative_target_output_projection
             .iter()
             .any(|value| value.abs() > 1e-6)
     }

@@ -360,13 +360,18 @@ That now includes one intentionally narrow executor-training answer:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`,
   the improved adapter-backed run under
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
-  the corresponding same-corpus comparison under
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`;
-  the new run keeps the boundary fix without destroying the bounded suffix
-  (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32) and the
-  comparison now marks the attention family as more exact than the lookup
-  baseline on the same 4x4 bounded window, but the promotion gate is still red
-  because exact validation traces remain `0/2`
+  the later hidden-state projection-adapter follow-ons under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, and
+  the current same-corpus comparison under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`;
+  the accepted `boundary_v2` run keeps the token-0 fix without destroying the
+  bounded suffix (`10000` bps first-target, `7500` bps first-8, `6875` bps
+  first-32) and the later `boundary_v3` / `boundary_v4` follow-ons prove the
+  remaining blocker is now structural rather than vague: the learned attention
+  lane still diverges at token `1` by predicting `<byte_00>` where the
+  reference requires `<step_index>`, so the promotion gate is still red and
+  exact validation traces remain `0/2`
 - the separate Phase 17 compiled lane now also exists beside that learned
   stack: `psionic-models` now exposes a bounded typed
   `TassadarCompiledProgramExecutor` with compile-evidence bundles,

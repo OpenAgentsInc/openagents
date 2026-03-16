@@ -4,6 +4,10 @@ This note records the first bounded executor-attention follow-on that improved
 the 4x4 prompt-to-trace boundary without collapsing the rest of the bounded
 suffix.
 
+For the later hidden-state projection-adapter follow-ons and the sharper
+token-`1` blocker evidence, see
+`docs/audits/2026-03-16-tassadar-step-index-blocker-audit.md`.
+
 It is not a promotion note.
 
 ## Scope

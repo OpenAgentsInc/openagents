@@ -194,13 +194,18 @@ The next honest dependency is stronger work on the post-Phase-15 path:
   rejected boundary-output-head run under
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`, and
   the improved boundary-adapter run under
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`
-  together show real progress over the seeded Phase 15 candidate and now even
-  beat the preserved lookup baseline on the bounded comparison window via
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the later hidden-state projection-adapter follow-ons under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`
+  together show real progress over the seeded Phase 15 candidate and still beat
+  the preserved lookup baseline on the bounded comparison window via
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`,
   but the gate is still not cleared because the best learned attention artifact
-  remains at `10000` bps first-target, `6875` bps first-32, and `0/2` exact
-  validation traces
+  remains at `10000` bps first-target, `6875` bps first-32, `0/2` exact
+  validation traces, and now has an explicit divergence signature:
+  `<step>` is followed by predicted `<byte_00>` where the reference requires
+  `<step_index>`
 - do not widen claims until one family actually clears the Phase 14 gate
 - do not promote 9x9 or Hungarian off this result
 

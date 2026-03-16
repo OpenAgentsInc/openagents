@@ -231,20 +231,25 @@ Current posture:
   learned-lane promotion result
 - the post-Phase-15 boundary-adapter follow-on now also exists in
   `psionic-models`, `psionic-eval`, `psionic-research`, `docs/audits/`, and
-  three preserved bounded artifact roots at
+  five preserved bounded artifact roots at
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`,
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v4`:
-  the executor-attention family now carries a bounded relative-target
-  output-bias adapter, the preserved `boundary_v1` artifact records the
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`:
+  the executor-attention family now carries both a bounded relative-target
+  output-bias adapter and a bounded hidden-state-conditioned relative-target
+  output projection adapter, the preserved `boundary_v1` artifact records the
   destructive output-head-only attempt (`10000` bps first-target but only
-  `313` bps first-32), and the accepted `boundary_v2` artifact shows the first
+  `313` bps first-32), the accepted `boundary_v2` artifact shows the first
   honest attention-family boundary improvement that keeps the suffix mostly
-  intact (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32);
-  the corresponding `v4` same-corpus comparison now marks the attention family
-  as more exact than the lookup baseline on the bounded 4x4 window, but the
-  learned gate still remains red because exact validation traces are still
-  `0/2`
+  intact (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32),
+  and the follow-on `boundary_v3` / `boundary_v4` artifacts show that merely
+  adding and scaling the hidden-state-conditioned adapter still leaves the
+  learned gate flat; the current `v6` same-corpus comparison now records the
+  exact remaining blocker explicitly: the attention family still diverges at
+  token `1` by predicting `<byte_00>` where the reference requires
+  `<step_index>`, so exact validation traces remain `0/2`
 - the separate post-audit Phase 17 bar now also exists in `psionic-models`,
   `psionic-eval`, `psionic-research`, `docs/audits/`, and a canonical bounded
   compiled-lane bundle at

@@ -111,6 +111,12 @@ pub struct TassadarExecutorArchitectureCaseReport {
     /// First target-token index where divergence appeared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_divergence_index: Option<u32>,
+    /// Reference token at the first divergence when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_divergence_token: Option<String>,
+    /// Predicted token at the first divergence when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predicted_divergence_token: Option<String>,
     /// Whether the bounded predicted suffix matched exactly.
     pub exact_trace_match: bool,
 }
@@ -265,6 +271,7 @@ pub fn evaluate_lookup_family_for_architecture_comparison(
         total_cpu_elapsed_ms = total_cpu_elapsed_ms.saturating_add(cpu_elapsed_ms.max(1));
         total_target_tokens = total_target_tokens.saturating_add(window.reference_target.len() as u64);
         case_reports.push(build_case_report(
+            model.tokenizer(),
             example.sequence_id.clone(),
             example.metadata.case_id.clone(),
             window.reference_target.as_slice(),
@@ -317,13 +324,18 @@ pub fn evaluate_attention_family_for_architecture_comparison(
         total_cpu_elapsed_ms = total_cpu_elapsed_ms.saturating_add(cpu_elapsed_ms.max(1));
         total_target_tokens = total_target_tokens.saturating_add(window.reference_target.len() as u64);
         case_reports.push(build_case_report(
+            model.tokenizer(),
             example.sequence_id.clone(),
             example.metadata.case_id.clone(),
             window.reference_target.as_slice(),
             predicted_target.as_slice(),
         ));
     }
-    let article_fidelity_summary = if model.has_relative_target_output_bias_signal() {
+    let article_fidelity_summary = if model.has_relative_target_output_projection_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded relative-target hidden-state-conditioned logit adapter, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_output_bias_signal() {
         String::from(
             "layered full-prefix causal 2D-head hard-max attention plus a bounded relative-target logit-bias adapter, still only as a research windowed lane with hull fallback",
         )
@@ -495,6 +507,7 @@ fn greedy_decode_attention(
 }
 
 fn build_case_report(
+    tokenizer: &impl TokenizerBoundary,
     sequence_id: String,
     case_id: String,
     reference_target: &[TokenId],
@@ -503,6 +516,18 @@ fn build_case_report(
     let matched_target_token_count =
         matched_target_token_count(reference_target, predicted_target);
     let first_divergence_index = first_divergence_index(reference_target, predicted_target);
+    let reference_divergence_token = first_divergence_index.and_then(|index| {
+        reference_target
+            .get(index as usize)
+            .and_then(|token| tokenizer.vocabulary().token(*token))
+            .map(str::to_string)
+    });
+    let predicted_divergence_token = first_divergence_index.and_then(|index| {
+        predicted_target
+            .get(index as usize)
+            .and_then(|token| tokenizer.vocabulary().token(*token))
+            .map(str::to_string)
+    });
     TassadarExecutorArchitectureCaseReport {
         sequence_id,
         case_id,
@@ -513,6 +538,8 @@ fn build_case_report(
         first_32_token_exactness_bps: prefix_exactness_bps(reference_target, predicted_target, 32),
         matched_target_token_count,
         first_divergence_index,
+        reference_divergence_token,
+        predicted_divergence_token,
         exact_trace_match: predicted_target == reference_target,
     }
 }
