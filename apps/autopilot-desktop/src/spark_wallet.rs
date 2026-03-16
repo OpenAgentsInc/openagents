@@ -839,6 +839,32 @@ pub(crate) fn wallet_payment_net_delta_sats(payment: &PaymentSummary) -> i64 {
     }
 }
 
+pub(crate) fn include_wallet_pending_in_balance(
+    payment: &PaymentSummary,
+    now_epoch_seconds: u64,
+) -> bool {
+    if is_terminal_wallet_payment_status(payment.status.as_str()) {
+        return false;
+    }
+    let recent_enough = payment.timestamp >= now_epoch_seconds.saturating_sub(86_400);
+    let not_expired = payment
+        .htlc_expiry_epoch_seconds
+        .is_none_or(|expiry| expiry >= now_epoch_seconds.saturating_sub(60));
+    recent_enough && not_expired
+}
+
+pub(crate) fn pending_wallet_delta_sats(
+    payments: &[PaymentSummary],
+    now_epoch_seconds: u64,
+) -> i64 {
+    payments
+        .iter()
+        .filter(|payment| include_wallet_pending_in_balance(payment, now_epoch_seconds))
+        .fold(0_i64, |acc, payment| {
+            acc.saturating_add(wallet_payment_net_delta_sats(payment))
+        })
+}
+
 pub(crate) fn format_wallet_delta_sats(delta_sats: i64) -> String {
     if delta_sats > 0 {
         format!("+{delta_sats} sats")

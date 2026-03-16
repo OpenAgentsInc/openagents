@@ -16,6 +16,18 @@ pub fn format_mission_control_amount(sats: u64) -> String {
     format!("{BITCOIN_SYMBOL} {}", format_grouped_integer(sats))
 }
 
+pub fn format_mission_control_signed_amount(delta_sats: i64) -> String {
+    let sign = if delta_sats > 0 {
+        "+"
+    } else if delta_sats < 0 {
+        "-"
+    } else {
+        ""
+    };
+    let abs = delta_sats.unsigned_abs();
+    format!("{sign}{}", format_grouped_integer(abs))
+}
+
 fn format_grouped_integer(value: u64) -> String {
     let digits = value.to_string();
     let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);

@@ -115,13 +115,27 @@ pub fn paint_wallet_pane(
         spark_wallet.network_status_label(),
     );
 
-    let (spark_sats, lightning_sats, onchain_sats, total_sats) =
+    let now_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
+    let pending_delta_sats = crate::spark_wallet::pending_wallet_delta_sats(
+        &spark_wallet.recent_payments,
+        now_epoch_seconds,
+    );
+    let pending_line = if spark_wallet.balance.is_some() {
+        crate::spark_wallet::format_wallet_delta_sats(pending_delta_sats)
+    } else {
+        "LOADING".to_string()
+    };
+
+    let (spark_sats, lightning_sats, onchain_sats, balance_sats) =
         if let Some(balance) = spark_wallet.balance.as_ref() {
+            let total_sats = balance.total_sats();
+            let settled_estimate = (i128::from(total_sats) - i128::from(pending_delta_sats))
+                .clamp(0, i128::from(u64::MAX)) as u64;
             (
                 balance.spark_sats.to_string(),
                 balance.lightning_sats.to_string(),
                 balance.onchain_sats.to_string(),
-                balance.total_sats().to_string(),
+                settled_estimate.to_string(),
             )
         } else {
             (
@@ -156,8 +170,15 @@ pub fn paint_wallet_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Total sats",
-        total_sats.as_str(),
+        "Balance",
+        balance_sats.as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Pending",
+        pending_line.as_str(),
     );
 
     if let Some(path) = spark_wallet.identity_path.as_ref() {
