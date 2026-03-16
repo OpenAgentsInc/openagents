@@ -2122,6 +2122,50 @@ that same first reviewed Apple lane:
   `psionic-architecture-explainer-first-real-run-1773687000518` shows those
   requested and executed fields matching exactly for the frozen manifest
 
+On 2026-03-16, GitHub issue `#3895` made the Apple training policy explicit,
+inspectable, and field-sweepable instead of leaving optimizer behavior as an
+implicit operator default:
+
+- `psionic-train` experiment manifests can now carry an explicit
+  `training_policy` block that freezes:
+  - optimizer family plus optimizer-family fields such as `learning_rate`,
+    `weight_decay`, `beta1`, `beta2`, `epsilon`, and optional
+    `gradient_clip_norm`
+  - optimizer residency posture
+  - optional scheduler binding
+  - precision policy
+  - activation-checkpoint policy
+  - packing policy
+  - `max_steps`
+  - `gradient_accumulation_steps`
+- manifest validation now rejects obviously invalid policy shapes before launch,
+  including:
+  - `learning_rate <= 0`
+  - `gradient_accumulation_steps == 0`
+  - invalid packing-policy windows
+- the current Rust-native Apple lane remains truthful about its live limit:
+  `gradient_accumulation_steps` must still be `1`, and other values fail before
+  training instead of being silently approximated
+- `autopilotctl training launch ...` and
+  `apple-architecture-explainer-reference-run ...` now both accept an optional
+  `training_policy_override_path`, which applies field-by-field CLI overrides
+  on top of the frozen manifest policy rather than replacing the whole policy
+  blob
+- operator-local summaries and Apple lineage metadata now persist the fully
+  resolved training policy with per-field source attribution:
+  - `repo_default`
+  - `experiment_manifest`
+  - `cli_override`
+- the override-backed proof run
+  `psionic-architecture-explainer-first-real-run-1773690239110` demonstrates
+  the intended behavior:
+  - optimizer family, residency, scheduler, precision, activation policy, and
+    `gradient_accumulation_steps` remained `experiment_manifest` sourced
+  - only `learning_rate`, `weight_decay`, `max_steps`, and the widened packing
+    window were `cli_override` sourced
+  - the run exported, loaded, and runtime-smoked successfully while keeping the
+    sourced policy block visible in the resulting receipt
+
 On 2026-03-15, GitHub issue `#3657` tightened the Apple runtime-validation
 layer around that same run:
 

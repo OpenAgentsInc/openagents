@@ -23,6 +23,32 @@
   ],
   "lora_rank": 32,
   "max_steps": 8,
+  "training_policy": {
+    "optimizer": {
+      "kind": "adam_w",
+      "learning_rate": 0.05,
+      "weight_decay": 0.0,
+      "gradient_clip_norm": 1.0,
+      "beta1": 0.9,
+      "beta2": 0.99,
+      "epsilon": 1e-8
+    },
+    "optimizer_residency_policy": {
+      "step_residency": "host_resident",
+      "idle_residency": "host_resident"
+    },
+    "precision_policy": "f32_reference",
+    "activation_checkpoint_policy": "disabled",
+    "packing_policy": {
+      "packing_mode": "pack_into_context_window",
+      "max_row_tokens": 256,
+      "max_batch_tokens": 512,
+      "max_rows_per_batch": 2,
+      "pad_to_multiple_of": 8,
+      "overlong_sequence_posture": "refuse"
+    },
+    "gradient_accumulation_steps": 1
+  },
   "useful_adapter_gate": {
     "runtime_smoke_required": true,
     "standard_benchmark_policy": {

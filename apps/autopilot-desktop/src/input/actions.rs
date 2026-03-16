@@ -9368,6 +9368,8 @@ pub(super) fn run_apple_adapter_training_action(
                     description: form.description.clone(),
                     license: form.license.clone(),
                     apple_fm_base_url: form.apple_fm_base_url.clone(),
+                    experiment_manifest_path: None,
+                    training_policy_override_path: None,
                 },
             );
             let current_training = crate::desktop_control::current_training_status(state);

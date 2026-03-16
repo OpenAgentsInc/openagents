@@ -61,8 +61,9 @@ use psionic_train::{
     APPLE_LIVE_REFERENCE_LORA_RANK, AppleAdapterActivationCheckpointPolicy,
     AppleAdapterExecutionConfig, AppleAdapterExperimentManifest, AppleAdapterPrecisionPolicy,
     AppleAdapterReferenceModel, AppleAdapterSftProgressEvent, AppleAdapterSftRunOutcome,
-    AppleAdapterSftRunRequest, AppleAdapterTrainingExecutionBackend, TrainingLoopBudget,
-    TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
+    AppleAdapterSftRunRequest, AppleAdapterTrainingExecutionBackend,
+    AppleAdapterTrainingPolicyOverrides, TrainingLoopBudget, TrainingOptimizerConfig,
+    TrainingOptimizerKind, TrainingOptimizerResidencyPolicy, TrainingSchedulerConfig,
     apple_adapter_response_feature_vector, apple_live_reference_trainable_targets,
     run_apple_adapter_sft_export_with_progress,
 };
@@ -182,6 +183,68 @@ impl AppleAdapterOperatorProgressEventKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAdapterOperatorPolicyValueSource {
+    RepoDefault,
+    ExperimentManifest,
+    CliOverride,
+}
+
+impl AppleAdapterOperatorPolicyValueSource {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::RepoDefault => "repo_default",
+            Self::ExperimentManifest => "experiment_manifest",
+            Self::CliOverride => "cli_override",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOperatorSourcedValue<T> {
+    pub value: T,
+    pub source: AppleAdapterOperatorPolicyValueSource,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOperatorOptimizerPolicySummary {
+    pub kind: AppleAdapterOperatorSourcedValue<TrainingOptimizerKind>,
+    pub learning_rate: AppleAdapterOperatorSourcedValue<f32>,
+    pub weight_decay: AppleAdapterOperatorSourcedValue<f32>,
+    pub gradient_clip_norm: AppleAdapterOperatorSourcedValue<Option<f32>>,
+    pub momentum: AppleAdapterOperatorSourcedValue<Option<f32>>,
+    pub beta1: AppleAdapterOperatorSourcedValue<Option<f32>>,
+    pub beta2: AppleAdapterOperatorSourcedValue<Option<f32>>,
+    pub epsilon: AppleAdapterOperatorSourcedValue<Option<f32>>,
+    pub trust_coefficient: AppleAdapterOperatorSourcedValue<Option<f32>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOperatorPackingPolicySummary {
+    pub packing_mode: AppleAdapterOperatorSourcedValue<DatasetPackingMode>,
+    pub max_row_tokens: AppleAdapterOperatorSourcedValue<u32>,
+    pub max_batch_tokens: AppleAdapterOperatorSourcedValue<u32>,
+    pub max_rows_per_batch: AppleAdapterOperatorSourcedValue<usize>,
+    pub pad_to_multiple_of: AppleAdapterOperatorSourcedValue<Option<u32>>,
+    pub overlong_sequence_posture: AppleAdapterOperatorSourcedValue<OverlongSequencePosture>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleAdapterOperatorTrainingPolicySummary {
+    pub optimizer: AppleAdapterOperatorOptimizerPolicySummary,
+    pub optimizer_residency_policy:
+        AppleAdapterOperatorSourcedValue<TrainingOptimizerResidencyPolicy>,
+    pub scheduler: AppleAdapterOperatorSourcedValue<Option<TrainingSchedulerConfig>>,
+    pub precision_policy: AppleAdapterOperatorSourcedValue<AppleAdapterPrecisionPolicy>,
+    pub activation_checkpoint_policy:
+        AppleAdapterOperatorSourcedValue<AppleAdapterActivationCheckpointPolicy>,
+    pub max_steps: AppleAdapterOperatorSourcedValue<u64>,
+    pub gradient_accumulation_steps: AppleAdapterOperatorSourcedValue<u32>,
+    pub packing_policy: AppleAdapterOperatorPackingPolicySummary,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppleAdapterOperatorProgressSnapshot {
     pub current_phase: Option<AppleAdapterOperatorProgressPhase>,
@@ -266,6 +329,8 @@ pub struct AppleAdapterOperatorLocalSummary {
     pub executed_input_width: usize,
     pub executed_output_width: usize,
     pub executed_lora_rank: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_policy: Option<AppleAdapterOperatorTrainingPolicySummary>,
     pub package_format_version: String,
 }
 
@@ -349,6 +414,8 @@ pub struct AppleAdapterOperatorLaunchRequest {
     pub expected_base_model_signature: Option<String>,
     #[serde(default)]
     pub experiment_manifest_path: Option<String>,
+    #[serde(default)]
+    pub training_policy_override_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -841,6 +908,20 @@ fn validate_launch_request(request: &AppleAdapterOperatorLaunchRequest) -> Resul
             ));
         }
     }
+    if let Some(path) = request
+        .training_policy_override_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let override_path = Path::new(path);
+        if !override_path.is_file() {
+            return Err(format!(
+                "Apple adapter training `training_policy_override_path` does not exist: {}",
+                override_path.display()
+            ));
+        }
+    }
     if let Some(signature) = request
         .expected_base_model_signature
         .as_deref()
@@ -1005,13 +1086,13 @@ fn execute_launch_pipeline(
     let captures = train_dataset
         .derive_token_captures()
         .map_err(|error| error.to_string())?;
-    let packing_policy = build_execution_packing_policy(captures.as_slice());
+    let default_packing_policy = build_execution_packing_policy(captures.as_slice());
     with_controller(|controller| {
         controller.push_log(
             run_id,
             format!(
                 "launch: derived packing window={} tokens batch_budget={} tokens from frozen corpus",
-                packing_policy.max_row_tokens, packing_policy.max_batch_tokens
+                default_packing_policy.max_row_tokens, default_packing_policy.max_batch_tokens
             ),
             "Derived Apple adapter packing policy",
         )
@@ -1035,27 +1116,41 @@ fn execute_launch_pipeline(
         })?;
         validate_manifest_against_live_exportable_lane(manifest)?;
     }
+    let training_policy_overrides = load_apple_training_policy_overrides(request)
+        .map_err(|error| format!("Failed to load Apple training policy overrides: {error}"))?;
+    let resolved_training_policy = resolve_apple_training_policy(
+        &default_packing_policy,
+        experiment_manifest.as_ref(),
+        training_policy_overrides.as_ref(),
+    )?;
     let execution_config = build_psionic_execution_config(
         run_id,
         &runtime_profile,
-        &packing_policy,
+        &resolved_training_policy,
         experiment_manifest.as_ref(),
     )?;
     let sft_request = build_psionic_sft_request(run_id, request);
     with_controller(|controller| {
-        let learning_rate = execution_config
-            .model
-            .targets
-            .first()
-            .map(|target| target.optimizer.learning_rate)
-            .unwrap_or(0.0);
         controller.push_log(
             run_id,
             format!(
-                "launch: executing Rust-native Psionic Apple training across {} live targets effective_max_steps={} learning_rate={:.4}",
+                "launch: executing Rust-native Psionic Apple training across {} live targets effective_max_steps={} optimizer={:?} lr={:.4} wd={:.4} clip={:?} scheduler={:?} grad_accum={} sources=optimizer:{} max_steps:{} packing:{}",
                 execution_config.model.targets.len(),
                 execution_config.budget.max_steps,
-                learning_rate,
+                resolved_training_policy.summary.optimizer.kind.value,
+                resolved_training_policy.summary.optimizer.learning_rate.value,
+                resolved_training_policy.summary.optimizer.weight_decay.value,
+                resolved_training_policy.summary.optimizer.gradient_clip_norm.value,
+                resolved_training_policy.summary.scheduler.value,
+                resolved_training_policy.summary.gradient_accumulation_steps.value,
+                resolved_training_policy.summary.optimizer.learning_rate.source.label(),
+                resolved_training_policy.summary.max_steps.source.label(),
+                resolved_training_policy
+                    .summary
+                    .packing_policy
+                    .max_batch_tokens
+                    .source
+                    .label(),
             ),
             "Running Rust-native Apple adapter training",
         )
@@ -1364,6 +1459,7 @@ fn execute_launch_pipeline(
     let local_summary = build_psionic_local_summary(
         &sft_outcome,
         &execution_config,
+        &resolved_training_policy.summary,
         experiment_manifest.as_ref(),
         &training_artifacts,
         captures.as_slice(),
@@ -2709,6 +2805,12 @@ fn extend_apple_lineage_metadata(value: &mut Value, summary: &AppleAdapterOperat
         "executed_lora_rank".to_string(),
         Value::from(summary.executed_lora_rank as u64),
     );
+    if let Some(training_policy) = &summary.training_policy {
+        object.insert(
+            "training_policy".to_string(),
+            serde_json::to_value(training_policy).unwrap_or(Value::Null),
+        );
+    }
 }
 
 fn build_compute_benchmark_package(
@@ -3032,6 +3134,318 @@ fn build_execution_packing_policy(
     .with_overlong_sequence_posture(OverlongSequencePosture::Refuse)
 }
 
+#[derive(Clone)]
+struct ResolvedAppleAdapterTrainingPolicy {
+    optimizer: TrainingOptimizerConfig,
+    optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<TrainingSchedulerConfig>,
+    precision_policy: AppleAdapterPrecisionPolicy,
+    activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy,
+    packing_policy: DatasetPackingPolicy,
+    max_steps: u64,
+    summary: AppleAdapterOperatorTrainingPolicySummary,
+}
+
+fn load_apple_training_policy_overrides(
+    request: &AppleAdapterOperatorLaunchRequest,
+) -> Result<Option<AppleAdapterTrainingPolicyOverrides>, anyhow::Error> {
+    let Some(path) = request
+        .training_policy_override_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read training policy overrides {}", path))?;
+    let overrides = serde_json::from_str::<AppleAdapterTrainingPolicyOverrides>(raw.as_str())
+        .with_context(|| format!("failed to decode training policy overrides {}", path))?;
+    Ok(Some(overrides))
+}
+
+fn default_optimizer_config() -> TrainingOptimizerConfig {
+    TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0)
+}
+
+fn policy_value<T>(
+    value: T,
+    source: AppleAdapterOperatorPolicyValueSource,
+) -> AppleAdapterOperatorSourcedValue<T> {
+    AppleAdapterOperatorSourcedValue { value, source }
+}
+
+fn resolve_apple_training_policy(
+    default_packing_policy: &DatasetPackingPolicy,
+    experiment_manifest: Option<&AppleAdapterExperimentManifest>,
+    overrides: Option<&AppleAdapterTrainingPolicyOverrides>,
+) -> Result<ResolvedAppleAdapterTrainingPolicy, String> {
+    let mut optimizer = default_optimizer_config();
+    let mut optimizer_kind_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut learning_rate_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut weight_decay_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut gradient_clip_norm_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut momentum_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut beta1_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut beta2_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut epsilon_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut trust_coefficient_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut optimizer_residency_policy = TrainingOptimizerResidencyPolicy::host_only();
+    let mut optimizer_residency_policy_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut scheduler = None;
+    let mut scheduler_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut precision_policy = AppleAdapterPrecisionPolicy::F32Reference;
+    let mut precision_policy_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut activation_checkpoint_policy = AppleAdapterActivationCheckpointPolicy::Disabled;
+    let mut activation_checkpoint_policy_source =
+        AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut packing_policy = default_packing_policy.clone();
+    let mut packing_mode_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut max_row_tokens_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut max_batch_tokens_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut max_rows_per_batch_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut pad_to_multiple_of_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut overlong_sequence_posture_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+    let mut max_steps = experiment_manifest.map_or(4, |manifest| manifest.max_steps);
+    let mut max_steps_source = if experiment_manifest.is_some() {
+        AppleAdapterOperatorPolicyValueSource::ExperimentManifest
+    } else {
+        AppleAdapterOperatorPolicyValueSource::RepoDefault
+    };
+    let mut gradient_accumulation_steps = 1;
+    let mut gradient_accumulation_steps_source = AppleAdapterOperatorPolicyValueSource::RepoDefault;
+
+    if let Some(manifest) = experiment_manifest {
+        if let Some(training_policy) = &manifest.training_policy {
+            optimizer = training_policy.optimizer.clone();
+            optimizer_kind_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            learning_rate_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            weight_decay_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            gradient_clip_norm_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            momentum_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            beta1_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            beta2_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            epsilon_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            trust_coefficient_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            optimizer_residency_policy = training_policy.optimizer_residency_policy;
+            optimizer_residency_policy_source =
+                AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            scheduler = training_policy.scheduler.clone();
+            scheduler_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            precision_policy = training_policy.precision_policy;
+            precision_policy_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            activation_checkpoint_policy = training_policy.activation_checkpoint_policy;
+            activation_checkpoint_policy_source =
+                AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            packing_policy = training_policy.packing_policy.clone();
+            packing_mode_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            max_row_tokens_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            max_batch_tokens_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            max_rows_per_batch_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            pad_to_multiple_of_source = AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            overlong_sequence_posture_source =
+                AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+            gradient_accumulation_steps = training_policy.gradient_accumulation_steps;
+            gradient_accumulation_steps_source =
+                AppleAdapterOperatorPolicyValueSource::ExperimentManifest;
+        }
+    }
+
+    if let Some(overrides) = overrides {
+        if let Some(optimizer_override) = &overrides.optimizer {
+            if let Some(kind) = optimizer_override.kind {
+                optimizer.kind = kind;
+                optimizer_kind_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = optimizer_override.learning_rate {
+                optimizer.learning_rate = value;
+                learning_rate_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = optimizer_override.weight_decay {
+                optimizer.weight_decay = value;
+                weight_decay_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &optimizer_override.gradient_clip_norm {
+                optimizer.gradient_clip_norm = *value;
+                gradient_clip_norm_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &optimizer_override.momentum {
+                optimizer.momentum = *value;
+                momentum_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &optimizer_override.beta1 {
+                optimizer.beta1 = *value;
+                beta1_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &optimizer_override.beta2 {
+                optimizer.beta2 = *value;
+                beta2_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &optimizer_override.epsilon {
+                optimizer.epsilon = *value;
+                epsilon_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &optimizer_override.trust_coefficient {
+                optimizer.trust_coefficient = *value;
+                trust_coefficient_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            normalize_optimizer_family_fields(&mut optimizer);
+        }
+        if let Some(policy) = overrides.optimizer_residency_policy {
+            optimizer_residency_policy = policy;
+            optimizer_residency_policy_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+        }
+        if let Some(override_scheduler) = &overrides.scheduler {
+            scheduler = override_scheduler.clone();
+            scheduler_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+        }
+        if let Some(policy) = overrides.precision_policy {
+            precision_policy = policy;
+            precision_policy_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+        }
+        if let Some(policy) = overrides.activation_checkpoint_policy {
+            activation_checkpoint_policy = policy;
+            activation_checkpoint_policy_source =
+                AppleAdapterOperatorPolicyValueSource::CliOverride;
+        }
+        if let Some(value) = overrides.max_steps {
+            max_steps = value;
+            max_steps_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+        }
+        if let Some(value) = overrides.gradient_accumulation_steps {
+            gradient_accumulation_steps = value;
+            gradient_accumulation_steps_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+        }
+        if let Some(packing_override) = &overrides.packing_policy {
+            if let Some(value) = packing_override.max_row_tokens {
+                packing_policy.max_row_tokens = value;
+                max_row_tokens_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = packing_override.max_batch_tokens {
+                packing_policy.max_batch_tokens = value;
+                max_batch_tokens_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = packing_override.max_rows_per_batch {
+                packing_policy.max_rows_per_batch = value;
+                max_rows_per_batch_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = &packing_override.pad_to_multiple_of {
+                packing_policy.pad_to_multiple_of = *value;
+                pad_to_multiple_of_source = AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+            if let Some(value) = packing_override.overlong_sequence_posture {
+                packing_policy.overlong_sequence_posture = value;
+                overlong_sequence_posture_source =
+                    AppleAdapterOperatorPolicyValueSource::CliOverride;
+            }
+        }
+    }
+
+    if optimizer.learning_rate <= 0.0 {
+        return Err("Apple training policy requires `optimizer.learning_rate > 0`".to_string());
+    }
+    if max_steps == 0 {
+        return Err("Apple training policy requires `max_steps > 0`".to_string());
+    }
+    if gradient_accumulation_steps == 0 {
+        return Err("Apple training policy requires `gradient_accumulation_steps > 0`".to_string());
+    }
+    if gradient_accumulation_steps != 1 {
+        return Err(format!(
+            "Apple training policy requested gradient_accumulation_steps={}, but the current Rust-native Apple lane only supports 1",
+            gradient_accumulation_steps
+        ));
+    }
+    packing_policy
+        .plan(&[])
+        .map_err(|error| format!("Apple training policy packing policy is invalid: {error}"))?;
+
+    let summary = AppleAdapterOperatorTrainingPolicySummary {
+        optimizer: AppleAdapterOperatorOptimizerPolicySummary {
+            kind: policy_value(optimizer.kind, optimizer_kind_source),
+            learning_rate: policy_value(optimizer.learning_rate, learning_rate_source),
+            weight_decay: policy_value(optimizer.weight_decay, weight_decay_source),
+            gradient_clip_norm: policy_value(
+                optimizer.gradient_clip_norm,
+                gradient_clip_norm_source,
+            ),
+            momentum: policy_value(optimizer.momentum, momentum_source),
+            beta1: policy_value(optimizer.beta1, beta1_source),
+            beta2: policy_value(optimizer.beta2, beta2_source),
+            epsilon: policy_value(optimizer.epsilon, epsilon_source),
+            trust_coefficient: policy_value(optimizer.trust_coefficient, trust_coefficient_source),
+        },
+        optimizer_residency_policy: policy_value(
+            optimizer_residency_policy,
+            optimizer_residency_policy_source,
+        ),
+        scheduler: policy_value(scheduler.clone(), scheduler_source),
+        precision_policy: policy_value(precision_policy, precision_policy_source),
+        activation_checkpoint_policy: policy_value(
+            activation_checkpoint_policy,
+            activation_checkpoint_policy_source,
+        ),
+        max_steps: policy_value(max_steps, max_steps_source),
+        gradient_accumulation_steps: policy_value(
+            gradient_accumulation_steps,
+            gradient_accumulation_steps_source,
+        ),
+        packing_policy: AppleAdapterOperatorPackingPolicySummary {
+            packing_mode: policy_value(packing_policy.packing_mode, packing_mode_source),
+            max_row_tokens: policy_value(packing_policy.max_row_tokens, max_row_tokens_source),
+            max_batch_tokens: policy_value(
+                packing_policy.max_batch_tokens,
+                max_batch_tokens_source,
+            ),
+            max_rows_per_batch: policy_value(
+                packing_policy.max_rows_per_batch,
+                max_rows_per_batch_source,
+            ),
+            pad_to_multiple_of: policy_value(
+                packing_policy.pad_to_multiple_of,
+                pad_to_multiple_of_source,
+            ),
+            overlong_sequence_posture: policy_value(
+                packing_policy.overlong_sequence_posture,
+                overlong_sequence_posture_source,
+            ),
+        },
+    };
+
+    Ok(ResolvedAppleAdapterTrainingPolicy {
+        optimizer,
+        optimizer_residency_policy,
+        scheduler,
+        precision_policy,
+        activation_checkpoint_policy,
+        packing_policy,
+        max_steps,
+        summary,
+    })
+}
+
+fn normalize_optimizer_family_fields(optimizer: &mut TrainingOptimizerConfig) {
+    match optimizer.kind {
+        TrainingOptimizerKind::Sgd => {
+            optimizer.beta1 = None;
+            optimizer.beta2 = None;
+            optimizer.epsilon = None;
+            optimizer.trust_coefficient = None;
+        }
+        TrainingOptimizerKind::Adam | TrainingOptimizerKind::AdamW => {
+            optimizer.momentum = None;
+            optimizer.trust_coefficient = None;
+        }
+        TrainingOptimizerKind::Lars => {
+            optimizer.beta1 = None;
+            optimizer.beta2 = None;
+        }
+        TrainingOptimizerKind::Lamb => {
+            optimizer.momentum = None;
+        }
+    }
+}
+
 struct PsionicAppleTrainingArtifacts {
     final_checkpoint_path: PathBuf,
     checkpoint_size_bytes: u64,
@@ -3059,32 +3473,37 @@ fn load_apple_experiment_manifest(
 fn build_psionic_execution_config(
     run_id: &str,
     runtime_profile: &AppleAdapterRuntimeCompatibilityProfile,
-    packing_policy: &DatasetPackingPolicy,
+    resolved_policy: &ResolvedAppleAdapterTrainingPolicy,
     experiment_manifest: Option<&AppleAdapterExperimentManifest>,
 ) -> Result<AppleAdapterExecutionConfig, String> {
-    let optimizer = if experiment_manifest.is_some() {
-        TrainingOptimizerConfig::adamw(0.05, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0)
-    } else {
-        TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0)
-    };
-    let target_policy = TrainingOptimizerResidencyPolicy::host_only();
     let targets = if let Some(manifest) = experiment_manifest {
-        manifest_trainable_targets(manifest, &optimizer, target_policy)?
+        manifest_trainable_targets(
+            manifest,
+            &resolved_policy.optimizer,
+            resolved_policy.optimizer_residency_policy,
+            resolved_policy.scheduler.as_ref(),
+        )?
     } else {
-        apple_live_reference_trainable_targets(optimizer.clone(), target_policy)
+        let mut targets = apple_live_reference_trainable_targets(
+            resolved_policy.optimizer.clone(),
+            resolved_policy.optimizer_residency_policy,
+        );
+        for target in &mut targets {
+            target.scheduler = resolved_policy.scheduler.clone();
+        }
+        targets
     };
-    let max_steps = experiment_manifest.map_or(4, |manifest| manifest.max_steps);
     Ok(AppleAdapterExecutionConfig {
         run_id: run_id.to_string(),
         checkpoint_family: format!("{APPLE_TRAINING_CHECKPOINT_FAMILY}.psionic"),
         budget: TrainingLoopBudget {
-            max_steps,
+            max_steps: resolved_policy.max_steps,
             steps_per_window: 1,
             windows_per_cadence: 1,
         },
-        packing_policy: packing_policy.clone(),
-        precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
-        activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
+        packing_policy: resolved_policy.packing_policy.clone(),
+        precision_policy: resolved_policy.precision_policy,
+        activation_checkpoint_policy: resolved_policy.activation_checkpoint_policy,
         model: AppleAdapterReferenceModel {
             base_model_signature: runtime_profile.base_model_signature(),
             tokenizer_digest: runtime_profile
@@ -3123,12 +3542,13 @@ fn manifest_trainable_targets(
     manifest: &AppleAdapterExperimentManifest,
     optimizer: &TrainingOptimizerConfig,
     optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<&TrainingSchedulerConfig>,
 ) -> Result<Vec<psionic_train::AppleAdapterTrainableTarget>, String> {
     let mut targets = Vec::new();
     for symbolic_target in &manifest.lora_targets {
         let mut expanded = match symbolic_target.as_str() {
             "decoder.attn.q_proj" => {
-                q_projection_trainable_targets(optimizer, optimizer_residency_policy)
+                q_projection_trainable_targets(optimizer, optimizer_residency_policy, scheduler)
             }
             other => {
                 return Err(format!(
@@ -3152,6 +3572,7 @@ fn manifest_trainable_targets(
 fn q_projection_trainable_targets(
     optimizer: &TrainingOptimizerConfig,
     optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<&TrainingSchedulerConfig>,
 ) -> Vec<psionic_train::AppleAdapterTrainableTarget> {
     let mut targets = Vec::new();
     for layer in
@@ -3165,6 +3586,7 @@ fn q_projection_trainable_targets(
             lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
             optimizer: optimizer.clone(),
             optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
         });
     }
     for layer in
@@ -3178,6 +3600,7 @@ fn q_projection_trainable_targets(
             lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
             optimizer: optimizer.clone(),
             optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
         });
     }
     targets
@@ -3280,6 +3703,7 @@ fn write_psionic_training_artifacts(
 fn build_psionic_local_summary(
     outcome: &AppleAdapterSftRunOutcome,
     execution_config: &AppleAdapterExecutionConfig,
+    training_policy: &AppleAdapterOperatorTrainingPolicySummary,
     experiment_manifest: Option<&AppleAdapterExperimentManifest>,
     artifacts: &PsionicAppleTrainingArtifacts,
     captures: &[AppleAdapterSampleTokenCapture],
@@ -3370,6 +3794,7 @@ fn build_psionic_local_summary(
             .map(|target| target.lora_rank)
             .max()
             .unwrap_or(0),
+        training_policy: Some(training_policy.clone()),
         package_format_version: APPLE_TRAINING_PACKAGE_FORMAT_VERSION.to_string(),
     }
 }
@@ -4182,8 +4607,10 @@ mod tests {
         APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER,
         APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE,
         APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER, APPLE_PSIONIC_EXPORT_BACKEND_ID,
-        APPLE_PSIONIC_TRAINING_BACKEND_ID, build_psionic_execution_config,
-        q_projection_trainable_targets, validate_manifest_against_live_exportable_lane,
+        APPLE_PSIONIC_TRAINING_BACKEND_ID, AppleAdapterActivationCheckpointPolicy,
+        AppleAdapterOperatorPolicyValueSource, AppleAdapterPrecisionPolicy,
+        build_psionic_execution_config, q_projection_trainable_targets,
+        resolve_apple_training_policy, validate_manifest_against_live_exportable_lane,
     };
     use psionic_data::{
         AppleAdapterRuntimeCompatibilityProfile, DatasetKey, DatasetPackingMode,
@@ -4192,6 +4619,8 @@ mod tests {
     use psionic_train::{
         APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
         APPLE_LIVE_REFERENCE_LORA_RANK, AppleAdapterExperimentManifest,
+        AppleAdapterExperimentTrainingPolicy, AppleAdapterOptimizerOverrides,
+        AppleAdapterPackingPolicyOverrides, AppleAdapterTrainingPolicyOverrides,
         AppleAdapterUsefulAdapterAcceptanceGate, TrainingOptimizerConfig,
         TrainingOptimizerResidencyPolicy,
     };
@@ -4220,6 +4649,7 @@ mod tests {
         let targets = q_projection_trainable_targets(
             &optimizer,
             TrainingOptimizerResidencyPolicy::host_only(),
+            None,
         );
         assert_eq!(
             targets.len(),
@@ -4268,6 +4698,7 @@ mod tests {
             lora_targets: vec!["decoder.attn.q_proj".to_string()],
             lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
             max_steps: 8,
+            training_policy: None,
             useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
                 runtime_smoke_required: true,
                 standard_benchmark_policy:
@@ -4288,10 +4719,13 @@ mod tests {
             },
         };
 
+        let resolved_training_policy =
+            resolve_apple_training_policy(&packing_policy, Some(&manifest), None)
+                .expect("training policy");
         let config = build_psionic_execution_config(
             "test-run",
             &runtime_profile,
-            &packing_policy,
+            &resolved_training_policy,
             Some(&manifest),
         )
         .expect("manifest-backed config should build");
@@ -4328,6 +4762,7 @@ mod tests {
             lora_targets: vec!["decoder.ffn.up_proj".to_string()],
             lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
             max_steps: 8,
+            training_policy: None,
             useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
                 runtime_smoke_required: true,
                 standard_benchmark_policy:
@@ -4348,10 +4783,13 @@ mod tests {
             },
         };
 
+        let resolved_training_policy =
+            resolve_apple_training_policy(&packing_policy, Some(&manifest), None)
+                .expect("training policy");
         let error = build_psionic_execution_config(
             "test-run",
             &runtime_profile,
-            &packing_policy,
+            &resolved_training_policy,
             Some(&manifest),
         )
         .expect_err("unsupported target should fail fast");
@@ -4380,6 +4818,7 @@ mod tests {
             lora_targets: vec!["decoder.attn.q_proj".to_string()],
             lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
             max_steps: 8,
+            training_policy: None,
             useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
                 runtime_smoke_required: true,
                 standard_benchmark_policy:
@@ -4404,5 +4843,116 @@ mod tests {
             .expect_err("geometry mismatch should fail fast");
         assert!(error.contains("feature_width=1024x2048"));
         assert!(error.contains("2048x2048 rank 32"));
+    }
+
+    #[test]
+    fn training_policy_resolution_tracks_manifest_and_cli_override_sources() {
+        let default_packing_policy =
+            DatasetPackingPolicy::new(DatasetPackingMode::PackIntoContextWindow, 256, 512, 2)
+                .with_pad_to_multiple_of(8);
+        let manifest = AppleAdapterExperimentManifest {
+            abi_version: APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION.to_string(),
+            experiment_id: "apple_adapter.test.policy_sources".to_string(),
+            target_id: "apple_adapter.test".to_string(),
+            dataset: DatasetKey::new("dataset://openagents/apple_adapter/test", "2026.03.16"),
+            train_split_digest: "sha256:train".to_string(),
+            held_out_split_digest: "sha256:held".to_string(),
+            benchmark_split_digest: "sha256:bench".to_string(),
+            corpus_manifest_digest: "sha256:corpus".to_string(),
+            base_model_signature: "9799725ff8e851184037110b422d891ad3b92ec1".to_string(),
+            tokenizer_digest: "sha256:tokenizer".to_string(),
+            prompt_shaping_digest: "sha256:prompt".to_string(),
+            environment_ref: "env.openagents.apple.test".to_string(),
+            benchmark_ref: "benchmark://openagents/apple_adapter/test".to_string(),
+            fidelity_plan_id: "openagents.apple.token_sequence_reference.v1".to_string(),
+            input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+            lora_targets: vec!["decoder.attn.q_proj".to_string()],
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            max_steps: 8,
+            training_policy: Some(AppleAdapterExperimentTrainingPolicy {
+                optimizer: TrainingOptimizerConfig::adamw(0.05, 0.9, 0.99, 1e-8)
+                    .with_gradient_clip_norm(1.0),
+                optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
+                scheduler: None,
+                precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
+                activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
+                packing_policy: DatasetPackingPolicy::new(
+                    DatasetPackingMode::PackIntoContextWindow,
+                    256,
+                    512,
+                    2,
+                )
+                .with_pad_to_multiple_of(8),
+                gradient_accumulation_steps: 1,
+            }),
+            useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate {
+                runtime_smoke_required: true,
+                standard_benchmark_policy:
+                    psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                        minimum_adapter_score_bps: 0,
+                        minimum_adapter_pass_rate_bps: 0,
+                        minimum_score_delta_bps: 0,
+                        minimum_pass_rate_delta_bps: 0,
+                        minimum_improved_case_count: 0,
+                    },
+                overfit_non_zero_policy: psionic_eval::AppleAdapterBaseVsAdapterAcceptancePolicy {
+                    minimum_adapter_score_bps: 1,
+                    minimum_adapter_pass_rate_bps: 1,
+                    minimum_score_delta_bps: 1,
+                    minimum_pass_rate_delta_bps: 1,
+                    minimum_improved_case_count: 1,
+                },
+            },
+        };
+        let overrides = AppleAdapterTrainingPolicyOverrides {
+            optimizer: Some(AppleAdapterOptimizerOverrides {
+                learning_rate: Some(0.02),
+                weight_decay: Some(0.01),
+                ..AppleAdapterOptimizerOverrides::default()
+            }),
+            max_steps: Some(12),
+            packing_policy: Some(AppleAdapterPackingPolicyOverrides {
+                max_batch_tokens: Some(768),
+                ..AppleAdapterPackingPolicyOverrides::default()
+            }),
+            ..AppleAdapterTrainingPolicyOverrides::default()
+        };
+
+        let resolved = resolve_apple_training_policy(
+            &default_packing_policy,
+            Some(&manifest),
+            Some(&overrides),
+        )
+        .expect("policy should resolve");
+
+        assert_eq!(resolved.optimizer.learning_rate, 0.02);
+        assert_eq!(resolved.optimizer.weight_decay, 0.01);
+        assert_eq!(resolved.max_steps, 12);
+        assert_eq!(resolved.packing_policy.max_batch_tokens, 768);
+        assert_eq!(
+            resolved.summary.optimizer.learning_rate.source,
+            AppleAdapterOperatorPolicyValueSource::CliOverride
+        );
+        assert_eq!(
+            resolved.summary.optimizer.weight_decay.source,
+            AppleAdapterOperatorPolicyValueSource::CliOverride
+        );
+        assert_eq!(
+            resolved.summary.max_steps.source,
+            AppleAdapterOperatorPolicyValueSource::CliOverride
+        );
+        assert_eq!(
+            resolved.summary.packing_policy.max_batch_tokens.source,
+            AppleAdapterOperatorPolicyValueSource::CliOverride
+        );
+        assert_eq!(
+            resolved.summary.optimizer.beta1.source,
+            AppleAdapterOperatorPolicyValueSource::ExperimentManifest
+        );
+        assert_eq!(
+            resolved.summary.gradient_accumulation_steps.source,
+            AppleAdapterOperatorPolicyValueSource::ExperimentManifest
+        );
     }
 }

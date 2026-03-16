@@ -97,6 +97,7 @@ pub struct ArchitectureExplainerFirstRunConfig {
     pub control_base_url: Option<String>,
     pub control_bearer_token: Option<String>,
     pub benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode,
+    pub training_policy_override_path: Option<PathBuf>,
 }
 
 impl ArchitectureExplainerFirstRunConfig {
@@ -141,6 +142,7 @@ impl ArchitectureExplainerFirstRunConfig {
             control_base_url: None,
             control_bearer_token: None,
             benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode::Standard,
+            training_policy_override_path: None,
         }
     }
 }
@@ -200,6 +202,10 @@ pub fn run_architecture_explainer_reference_cycle(
         apple_fm_base_url: config.apple_fm_base_url.clone(),
         expected_base_model_signature: Some(manifest.base_model_signature.clone()),
         experiment_manifest_path: Some(config.experiment_manifest_path.display().to_string()),
+        training_policy_override_path: config
+            .training_policy_override_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
     };
 
     let prior_run_ids = operator_status()
