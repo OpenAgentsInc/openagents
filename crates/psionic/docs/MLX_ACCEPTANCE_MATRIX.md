@@ -63,6 +63,5 @@ This issue closes the second governance requirement in `ROADMAP_MLX.md`:
 
 - one MLX acceptance matrix exists
 
-The remaining Epic 0 work still needs:
-
-- one supported, convertible, and unsupported compatibility matrix
+Epic 0 governance is now complete because the version-window contract, parity
+harness, and supported/convertible/unsupported compatibility matrix exist too.

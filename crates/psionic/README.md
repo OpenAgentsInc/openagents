@@ -247,7 +247,7 @@ Current posture:
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and
-  the seeded MLX parity-harness report.
+  the seeded MLX parity-harness report plus the MLX compatibility matrix.
 - `psionic-nn`: reusable module, parameter, buffer, and deterministic
   state-dict/state-tree semantics above `psionic-core`, including strict and
   non-strict keyed load behavior.
@@ -656,6 +656,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/MLX_PARITY_HARNESS.md](docs/MLX_PARITY_HARNESS.md)** —
   canonical seeded upstream MLX test families and parity-harness report
   contract.
+- **[docs/MLX_COMPATIBILITY_MATRIX.md](docs/MLX_COMPATIBILITY_MATRIX.md)** —
+  canonical supported/convertible/unsupported adoption matrix for the Psionic
+  MLX roadmap.
 - **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
   inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training

@@ -71,6 +71,6 @@ This issue closes the third governance requirement in `ROADMAP_MLX.md`:
 
 - one parity harness entrypoint exists
 
-The remaining Epic 0 work still needs:
-
-- one supported, convertible, and unsupported compatibility matrix
+Epic 0 governance is now complete because the version-window contract,
+acceptance matrix, and supported/convertible/unsupported compatibility matrix
+exist too.

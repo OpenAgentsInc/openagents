@@ -522,6 +522,7 @@ training subsystems.
 | `MlxCompatibilityScopeReport` | `psionic-compat` | machine-readable bounded upstream MLX version window and claim-language contract that keeps `MLX-class` distinct from later `MLX-compatible` facades | `implemented` |
 | `MlxAcceptanceMatrixReport` | `psionic-compat` | machine-readable MLX-lane closure contract over array/runtime, transform/compile, `nn`/optimizer, export/tooling, distributed, and backend-closure categories | `implemented` |
 | `MlxParityHarnessReport` | `psionic-compat` | machine-readable seeded upstream MLX test-family harness carrying bounded `pass`, `refusal`, and `unsupported` outcomes tied to repo-owned Psionic hooks | `implemented` |
+| `MlxCompatibilityMatrixReport` | `psionic-compat` | machine-readable supported/convertible/unsupported adoption matrix that keeps current MLX claims bounded to governance support, explicit bridges, and intentionally unsupported public surfaces | `implemented` |
 | `Module` | `psionic-nn` | reusable nested module tree with deterministic parameter, buffer, and submodule traversal | `implemented` |
 | `ModuleParityMatrixReport` | `psionic-nn` | machine-readable seeded module parity cases and refusal proofs for the current PyTorch-derived normalized module-tree and `state_dict` oracle window | `implemented` |
 | `ModuleStateDict` | `psionic-nn` | deterministic keyed `state_dict` view with stable path order and persistent-vs-all-buffer selection | `implemented` |

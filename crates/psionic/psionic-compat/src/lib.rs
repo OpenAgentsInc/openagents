@@ -112,6 +112,35 @@ pub struct MlxParityHarnessFamily {
     pub boundary_note: String,
 }
 
+/// Compatibility posture for one MLX-facing surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MlxCompatibilityMatrixStatus {
+    /// The bounded surface is available and truthfully supported today.
+    Supported,
+    /// The surface is not native MLX support yet, but there is a bounded Psionic-native bridge.
+    Convertible,
+    /// The surface remains intentionally unsupported today.
+    Unsupported,
+}
+
+/// One row in the bounded MLX compatibility matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxCompatibilityMatrixEntry {
+    /// Stable surface identifier.
+    pub surface_id: String,
+    /// Current compatibility posture for the surface.
+    pub matrix_status: MlxCompatibilityMatrixStatus,
+    /// Plain-language summary of the current posture.
+    pub summary: String,
+    /// Repo-owned reports, hooks, or contracts that justify the current posture.
+    pub evidence_refs: Vec<String>,
+    /// Open issue references that would move the posture forward.
+    pub blocking_issue_refs: Vec<String>,
+    /// Boundary note that keeps current claims honest.
+    pub boundary_note: String,
+}
+
 /// Aggregate machine-readable contract for Psionic's bounded MLX claim language.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MlxCompatibilityScopeReport {
@@ -163,6 +192,25 @@ pub struct MlxParityHarnessReport {
     pub selected_families: Vec<String>,
     /// Seeded upstream MLX test families carried by the report.
     pub families: Vec<MlxParityHarnessFamily>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+/// Aggregate machine-readable compatibility matrix for the MLX roadmap.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MlxCompatibilityMatrixReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Canonical JSON schema path for this report.
+    pub schema_path: String,
+    /// Canonical runner path for this report.
+    pub runner: String,
+    /// Frozen upstream oracle window used by the matrix.
+    pub oracle_window: String,
+    /// Surface ids included in this report instance.
+    pub selected_surfaces: Vec<String>,
+    /// Compatibility rows carried by the report.
+    pub surfaces: Vec<MlxCompatibilityMatrixEntry>,
     /// Stable digest over the report contents.
     pub report_digest: String,
 }
@@ -322,6 +370,87 @@ impl MlxParityHarnessReport {
     }
 }
 
+impl MlxCompatibilityMatrixReport {
+    fn new(surfaces: Vec<MlxCompatibilityMatrixEntry>) -> Self {
+        let selected_surfaces = surfaces
+            .iter()
+            .map(|surface| surface.surface_id.clone())
+            .collect::<Vec<_>>();
+        Self::from_selected_surfaces(surfaces, selected_surfaces)
+    }
+
+    fn from_selected_surfaces(
+        surfaces: Vec<MlxCompatibilityMatrixEntry>,
+        selected_surfaces: Vec<String>,
+    ) -> Self {
+        let schema_path =
+            String::from("crates/psionic/docs/mlx_compatibility_matrix_report.schema.json");
+        let runner = String::from("scripts/release/check-psionic-mlx-compatibility-matrix.sh");
+        let oracle_window = String::from("ml-explore/mlx:v0.31.0..v0.31.1:matrix_v0");
+        let report_digest = stable_mlx_compatibility_matrix_report_digest(
+            schema_path.as_str(),
+            runner.as_str(),
+            oracle_window.as_str(),
+            &selected_surfaces,
+            &surfaces,
+        );
+        Self {
+            schema_version: 1,
+            schema_path,
+            runner,
+            oracle_window,
+            selected_surfaces,
+            surfaces,
+            report_digest,
+        }
+    }
+
+    /// Returns a filtered report with only the named surfaces.
+    pub fn filter_to_surfaces(
+        &self,
+        surface_ids: &[String],
+    ) -> Result<Self, MlxCompatibilityMatrixError> {
+        if surface_ids.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let mut filtered_surfaces = Vec::with_capacity(surface_ids.len());
+        for surface_id in surface_ids {
+            let surface = self
+                .surfaces
+                .iter()
+                .find(|surface| surface.surface_id == *surface_id)
+                .cloned()
+                .ok_or_else(|| MlxCompatibilityMatrixError::UnknownSurface(surface_id.clone()))?;
+            filtered_surfaces.push(surface);
+        }
+
+        Ok(Self::from_selected_surfaces(
+            filtered_surfaces,
+            surface_ids.to_vec(),
+        ))
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("schema_path={}", self.schema_path),
+            format!("runner={}", self.runner),
+            format!("oracle_window={}", self.oracle_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for surface in &self.surfaces {
+            lines.push(format!(
+                "{}|{:?}",
+                surface.surface_id, surface.matrix_status
+            ));
+        }
+        lines
+    }
+}
+
 impl MlxCompatibilityScopeReport {
     fn new(
         upstream_version_window: MlxUpstreamVersionWindow,
@@ -402,6 +531,14 @@ pub enum MlxParityHarnessError {
     /// The requested family id is not declared in the builtin harness.
     #[error("unknown MLX parity family: {0}")]
     UnknownFamily(String),
+}
+
+/// Failure returned while filtering the MLX compatibility matrix.
+#[derive(Debug, Error)]
+pub enum MlxCompatibilityMatrixError {
+    /// The requested surface id is not declared in the builtin matrix.
+    #[error("unknown MLX compatibility surface: {0}")]
+    UnknownSurface(String),
 }
 
 /// One evidence reference that supports the current posture for a claim area.
@@ -1234,6 +1371,249 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
     ])
 }
 
+/// Builds the canonical supported/convertible/unsupported MLX compatibility
+/// matrix for the current Psionic roadmap.
+#[must_use]
+pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport {
+    MlxCompatibilityMatrixReport::new(vec![
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("governance_contracts"),
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
+            summary: String::from(
+                "The bounded MLX version window, acceptance matrix, parity harness, and claim-language contracts are all repo-owned and runnable today.",
+            ),
+            evidence_refs: vec![
+                String::from("MlxCompatibilityScopeReport"),
+                String::from("MlxAcceptanceMatrixReport"),
+                String::from("MlxParityHarnessReport"),
+            ],
+            blocking_issue_refs: Vec::new(),
+            boundary_note: String::from(
+                "This is governance support, not a claim that the public MLX framework surface is already complete.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("seeded_transform_compile_export_parity_anchors"),
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
+            summary: String::from(
+                "Seeded parity anchors now exist for autograd, compile, export/import, and explicit higher-order-transform refusal.",
+            ),
+            evidence_refs: vec![
+                String::from("MLX parity family `autograd` = pass"),
+                String::from("MLX parity family `compile` = pass"),
+                String::from("MLX parity family `export_import` = pass"),
+                String::from("MLX parity family `vmap_custom_vjp` = refusal"),
+            ],
+            blocking_issue_refs: Vec::new(),
+            boundary_note: String::from(
+                "Seeded family anchors are evidence, not blanket MLX-class API closure.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("graph_first_function_export_bridge"),
+            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            summary: String::from(
+                "Psionic-native exportable-graph and deployment-artifact contracts exist and can support later bounded MLX function compatibility work.",
+            ),
+            evidence_refs: vec![
+                String::from("ExportableGraphContract"),
+                String::from("DeploymentArtifactContract"),
+            ],
+            blocking_issue_refs: vec![
+                String::from("PMLX-402 (#3854)"),
+                String::from("PMLX-403 (#3855)"),
+            ],
+            boundary_note: String::from(
+                "This is a native bridge substrate, not current `.mlxfn` support.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("portable_model_io_bridge"),
+            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            summary: String::from(
+                "Portable model IO through safetensors manifests, GGUF import, and related receipts can support later bounded MLX migration paths.",
+            ),
+            evidence_refs: vec![
+                String::from("PortableModelBundle::export_safetensors"),
+                String::from("PortableModelBundle::import_safetensors"),
+                String::from("GGUF import inventory"),
+            ],
+            blocking_issue_refs: vec![
+                String::from("PMLX-302 (#3847)"),
+                String::from("PMLX-401 (#3853)"),
+            ],
+            boundary_note: String::from(
+                "Portable model IO is not the same thing as native MLX weight or module-state compatibility.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("module_state_tree_bridge"),
+            matrix_status: MlxCompatibilityMatrixStatus::Convertible,
+            summary: String::from(
+                "Psionic already owns deterministic module state-tree and state-dict contracts that later MLX save/load behavior can map onto.",
+            ),
+            evidence_refs: vec![
+                String::from("Module"),
+                String::from("ModuleStateDict"),
+                String::from("ModuleStateLoadReport"),
+            ],
+            blocking_issue_refs: vec![
+                String::from("PMLX-301 (#3846)"),
+                String::from("PMLX-302 (#3847)"),
+            ],
+            boundary_note: String::from(
+                "This bridge substrate does not mean the public MLX `save_weights` and `load_weights` surface already exists.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("public_mlx_array_api"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from("There is no public MLX-class lazy array API in Psionic today."),
+            evidence_refs: vec![String::from(
+                "MlxAcceptanceMatrixReport::array-runtime-surface = planned",
+            )],
+            blocking_issue_refs: vec![
+                String::from("PMLX-101 (#3834)"),
+                String::from("PMLX-102 (#3835)"),
+                String::from("PMLX-103 (#3836)"),
+                String::from("PMLX-104 (#3837)"),
+                String::from("PMLX-105 (#3838)"),
+                String::from("PMLX-106 (#3839)"),
+            ],
+            boundary_note: String::from(
+                "Lower-layer tensor substrate must not be described as a supported MLX public array API.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("public_mlx_transform_api"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from(
+                "There is no public MLX-class transform API in Psionic today beyond seeded parity anchors and explicit future refusals.",
+            ),
+            evidence_refs: vec![
+                String::from("MlxParityHarnessReport"),
+                String::from("ProgramTransformCapabilityMatrixReport"),
+            ],
+            blocking_issue_refs: vec![
+                String::from("PMLX-201 (#3840)"),
+                String::from("PMLX-202 (#3841)"),
+                String::from("PMLX-203 (#3842)"),
+                String::from("PMLX-204 (#3843)"),
+                String::from("PMLX-205 (#3844)"),
+                String::from("PMLX-206 (#3845)"),
+            ],
+            boundary_note: String::from(
+                "Seeded autograd or compile anchors do not imply supported MLX public transforms.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("public_mlx_nn_optimizer_api"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from(
+                "There is no public MLX-class nn, loss, initializer, optimizer, or scheduler API in Psionic today.",
+            ),
+            evidence_refs: vec![
+                String::from("MlxAcceptanceMatrixReport::nn-optimizer = planned"),
+                String::from("MLX parity family `nn_optimizers_quantized` = unsupported"),
+            ],
+            blocking_issue_refs: vec![
+                String::from("PMLX-301 (#3846)"),
+                String::from("PMLX-302 (#3847)"),
+                String::from("PMLX-303 (#3848)"),
+                String::from("PMLX-304 (#3849)"),
+                String::from("PMLX-305 (#3850)"),
+                String::from("PMLX-306 (#3851)"),
+                String::from("PMLX-307 (#3852)"),
+            ],
+            boundary_note: String::from(
+                "Current psionic-nn and psionic-train primitives are not themselves a supported MLX public nn surface.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("mlxfn_interop"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from(
+                "There is no `.mlxfn` import or export support in Psionic today.",
+            ),
+            evidence_refs: vec![String::from(
+                "ROADMAP_MLX Phase 9 compatibility work remains open",
+            )],
+            blocking_issue_refs: vec![
+                String::from("PMLX-402 (#3854)"),
+                String::from("PMLX-403 (#3855)"),
+            ],
+            boundary_note: String::from(
+                "Native graph-first export substrate does not imply `.mlxfn` compatibility.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("mlx_naming_facade_and_bindings"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from(
+                "There is no MLX naming facade or Python/C/Swift binding layer in Psionic today.",
+            ),
+            evidence_refs: vec![String::from(
+                "ROADMAP_MLX Epic 6 late-surface compatibility work remains open",
+            )],
+            blocking_issue_refs: vec![
+                String::from("PMLX-606 (#3871)"),
+                String::from("PMLX-607 (#3872)"),
+                String::from("PMLX-608 (#3873)"),
+            ],
+            boundary_note: String::from(
+                "Adoption-facing names and bindings are explicitly late work and must not be implied early.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("public_mlx_distributed_api"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from(
+                "There is no public MLX-class distributed group and helper API in Psionic today.",
+            ),
+            evidence_refs: vec![
+                String::from("MlxAcceptanceMatrixReport::distributed-semantics = planned"),
+                String::from("MLX parity family `distributed` = unsupported"),
+            ],
+            blocking_issue_refs: vec![
+                String::from("PMLX-501 (#3859)"),
+                String::from("PMLX-502 (#3860)"),
+                String::from("PMLX-503 (#3861)"),
+                String::from("PMLX-504 (#3862)"),
+                String::from("PMLX-505 (#3863)"),
+                String::from("PMLX-506 (#3864)"),
+                String::from("PMLX-507 (#3865)"),
+            ],
+            boundary_note: String::from(
+                "Current collectives and cluster internals are not themselves a supported MLX public distributed surface.",
+            ),
+        },
+        MlxCompatibilityMatrixEntry {
+            surface_id: String::from("mlx_package_ecosystem"),
+            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            summary: String::from(
+                "There is no supported MLX-lm, multimodal, audio, serving, recipe, or benchmark ecosystem layer in Psionic today.",
+            ),
+            evidence_refs: vec![String::from(
+                "ROADMAP_MLX Epic 7 remains entirely future work",
+            )],
+            blocking_issue_refs: vec![
+                String::from("PMLX-701 (#3874)"),
+                String::from("PMLX-702 (#3875)"),
+                String::from("PMLX-703 (#3876)"),
+                String::from("PMLX-704 (#3877)"),
+                String::from("PMLX-705 (#3878)"),
+                String::from("PMLX-706 (#3879)"),
+                String::from("PMLX-707 (#3880)"),
+                String::from("PMLX-708 (#3881)"),
+                String::from("PMLX-709 (#3882)"),
+            ],
+            boundary_note: String::from(
+                "Ecosystem workflows are intentionally later and must not be implied by the current governance slice.",
+            ),
+        },
+    ])
+}
+
 fn seeded_area(
     area_id: &str,
     bounded_scope: &str,
@@ -1428,15 +1808,53 @@ fn stable_mlx_parity_harness_report_digest(
     hex::encode(hasher.finalize())
 }
 
+fn stable_mlx_compatibility_matrix_report_digest(
+    schema_path: &str,
+    runner: &str,
+    oracle_window: &str,
+    selected_surfaces: &[String],
+    surfaces: &[MlxCompatibilityMatrixEntry],
+) -> String {
+    let mut lines = vec![
+        format!("schema_path={schema_path}"),
+        format!("runner={runner}"),
+        format!("oracle_window={oracle_window}"),
+    ];
+    for surface_id in selected_surfaces {
+        lines.push(format!("selected={surface_id}"));
+    }
+    for surface in surfaces {
+        lines.push(format!(
+            "surface={}|{:?}",
+            surface.surface_id, surface.matrix_status
+        ));
+        for evidence_ref in &surface.evidence_refs {
+            lines.push(format!("evidence={evidence_ref}"));
+        }
+        for issue_ref in &surface.blocking_issue_refs {
+            lines.push(format!("issue={issue_ref}"));
+        }
+        lines.push(format!("summary={}", surface.summary));
+        lines.push(format!("boundary={}", surface.boundary_note));
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use super::{
-        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, MlxParityHarnessOutcome,
-        SemanticsClaimPosture, builtin_mlx_acceptance_matrix_report,
-        builtin_mlx_compatibility_scope_report, builtin_mlx_parity_harness_report,
-        builtin_semantics_claim_report,
+        MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, MlxCompatibilityMatrixStatus,
+        MlxParityHarnessOutcome, SemanticsClaimPosture, builtin_mlx_acceptance_matrix_report,
+        builtin_mlx_compatibility_matrix_report, builtin_mlx_compatibility_scope_report,
+        builtin_mlx_parity_harness_report, builtin_semantics_claim_report,
     };
 
     #[test]
@@ -1658,6 +2076,84 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "unknown MLX parity family: not-a-real-family"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn mlx_compatibility_matrix_report_tracks_supported_convertible_and_unsupported_rows()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_mlx_compatibility_matrix_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.schema_path,
+            "crates/psionic/docs/mlx_compatibility_matrix_report.schema.json"
+        );
+        assert_eq!(
+            report.runner,
+            "scripts/release/check-psionic-mlx-compatibility-matrix.sh"
+        );
+        assert_eq!(
+            report.oracle_window,
+            "ml-explore/mlx:v0.31.0..v0.31.1:matrix_v0"
+        );
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
+
+        let governance = report
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "governance_contracts")
+            .expect("missing governance row");
+        assert_eq!(
+            governance.matrix_status,
+            MlxCompatibilityMatrixStatus::Supported
+        );
+
+        let bridge = report
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "graph_first_function_export_bridge")
+            .expect("missing export bridge row");
+        assert_eq!(
+            bridge.matrix_status,
+            MlxCompatibilityMatrixStatus::Convertible
+        );
+
+        let array = report
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "public_mlx_array_api")
+            .expect("missing public array row");
+        assert_eq!(
+            array.matrix_status,
+            MlxCompatibilityMatrixStatus::Unsupported
+        );
+
+        let filtered = report.filter_to_surfaces(&[
+            String::from("governance_contracts"),
+            String::from("public_mlx_array_api"),
+        ])?;
+        assert_eq!(
+            filtered.selected_surfaces,
+            vec![
+                String::from("governance_contracts"),
+                String::from("public_mlx_array_api"),
+            ]
+        );
+        assert_eq!(filtered.surfaces.len(), 2);
+
+        let error = report
+            .filter_to_surfaces(&[String::from("not-a-real-surface")])
+            .expect_err("unknown surface should refuse");
+        assert_eq!(
+            error.to_string(),
+            "unknown MLX compatibility surface: not-a-real-surface"
         );
 
         Ok(())

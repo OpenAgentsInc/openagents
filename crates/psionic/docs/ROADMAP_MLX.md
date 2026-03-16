@@ -1,10 +1,11 @@
 # Psionic MLX Roadmap
 
 > Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`,
-> `PMLX-003` / `#3831`, and `PMLX-004` / `#3832`, after reviewing
-> `ROADMAP.md`, `ARCHITECTURE.md`, `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`,
-> `TRAIN_SYSTEM.md`, `MLX_COMPATIBILITY_SCOPE.md`,
-> `MLX_ACCEPTANCE_MATRIX.md`, `MLX_PARITY_HARNESS.md`,
+> `PMLX-003` / `#3831`, `PMLX-004` / `#3832`, and `PMLX-005` / `#3833`,
+> after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
+> `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
+> `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
+> `MLX_PARITY_HARNESS.md`, `MLX_COMPATIBILITY_MATRIX.md`,
 > `deep-research-mlx.md`, and
 > `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`,
 > and after reviewing the local upstream MLX checkout at `~/code/mlx` and the
@@ -46,6 +47,9 @@ Choose the reference that owns the layer being changed:
 - start with `crates/psionic/docs/MLX_PARITY_HARNESS.md` for the canonical
   seeded upstream MLX test families and the repo-owned parity-harness report
   contract
+- start with `crates/psionic/docs/MLX_COMPATIBILITY_MATRIX.md` for the
+  canonical supported/convertible/unsupported adoption matrix above the frozen
+  MLX oracle window
 - start with `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`
   for the adaptation logic that explains what should be ported directly versus
   redesigned deliberately
@@ -374,6 +378,14 @@ added `MLX_PARITY_HARNESS.md`,
 one repo-owned seeded harness over actual upstream MLX test families with
 explicit `pass`, `refusal`, and `unsupported` outcomes.
 
+`PMLX-005` / [#3833](https://github.com/OpenAgentsInc/openagents/issues/3833)
+added `MLX_COMPATIBILITY_MATRIX.md`,
+`mlx_compatibility_matrix_report.schema.json`,
+`scripts/release/check-psionic-mlx-compatibility-matrix.sh`, and
+`psionic-compat::builtin_mlx_compatibility_matrix_report()` so adoption claims
+now route through one explicit supported/convertible/unsupported matrix instead
+of fuzzy "MLX-compatible" wording.
+
 ### Issues
 
 | ID | Status | Proposed GitHub issue title | Description |
@@ -382,7 +394,7 @@ explicit `pass`, `refusal`, and `unsupported` outcomes.
 | `PMLX-002` / [#3830](https://github.com/OpenAgentsInc/openagents/issues/3830) | done (2026-03-16) | `Psionic MLX: freeze the upstream MLX version window and compatibility scope` | `psionic-compat` now publishes `MlxCompatibilityScopeReport`, freezing the initial `ml-explore/mlx` claim window to `v0.31.0` through `v0.31.1`, recording the informative audit checkout, and defining the canonical `MLX-class` versus `MLX-compatible` language contract in `MLX_COMPATIBILITY_SCOPE.md`. |
 | `PMLX-003` / [#3831](https://github.com/OpenAgentsInc/openagents/issues/3831) | done (2026-03-16) | `Psionic MLX: add an acceptance matrix for array, transform, nn, export, distributed, and backend closure` | `psionic-compat` now publishes `MlxAcceptanceMatrixReport`, the repo now ships `MLX_ACCEPTANCE_MATRIX.md` plus `mlx_acceptance_matrix_report.schema.json`, and `scripts/release/check-psionic-mlx-acceptance-matrix.sh` can emit a machine-readable tracking report over the six canonical MLX closure categories instead of leaving closure to one-off demos. |
 | `PMLX-004` / [#3832](https://github.com/OpenAgentsInc/openagents/issues/3832) | done (2026-03-16) | `Psionic MLX: build a parity harness runner seeded from upstream MLX test families` | `psionic-compat` now publishes `MlxParityHarnessReport`, the repo now ships `MLX_PARITY_HARNESS.md` plus `mlx_parity_harness_report.schema.json`, and `scripts/release/check-psionic-mlx-parity-harness.sh` can emit a seeded report over actual upstream MLX test families with explicit `pass`, `refusal`, and `unsupported` outcomes tied to repo-owned Psionic hooks. |
-| `PMLX-005` | planned | `Psionic MLX: publish a supported-convertible-unsupported compatibility matrix` | Define one matrix covering native support, compatibility shims, and intentionally unsupported MLX behaviors so later adoption claims stay bounded and reviewable. |
+| `PMLX-005` / [#3833](https://github.com/OpenAgentsInc/openagents/issues/3833) | done (2026-03-16) | `Psionic MLX: publish a supported-convertible-unsupported compatibility matrix` | `psionic-compat` now publishes `MlxCompatibilityMatrixReport`, the repo now ships `MLX_COMPATIBILITY_MATRIX.md` plus `mlx_compatibility_matrix_report.schema.json`, and `scripts/release/check-psionic-mlx-compatibility-matrix.sh` can emit a bounded supported/convertible/unsupported report so MLX adoption claims stay reviewable instead of drifting into versionless marketing. |
 
 ## Epic 1: Array And Runtime Surface
 
