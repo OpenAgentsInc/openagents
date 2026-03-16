@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.dev/psionic/framework_core_acceptance_report.schema.json",
+  "title": "Psionic Framework Core Acceptance Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "schema_path",
+    "runner",
+    "git_head",
+    "overall_result",
+    "selected_categories",
+    "categories"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "schema_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runner": {
+      "type": "string",
+      "const": "scripts/release/check-psionic-framework-core-acceptance.sh"
+    },
+    "git_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "overall_result": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "selected_categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "tensor-semantics",
+          "autodiff-optimizer",
+          "model-state-io",
+          "compiler-realize",
+          "memory-cache",
+          "replay-identity",
+          "local-multi-device"
+        ]
+      }
+    },
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/category"
+      }
+    }
+  },
+  "$defs": {
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "matrix_status",
+        "summary",
+        "boundary_note",
+        "hooks"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "tensor-semantics",
+            "autodiff-optimizer",
+            "model-state-io",
+            "compiler-realize",
+            "memory-cache",
+            "replay-identity",
+            "local-multi-device"
+          ]
+        },
+        "matrix_status": {
+          "type": "string",
+          "enum": [
+            "implemented_early"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "boundary_note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hooks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/hook"
+          }
+        }
+      }
+    },
+    "hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "package",
+        "target_kind",
+        "target_name",
+        "filter",
+        "command",
+        "result"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "string",
+          "pattern": "^psionic-[a-z0-9-]+$"
+        },
+        "target_kind": {
+          "type": "string",
+          "enum": [
+            "lib",
+            "test"
+          ]
+        },
+        "target_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        }
+      }
+    }
+  }
+}
