@@ -131,19 +131,23 @@ Psionic is also not:
 - a claim that every compute lane is mature today
 - a hidden Python control plane behind Rust wrappers
 
-## Planned Executor-Class Lane
+## Tassadar Executor-Class Lane
 
-Psionic now explicitly plans an executor-class in-model compute lane.
+Psionic now has an implemented-early executor-class reference lane codenamed
+`Tassadar`.
 
-The declared scope is:
+The current scope is:
 
 - owner: `crates/psionic/*`
 - first target: WebAssembly-first executor semantics
-- first implementation bar: CPU reference fixture plus exact parity harness
+- landed Phase 1 bar: CPU reference fixture plus exact parity harness
+- landed crate surfaces:
+  - `psionic-runtime::tassadar`
+  - `psionic-models::TassadarExecutorFixture`
 - strategic value: giving larger reasoning systems inner exact-computation
   ability
 
-The declared non-goals are:
+The current non-goals are:
 
 - not current MVP compute-market product scope
 - not kernel or Nexus authority work
@@ -174,7 +178,7 @@ Phase 0 and Phase 1 are tracked in
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, deterministic reference sessions, digest-pinned package aliases, mixed-surface composition groups, and train/eval parity receipts, while kernel/Nexus now own environment, checkpoint-family, validator-policy, benchmark-package, and training-policy registry truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
-| Executor-class in-model compute lane | `planned` | WebAssembly-first, CPU-reference-first executor lane is now explicitly owned by Psionic as library/runtime work for larger reasoning systems, with Phase 0 and Phase 1 tracked in `#3743` and `#3744`; it is not current MVP product scope |
+| Executor-class in-model compute lane | `implemented_early` | WebAssembly-first, CPU-reference-first `Tassadar` reference lane now exists in `psionic-runtime` and `psionic-models` with a machine-legible Wasm profile, append-only trace ABI, CPU reference runner, fixture runner, exact parity harness, deterministic replay helpers, typed refusal surfaces, and a `ProgrammaticFixture` model descriptor; it is still not current MVP product scope |
 
 Recent issue closure changed one important reading of this table:
 
