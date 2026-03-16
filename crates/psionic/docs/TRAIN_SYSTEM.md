@@ -246,6 +246,17 @@ That now includes one intentionally narrow executor-training answer:
   with no fallbacks or refusals and about `1.93x` hull speedup (`42,172` vs
   `21,860` target tok/s over a `4,096`-token per-case window), while exactness
   remains `0/8`, which is the right claim boundary for the lane today
+- the Phase 11 scale-out substrate now also exists above that run:
+  `psionic-runtime` owns a real `tassadar.wasm.sudoku_9x9_search.v1` profile
+  plus a real split-aware 9x9 Sudoku-class corpus, `psionic-eval` and
+  `psionic-train` can freeze that workload into a tokenized sequence dataset
+  plus training manifest, `psionic-models` carries the matching 9x9
+  executor-transformer descriptor, and `psionic-train` commits a machine-
+  readable `scale_plan.json` fixture under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_9x9_scale_plan_v0`; the same
+  plan keeps the promotion gate explicit, so Phase 11 now means “real 9x9
+  workload and curriculum path exist” rather than “the 9x9 trained executor is
+  already good”
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

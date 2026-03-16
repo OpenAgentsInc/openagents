@@ -1,11 +1,11 @@
 use psionic_core::{DType, QuantizationMode, Shape};
 use psionic_runtime::{
-    build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
-    execute_tassadar_executor_request, tassadar_runtime_capability_report,
     TassadarExecutionEvidenceBundle, TassadarExecutorDecodeMode, TassadarExecutorExecutionReport,
     TassadarExecutorSelectionDiagnostic, TassadarFixtureWeights as RuntimeTassadarFixtureWeights,
     TassadarProgram, TassadarProgramArtifact, TassadarRuntimeCapabilityReport, TassadarTraceAbi,
-    TassadarWasmProfile,
+    TassadarWasmProfile, build_tassadar_execution_evidence_bundle,
+    diagnose_tassadar_executor_request, execute_tassadar_executor_request,
+    tassadar_runtime_capability_report,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -378,6 +378,8 @@ impl TassadarExecutorFixture {
     pub const ARTICLE_CLASS_MODEL_ID: &str = "tassadar-executor-article-class-v0";
     /// Stable model identifier for the honest Sudoku-v0 search fixture.
     pub const SUDOKU_V0_SEARCH_MODEL_ID: &str = "tassadar-executor-sudoku-v0-search-v0";
+    /// Stable model identifier for the honest 9x9 Sudoku-class search fixture.
+    pub const SUDOKU_9X9_SEARCH_MODEL_ID: &str = "tassadar-executor-sudoku-9x9-search-v0";
     /// Stable model family for the Phase 1 fixture.
     pub const MODEL_FAMILY: &str = "tassadar_executor";
 
@@ -424,6 +426,20 @@ impl TassadarExecutorFixture {
         )
     }
 
+    /// Creates the honest 9x9 Sudoku-class search executor fixture.
+    #[must_use]
+    pub fn sudoku_9x9_search_v1() -> Self {
+        let profile = TassadarWasmProfile::sudoku_9x9_search_v1();
+        let trace_abi = TassadarTraceAbi::sudoku_9x9_search_v1();
+        let runtime_weights = RuntimeTassadarFixtureWeights::sudoku_9x9_search_v1();
+        Self::from_parts(
+            Self::SUDOKU_9X9_SEARCH_MODEL_ID,
+            profile,
+            trace_abi,
+            runtime_weights,
+        )
+    }
+
     /// Returns the canonical fixture for one supported Wasm profile id.
     #[must_use]
     pub fn for_profile_id(profile_id: &str) -> Option<Self> {
@@ -436,6 +452,9 @@ impl TassadarExecutorFixture {
             }
             value if value == TassadarWasmProfile::sudoku_v0_search_v1().profile_id => {
                 Some(Self::sudoku_v0_search_v1())
+            }
+            value if value == TassadarWasmProfile::sudoku_9x9_search_v1().profile_id => {
+                Some(Self::sudoku_9x9_search_v1())
             }
             _ => None,
         }
@@ -1440,9 +1459,9 @@ struct CompiledWeightArtifactEncoding<'a> {
 #[cfg(test)]
 mod tests {
     use psionic_runtime::{
-        run_tassadar_exact_parity, tassadar_article_class_corpus,
-        tassadar_sudoku_v0_search_program, tassadar_validation_corpus, TassadarExecutorDecodeMode,
-        TassadarFixtureRunner, TassadarProgramArtifact, TassadarTraceAbi,
+        TassadarExecutorDecodeMode, TassadarFixtureRunner, TassadarProgramArtifact,
+        TassadarTraceAbi, run_tassadar_exact_parity, tassadar_article_class_corpus,
+        tassadar_sudoku_v0_search_program, tassadar_validation_corpus,
     };
 
     use super::{
@@ -1854,11 +1873,13 @@ mod tests {
             execution.execution_report.execution.outputs,
             expected.outputs
         );
-        assert!(!execution
-            .evidence_bundle
-            .trace_proof
-            .proof_digest
-            .is_empty());
+        assert!(
+            !execution
+                .evidence_bundle
+                .trace_proof
+                .proof_digest
+                .is_empty()
+        );
         assert_eq!(
             execution
                 .evidence_bundle

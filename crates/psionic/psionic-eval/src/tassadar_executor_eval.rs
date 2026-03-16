@@ -85,6 +85,17 @@ pub fn evaluate_tassadar_executor_transformer(
     dataset: &TassadarSequenceDatasetContract,
     split: TassadarSequenceSplit,
 ) -> Result<TassadarExecutorEvalReport, TassadarExecutorEvalError> {
+    evaluate_tassadar_executor_transformer_with_target_cap(model, dataset, split, None)
+}
+
+/// Greedily evaluates one trained executor model against the frozen CPU-reference dataset split,
+/// optionally capping the evaluated suffix length for bounded smoke tests.
+pub fn evaluate_tassadar_executor_transformer_with_target_cap(
+    model: &TassadarExecutorTransformer,
+    dataset: &TassadarSequenceDatasetContract,
+    split: TassadarSequenceSplit,
+    target_token_cap: Option<usize>,
+) -> Result<TassadarExecutorEvalReport, TassadarExecutorEvalError> {
     dataset.validate()?;
     let tokenizer = model.tokenizer();
     let mut case_reports = Vec::new();
@@ -97,28 +108,43 @@ pub fn evaluate_tassadar_executor_transformer(
                 .map(|token| TokenId(*token))
                 .collect::<Vec<_>>(),
         );
-        let reference_target = example.token_ids[prompt_len..]
+        let full_reference_target = example.token_ids[prompt_len..]
             .iter()
             .map(|token| TokenId(*token))
             .collect::<Vec<_>>();
+        let evaluated_target_len = target_token_cap
+            .unwrap_or(full_reference_target.len())
+            .min(full_reference_target.len());
+        let reference_target = full_reference_target[..evaluated_target_len].to_vec();
         let predicted_target = greedy_decode_target(model, prompt, reference_target.len())?;
         let predicted_full = example.token_ids[..prompt_len]
             .iter()
             .map(|token| TokenId(*token))
             .chain(predicted_target.iter().copied())
             .collect::<Vec<_>>();
-        let reference_full = example
-            .token_ids
-            .iter()
-            .map(|token| TokenId(*token))
-            .collect::<Vec<_>>();
-        let exact_trace_match = predicted_target == reference_target;
+        let full_target_evaluated = evaluated_target_len == full_reference_target.len();
+        let reference_full = if full_target_evaluated {
+            Some(
+                example
+                    .token_ids
+                    .iter()
+                    .map(|token| TokenId(*token))
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            None
+        };
+        let exact_trace_match = full_target_evaluated && predicted_target == reference_target;
         let target_token_exactness_bps =
             suffix_exactness_bps(reference_target.as_slice(), predicted_target.as_slice());
-        let final_output_match = tokenizer.extract_output_values(reference_full.as_slice())
-            == tokenizer.extract_output_values(predicted_full.as_slice());
-        let halt_match = tokenizer.extract_halt_marker(reference_full.as_slice())
-            == tokenizer.extract_halt_marker(predicted_full.as_slice());
+        let final_output_match = reference_full.as_ref().is_some_and(|reference_full| {
+            tokenizer.extract_output_values(reference_full.as_slice())
+                == tokenizer.extract_output_values(predicted_full.as_slice())
+        });
+        let halt_match = reference_full.as_ref().is_some_and(|reference_full| {
+            tokenizer.extract_halt_marker(reference_full.as_slice())
+                == tokenizer.extract_halt_marker(predicted_full.as_slice())
+        });
         let mut failures = Vec::new();
         if !exact_trace_match {
             failures.push(TassadarExecutorEvalFailure::ExactTraceMismatch);
@@ -226,7 +252,10 @@ mod tests {
 
     use crate::build_tassadar_sudoku_v0_sequence_dataset;
 
-    use super::evaluate_tassadar_executor_transformer;
+    use super::{
+        evaluate_tassadar_executor_transformer,
+        evaluate_tassadar_executor_transformer_with_target_cap,
+    };
 
     #[test]
     fn executor_eval_reports_trace_output_and_halt_metrics()
@@ -246,6 +275,28 @@ mod tests {
                 .case_reports
                 .iter()
                 .all(|case| !case.reference_target_digest.is_empty())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn executor_eval_can_cap_target_suffix_for_smoke_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let bundle = build_tassadar_sudoku_v0_sequence_dataset("train-v0")?;
+        let model = psionic_models::TassadarExecutorTransformer::sudoku_v0();
+        let report = evaluate_tassadar_executor_transformer_with_target_cap(
+            &model,
+            &bundle.dataset,
+            TassadarSequenceSplit::Validation,
+            Some(8),
+        )?;
+
+        assert_eq!(report.case_reports.len(), 2);
+        assert!(
+            report
+                .case_reports
+                .iter()
+                .all(|case| !case.final_output_match && !case.halt_match)
         );
         Ok(())
     }

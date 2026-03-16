@@ -2,7 +2,9 @@ use psionic_data::{
     DatasetPackingMode, DatasetPackingPlan, DatasetPackingPolicy, TassadarSequenceDatasetContract,
     TassadarSequenceDatasetError, TassadarSequenceSplit,
 };
-use psionic_eval::{TassadarSequenceEvalError, build_tassadar_sudoku_v0_sequence_dataset};
+use psionic_eval::{
+    TassadarSequenceEvalError, TassadarSequenceWorkload, build_tassadar_sequence_dataset,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -68,11 +70,12 @@ pub enum TassadarSequenceTrainingError {
     Dataset(#[from] TassadarSequenceDatasetError),
 }
 
-/// Builds the frozen sequence dataset plus generic packing plans for the first training run.
-pub fn build_tassadar_sudoku_v0_sequence_training_manifest(
+/// Builds the frozen sequence dataset plus generic packing plans for one Tassadar workload.
+pub fn build_tassadar_sequence_training_manifest(
+    workload: TassadarSequenceWorkload,
     version: &str,
 ) -> Result<TassadarSequenceTrainingManifest, TassadarSequenceTrainingError> {
-    let bundle = build_tassadar_sudoku_v0_sequence_dataset(version)?;
+    let bundle = build_tassadar_sequence_dataset(workload, version)?;
     let dataset = bundle.dataset;
     let max_tokens = dataset
         .examples
@@ -101,6 +104,20 @@ pub fn build_tassadar_sudoku_v0_sequence_training_manifest(
     ))
 }
 
+/// Builds the frozen sequence dataset plus generic packing plans for the 4x4 training run.
+pub fn build_tassadar_sudoku_v0_sequence_training_manifest(
+    version: &str,
+) -> Result<TassadarSequenceTrainingManifest, TassadarSequenceTrainingError> {
+    build_tassadar_sequence_training_manifest(TassadarSequenceWorkload::SudokuV0, version)
+}
+
+/// Builds the frozen sequence dataset plus generic packing plans for the 9x9 scale-out run.
+pub fn build_tassadar_sudoku_9x9_sequence_training_manifest(
+    version: &str,
+) -> Result<TassadarSequenceTrainingManifest, TassadarSequenceTrainingError> {
+    build_tassadar_sequence_training_manifest(TassadarSequenceWorkload::Sudoku9x9, version)
+}
+
 fn stable_digest<T>(prefix: &[u8], value: &T) -> String
 where
     T: Serialize,
@@ -115,7 +132,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::build_tassadar_sudoku_v0_sequence_training_manifest;
+    use super::{
+        build_tassadar_sudoku_9x9_sequence_training_manifest,
+        build_tassadar_sudoku_v0_sequence_training_manifest,
+    };
 
     #[test]
     fn training_manifest_freezes_split_packing_for_sudoku_v0_sequences()
@@ -127,6 +147,18 @@ mod tests {
         assert_eq!(manifest.test_plan.total_source_sequences, 2);
         assert!(!manifest.tokenizer_digest.is_empty());
         assert!(!manifest.vocabulary_digest.is_empty());
+        assert!(!manifest.manifest_digest.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn training_manifest_freezes_split_packing_for_sudoku_9x9_sequences()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest = build_tassadar_sudoku_9x9_sequence_training_manifest("scale-v0")?;
+
+        assert_eq!(manifest.train_plan.total_source_sequences, 2);
+        assert_eq!(manifest.validation_plan.total_source_sequences, 1);
+        assert_eq!(manifest.test_plan.total_source_sequences, 1);
         assert!(!manifest.manifest_digest.is_empty());
         Ok(())
     }
