@@ -1,0 +1,19 @@
+[package]
+name = "arc-solvers"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "ARC DSL, interpreter, and solver-lane substrate over ARC contracts"
+
+[lints]
+workspace = true
+
+[dependencies]
+arc-core = { path = "../core" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

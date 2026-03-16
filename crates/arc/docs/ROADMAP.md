@@ -698,7 +698,7 @@ Master issue:
 
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
-| `ARC-301` / [#3693](https://github.com/OpenAgentsInc/openagents/issues/3693) | planned | Create `crates/arc/solvers` and define the typed ARC DSL with Tier A scope first plus a pure interpreter. |
+| `ARC-301` / [#3693](https://github.com/OpenAgentsInc/openagents/issues/3693) | done | Created `crates/arc/solvers` with a bounded Tier A seed DSL and pure interpreter covering typed symbols, empty/input/variable grids, crop/paint/rotate/reflect/recolor transforms, extreme/color selectors, sequencing, let-binding, and conditional object checks. |
 | `ARC-302` / [#3694](https://github.com/OpenAgentsInc/openagents/issues/3694) | planned | Add the normative solver object model: typed refusal taxonomy, candidate identity and deduplication, budget accounting, solve-attempt envelopes, and second-attempt distinctness rules. |
 | `ARC-303` / [#3695](https://github.com/OpenAgentsInc/openagents/issues/3695) | planned | Build the common verifier and falsifier, including augmentation stability and holdout-on-train checks. |
 | `ARC-304` / [#3696](https://github.com/OpenAgentsInc/openagents/issues/3696) | planned | Add trace-bundle writing and replay fixtures for proposal, verification, refinement, and arbiter decisions. |

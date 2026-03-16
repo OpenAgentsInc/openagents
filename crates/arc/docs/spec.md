@@ -712,6 +712,19 @@ Symbol binding:
 - bind simple task-local symbols from demonstrations
 - use bound symbols in downstream transforms
 
+Current bounded seed:
+
+- `ARC-301` lands the first executable Tier A subset in `arc-solvers`
+- the current seed includes typed symbols plus deterministic
+  `input`/`var`/`empty` grid expressions
+- selectors currently cover `all`, `by_color`, and extreme-object cases
+  (`largest`, `smallest`, `top_left`, `bottom_right`)
+- grid operations currently cover ordered composition, crop-to-selector,
+  paint-selector, rotate, reflect, recolor, let-binding, and conditional
+  branching on object presence
+- remaining Tier A selectors, constructors, and structural operators stay
+  planned until verifier, trace, and budget infrastructure land
+
 ### 6.3 Tier B DSL scope after v1 closure
 
 Tier B expands research breadth once Tier A is honest.
