@@ -119,3 +119,68 @@ fn solve_budget_and_refusal_reject_empty_contracts() {
     assert!(TraceLocator::new(" ").is_err());
     assert!(ArcSolveRefusal::new(ArcRefusalCode::UnsupportedTask, "   ").is_err());
 }
+
+#[test]
+fn frozen_task_body_contracts_remain_stable() {
+    let fixture = fs::read_to_string("fixtures/minimal_task.json")
+        .expect("fixture should be readable from the crate root");
+    let task: ArcTask = serde_json::from_str(&fixture).expect("fixture should deserialize");
+
+    assert_eq!(
+        task.canonical_body_json()
+            .expect("task body should serialize canonically"),
+        "{\"test\":[{\"cells\":[0,2,1,0],\"height\":2,\"width\":2}],\"train\":[{\"input\":{\"cells\":[0,1,2,0],\"height\":2,\"width\":2},\"output\":{\"cells\":[1,1,2,2],\"height\":2,\"width\":2}}]}"
+    );
+    assert_eq!(
+        task.body_digest().expect("task body digest should compute"),
+        "032cb5b41656d23b3e965ed6bd549ba9429580eceb28f4a8689a8f662ebc137b"
+    );
+    assert_eq!(
+        task.derived_task_id()
+            .expect("derived task id should compute"),
+        ArcTaskId::new("task-032cb5b41656d23b").expect("derived task id should validate")
+    );
+}
+
+#[test]
+fn frozen_interactive_contract_digests_remain_stable() {
+    let recording_fixture = fs::read_to_string("fixtures/minimal_recording.json")
+        .expect("recording fixture should be readable from the crate root");
+    let recording: ArcRecording =
+        serde_json::from_str(&recording_fixture).expect("recording fixture should deserialize");
+
+    let scorecard_fixture = fs::read_to_string("fixtures/minimal_scorecard.json")
+        .expect("scorecard fixture should be readable from the crate root");
+    let scorecard: ArcScorecard =
+        serde_json::from_str(&scorecard_fixture).expect("scorecard fixture should deserialize");
+
+    let solve_result_fixture = fs::read_to_string("fixtures/minimal_solve_result.json")
+        .expect("solve result fixture should be readable from the crate root");
+    let solve_result: ArcSolveResultEnvelope = serde_json::from_str(&solve_result_fixture)
+        .expect("solve result fixture should deserialize");
+
+    assert_eq!(
+        recording
+            .contract_digest()
+            .expect("recording digest should compute"),
+        "3bb2d28e5bddfafab4bcad32e0718b0868320104475ccb5a3e990171ffccf8d2"
+    );
+    assert_eq!(
+        scorecard
+            .contract_digest()
+            .expect("scorecard digest should compute"),
+        "ad551bc4aae918fc9a6e7ef4e0174462664e2e417b4c08d4a82c3699ad578316"
+    );
+    assert_eq!(
+        solve_result
+            .canonical_json()
+            .expect("solve result should serialize canonically"),
+        "{\"attempts_used\":2,\"budget\":{\"max_attempts\":4,\"max_runtime_millis\":2000,\"max_steps\":64},\"outcome\":{\"Refused\":{\"code\":\"BudgetExhausted\",\"detail\":\"attempt budget spent\"}},\"schema_version\":1,\"task_id\":\"demo-bridge-task\",\"trace_locator\":\"trace://arc-core/demo-bridge-task/attempt-1\"}"
+    );
+    assert_eq!(
+        solve_result
+            .contract_digest()
+            .expect("solve result digest should compute"),
+        "c9b702998afabbb88f07636836efdefb0f15c29141bda940e247f7dcf674e045"
+    );
+}

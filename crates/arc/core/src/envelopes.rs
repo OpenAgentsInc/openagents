@@ -3,7 +3,10 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::schema::{ARC_CORE_SCHEMA_VERSION, ArcGrid, ArcTaskId};
+use crate::schema::{
+    ARC_CORE_SCHEMA_VERSION, ArcGrid, ArcTaskId, ContractSerializationError, canonical_json_string,
+    canonical_sha256_hex,
+};
 
 /// What belongs in execution envelopes and what must stay out of it.
 pub const EXECUTION_ENVELOPE_BOUNDARY_SUMMARY: &str = "Own shared budget, refusal, and solve-result envelopes for ARC crates. Do not absorb benchmark scoring policy, engine step transitions, client sessions, or solver branch internals.";
@@ -175,6 +178,14 @@ impl ArcSolveResultEnvelope {
             trace_locator,
             outcome,
         })
+    }
+
+    pub fn canonical_json(&self) -> Result<String, ContractSerializationError> {
+        canonical_json_string(self)
+    }
+
+    pub fn contract_digest(&self) -> Result<String, ContractSerializationError> {
+        canonical_sha256_hex(self)
     }
 }
 

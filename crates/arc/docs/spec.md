@@ -258,7 +258,9 @@ shared owner for ARC task IDs, grid/task contracts, deterministic analysis
 summaries, solver-facing budget/result/trace-locator envelopes, and the first typed
 ARC-AGI-3 action/frame/recording/scorecard contracts. Benchmark scoring,
 client/session behavior, score-policy IDs, and solver search state remain out
-of scope for this crate and stay in higher ARC packages.
+of scope for this crate and stay in higher ARC packages. Canonically serialized
+contract digests and derived task IDs now also live at this layer so fixture
+and replay identifiers stay stable across refactors.
 
 ## 4. Shared domain model
 

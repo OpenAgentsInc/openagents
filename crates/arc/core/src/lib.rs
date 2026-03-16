@@ -31,7 +31,8 @@ pub use schema::{
     ARC_PALETTE_SIZE, ArcAction, ArcActionError, ArcBenchmark, ArcEpisodeStep, ArcExample,
     ArcFrameData, ArcFrameDataError, ArcGrid, ArcGridError, ArcLevelScore, ArcObservation,
     ArcRecording, ArcRecordingError, ArcScorecard, ArcScorecardMetadata, ArcTask, ArcTaskError,
-    ArcTaskId, ArcTaskIdError, SCHEMA_BOUNDARY_SUMMARY,
+    ArcTaskId, ArcTaskIdError, ContractSerializationError, SCHEMA_BOUNDARY_SUMMARY,
+    canonical_json_string, canonical_sha256_hex,
 };
 
 /// Stable internal layers that downstream ARC crates are allowed to build on.

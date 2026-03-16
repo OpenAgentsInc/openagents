@@ -592,7 +592,7 @@ Master issue:
 | `ARC-101` / [#3669](https://github.com/OpenAgentsInc/openagents/issues/3669) | landed | Create `crates/arc/core` as package `arc-core`. |
 | `ARC-102` / [#3670](https://github.com/OpenAgentsInc/openagents/issues/3670) | landed | Add `ArcGrid`, `ArcTask`, and ARC-AGI-3 action/frame/recording/scorecard contracts. |
 | `ARC-103` / [#3671](https://github.com/OpenAgentsInc/openagents/issues/3671) | landed | Add budget, solve-result, refusal, and trace-locator envelopes used across benchmark and solver layers. |
-| `ARC-104` / [#3672](https://github.com/OpenAgentsInc/openagents/issues/3672) | planned | Freeze deterministic task IDs, hashes, and serialization contracts so fixtures survive refactors. |
+| `ARC-104` / [#3672](https://github.com/OpenAgentsInc/openagents/issues/3672) | landed | Freeze deterministic task IDs, hashes, and serialization contracts so fixtures survive refactors. |
 | `ARC-111` / [#3673](https://github.com/OpenAgentsInc/openagents/issues/3673) | planned | Add interactive benchmark policy contracts: dynamic `available_actions`, game-state enums, operation modes, score-policy IDs, and recording-envelope identifiers. |
 
 #### Canonicalization And Objectization
