@@ -1,4 +1,4 @@
-use crate::{Module, ModuleParameter, ModuleStateError};
+use crate::{Module, ModuleParameter, ModuleStateError, QuantizationError};
 use psionic_core::{DType, Device, DeviceKind, Shape, TensorData, TensorSpec};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -7,6 +7,8 @@ use thiserror::Error;
 pub enum LayerError {
     #[error(transparent)]
     ModuleState(#[from] ModuleStateError),
+    #[error(transparent)]
+    Quantization(#[from] QuantizationError),
     #[error("layer `{layer}` invalid configuration: {message}")]
     InvalidConfiguration {
         layer: &'static str,

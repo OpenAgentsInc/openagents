@@ -3,6 +3,7 @@
 
 mod layers;
 mod optimizers;
+mod quantized;
 mod training;
 
 use std::collections::BTreeMap;
@@ -17,10 +18,11 @@ use thiserror::Error;
 
 pub use layers::*;
 pub use optimizers::*;
+pub use quantized::*;
 pub use training::*;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "module, parameter, buffer, state-tree, bounded layer, training-helper, and optimizer semantics";
+pub const CRATE_ROLE: &str = "module, parameter, buffer, state-tree, bounded layer, quantized-module, training-helper, and optimizer semantics";
 
 /// Error returned when a module tree or state entry violates Psionic-nn rules.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]

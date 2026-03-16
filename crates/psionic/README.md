@@ -309,7 +309,10 @@ Current posture:
   helper functions for tiny training loops, plus a bounded public optimizer and
   scheduler shell with module-path keyed state, parameter-group scaling,
   multi-optimizer composition, and snapshot restore, including strict and
-  non-strict keyed load behavior.
+  non-strict keyed load behavior, plus an eval-oriented quantized-module shell
+  with `Module::quantize(...)`, explicit quantize reports, and
+  `QuantizedLinear` / `QuantizedEmbedding` wrappers over `int8_symmetric`
+  block storage and dequantize-to-`f32` forward semantics.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity,
   compiler diagnostics, and the first public compile-transform surface with
   explicit purity, concrete-plan cache identity, bounded shapeless trace-family
