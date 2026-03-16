@@ -519,6 +519,7 @@ training subsystems.
 | `CompilerHygieneParityMatrixReport` | `psionic-compiler` | machine-readable seeded symbolic-shape, fake-tensor, and compiler-hygiene parity cases plus an explicit symbolic-shape refusal proof for the current PyTorch-derived oracle window | `implemented` |
 | `DeploymentArtifactContract` + `ExportDeploymentArtifactSemanticsReport` | `psionic-compiler` | machine-readable deployment bundle contract and bounded report for execution-plan and topology-aware graph-first artifacts | `implemented` |
 | `SemanticsClaimReport` | `psionic-compat` | machine-readable claim vocabulary that separates seeded evidence from `PyTorch-credible` and `PyTorch-compatible later` posture across the current semantics program | `implemented` |
+| `MlxCompatibilityScopeReport` | `psionic-compat` | machine-readable bounded upstream MLX version window and claim-language contract that keeps `MLX-class` distinct from later `MLX-compatible` facades | `implemented` |
 | `Module` | `psionic-nn` | reusable nested module tree with deterministic parameter, buffer, and submodule traversal | `implemented` |
 | `ModuleParityMatrixReport` | `psionic-nn` | machine-readable seeded module parity cases and refusal proofs for the current PyTorch-derived normalized module-tree and `state_dict` oracle window | `implemented` |
 | `ModuleStateDict` | `psionic-nn` | deterministic keyed `state_dict` view with stable path order and persistent-vs-all-buffer selection | `implemented` |

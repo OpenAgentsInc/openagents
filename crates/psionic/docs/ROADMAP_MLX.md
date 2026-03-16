@@ -1,8 +1,9 @@
 # Psionic MLX Roadmap
 
-> Status: created 2026-03-16 after reviewing `ROADMAP.md`,
-> `ARCHITECTURE.md`, `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`,
-> `TRAIN_SYSTEM.md`,
+> Status: updated 2026-03-16 after closing `PMLX-002` / `#3830`, after
+> reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
+> `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
+> `MLX_COMPATIBILITY_SCOPE.md`,
 > `deep-research-mlx.md`, and
 > `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`,
 > and after reviewing the local upstream MLX checkout at `~/code/mlx` and the
@@ -35,6 +36,9 @@ Choose the reference that owns the layer being changed:
 - start with `crates/psionic/docs/TRAIN_SYSTEM.md` for reusable optimizer,
   checkpoint, and distributed-train substrate that MLX-class framework surfaces
   should reuse rather than bypass
+- start with `crates/psionic/docs/MLX_COMPATIBILITY_SCOPE.md` for the canonical
+  bounded upstream MLX version window and the required distinction between
+  `MLX-class` and `MLX-compatible` language
 - start with `../../../docs/audits/2026-03-16-mlx-full-rust-port-into-psionic-audit.md`
   for the adaptation logic that explains what should be ported directly versus
   redesigned deliberately
@@ -308,8 +312,9 @@ This roadmap is organized into eight epics.
 | Epic 6 | Backend closure and compatibility shell | CPU, Metal, CUDA, test closure, and bounded compatibility or bindings |
 | Epic 7 | Ecosystem packages and service surfaces | `mlx-lm`-class text tooling, multimodal and audio packages, serving lanes, recipe APIs, and benchmark packages |
 
-There is no GitHub issue queue opened from this block yet. This document is the
-source of truth for opening that queue.
+The GitHub issue queue for this roadmap now exists under master issue `#3819`,
+starting with epic `#3820` and issue `#3830`. This document remains the
+canonical dependency-ordered source of truth for that queue.
 
 ## Epic 0: Governance And Parity Discipline
 
@@ -324,12 +329,28 @@ Define the bounded MLX target before implementation sprawls.
 - one parity harness entrypoint exists
 - compatibility language is explicit and bounded
 
+### Current Closure
+
+`PMLX-002` / [#3830](https://github.com/OpenAgentsInc/openagents/issues/3830)
+froze the initial upstream MLX claim window and language contract in
+`MLX_COMPATIBILITY_SCOPE.md` and
+`psionic-compat::builtin_mlx_compatibility_scope_report()`:
+
+- upstream repository: `ml-explore/mlx`
+- inclusive release window: `v0.31.0` through `v0.31.1`
+- informative review checkout: `ea91bd02cf0671f3fe6ddaf746812c27bf05154e`
+  (`v0.31.1-7-gea91bd02`, observed `2026-03-16`)
+- `MLX-class` means Rust-native Psionic-owned semantics against that bounded
+  window
+- `MLX-compatible` means later bounded facades or migration layers above the
+  native substrate, never a substitute for it
+
 ### Issues
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
 | `PMLX-001` | landed | `Psionic MLX: create the lane-specific roadmap and issue program` | This document closes the issue. It records the decision to use `ROADMAP_MLX.md`, names the owner split, and seeds the full dependency-ordered issue queue. |
-| `PMLX-002` | planned | `Psionic MLX: freeze the upstream MLX version window and compatibility scope` | Pick the exact upstream MLX version window Psionic will target for parity claims, document what "MLX-class" means versus "MLX-compatible", and prevent versionless drift. |
+| `PMLX-002` / [#3830](https://github.com/OpenAgentsInc/openagents/issues/3830) | done (2026-03-16) | `Psionic MLX: freeze the upstream MLX version window and compatibility scope` | `psionic-compat` now publishes `MlxCompatibilityScopeReport`, freezing the initial `ml-explore/mlx` claim window to `v0.31.0` through `v0.31.1`, recording the informative audit checkout, and defining the canonical `MLX-class` versus `MLX-compatible` language contract in `MLX_COMPATIBILITY_SCOPE.md`. |
 | `PMLX-003` | planned | `Psionic MLX: add an acceptance matrix for array, transform, nn, export, distributed, and backend closure` | Create the MLX-lane acceptance doc and machine-readable report contract so closure is measured against explicit capability families rather than one-off demos. |
 | `PMLX-004` | planned | `Psionic MLX: build a parity harness runner seeded from upstream MLX test families` | Create one Rust-native parity runner that can import, mirror, or port upstream MLX test categories and emit a comparable pass, refusal, or unsupported report. |
 | `PMLX-005` | planned | `Psionic MLX: publish a supported-convertible-unsupported compatibility matrix` | Define one matrix covering native support, compatibility shims, and intentionally unsupported MLX behaviors so later adoption claims stay bounded and reviewable. |

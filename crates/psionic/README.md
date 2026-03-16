@@ -244,8 +244,9 @@ Current posture:
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types plus tensor-family capability matrices for dense,
   sparse, nested, masked, and storage-aware semantics.
-- `psionic-compat`: machine-readable compatibility claim vocabulary and current
-  PyTorch-facing semantics posture aggregation.
+- `psionic-compat`: machine-readable compatibility claim vocabulary, current
+  PyTorch-facing semantics posture aggregation, and the bounded MLX
+  version-window or claim-language contract.
 - `psionic-nn`: reusable module, parameter, buffer, and deterministic
   state-dict/state-tree semantics above `psionic-core`, including strict and
   non-strict keyed load behavior.
@@ -645,6 +646,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/SEMANTICS_CLAIM_REPORT.md](docs/SEMANTICS_CLAIM_REPORT.md)** —
   canonical machine-readable truth source for what Psionic currently treats as
   seeded evidence only versus `PyTorch-compatible later`.
+- **[docs/MLX_COMPATIBILITY_SCOPE.md](docs/MLX_COMPATIBILITY_SCOPE.md)** —
+  canonical bounded upstream MLX version window and claim-language contract
+  for the Psionic MLX roadmap.
 - **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
   inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training
