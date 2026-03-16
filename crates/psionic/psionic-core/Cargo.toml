@@ -14,4 +14,6 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+hex = { workspace = true }
 serde = { workspace = true }
+sha2 = { workspace = true }

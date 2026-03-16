@@ -121,6 +121,7 @@ pub enum SemanticsClaimError {
 pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, SemanticsClaimError> {
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
+    let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
     let module = psionic_nn::builtin_module_parity_matrix_report()?;
     let optimizer = psionic_train::builtin_optimizer_parity_matrix_report()?;
     let compiler = psionic_compiler::builtin_compiler_hygiene_parity_matrix_report()?;
@@ -160,6 +161,24 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             vec![
                 String::from("#3735"),
                 String::from("#3728"),
+                String::from("#3730"),
+            ],
+        ),
+        seeded_area(
+            "advanced_dtype_semantics",
+            "Current claim is bounded to seeded advanced-dtype promotion, cast, and backend-capability rules over complex, float8, wider integer, and higher-precision real dtypes, plus an explicit bridge back down to the compact runtime-core `DType` subset.",
+            vec![SemanticsEvidenceRef::new(
+                "advanced_dtype_semantics",
+                advanced_dtypes.report_digest,
+            )],
+            vec![
+                String::from("broaden promotion and cast coverage beyond the current seeded matrix"),
+                String::from("connect precision-policy and mixed-precision train systems to the richer dtype vocabulary"),
+                String::from("materialize additional dtypes beyond the compact runtime-core subset"),
+            ],
+            vec![
+                String::from("#3728"),
+                String::from("#3729"),
                 String::from("#3730"),
             ],
         ),
@@ -223,13 +242,11 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         ),
         future_area(
             "advanced_tensor_dtype_and_precision",
-            "Advanced tensor families, dtype breadth, autocast policy, and gradient-scaling semantics remain explicit future compatibility targets.",
+            "Autocast policy, broader mixed-precision behavior, and train-class precision control remain explicit future compatibility targets after landing bounded tensor-family and advanced-dtype seed coverage.",
             vec![
-                String::from("land advanced dtype and promotion rules"),
                 String::from("land autocast and gradient-scaling systems"),
             ],
             vec![
-                String::from("#3726"),
                 String::from("#3728"),
                 String::from("#3729"),
             ],
@@ -362,6 +379,7 @@ mod tests {
         for area_id in [
             "operator_semantics",
             "tensor_family_semantics",
+            "advanced_dtype_semantics",
             "module_and_state_semantics",
             "optimizer_semantics",
             "compiler_hygiene_and_fake_tensor",

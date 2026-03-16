@@ -6,6 +6,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "tensor facade and foundational engine types";
@@ -162,6 +163,852 @@ pub enum DTypeClass {
     FloatingPoint,
     /// Signed integer arithmetic dtype.
     SignedInteger,
+}
+
+/// Extended dtype vocabulary used by the bounded semantics layer above the
+/// compact runtime-core `DType` subset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtendedDType {
+    /// Boolean truth values.
+    Bool,
+    /// 8-bit unsigned integer values.
+    U8,
+    /// 8-bit signed integer values.
+    I8,
+    /// 16-bit signed integer values.
+    I16,
+    /// 32-bit signed integer values.
+    I32,
+    /// 64-bit signed integer values.
+    I64,
+    /// Float8 E4M3FN values.
+    F8E4M3Fn,
+    /// Float8 E5M2 values.
+    F8E5M2,
+    /// 16-bit IEEE 754 half-precision floating point values.
+    F16,
+    /// 16-bit bfloat values.
+    BF16,
+    /// 32-bit floating point values.
+    F32,
+    /// 64-bit floating point values.
+    F64,
+    /// 64-bit complex values with `f32` real and imaginary parts.
+    Complex64,
+    /// 128-bit complex values with `f64` real and imaginary parts.
+    Complex128,
+}
+
+impl ExtendedDType {
+    /// Returns a stable lowercase label for diagnostics and receipts.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Bool => "bool",
+            Self::U8 => "u8",
+            Self::I8 => "i8",
+            Self::I16 => "i16",
+            Self::I32 => "i32",
+            Self::I64 => "i64",
+            Self::F8E4M3Fn => "f8_e4m3fn",
+            Self::F8E5M2 => "f8_e5m2",
+            Self::F16 => "f16",
+            Self::BF16 => "bf16",
+            Self::F32 => "f32",
+            Self::F64 => "f64",
+            Self::Complex64 => "complex64",
+            Self::Complex128 => "complex128",
+        }
+    }
+
+    /// Returns the coarse dtype class.
+    #[must_use]
+    pub const fn class(self) -> ExtendedDTypeClass {
+        match self {
+            Self::Bool => ExtendedDTypeClass::Boolean,
+            Self::U8 => ExtendedDTypeClass::UnsignedInteger,
+            Self::I8 | Self::I16 | Self::I32 | Self::I64 => ExtendedDTypeClass::SignedInteger,
+            Self::F8E4M3Fn | Self::F8E5M2 | Self::F16 | Self::BF16 | Self::F32 | Self::F64 => {
+                ExtendedDTypeClass::FloatingPoint
+            }
+            Self::Complex64 | Self::Complex128 => ExtendedDTypeClass::ComplexFloatingPoint,
+        }
+    }
+
+    /// Returns whether this dtype belongs to the current low-precision family.
+    #[must_use]
+    pub const fn is_low_precision(self) -> bool {
+        matches!(
+            self,
+            Self::F8E4M3Fn | Self::F8E5M2 | Self::F16 | Self::BF16 | Self::I8 | Self::U8
+        )
+    }
+
+    /// Tries to lower the extended dtype into the compact runtime-core
+    /// `DType` subset used by current graph and runtime execution surfaces.
+    pub fn try_into_core_dtype(self) -> Result<DType, PsionicRefusal> {
+        match self {
+            Self::I8 => Ok(DType::I8),
+            Self::F16 => Ok(DType::F16),
+            Self::BF16 => Ok(DType::BF16),
+            Self::F32 => Ok(DType::F32),
+            _ => Err(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    format!(
+                        "extended dtype `{}` is not part of the current compact runtime-core dtype subset",
+                        self.label()
+                    ),
+                )
+                .with_subject(self.label()),
+            ),
+        }
+    }
+}
+
+impl From<DType> for ExtendedDType {
+    fn from(value: DType) -> Self {
+        match value {
+            DType::F32 => Self::F32,
+            DType::F16 => Self::F16,
+            DType::BF16 => Self::BF16,
+            DType::I8 => Self::I8,
+        }
+    }
+}
+
+/// Coarse dtype class exposed by the extended semantics layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtendedDTypeClass {
+    /// Boolean predicate dtype.
+    Boolean,
+    /// Unsigned integer arithmetic dtype.
+    UnsignedInteger,
+    /// Signed integer arithmetic dtype.
+    SignedInteger,
+    /// Real-valued floating point dtype.
+    FloatingPoint,
+    /// Complex floating point dtype.
+    ComplexFloatingPoint,
+}
+
+/// Status for one bounded promotion case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DTypePromotionStatus {
+    /// The promotion result is explicitly supported.
+    Supported,
+    /// The promotion pair is explicitly refused.
+    Refused,
+}
+
+/// One bounded binary-promotion case in the current semantics window.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DTypePromotionCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Left-hand dtype.
+    pub left: ExtendedDType,
+    /// Right-hand dtype.
+    pub right: ExtendedDType,
+    /// Current status for the pair.
+    pub status: DTypePromotionStatus,
+    /// Result dtype when the pair is currently supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_dtype: Option<ExtendedDType>,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the pair is intentionally unsupported today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Safety posture for one explicit cast path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DTypeCastKind {
+    /// No conversion; source and target are identical.
+    Identity,
+    /// The cast widens or otherwise preserves all represented values.
+    Lossless,
+    /// The cast may lose precision but remains a supported current path.
+    PrecisionLoss,
+    /// The cast lifts values into a richer domain such as real to complex.
+    DomainLift,
+}
+
+/// Status for one explicit cast rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DTypeCastStatus {
+    /// The cast rule is explicitly supported.
+    Supported,
+    /// The cast rule is explicitly refused.
+    Refused,
+}
+
+/// One bounded cast rule in the current semantics window.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DTypeCastCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Source dtype.
+    pub source: ExtendedDType,
+    /// Target dtype.
+    pub target: ExtendedDType,
+    /// Current status for the cast.
+    pub status: DTypeCastStatus,
+    /// Cast behavior when the path is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cast_kind: Option<DTypeCastKind>,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the cast is intentionally unsupported today.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Backend-family view used by the bounded advanced-dtype semantics report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DTypeBackendFamily {
+    /// Shape-only or meta-only execution where advanced dtypes remain legal
+    /// contracts even without runtime buffers.
+    MetaExecution,
+    /// Current runtime backends that only materialize the compact `DType`
+    /// subset today.
+    CurrentRuntimeBackends,
+}
+
+impl DTypeBackendFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::MetaExecution => "meta_execution",
+            Self::CurrentRuntimeBackends => "current_runtime_backends",
+        }
+    }
+}
+
+/// Status for one backend-family dtype capability case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DTypeBackendCapabilityStatus {
+    /// The dtype is explicitly supported by the backend family.
+    Supported,
+    /// The dtype is explicitly refused by the backend family.
+    Refused,
+}
+
+/// One backend-family dtype capability case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DTypeBackendCapabilityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Backend family under test.
+    pub backend: DTypeBackendFamily,
+    /// Dtype under test.
+    pub dtype: ExtendedDType,
+    /// Current status for the backend/dtype pair.
+    pub status: DTypeBackendCapabilityStatus,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the backend family intentionally refuses the dtype.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable bounded report for advanced dtype semantics above the
+/// compact runtime-core `DType` subset.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdvancedDTypeSemanticsReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Explicit binary-promotion rules carried by the report.
+    pub promotion_cases: Vec<DTypePromotionCaseResult>,
+    /// Explicit cast rules carried by the report.
+    pub cast_cases: Vec<DTypeCastCaseResult>,
+    /// Explicit backend-family capability rules carried by the report.
+    pub backend_cases: Vec<DTypeBackendCapabilityCaseResult>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl AdvancedDTypeSemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        promotion_cases: Vec<DTypePromotionCaseResult>,
+        cast_cases: Vec<DTypeCastCaseResult>,
+        backend_cases: Vec<DTypeBackendCapabilityCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest = stable_advanced_dtype_semantics_digest(
+            current_scope_window.as_str(),
+            promotion_cases.as_slice(),
+            cast_cases.as_slice(),
+            backend_cases.as_slice(),
+        );
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            promotion_cases,
+            cast_cases,
+            backend_cases,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.promotion_cases {
+            lines.push(format!(
+                "promotion|{}|{}|{}|{:?}",
+                case.case_id,
+                case.left.label(),
+                case.right.label(),
+                case.status
+            ));
+        }
+        for case in &self.cast_cases {
+            lines.push(format!(
+                "cast|{}|{}|{}|{:?}",
+                case.case_id,
+                case.source.label(),
+                case.target.label(),
+                case.status
+            ));
+        }
+        for case in &self.backend_cases {
+            lines.push(format!(
+                "backend|{}|{}|{}|{:?}",
+                case.case_id,
+                case.backend.label(),
+                case.dtype.label(),
+                case.status
+            ));
+        }
+        lines
+    }
+
+    fn promotion_case(
+        &self,
+        left: ExtendedDType,
+        right: ExtendedDType,
+    ) -> Option<&DTypePromotionCaseResult> {
+        self.promotion_cases.iter().find(|case| {
+            (case.left == left && case.right == right) || (case.left == right && case.right == left)
+        })
+    }
+
+    /// Resolves one bounded binary-promotion rule.
+    pub fn resolve_binary_promotion(
+        &self,
+        left: ExtendedDType,
+        right: ExtendedDType,
+    ) -> Result<ExtendedDType, PsionicRefusal> {
+        let Some(case) = self.promotion_case(left, right) else {
+            return Err(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "advanced dtype semantics do not declare a bounded promotion rule for `{}` + `{}`",
+                        left.label(),
+                        right.label()
+                    ),
+                )
+                .with_subject(format!("{}+{}", left.label(), right.label())),
+            );
+        };
+        match case.status {
+            DTypePromotionStatus::Supported => case.result_dtype.ok_or_else(|| {
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "promotion case `{}` is missing a result dtype",
+                        case.case_id
+                    ),
+                )
+                .with_subject(case.case_id.clone())
+            }),
+            DTypePromotionStatus::Refused => Err(case.refusal.clone().unwrap_or_else(|| {
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "advanced dtype semantics intentionally refuse `{}` + `{}` in the current scope",
+                        left.label(),
+                        right.label()
+                    ),
+                )
+                .with_subject(format!("{}+{}", left.label(), right.label()))
+            })),
+        }
+    }
+
+    /// Resolves one bounded cast rule.
+    pub fn resolve_cast(
+        &self,
+        source: ExtendedDType,
+        target: ExtendedDType,
+    ) -> Result<DTypeCastKind, PsionicRefusal> {
+        let Some(case) = self
+            .cast_cases
+            .iter()
+            .find(|case| case.source == source && case.target == target)
+        else {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedOp,
+                PsionicRefusalScope::Graph,
+                format!(
+                    "advanced dtype semantics do not declare a bounded cast rule for `{}` -> `{}`",
+                    source.label(),
+                    target.label()
+                ),
+            )
+            .with_subject(format!("{}->{}", source.label(), target.label())));
+        };
+        match case.status {
+            DTypeCastStatus::Supported => case.cast_kind.ok_or_else(|| {
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!("cast case `{}` is missing a cast kind", case.case_id),
+                )
+                .with_subject(case.case_id.clone())
+            }),
+            DTypeCastStatus::Refused => Err(case.refusal.clone().unwrap_or_else(|| {
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "advanced dtype semantics intentionally refuse `{}` -> `{}` in the current scope",
+                        source.label(),
+                        target.label()
+                    ),
+                )
+                .with_subject(format!("{}->{}", source.label(), target.label()))
+            })),
+        }
+    }
+
+    /// Validates whether one backend family currently supports the requested
+    /// dtype.
+    pub fn validate_backend_support(
+        &self,
+        backend: DTypeBackendFamily,
+        dtype: ExtendedDType,
+    ) -> Result<(), PsionicRefusal> {
+        let Some(case) = self
+            .backend_cases
+            .iter()
+            .find(|case| case.backend == backend && case.dtype == dtype)
+        else {
+            return Err(PsionicRefusal::new(
+                PsionicRefusalCode::UnsupportedBackendCapability,
+                PsionicRefusalScope::Runtime,
+                format!(
+                    "advanced dtype semantics do not declare backend capability for `{}` on `{}`",
+                    dtype.label(),
+                    backend.label()
+                ),
+            )
+            .with_subject(format!("{}@{}", dtype.label(), backend.label())));
+        };
+        match case.status {
+            DTypeBackendCapabilityStatus::Supported => Ok(()),
+            DTypeBackendCapabilityStatus::Refused => Err(case.refusal.clone().unwrap_or_else(
+                || {
+                    PsionicRefusal::new(
+                        PsionicRefusalCode::UnsupportedBackendCapability,
+                        PsionicRefusalScope::Runtime,
+                        format!(
+                            "backend family `{}` intentionally refuses dtype `{}` in the current scope",
+                            backend.label(),
+                            dtype.label()
+                        ),
+                    )
+                    .with_subject(format!("{}@{}", dtype.label(), backend.label()))
+                },
+            )),
+        }
+    }
+}
+
+/// Builds the canonical bounded advanced-dtype semantics report.
+#[must_use]
+pub fn builtin_advanced_dtype_semantics_report() -> AdvancedDTypeSemanticsReport {
+    AdvancedDTypeSemanticsReport::new(
+        String::from("psionic_advanced_dtype_v1"),
+        vec![
+            supported_promotion_case(
+                "pytorch.bool_plus_u8",
+                ExtendedDType::Bool,
+                ExtendedDType::U8,
+                ExtendedDType::U8,
+                "Boolean-plus-unsigned promotion is bounded to a seeded predicate-plus-byte rule.",
+            ),
+            supported_promotion_case(
+                "pytorch.i8_plus_i16",
+                ExtendedDType::I8,
+                ExtendedDType::I16,
+                ExtendedDType::I16,
+                "Signed integer widening is bounded to a seeded small-integer promotion rule.",
+            ),
+            supported_promotion_case(
+                "pytorch.f16_plus_bf16",
+                ExtendedDType::F16,
+                ExtendedDType::BF16,
+                ExtendedDType::F32,
+                "Mixed half and bfloat promotion remains explicitly widened to `f32` in the current bounded semantics.",
+            ),
+            supported_promotion_case(
+                "pytorch.f8_e4m3fn_plus_f16",
+                ExtendedDType::F8E4M3Fn,
+                ExtendedDType::F16,
+                ExtendedDType::F16,
+                "Float8 plus half promotion is bounded to widening into `f16` rather than claiming float8 arithmetic closure.",
+            ),
+            supported_promotion_case(
+                "pytorch.f32_plus_complex64",
+                ExtendedDType::F32,
+                ExtendedDType::Complex64,
+                ExtendedDType::Complex64,
+                "Real-to-complex promotion is bounded to a seeded `f32` plus `complex64` rule.",
+            ),
+            supported_promotion_case(
+                "pytorch.f64_plus_complex64",
+                ExtendedDType::F64,
+                ExtendedDType::Complex64,
+                ExtendedDType::Complex128,
+                "Higher-precision real-to-complex promotion is bounded to widening into `complex128`.",
+            ),
+            refused_promotion_case(
+                "pytorch.f8_e5m2_plus_bf16.seed_scope_missing",
+                ExtendedDType::F8E5M2,
+                ExtendedDType::BF16,
+                "Mixed `f8_e5m2` and `bf16` promotion stays explicitly unclaimed until wider low-precision numerics coverage lands.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    "mixed `f8_e5m2` and `bf16` promotion is intentionally outside the current bounded semantics window",
+                )
+                .with_subject("f8_e5m2+bf16"),
+            ),
+        ],
+        vec![
+            supported_cast_case(
+                "pytorch.f32_to_f32",
+                ExtendedDType::F32,
+                ExtendedDType::F32,
+                DTypeCastKind::Identity,
+                "Identity casts stay explicit so downstream code can distinguish them from widening or lossy conversions.",
+            ),
+            supported_cast_case(
+                "pytorch.f32_to_f64",
+                ExtendedDType::F32,
+                ExtendedDType::F64,
+                DTypeCastKind::Lossless,
+                "Real widening from `f32` to `f64` is supported as a lossless bounded cast.",
+            ),
+            supported_cast_case(
+                "pytorch.f64_to_f32",
+                ExtendedDType::F64,
+                ExtendedDType::F32,
+                DTypeCastKind::PrecisionLoss,
+                "Real narrowing from `f64` to `f32` is supported but explicitly marked as precision-losing.",
+            ),
+            supported_cast_case(
+                "pytorch.f32_to_complex64",
+                ExtendedDType::F32,
+                ExtendedDType::Complex64,
+                DTypeCastKind::DomainLift,
+                "Real-to-complex casts are bounded to domain-lift behavior with zero imaginary component.",
+            ),
+            supported_cast_case(
+                "pytorch.f8_e4m3fn_to_f16",
+                ExtendedDType::F8E4M3Fn,
+                ExtendedDType::F16,
+                DTypeCastKind::Lossless,
+                "Float8 widening into `f16` is supported as a bounded low-precision cast path.",
+            ),
+            refused_cast_case(
+                "pytorch.complex128_to_f32.imaginary_drop_refused",
+                ExtendedDType::Complex128,
+                ExtendedDType::F32,
+                "Complex-to-real casts stay explicitly refused until the semantics layer owns a stable imaginary-component drop policy.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    "complex-to-real cast is intentionally unsupported because the current bounded semantics do not define imaginary-component drop behavior",
+                )
+                .with_subject("complex128->f32"),
+            ),
+        ],
+        vec![
+            supported_backend_case(
+                "meta_execution.complex64",
+                DTypeBackendFamily::MetaExecution,
+                ExtendedDType::Complex64,
+                "Meta execution may carry `complex64` contracts even though current runtime backends do not materialize them.",
+            ),
+            supported_backend_case(
+                "meta_execution.f8_e5m2",
+                DTypeBackendFamily::MetaExecution,
+                ExtendedDType::F8E5M2,
+                "Meta execution may carry `f8_e5m2` contracts as first-class semantics records.",
+            ),
+            supported_backend_case(
+                "meta_execution.f64",
+                DTypeBackendFamily::MetaExecution,
+                ExtendedDType::F64,
+                "Meta execution may carry `f64` contracts even before runtime closure exists.",
+            ),
+            supported_backend_case(
+                "current_runtime_backends.f32",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::F32,
+                "Current runtime backends materially support `f32` through the compact core dtype surface.",
+            ),
+            supported_backend_case(
+                "current_runtime_backends.f16",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::F16,
+                "Current runtime backends materially support `f16` through the compact core dtype surface.",
+            ),
+            supported_backend_case(
+                "current_runtime_backends.bf16",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::BF16,
+                "Current runtime backends materially support `bf16` through the compact core dtype surface.",
+            ),
+            supported_backend_case(
+                "current_runtime_backends.i8",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::I8,
+                "Current runtime backends materially support `i8` through the compact core dtype surface.",
+            ),
+            refused_backend_case(
+                "current_runtime_backends.complex64",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::Complex64,
+                "Current runtime backends do not yet materialize complex buffers; `complex64` remains a semantics-only contract today.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends do not materialize `complex64` buffers",
+                )
+                .with_subject("complex64@current_runtime_backends"),
+            ),
+            refused_backend_case(
+                "current_runtime_backends.f8_e5m2",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::F8E5M2,
+                "Current runtime backends do not yet materialize float8 buffers; `f8_e5m2` remains a semantics-only contract today.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends do not materialize `f8_e5m2` buffers",
+                )
+                .with_subject("f8_e5m2@current_runtime_backends"),
+            ),
+            refused_backend_case(
+                "current_runtime_backends.f64",
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::F64,
+                "Current runtime backends stay bounded to the compact dtype subset and do not yet claim `f64` execution.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends stay bounded to the compact dtype subset and do not execute `f64` today",
+                )
+                .with_subject("f64@current_runtime_backends"),
+            ),
+        ],
+    )
+}
+
+fn supported_promotion_case(
+    case_id: &str,
+    left: ExtendedDType,
+    right: ExtendedDType,
+    result_dtype: ExtendedDType,
+    bounded_scope: &str,
+) -> DTypePromotionCaseResult {
+    DTypePromotionCaseResult {
+        case_id: String::from(case_id),
+        left,
+        right,
+        status: DTypePromotionStatus::Supported,
+        result_dtype: Some(result_dtype),
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_promotion_case(
+    case_id: &str,
+    left: ExtendedDType,
+    right: ExtendedDType,
+    bounded_scope: &str,
+    refusal: PsionicRefusal,
+) -> DTypePromotionCaseResult {
+    DTypePromotionCaseResult {
+        case_id: String::from(case_id),
+        left,
+        right,
+        status: DTypePromotionStatus::Refused,
+        result_dtype: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn supported_cast_case(
+    case_id: &str,
+    source: ExtendedDType,
+    target: ExtendedDType,
+    cast_kind: DTypeCastKind,
+    bounded_scope: &str,
+) -> DTypeCastCaseResult {
+    DTypeCastCaseResult {
+        case_id: String::from(case_id),
+        source,
+        target,
+        status: DTypeCastStatus::Supported,
+        cast_kind: Some(cast_kind),
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_cast_case(
+    case_id: &str,
+    source: ExtendedDType,
+    target: ExtendedDType,
+    bounded_scope: &str,
+    refusal: PsionicRefusal,
+) -> DTypeCastCaseResult {
+    DTypeCastCaseResult {
+        case_id: String::from(case_id),
+        source,
+        target,
+        status: DTypeCastStatus::Refused,
+        cast_kind: None,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn supported_backend_case(
+    case_id: &str,
+    backend: DTypeBackendFamily,
+    dtype: ExtendedDType,
+    bounded_scope: &str,
+) -> DTypeBackendCapabilityCaseResult {
+    DTypeBackendCapabilityCaseResult {
+        case_id: String::from(case_id),
+        backend,
+        dtype,
+        status: DTypeBackendCapabilityStatus::Supported,
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_backend_case(
+    case_id: &str,
+    backend: DTypeBackendFamily,
+    dtype: ExtendedDType,
+    bounded_scope: &str,
+    refusal: PsionicRefusal,
+) -> DTypeBackendCapabilityCaseResult {
+    DTypeBackendCapabilityCaseResult {
+        case_id: String::from(case_id),
+        backend,
+        dtype,
+        status: DTypeBackendCapabilityStatus::Refused,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_advanced_dtype_semantics_digest(
+    current_scope_window: &str,
+    promotion_cases: &[DTypePromotionCaseResult],
+    cast_cases: &[DTypeCastCaseResult],
+    backend_cases: &[DTypeBackendCapabilityCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in promotion_cases {
+        lines.push(format!("promotion_case_id={}", case.case_id));
+        lines.push(format!("promotion_left={}", case.left.label()));
+        lines.push(format!("promotion_right={}", case.right.label()));
+        lines.push(format!("promotion_status={:?}", case.status));
+        lines.push(format!("promotion_scope={}", case.bounded_scope));
+        if let Some(result_dtype) = case.result_dtype {
+            lines.push(format!("promotion_result={}", result_dtype.label()));
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("promotion_refusal_code={:?}", refusal.code));
+            lines.push(format!("promotion_refusal_scope={:?}", refusal.scope));
+            lines.push(format!("promotion_refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("promotion_refusal_subject={subject}"));
+            }
+        }
+    }
+    for case in cast_cases {
+        lines.push(format!("cast_case_id={}", case.case_id));
+        lines.push(format!("cast_source={}", case.source.label()));
+        lines.push(format!("cast_target={}", case.target.label()));
+        lines.push(format!("cast_status={:?}", case.status));
+        lines.push(format!("cast_scope={}", case.bounded_scope));
+        if let Some(cast_kind) = case.cast_kind {
+            lines.push(format!("cast_kind={cast_kind:?}"));
+        }
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("cast_refusal_code={:?}", refusal.code));
+            lines.push(format!("cast_refusal_scope={:?}", refusal.scope));
+            lines.push(format!("cast_refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("cast_refusal_subject={subject}"));
+            }
+        }
+    }
+    for case in backend_cases {
+        lines.push(format!("backend_case_id={}", case.case_id));
+        lines.push(format!("backend_family={}", case.backend.label()));
+        lines.push(format!("backend_dtype={}", case.dtype.label()));
+        lines.push(format!("backend_status={:?}", case.status));
+        lines.push(format!("backend_scope={}", case.bounded_scope));
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("backend_refusal_code={:?}", refusal.code));
+            lines.push(format!("backend_refusal_scope={:?}", refusal.scope));
+            lines.push(format!("backend_refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("backend_refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
 }
 
 /// Quantization mode for stored model weights.
@@ -1019,8 +1866,9 @@ fn is_permutation(order: &[usize]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DType, DTypeClass, Device, DeviceKind, Layout, PsionicRefusal, PsionicRefusalCode,
-        PsionicRefusalScope, Shape, TensorSpec, ViewSemantics,
+        builtin_advanced_dtype_semantics_report, DType, DTypeBackendFamily, DTypeCastKind,
+        DTypeClass, Device, DeviceKind, ExtendedDType, ExtendedDTypeClass, Layout, PsionicRefusal,
+        PsionicRefusalCode, PsionicRefusalScope, Shape, TensorSpec, ViewSemantics,
     };
 
     #[test]
@@ -1195,6 +2043,91 @@ mod tests {
         assert!(DType::F32.supports_quantized_logical_storage());
         assert!(!DType::F16.supports_quantized_logical_storage());
         assert!(!DType::I8.supports_quantized_logical_storage());
+    }
+
+    #[test]
+    fn advanced_dtype_semantics_report_tracks_seeded_promotion_cast_and_backend_cases() {
+        let report = builtin_advanced_dtype_semantics_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_advanced_dtype_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        assert_eq!(ExtendedDType::Bool.class(), ExtendedDTypeClass::Boolean);
+        assert_eq!(
+            ExtendedDType::Complex64.class(),
+            ExtendedDTypeClass::ComplexFloatingPoint
+        );
+        assert!(ExtendedDType::F8E4M3Fn.is_low_precision());
+        assert!(!ExtendedDType::Complex128.is_low_precision());
+
+        let promotion = report
+            .resolve_binary_promotion(ExtendedDType::F16, ExtendedDType::BF16)
+            .expect("missing seeded f16/bf16 promotion");
+        assert_eq!(promotion, ExtendedDType::F32);
+
+        let complex_promotion = report
+            .resolve_binary_promotion(ExtendedDType::F64, ExtendedDType::Complex64)
+            .expect("missing seeded f64/complex64 promotion");
+        assert_eq!(complex_promotion, ExtendedDType::Complex128);
+
+        let refused_promotion = report
+            .resolve_binary_promotion(ExtendedDType::F8E5M2, ExtendedDType::BF16)
+            .expect_err("seeded float8/bfloat16 promotion should refuse");
+        assert_eq!(refused_promotion.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(refused_promotion.scope, PsionicRefusalScope::Graph);
+        assert_eq!(refused_promotion.subject.as_deref(), Some("f8_e5m2+bf16"));
+
+        let cast = report
+            .resolve_cast(ExtendedDType::F64, ExtendedDType::F32)
+            .expect("missing seeded f64->f32 cast");
+        assert_eq!(cast, DTypeCastKind::PrecisionLoss);
+
+        let refused_cast = report
+            .resolve_cast(ExtendedDType::Complex128, ExtendedDType::F32)
+            .expect_err("complex-to-real cast should refuse");
+        assert_eq!(refused_cast.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(refused_cast.scope, PsionicRefusalScope::Graph);
+        assert_eq!(refused_cast.subject.as_deref(), Some("complex128->f32"));
+
+        let backend = report.validate_backend_support(
+            DTypeBackendFamily::CurrentRuntimeBackends,
+            ExtendedDType::F32,
+        );
+        assert!(backend.is_ok());
+
+        let refused_backend = report
+            .validate_backend_support(
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                ExtendedDType::Complex64,
+            )
+            .expect_err("current runtime backends should refuse complex64");
+        assert_eq!(
+            refused_backend.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(refused_backend.scope, PsionicRefusalScope::Runtime);
+        assert_eq!(
+            refused_backend.subject.as_deref(),
+            Some("complex64@current_runtime_backends")
+        );
+
+        let lowered = ExtendedDType::F32
+            .try_into_core_dtype()
+            .expect("f32 should lower into compact core dtype");
+        assert_eq!(lowered, DType::F32);
+
+        let refused_core = ExtendedDType::Complex64
+            .try_into_core_dtype()
+            .expect_err("complex64 should not lower into the compact core dtype");
+        assert_eq!(
+            refused_core.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(refused_core.scope, PsionicRefusalScope::Runtime);
+        assert_eq!(refused_core.subject.as_deref(), Some("complex64"));
     }
 
     #[test]
