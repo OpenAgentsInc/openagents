@@ -170,6 +170,10 @@ That now includes one intentionally narrow executor-training answer:
 - the resulting claim is intentionally scoped to the validation corpus only; it
   is not a claim that larger learned executors, broader Wasm coverage, or
   compile-to-weights work are already complete in Psionic
+- `psionic-research` can now use that bounded trained-small receipt as an
+  explicit comparator inside the learned-plus-compiled and learned-circuit
+  Tassadar research family, but that does not expand the train-side claim
+  boundary beyond `validation_corpus_only`
 
 ## Apple Adapter Reality
 

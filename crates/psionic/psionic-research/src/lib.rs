@@ -39,6 +39,7 @@ pub enum ExperimentFamilyKind {
     ValidatorPolicy,
     EnvironmentMix,
     ExecutorVariants,
+    ExecutorCircuitResearch,
 }
 
 impl ExperimentFamilyKind {
@@ -54,6 +55,7 @@ impl ExperimentFamilyKind {
             Self::ValidatorPolicy => "validator_policy",
             Self::EnvironmentMix => "environment_mix",
             Self::ExecutorVariants => "executor_variants",
+            Self::ExecutorCircuitResearch => "executor_circuit_research",
         }
     }
 }
@@ -71,6 +73,7 @@ pub enum ExperimentArtifactKind {
     BenchmarkReport,
     ModelDescriptor,
     CompiledWeightArtifact,
+    TrainingReceipt,
     ProgramArtifact,
     RuntimeManifest,
     ExecutionProofBundle,
@@ -940,6 +943,128 @@ impl TassadarExecutorExperimentSpec {
     }
 }
 
+/// Research line under test for post-baseline learned-circuit executor work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarCircuitResearchLine {
+    HybridLearnedCompiled,
+    MinimalInstruction,
+    Subleq,
+}
+
+/// Instruction-set family being explored by one learned-circuit research candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarCircuitInstructionSet {
+    WasmBaseline,
+    MinimalArithmetic,
+    Subleq,
+}
+
+/// Which currently implemented executor surface proxies the research line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarCircuitExecutionProxy {
+    HandcraftedWasmBaseline,
+    CompiledProgramDeployment,
+    TrainedSmallExecutor,
+}
+
+/// Claim boundary for one learned-circuit research run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarCircuitClaimBoundary {
+    ResearchOnly,
+    ValidationCorpusOnly,
+}
+
+/// Proof expectation required before one learned-circuit result can be compared.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarCircuitProofExpectation {
+    HandcraftedBaselineOnly,
+    HandcraftedAndCompiled,
+    HandcraftedCompiledAndTrainedSmall,
+}
+
+/// Explicit comparison baselines required by one learned-circuit research run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarCircuitComparisonBaselines {
+    pub handcrafted_model_id: String,
+    pub handcrafted_benchmark_ref: String,
+    pub compiled_baseline_required: bool,
+    pub trained_small_model_id: String,
+    pub trained_small_receipt_ref: String,
+    pub trained_small_claim_scope: String,
+}
+
+impl TassadarCircuitComparisonBaselines {
+    /// Creates the comparator contract for one learned-circuit research run.
+    #[must_use]
+    pub fn new(
+        handcrafted_model_id: impl Into<String>,
+        handcrafted_benchmark_ref: impl Into<String>,
+        compiled_baseline_required: bool,
+        trained_small_model_id: impl Into<String>,
+        trained_small_receipt_ref: impl Into<String>,
+        trained_small_claim_scope: impl Into<String>,
+    ) -> Self {
+        Self {
+            handcrafted_model_id: handcrafted_model_id.into(),
+            handcrafted_benchmark_ref: handcrafted_benchmark_ref.into(),
+            compiled_baseline_required,
+            trained_small_model_id: trained_small_model_id.into(),
+            trained_small_receipt_ref: trained_small_receipt_ref.into(),
+            trained_small_claim_scope: trained_small_claim_scope.into(),
+        }
+    }
+}
+
+/// Full learned-plus-compiled or learned-circuit research payload.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarCircuitExperimentSpec {
+    pub benchmark_target: TassadarExecutorBenchmarkTarget,
+    pub benchmark_ref: String,
+    pub benchmark_version: String,
+    pub environment_ref: String,
+    pub research_line: TassadarCircuitResearchLine,
+    pub instruction_set: TassadarCircuitInstructionSet,
+    pub execution_proxy: TassadarCircuitExecutionProxy,
+    pub claim_boundary: TassadarCircuitClaimBoundary,
+    pub proof_expectation: TassadarCircuitProofExpectation,
+    pub baselines: TassadarCircuitComparisonBaselines,
+}
+
+impl TassadarCircuitExperimentSpec {
+    /// Creates a learned-circuit experiment payload.
+    #[must_use]
+    pub fn new(
+        benchmark_target: TassadarExecutorBenchmarkTarget,
+        benchmark_ref: impl Into<String>,
+        benchmark_version: impl Into<String>,
+        environment_ref: impl Into<String>,
+        research_line: TassadarCircuitResearchLine,
+        instruction_set: TassadarCircuitInstructionSet,
+        execution_proxy: TassadarCircuitExecutionProxy,
+        claim_boundary: TassadarCircuitClaimBoundary,
+        proof_expectation: TassadarCircuitProofExpectation,
+        baselines: TassadarCircuitComparisonBaselines,
+    ) -> Self {
+        Self {
+            benchmark_target,
+            benchmark_ref: benchmark_ref.into(),
+            benchmark_version: benchmark_version.into(),
+            environment_ref: environment_ref.into(),
+            research_line,
+            instruction_set,
+            execution_proxy,
+            claim_boundary,
+            proof_expectation,
+            baselines,
+        }
+    }
+}
+
 /// Typed experiment family payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "family", rename_all = "snake_case")]
@@ -974,6 +1099,9 @@ pub enum ExperimentFamily {
     ExecutorVariants {
         executor: TassadarExecutorExperimentSpec,
     },
+    ExecutorCircuitResearch {
+        circuit: TassadarCircuitExperimentSpec,
+    },
 }
 
 impl ExperimentFamily {
@@ -989,6 +1117,9 @@ impl ExperimentFamily {
             Self::ValidatorPolicy { .. } => ExperimentFamilyKind::ValidatorPolicy,
             Self::EnvironmentMix { .. } => ExperimentFamilyKind::EnvironmentMix,
             Self::ExecutorVariants { .. } => ExperimentFamilyKind::ExecutorVariants,
+            Self::ExecutorCircuitResearch { .. } => {
+                ExperimentFamilyKind::ExecutorCircuitResearch
+            }
         }
     }
 }
@@ -1849,6 +1980,10 @@ mod tests {
         ExperimentScoreContract, ExperimentThreshold, PromotionDecision, PromotionReasonCode,
         PromotionRecord, SandboxWarmPoolPolicy, ScoreDirection, ScoreMetricSpec,
         ServingSchedulerPolicy, TrainingPolicySpec, WeightedEnvironmentRef,
+        TassadarCircuitClaimBoundary, TassadarCircuitComparisonBaselines,
+        TassadarCircuitExecutionProxy, TassadarCircuitExperimentSpec,
+        TassadarCircuitInstructionSet, TassadarCircuitProofExpectation,
+        TassadarCircuitResearchLine, TassadarExecutorBenchmarkTarget,
     };
 
     fn sample_serving_contract() -> ExperimentScoreContract {
@@ -2172,8 +2307,33 @@ mod tests {
                 ],
             ),
         };
+        let circuit = ExperimentFamily::ExecutorCircuitResearch {
+            circuit: TassadarCircuitExperimentSpec::new(
+                TassadarExecutorBenchmarkTarget::ValidationCorpus,
+                "benchmark://tassadar/reference_fixture",
+                "2026.03.16",
+                "env://tassadar/reference_fixture",
+                TassadarCircuitResearchLine::HybridLearnedCompiled,
+                TassadarCircuitInstructionSet::MinimalArithmetic,
+                TassadarCircuitExecutionProxy::CompiledProgramDeployment,
+                TassadarCircuitClaimBoundary::ResearchOnly,
+                TassadarCircuitProofExpectation::HandcraftedAndCompiled,
+                TassadarCircuitComparisonBaselines::new(
+                    "tassadar-executor-fixture-v0",
+                    "benchmark://tassadar/reference_fixture",
+                    true,
+                    "tassadar-small-executor-v0",
+                    "receipt://train/tassadar_small/reference",
+                    "validation_corpus_only",
+                ),
+            ),
+        };
         assert_eq!(sandbox.kind(), ExperimentFamilyKind::SandboxWarmPool);
         assert_eq!(environment_mix.kind(), ExperimentFamilyKind::EnvironmentMix);
+        assert_eq!(
+            circuit.kind(),
+            ExperimentFamilyKind::ExecutorCircuitResearch
+        );
     }
 
     #[test]

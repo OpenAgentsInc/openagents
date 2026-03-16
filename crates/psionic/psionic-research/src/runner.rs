@@ -8,6 +8,7 @@ use psionic_eval::{
     run_tassadar_reference_fixture_benchmark,
 };
 use psionic_models::{TassadarCompiledProgramSuiteArtifact, TassadarExecutorFixture};
+use psionic_train::{TassadarSmallExecutorTrainingConfig, train_tassadar_small_executor};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -17,6 +18,9 @@ use crate::{
     ExperimentFailureReason, ExperimentFamily, ExperimentMetric, ExperimentReceiptKind,
     ExperimentReceiptRef, ExperimentResult, ExperimentRunStatus, ExperimentScore,
     ExperimentScoreEvaluationError, ExperimentSpec, ResearchSweepEntry, ResearchSweepRecord,
+    TassadarCircuitClaimBoundary, TassadarCircuitExecutionProxy,
+    TassadarCircuitExperimentSpec, TassadarCircuitInstructionSet,
+    TassadarCircuitProofExpectation, TassadarCircuitResearchLine,
     TassadarExecutorAttentionMode, TassadarExecutorBenchmarkTarget,
     TassadarExecutorDecodeCacheKind, TassadarExecutorExperimentSpec,
     TassadarExecutorWeightConstruction,
@@ -157,6 +161,9 @@ pub enum ResearchRunnerError {
     /// The compiled-weight suite builder failed.
     #[error("tassadar compiled-weight build failed: {0}")]
     TassadarCompiledWeights(String),
+    /// The bounded small-executor training comparator failed.
+    #[error("tassadar small-executor training failed: {0}")]
+    TassadarSmallExecutorTraining(String),
 }
 
 /// Failure while executing or comparing a sweep of comparable research runs.
@@ -287,6 +294,15 @@ impl ResearchRunner {
                 profile_ref.as_str(),
                 estimated_runtime_ms,
             ),
+            ExperimentFamily::ExecutorCircuitResearch { circuit } => {
+                execute_executor_circuit_research(
+                    invocation,
+                    circuit,
+                    profile_mode,
+                    profile_ref.as_str(),
+                    estimated_runtime_ms,
+                )
+            }
             _ => {
                 let scores = synthesize_scores(&invocation.spec);
                 let metrics = synthesize_metrics(&invocation.spec, estimated_runtime_ms);
@@ -538,6 +554,103 @@ fn execute_executor_variants(
     })
 }
 
+fn execute_executor_circuit_research(
+    invocation: &ResearchRunnerInvocation,
+    circuit: &TassadarCircuitExperimentSpec,
+    profile_mode: RunnerProfileMode,
+    profile_ref: &str,
+    estimated_runtime_ms: u64,
+) -> Result<ResearchRunnerRecord, ResearchRunnerError> {
+    validate_executor_circuit_research(invocation, circuit)?;
+    let baseline_report = run_tassadar_reference_fixture_benchmark(circuit.benchmark_version.as_str())
+        .map_err(|error| ResearchRunnerError::TassadarBenchmark(error.to_string()))?;
+    let compiled_suite = maybe_build_circuit_compiled_suite(invocation, circuit, &baseline_report)?;
+    let training_receipt = build_circuit_training_comparator(circuit)?;
+    let stats = build_circuit_research_stats(
+        circuit,
+        &baseline_report,
+        compiled_suite.as_ref(),
+        &training_receipt,
+        estimated_runtime_ms,
+    );
+    let scores = build_circuit_research_scores(invocation, &stats);
+    let metrics = build_circuit_research_metrics(&stats);
+    let stdout_log = format!(
+        "run_id={} family={} research_line={:?} instruction_set={:?} execution_proxy={:?} claim_boundary={:?} proof_expectation={:?} profile_mode={:?} profile_ref={} status=succeeded case_count={} proxy_exactness_bps={} proxy_vs_handcrafted_gap_bps_abs={} proxy_vs_trained_small_gap_bps_abs={}",
+        invocation.run_id,
+        invocation.spec.family.kind().label(),
+        circuit.research_line,
+        circuit.instruction_set,
+        circuit.execution_proxy,
+        circuit.claim_boundary,
+        circuit.proof_expectation,
+        profile_mode,
+        profile_ref,
+        stats.case_count,
+        stats.proxy_exactness_bps,
+        stats.proxy_vs_handcrafted_gap_bps_abs,
+        stats.proxy_vs_trained_small_gap_bps_abs
+    );
+    let stderr_log = String::new();
+    let stdout_sha256 = stable_text_digest(stdout_log.as_str());
+    let stderr_sha256 = stable_text_digest(stderr_log.as_str());
+    let receipt = ResearchExecutionReceipt::new(
+        invocation,
+        profile_mode,
+        profile_ref,
+        ExperimentRunStatus::Succeeded,
+        estimated_runtime_ms,
+        stdout_sha256.as_str(),
+        stderr_sha256.as_str(),
+    );
+    let mut receipt_refs = vec![receipt.as_receipt_ref()];
+    receipt_refs.push(build_executor_eval_receipt(invocation, &baseline_report)?);
+    receipt_refs.push(ExperimentReceiptRef::new(
+        ExperimentReceiptKind::TrainingRun,
+        format!("receipt://train/{}/tassadar_small_executor", invocation.spec.candidate_id),
+        training_receipt.receipt_digest.clone(),
+    ));
+    let artifact_outputs = build_circuit_research_artifact_outputs(
+        invocation,
+        &baseline_report,
+        compiled_suite.as_ref(),
+        &training_receipt,
+    )?;
+    let result = ExperimentResult::new(
+        invocation.run_id.clone(),
+        &invocation.spec,
+        invocation.started_at_ms,
+        invocation.started_at_ms + estimated_runtime_ms,
+        ExperimentRunStatus::Succeeded,
+        scores,
+        metrics,
+        receipt_refs,
+        artifact_outputs,
+        stdout_sha256,
+        stderr_sha256,
+    );
+    Ok(ResearchRunnerRecord {
+        result,
+        receipt,
+        stdout_log,
+        stderr_log,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct ExecutorCircuitResearchStats {
+    proxy_exactness_bps: i64,
+    handcrafted_exactness_bps: i64,
+    trained_small_exactness_bps: i64,
+    proxy_vs_handcrafted_gap_bps_abs: i64,
+    proxy_vs_trained_small_gap_bps_abs: i64,
+    compiled_weight_artifact_bytes: i64,
+    exact_case_count: i64,
+    case_count: i64,
+    claim_boundary_code: i64,
+    wall_time_ms: i64,
+}
+
 #[derive(Clone, Copy)]
 struct ExecutorBenchmarkStats {
     exactness_bps: i64,
@@ -746,6 +859,287 @@ fn maybe_build_compiled_weight_suite(
     )
     .map_err(|error| ResearchRunnerError::TassadarCompiledWeights(error.to_string()))?;
     Ok(Some(suite))
+}
+
+fn validate_executor_circuit_research(
+    invocation: &ResearchRunnerInvocation,
+    circuit: &TassadarCircuitExperimentSpec,
+) -> Result<(), ResearchRunnerError> {
+    require_executor_artifact(invocation, ExperimentArtifactKind::BenchmarkSuite)?;
+    require_executor_artifact(invocation, ExperimentArtifactKind::ModelDescriptor)?;
+    require_executor_artifact(invocation, ExperimentArtifactKind::ProgramArtifact)?;
+    if circuit.benchmark_target != TassadarExecutorBenchmarkTarget::ValidationCorpus {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "executor circuit research is currently validation-corpus-only because the trained small-executor comparator is validation-corpus-only",
+        )));
+    }
+    if circuit.benchmark_ref != TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "benchmark_ref mismatch: expected `{TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF}`, found `{}`",
+            circuit.benchmark_ref
+        )));
+    }
+    if circuit.environment_ref != TASSADAR_BENCHMARK_ENVIRONMENT_REF {
+        return Err(ResearchRunnerError::InvalidInvocation(format!(
+            "environment_ref mismatch: expected `{TASSADAR_BENCHMARK_ENVIRONMENT_REF}`, found `{}`",
+            circuit.environment_ref
+        )));
+    }
+    if circuit.baselines.handcrafted_benchmark_ref != circuit.benchmark_ref {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "circuit baselines must point at the same handcrafted benchmark ref as the experiment",
+        )));
+    }
+    if circuit.baselines.trained_small_claim_scope != "validation_corpus_only" {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "trained small-executor comparator must declare validation_corpus_only claim scope",
+        )));
+    }
+    match circuit.research_line {
+        TassadarCircuitResearchLine::HybridLearnedCompiled => {}
+        TassadarCircuitResearchLine::MinimalInstruction => {
+            if circuit.instruction_set == TassadarCircuitInstructionSet::WasmBaseline {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "minimal-instruction research lines must not use the wasm_baseline instruction set",
+                )));
+            }
+        }
+        TassadarCircuitResearchLine::Subleq => {
+            if circuit.instruction_set != TassadarCircuitInstructionSet::Subleq {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "subleq research lines must use the subleq instruction set",
+                )));
+            }
+        }
+    }
+    if circuit.execution_proxy == TassadarCircuitExecutionProxy::CompiledProgramDeployment
+        && !circuit.baselines.compiled_baseline_required
+    {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "compiled-program proxy requires compiled_baseline_required=true",
+        )));
+    }
+    if circuit.execution_proxy == TassadarCircuitExecutionProxy::TrainedSmallExecutor
+        && circuit.claim_boundary != TassadarCircuitClaimBoundary::ValidationCorpusOnly
+    {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "trained-small-executor proxy must keep claim_boundary=validation_corpus_only",
+        )));
+    }
+    if circuit.claim_boundary == TassadarCircuitClaimBoundary::ValidationCorpusOnly
+        && circuit.execution_proxy != TassadarCircuitExecutionProxy::TrainedSmallExecutor
+    {
+        return Err(ResearchRunnerError::InvalidInvocation(String::from(
+            "validation_corpus_only claims are reserved for the bounded trained-small comparator path",
+        )));
+    }
+    match circuit.proof_expectation {
+        TassadarCircuitProofExpectation::HandcraftedBaselineOnly => {
+            if circuit.execution_proxy == TassadarCircuitExecutionProxy::CompiledProgramDeployment {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "compiled-program proxy cannot request handcrafted-baseline-only proof expectations",
+                )));
+            }
+        }
+        TassadarCircuitProofExpectation::HandcraftedAndCompiled => {
+            if !circuit.baselines.compiled_baseline_required {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "handcrafted_and_compiled proof expectation requires compiled_baseline_required=true",
+                )));
+            }
+        }
+        TassadarCircuitProofExpectation::HandcraftedCompiledAndTrainedSmall => {
+            if !circuit.baselines.compiled_baseline_required {
+                return Err(ResearchRunnerError::InvalidInvocation(String::from(
+                    "handcrafted_compiled_and_trained_small proof expectation requires compiled_baseline_required=true",
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn maybe_build_circuit_compiled_suite(
+    invocation: &ResearchRunnerInvocation,
+    circuit: &TassadarCircuitExperimentSpec,
+    report: &TassadarBenchmarkReport,
+) -> Result<Option<TassadarCompiledProgramSuiteArtifact>, ResearchRunnerError> {
+    let requires_compiled = circuit.baselines.compiled_baseline_required
+        || circuit.execution_proxy == TassadarCircuitExecutionProxy::CompiledProgramDeployment
+        || matches!(
+            circuit.proof_expectation,
+            TassadarCircuitProofExpectation::HandcraftedAndCompiled
+                | TassadarCircuitProofExpectation::HandcraftedCompiledAndTrainedSmall
+        );
+    if !requires_compiled {
+        return Ok(None);
+    }
+    let fixture = TassadarExecutorFixture::core_i32_v1();
+    let suite = TassadarCompiledProgramSuiteArtifact::compile(
+        format!("{}.circuit_compiled_suite", invocation.spec.candidate_id),
+        format!("{}@{}", circuit.benchmark_ref, circuit.benchmark_version),
+        &fixture,
+        report.suite.artifacts.as_slice(),
+    )
+    .map_err(|error| ResearchRunnerError::TassadarCompiledWeights(error.to_string()))?;
+    Ok(Some(suite))
+}
+
+fn build_circuit_training_comparator(
+    _circuit: &TassadarCircuitExperimentSpec,
+) -> Result<psionic_train::TassadarSmallExecutorTrainingReceipt, ResearchRunnerError> {
+    train_tassadar_small_executor(&TassadarSmallExecutorTrainingConfig::reference())
+        .map_err(|error| ResearchRunnerError::TassadarSmallExecutorTraining(error.to_string()))
+}
+
+fn build_circuit_research_stats(
+    circuit: &TassadarCircuitExperimentSpec,
+    baseline_report: &TassadarBenchmarkReport,
+    compiled_suite: Option<&TassadarCompiledProgramSuiteArtifact>,
+    training_receipt: &psionic_train::TassadarSmallExecutorTrainingReceipt,
+    estimated_runtime_ms: u64,
+) -> ExecutorCircuitResearchStats {
+    let case_count = saturating_i64_from_usize(baseline_report.case_reports.len());
+    let handcrafted_exactness_bps = if case_count == 0 {
+        0
+    } else {
+        baseline_report
+            .case_reports
+            .iter()
+            .map(|case| i64::from(case.score_bps))
+            .sum::<i64>()
+            / case_count
+    };
+    let trained_small_exactness_bps = i64::from(training_receipt.evaluation.aggregate_score_bps);
+    let proxy_exactness_bps = match circuit.execution_proxy {
+        TassadarCircuitExecutionProxy::HandcraftedWasmBaseline => handcrafted_exactness_bps,
+        TassadarCircuitExecutionProxy::CompiledProgramDeployment => handcrafted_exactness_bps,
+        TassadarCircuitExecutionProxy::TrainedSmallExecutor => trained_small_exactness_bps,
+    };
+    let exact_case_count = match circuit.execution_proxy {
+        TassadarCircuitExecutionProxy::HandcraftedWasmBaseline
+        | TassadarCircuitExecutionProxy::CompiledProgramDeployment => case_count,
+        TassadarCircuitExecutionProxy::TrainedSmallExecutor => {
+            i64::from(training_receipt.evaluation.exact_case_count)
+        }
+    };
+    ExecutorCircuitResearchStats {
+        proxy_exactness_bps,
+        handcrafted_exactness_bps,
+        trained_small_exactness_bps,
+        proxy_vs_handcrafted_gap_bps_abs: (proxy_exactness_bps - handcrafted_exactness_bps).abs(),
+        proxy_vs_trained_small_gap_bps_abs: (proxy_exactness_bps - trained_small_exactness_bps).abs(),
+        compiled_weight_artifact_bytes: compiled_suite
+            .map(|suite| saturating_i64_from_u64(suite.total_compiled_weight_artifact_bytes))
+            .unwrap_or(0),
+        exact_case_count,
+        case_count,
+        claim_boundary_code: match circuit.claim_boundary {
+            TassadarCircuitClaimBoundary::ResearchOnly => 0,
+            TassadarCircuitClaimBoundary::ValidationCorpusOnly => 1,
+        },
+        wall_time_ms: saturating_i64_from_u64(estimated_runtime_ms),
+    }
+}
+
+fn build_circuit_research_scores(
+    invocation: &ResearchRunnerInvocation,
+    stats: &ExecutorCircuitResearchStats,
+) -> Vec<ExperimentScore> {
+    invocation
+        .spec
+        .score_contract
+        .metrics
+        .iter()
+        .map(|metric| {
+            ExperimentScore::new(
+                metric.metric_id.clone(),
+                metric.unit.clone(),
+                circuit_metric_value(stats, metric.metric_id.as_str()),
+            )
+        })
+        .collect()
+}
+
+fn build_circuit_research_metrics(stats: &ExecutorCircuitResearchStats) -> Vec<ExperimentMetric> {
+    vec![
+        ExperimentMetric::new("wall_time_ms", "milliseconds", stats.wall_time_ms),
+        ExperimentMetric::new("circuit_proxy_exactness_bps", "bps", stats.proxy_exactness_bps),
+        ExperimentMetric::new(
+            "circuit_handcrafted_exactness_bps",
+            "bps",
+            stats.handcrafted_exactness_bps,
+        ),
+        ExperimentMetric::new(
+            "circuit_trained_small_exactness_bps",
+            "bps",
+            stats.trained_small_exactness_bps,
+        ),
+        ExperimentMetric::new(
+            "circuit_proxy_vs_handcrafted_gap_bps_abs",
+            "bps",
+            stats.proxy_vs_handcrafted_gap_bps_abs,
+        ),
+        ExperimentMetric::new(
+            "circuit_proxy_vs_trained_small_gap_bps_abs",
+            "bps",
+            stats.proxy_vs_trained_small_gap_bps_abs,
+        ),
+        ExperimentMetric::new(
+            "circuit_compiled_weight_artifact_bytes",
+            "bytes",
+            stats.compiled_weight_artifact_bytes,
+        ),
+        ExperimentMetric::new("circuit_exact_case_count", "count", stats.exact_case_count),
+        ExperimentMetric::new("circuit_case_count", "count", stats.case_count),
+        ExperimentMetric::new(
+            "circuit_claim_boundary_code",
+            "enum_discriminant",
+            stats.claim_boundary_code,
+        ),
+    ]
+}
+
+fn circuit_metric_value(stats: &ExecutorCircuitResearchStats, metric_id: &str) -> i64 {
+    if metric_id.contains("proxy_exactness") {
+        stats.proxy_exactness_bps
+    } else if metric_id.contains("handcrafted_exactness") {
+        stats.handcrafted_exactness_bps
+    } else if metric_id.contains("trained_small_exactness") {
+        stats.trained_small_exactness_bps
+    } else if metric_id.contains("compiled_weight_artifact_bytes") {
+        stats.compiled_weight_artifact_bytes
+    } else if metric_id.contains("claim_boundary") {
+        stats.claim_boundary_code
+    } else if metric_id.contains("proxy_vs_handcrafted_gap") {
+        stats.proxy_vs_handcrafted_gap_bps_abs
+    } else if metric_id.contains("proxy_vs_trained_small_gap") {
+        stats.proxy_vs_trained_small_gap_bps_abs
+    } else if metric_id.contains("exact_case_count") {
+        stats.exact_case_count
+    } else if metric_id.contains("case_count") {
+        stats.case_count
+    } else {
+        stats.wall_time_ms
+    }
+}
+
+fn build_circuit_research_artifact_outputs(
+    invocation: &ResearchRunnerInvocation,
+    baseline_report: &TassadarBenchmarkReport,
+    compiled_suite: Option<&TassadarCompiledProgramSuiteArtifact>,
+    training_receipt: &psionic_train::TassadarSmallExecutorTrainingReceipt,
+) -> Result<Vec<ExperimentArtifactOutput>, ResearchRunnerError> {
+    let mut artifacts = build_executor_artifact_outputs(invocation, baseline_report, compiled_suite)?;
+    artifacts.push(ExperimentArtifactOutput::new(
+        ExperimentArtifactKind::TrainingReceipt,
+        format!(
+            "artifact://research/{}/trained_small_receipt",
+            invocation.spec.candidate_id
+        ),
+        training_receipt.receipt_digest.clone(),
+    ));
+    Ok(artifacts)
 }
 
 fn build_executor_benchmark_stats(
@@ -1173,6 +1567,19 @@ fn estimate_runtime_ms(spec: &ExperimentSpec) -> u64 {
                 + architecture_cost
                 + compile_cost
         }
+        ExperimentFamily::ExecutorCircuitResearch { circuit } => {
+            let proxy_cost = match circuit.execution_proxy {
+                TassadarCircuitExecutionProxy::HandcraftedWasmBaseline => 2_800,
+                TassadarCircuitExecutionProxy::CompiledProgramDeployment => 4_200,
+                TassadarCircuitExecutionProxy::TrainedSmallExecutor => 6_400,
+            };
+            let proof_cost = match circuit.proof_expectation {
+                TassadarCircuitProofExpectation::HandcraftedBaselineOnly => 0,
+                TassadarCircuitProofExpectation::HandcraftedAndCompiled => 1_200,
+                TassadarCircuitProofExpectation::HandcraftedCompiledAndTrainedSmall => 2_400,
+            };
+            proxy_cost + proof_cost
+        }
     }
 }
 
@@ -1284,6 +1691,9 @@ fn synthetic_metric_value(spec: &ExperimentSpec, metric_id: &str) -> i64 {
         ExperimentFamily::ExecutorVariants { .. } => {
             i64::try_from(estimate_runtime_ms(spec)).unwrap_or(i64::MAX)
         }
+        ExperimentFamily::ExecutorCircuitResearch { .. } => {
+            i64::try_from(estimate_runtime_ms(spec)).unwrap_or(i64::MAX)
+        }
     }
 }
 
@@ -1327,6 +1737,7 @@ fn additional_receipt_refs(
             stable_aux_receipt_digest(invocation, "validator_verdict", estimated_runtime_ms),
         )],
         ExperimentFamily::ExecutorVariants { .. } => Vec::new(),
+        ExperimentFamily::ExecutorCircuitResearch { .. } => Vec::new(),
         _ => Vec::new(),
     }
 }
@@ -1406,14 +1817,19 @@ fn stable_research_execution_receipt_digest(
 mod tests {
     use psionic_eval::{
         TASSADAR_ARTICLE_CLASS_BENCHMARK_ENVIRONMENT_REF, TASSADAR_ARTICLE_CLASS_BENCHMARK_REF,
+        TASSADAR_BENCHMARK_ENVIRONMENT_REF, TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF,
     };
     use tempfile::tempdir;
 
     use crate::{
         CandidateMutation, ExperimentArtifactKind, ExperimentArtifactRef, ExperimentBudget,
-        ExperimentFamily, ExperimentFamilyKind, ExperimentRunStatus, ExperimentScoreContract,
-        ExperimentThreshold, ResearchRunner, ResearchRunnerError, ResearchRunnerInvocation,
-        ScoreDirection, ScoreMetricSpec, ServingSchedulerPolicy,
+        ExperimentFamily, ExperimentFamilyKind, ExperimentReceiptKind, ExperimentRunStatus,
+        ExperimentScoreContract, ExperimentThreshold, ResearchRunner, ResearchRunnerError,
+        ResearchRunnerInvocation, ScoreDirection, ScoreMetricSpec, ServingSchedulerPolicy,
+        TassadarCircuitClaimBoundary, TassadarCircuitComparisonBaselines,
+        TassadarCircuitExecutionProxy, TassadarCircuitExperimentSpec,
+        TassadarCircuitInstructionSet, TassadarCircuitProofExpectation,
+        TassadarCircuitResearchLine,
         TassadarExecutorArchitectureVariant,
         TassadarExecutorAttentionMode, TassadarExecutorBenchmarkTarget,
         TassadarExecutorDecodeCacheKind, TassadarExecutorDecodeCacheVariant,
@@ -1579,6 +1995,83 @@ mod tests {
         ResearchRunnerInvocation::new(run_id, spec, 2_000)
     }
 
+    fn sample_circuit_invocation(candidate_id: &str, run_id: &str) -> ResearchRunnerInvocation {
+        let spec = crate::ExperimentSpec::new(
+            "exp.tassadar.circuit.1",
+            candidate_id,
+            ExperimentFamily::ExecutorCircuitResearch {
+                circuit: TassadarCircuitExperimentSpec::new(
+                    TassadarExecutorBenchmarkTarget::ValidationCorpus,
+                    TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF,
+                    "2026.03.16",
+                    TASSADAR_BENCHMARK_ENVIRONMENT_REF,
+                    TassadarCircuitResearchLine::Subleq,
+                    TassadarCircuitInstructionSet::Subleq,
+                    TassadarCircuitExecutionProxy::TrainedSmallExecutor,
+                    TassadarCircuitClaimBoundary::ValidationCorpusOnly,
+                    TassadarCircuitProofExpectation::HandcraftedCompiledAndTrainedSmall,
+                    TassadarCircuitComparisonBaselines::new(
+                        "tassadar-executor-fixture-v0",
+                        TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF,
+                        true,
+                        "tassadar-small-executor-v0",
+                        "receipt://train/tassadar_small/reference",
+                        "validation_corpus_only",
+                    ),
+                ),
+            },
+            vec![
+                ExperimentArtifactRef::new(
+                    ExperimentArtifactKind::BenchmarkSuite,
+                    format!("{}@2026.03.16", TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF),
+                    "benchmark-suite-digest",
+                ),
+                ExperimentArtifactRef::new(
+                    ExperimentArtifactKind::ModelDescriptor,
+                    "model://tassadar/reference_fixture",
+                    "model-descriptor-digest",
+                ),
+                ExperimentArtifactRef::new(
+                    ExperimentArtifactKind::ProgramArtifact,
+                    "artifact://tassadar/reference/programs",
+                    "program-artifact-digest",
+                ),
+            ],
+            CandidateMutation::new(
+                format!("{candidate_id}.mutation"),
+                Some(String::from("baseline")),
+                ExperimentFamilyKind::ExecutorCircuitResearch,
+                vec![
+                    String::from("tassadar.circuit.execution_proxy"),
+                    String::from("tassadar.circuit.instruction_set"),
+                ],
+            ),
+            crate::ExperimentRuntimeProfile::new("runner-digest-circuit")
+                .with_runtime_profile_ref("runtime://research/local"),
+            ExperimentBudget::new(25_000, "runs/tassadar.circuit"),
+            ExperimentScoreContract::new(
+                "tassadar.circuit.score.v1",
+                ExperimentFamilyKind::ExecutorCircuitResearch,
+                vec![
+                    ScoreMetricSpec::new(
+                        "circuit_proxy_exactness_bps",
+                        "bps",
+                        ScoreDirection::Maximize,
+                        7_000,
+                    )
+                    .with_hard_gate(ExperimentThreshold::at_least(8_000)),
+                    ScoreMetricSpec::new(
+                        "circuit_proxy_vs_trained_small_gap_bps_abs",
+                        "bps",
+                        ScoreDirection::Minimize,
+                        3_000,
+                    ),
+                ],
+            ),
+        );
+        ResearchRunnerInvocation::new(run_id, spec, 3_000)
+    }
+
     #[test]
     fn runner_executes_serving_experiment_end_to_end() {
         let invocation = sample_serving_invocation();
@@ -1736,6 +2229,48 @@ mod tests {
             panic!("executor variants");
         };
         executor.architecture.head_dim = 4;
+        let error = ResearchRunner::execute_local(&invocation).expect_err("runner should refuse");
+        assert!(matches!(error, ResearchRunnerError::InvalidInvocation(_)));
+    }
+
+    #[test]
+    fn runner_executes_circuit_research_family_end_to_end() {
+        let invocation = sample_circuit_invocation("candidate-subleq", "run-subleq");
+        let record = ResearchRunner::execute_local(&invocation).expect("runner should succeed");
+        assert_eq!(
+            record.result.family,
+            ExperimentFamilyKind::ExecutorCircuitResearch
+        );
+        assert!(
+            record
+                .result
+                .receipt_refs
+                .iter()
+                .any(|receipt| receipt.kind == ExperimentReceiptKind::TrainingRun)
+        );
+        assert!(
+            record
+                .result
+                .artifact_outputs
+                .iter()
+                .any(|artifact| artifact.kind == ExperimentArtifactKind::CompiledWeightArtifact)
+        );
+        assert!(
+            record
+                .result
+                .artifact_outputs
+                .iter()
+                .any(|artifact| artifact.kind == ExperimentArtifactKind::TrainingReceipt)
+        );
+    }
+
+    #[test]
+    fn runner_rejects_invalid_circuit_claim_boundaries() {
+        let mut invocation = sample_circuit_invocation("candidate-invalid", "run-invalid");
+        let ExperimentFamily::ExecutorCircuitResearch { circuit } = &mut invocation.spec.family else {
+            panic!("executor circuit research");
+        };
+        circuit.execution_proxy = TassadarCircuitExecutionProxy::CompiledProgramDeployment;
         let error = ResearchRunner::execute_local(&invocation).expect_err("runner should refuse");
         assert!(matches!(error, ResearchRunnerError::InvalidInvocation(_)));
     }
