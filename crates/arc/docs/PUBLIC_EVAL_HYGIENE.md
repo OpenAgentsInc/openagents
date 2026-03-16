@@ -13,6 +13,11 @@ The canonical validator is:
 scripts/lint/arc-public-eval-hygiene-check.sh
 ```
 
+The typed benchmark-side mirror is now:
+
+- `arc_benchmark::validate_public_eval_artifact_manifest`
+- `arc_benchmark::run_static_hygiene_suite`
+
 ## Operator Policy
 
 These rules are mandatory for ARC public-eval work:
@@ -72,3 +77,7 @@ The repo-owned example manifests live in:
 
 The validator script must continue to accept the valid fixture and reject the
 invalid fixtures.
+
+The Rust hygiene tests must continue to load those same fixtures and produce the
+same pass/fail outcomes, so public-eval policy does not drift between shell-only
+ lint gates and benchmark/report code.
