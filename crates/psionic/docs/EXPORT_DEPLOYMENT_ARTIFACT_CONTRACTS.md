@@ -5,7 +5,8 @@
 > contracts in `crates/psionic/psionic-ir/src/lib.rs` and
 > `crates/psionic/psionic-compiler/src/lib.rs`, and after landing the first
 > native `.psifn` function-artifact layer in
-> `crates/psionic/psionic-function-io/src/lib.rs`.
+> `crates/psionic/psionic-function-io/src/lib.rs`, plus the bounded `.mlxfn`
+> compatibility layer in `crates/psionic/psionic-function-io/src/mlxfn.rs`.
 
 This document records the current bounded export and deployment surface for
 Psionic.
@@ -42,6 +43,11 @@ scripts/release/check-psionic-export-deployment-artifact-contracts.sh
 - `decode_function_artifact(...)`
 - `save_function_artifact_path(...)`
 - `load_function_artifact_path(...)`
+- `MlxfnCompatibilityReceipt`
+- `encode_mlxfn_function_artifact(...)`
+- `decode_mlxfn_function_artifact(...)`
+- `save_mlxfn_function_artifact_path(...)`
+- `load_mlxfn_function_artifact_path(...)`
 
 ## Current Honest Posture
 
@@ -55,9 +61,13 @@ The bounded seeded surface now makes these seams explicit:
 - topology-aware deployment bundles when explicit execution topology exists
 - native `.psifn` artifacts that bind graph contracts to optional compiler,
   trace-family, and deployment bundle evidence
+- bounded `.mlxfn` import/export on top of the native artifact model for one
+  positional CPU trace over the current primitive and dtype subset
 - explicit refusal for opaque backend-extension graphs that are not export-safe
 - explicit refusal for graph-digest mismatches between the export envelope and
   the compiled deployment artifact
+- explicit refusal when `.mlxfn` headers or tape entries fall outside the
+  bounded supported version, trace-count, device, primitive, or dtype window
 
 ## Why This Matters
 
