@@ -69,6 +69,11 @@ impl LocalArcEnvironment {
     }
 
     #[must_use]
+    pub fn level_count(&self) -> u32 {
+        u32::try_from(self.engine.package().levels.len()).unwrap_or(u32::MAX)
+    }
+
+    #[must_use]
     pub fn action_space(&self) -> Option<&[ArcActionKind]> {
         self.last_response
             .as_ref()
