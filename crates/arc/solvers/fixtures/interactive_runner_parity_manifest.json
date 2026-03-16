@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "bounded_scope": "These parity cases compare arc-solvers interactive runner artifacts across the retained local offline wrapper and the local compatibility-server-backed remote wrapper. They cover action execution parity, checkpoint resume, recording parity, and scorecard closeout behavior on one bounded fixture. Competition mode remains an explicit remote-only policy surface and is documented here as a non-parity divergence instead of being hidden as a mismatch.",
+  "documented_expected_differences": [
+    {
+      "field": "environment_kind",
+      "reason": "local runs use the offline wrapper and remote runs use the compatibility-server-backed remote wrapper"
+    },
+    {
+      "field": "report_operation_mode",
+      "reason": "the interactive run report preserves offline for local runs and online for remote runs"
+    },
+    {
+      "field": "recording_operation_mode",
+      "reason": "recording envelopes preserve the environment operation mode rather than normalizing it away"
+    },
+    {
+      "field": "scorecard_id",
+      "reason": "local scorecard ids are runner-owned fixture ids while remote ids come from the scorecard service"
+    },
+    {
+      "field": "session_guid",
+      "reason": "local and remote sessions mint independent environment guids"
+    },
+    {
+      "field": "local_package_path",
+      "reason": "local environments retain the fixture package path while remote listings omit local filesystem details"
+    },
+    {
+      "field": "scorecard_summary",
+      "reason": "only the remote scorecard surface materializes a closeout summary"
+    },
+    {
+      "field": "recording_digest",
+      "reason": "recording digests differ because operation mode is part of the recording contract"
+    },
+    {
+      "field": "checkpoint_recording_digest",
+      "reason": "checkpoint metadata preserves the environment-specific recording digest"
+    }
+  ],
+  "extra_expected_differences": [
+    {
+      "field": "competition_mode_coverage",
+      "local": "not_compared",
+      "remote": "remote_only_policy_surface",
+      "reason": "competition mode is documented as a deliberate non-parity path until authoritative online semantics exist"
+    }
+  ],
+  "cases": [
+    {
+      "id": "demo_full_win",
+      "game_id": "arc-engine-demo",
+      "title": "Demo ARC",
+      "baseline_actions": [7, 5],
+      "package_path": "../engine/fixtures/demo_game.json",
+      "checkpoint_id": "interactive-parity-demo-full",
+      "checkpoint_timestamp_unix_s": 1735689600,
+      "max_agent_actions": 16,
+      "actions": [
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION5" }
+      ]
+    },
+    {
+      "id": "demo_resume_after_six_actions",
+      "game_id": "arc-engine-demo",
+      "title": "Demo ARC",
+      "baseline_actions": [7, 5],
+      "package_path": "../engine/fixtures/demo_game.json",
+      "checkpoint_id": "interactive-parity-demo-resume",
+      "checkpoint_timestamp_unix_s": 1735689600,
+      "max_agent_actions": 16,
+      "resume_after_actions": 6,
+      "actions": [
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION6", "x": 22, "y": 22 },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION4" },
+        { "kind": "ACTION2" },
+        { "kind": "ACTION5" }
+      ]
+    }
+  ]
+}

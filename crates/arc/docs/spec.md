@@ -1708,6 +1708,17 @@ Acceptance:
 - Rust-native solver harness with no Python dependency
 - non-trivial solved set on internal dev fixtures
 
+This phase is now live in bounded form for the interactive runtime substrate.
+`ARC-401` landed the typed interactive agent trait, runner, registry, and
+checkpoint handoff contracts over `arc-client` and `arc-benchmark`. `ARC-404`
+landed the shared interactive budget/reset/refusal envelopes plus explicit
+per-turn and final execution outcomes. `ARC-407` is now also landed in bounded
+form: `arc-solvers` exposes a reusable interactive parity report surface and a
+manifest-driven harness that compares local/offline and remote/online runner
+episodes for action execution, checkpoint resume, recording bodies, and
+scorecard closeout while documenting expected environment/operation-mode
+divergences explicitly instead of treating them as incidental mismatches.
+
 ### Phase 5: Psionic primitive expansion
 
 Land the reusable missing primitives above in Psionic.
