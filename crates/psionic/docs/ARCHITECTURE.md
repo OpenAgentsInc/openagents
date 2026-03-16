@@ -320,6 +320,8 @@ Applications / Operators / Authority
    - runtime traits, runtime planning, execution-proof bundles, training-class
      runtime truth
    - backend-visible buffer storage identity and view-posture contracts
+   - runtime-owned RNG, generator-state, checkpoint-restore, and
+     deterministic-algorithm contracts
    - same-type local multi-device plan-runner contracts, declarative local
      sharding validation, and local multi-device execution evidence kept
      distinct from clustered execution truth
@@ -432,6 +434,7 @@ training subsystems.
 | `DatasetPackingPolicy` | `psionic-data` | long-context sequence packing and token-budget batch planning contract | `implemented_early` |
 | `PsionicRefusal` | `psionic-core` | canonical cross-library refusal taxonomy for unsupported op, gradient, layout, capability, serialization, sandbox-policy, and topology boundaries | `implemented_early` |
 | `BufferStorageContract` | `psionic-runtime` | backend-visible storage identity and logical view posture for one realized buffer | `implemented_early` |
+| `RuntimeDeterminismContract` | `psionic-runtime` | runtime-owned RNG, generator-state, checkpoint-snapshot, and deterministic-algorithm contract for replayable execution | `implemented_early` |
 | `RuntimeManifest` | `psionic-runtime` proof layer | digest-bound package for artifact, static-config, mutable-variable, and runtime lineage used at execution time | `implemented_early` |
 | `DatastreamDeliveryReceipt` | `psionic-datastream` | verified proof of delivered bytes and chunk progress | `implemented` |
 | `ClusterState` | `psionic-cluster` | authoritative cluster membership and ordered-state truth | `implemented` |
