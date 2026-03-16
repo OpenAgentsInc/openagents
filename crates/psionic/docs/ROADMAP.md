@@ -36,9 +36,9 @@
   are honest.
 - PyTorch-facing shells or interop layers come after the Rust-native substrate
   is real, not before.
-- A planned executor-class in-model compute lane is now explicitly scoped as
-  WebAssembly-first, CPU-reference-first, library-owned work rather than MVP
-  product scope.
+- An implemented-early executor-class reference lane codenamed `Tassadar` now
+  exists as WebAssembly-first, CPU-reference-first, library-owned work rather
+  than MVP product scope.
 
 ## Why This Doc Exists
 
@@ -79,7 +79,7 @@ Per [docs/OWNERSHIP.md](/Users/christopherdavid/code/openagents/docs/OWNERSHIP.m
 Nothing in this roadmap should be read as permission to move app logic,
 wallet/payout logic, or authority logic into Psionic crates.
 
-That includes the planned executor-class in-model compute lane. It is a
+That includes the `Tassadar` executor-class reference lane. It is a
 library/runtime program inside `crates/psionic/*`, not a product-scope change
 to the current desktop/provider MVP.
 
@@ -469,9 +469,10 @@ This roadmap now has four live GitHub issue blocks:
 
 Epic 0 and later epics beyond 2 still use roadmap-local IDs until activated.
 
-### Planned Executor-Class In-Model Compute Lane
+### Tassadar Executor-Class Reference Lane
 
-This track is now explicitly part of Psionic planning.
+This track is now implemented early as a Psionic-owned reference lane and
+remains dependency-ordered beyond Phase 1.
 
 It is a cross-epic lane that depends on:
 
@@ -483,7 +484,10 @@ Its declared scope is:
 
 - owner: `crates/psionic/*`
 - first target: WebAssembly-first executor semantics
-- first implementation bar: CPU reference fixture and exact parity harness
+- landed Phase 1 bar: CPU reference fixture and exact parity harness
+- landed crate surfaces:
+  - `psionic-runtime::tassadar`
+  - `psionic-models::TassadarExecutorFixture`
 - strategic value: inner exact-computation substrate for larger reasoning
   systems
 - non-goals: current MVP product scope, kernel authority, or replacement of
@@ -495,6 +499,17 @@ The current issue spine is:
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
 - Phase 1 CPU reference WebAssembly executor fixture and exact parity harness:
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+
+What Phase 1 now concretely provides:
+
+- one machine-legible WebAssembly-first profile
+- one append-only trace ABI
+- one direct CPU reference runner
+- one handcrafted fixture runner
+- exact parity and deterministic replay helpers
+- typed refusal surfaces for unsupported programs
+- one `WeightFormat::ProgrammaticFixture` executor model descriptor and weight
+  bundle
 
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:

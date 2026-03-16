@@ -47,17 +47,20 @@ Nexus surfaces.
   training-class lane is fully productized.
 - Not a hidden Python control plane disguised as Rust crates.
 
-## Planned Executor Lane
+## Tassadar Executor Lane
 
-Psionic now explicitly plans an executor-class in-model compute lane.
+Psionic now has an implemented-early executor-class reference lane codenamed
+`Tassadar`.
 
-Current declared posture:
+Current posture:
 
 - it lives under `crates/psionic/*`, not in app code and not in kernel or
   Nexus authority
 - it is WebAssembly-first and CPU-reference-first
 - it is intended to give larger reasoning systems inner exact-computation
   ability
+- its Phase 1 reference substrate now exists in `psionic-runtime` and
+  `psionic-models`
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
 - its Phase 0 and Phase 1 issue spine is tracked in

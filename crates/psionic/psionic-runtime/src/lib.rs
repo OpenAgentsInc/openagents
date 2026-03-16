@@ -6,6 +6,7 @@ mod local_multi_device;
 mod parity;
 mod proof;
 mod structured_output;
+mod tassadar;
 mod validation;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -21,10 +22,11 @@ use psionic_core::{
     TensorId, TensorSpec,
 };
 use psionic_ir::ExecutionPlan;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use structured_output::*;
+pub use tassadar::*;
 use thiserror::Error;
 pub use validation::*;
 
@@ -9257,6 +9259,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        apply_sampling_penalties, benchmark_dispatch_plan, benchmark_quantization_dispatch,
+        default_cache_invalidation_policy, plan_model_admission,
         AcceleratorDeliverabilityDifferenceCode, AcceleratorDeliverabilityStatus,
         AcceleratorExecutionRequirement, AdmissionRefusalReason, Allocator, AllocatorPoolPolicy,
         AllocatorPoolReport, AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata,
@@ -9277,11 +9281,11 @@ mod tests {
         ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
         ClusterSelectedNode, ClusterServingSemantics, ClusterSettlementProvenanceInput,
         ClusterTransportClass, ClusterTrustPosture, ClusterWarmRoutePosture,
-        DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery,
-        DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionBackend, ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
-        ExecutionPartition, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
-        ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan,
+        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
+        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics, ExecutionPartition,
+        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
+        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan,
         GenerationSchedulerFallbackCount, GenerationSchedulerFallbackReason,
         GenerationSchedulerMetrics, GenerationSchedulerPolicy, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
@@ -9311,8 +9315,7 @@ mod tests {
         TrainingCollectiveContext, TrainingCollectiveKind, TrainingCollectiveQuantization,
         TrainingDeviceMeshAxis, TrainingDeviceMeshAxisKind, TrainingDeviceMeshContext,
         TrainingElasticMembershipContext, TrainingRecoveryContext, TrainingRecoveryPosture,
-        apply_sampling_penalties, benchmark_dispatch_plan, benchmark_quantization_dispatch,
-        default_cache_invalidation_policy, plan_model_admission,
+        DEFAULT_PENALTY_LOOKBACK,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9479,8 +9482,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_helpers_capture_direct_and_fallback_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_helpers_capture_direct_and_fallback_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
         assert_eq!(direct.requested_backend, "mock");
         assert_eq!(direct.effective_backend, "mock");
@@ -9780,8 +9783,8 @@ mod tests {
     }
 
     #[test]
-    fn quantization_support_surfaces_storage_path_and_pending_execution_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn quantization_support_surfaces_storage_path_and_pending_execution_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let support = QuantizationSupport {
             mode: psionic_core::QuantizationMode::GgmlQ4_0,
             load_path: QuantizationLoadPath::BackendQuantized,
@@ -9875,8 +9878,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let copy = ModelArtifactStorage::in_memory_copy("weights.gguf", "abcd");
         let paged = ModelArtifactStorage::paged_local_blob(
             "weights.gguf",
@@ -9913,8 +9916,8 @@ mod tests {
     }
 
     #[test]
-    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let plan = PagedTensorStoragePlan {
             tensor_name: String::from("blk.0.attn_q.weight"),
             artifact_name: String::from("weights.gguf"),
@@ -10366,8 +10369,8 @@ mod tests {
     }
 
     #[test]
-    fn sharded_model_manifest_validates_replicated_layer_and_tensor_topologies()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sharded_model_manifest_validates_replicated_layer_and_tensor_topologies(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let served_artifact = ServedArtifactIdentity::new(
             "fixture-word-decoder-v0",
             "v0",
@@ -10618,8 +10621,8 @@ mod tests {
     }
 
     #[test]
-    fn sampling_policy_serializes_supported_generation_controls()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sampling_policy_serializes_supported_generation_controls(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let policy = SamplingPolicy {
             strategy: SamplingStrategy::Sample,
             temperature: Some(0.7),
@@ -10702,8 +10705,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_backend_model_serializes_mode_topology_risk_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("amd_userspace"),
             device: Device::new(
@@ -10809,8 +10812,8 @@ mod tests {
     }
 
     #[test]
-    fn nvidia_backend_model_serializes_topology_risk_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn nvidia_backend_model_serializes_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("cuda"),
             device: Device::new(
@@ -11052,8 +11055,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_can_publish_declared_cluster_capability_profile_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_can_publish_declared_cluster_capability_profile_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let capability_profile = ClusterExecutionCapabilityProfile::new("cuda")
             .with_supported_lanes(vec![
                 ClusterExecutionLane::RemoteWholeRequest,
@@ -11094,8 +11097,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_can_publish_cluster_compute_market_trust_assessment_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_can_publish_cluster_compute_market_trust_assessment_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let trust_assessment = ClusterComputeMarketTrustAssessment {
             posture: ClusterTrustPosture::TrustedLanSharedAdmission,
             discovery_posture: ClusterDiscoveryPosture::TrustedLanSeedPeers,
@@ -11141,8 +11144,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_can_carry_cluster_evidence()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_can_carry_cluster_evidence(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = sample_cuda_device().inventory_qualifiers();
         let capability_profile = ClusterExecutionCapabilityProfile::new("cuda")
             .with_supported_lanes(vec![
@@ -11218,13 +11221,11 @@ mod tests {
                 "command-authorization-policy",
             ),
         ])
-        .with_selected_nodes(vec![
-            ClusterSelectedNode::new("worker-a", "cuda")
-                .with_role("worker")
-                .with_topology_digest("node-topology-digest")
-                .with_served_artifact_digest("served-artifact-digest")
-                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
-        ])
+        .with_selected_nodes(vec![ClusterSelectedNode::new("worker-a", "cuda")
+            .with_role("worker")
+            .with_topology_digest("node-topology-digest")
+            .with_served_artifact_digest("served-artifact-digest")
+            .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident)])
         .with_serving_semantics(
             ClusterServingSemantics::new(
                 ClusterExecutionLane::ReplicaRouted,
@@ -11292,11 +11293,10 @@ mod tests {
             encoded["cluster_execution"]["serving_semantics"]["warm_route_posture"],
             json!("route_pinned")
         );
-        assert!(
-            encoded["cluster_execution"]["communication_eligibility"]["capability_profile_digest"]
-                .as_str()
-                .is_some()
-        );
+        assert!(encoded["cluster_execution"]["communication_eligibility"]
+            ["capability_profile_digest"]
+            .as_str()
+            .is_some());
         assert_eq!(
             encoded["cluster_execution"]["command_provenance"][0]["fact_kind"],
             json!("scheduler_membership")
@@ -11314,8 +11314,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_can_carry_training_recovery_context()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_can_carry_training_recovery_context(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let training_recovery = TrainingRecoveryContext::new(
             TrainingRecoveryPosture::ElasticReconfiguration,
             TrainingCheckpointAvailability::Durable,
@@ -11365,7 +11365,8 @@ mod tests {
             json!("elastic_reconfiguration")
         );
         assert_eq!(
-            encoded["cluster_execution"]["training_recovery"]["latest_checkpoint"]["checkpoint_family"],
+            encoded["cluster_execution"]["training_recovery"]["latest_checkpoint"]
+                ["checkpoint_family"],
             json!("train.decoder")
         );
         assert_eq!(
@@ -11373,7 +11374,8 @@ mod tests {
             json!("worker-c")
         );
         assert_eq!(
-            encoded["cluster_execution"]["training_recovery"]["elastic_membership"]["membership_epoch"],
+            encoded["cluster_execution"]["training_recovery"]["elastic_membership"]
+                ["membership_epoch"],
             json!(4)
         );
         assert_eq!(
@@ -11391,8 +11393,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_can_carry_training_collective_context()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_can_carry_training_collective_context(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let membership = TrainingElasticMembershipContext::new(
             7,
             "cluster-state-digest",
@@ -11751,8 +11753,8 @@ mod tests {
     }
 
     #[test]
-    fn signed_cluster_evidence_bundle_round_trips_and_verifies()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn signed_cluster_evidence_bundle_round_trips_and_verifies(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let cluster_execution = ClusterExecutionContext::new(
             "cluster-alpha",
             "cluster-state-digest",
@@ -11780,12 +11782,10 @@ mod tests {
             "scheduler-membership-auth",
             "command-authorization-policy",
         )])
-        .with_selected_nodes(vec![
-            ClusterSelectedNode::new("worker-a", "cuda")
-                .with_role("worker")
-                .with_served_artifact_digest("served-artifact-digest")
-                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
-        ]);
+        .with_selected_nodes(vec![ClusterSelectedNode::new("worker-a", "cuda")
+            .with_role("worker")
+            .with_served_artifact_digest("served-artifact-digest")
+            .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident)]);
         let settlement_linkage = SettlementLinkageInput {
             request_digest: String::from("request-digest"),
             product_id: String::from("text_generation"),
@@ -11885,8 +11885,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_prefers_replicated_cluster_topology()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_prefers_replicated_cluster_topology(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -11949,8 +11949,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_surfaces_layer_sharded_handoffs()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_surfaces_layer_sharded_handoffs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -12052,8 +12052,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_surfaces_tensor_sharded_collectives()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_surfaces_tensor_sharded_collectives(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -12642,8 +12642,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_execution_capability_profiles_are_machine_checkable()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_execution_capability_profiles_are_machine_checkable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let profile = SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2);
         assert!(profile.accelerator_access.requires_accelerator());
         assert_eq!(
