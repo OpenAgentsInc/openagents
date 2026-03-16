@@ -660,29 +660,29 @@ fn local_sim_runtime_bootstrap_enabled() -> bool {
         .unwrap_or(false)
 }
 
+fn queue_startup_wallet_refresh(state: &mut RenderState) {
+    state
+        .spark_wallet
+        .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
+    if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+        state.spark_wallet.last_error = Some(error);
+    }
+}
+
 fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
     let _ = PaneController::create_for_kind(state, pane_kind);
     match pane_kind {
         PaneKind::GoOnline => {
             let _ = ensure_mission_control_local_runtime_preflight(state);
+            queue_startup_wallet_refresh(state);
         }
         PaneKind::ProviderControl => {
             let _ = ensure_mission_control_local_runtime_preflight(state);
-            state
-                .spark_wallet
-                .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
-            if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
-                state.spark_wallet.last_error = Some(error);
-            }
+            queue_startup_wallet_refresh(state);
         }
         PaneKind::CadDemo => bootstrap_startup_cad_mesh(state),
         PaneKind::SparkWallet => {
-            state
-                .spark_wallet
-                .begin_startup_convergence(crate::app_state::current_reference_epoch_seconds());
-            if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
-                state.spark_wallet.last_error = Some(error);
-            }
+            queue_startup_wallet_refresh(state);
         }
         _ => {}
     }
