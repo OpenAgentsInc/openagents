@@ -1,0 +1,25 @@
+{
+  "artifact_id": "sudoku_v0_validation_b.compiled_executor.compiled_weight",
+  "artifact_digest": "2841f6ed83284ba34e3c74334f4aa9114b6ec4f6ecc57d540017559ef54ebcdd",
+  "deployment_kind": "program_specialized",
+  "base_model_id": "tassadar-executor-sudoku-v0-search-v0",
+  "base_model_descriptor_digest": "a312dd0aaea7fba1a30ae53fd067663bbb455ad98aef94a00435b9545585a530",
+  "program_artifact_ref": "sudoku_v0_validation_b.compiled_program_artifact",
+  "program_artifact_digest": "2996b99315ab3af77ad8d3f17fa9c3c17624256fe12b219d0d2fabd3f388f160",
+  "program_digest": "d75480cd3163a27bd5b644d2d84d7fcc04020a6bfa7cfcccf66906d7184ae2b6",
+  "wasm_profile_id": "tassadar.wasm.sudoku_v0_search.v1",
+  "trace_abi_id": "tassadar.trace.v1",
+  "trace_abi_version": 1,
+  "supported_decode_modes": [
+    "hull_cache",
+    "reference_linear",
+    "sparse_top_k"
+  ],
+  "compiled_weight_bundle_digest": "678319eaa0dd46c954660bd12228cef5b8e92deb41801db3c74068ed1af2a5da",
+  "compiled_weight_artifact_sha256": "23b44b8d7b5a95d6824f63917edea58ad1f78aab66f980efa1b3b2d08da236a9",
+  "compiled_weight_artifact_bytes": 36101,
+  "compiled_behavior_digest": "8448f0eac6765867c253f1c22758493bba1dc196853831c6269216a97051064e",
+  "compile_runtime_manifest_digest": "23cdbdf23487db129cae14959e2631cb51f80cc4b00d5e4d6f2c7c1be194f330",
+  "compile_trace_proof_digest": "fdc9b339d2ecec6af12a2829e3c50ec0d9d6c2f6db8a62f82c6f0d7d70df2601",
+  "compile_execution_proof_bundle_digest": "a2ff81e15931dd1cb5016ea0a6f8b8304adc3441482ccefdf990671319a4b367"
+}

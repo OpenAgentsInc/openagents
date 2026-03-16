@@ -284,6 +284,18 @@ The current scope is:
   first-32 exactness and `1333` target tok/s, versus `10000` / `6563` bps and
   `32000` target tok/s for the lookup baseline), so this phase lands as a
   research candidate rather than a promotion result
+- landed trained-executor Phase 17 follow-on bar: `psionic-models` now carries
+  a bounded typed `TassadarCompiledProgramExecutor` surface with persisted
+  compile-evidence bundles, `psionic-eval` now emits exactness and
+  compatibility/refusal reports for the real Sudoku-v0 corpus under
+  `tassadar.wasm.sudoku_v0_search.v1.compiled_executor`, and
+  `psionic-research` now materializes the canonical bundle root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_compiled_executor_v0`; the
+  committed artifacts prove an exact bounded compiled/proof-backed lane on the
+  matched corpus (`8/8` exact trace matches against CPU reference and `32/32`
+  exact refusal matches on mismatched artifacts) while keeping the serving and
+  claim boundary explicit (`eval_only`, not arbitrary-program closure, not
+  learned-lane success, not article parity)
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

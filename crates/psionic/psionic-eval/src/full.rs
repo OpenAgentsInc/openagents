@@ -12,10 +12,12 @@ mod apple_adapter;
 mod apple_adapter_benchmark;
 #[path = "tassadar.rs"]
 mod tassadar;
-#[path = "tassadar_executor_benchmark.rs"]
-mod tassadar_executor_benchmark;
+#[path = "tassadar_compiled_executor.rs"]
+mod tassadar_compiled_executor;
 #[path = "tassadar_executor_architecture_comparison.rs"]
 mod tassadar_executor_architecture_comparison;
+#[path = "tassadar_executor_benchmark.rs"]
+mod tassadar_executor_benchmark;
 #[path = "tassadar_executor_eval.rs"]
 mod tassadar_executor_eval;
 #[path = "tassadar_executor_hull_benchmark.rs"]
@@ -39,6 +41,7 @@ use thiserror::Error;
 pub use apple_adapter::*;
 pub use apple_adapter_benchmark::*;
 pub use tassadar::*;
+pub use tassadar_compiled_executor::*;
 pub use tassadar_executor_architecture_comparison::*;
 pub use tassadar_executor_benchmark::*;
 pub use tassadar_executor_eval::*;
