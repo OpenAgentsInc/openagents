@@ -9,10 +9,10 @@ use psionic_environments::{
 };
 use psionic_models::{TassadarExecutorContractError, TassadarExecutorFixture};
 use psionic_runtime::{
-    build_tassadar_execution_evidence_bundle, tassadar_validation_corpus,
-    TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
-    TassadarFixtureRunner, TassadarProgramArtifact, TassadarProgramArtifactError, TassadarTraceAbi,
-    TassadarWasmProfile,
+    build_tassadar_execution_evidence_bundle, run_tassadar_exact_equivalence,
+    tassadar_validation_corpus, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
+    TassadarExecutorDecodeMode, TassadarFixtureRunner, TassadarHullCacheRunner,
+    TassadarProgramArtifact, TassadarProgramArtifactError, TassadarTraceAbi, TassadarWasmProfile,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -37,14 +37,19 @@ pub const TASSADAR_REFERENCE_FIXTURE_BENCHMARK_REF: &str =
 /// Stable dataset ref for the current validation corpus.
 pub const TASSADAR_VALIDATION_CORPUS_DATASET_REF: &str =
     "dataset://openagents/tassadar/validation_corpus";
-/// Stable future metric id reserved for the hull-cache lane.
-pub const TASSADAR_HULL_CACHE_FUTURE_METRIC_ID: &str = "tassadar.hull_cache_steps_per_second";
+/// Stable metric id for the Phase 5 hull-cache lane.
+pub const TASSADAR_HULL_CACHE_METRIC_ID: &str = "tassadar.hull_cache_steps_per_second";
 
 const TASSADAR_OUTPUT_EXACTNESS_METRIC_ID: &str = "tassadar.final_output_exactness_bps";
 const TASSADAR_STEP_EXACTNESS_METRIC_ID: &str = "tassadar.step_exactness_bps";
 const TASSADAR_HALT_EXACTNESS_METRIC_ID: &str = "tassadar.halt_exactness_bps";
 const TASSADAR_CPU_BASELINE_METRIC_ID: &str = "tassadar.cpu_reference_steps_per_second";
 const TASSADAR_REFERENCE_LINEAR_METRIC_ID: &str = "tassadar.reference_linear_steps_per_second";
+const TASSADAR_TRACE_DIGEST_EQUAL_METRIC_ID: &str = "tassadar.trace_digest_equal_bps";
+const TASSADAR_HULL_CACHE_SPEEDUP_METRIC_ID: &str =
+    "tassadar.hull_cache_speedup_over_reference_linear";
+const TASSADAR_HULL_CACHE_CPU_GAP_METRIC_ID: &str =
+    "tassadar.hull_cache_remaining_gap_vs_cpu_reference";
 const TASSADAR_TRACE_STEP_COUNT_METRIC_ID: &str = "tassadar.trace_step_count";
 
 /// One packaged Tassadar Phase 3 suite.
@@ -77,19 +82,30 @@ pub struct TassadarBenchmarkCaseReport {
     pub step_exactness_bps: u32,
     /// Halt exactness score.
     pub halt_exactness_bps: u32,
+    /// Whether trace digests matched across CPU, linear, and hull-cache paths.
+    pub trace_digest_equal: bool,
+    /// Whether outputs matched across CPU, linear, and hull-cache paths.
+    pub outputs_equal: bool,
+    /// Whether halt reasons matched across CPU, linear, and hull-cache paths.
+    pub halt_equal: bool,
     /// Observed trace-step count.
     pub trace_steps: u64,
     /// Direct CPU baseline throughput.
     pub cpu_reference_steps_per_second: f64,
     /// Reference-linear executor throughput.
     pub reference_linear_steps_per_second: f64,
-    /// Future hull-cache throughput placeholder.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hull_cache_steps_per_second: Option<f64>,
+    /// Hull-cache executor throughput.
+    pub hull_cache_steps_per_second: f64,
+    /// Speedup ratio of hull-cache over reference-linear execution.
+    pub hull_cache_speedup_over_reference_linear: f64,
+    /// Remaining CPU-reference gap ratio, computed as `cpu / hull`.
+    pub hull_cache_remaining_gap_vs_cpu_reference: f64,
     /// Runner-independent CPU behavior digest.
     pub cpu_behavior_digest: String,
     /// Runner-independent reference-linear behavior digest.
     pub reference_linear_behavior_digest: String,
+    /// Runner-independent hull-cache behavior digest.
+    pub hull_cache_behavior_digest: String,
 }
 
 /// Full report for one package-driven Tassadar benchmark run.
@@ -172,6 +188,7 @@ pub fn run_tassadar_reference_fixture_benchmark(
     let model_descriptor_digest = descriptor.stable_digest();
     let cpu_runner = TassadarCpuReferenceRunner::new();
     let reference_linear_runner = TassadarFixtureRunner::new();
+    let hull_cache_runner = TassadarHullCacheRunner::new();
 
     let mut eval_run = EvalRunState::open(
         EvalRunContract::new(
@@ -198,36 +215,45 @@ pub fn run_tassadar_reference_fixture_benchmark(
         }
         descriptor
             .validate_program_artifact(artifact, TassadarExecutorDecodeMode::ReferenceLinear)?;
+        descriptor.validate_program_artifact(artifact, TassadarExecutorDecodeMode::HullCache)?;
 
-        let cpu_started = Instant::now();
-        let cpu_execution = cpu_runner.execute(&case.program)?;
-        let cpu_elapsed = cpu_started.elapsed();
+        let equivalence_started = Instant::now();
+        let equivalence_report = run_tassadar_exact_equivalence(&case.program)?;
+        let equivalence_elapsed = equivalence_started.elapsed();
+        let cpu_execution = &equivalence_report.cpu_reference;
+        let reference_execution = &equivalence_report.reference_linear;
+        let hull_cache_execution = &equivalence_report.hull_cache;
+        let trace_steps = reference_execution.steps.len() as u64;
+        let cpu_steps_per_second =
+            benchmark_runner_steps_per_second(trace_steps, || cpu_runner.execute(&case.program))?;
+        let reference_linear_steps_per_second =
+            benchmark_runner_steps_per_second(trace_steps, || {
+                reference_linear_runner.execute(&case.program)
+            })?;
+        let hull_cache_steps_per_second = benchmark_runner_steps_per_second(trace_steps, || {
+            hull_cache_runner.execute(&case.program)
+        })?;
+        let trace_digest_equal = equivalence_report.trace_digest_equal();
+        let outputs_equal = equivalence_report.outputs_equal();
+        let halt_equal = equivalence_report.halt_equal();
+        let hull_cache_speedup_over_reference_linear =
+            hull_cache_steps_per_second / reference_linear_steps_per_second.max(1e-9);
+        let hull_cache_remaining_gap_vs_cpu_reference =
+            cpu_steps_per_second / hull_cache_steps_per_second.max(1e-9);
 
-        let reference_started = Instant::now();
-        let reference_execution = reference_linear_runner.execute(&case.program)?;
-        let reference_elapsed = reference_started.elapsed();
-
-        let final_output_exactness_bps = u32::from(
-            reference_execution.outputs == case.expected_outputs
-                && reference_execution.outputs == cpu_execution.outputs,
-        ) * 10_000;
-        let step_exactness_bps = u32::from(
-            reference_execution.steps == case.expected_trace
-                && reference_execution.steps == cpu_execution.steps,
-        ) * 10_000;
-        let halt_exactness_bps =
-            u32::from(reference_execution.halt_reason == cpu_execution.halt_reason) * 10_000;
+        let final_output_exactness_bps =
+            u32::from(reference_execution.outputs == case.expected_outputs && outputs_equal)
+                * 10_000;
+        let step_exactness_bps =
+            u32::from(reference_execution.steps == case.expected_trace && trace_digest_equal)
+                * 10_000;
+        let halt_exactness_bps = u32::from(halt_equal) * 10_000;
         let score_bps = (final_output_exactness_bps + step_exactness_bps + halt_exactness_bps) / 3;
         let status = if score_bps == 10_000 {
             EvalSampleStatus::Passed
         } else {
             EvalSampleStatus::Failed
         };
-        let trace_steps = reference_execution.steps.len() as u64;
-        let cpu_steps_per_second =
-            throughput_steps_per_second(trace_steps, cpu_elapsed.as_secs_f64());
-        let reference_linear_steps_per_second =
-            throughput_steps_per_second(trace_steps, reference_elapsed.as_secs_f64());
 
         let evidence = build_tassadar_execution_evidence_bundle(
             format!("tassadar-case-{}", case.case_id),
@@ -276,6 +302,11 @@ pub fn run_tassadar_reference_fixture_benchmark(
                     f64::from(halt_exactness_bps),
                 )
                 .with_unit("bps"),
+                EvalMetric::new(
+                    TASSADAR_TRACE_DIGEST_EQUAL_METRIC_ID,
+                    f64::from(u32::from(trace_digest_equal) * 10_000),
+                )
+                .with_unit("bps"),
                 EvalMetric::new(TASSADAR_CPU_BASELINE_METRIC_ID, cpu_steps_per_second)
                     .with_unit("steps_per_second"),
                 EvalMetric::new(
@@ -283,6 +314,18 @@ pub fn run_tassadar_reference_fixture_benchmark(
                     reference_linear_steps_per_second,
                 )
                 .with_unit("steps_per_second"),
+                EvalMetric::new(TASSADAR_HULL_CACHE_METRIC_ID, hull_cache_steps_per_second)
+                    .with_unit("steps_per_second"),
+                EvalMetric::new(
+                    TASSADAR_HULL_CACHE_SPEEDUP_METRIC_ID,
+                    hull_cache_speedup_over_reference_linear,
+                )
+                .with_unit("ratio"),
+                EvalMetric::new(
+                    TASSADAR_HULL_CACHE_CPU_GAP_METRIC_ID,
+                    hull_cache_remaining_gap_vs_cpu_reference,
+                )
+                .with_unit("ratio"),
                 EvalMetric::new(TASSADAR_TRACE_STEP_COUNT_METRIC_ID, trace_steps as f64)
                     .with_unit("steps"),
             ],
@@ -296,8 +339,8 @@ pub fn run_tassadar_reference_fixture_benchmark(
                             .exactness_contract
                             .timeout_budget_ms,
                     ),
-                    elapsed_ms: reference_elapsed.as_millis() as u64,
-                    within_budget: reference_elapsed.as_millis() as u64
+                    elapsed_ms: equivalence_elapsed.as_millis() as u64,
+                    within_budget: equivalence_elapsed.as_millis() as u64
                         <= suite
                             .environment_bundle
                             .exactness_contract
@@ -313,9 +356,11 @@ pub fn run_tassadar_reference_fixture_benchmark(
                         .collect(),
                 }),
                 execution_strategy: Some(EvalExecutionStrategyFacts {
-                    strategy_label: String::from("tassadar_reference_fixture"),
+                    strategy_label: String::from("tassadar_exact_equivalence_triplicate"),
                     runtime_family: Some(String::from("tassadar_executor")),
-                    scheduler_posture: Some(String::from("reference_linear")),
+                    scheduler_posture: Some(String::from(
+                        "cpu_reference+reference_linear+hull_cache",
+                    )),
                 }),
             }),
             session_digest: Some(reference_execution.behavior_digest()),
@@ -333,8 +378,24 @@ pub fn run_tassadar_reference_fixture_benchmark(
                     Value::String(reference_execution.behavior_digest()),
                 ),
                 (
-                    String::from("future_hull_cache_metric_id"),
-                    Value::String(String::from(TASSADAR_HULL_CACHE_FUTURE_METRIC_ID)),
+                    String::from("hull_cache_behavior_digest"),
+                    Value::String(hull_cache_execution.behavior_digest()),
+                ),
+                (
+                    String::from("trace_digest_equal"),
+                    Value::Bool(trace_digest_equal),
+                ),
+                (String::from("outputs_equal"), Value::Bool(outputs_equal)),
+                (String::from("halt_equal"), Value::Bool(halt_equal)),
+                (
+                    String::from("hull_cache_speedup_over_reference_linear"),
+                    serde_json::to_value(hull_cache_speedup_over_reference_linear)
+                        .unwrap_or(Value::Null),
+                ),
+                (
+                    String::from("hull_cache_remaining_gap_vs_cpu_reference"),
+                    serde_json::to_value(hull_cache_remaining_gap_vs_cpu_reference)
+                        .unwrap_or(Value::Null),
                 ),
             ]),
         };
@@ -347,12 +408,18 @@ pub fn run_tassadar_reference_fixture_benchmark(
             final_output_exactness_bps,
             step_exactness_bps,
             halt_exactness_bps,
+            trace_digest_equal,
+            outputs_equal,
+            halt_equal,
             trace_steps,
             cpu_reference_steps_per_second: cpu_steps_per_second,
             reference_linear_steps_per_second,
-            hull_cache_steps_per_second: None,
+            hull_cache_steps_per_second,
+            hull_cache_speedup_over_reference_linear,
+            hull_cache_remaining_gap_vs_cpu_reference,
             cpu_behavior_digest: cpu_execution.behavior_digest(),
             reference_linear_behavior_digest: reference_execution.behavior_digest(),
+            hull_cache_behavior_digest: hull_cache_execution.behavior_digest(),
         });
     }
 
@@ -465,7 +532,7 @@ fn build_tassadar_environment_bundle(
             trace_budget_steps: 128,
             require_cpu_reference_baseline: true,
             require_reference_linear_baseline: true,
-            future_throughput_metric_ids: vec![String::from(TASSADAR_HULL_CACHE_FUTURE_METRIC_ID)],
+            future_throughput_metric_ids: vec![String::from(TASSADAR_HULL_CACHE_METRIC_ID)],
         },
         eval_policy_references: vec![EnvironmentPolicyReference {
             kind: EnvironmentPolicyKind::Verification,
@@ -572,8 +639,8 @@ fn build_tassadar_benchmark_package(
         Value::String(String::from(TASSADAR_REFERENCE_LINEAR_METRIC_ID)),
     );
     package.metadata.insert(
-        String::from("tassadar.future_hull_cache_metric_ids"),
-        json!([TASSADAR_HULL_CACHE_FUTURE_METRIC_ID]),
+        String::from("tassadar.hull_cache_metric_id"),
+        Value::String(String::from(TASSADAR_HULL_CACHE_METRIC_ID)),
     );
     package.metadata.insert(
         String::from("tassadar.corpus_digest"),
@@ -610,6 +677,31 @@ fn stable_corpus_digest(artifacts: &[TassadarProgramArtifact]) -> String {
 
 fn throughput_steps_per_second(steps: u64, elapsed_seconds: f64) -> f64 {
     steps as f64 / elapsed_seconds.max(1e-9)
+}
+
+fn benchmark_runner_steps_per_second<F>(
+    steps_per_run: u64,
+    mut runner: F,
+) -> Result<f64, TassadarBenchmarkError>
+where
+    F: FnMut() -> Result<psionic_runtime::TassadarExecution, TassadarExecutionRefusal>,
+{
+    let normalized_steps = steps_per_run.max(1);
+    let target_steps = normalized_steps.saturating_mul(256).max(8_192);
+    let minimum_runs = 16u64;
+    let started = Instant::now();
+    let mut run_count = 0u64;
+    let mut total_steps = 0u64;
+
+    loop {
+        runner()?;
+        run_count += 1;
+        total_steps = total_steps.saturating_add(normalized_steps);
+        let elapsed = started.elapsed().as_secs_f64();
+        if run_count >= minimum_runs && (total_steps >= target_steps || elapsed >= 0.050) {
+            return Ok(throughput_steps_per_second(total_steps, elapsed));
+        }
+    }
 }
 
 fn stable_outputs_digest(outputs: &[i32]) -> String {
@@ -673,10 +765,9 @@ mod tests {
             suite
                 .benchmark_package
                 .metadata
-                .get("tassadar.future_hull_cache_metric_ids")
-                .and_then(Value::as_array)
-                .map(Vec::len),
-            Some(1)
+                .get("tassadar.hull_cache_metric_id")
+                .and_then(Value::as_str),
+            Some(TASSADAR_HULL_CACHE_METRIC_ID)
         );
         assert_eq!(
             suite.environment_bundle.current_workload_targets,
@@ -709,6 +800,20 @@ mod tests {
             .case_reports
             .iter()
             .all(|case| case.reference_linear_steps_per_second > 0.0));
+        assert!(report
+            .case_reports
+            .iter()
+            .all(|case| case.hull_cache_steps_per_second > 0.0));
+        assert!(report
+            .case_reports
+            .iter()
+            .all(|case| case.hull_cache_speedup_over_reference_linear > 1.0));
+        assert!(report
+            .case_reports
+            .iter()
+            .all(|case| case.trace_digest_equal));
+        assert!(report.case_reports.iter().all(|case| case.outputs_equal));
+        assert!(report.case_reports.iter().all(|case| case.halt_equal));
         assert!(report.eval_run.samples.iter().all(|sample| {
             sample
                 .artifacts

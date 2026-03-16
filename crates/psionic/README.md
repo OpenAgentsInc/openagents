@@ -68,14 +68,20 @@ Current posture:
 - its Phase 4 proof/lineage layer now exists in `psionic-runtime`, with
   emitted trace artifacts, runtime-manifest lineage, and canonical proof-bundle
   integration
+- its Phase 5 fast path now exists in `psionic-runtime` and `psionic-eval`,
+  with explicit `HullCache` decode identity, exact CPU/linear/hull equivalence
+  checks, typed refusal for backward-branch workloads outside the first
+  validated subset, and benchmark reporting for hull-cache throughput, speedup
+  over linear decode, and remaining gap vs direct CPU
 - it is not current MVP compute-market product scope
 - it is not a claim that Psionic is replacing native CPU execution
-- its landed Phase 0/1/2/3/4 issue spine is tracked in
+- its landed Phase 0/1/2/3/4/5 issue spine is tracked in
   [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
   [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744) and
   [#3745](https://github.com/OpenAgentsInc/openagents/issues/3745) and
   [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746) and
-  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
+  [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747) and
+  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 
 ## Crate Map
 
@@ -140,7 +146,8 @@ Current posture:
 - `psionic-eval`: held-out eval runs, rubric-scored samples, benchmark
   packages, repeat-run aggregation, local validator simulation, Apple
   adapter eval harnesses, and the `Tassadar` package-driven exactness
-  benchmark suite with CPU/reference-linear baselines.
+  benchmark suite with CPU/reference-linear/hull-cache baselines and
+  exact-equivalence reporting.
 - `psionic-train`: checkpoint/recovery truth, elastic membership, run graphs,
   rollout-worker protocol, orchestrator control, fixed-budget training core,
   Apple training execution, Apple SFT/export, and optional Apple draft-model

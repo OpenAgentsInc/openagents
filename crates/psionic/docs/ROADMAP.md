@@ -38,8 +38,9 @@
   is real, not before.
 - An implemented-early executor-class reference lane codenamed `Tassadar` now
   exists as WebAssembly-first, CPU-reference-first, library-owned work rather
-  than MVP product scope, with Phase 3 benchmark/environment packages and
-  Phase 4 proof/lineage surfaces now landed above it.
+  than MVP product scope, with Phase 3 benchmark/environment packages, Phase 4
+  proof/lineage surfaces, and the first Phase 5 hull-cache fast path now
+  landed above it.
 
 ## Why This Doc Exists
 
@@ -492,6 +493,11 @@ Its declared scope is:
   benchmark suite with CPU and reference-linear baselines
 - landed Phase 4 bar: emitted trace artifacts, runtime-manifest lineage, and
   proof-bundle integration for replay-stable executor evidence
+- landed Phase 5 bar: explicit `HullCache` fast-path decode identity, exact
+  CPU/reference-linear/hull-cache equivalence checks on the validated acyclic
+  subset, typed refusal for backward-branch workloads outside that subset, and
+  benchmark reporting for hull-cache throughput, speedup over linear decode,
+  and remaining gap vs direct CPU
 - landed crate surfaces:
   - `psionic-runtime::tassadar`
   - `psionic-models::TassadarExecutorFixture`
@@ -515,8 +521,10 @@ The current issue spine is:
   [#3746](https://github.com/OpenAgentsInc/openagents/issues/3746)
 - Phase 4 executor trace proof bundles and manifest lineage:
   [#3747](https://github.com/OpenAgentsInc/openagents/issues/3747)
+- Phase 5 hull-cache fast path behind exact equivalence:
+  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 
-What Phases 1 through 4 now concretely provide:
+What Phases 1 through 5 now concretely provide:
 
 - one machine-legible WebAssembly-first profile
 - one append-only trace ABI
@@ -533,8 +541,12 @@ What Phases 1 through 4 now concretely provide:
 - one package-driven benchmark suite over the current validation corpus
 - exact output/step/halt scoring with explicit CPU and reference-linear
   throughput metrics
-- declared future hull-cache metric ids so later fast-path work widens the
-  same package family instead of replacing it
+- explicit `HullCache` decode-mode identity and exact three-way equivalence
+  harnesses over direct CPU, reference-linear, and hull-cache execution
+- typed backward-branch refusal so workloads outside the first validated
+  fast-path subset fail explicitly rather than silently falling back
+- hull-cache throughput, linear-decode speedup, and direct-CPU gap reporting in
+  the same benchmark package family
 - one emitted `TassadarTraceArtifact` plus `TassadarTraceProofArtifact`
 - runtime-manifest lineage from source program through model descriptor and
   emitted trace artifact
@@ -544,8 +556,6 @@ What Phases 1 through 4 now concretely provide:
 Later phases remain dependency-ordered by the March 15 audit until activated as
 their own GitHub issues:
 
-- hull-cache or geometric retrieval decoding:
-  [#3748](https://github.com/OpenAgentsInc/openagents/issues/3748)
 - typed runtime capability and refusal surfaces:
   [#3749](https://github.com/OpenAgentsInc/openagents/issues/3749)
 - dedicated executor serving where useful
