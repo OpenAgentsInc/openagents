@@ -2612,6 +2612,13 @@ keeps backend-aware low-precision policy, stability-preserving no-downcast
 rules, float8 meta-only posture, and explicit unsupported mixed-precision
 requests machine-legible before train-class grad scaling lands.
 
+`PLIB-214` / `#3729` now lands that bounded train-class grad-scaling layer in
+`psionic-train::mixed_precision`. The new
+`GradientScalingSemanticsReport` makes fp16 dynamic loss scaling, overflow
+backoff plus step-skip, underflow-driven scale growth, bf16 no-scaling
+posture, and unsupported mixed-precision refusal machine-legible instead of
+burying those decisions inside one trainer loop.
+
 This is still not the claim that the full train system can be re-executed from
 one receipt without more runtime work. It is the claim that replay-compatible
 inputs, pins, and verification are now explicit enough to support "same

@@ -125,6 +125,7 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
     let autocast = psionic_core::builtin_autocast_policy_matrix_report();
     let module = psionic_nn::builtin_module_parity_matrix_report()?;
     let optimizer = psionic_train::builtin_optimizer_parity_matrix_report()?;
+    let gradient_scaling = psionic_train::builtin_gradient_scaling_semantics_report();
     let reproducibility = psionic_train::builtin_reproducibility_semantics_report();
     let compiler = psionic_compiler::builtin_compiler_hygiene_parity_matrix_report()?;
 
@@ -204,20 +205,23 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         ),
         seeded_area(
             "precision_policy_semantics",
-            "Current claim is bounded to seeded autocast-style precision-policy rules over backend family, preferred low-precision dtype, operator family, and numerics diagnostics, plus explicit refusal when the bounded runtime surface cannot safely realize the request.",
-            vec![SemanticsEvidenceRef::new(
-                "autocast_policy_matrix",
-                autocast.report_digest,
-            )],
+            "Current claim is bounded to seeded autocast-style precision-policy rules over backend family, preferred low-precision dtype, operator family, and numerics diagnostics plus train-class gradient scaling, overflow, and underflow handling over the bounded fp16 dynamic-scaling and bf16 no-scaling window.",
             vec![
-                String::from("broaden autocast coverage beyond the current seeded matmul, pointwise, reduction, and meta-only float8 cases"),
-                String::from("connect gradient scaling and overflow handling to the precision-policy surface"),
+                SemanticsEvidenceRef::new("autocast_policy_matrix", autocast.report_digest),
+                SemanticsEvidenceRef::new(
+                    "gradient_scaling_semantics",
+                    gradient_scaling.report_digest,
+                ),
+            ],
+            vec![
+                String::from("broaden autocast and train-class mixed-precision coverage beyond the current seeded fp16 and bf16 cases"),
+                String::from("connect quantization and distributed data-feed semantics to the mixed-precision surface"),
                 String::from("extend backend capability truth beyond the current bounded runtime-vs-meta split"),
             ],
             vec![
-                String::from("#3729"),
                 String::from("#3730"),
                 String::from("#3734"),
+                String::from("#3735"),
             ],
         ),
         seeded_area(
@@ -280,12 +284,13 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         ),
         future_area(
             "advanced_tensor_dtype_and_precision",
-            "Broader mixed-precision behavior and train-class precision control remain explicit future compatibility targets after landing bounded tensor-family, dtype, reproducibility, and autocast seed coverage.",
+            "Broader mixed-precision behavior and train-class precision control remain explicit future compatibility targets after landing bounded tensor-family, dtype, reproducibility, autocast, and gradient-scaling seed coverage.",
             vec![
-                String::from("land gradient scaling and overflow handling"),
+                String::from("broaden mixed-precision and train-class precision control beyond the current seeded fp16/bf16 window"),
             ],
             vec![
-                String::from("#3729"),
+                String::from("#3730"),
+                String::from("#3734"),
             ],
         ),
         future_area(
