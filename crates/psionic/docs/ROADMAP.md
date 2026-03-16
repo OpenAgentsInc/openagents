@@ -559,6 +559,13 @@ Its declared scope is:
   dataset/model/checkpoint identity bound into the analysis artifacts and
   making the current first-run weakness explicit: all 8 cases diverge at the
   first target token, with case exactness in the `9` to `16` bps range
+- landed trained-executor Phase 9 bar from the post-audit issue spine:
+  `psionic-train` now emits `postmortem.json` and `next_run_plan.json` into
+  the same committed run bundle, while
+  `docs/audits/2026-03-16-tassadar-first-run-postmortem.md` captures the
+  human-readable review; the current next-run plan explicitly prioritizes
+  boundary curriculum and more optimization budget, and it blocks Phase 10/11
+  until the 4x4 lane clears short-trace exactness gates
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

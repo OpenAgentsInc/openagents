@@ -139,6 +139,13 @@ Current posture:
   artifacts show that all 8 decoded cases diverge at target token 0 with case
   exactness only in the `9` to `16` bps range, which gives the next run a real
   failure-analysis baseline instead of an anecdotal “weak model” label
+- the ninth trained-executor follow-on bar now also exists in
+  `psionic-train`, the run bundle, and `docs/audits/`: the first run now has a
+  machine-readable `postmortem.json` plus `next_run_plan.json`, and a
+  human-readable review in `docs/audits/2026-03-16-tassadar-first-run-postmortem.md`;
+  the resulting plan explicitly prioritizes a boundary curriculum, a larger
+  optimization budget, conditional trainable-surface expansion, and gating
+  Phase 10/11 until the 4x4 lane actually clears short-trace exactness bars
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

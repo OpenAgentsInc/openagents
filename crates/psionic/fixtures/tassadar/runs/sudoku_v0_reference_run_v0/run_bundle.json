@@ -50,6 +50,16 @@
       "artifact_digest": "f71885712d82a1ec10e6c89351d6c63ae879b62832ff0372c2970470bd749e40"
     },
     {
+      "artifact_kind": "tassadar_next_run_plan",
+      "artifact_ref": "next_run_plan.json",
+      "artifact_digest": "abeda69016f727df33d6b26093e2e0746048987cb753862ea809979a6d20dd9d"
+    },
+    {
+      "artifact_kind": "tassadar_postmortem",
+      "artifact_ref": "postmortem.json",
+      "artifact_digest": "056c85fa2120cfcc3438874f5e4b8f80e8cb55b44b699e18a85b2f93eb03928c"
+    },
+    {
       "artifact_kind": "tassadar_trace_divergence_report",
       "artifact_ref": "trace_divergence_report.json",
       "artifact_digest": "fe489cd8bee94529503ed03c3bc794e73ab097e341dddfdd92b65da682870472"
@@ -70,5 +80,5 @@
       "artifact_digest": "85cd281ffc1cfbf0345c71f9321a3eb54e2972032af7c9dd73db185f7e8452f0"
     }
   ],
-  "bundle_digest": "c701f5011ce43bdbd67e4e7aaffe7585bb810a3d9014a6fac221a899fba5e133"
+  "bundle_digest": "987e799f29caf19e58ecd71d0b16f36597931e65047c12783dacfde416e56911"
 }
