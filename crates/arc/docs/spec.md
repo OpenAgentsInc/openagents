@@ -854,8 +854,11 @@ Current bounded landing:
   envelopes, `TaskBudget` plus `BudgetLedger`, `CandidateIdentity`,
   `Hypothesis`, candidate deduplication, second-attempt distinctness checks,
   and `SolveAttemptEnvelope`
-- later issues extend this same model with verifier reports, lane proposal
-  batches, and trace-bundle manifests rather than redefining shadow types
+- `ARC-303` extends the same model with `VerificationReport`,
+  `PairVerificationResult`, falsification checks, and the bounded common
+  verifier
+- lane proposal batches and trace-bundle manifests still extend this same
+  model rather than redefining shadow types
 
 ```rust
 pub struct HypothesisId(pub String);
@@ -1110,6 +1113,17 @@ It should guide symbolic search with:
 ## 8. Common verifier and portfolio arbiter
 
 The solver must have one common verifier.
+
+Current bounded landing:
+
+- `ARC-303` lands a deterministic static common verifier in `arc-solvers`
+- the verifier now executes candidate programs or direct-grid hypotheses on all
+  normalized train pairs, computes per-pair residuals, and reports
+  `VerificationReport`
+- falsification coverage now includes augmentation stability and holdout-on-train
+  with explicit `skipped` status when budget or example count is insufficient
+- interactive-plan hypotheses currently refuse through the static verifier
+  rather than silently pretending to verify
 
 ```rust
 pub trait CandidateVerifier {
