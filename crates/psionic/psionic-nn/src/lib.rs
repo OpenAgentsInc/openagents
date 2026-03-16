@@ -2,6 +2,7 @@
 //! for Psionic.
 
 mod layers;
+mod optimizers;
 mod training;
 
 use std::collections::BTreeMap;
@@ -15,11 +16,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use layers::*;
+pub use optimizers::*;
 pub use training::*;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str =
-    "module, parameter, buffer, state-tree, bounded layer, and training-helper semantics";
+pub const CRATE_ROLE: &str = "module, parameter, buffer, state-tree, bounded layer, training-helper, and optimizer semantics";
 
 /// Error returned when a module tree or state entry violates Psionic-nn rules.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
