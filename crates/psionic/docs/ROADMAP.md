@@ -584,6 +584,16 @@ Its declared scope is:
   no fallbacks or refusals and about `1.93x` hull speedup (`42,172` vs
   `21,860` target tok/s over a `4,096`-token per-case window), while both
   neural paths remain `0/8` exact against reference traces
+- landed trained-executor Phase 11 bar from the post-audit issue spine:
+  `psionic-runtime` now owns a real `tassadar.wasm.sudoku_9x9_search.v1`
+  profile plus a real split-aware 9x9 Sudoku-class corpus, `psionic-eval` and
+  `psionic-train` now freeze that workload into a tokenized sequence dataset
+  plus training manifest, `psionic-models` now carries a matching 9x9
+  executor-transformer descriptor, and `psionic-train` now commits
+  `crates/psionic/fixtures/tassadar/runs/sudoku_9x9_scale_plan_v0/scale_plan.json`;
+  that scale plan records the actual 4x4 promotion gate as still closed, so
+  the repo now has the real 9x9 workload and curriculum path without
+  collapsing into fake “9x9 already works” reporting
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison

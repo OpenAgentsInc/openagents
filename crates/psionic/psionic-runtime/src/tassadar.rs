@@ -140,6 +140,7 @@ impl TassadarRuntimeCapabilityReport {
                 String::from(TassadarWasmProfileId::CoreI32V1.as_str()),
                 String::from(TassadarWasmProfileId::CoreI32V2.as_str()),
                 String::from(TassadarWasmProfileId::SudokuV0SearchV1.as_str()),
+                String::from(TassadarWasmProfileId::Sudoku9x9SearchV1.as_str()),
             ],
             supported_attention_modes: vec![
                 TassadarRuntimeAttentionMode::ReferenceLinear,
@@ -253,6 +254,8 @@ pub enum TassadarWasmProfileId {
     CoreI32V2,
     /// Larger i32-only profile for real 4x4 Sudoku-v0 search programs.
     SudokuV0SearchV1,
+    /// Larger i32-only profile for real 9x9 Sudoku-class search programs.
+    Sudoku9x9SearchV1,
 }
 
 impl TassadarWasmProfileId {
@@ -263,6 +266,7 @@ impl TassadarWasmProfileId {
             Self::CoreI32V1 => "tassadar.wasm.core_i32.v1",
             Self::CoreI32V2 => "tassadar.wasm.core_i32.v2",
             Self::SudokuV0SearchV1 => "tassadar.wasm.sudoku_v0_search.v1",
+            Self::Sudoku9x9SearchV1 => "tassadar.wasm.sudoku_9x9_search.v1",
         }
     }
 }
@@ -527,6 +531,21 @@ impl TassadarWasmProfile {
         }
     }
 
+    /// Returns the larger search-oriented profile used for honest 9x9 Sudoku programs.
+    #[must_use]
+    pub fn sudoku_9x9_search_v1() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::Sudoku9x9SearchV1.as_str()),
+            allowed_opcodes: TassadarOpcode::ALL.to_vec(),
+            max_locals: 8,
+            max_memory_slots: 192,
+            max_program_len: 12_288,
+            max_steps: 1_048_576,
+            branch_mode: TassadarBranchMode::BrIfNonZero,
+            host_output_opcode: true,
+        }
+    }
+
     /// Returns whether the profile explicitly supports one opcode.
     #[must_use]
     pub fn supports(&self, opcode: TassadarOpcode) -> bool {
@@ -567,6 +586,9 @@ pub fn tassadar_wasm_profile_for_id(profile_id: &str) -> Option<TassadarWasmProf
         }
         value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
             Some(TassadarWasmProfile::sudoku_v0_search_v1())
+        }
+        value if value == TassadarWasmProfileId::Sudoku9x9SearchV1.as_str() => {
+            Some(TassadarWasmProfile::sudoku_9x9_search_v1())
         }
         _ => None,
     }
@@ -634,6 +656,20 @@ impl TassadarTraceAbi {
         }
     }
 
+    /// Returns the search-oriented trace ABI for the honest 9x9 Sudoku profile.
+    #[must_use]
+    pub fn sudoku_9x9_search_v1() -> Self {
+        Self {
+            abi_id: String::from("tassadar.trace.v1"),
+            schema_version: TASSADAR_TRACE_ABI_VERSION,
+            profile_id: String::from(TassadarWasmProfileId::Sudoku9x9SearchV1.as_str()),
+            append_only: true,
+            includes_stack_snapshots: true,
+            includes_local_snapshots: true,
+            includes_memory_snapshots: true,
+        }
+    }
+
     /// Returns a stable digest over the ABI compatibility surface.
     #[must_use]
     pub fn compatibility_digest(&self) -> String {
@@ -672,6 +708,9 @@ pub fn tassadar_trace_abi_for_profile_id(profile_id: &str) -> Option<TassadarTra
         }
         value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
             Some(TassadarTraceAbi::sudoku_v0_search_v1())
+        }
+        value if value == TassadarWasmProfileId::Sudoku9x9SearchV1.as_str() => {
+            Some(TassadarTraceAbi::sudoku_9x9_search_v1())
         }
         _ => None,
     }
@@ -1364,6 +1403,16 @@ impl TassadarFixtureWeights {
         }
     }
 
+    /// Returns the larger 9x9 search-profile handcrafted fixture table.
+    #[must_use]
+    pub fn sudoku_9x9_search_v1() -> Self {
+        Self {
+            profile_id: String::from(TassadarWasmProfileId::Sudoku9x9SearchV1.as_str()),
+            trace_abi_id: String::from("tassadar.trace.v1"),
+            opcode_rules: Self::core_i32_v1().opcode_rules,
+        }
+    }
+
     /// Returns one rule by opcode.
     #[must_use]
     pub fn rule_for(&self, opcode: TassadarOpcode) -> Option<&TassadarOpcodeRule> {
@@ -1389,6 +1438,9 @@ pub fn tassadar_fixture_weights_for_profile_id(profile_id: &str) -> Option<Tassa
         }
         value if value == TassadarWasmProfileId::SudokuV0SearchV1.as_str() => {
             Some(TassadarFixtureWeights::sudoku_v0_search_v1())
+        }
+        value if value == TassadarWasmProfileId::Sudoku9x9SearchV1.as_str() => {
+            Some(TassadarFixtureWeights::sudoku_9x9_search_v1())
         }
         _ => None,
     }
@@ -2947,11 +2999,38 @@ pub struct TassadarSudokuV0CorpusCase {
     pub validation_case: TassadarValidationCase,
 }
 
+/// One real 9x9 Sudoku-class corpus case backed by the honest search program.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarSudoku9x9CorpusCase {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable split assignment.
+    pub split: TassadarSudokuV0CorpusSplit,
+    /// Flat 9x9 puzzle cells where `0` denotes an empty square.
+    pub puzzle_cells: Vec<i32>,
+    /// Number of fixed givens in the puzzle.
+    pub given_count: usize,
+    /// Exact CPU-reference-backed validation case.
+    pub validation_case: TassadarValidationCase,
+}
+
 const TASSADAR_SUDOKU_V0_CELL_COUNT: usize = 16;
-const TASSADAR_SUDOKU_V0_GIVEN_OFFSET: usize = 16;
-const TASSADAR_SUDOKU_V0_MEMORY_SLOTS: usize = 32;
 const TASSADAR_SUDOKU_V0_GRID_WIDTH: usize = 4;
 const TASSADAR_SUDOKU_V0_BOX_WIDTH: usize = 2;
+const TASSADAR_SUDOKU_9X9_CELL_COUNT: usize = 81;
+const TASSADAR_SUDOKU_9X9_GRID_WIDTH: usize = 9;
+const TASSADAR_SUDOKU_9X9_BOX_WIDTH: usize = 3;
+const TASSADAR_SUDOKU_9X9_SOLVED_GRID: [i32; TASSADAR_SUDOKU_9X9_CELL_COUNT] = [
+    5, 3, 4, 6, 7, 8, 9, 1, 2, //
+    6, 7, 2, 1, 9, 5, 3, 4, 8, //
+    1, 9, 8, 3, 4, 2, 5, 6, 7, //
+    8, 5, 9, 7, 6, 1, 4, 2, 3, //
+    4, 2, 6, 8, 5, 3, 7, 9, 1, //
+    7, 1, 3, 9, 2, 4, 8, 5, 6, //
+    9, 6, 1, 5, 3, 7, 2, 8, 4, //
+    2, 8, 7, 4, 1, 9, 6, 3, 5, //
+    3, 4, 5, 2, 8, 6, 1, 7, 9,
+];
 
 /// Builds a real 4x4 Sudoku-v0 backtracking search program in the widened Wasm-first lane.
 #[must_use]
@@ -2959,95 +3038,30 @@ pub fn tassadar_sudoku_v0_search_program(
     program_id: impl Into<String>,
     puzzle_cells: [i32; TASSADAR_SUDOKU_V0_CELL_COUNT],
 ) -> TassadarProgram {
-    debug_assert!(puzzle_cells.iter().all(|value| (0..=4).contains(value)));
-    let profile = TassadarWasmProfile::sudoku_v0_search_v1();
-    let mut initial_memory = vec![0; TASSADAR_SUDOKU_V0_MEMORY_SLOTS];
-    for (index, value) in puzzle_cells.into_iter().enumerate() {
-        initial_memory[index] = value;
-        initial_memory[TASSADAR_SUDOKU_V0_GIVEN_OFFSET + index] = i32::from(value != 0);
-    }
-    TassadarProgram::new(
+    build_tassadar_sudoku_search_program(
         program_id,
-        &profile,
-        0,
-        TASSADAR_SUDOKU_V0_MEMORY_SLOTS,
-        build_tassadar_sudoku_v0_search_instructions(),
+        &TassadarWasmProfile::sudoku_v0_search_v1(),
+        "sudoku_v0",
+        TASSADAR_SUDOKU_V0_GRID_WIDTH,
+        TASSADAR_SUDOKU_V0_BOX_WIDTH,
+        puzzle_cells.as_slice(),
     )
-    .with_initial_memory(initial_memory)
 }
 
-fn build_tassadar_sudoku_v0_search_instructions() -> Vec<TassadarInstruction> {
-    let mut assembler = TassadarLabelAssembler::default();
-    for cell in 0..TASSADAR_SUDOKU_V0_CELL_COUNT {
-        let stage_label = sudoku_v0_stage_label(cell);
-        let search_label = sudoku_v0_search_label(cell);
-        let valid_label = sudoku_v0_candidate_valid_label(cell);
-        let invalid_label = sudoku_v0_candidate_invalid_label(cell);
-        let backtrack_label = sudoku_v0_backtrack_label(cell);
-        let next_stage_label = if cell + 1 == TASSADAR_SUDOKU_V0_CELL_COUNT {
-            String::from("sudoku_v0_solved")
-        } else {
-            sudoku_v0_stage_label(cell + 1)
-        };
-        let previous_backtrack_label = if cell == 0 {
-            String::from("sudoku_v0_unsolved")
-        } else {
-            sudoku_v0_backtrack_label(cell - 1)
-        };
-
-        assembler.label(stage_label.as_str());
-        assembler.emit(TassadarInstruction::I32Load {
-            slot: (TASSADAR_SUDOKU_V0_GIVEN_OFFSET + cell) as u8,
-        });
-        assembler.branch_if(next_stage_label.as_str());
-
-        assembler.label(search_label.as_str());
-        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
-        assembler.emit(TassadarInstruction::I32Const { value: 1 });
-        assembler.emit(TassadarInstruction::I32Add);
-        assembler.emit(TassadarInstruction::I32Store { slot: cell as u8 });
-        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
-        assembler.emit(TassadarInstruction::I32Const { value: 5 });
-        assembler.emit(TassadarInstruction::I32Sub);
-        assembler.branch_if(valid_label.as_str());
-        assembler.emit(TassadarInstruction::I32Const { value: 0 });
-        assembler.emit(TassadarInstruction::I32Store { slot: cell as u8 });
-        assembler.branch_always(previous_backtrack_label.as_str());
-
-        assembler.label(valid_label.as_str());
-        for (peer_index, peer_slot) in sudoku_v0_peer_slots(cell).into_iter().enumerate() {
-            let next_check_label = format!("sudoku_v0_cell_{cell}_peer_{peer_index}_next");
-            assembler.emit(TassadarInstruction::I32Load { slot: peer_slot });
-            assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
-            assembler.emit(TassadarInstruction::I32Sub);
-            assembler.branch_if(next_check_label.as_str());
-            assembler.branch_always(invalid_label.as_str());
-            assembler.label(next_check_label.as_str());
-        }
-        assembler.branch_always(next_stage_label.as_str());
-
-        assembler.label(invalid_label.as_str());
-        assembler.branch_always(search_label.as_str());
-
-        assembler.label(backtrack_label.as_str());
-        assembler.emit(TassadarInstruction::I32Load {
-            slot: (TASSADAR_SUDOKU_V0_GIVEN_OFFSET + cell) as u8,
-        });
-        assembler.branch_if(previous_backtrack_label.as_str());
-        assembler.branch_always(search_label.as_str());
-    }
-
-    assembler.label("sudoku_v0_solved");
-    for cell in 0..TASSADAR_SUDOKU_V0_CELL_COUNT {
-        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
-        assembler.emit(TassadarInstruction::Output);
-    }
-    assembler.emit(TassadarInstruction::Return);
-
-    assembler.label("sudoku_v0_unsolved");
-    assembler.emit(TassadarInstruction::Return);
-
-    assembler.finalize()
+/// Builds a real 9x9 Sudoku-class backtracking search program.
+#[must_use]
+pub fn tassadar_sudoku_9x9_search_program(
+    program_id: impl Into<String>,
+    puzzle_cells: [i32; TASSADAR_SUDOKU_9X9_CELL_COUNT],
+) -> TassadarProgram {
+    build_tassadar_sudoku_search_program(
+        program_id,
+        &TassadarWasmProfile::sudoku_9x9_search_v1(),
+        "sudoku_9x9",
+        TASSADAR_SUDOKU_9X9_GRID_WIDTH,
+        TASSADAR_SUDOKU_9X9_BOX_WIDTH,
+        puzzle_cells.as_slice(),
+    )
 }
 
 /// Returns the canonical real 4x4 Sudoku-v0 corpus with stable split assignments.
@@ -3137,6 +3151,45 @@ pub fn tassadar_sudoku_v0_corpus() -> Vec<TassadarSudokuV0CorpusCase> {
     ]
 }
 
+/// Returns the canonical real 9x9 Sudoku-class corpus with stable split assignments.
+#[must_use]
+pub fn tassadar_sudoku_9x9_corpus() -> Vec<TassadarSudoku9x9CorpusCase> {
+    vec![
+        masked_sudoku_9x9_corpus_case(
+            "sudoku_9x9_train_a",
+            TassadarSudokuV0CorpusSplit::Train,
+            &[
+                0, 4, 8, 9, 13, 17, 20, 24, 28, 31, 35, 38, 40, 42, 46, 48, 53, 55, 59, 61, 63, 67,
+                71, 72, 76, 80,
+            ],
+        ),
+        masked_sudoku_9x9_corpus_case(
+            "sudoku_9x9_train_b",
+            TassadarSudokuV0CorpusSplit::Train,
+            &[
+                1, 5, 6, 10, 14, 16, 18, 22, 26, 29, 33, 34, 36, 39, 43, 45, 50, 52, 56, 58, 62,
+                64, 68, 69, 74, 78,
+            ],
+        ),
+        masked_sudoku_9x9_corpus_case(
+            "sudoku_9x9_validation_a",
+            TassadarSudokuV0CorpusSplit::Validation,
+            &[
+                2, 3, 7, 11, 12, 15, 19, 23, 25, 27, 30, 32, 37, 41, 44, 47, 49, 51, 54, 57, 60,
+                65, 66, 70, 73, 75, 77, 79,
+            ],
+        ),
+        masked_sudoku_9x9_corpus_case(
+            "sudoku_9x9_test_a",
+            TassadarSudokuV0CorpusSplit::Test,
+            &[
+                0, 2, 5, 8, 10, 13, 16, 20, 24, 28, 31, 34, 36, 40, 44, 46, 49, 52, 56, 60, 64, 67,
+                70, 72, 75, 78, 80,
+            ],
+        ),
+    ]
+}
+
 fn computed_sudoku_v0_corpus_case(
     case_id: &str,
     split: TassadarSudokuV0CorpusSplit,
@@ -3173,52 +3226,220 @@ fn computed_sudoku_v0_corpus_case(
     }
 }
 
-fn sudoku_v0_stage_label(cell: usize) -> String {
-    format!("sudoku_v0_cell_{cell}_stage")
+fn masked_sudoku_9x9_corpus_case(
+    case_id: &str,
+    split: TassadarSudokuV0CorpusSplit,
+    masked_indices: &[usize],
+) -> TassadarSudoku9x9CorpusCase {
+    let mut puzzle_cells = TASSADAR_SUDOKU_9X9_SOLVED_GRID;
+    for index in masked_indices {
+        puzzle_cells[*index] = 0;
+    }
+    computed_sudoku_9x9_corpus_case(case_id, split, puzzle_cells)
 }
 
-fn sudoku_v0_search_label(cell: usize) -> String {
-    format!("sudoku_v0_cell_{cell}_search")
+fn computed_sudoku_9x9_corpus_case(
+    case_id: &str,
+    split: TassadarSudokuV0CorpusSplit,
+    puzzle_cells: [i32; TASSADAR_SUDOKU_9X9_CELL_COUNT],
+) -> TassadarSudoku9x9CorpusCase {
+    let given_count = puzzle_cells.iter().filter(|value| **value != 0).count();
+    let program =
+        tassadar_sudoku_9x9_search_program(format!("tassadar.{case_id}.v1"), puzzle_cells);
+    let execution = TassadarCpuReferenceRunner::for_program(&program)
+        .expect("Sudoku-9x9 search profile should resolve on CPU")
+        .execute(&program)
+        .expect("Sudoku-9x9 corpus puzzle should solve exactly");
+    assert_eq!(
+        execution.outputs.len(),
+        TASSADAR_SUDOKU_9X9_CELL_COUNT,
+        "Sudoku-9x9 corpus case `{case_id}` should emit a full solved grid"
+    );
+    let summary = format!(
+        "real 9x9 Sudoku-class backtracking puzzle on the {} split with {} givens",
+        split.as_str(),
+        given_count
+    );
+    TassadarSudoku9x9CorpusCase {
+        case_id: String::from(case_id),
+        split,
+        puzzle_cells: puzzle_cells.to_vec(),
+        given_count,
+        validation_case: TassadarValidationCase {
+            case_id: String::from(case_id),
+            summary,
+            program,
+            expected_trace: execution.steps,
+            expected_outputs: execution.outputs,
+        },
+    }
 }
 
-fn sudoku_v0_candidate_valid_label(cell: usize) -> String {
-    format!("sudoku_v0_cell_{cell}_candidate_valid")
+fn build_tassadar_sudoku_search_program(
+    program_id: impl Into<String>,
+    profile: &TassadarWasmProfile,
+    label_prefix: &str,
+    grid_width: usize,
+    box_width: usize,
+    puzzle_cells: &[i32],
+) -> TassadarProgram {
+    let cell_count = grid_width * grid_width;
+    let max_value = grid_width as i32;
+    let given_offset = cell_count;
+    let memory_slots = cell_count * 2;
+    debug_assert_eq!(cell_count, puzzle_cells.len());
+    debug_assert!(
+        puzzle_cells
+            .iter()
+            .all(|value| (0..=max_value).contains(value))
+    );
+
+    let mut initial_memory = vec![0; memory_slots];
+    for (index, value) in puzzle_cells.iter().copied().enumerate() {
+        initial_memory[index] = value;
+        initial_memory[given_offset + index] = i32::from(value != 0);
+    }
+
+    TassadarProgram::new(
+        program_id,
+        profile,
+        0,
+        memory_slots,
+        build_tassadar_sudoku_search_instructions(label_prefix, grid_width, box_width),
+    )
+    .with_initial_memory(initial_memory)
 }
 
-fn sudoku_v0_candidate_invalid_label(cell: usize) -> String {
-    format!("sudoku_v0_cell_{cell}_candidate_invalid")
+fn build_tassadar_sudoku_search_instructions(
+    label_prefix: &str,
+    grid_width: usize,
+    box_width: usize,
+) -> Vec<TassadarInstruction> {
+    let cell_count = grid_width * grid_width;
+    let given_offset = cell_count;
+    let max_value = grid_width as i32;
+    let mut assembler = TassadarLabelAssembler::default();
+    for cell in 0..cell_count {
+        let stage_label = sudoku_stage_label(label_prefix, cell);
+        let search_label = sudoku_search_label(label_prefix, cell);
+        let valid_label = sudoku_candidate_valid_label(label_prefix, cell);
+        let invalid_label = sudoku_candidate_invalid_label(label_prefix, cell);
+        let backtrack_label = sudoku_backtrack_label(label_prefix, cell);
+        let next_stage_label = if cell + 1 == cell_count {
+            format!("{label_prefix}_solved")
+        } else {
+            sudoku_stage_label(label_prefix, cell + 1)
+        };
+        let previous_backtrack_label = if cell == 0 {
+            format!("{label_prefix}_unsolved")
+        } else {
+            sudoku_backtrack_label(label_prefix, cell - 1)
+        };
+
+        assembler.label(stage_label.as_str());
+        assembler.emit(TassadarInstruction::I32Load {
+            slot: (given_offset + cell) as u8,
+        });
+        assembler.branch_if(next_stage_label.as_str());
+
+        assembler.label(search_label.as_str());
+        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::I32Const { value: 1 });
+        assembler.emit(TassadarInstruction::I32Add);
+        assembler.emit(TassadarInstruction::I32Store { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::I32Const {
+            value: max_value + 1,
+        });
+        assembler.emit(TassadarInstruction::I32Sub);
+        assembler.branch_if(valid_label.as_str());
+        assembler.emit(TassadarInstruction::I32Const { value: 0 });
+        assembler.emit(TassadarInstruction::I32Store { slot: cell as u8 });
+        assembler.branch_always(previous_backtrack_label.as_str());
+
+        assembler.label(valid_label.as_str());
+        for (peer_index, peer_slot) in sudoku_peer_slots(cell, grid_width, box_width)
+            .into_iter()
+            .enumerate()
+        {
+            let next_check_label = format!("{label_prefix}_cell_{cell}_peer_{peer_index}_next");
+            assembler.emit(TassadarInstruction::I32Load { slot: peer_slot });
+            assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+            assembler.emit(TassadarInstruction::I32Sub);
+            assembler.branch_if(next_check_label.as_str());
+            assembler.branch_always(invalid_label.as_str());
+            assembler.label(next_check_label.as_str());
+        }
+        assembler.branch_always(next_stage_label.as_str());
+
+        assembler.label(invalid_label.as_str());
+        assembler.branch_always(search_label.as_str());
+
+        assembler.label(backtrack_label.as_str());
+        assembler.emit(TassadarInstruction::I32Load {
+            slot: (given_offset + cell) as u8,
+        });
+        assembler.branch_if(previous_backtrack_label.as_str());
+        assembler.branch_always(search_label.as_str());
+    }
+
+    assembler.label(format!("{label_prefix}_solved").as_str());
+    for cell in 0..cell_count {
+        assembler.emit(TassadarInstruction::I32Load { slot: cell as u8 });
+        assembler.emit(TassadarInstruction::Output);
+    }
+    assembler.emit(TassadarInstruction::Return);
+
+    assembler.label(format!("{label_prefix}_unsolved").as_str());
+    assembler.emit(TassadarInstruction::Return);
+
+    assembler.finalize()
 }
 
-fn sudoku_v0_backtrack_label(cell: usize) -> String {
-    format!("sudoku_v0_cell_{cell}_backtrack")
+fn sudoku_stage_label(label_prefix: &str, cell: usize) -> String {
+    format!("{label_prefix}_cell_{cell}_stage")
 }
 
-fn sudoku_v0_peer_slots(cell: usize) -> Vec<u8> {
-    let row = cell / TASSADAR_SUDOKU_V0_GRID_WIDTH;
-    let col = cell % TASSADAR_SUDOKU_V0_GRID_WIDTH;
-    let row_base = row * TASSADAR_SUDOKU_V0_GRID_WIDTH;
+fn sudoku_search_label(label_prefix: &str, cell: usize) -> String {
+    format!("{label_prefix}_cell_{cell}_search")
+}
+
+fn sudoku_candidate_valid_label(label_prefix: &str, cell: usize) -> String {
+    format!("{label_prefix}_cell_{cell}_candidate_valid")
+}
+
+fn sudoku_candidate_invalid_label(label_prefix: &str, cell: usize) -> String {
+    format!("{label_prefix}_cell_{cell}_candidate_invalid")
+}
+
+fn sudoku_backtrack_label(label_prefix: &str, cell: usize) -> String {
+    format!("{label_prefix}_cell_{cell}_backtrack")
+}
+
+fn sudoku_peer_slots(cell: usize, grid_width: usize, box_width: usize) -> Vec<u8> {
+    let row = cell / grid_width;
+    let col = cell % grid_width;
+    let row_base = row * grid_width;
     let col_base = col;
-    let box_row = (row / TASSADAR_SUDOKU_V0_BOX_WIDTH) * TASSADAR_SUDOKU_V0_BOX_WIDTH;
-    let box_col = (col / TASSADAR_SUDOKU_V0_BOX_WIDTH) * TASSADAR_SUDOKU_V0_BOX_WIDTH;
+    let box_row = (row / box_width) * box_width;
+    let box_col = (col / box_width) * box_width;
     let mut peers = BTreeMap::new();
 
-    for row_offset in 0..TASSADAR_SUDOKU_V0_GRID_WIDTH {
+    for row_offset in 0..grid_width {
         let slot = row_base + row_offset;
         if slot != cell {
             peers.insert(slot, ());
         }
     }
-    for row_index in 0..TASSADAR_SUDOKU_V0_GRID_WIDTH {
-        let slot = row_index * TASSADAR_SUDOKU_V0_GRID_WIDTH + col_base;
+    for row_index in 0..grid_width {
+        let slot = row_index * grid_width + col_base;
         if slot != cell {
             peers.insert(slot, ());
         }
     }
-    for box_row_offset in 0..TASSADAR_SUDOKU_V0_BOX_WIDTH {
-        for box_col_offset in 0..TASSADAR_SUDOKU_V0_BOX_WIDTH {
-            let slot = (box_row + box_row_offset) * TASSADAR_SUDOKU_V0_GRID_WIDTH
-                + box_col
-                + box_col_offset;
+    for box_row_offset in 0..box_width {
+        for box_col_offset in 0..box_width {
+            let slot = (box_row + box_row_offset) * grid_width + box_col + box_col_offset;
             if slot != cell {
                 peers.insert(slot, ());
             }
@@ -4910,19 +5131,19 @@ fn stable_bytes_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
+        TASSADAR_FIXTURE_RUNNER_ID, TASSADAR_RUNTIME_BACKEND_ID, TassadarCompilerToolchainIdentity,
+        TassadarCpuReferenceRunner, TassadarExecutionRefusal, TassadarExecutorDecodeMode,
+        TassadarExecutorSelectionReason, TassadarExecutorSelectionState, TassadarFixtureRunner,
+        TassadarHullCacheRunner, TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
+        TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
+        TassadarSparseTopKRunner, TassadarSudokuV0CorpusSplit, TassadarTraceAbi,
+        TassadarTraceEvent, TassadarWasmProfile, TassadarWasmProfileId,
         build_tassadar_execution_evidence_bundle, diagnose_tassadar_executor_request,
         execute_tassadar_executor_request, replay_tassadar_execution,
         run_tassadar_exact_equivalence, run_tassadar_exact_parity, tassadar_article_class_corpus,
-        tassadar_runtime_capability_report, tassadar_sudoku_v0_corpus,
+        tassadar_runtime_capability_report, tassadar_sudoku_9x9_corpus,
+        tassadar_sudoku_9x9_search_program, tassadar_sudoku_v0_corpus,
         tassadar_sudoku_v0_search_program, tassadar_validation_corpus,
-        TassadarCompilerToolchainIdentity, TassadarCpuReferenceRunner, TassadarExecutionRefusal,
-        TassadarExecutorDecodeMode, TassadarExecutorSelectionReason,
-        TassadarExecutorSelectionState, TassadarFixtureRunner, TassadarHullCacheRunner,
-        TassadarInstruction, TassadarProgram, TassadarProgramArtifact,
-        TassadarProgramArtifactError, TassadarProgramSourceIdentity, TassadarProgramSourceKind,
-        TassadarSparseTopKRunner, TassadarSudokuV0CorpusSplit, TassadarTraceAbi,
-        TassadarTraceEvent, TassadarWasmProfile, TassadarWasmProfileId, TASSADAR_FIXTURE_RUNNER_ID,
-        TASSADAR_RUNTIME_BACKEND_ID,
     };
 
     #[test]
@@ -5023,6 +5244,7 @@ mod tests {
                 String::from(TassadarWasmProfile::core_i32_v1().profile_id),
                 String::from(TassadarWasmProfile::core_i32_v2().profile_id),
                 String::from(TassadarWasmProfile::sudoku_v0_search_v1().profile_id),
+                String::from(TassadarWasmProfile::sudoku_9x9_search_v1().profile_id),
             ]
         );
         assert_eq!(capability.validated_trace_abi_versions, vec![1]);
@@ -5080,12 +5302,53 @@ mod tests {
                 .count(),
             2
         );
-        assert!(corpus
-            .iter()
-            .all(|case| !case.validation_case.expected_trace.is_empty()));
-        assert!(corpus
-            .iter()
-            .all(|case| case.validation_case.expected_outputs.len() == 16));
+        assert!(
+            corpus
+                .iter()
+                .all(|case| !case.validation_case.expected_trace.is_empty())
+        );
+        assert!(
+            corpus
+                .iter()
+                .all(|case| case.validation_case.expected_outputs.len() == 16)
+        );
+    }
+
+    #[test]
+    fn sudoku_9x9_corpus_assigns_stable_train_validation_and_test_splits() {
+        let corpus = tassadar_sudoku_9x9_corpus();
+        assert_eq!(corpus.len(), 4);
+        assert_eq!(
+            corpus
+                .iter()
+                .filter(|case| case.split == TassadarSudokuV0CorpusSplit::Train)
+                .count(),
+            2
+        );
+        assert_eq!(
+            corpus
+                .iter()
+                .filter(|case| case.split == TassadarSudokuV0CorpusSplit::Validation)
+                .count(),
+            1
+        );
+        assert_eq!(
+            corpus
+                .iter()
+                .filter(|case| case.split == TassadarSudokuV0CorpusSplit::Test)
+                .count(),
+            1
+        );
+        assert!(
+            corpus
+                .iter()
+                .all(|case| !case.validation_case.expected_trace.is_empty())
+        );
+        assert!(
+            corpus
+                .iter()
+                .all(|case| case.validation_case.expected_outputs.len() == 81)
+        );
     }
 
     #[test]
@@ -5107,6 +5370,32 @@ mod tests {
         TassadarFixtureRunner::for_program(&program).expect("Sudoku-v0 fixture runner");
         TassadarHullCacheRunner::for_program(&program).expect("Sudoku-v0 hull runner");
         TassadarSparseTopKRunner::for_program(&program).expect("Sudoku-v0 sparse runner");
+    }
+
+    #[test]
+    fn sudoku_9x9_search_profile_resolves_to_runtime_builders() {
+        let program = tassadar_sudoku_9x9_search_program(
+            "tassadar.sudoku_9x9.runtime_builder_test",
+            [
+                0, 3, 4, 6, 0, 8, 9, 1, 0, //
+                6, 0, 2, 0, 9, 5, 0, 4, 8, //
+                1, 9, 0, 3, 4, 0, 5, 6, 7, //
+                0, 5, 9, 0, 6, 1, 4, 0, 3, //
+                4, 2, 0, 8, 0, 3, 0, 9, 1, //
+                7, 0, 3, 9, 0, 4, 8, 0, 6, //
+                0, 6, 1, 5, 3, 0, 2, 8, 4, //
+                2, 0, 7, 4, 0, 9, 6, 3, 0, //
+                3, 4, 0, 2, 8, 6, 0, 7, 9,
+            ],
+        );
+        assert_eq!(
+            program.profile_id,
+            TassadarWasmProfileId::Sudoku9x9SearchV1.as_str()
+        );
+        TassadarCpuReferenceRunner::for_program(&program).expect("Sudoku-9x9 CPU runner");
+        TassadarFixtureRunner::for_program(&program).expect("Sudoku-9x9 fixture runner");
+        TassadarHullCacheRunner::for_program(&program).expect("Sudoku-9x9 hull runner");
+        TassadarSparseTopKRunner::for_program(&program).expect("Sudoku-9x9 sparse runner");
     }
 
     #[test]
@@ -5185,6 +5474,22 @@ mod tests {
             saw_taken_backward_branch,
             "expected at least one real 4x4 Sudoku-v0 search case to use a taken backward branch"
         );
+    }
+
+    #[test]
+    fn sudoku_9x9_search_program_solves_real_9x9_puzzles_with_looping_search() {
+        for case in tassadar_sudoku_9x9_corpus() {
+            let execution = TassadarCpuReferenceRunner::for_program(&case.validation_case.program)
+                .expect("Sudoku-9x9 CPU runner")
+                .execute(&case.validation_case.program)
+                .expect("Sudoku-9x9 program should solve the puzzle");
+            assert_eq!(
+                execution.outputs, case.validation_case.expected_outputs,
+                "case={}",
+                case.case_id
+            );
+            assert_eq!(execution.outputs.len(), 81, "case={}", case.case_id);
+        }
     }
 
     #[test]

@@ -127,9 +127,19 @@ Target:
 
 Do not advance:
 
-- Phase 11 9x9 Sudoku-class scale-out
+- Phase 11 9x9 Sudoku-class promotion beyond the committed gated scale plan
 
 until the 4x4 lane clears the boundary and short-trace exactness gates above.
+
+Phase 11 has now been landed as a real substrate-and-planning step:
+
+- `crates/psionic/fixtures/tassadar/runs/sudoku_9x9_scale_plan_v0/scale_plan.json`
+  records a real 9x9 profile, real 9x9 corpus stats, a bounded smoke config,
+  and the still-closed 4x4 promotion gate
+
+That is the right shape for this phase right now. It keeps the real 9x9 work
+in-tree without pretending the current 4x4 model quality is good enough to
+promote.
 
 ## Conclusion
 

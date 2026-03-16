@@ -156,6 +156,16 @@ Current posture:
   `21,860` to `42,172` target tok/s over a `4,096`-token per-case window, but
   exactness remains `0/8`, so this is a real fast-path result rather than a
   claim that the model now solves Sudoku
+- the eleventh trained-executor follow-on bar now also exists in
+  `psionic-runtime`, `psionic-eval`, `psionic-models`, and `psionic-train`: a
+  real `tassadar.wasm.sudoku_9x9_search.v1` profile, a real split-aware 9x9
+  Sudoku-class corpus, a tokenized 9x9 sequence dataset plus frozen training
+  manifest, a bounded 9x9 smoke-training config, and a committed
+  `scale_plan.json` fixture under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_9x9_scale_plan_v0`; that plan
+  keeps Phase 11 honest by recording the current 4x4 gate as still closed
+  (`0/2` validation first-target exact cases, `0/2` exact-trace cases) while
+  still making the real 9x9 workload and curriculum plan explicit
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

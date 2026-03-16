@@ -1,0 +1,72 @@
+{
+  "baseline_reference_run_dir": "crates/psionic/fixtures/tassadar/runs/sudoku_v0_reference_run_v0",
+  "baseline_gate": {
+    "baseline_run_id": "tassadar-executor-transformer-sudoku-v0-reference-run-v0",
+    "baseline_dataset_storage_key": "oa.tassadar.sudoku_v0.sequence@train-v0",
+    "validation_case_count": 2,
+    "first_target_exact_case_count": 0,
+    "first_target_exactness_bps": 0,
+    "first_32_target_exactness_bps": 0,
+    "exact_trace_case_count": 0,
+    "gate_open": false,
+    "blocking_reasons": [
+      "4x4 validation first-target exactness is not yet 100%.",
+      "4x4 validation first-32-target exactness is still below the 9,000 bps gate.",
+      "No 4x4 validation case is exact over the full suffix yet."
+    ]
+  },
+  "dataset_stats": {
+    "dataset_storage_key": "oa.tassadar.sudoku_9x9.sequence@scale-v0",
+    "dataset_digest": "48c51304c322964fde2b973062a41b4d672cede3ec71290c305bab0a6bebeae7",
+    "training_manifest_digest": "9f594511598107c887c665fbedc1ba74894240f08a6900fea81b90b4c3c0d76b",
+    "wasm_profile_id": "tassadar.wasm.sudoku_9x9_search.v1",
+    "trace_abi_id": "tassadar.trace.v1",
+    "case_count": 4,
+    "split_case_counts": {
+      "test": 1,
+      "train": 2,
+      "validation": 1
+    },
+    "given_count_min": 53,
+    "given_count_max": 55,
+    "prompt_token_count_min": 51536,
+    "prompt_token_count_max": 51536,
+    "target_token_count_min": 4839686,
+    "target_token_count_max": 5283773,
+    "total_token_count_min": 4891222,
+    "total_token_count_max": 5335309,
+    "program_instruction_count_min": 11666,
+    "program_instruction_count_max": 11666
+  },
+  "model_id": "tassadar-executor-transformer-sudoku-9x9-v0",
+  "model_descriptor_digest": "3b30d8b2cb310bd0d485d62170bebca579a0d7d553b05c7d81df5920a34b0e1a",
+  "model_weight_digest": "b19b7698a8a9dab92a6ab62f161afb4f1b88ad55084c6fc3b7a228a93fc2534a",
+  "training_plan": {
+    "smoke_test_config": {
+      "run_id": "tassadar-executor-transformer-sudoku-9x9-scale-smoke-v0",
+      "workload": "sudoku9x9",
+      "dataset_version": "scale-v0",
+      "epochs": 1,
+      "learning_rate": 0.05,
+      "max_train_target_tokens_per_example": 8,
+      "max_eval_target_tokens_per_example": 8
+    },
+    "gated_promotion_config": {
+      "run_id": "tassadar-executor-transformer-sudoku-9x9-scale-v0",
+      "workload": "sudoku9x9",
+      "dataset_version": "scale-v0",
+      "epochs": 8,
+      "learning_rate": 0.05,
+      "max_train_target_tokens_per_example": 256
+    },
+    "curriculum_target_token_schedule": [
+      1,
+      8,
+      32,
+      128,
+      512
+    ],
+    "checkpoint_every_epoch": true
+  },
+  "plan_digest": "5feb0bebcba8e2d3b605231bc998554fa8e0c9b02965f17b0b57b6fa6f819495"
+}

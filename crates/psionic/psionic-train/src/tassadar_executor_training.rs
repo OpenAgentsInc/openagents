@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use psionic_data::TassadarSequenceSplit;
 use psionic_eval::{
     TassadarExecutorEvalError, TassadarExecutorEvalReport, TassadarExecutorLinearBenchmarkError,
-    TassadarExecutorLinearBenchmarkReport, TassadarSequenceEvalError,
-    benchmark_tassadar_executor_linear_decode, build_tassadar_sudoku_v0_sequence_dataset,
-    evaluate_tassadar_executor_transformer,
+    TassadarExecutorLinearBenchmarkReport, TassadarSequenceEvalError, TassadarSequenceWorkload,
+    benchmark_tassadar_executor_linear_decode, build_tassadar_sequence_dataset,
+    evaluate_tassadar_executor_transformer_with_target_cap,
 };
 use psionic_models::{
     TassadarExecutorTransformer, TassadarExecutorTransformerError, TokenId, TokenSequence,
@@ -16,14 +16,21 @@ use thiserror::Error;
 
 use crate::{
     TassadarSequenceTrainingError, TassadarSequenceTrainingManifest,
-    build_tassadar_sudoku_v0_sequence_training_manifest,
+    build_tassadar_sequence_training_manifest,
 };
+
+fn default_tassadar_sequence_workload() -> TassadarSequenceWorkload {
+    TassadarSequenceWorkload::SudokuV0
+}
 
 /// Bounded next-token training config for the first neural executor family.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TassadarExecutorTrainingConfig {
     /// Stable run identifier.
     pub run_id: String,
+    /// Dataset/workload family for the run.
+    #[serde(default = "default_tassadar_sequence_workload")]
+    pub workload: TassadarSequenceWorkload,
     /// Dataset version to freeze for the run.
     pub dataset_version: String,
     /// Number of deterministic epochs.
@@ -33,6 +40,9 @@ pub struct TassadarExecutorTrainingConfig {
     /// Optional cap over target tokens consumed from each train example.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_train_target_tokens_per_example: Option<usize>,
+    /// Optional cap over target tokens evaluated from each validation example.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_eval_target_tokens_per_example: Option<usize>,
 }
 
 impl TassadarExecutorTrainingConfig {
@@ -41,10 +51,26 @@ impl TassadarExecutorTrainingConfig {
     pub fn reference() -> Self {
         Self {
             run_id: String::from("tassadar-executor-transformer-train-v0"),
+            workload: TassadarSequenceWorkload::SudokuV0,
             dataset_version: String::from("train-v0"),
             epochs: 1,
             learning_rate: 0.05,
             max_train_target_tokens_per_example: Some(256),
+            max_eval_target_tokens_per_example: None,
+        }
+    }
+
+    /// Returns a small 9x9 scale-out smoke config.
+    #[must_use]
+    pub fn sudoku_9x9_scale_smoke() -> Self {
+        Self {
+            run_id: String::from("tassadar-executor-transformer-sudoku-9x9-scale-smoke-v0"),
+            workload: TassadarSequenceWorkload::Sudoku9x9,
+            dataset_version: String::from("scale-v0"),
+            epochs: 1,
+            learning_rate: 0.05,
+            max_train_target_tokens_per_example: Some(8),
+            max_eval_target_tokens_per_example: Some(8),
         }
     }
 }
@@ -141,14 +167,19 @@ pub enum TassadarExecutorTrainingError {
     Model(#[from] TassadarExecutorTransformerError),
 }
 
-/// Trains the first neural executor family on the frozen Sudoku-v0 token-sequence corpus.
+/// Trains the first neural executor family on one frozen Tassadar token-sequence corpus.
 pub fn train_tassadar_executor_transformer(
     config: &TassadarExecutorTrainingConfig,
 ) -> Result<TassadarExecutorTrainingOutcome, TassadarExecutorTrainingError> {
-    let bundle = build_tassadar_sudoku_v0_sequence_dataset(config.dataset_version.as_str())?;
-    let manifest =
-        build_tassadar_sudoku_v0_sequence_training_manifest(config.dataset_version.as_str())?;
-    let mut model = TassadarExecutorTransformer::sudoku_v0();
+    let bundle = build_tassadar_sequence_dataset(config.workload, config.dataset_version.as_str())?;
+    let manifest = build_tassadar_sequence_training_manifest(
+        config.workload,
+        config.dataset_version.as_str(),
+    )?;
+    let mut model = match config.workload {
+        TassadarSequenceWorkload::SudokuV0 => TassadarExecutorTransformer::sudoku_v0(),
+        TassadarSequenceWorkload::Sudoku9x9 => TassadarExecutorTransformer::sudoku_9x9(),
+    };
     let examples_by_id = bundle
         .dataset
         .examples
@@ -178,9 +209,14 @@ pub fn train_tassadar_executor_transformer(
                 let example = examples_by_id
                     .get(sequence_id.as_str())
                     .expect("frozen train plan should reference known examples");
+                let max_target = config
+                    .max_train_target_tokens_per_example
+                    .unwrap_or(example.metadata.target_token_count as usize)
+                    .min(example.metadata.target_token_count as usize);
+                let effective_sequence_len =
+                    example.metadata.prompt_token_count as usize + max_target;
                 let sequence = TokenSequence::new(
-                    example
-                        .token_ids
+                    example.token_ids[..effective_sequence_len]
                         .iter()
                         .map(|token| TokenId(*token))
                         .collect::<Vec<_>>(),
@@ -188,9 +224,6 @@ pub fn train_tassadar_executor_transformer(
                 let forward = model.forward_logits(&sequence)?;
                 let start_logit_index =
                     example.metadata.prompt_token_count.saturating_sub(1) as usize;
-                let max_target = config
-                    .max_train_target_tokens_per_example
-                    .unwrap_or(example.metadata.target_token_count as usize);
                 let end_logit_index = (start_logit_index + max_target).min(forward.logits.len());
                 for logit_index in start_logit_index..end_logit_index {
                     let hidden = &forward.hidden_states[logit_index];
@@ -247,10 +280,11 @@ pub fn train_tassadar_executor_transformer(
         }
     }
 
-    let evaluation = evaluate_tassadar_executor_transformer(
+    let evaluation = evaluate_tassadar_executor_transformer_with_target_cap(
         &model,
         &bundle.dataset,
         TassadarSequenceSplit::Validation,
+        config.max_eval_target_tokens_per_example,
     )?;
     let report = TassadarExecutorTrainingReport::new(
         config.clone(),
@@ -268,7 +302,7 @@ pub fn benchmark_trained_tassadar_executor_transformer(
     split_filter: Option<TassadarSequenceSplit>,
 ) -> Result<TassadarExecutorLinearBenchmarkReport, TassadarExecutorTrainingError> {
     let outcome = train_tassadar_executor_transformer(config)?;
-    let bundle = build_tassadar_sudoku_v0_sequence_dataset(config.dataset_version.as_str())?;
+    let bundle = build_tassadar_sequence_dataset(config.workload, config.dataset_version.as_str())?;
     Ok(benchmark_tassadar_executor_linear_decode(
         &outcome.model,
         &bundle.dataset,
@@ -303,6 +337,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use psionic_eval::TassadarSequenceWorkload;
+
     use super::{TassadarExecutorTrainingConfig, train_tassadar_executor_transformer};
 
     #[test]
@@ -316,6 +352,22 @@ mod tests {
         assert!(!outcome.report.trained_model_descriptor_digest.is_empty());
         assert!(!outcome.report.trained_weight_digest.is_empty());
         assert!(!outcome.report.report_digest.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn next_token_training_runs_against_frozen_sudoku_9x9_sequence_manifest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let outcome = train_tassadar_executor_transformer(
+            &TassadarExecutorTrainingConfig::sudoku_9x9_scale_smoke(),
+        )?;
+
+        assert!(!outcome.report.batch_reports.is_empty());
+        assert_eq!(outcome.report.evaluation.case_reports.len(), 1);
+        assert_eq!(
+            outcome.report.config.workload,
+            TassadarSequenceWorkload::Sudoku9x9
+        );
         Ok(())
     }
 }

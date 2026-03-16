@@ -164,6 +164,16 @@ These issues track the executor-specific work that is still missing:
     `21,860` to `42,172` target tok/s over a `4,096`-token per-case window,
     while exactness remains `0/8`
 - `#3787` Phase 11: scale from Sudoku-v0 to real 9x9 Sudoku-class training
+  - implemented March 16, 2026: the repo now carries a real
+    `tassadar.wasm.sudoku_9x9_search.v1` profile, a split-aware real 9x9
+    Sudoku-class corpus, a tokenized 9x9 sequence dataset plus frozen
+    training manifest, a bounded 9x9 smoke-training config, and a committed
+    `scale_plan.json` fixture under
+    `crates/psionic/fixtures/tassadar/runs/sudoku_9x9_scale_plan_v0`; that
+    plan keeps the current 4x4 promotion gate explicit (`0/2` validation
+    first-target exact cases, `0/2` exact-trace cases), so this closes the
+    “real 9x9 path exists” gap without pretending the 9x9 trained executor
+    already works
 
 ## The Main Correction
 
@@ -589,7 +599,10 @@ Do this sixth:
 - `#3786` is now done: the trained model now has a real model-KV hull path and
   an honest persisted benchmark over that path, but the result is still a
   throughput claim rather than a model-quality breakthrough
-- move from 4x4 to 9x9 only after the first trained 4x4 lane is real
+- `#3787` is now done as a gated scale-out substrate: the real 9x9 profile,
+  corpus, tokenized dataset, training manifest, smoke config, and committed
+  `scale_plan.json` fixture now exist, while the plan still records that 4x4
+  first-target and short-trace exactness are blocking honest 9x9 promotion
 - keep the distinction between Sudoku-v0 success and article-grade scale
   completely explicit
 

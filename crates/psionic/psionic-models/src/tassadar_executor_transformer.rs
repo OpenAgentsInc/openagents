@@ -5,11 +5,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
+    ModelDescriptor, TassadarTraceTokenizer, TokenId, TokenSequence, TokenizerBoundary,
+    WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
     tassadar::{
         TassadarAttentionGeometryContract, TassadarExecutorAttentionMode, TassadarExecutorFamily,
     },
-    ModelDescriptor, TassadarTraceTokenizer, TokenId, TokenSequence, TokenizerBoundary,
-    WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
 
 /// Stable claim boundary for the first neural executor family.
@@ -46,6 +46,18 @@ impl TassadarExecutorTransformerConfig {
             max_sequence_tokens: 262_144,
             embedding_dim: 16,
             context_offsets: vec![1, 2, 4, 8, 16],
+            constrained_lookup_head_dim: 2,
+        }
+    }
+
+    /// Returns the larger 9x9 Sudoku-class config.
+    #[must_use]
+    pub fn sudoku_9x9(tokenizer: &TassadarTraceTokenizer) -> Self {
+        Self {
+            vocab_size: tokenizer.vocabulary().len(),
+            max_sequence_tokens: 524_288,
+            embedding_dim: 16,
+            context_offsets: vec![1, 2, 4, 8, 16, 32],
             constrained_lookup_head_dim: 2,
         }
     }
@@ -328,6 +340,8 @@ pub struct TassadarExecutorTransformer {
 impl TassadarExecutorTransformer {
     /// Stable model identifier for the first Sudoku-v0 executor family.
     pub const MODEL_ID: &str = "tassadar-executor-transformer-sudoku-v0-v0";
+    /// Stable model identifier for the first 9x9 Sudoku-class executor family.
+    pub const SUDOKU_9X9_MODEL_ID: &str = "tassadar-executor-transformer-sudoku-9x9-v0";
     /// Stable model family label.
     pub const MODEL_FAMILY: &str = "tassadar_executor_transformer";
 
@@ -342,6 +356,37 @@ impl TassadarExecutorTransformer {
             executor_family: TassadarExecutorFamily::WasmTraceExecutor,
             profile: TassadarWasmProfile::sudoku_v0_search_v1(),
             trace_abi: TassadarTraceAbi::sudoku_v0_search_v1(),
+            supported_decode_modes: vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache,
+            ],
+            attention_mode: TassadarExecutorAttentionMode::HardMaxLookup,
+            attention_geometry: TassadarAttentionGeometryContract {
+                constrained_lookup_head_dim: Some(config.constrained_lookup_head_dim),
+                hull_cache_eligible: true,
+            },
+            claim_boundary: TassadarExecutorTransformerClaimBoundary::NextTokenOnly,
+            config,
+            weights: weights.metadata().clone(),
+        };
+        Self {
+            descriptor,
+            tokenizer,
+            weights,
+        }
+    }
+
+    /// Creates the first 9x9 Sudoku-class executor transformer.
+    #[must_use]
+    pub fn sudoku_9x9() -> Self {
+        let tokenizer = TassadarTraceTokenizer::new();
+        let config = TassadarExecutorTransformerConfig::sudoku_9x9(&tokenizer);
+        let weights = TassadarExecutorTransformerWeightBundle::new(&config);
+        let descriptor = TassadarExecutorTransformerDescriptor {
+            model: ModelDescriptor::new(Self::SUDOKU_9X9_MODEL_ID, Self::MODEL_FAMILY, "v0"),
+            executor_family: TassadarExecutorFamily::WasmTraceExecutor,
+            profile: TassadarWasmProfile::sudoku_9x9_search_v1(),
+            trace_abi: TassadarTraceAbi::sudoku_9x9_search_v1(),
             supported_decode_modes: vec![
                 TassadarExecutorDecodeMode::ReferenceLinear,
                 TassadarExecutorDecodeMode::HullCache,
@@ -873,7 +918,8 @@ where
 #[cfg(test)]
 mod tests {
     use psionic_runtime::{
-        tassadar_sudoku_v0_corpus, TassadarCpuReferenceRunner, TassadarExecutorDecodeMode,
+        TassadarCpuReferenceRunner, TassadarExecutorDecodeMode, tassadar_sudoku_9x9_corpus,
+        tassadar_sudoku_v0_corpus,
     };
 
     use crate::{TassadarTraceTokenizer, TokenSequence, TokenizerBoundary};
@@ -911,8 +957,28 @@ mod tests {
     }
 
     #[test]
-    fn sudoku_v0_executor_transformer_emits_logits_over_tokenized_sequences(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sudoku_9x9_executor_transformer_descriptor_is_explicit_about_geometry_and_scope() {
+        let model = TassadarExecutorTransformer::sudoku_9x9();
+        let descriptor = model.descriptor();
+
+        assert_eq!(
+            descriptor.model.model_id,
+            TassadarExecutorTransformer::SUDOKU_9X9_MODEL_ID
+        );
+        assert_eq!(descriptor.config.constrained_lookup_head_dim, 2);
+        assert!(descriptor.config.max_sequence_tokens >= 524_288);
+        assert_eq!(
+            descriptor.supported_decode_modes,
+            vec![
+                TassadarExecutorDecodeMode::ReferenceLinear,
+                TassadarExecutorDecodeMode::HullCache
+            ]
+        );
+    }
+
+    #[test]
+    fn sudoku_v0_executor_transformer_emits_logits_over_tokenized_sequences()
+    -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer = TassadarTraceTokenizer::new();
         let model = TassadarExecutorTransformer::sudoku_v0();
         let case = tassadar_sudoku_v0_corpus()
@@ -927,16 +993,47 @@ mod tests {
 
         assert_eq!(forward.logits.len(), sequence.sequence.len() - 1);
         assert_eq!(forward.hidden_states.len(), sequence.sequence.len() - 1);
-        assert!(forward
-            .logits
-            .iter()
-            .all(|step| step.len() == model.descriptor().config.vocab_size));
+        assert!(
+            forward
+                .logits
+                .iter()
+                .all(|step| step.len() == model.descriptor().config.vocab_size)
+        );
         Ok(())
     }
 
     #[test]
-    fn sudoku_v0_executor_transformer_can_start_linear_decode(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sudoku_9x9_executor_transformer_emits_logits_over_tokenized_sequences()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let tokenizer = TassadarTraceTokenizer::new();
+        let model = TassadarExecutorTransformer::sudoku_9x9();
+        let case = tassadar_sudoku_9x9_corpus()
+            .into_iter()
+            .next()
+            .expect("sudoku corpus should not be empty");
+        let execution = TassadarCpuReferenceRunner::for_program(&case.validation_case.program)?
+            .execute(&case.validation_case.program)?;
+        let sequence =
+            tokenizer.tokenize_program_and_execution(&case.validation_case.program, &execution);
+        let truncated = TokenSequence::new(
+            sequence.sequence.as_slice()[..(sequence.prompt_token_count + 8)].to_vec(),
+        );
+        let forward = model.forward_logits(&truncated)?;
+
+        assert_eq!(forward.logits.len(), truncated.len() - 1);
+        assert_eq!(forward.hidden_states.len(), truncated.len() - 1);
+        assert!(
+            forward
+                .logits
+                .iter()
+                .all(|step| step.len() == model.descriptor().config.vocab_size)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sudoku_v0_executor_transformer_can_start_linear_decode()
+    -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer = TassadarTraceTokenizer::new();
         let model = TassadarExecutorTransformer::sudoku_v0();
         let config = TassadarExecutorTransformerConfig::sudoku_v0(&tokenizer);
@@ -991,8 +1088,8 @@ mod tests {
     }
 
     #[test]
-    fn hull_decode_matches_linear_decode_over_real_model_kv_points(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn hull_decode_matches_linear_decode_over_real_model_kv_points()
+    -> Result<(), Box<dyn std::error::Error>> {
         let tokenizer = TassadarTraceTokenizer::new();
         let model = TassadarExecutorTransformer::sudoku_v0();
         let encoded = tokenizer.encode("<program> <locals> <memory> <trace>");
@@ -1023,8 +1120,8 @@ mod tests {
     }
 
     #[test]
-    fn applying_a_trained_output_head_reconstructs_the_same_descriptor_digest(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn applying_a_trained_output_head_reconstructs_the_same_descriptor_digest()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut trained = TassadarExecutorTransformer::sudoku_v0();
         trained.refresh_after_training();
         let mut restored = TassadarExecutorTransformer::sudoku_v0();
