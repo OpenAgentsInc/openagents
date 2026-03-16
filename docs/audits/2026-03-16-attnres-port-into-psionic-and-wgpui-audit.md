@@ -58,6 +58,31 @@ Psionic/OpenAgents sources reviewed:
 - `apps/autopilot-desktop/src/panes/frame_debugger.rs`
 - `apps/autopilot-desktop/src/panes/key_ledger.rs`
 
+Additional Burn sources reviewed for prerequisite planning:
+
+- `/Users/christopherdavid/code/burn/README.md`
+- `/Users/christopherdavid/code/burn/Cargo.toml`
+- `/Users/christopherdavid/code/burn/burn-book/src/building-blocks/autodiff.md`
+- `/Users/christopherdavid/code/burn/burn-book/src/building-blocks/module.md`
+- `/Users/christopherdavid/code/burn/burn-book/src/building-blocks/learner.md`
+- `/Users/christopherdavid/code/burn/burn-book/src/custom-training-loop.md`
+- `/Users/christopherdavid/code/burn/contributor-book/src/guides/adding-a-new-operation-to-burn.md`
+- `/Users/christopherdavid/code/burn/contributor-book/src/project-architecture/module.md`
+- `/Users/christopherdavid/code/burn/contributor-book/src/project-architecture/serialization.md`
+- `/Users/christopherdavid/code/burn/crates/burn-core/src/module/param/base.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-derive/src/module/base.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-derive/src/module/record_struct.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-dispatch/src/ops/tensor.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-store/src/lib.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-store/src/traits.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-store/src/pytorch/mod.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-train/src/metric/store/base.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-train/src/renderer/base.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-train/src/renderer/tui/metric_numeric.rs`
+- `/Users/christopherdavid/code/burn/crates/burn-train/src/renderer/tui/renderer.rs`
+- `/Users/christopherdavid/code/burn/examples/custom-renderer/src/lib.rs`
+- `/Users/christopherdavid/code/burn/examples/text-generation/src/training.rs`
+
 `attnres` sources reviewed from `~/code/attnres`:
 
 - `README.md`
@@ -133,6 +158,10 @@ The TUI port should not reproduce the current mistake from `attnres/web-demo`,
 which ships a second independent algorithm implementation just to drive
 visuals. OpenAgents should keep one AttnRes runtime truth and feed both the
 WGPUI pane and any later web surface from shared diagnostics snapshots.
+
+The Burn-specific prerequisite details now live in the companion audit:
+
+- [2026-03-16-burn-prerequisites-for-attnres-psionic-port-audit.md](./2026-03-16-burn-prerequisites-for-attnres-psionic-port-audit.md)
 
 ## What attnres Actually Contains
 
@@ -348,6 +377,51 @@ The right rule is:
 - do not solve the first port by hiding the missing framework in one opaque
   AttnRes-only backend extension
 
+## Burn-Derived Prerequisites
+
+The deeper Burn review changes the roadmap in one useful way: some prerequisites
+that were previously implied should be made explicit before the AttnRes port
+starts claiming training or checkpoint parity.
+
+The relevant Burn lessons are not "copy Burn APIs." They are:
+
+- stable parameter identity and parameter-tree traversal are prerequisites for
+  honest optimizer state, checkpoint restore, and selective import
+- adding an op is not done when the forward path works; it is done when reverse
+  mode, tests, and backend admission are also defined
+- model IO needs a native Psionic artifact contract plus an optional import
+  bridge for foreign weights
+- visualization should sit on top of event or snapshot feeds, not by letting UI
+  code inspect live model internals ad hoc
+
+That translates into four explicit prerequisites:
+
+1. A small Psionic parameter-tree contract
+
+- enough to enumerate trainable tensors, assign stable IDs, and apply updates
+  or imported values by path or ID
+- this should live across `psionic-models` and `psionic-train`, not as an
+  AttnRes-only shim
+
+2. An AttnRes admission rule for new Psionic ops
+
+- no AttnRes-enabling op should be considered "ported" until the CPU reference
+  implementation, autodiff posture, and test coverage are all in place
+- this is the Burn op-extension lesson, translated into Psionic terms
+
+3. A Psionic-native checkpoint and import boundary
+
+- native saved form remains `safetensors` plus manifest
+- Burn is allowed only as a one-shot importer for legacy artifacts when needed
+
+4. A diagnostics event or snapshot contract for the future WGPUI pane
+
+- the pane should subscribe to runtime or training snapshots
+- it should not become a second place where AttnRes math is recomputed
+
+The companion prerequisite audit expands these points in detail and maps them
+onto the current Psionic crates.
+
 ## Recommended Port Sequence
 
 ### Phase 1: AttnRes-Enabling Psionic Semantics
@@ -359,6 +433,10 @@ Goal:
 
 Required work:
 
+- add a minimum reusable parameter-tree surface for trainable model families:
+  - stable parameter IDs
+  - trainable versus frozen parameter classification
+  - parameter enumeration or visit support for optimizer application and import
 - add the minimum generic tensor semantics required by AttnRes:
   - subtract and divide
   - mean reduction
@@ -372,9 +450,16 @@ Required work:
   - implement autodiff for the needed backend extensions, or
   - express RMSNorm and attention through differentiable primitive ops for the
     reference lane
+- adopt a Burn-style completeness rule for each newly added AttnRes-enabling
+  op:
+  - graph admission
+  - CPU reference execution
+  - reverse-mode support or explicit refusal
+  - parity tests
 
 Exit criteria:
 
+- reusable parameter traversal exists for AttnRes-class models
 - a CPU-reference graph can represent the AttnRes forward path
 - autodiff can propagate through the reference path
 - no Burn dependency is needed for forward or backward
@@ -481,7 +566,11 @@ Recommended behavior:
 - explicit train manifest and checkpoint lineage
 - typed optimizer config using `TrainingOptimizerConfig::adam(...)` or
   `adamw(...)`
+- optimizer state keyed by stable Psionic parameter identity rather than
+  positional assumptions
 - held-out eval that confirms training actually changes routing and loss
+- optional one-shot Burn import path for legacy `.mpk` or Burn-managed weights
+  only if migration pressure is real
 
 Serialization rule:
 
@@ -542,6 +631,8 @@ How the TUI maps into WGPUI:
 Recommended data flow:
 
 - Psionic emits `AttnResDiagnosticsSnapshot`
+- `psionic-train` or the app-owned control worker also emits metric and
+  lifecycle snapshots in a renderer-neutral format
 - app control worker runs train step / reset / inspect actions
 - pane consumes immutable snapshots
 - WGPUI paints from snapshot only
@@ -702,9 +793,11 @@ The highest-signal first landing is:
 
 1. add the missing differentiable Psionic semantics required for CPU-reference
    AttnRes
-2. land `psionic-models::attnres` plus fixtures and core parity tests
-3. land `psionic-runtime::attnres` two-phase execution and diagnostics
-4. land a minimal desktop AttnRes pane that can replay fixture-backed
+2. land the minimum reusable parameter-tree contract needed for optimizer state
+   and import
+3. land `psionic-models::attnres` plus fixtures and core parity tests
+4. land `psionic-runtime::attnres` two-phase execution and diagnostics
+5. land a minimal desktop AttnRes pane that can replay fixture-backed
    diagnostics
 
 That slice proves the owner split and removes the biggest risk:
@@ -713,9 +806,9 @@ That slice proves the owner split and removes the biggest risk:
 
 After that:
 
-5. land training and checkpoint support in `psionic-train`
-6. switch the pane from fixture replay to live Psionic train-step snapshots
-7. add benchmark receipts and optional research or serve follow-ons
+6. land training and checkpoint support in `psionic-train`
+7. switch the pane from fixture replay to live Psionic train-step snapshots
+8. add benchmark receipts and optional research or serve follow-ons
 
 ## Bottom Line
 
