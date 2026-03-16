@@ -137,6 +137,11 @@ It already has real substrate for:
   `psionic-nn` that reuses `psionic-train` scheduler primitives while keeping
   scheduler bindings, group-level learning-rate and weight-decay scaling, and
   multi-optimizer composition in the framework-facing layer
+- a bounded reusable eval-oriented quantized module shell in `psionic-nn`
+  covering `Module::quantize(...)`, explicit keep-dense versus strict
+  quantize reports, and `QuantizedLinear` plus `QuantizedEmbedding` wrappers
+  over `int8_symmetric` block storage with explicit dequantize-to-`f32`
+  forward semantics
 - a seeded PyTorch-derived module parity matrix for normalized module-tree and
   `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
   registration-order-preserving `state_dict` parity

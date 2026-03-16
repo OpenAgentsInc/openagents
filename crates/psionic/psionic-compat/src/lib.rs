@@ -1087,7 +1087,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
         },
         MlxAcceptanceCategory {
             category_id: String::from("nn-optimizer"),
-            matrix_status: MlxAcceptanceCategoryStatus::Partial,
+            matrix_status: MlxAcceptanceCategoryStatus::ImplementedEarly,
             epic_id: String::from("PMLX-E3"),
             issue_refs: vec![
                 String::from("PMLX-301 (#3846)"),
@@ -1102,10 +1102,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane exposes a public Module tree, state save and load behavior, core layers, losses, initializers, optimizers, schedulers, and quantized-module semantics above Psionic-native training primitives.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public module tree in psionic-nn, including explicit parameter versus buffer registration, trainable versus frozen posture, recursive parameter discovery with filtered trainable or frozen views, deterministic state-tree/state-dict behavior, bounded public save_weights/load_weights wrappers with strict-by-default plus explicit non-strict load posture, a bounded CPU-reference core layer surface spanning linear, embedding, layer_norm, rms_norm, activation, dropout, conv1d, conv2d, pool1d, and pool2d families, bounded CPU-reference loss, initializer, and helper functions including mse_loss, l1_loss, binary_cross_entropy_loss, cross_entropy_loss, softmax_last_dim, log_softmax_last_dim, sigmoid, one_hot, init_tensor, and init_parameter, plus a bounded public optimizer shell with module-path keyed state, scheduler bindings, parameter-group scaling semantics, and multi-optimizer composition built above psionic-train optimizer and scheduler primitives; only the broader MLX-class quantized-module shell is still missing.",
+                "Psionic now exposes a first public module tree in psionic-nn, including explicit parameter versus buffer registration, trainable versus frozen posture, recursive parameter discovery with filtered trainable or frozen views, deterministic state-tree/state-dict behavior, bounded public save_weights/load_weights wrappers with strict-by-default plus explicit non-strict load posture, a bounded CPU-reference core layer surface spanning linear, embedding, layer_norm, rms_norm, activation, dropout, conv1d, conv2d, pool1d, and pool2d families, bounded CPU-reference loss, initializer, and helper functions including mse_loss, l1_loss, binary_cross_entropy_loss, cross_entropy_loss, softmax_last_dim, log_softmax_last_dim, sigmoid, one_hot, init_tensor, and init_parameter, plus a bounded public optimizer shell with module-path keyed state, scheduler bindings, parameter-group scaling semantics, and multi-optimizer composition built above psionic-train optimizer and scheduler primitives; psionic-nn now also exposes an eval-oriented quantized module shell with Module::quantize, explicit quantize reports, and QuantizedLinear plus QuantizedEmbedding wrappers over int8_symmetric block storage and dequantize-to-f32 forward semantics.",
             ),
             boundary_note: String::from(
-                "Do not claim MLX nn closure from the current module plus save/load plus bounded core layer plus bounded loss/init/helper plus bounded optimizer-and-scheduler slice alone; the public surface now covers registration, freeze posture, module-state save/load semantics, core layer numerics, reusable CPU-reference losses and initializers, and a path-keyed optimizer plus scheduler shell with parameter-group composition, but quantized-module closure is still missing.",
+                "Treat this as supported early nn closure only: the public surface now covers registration, freeze posture, module-state save/load semantics, core layer numerics, reusable CPU-reference losses and initializers, a path-keyed optimizer plus scheduler shell with parameter-group composition, and a first eval-oriented quantized wrapper slice for linear and embedding families; it does not yet imply broad quantized training closure, conv/norm quantized wrappers, or export-format quantization parity.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1423,7 +1423,7 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("python/tests/test_quantized.py"),
                 String::from("python/tests/test_tree.py"),
             ],
-            current_outcome: MlxParityHarnessOutcome::Unsupported,
+            current_outcome: MlxParityHarnessOutcome::Pass,
             psionic_hook_commands: vec![
                 String::from(
                     "cargo test -p psionic-nn layers::tests::linear_forward_applies_affine_projection -- --exact --nocapture",
@@ -1446,12 +1446,24 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from(
                     "cargo test -p psionic-nn optimizers::tests::multi_optimizer_composes_disjoint_groups_and_refuses_overlap_or_unassigned_paths -- --exact --nocapture",
                 ),
+                String::from(
+                    "cargo test -p psionic-nn quantized::tests::module_quantize_reports_quantized_and_dense_paths_and_freezes_eval_copy -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-nn quantized::tests::quantized_linear_forward_tracks_dense_reference -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-nn quantized::tests::quantized_embedding_lookup_tracks_dense_reference -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-nn quantized::tests::quantized_linear_roundtrips_through_module_state_load -- --exact --nocapture",
+                ),
             ],
             summary: String::from(
-                "psionic-nn now exposes a first public Module tree with explicit freeze posture, bounded save_weights/load_weights behavior, a bounded core layer surface, bounded CPU-reference loss/init/helper functions, and a bounded public optimizer plus scheduler shell with parameter-group and multi-optimizer composition, but quantized modules still remain unsupported on the MLX public surface.",
+                "psionic-nn now exposes a first bounded quantized nn slice on the MLX public surface, including Module::quantize with explicit keep-dense versus strict posture, eval-only frozen quantized modules, and QuantizedLinear plus QuantizedEmbedding wrappers backed by int8_symmetric block storage and CPU-reference dequantize-to-f32 forward checks.",
             ),
             boundary_note: String::from(
-                "The new public Module plus save/load plus bounded core layer plus bounded loss/init/helper plus bounded optimizer-and-scheduler slice is useful substrate, but it does not yet equal an MLX-class quantized family.",
+                "This seeded pass proves only a first eval-oriented quantized layer family for linear and embedding modules; it does not imply broad quantized training closure, conv or norm quantized wrappers, or external artifact-format parity.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1620,18 +1632,23 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("public_mlx_nn_optimizer_api"),
-            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "Psionic now has a first public Module tree with explicit freeze posture, bounded public save_weights/load_weights support, a bounded CPU-reference core layer surface, bounded CPU-reference losses, initializers, and nn helpers, and a bounded public optimizer plus scheduler shell with parameter-group and multi-optimizer composition in psionic-nn, but there is still no public MLX-class quantized-module API.",
+                "psionic-nn now exposes a bounded supported public nn surface with a Module tree, save_weights/load_weights behavior, a CPU-reference core layer surface, CPU-reference losses and initializers, a public optimizer plus scheduler shell, and a first eval-oriented quantized module API through Module::quantize plus QuantizedLinear and QuantizedEmbedding.",
             ),
             evidence_refs: vec![
                 String::from("Module"),
                 String::from("ModuleParameterView"),
                 String::from("Module::save_weights"),
                 String::from("Module::load_weights"),
+                String::from("Module::quantize"),
+                String::from("ModuleQuantizeConfig"),
+                String::from("QuantizedModule"),
                 String::from("NnTensor"),
                 String::from("Linear"),
                 String::from("Embedding"),
+                String::from("QuantizedLinear"),
+                String::from("QuantizedEmbedding"),
                 String::from("LayerNorm"),
                 String::from("RmsNorm"),
                 String::from("Activation"),
@@ -1657,12 +1674,12 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("ParameterGroupSemantics"),
                 String::from("OptimizerGroup"),
                 String::from("MultiOptimizer"),
-                String::from("MlxAcceptanceMatrixReport::nn-optimizer = partial"),
-                String::from("MLX parity family `nn_optimizers_quantized` = unsupported"),
+                String::from("MlxAcceptanceMatrixReport::nn-optimizer = implemented_early"),
+                String::from("MLX parity family `nn_optimizers_quantized` = pass"),
             ],
-            blocking_issue_refs: vec![String::from("PMLX-307 (#3852)")],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "Current psionic-nn public module/layer/loss/init/optimizer/scheduler shell is still bounded and does not become a supported MLX public nn surface until quantized-module closure lands.",
+                "This is a bounded supported early public nn surface, not a claim of broad quantized training closure, quantized conv/norm wrapper breadth, or export-format quantization parity.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2119,7 +2136,7 @@ mod tests {
             let expected_status = match category_id {
                 "array-runtime-surface" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "transform-compile" => MlxAcceptanceCategoryStatus::ImplementedEarly,
-                "nn-optimizer" => MlxAcceptanceCategoryStatus::Partial,
+                "nn-optimizer" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 _ => MlxAcceptanceCategoryStatus::Planned,
             };
             assert_eq!(category.matrix_status, expected_status);
@@ -2225,7 +2242,7 @@ mod tests {
             .iter()
             .find(|family| family.family_id == "nn_optimizers_quantized")
             .expect("missing nn family");
-        assert_eq!(nn.current_outcome, MlxParityHarnessOutcome::Unsupported);
+        assert_eq!(nn.current_outcome, MlxParityHarnessOutcome::Pass);
         assert!(!nn.psionic_hook_commands.is_empty());
         assert!(nn.psionic_hook_commands.iter().any(|hook| {
             hook.contains("training::tests::classification_losses_and_helpers_match_reference")
@@ -2244,6 +2261,14 @@ mod tests {
             hook.contains(
                 "optimizers::tests::multi_optimizer_composes_disjoint_groups_and_refuses_overlap_or_unassigned_paths",
             )
+        }));
+        assert!(nn.psionic_hook_commands.iter().any(|hook| {
+            hook.contains(
+                "quantized::tests::module_quantize_reports_quantized_and_dense_paths_and_freezes_eval_copy",
+            )
+        }));
+        assert!(nn.psionic_hook_commands.iter().any(|hook| {
+            hook.contains("quantized::tests::quantized_linear_forward_tracks_dense_reference")
         }));
 
         let filtered =
@@ -2342,7 +2367,7 @@ mod tests {
             .iter()
             .find(|surface| surface.surface_id == "public_mlx_nn_optimizer_api")
             .expect("missing public nn row");
-        assert_eq!(nn.matrix_status, MlxCompatibilityMatrixStatus::Unsupported);
+        assert_eq!(nn.matrix_status, MlxCompatibilityMatrixStatus::Supported);
         assert!(
             nn.blocking_issue_refs
                 .iter()
@@ -2358,6 +2383,7 @@ mod tests {
                 .iter()
                 .all(|issue| !issue.contains("PMLX-305"))
         );
+        assert!(nn.blocking_issue_refs.is_empty());
         assert!(
             nn.blocking_issue_refs
                 .iter()
