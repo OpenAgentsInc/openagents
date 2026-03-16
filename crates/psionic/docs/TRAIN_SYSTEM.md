@@ -75,6 +75,9 @@ and now also has:
 - `crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md` is the canonical
   framework-core acceptance split; train acceptance must not be used as a
   substitute for framework-core parity claims.
+- `crates/psionic/docs/ARCHITECTURE_EXPLAINER_CLUSTER_BRINGUP_RUNBOOK.md` is
+  the canonical operator guide for the first truthful multi-device clustered
+  attempt around the `Psionic architecture explainer` path.
 - `crates/psionic/docs/APPLE_ADAPTER_DATASET_SPEC.md`,
   `crates/psionic/docs/APPLE_FMADAPTER_PACKAGE_SPEC.md`, and
   `crates/psionic/docs/APPLE_ADAPTER_LINEAGE_SPEC.md` are the canonical
@@ -516,6 +519,21 @@ The canonical regression harness for that layer is now:
 This does not close the overall decentralized adapter program by itself.
 Authority projection, app-owned operator surfaces, and broader productization
 rows from the acceptance matrix above still remain separate closure steps.
+
+On 2026-03-15, GitHub issue `#3661` added the first concrete operator runbook
+for the clustered follow-on:
+
+- `crates/psionic/docs/ARCHITECTURE_EXPLAINER_CLUSTER_BRINGUP_RUNBOOK.md`
+
+That runbook is intentionally narrow and explicit about posture:
+
+- it preserves the distinction between today's real single-host Apple operator
+  path, today's cluster rehearsal truth, and later live multi-device ambition
+- it names the preferred first topology as a small homogeneous Apple lab
+  cluster
+- it includes an explicitly experimental Apple Metal plus NVIDIA mixed-role
+  path that is useful for cluster, staging, and receipt bring-up but does not
+  overclaim Apple-valid mixed-backend training
 
 ## Canonical Train Objects
 
