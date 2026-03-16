@@ -18,6 +18,7 @@ hex = { workspace = true }
 psionic-data = { path = "../psionic-data" }
 psionic-eval = { path = "../psionic-eval" }
 psionic-models = { path = "../psionic-models" }
+psionic-runtime = { path = "../psionic-runtime" }
 psionic-train = { path = "../psionic-train" }
 serde = { workspace = true }
 serde_json = { workspace = true }

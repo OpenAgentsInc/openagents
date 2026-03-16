@@ -324,6 +324,19 @@ That now includes one intentionally narrow executor-training answer:
   than the lookup baseline (`10000` / `6563` bps, `32000` target tok/s, direct
   hull decode), so this phase is a research-family landing rather than a
   promotion or parity result
+- the separate Phase 17 compiled lane now also exists beside that learned
+  stack: `psionic-models` now exposes a bounded typed
+  `TassadarCompiledProgramExecutor` with compile-evidence bundles,
+  `psionic-eval` now emits machine-readable exactness and
+  compatibility/refusal reports for the real Sudoku-v0 corpus under the
+  workload family id `tassadar.wasm.sudoku_v0_search.v1.compiled_executor`,
+  and `psionic-research` now persists the canonical bundle root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_compiled_executor_v0`; the
+  committed artifacts prove only a bounded compiled/proof-backed lane on the
+  matched corpus (`8/8` exact trace matches against CPU reference and `32/32`
+  exact refusal matches), with explicit `eval_only` posture, so this does not
+  close the open learned-lane promotion gate and does not unblock 9x9 by
+  itself
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

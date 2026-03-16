@@ -634,6 +634,19 @@ Its declared scope is:
   target tok/s, with hull fallback) than the preserved lookup baseline
   (`10000` / `6563` bps and `32000` target tok/s, with direct hull decode), so
   this phase lands as a research-candidate result rather than a promotion bar
+- landed trained-executor Phase 17 bar from the post-audit issue spine:
+  `psionic-models` now carries a bounded typed
+  `TassadarCompiledProgramExecutor` surface with persisted compile-evidence
+  bundles, `psionic-eval` now materializes
+  `compiled_executor_exactness_report.json` plus
+  `compiled_executor_compatibility_report.json` for the real Sudoku-v0 corpus,
+  and `psionic-research` now writes the canonical bundle root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_compiled_executor_v0` with
+  per-case deployment bundles and a top-level `run_bundle.json`; the committed
+  artifacts keep the claim boundary honest by proving only a bounded
+  compiled/proof-backed lane on matched Sudoku-v0 programs (`8/8` exact trace
+  matches against CPU reference, `32/32` exact refusal matches, `eval_only`
+  posture), not arbitrary-program closure and not learned-lane success
 - landed Phase 8A bar: typed `psionic-research` executor-variant family with
   benchmark/proof/lineage-backed bounded runs and machine-readable sweep
   records for reproducible same-contract candidate comparison
@@ -844,6 +857,11 @@ is tracked under the post-audit umbrella
   [#3816](https://github.com/OpenAgentsInc/openagents/issues/3816)
 - Phase 17 add a bounded proof-oriented / compile-to-weights executor lane:
   [#3817](https://github.com/OpenAgentsInc/openagents/issues/3817)
+  landed as the bounded compiled/proof-backed Sudoku-v0 lane at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_compiled_executor_v0`
+  with `8/8` exact trace matches and `32/32` exact refusal matches; this is
+  intentionally `eval_only` and independent of the still-blocked learned-lane
+  Phase 14/16 path
 - Phase 18 land the real Hungarian-class benchmark and exact result:
   [#3818](https://github.com/OpenAgentsInc/openagents/issues/3818)
 

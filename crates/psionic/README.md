@@ -217,6 +217,20 @@ Current posture:
   first-target / first-32 exactness and `1333` target tok/s, versus the lookup
   baseline at `10000` / `6563` bps and `32000` target tok/s), so this is a
   research-family landing rather than a promotion or parity claim
+- the separate post-audit Phase 17 bar now also exists in `psionic-models`,
+  `psionic-eval`, `psionic-research`, `docs/audits/`, and a canonical bounded
+  compiled-lane bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_compiled_executor_v0`:
+  `psionic-models` now exposes a typed `TassadarCompiledProgramExecutor`
+  compile-evidence bundle, `psionic-eval` now emits machine-readable exactness
+  and compatibility/refusal reports for the real Sudoku-v0 corpus, and
+  `psionic-research` now persists per-case compiled deployment bundles plus a
+  top-level `run_bundle.json`; the committed artifacts keep the claim boundary
+  tight by proving only a bounded compiled/proof-backed lane on matched
+  Sudoku-v0 programs (`8/8` exact trace matches against CPU reference,
+  `32/32` exact refusal matches on mismatched artifacts, `eval_only`
+  posture), not arbitrary-program closure, not learned-lane success, and not
+  article parity
 - its Phase 8A research family now exists in `psionic-research`, with a typed
   executor-variant family, benchmark/proof/lineage-backed bounded runs, and
   machine-readable sweep records for reproducible same-contract comparisons

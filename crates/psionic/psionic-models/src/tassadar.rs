@@ -772,6 +772,7 @@ pub struct TassadarCompiledProgramExecutor {
     weight_bundle: TassadarCompiledProgramWeightBundle,
     compiled_weight_artifact: TassadarCompiledProgramWeightArtifact,
     runtime_contract: TassadarCompiledProgramRuntimeContract,
+    compile_evidence_bundle: TassadarExecutionEvidenceBundle,
 }
 
 impl TassadarCompiledProgramExecutor {
@@ -788,9 +789,7 @@ impl TassadarCompiledProgramExecutor {
                 program_artifact,
                 TassadarExecutorDecodeMode::ReferenceLinear,
             )
-            .map_err(|error| TassadarCompiledProgramError::DescriptorContract {
-                message: error.to_string(),
-            })?;
+            .map_err(|error| TassadarCompiledProgramError::DescriptorContract { error })?;
         let artifact_id = artifact_id.into();
         let weight_bundle = build_compiled_program_weight_bundle(
             &artifact_id,
@@ -861,6 +860,7 @@ impl TassadarCompiledProgramExecutor {
             weight_bundle,
             compiled_weight_artifact,
             runtime_contract,
+            compile_evidence_bundle: evidence_bundle,
         })
     }
 
@@ -888,6 +888,13 @@ impl TassadarCompiledProgramExecutor {
         &self.runtime_contract
     }
 
+    /// Returns the compile-time evidence bundle that bound the deployment to
+    /// its source program, runtime manifest, and proof bundle.
+    #[must_use]
+    pub fn compile_evidence_bundle(&self) -> &TassadarExecutionEvidenceBundle {
+        &self.compile_evidence_bundle
+    }
+
     /// Returns the current runtime capability report for the compiled deployment.
     #[must_use]
     pub fn runtime_capability_report(&self) -> TassadarRuntimeCapabilityReport {
@@ -902,9 +909,7 @@ impl TassadarCompiledProgramExecutor {
     ) -> Result<(), TassadarCompiledProgramError> {
         self.descriptor
             .validate_program_artifact(artifact, requested_decode_mode)
-            .map_err(|error| TassadarCompiledProgramError::DescriptorContract {
-                message: error.to_string(),
-            })?;
+            .map_err(|error| TassadarCompiledProgramError::DescriptorContract { error })?;
         if artifact.artifact_digest != self.runtime_contract.program_artifact_digest {
             return Err(
                 TassadarCompiledProgramError::ProgramArtifactDigestMismatch {
@@ -1050,10 +1055,10 @@ impl TassadarCompiledProgramSuiteArtifact {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TassadarCompiledProgramError {
     /// The generic executor descriptor contract rejected the program artifact.
-    #[error("compiled program descriptor contract failed: {message}")]
+    #[error("compiled program descriptor contract failed: {error}")]
     DescriptorContract {
-        /// Human-readable contract failure.
-        message: String,
+        /// Typed contract failure.
+        error: TassadarExecutorContractError,
     },
     /// The runtime refused the requested decode mode for the compiled program.
     #[error("compiled program selection refused: {detail}")]

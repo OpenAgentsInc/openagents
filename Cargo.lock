@@ -6793,6 +6793,7 @@ dependencies = [
  "psionic-data",
  "psionic-eval",
  "psionic-models",
+ "psionic-runtime",
  "psionic-train",
  "serde",
  "serde_json",
