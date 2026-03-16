@@ -10,9 +10,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
-    DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus, DesktopControlEventBatch,
-    DesktopControlLocalRuntimeStatus, DesktopControlManifest,
-    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot, control_manifest_path,
+    DesktopControlAppleAdapterOperatorRunStatus, DesktopControlBuyModeRequestStatus,
+    DesktopControlBuyModeStatus, DesktopControlEventBatch, DesktopControlLocalRuntimeStatus,
+    DesktopControlManifest, DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+    control_manifest_path,
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
@@ -30,6 +31,8 @@ use serde_json::{Value, json};
 
 const DEFAULT_EVENTS_LIMIT: usize = 64;
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 20_000;
+const DEFAULT_TRAINING_WATCH_POLL_MS: u64 = 1_000;
+const DEFAULT_TRAINING_WATCH_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
 const DEFAULT_APPLE_FM_BASE_URL: &str = "http://127.0.0.1:11435";
 
 #[derive(Parser, Debug)]
@@ -253,6 +256,14 @@ enum ChallengeCommand {
 #[derive(Subcommand, Debug)]
 enum TrainingCommand {
     Status,
+    Watch {
+        #[arg(long)]
+        run_id: Option<String>,
+        #[arg(long, default_value_t = DEFAULT_TRAINING_WATCH_POLL_MS)]
+        poll_ms: u64,
+        #[arg(long, default_value_t = DEFAULT_TRAINING_WATCH_TIMEOUT_MS)]
+        timeout_ms: u64,
+    },
     Launch {
         train_dataset_path: PathBuf,
         held_out_dataset_path: PathBuf,
@@ -570,7 +581,7 @@ impl ChallengeCommand {
 impl TrainingCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
-            Self::Status => DesktopControlActionRequest::GetTrainingStatus,
+            Self::Status | Self::Watch { .. } => DesktopControlActionRequest::GetTrainingStatus,
             Self::Launch {
                 train_dataset_path,
                 held_out_dataset_path,
@@ -976,19 +987,26 @@ fn main() -> Result<()> {
                 print_challenge_text(payload);
             }
         }
-        Command::Training { command } => {
-            let response = client.action(&command.action_request())?;
-            ensure_action_success(&response)?;
-            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
-            if json_output {
-                print_json(payload)?;
-            } else {
-                if !matches!(command, TrainingCommand::Status) {
-                    println!("{}", response.message);
+        Command::Training { command } => match command {
+            TrainingCommand::Watch {
+                run_id,
+                poll_ms,
+                timeout_ms,
+            } => watch_training_run(&client, run_id.as_deref(), poll_ms, timeout_ms, json_output)?,
+            _ => {
+                let response = client.action(&command.action_request())?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(payload)?;
+                } else {
+                    if !matches!(command, TrainingCommand::Status) {
+                        println!("{}", response.message);
+                    }
+                    print_training_text(payload);
                 }
-                print_training_text(payload);
             }
-        }
+        },
         Command::Research { command } => {
             let response = client.action(&command.action_request())?;
             ensure_action_success(&response)?;
@@ -2708,7 +2726,7 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
             run.authority.training_run_id.as_deref().unwrap_or("-")
         ));
         lines.push(format!(
-            "training operator live: id={} phase={} heartbeat_ms={} elapsed_ms={} phase_elapsed_ms={} eta_ms={} epoch={}/{} steps={}/{} eval_samples={}/{} loss={} checkpoint={}",
+            "training operator live: id={} phase={} heartbeat_ms={} elapsed_ms={} phase_elapsed_ms={} eta_ms={} epoch={}/{} steps={}/{} eval_samples={}/{} loss={} checkpoint={} telemetry={} artifact={} {} failure={} {} resource={}",
             run.run_id,
             run.progress.current_phase.as_deref().unwrap_or("-"),
             run.progress
@@ -2752,11 +2770,17 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "-".to_string()),
             run.progress.latest_loss_label.as_deref().unwrap_or("-"),
-            run.progress.last_checkpoint_path.as_deref().unwrap_or("-")
+            run.progress.last_checkpoint_path.as_deref().unwrap_or("-"),
+            run.progress.telemetry_log_path.as_deref().unwrap_or("-"),
+            run.progress.latest_artifact_kind.as_deref().unwrap_or("-"),
+            run.progress.latest_artifact_path.as_deref().unwrap_or("-"),
+            run.progress.last_failure_phase.as_deref().unwrap_or("-"),
+            run.progress.last_failure_detail.as_deref().unwrap_or("-"),
+            run.progress.latest_resource_summary.as_deref().unwrap_or("-"),
         ));
         for event in run.recent_events.iter().rev().take(4) {
             lines.push(format!(
-                "training operator event: id={} seq={} phase={} kind={} detail={} epoch={}/{} step={}/{} eval_sample={}#{}/{} loss={} eta_ms={} checkpoint={}",
+                "training operator event: id={} seq={} phase={} kind={} detail={} epoch={}/{} step={}/{} eval_sample={}#{}/{} loss={} eta_ms={} checkpoint={} artifact={} {} failure={} resource={}",
                 run.run_id,
                 event.sequence,
                 event.phase,
@@ -2785,7 +2809,11 @@ fn training_status_lines(snapshot: &DesktopControlSnapshot) -> Vec<String> {
                 event.eta_ms
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string()),
-                event.checkpoint_path.as_deref().unwrap_or("-")
+                event.checkpoint_path.as_deref().unwrap_or("-"),
+                event.artifact_kind.as_deref().unwrap_or("-"),
+                event.artifact_path.as_deref().unwrap_or("-"),
+                event.failure_detail.as_deref().unwrap_or("-"),
+                event.resource_summary.as_deref().unwrap_or("-"),
             ));
         }
     }
@@ -4054,7 +4082,7 @@ fn print_training_text(payload: &Value) {
                 .unwrap_or("-")
         );
         println!(
-            "training operator live: id={} phase={} heartbeat_ms={} elapsed_ms={} phase_elapsed_ms={} eta_ms={} epoch={}/{} steps={}/{} eval_samples={}/{} loss={} checkpoint={}",
+            "training operator live: id={} phase={} heartbeat_ms={} elapsed_ms={} phase_elapsed_ms={} eta_ms={} epoch={}/{} steps={}/{} eval_samples={}/{} loss={} checkpoint={} telemetry={} artifact={} {} failure={} {} resource={}",
             run.get("run_id").and_then(Value::as_str).unwrap_or("-"),
             run.get("progress")
                 .and_then(|value| value.get("current_phase"))
@@ -4117,6 +4145,30 @@ fn print_training_text(payload: &Value) {
             run.get("progress")
                 .and_then(|value| value.get("last_checkpoint_path"))
                 .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("telemetry_log_path"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("latest_artifact_kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("latest_artifact_path"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("last_failure_phase"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("last_failure_detail"))
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            run.get("progress")
+                .and_then(|value| value.get("latest_resource_summary"))
+                .and_then(Value::as_str)
                 .unwrap_or("-")
         );
         for event in run
@@ -4128,7 +4180,7 @@ fn print_training_text(payload: &Value) {
             .take(4)
         {
             println!(
-                "training operator event: id={} seq={} phase={} kind={} detail={} epoch={}/{} step={}/{} eval_sample={}#{}/{} loss={} eta_ms={} checkpoint={}",
+                "training operator event: id={} seq={} phase={} kind={} detail={} epoch={}/{} step={}/{} eval_sample={}#{}/{} loss={} eta_ms={} checkpoint={} artifact={} {} failure={} resource={}",
                 run.get("run_id").and_then(Value::as_str).unwrap_or("-"),
                 event
                     .get("sequence")
@@ -4183,10 +4235,195 @@ fn print_training_text(payload: &Value) {
                 event
                     .get("checkpoint_path")
                     .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                event
+                    .get("artifact_kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                event
+                    .get("artifact_path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                event
+                    .get("failure_detail")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                event
+                    .get("resource_summary")
+                    .and_then(Value::as_str)
                     .unwrap_or("-")
             );
         }
     }
+}
+
+fn watch_training_run(
+    client: &DesktopControlClient,
+    requested_run_id: Option<&str>,
+    poll_ms: u64,
+    timeout_ms: u64,
+    json_output: bool,
+) -> Result<()> {
+    let started = Instant::now();
+    let poll_ms = poll_ms.max(100);
+    let mut last_sequence = 0_u64;
+    let mut announced_run_id = None::<String>;
+    loop {
+        let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        if elapsed_ms >= timeout_ms {
+            bail!(
+                "Timed out watching Apple adapter training telemetry after {} ms",
+                timeout_ms
+            );
+        }
+        let snapshot = client.snapshot()?;
+        let run = selected_training_operator_run(&snapshot, requested_run_id).ok_or_else(|| {
+            if let Some(run_id) = requested_run_id {
+                anyhow!("Apple adapter operator run `{run_id}` was not found")
+            } else {
+                anyhow!("No Apple adapter operator runs are available to watch")
+            }
+        })?;
+        if announced_run_id.as_deref() != Some(run.run_id.as_str()) {
+            if json_output {
+                print_json(&json!({
+                    "kind": "training_watch_started",
+                    "run_id": run.run_id,
+                    "package_name": run.package_name,
+                    "telemetry_log_path": run.progress.telemetry_log_path,
+                }))?;
+            } else {
+                println!(
+                    "training watch: run={} package={} telemetry={}",
+                    run.run_id,
+                    run.package_name,
+                    run.progress.telemetry_log_path.as_deref().unwrap_or("-")
+                );
+                println!(
+                    "training watch live: phase={} steps={}/{} eval_samples={}/{} eta_ms={} artifact={} {} failure={} {}",
+                    run.progress.current_phase.as_deref().unwrap_or("-"),
+                    run.progress
+                        .completed_steps
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    run.progress
+                        .expected_steps
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    run.progress
+                        .completed_eval_samples
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    run.progress
+                        .expected_eval_samples
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    run.progress
+                        .eta_ms
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    run.progress.latest_artifact_kind.as_deref().unwrap_or("-"),
+                    run.progress.latest_artifact_path.as_deref().unwrap_or("-"),
+                    run.progress.last_failure_phase.as_deref().unwrap_or("-"),
+                    run.progress.last_failure_detail.as_deref().unwrap_or("-"),
+                );
+            }
+            announced_run_id = Some(run.run_id.clone());
+        }
+        let new_events = run
+            .recent_events
+            .iter()
+            .filter(|event| event.sequence > last_sequence)
+            .cloned()
+            .collect::<Vec<_>>();
+        for event in &new_events {
+            if json_output {
+                print_json(&json!({
+                    "kind": "training_watch_event",
+                    "run_id": run.run_id,
+                    "event": event,
+                }))?;
+            } else {
+                println!(
+                    "training watch event: id={} seq={} phase={} kind={} detail={} step={}/{} eval={}/{} loss={} eta_ms={} artifact={} {} failure={} resource={}",
+                    run.run_id,
+                    event.sequence,
+                    event.phase,
+                    event.kind,
+                    event.detail,
+                    event
+                        .step_index
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    event
+                        .expected_steps
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    event
+                        .eval_sample_index
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    event
+                        .expected_eval_samples
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    event.loss_label.as_deref().unwrap_or("-"),
+                    event
+                        .eta_ms
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    event.artifact_kind.as_deref().unwrap_or("-"),
+                    event.artifact_path.as_deref().unwrap_or("-"),
+                    event.failure_detail.as_deref().unwrap_or("-"),
+                    event.resource_summary.as_deref().unwrap_or("-"),
+                );
+            }
+            last_sequence = last_sequence.max(event.sequence);
+        }
+        if training_operator_run_is_terminal(run) {
+            if json_output {
+                print_json(&json!({
+                    "kind": "training_watch_terminal",
+                    "run_id": run.run_id,
+                    "launch_state": run.launch_state,
+                    "evaluation_state": run.evaluation_state,
+                    "export_state": run.export_state,
+                    "acceptance_state": run.acceptance_state,
+                    "last_error": run.last_error,
+                }))?;
+            } else {
+                println!(
+                    "training watch terminal: run={} launch={} eval={} export={} accept={} last_error={}",
+                    run.run_id,
+                    run.launch_state,
+                    run.evaluation_state,
+                    run.export_state,
+                    run.acceptance_state,
+                    run.last_error.as_deref().unwrap_or("-"),
+                );
+            }
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(poll_ms));
+    }
+}
+
+fn selected_training_operator_run<'a>(
+    snapshot: &'a DesktopControlSnapshot,
+    requested_run_id: Option<&str>,
+) -> Option<&'a DesktopControlAppleAdapterOperatorRunStatus> {
+    let runs = &snapshot.training.operator.runs;
+    requested_run_id.map_or_else(
+        || runs.first(),
+        |run_id| runs.iter().find(|run| run.run_id == run_id),
+    )
+}
+
+fn training_operator_run_is_terminal(run: &DesktopControlAppleAdapterOperatorRunStatus) -> bool {
+    !matches!(run.launch_state.as_str(), "running")
+        && !matches!(run.evaluation_state.as_str(), "running")
+        && !matches!(run.export_state.as_str(), "running")
+        && !matches!(run.acceptance_state.as_str(), "running")
 }
 
 fn print_research_text(payload: &Value) {
@@ -5256,6 +5493,15 @@ mod tests {
             DesktopControlActionRequest::GetTrainingStatus
         );
         assert_eq!(
+            TrainingCommand::Watch {
+                run_id: Some("weather-helper-1".to_string()),
+                poll_ms: 500,
+                timeout_ms: 5_000,
+            }
+            .action_request(),
+            DesktopControlActionRequest::GetTrainingStatus
+        );
+        assert_eq!(
             TrainingCommand::Launch {
                 train_dataset_path: PathBuf::from("/tmp/train.jsonl"),
                 held_out_dataset_path: PathBuf::from("/tmp/held-out.jsonl"),
@@ -5707,6 +5953,14 @@ mod tests {
                     completed_eval_samples: Some(1),
                     expected_eval_samples: Some(3),
                     last_checkpoint_path: Some("/tmp/apple-run-1/checkpoints/final".to_string()),
+                    telemetry_log_path: Some("/tmp/apple-run-1/telemetry.jsonl".to_string()),
+                    latest_artifact_path: Some("/tmp/apple-run-1/checkpoints/final".to_string()),
+                    latest_artifact_kind: Some("training_checkpoint".to_string()),
+                    latest_resource_summary: Some(
+                        "training_wall_clock_ms=2000 checkpoint_size_bytes=4096".to_string(),
+                    ),
+                    last_failure_phase: None,
+                    last_failure_detail: None,
                 },
                 recent_events: vec![
                     autopilot_desktop::desktop_control::DesktopControlAppleAdapterOperatorEventStatus {
@@ -5728,6 +5982,14 @@ mod tests {
                         eta_ms: Some(750),
                         checkpoint_path: Some(
                             "/tmp/apple-run-1/checkpoints/final".to_string(),
+                        ),
+                        artifact_path: Some(
+                            "/tmp/apple-run-1/checkpoints/final".to_string(),
+                        ),
+                        artifact_kind: Some("training_checkpoint".to_string()),
+                        failure_detail: None,
+                        resource_summary: Some(
+                            "training_wall_clock_ms=2000 checkpoint_size_bytes=4096".to_string(),
                         ),
                     },
                 ],
@@ -5793,6 +6055,11 @@ mod tests {
             lines
                 .iter()
                 .any(|line| line.contains("training operator live: id=apple-run-1 phase=training"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("telemetry=/tmp/apple-run-1/telemetry.jsonl"))
         );
         assert!(
             lines

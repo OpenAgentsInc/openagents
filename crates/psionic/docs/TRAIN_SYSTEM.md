@@ -362,16 +362,19 @@ The current path is:
    Benchmark reports now embed the full base/adapted `EvalRunState` receipts so
    per-sample failures remain visible as model, model-request, or runtime
    failures instead of collapsing into aggregate benchmark deltas.
-6. `autopilotctl training launch ...`, `autopilotctl training export ...`, and
-   `autopilotctl training accept ...` provide the shipped app-owned operator
-   flow, while `autopilotctl apple-fm load ...` and `autopilotctl apple-fm
-   attach ...` exercise the resulting package through the retained bridge. That
-   operator flow now runs the long Apple launch pipeline in the background and
-   exposes typed live phase, heartbeat, ETA, and recent-event telemetry through
-   desktop-control instead of waiting for one buffered child-process exit. The
-   legacy toolkit compatibility wrapper in `psionic-train` is now quarantined
-   behind the non-default `legacy-apple-toolkit-oracle` feature, and the
-   packaged Apple release checks run
+6. `autopilotctl training launch ...`, `autopilotctl training watch ...`,
+   `autopilotctl training export ...`, and `autopilotctl training accept ...`
+   provide the shipped app-owned operator flow, while
+   `autopilotctl apple-fm load ...` and `autopilotctl apple-fm attach ...`
+   exercise the resulting package through the retained bridge. That operator
+   flow now runs the long Apple launch pipeline in the background, persists
+   typed JSONL telemetry at `<run_directory>/telemetry.jsonl`, and projects the
+   same phase, heartbeat, ETA, artifact-path, resource-summary, and
+   failure-context fields through desktop-control so both CLI scripts and later
+   WGPUI panes can inspect the run before it completes. The legacy toolkit
+   compatibility wrapper in `psionic-train` is now quarantined behind the
+   non-default `legacy-apple-toolkit-oracle` feature, and the packaged Apple
+   release checks run
    `scripts/release/check-psionic-apple-rust-only-gate.sh`, which fails if the
    shipped Apple operator path regresses back to toolkit-root discovery,
    Python-interpreter discovery, or authoritative toolkit shell-outs.
