@@ -86,6 +86,33 @@ Relevant prior audits reviewed:
 - `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`
 - `docs/audits/2026-03-15-rlm-psionic-economy-kernel-integration-audit.md`
 
+Live GitHub open issues reviewed on March 15, 2026:
+
+- [OpenAgentsInc/openagents#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+  - `Psionic Epic 2 Master: semantics and compatibility`
+- [OpenAgentsInc/openagents#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
+  - `Psionic Epic 1 Master: framework core completion`
+- [OpenAgentsInc/openagents#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
+  - `PLIB-221 Psionic Semantics: add exportable graph and deployment artifact contracts so the semantics layer can hand off stable graph units independent of raw checkpoints`
+- [OpenAgentsInc/openagents#3735](https://github.com/OpenAgentsInc/openagents/issues/3735)
+  - `PLIB-220 Psionic Semantics: add advanced operator-family programs for linalg, fft or signal, distributions, special functions, and attention-family semantics`
+- [OpenAgentsInc/openagents#3732](https://github.com/OpenAgentsInc/openagents/issues/3732)
+  - `PLIB-217 Psionic Semantics: publish user-facing extension contracts for custom ops, custom kernels, custom autograd, backend plugins, and quantizer plugins`
+- [OpenAgentsInc/openagents#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
+  - `PLIB-208 Psionic Semantics: add symbolic-shape, fake-tensor, and compiler-hygiene parity harnesses informed by modern PyTorch compiler tests`
+- [OpenAgentsInc/openagents#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
+  - `PLIB-205 Psionic Semantics: add a PyTorch-derived operator parity matrix analogous to op_db / OpInfo for Rust-native conformance`
+- [OpenAgentsInc/openagents#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
+  - `PLIB-112 Psionic Framework Core: add transform-safe graph and functionalization foundations so higher-level program transforms and export contracts can build on explicit IR rules`
+- [OpenAgentsInc/openagents#3713](https://github.com/OpenAgentsInc/openagents/issues/3713)
+  - `PLIB-111 Psionic Framework Core: define stable custom-op schema, kernel registration, and backend dispatch contracts so extensibility does not fork the core`
+- [OpenAgentsInc/openagents#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
+  - `PLIB-108 Psionic Framework Core: define one cross-library refusal taxonomy covering unsupported ops, unsupported gradients, unsupported layouts, unsupported backend capabilities, serialization incompatibility, sandbox policy denial, and topology mismatch`
+- [OpenAgentsInc/openagents#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
+  - `PLIB-107 Psionic Framework Core: promote framework-core acceptance from representative proof to broad contract coverage with fixture-backed replay and failure tests`
+- [OpenAgentsInc/openagents#3707](https://github.com/OpenAgentsInc/openagents/issues/3707)
+  - `PLIB-105 Psionic Framework Core: deepen compiler passes: schedule formation, fusion policy, memory planning, plan cache identity, and compile-cache evidence`
+
 ## Executive Summary
 
 The Percepta article is a strong fit for Psionic, but only if OpenAgents reads
@@ -361,6 +388,46 @@ plainly:
   value claim is asymptotic behavior inside transformer inference, not native
   CPU replacement.
 
+Several of the gaps below already have partial substrate coverage in the live
+issue tracker.
+
+The important distinction is:
+
+- some open issues are real prerequisites
+- some only partially overlap
+- several executor-lane requirements in this audit still do **not** appear to
+  have dedicated open issues yet
+
+### Issue Coverage Already In Flight
+
+As of March 15, 2026, the closest matching open-issue dependencies are:
+
+- framework-core and semantics umbrella:
+  - [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
+  - [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+- executor attention or extension substrate:
+  - [#3713](https://github.com/OpenAgentsInc/openagents/issues/3713)
+  - [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732)
+  - [#3735](https://github.com/OpenAgentsInc/openagents/issues/3735)
+- export, graph, and deployment artifact substrate:
+  - [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
+  - [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
+- replay, refusal, and compatibility harness substrate:
+  - [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
+  - [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
+  - [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
+  - [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
+- cache, compile identity, and execution-plan substrate:
+  - [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707)
+
+No currently-open issue reviewed here appears to directly cover:
+
+- a WebAssembly-first executor model family
+- hull-cache or geometric retrieval decoding
+- exact trace parity against a direct CPU Wasm runner
+- executor-trace proof bundles
+- a dedicated `psionic.executor_trace` served surface
+
 ### 1. Psionic does not yet model executor-class attention semantics
 
 Current `BackendExtensionOp` supports:
@@ -384,6 +451,14 @@ Psionic does not yet have explicit contracts for:
 The current IR can describe ordinary decoder families much better than it can
 describe this executor lane.
 
+Closest existing prerequisite issues:
+
+- [#3713](https://github.com/OpenAgentsInc/openagents/issues/3713)
+- [#3732](https://github.com/OpenAgentsInc/openagents/issues/3732)
+- [#3735](https://github.com/OpenAgentsInc/openagents/issues/3735)
+- umbrella tracking under [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
+  and [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+
 ### 2. Psionic model descriptors are still ordinary model-family descriptors
 
 `psionic-models` can express:
@@ -404,6 +479,18 @@ But this lane needs more explicit model-family truth:
 - whether attention is hard-max, sparse softmax, or standard softmax
 - whether exact-step execution is part of the contract
 
+Closest existing prerequisite issues:
+
+- [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
+- [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
+- umbrella tracking under [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+
+Still missing as dedicated issue work, based on the reviewed tracker:
+
+- executor trace ABI contracts
+- WebAssembly profile compatibility descriptors
+- executor-vs-ordinary-decoder family identity
+
 ### 3. Psionic runtime does not yet have a hull-style decode path
 
 Current runtime surfaces already reason about:
@@ -421,6 +508,19 @@ But they do not yet reason about:
 - trace-step lookup correctness as a runtime contract
 
 That is a real runtime gap, not just a performance gap.
+
+Closest existing prerequisite issues:
+
+- [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707)
+- [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
+- umbrella tracking under [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741)
+  and [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+
+Still missing as dedicated issue work, based on the reviewed tracker:
+
+- hull-cache or geometric retrieval runtime support
+- exact linear-vs-hull trace parity
+- runtime-visible executor decode-mode identity
 
 ### 4. Psionic serve is built around ordinary served products
 
@@ -443,6 +543,9 @@ It needs:
 So it should be introduced as a distinct served product family once it is real,
 not smuggled into the existing generic text-generation surface first.
 
+No dedicated open issue reviewed here appears to cover this served-surface
+split yet.
+
 ### 5. Psionic parity and validation language is not yet executor-oriented
 
 Current validation and parity work assumes familiar comparison surfaces:
@@ -460,6 +563,20 @@ This lane needs different green bars:
 - exact equivalence against a direct CPU WebAssembly reference runner on the
   supported subset
 - benchmark-package correctness over long horizons
+
+Closest existing prerequisite issues:
+
+- [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
+- [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
+- [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
+- [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
+- umbrella tracking under [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+
+Still missing as dedicated issue work, based on the reviewed tracker:
+
+- exact trace-digest parity
+- exact halt/output parity against a Wasm runner
+- executor-specific benchmark packages and validation references
 
 ### 6. Psionic train is not yet ready for the article's training story
 
@@ -856,6 +973,14 @@ Concretely:
 - state explicitly that the goal is inner computational ability for models, not
   replacement of ordinary CPU execution
 
+Existing tracker dependency posture:
+
+- this lane should sit under the umbrella planning already represented by
+  [#3741](https://github.com/OpenAgentsInc/openagents/issues/3741) and
+  [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742)
+- the executor-specific Wasm lane itself still appears to need dedicated issue
+  tracking beyond those umbrellas
+
 ### Phase 1: Land a CPU reference executor fixture
 
 Goals:
@@ -888,6 +1013,13 @@ Success bar:
   subset
 - deterministic replay
 
+Closest existing prerequisite issues:
+
+- [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709) for
+  fixture-backed replay and failure coverage
+- [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710) for typed
+  refusal and unsupported-mode surfaces
+
 This phase is the most important one because it proves the owner split and
 artifact boundaries before any ambitious optimization work.
 
@@ -914,6 +1046,11 @@ Concretely:
 
 This is where the lane stops being "some fixture hack" and becomes a typed
 Psionic artifact path.
+
+Closest existing prerequisite issues:
+
+- [#3714](https://github.com/OpenAgentsInc/openagents/issues/3714)
+- [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
 
 ### Phase 3: Add benchmark and environment packages
 
@@ -945,6 +1082,12 @@ Metrics should include:
 - tokens or trace steps per second
 - trace artifact completeness
 
+Closest existing prerequisite issues:
+
+- [#3709](https://github.com/OpenAgentsInc/openagents/issues/3709)
+- [#3720](https://github.com/OpenAgentsInc/openagents/issues/3720)
+- [#3723](https://github.com/OpenAgentsInc/openagents/issues/3723)
+
 ### Phase 4: Add runtime proof bundles for executor traces
 
 Goals:
@@ -971,6 +1114,9 @@ Concretely:
   - emitted trace
 
 This should extend existing proof-bundle discipline, not replace it.
+
+No dedicated open issue reviewed here appears to cover executor-trace proof
+bundles yet.
 
 ### Phase 5: Implement the hull-cache fast path behind exact equivalence
 
@@ -999,6 +1145,16 @@ Success bar:
 
 This is where the article's main technical claim should be tested.
 
+Closest existing prerequisite issues:
+
+- [#3707](https://github.com/OpenAgentsInc/openagents/issues/3707) for cache
+  identity and compile-cache evidence
+- [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710) for honest
+  fallback and refusal semantics
+
+No dedicated open issue reviewed here appears to cover hull-cache decoding
+itself yet.
+
 ### Phase 6: Add typed runtime capabilities instead of silent fast-path fallback
 
 Goals:
@@ -1018,6 +1174,10 @@ Concretely:
   - sparse attention to exact lookup
 
 This keeps Psionic's refusal discipline intact.
+
+Closest existing prerequisite issue:
+
+- [#3710](https://github.com/OpenAgentsInc/openagents/issues/3710)
 
 ### Phase 7: Add a dedicated served executor product
 
