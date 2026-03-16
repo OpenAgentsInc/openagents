@@ -133,6 +133,11 @@ It already has real substrate for:
   `psionic-train` optimizer math while keeping module-path keyed state,
   explicit frozen-parameter handling, state snapshot restore, and per-step
   receipts in the framework-facing layer
+- a bounded reusable public distributed-group shell in `psionic-distributed`
+  that reuses current runtime mesh truth while keeping explicit mesh bootstrap,
+  reusable global-group initialization, honest singleton fallback, rank/size
+  identity, ordered member snapshots, and explicit-plan subgroup split
+  semantics in the framework-facing layer
 - a bounded reusable public scheduler and parameter-group shell in
   `psionic-nn` that reuses `psionic-train` scheduler primitives while keeping
   scheduler bindings, group-level learning-rate and weight-decay scaling, and

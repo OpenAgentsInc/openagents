@@ -326,6 +326,11 @@ Current posture:
   optional deployment bundle binding, stable import/export receipts, and a
   bounded `.mlxfn` compatibility shell with explicit refusal outside the
   current subset.
+- `psionic-distributed`: first public framework-distributed group surface above
+  current runtime mesh truth, with explicit mesh bootstrap, reusable global
+  group initialization, honest singleton fallback, ordered member/rank
+  snapshots, and explicit-plan subgroup split semantics while collective
+  helpers remain later work above the same surface.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and
