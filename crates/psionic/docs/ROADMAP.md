@@ -36,6 +36,9 @@
   are honest.
 - PyTorch-facing shells or interop layers come after the Rust-native substrate
   is real, not before.
+- A planned executor-class in-model compute lane is now explicitly scoped as
+  WebAssembly-first, CPU-reference-first, library-owned work rather than MVP
+  product scope.
 
 ## Why This Doc Exists
 
@@ -75,6 +78,10 @@ Per [docs/OWNERSHIP.md](/Users/christopherdavid/code/openagents/docs/OWNERSHIP.m
 
 Nothing in this roadmap should be read as permission to move app logic,
 wallet/payout logic, or authority logic into Psionic crates.
+
+That includes the planned executor-class in-model compute lane. It is a
+library/runtime program inside `crates/psionic/*`, not a product-scope change
+to the current desktop/provider MVP.
 
 ## Objective
 
@@ -442,7 +449,7 @@ This roadmap is organized into seven epics.
 | Epic 6 | Training, eval, and research | decentralized adapter training first, then broader train-class closure |
 | Epic 7 | Interop and adoption | practical path from "good Rust engine" to "usable for most PyTorch workloads" |
 
-This roadmap now has three live GitHub issue blocks:
+This roadmap now has four live GitHub issue blocks:
 
 - decentralized adapter training:
   [#3649](https://github.com/OpenAgentsInc/openagents/issues/3649) and
@@ -456,8 +463,49 @@ This roadmap now has three live GitHub issue blocks:
   [#3742](https://github.com/OpenAgentsInc/openagents/issues/3742) with child
   issues [#3716](https://github.com/OpenAgentsInc/openagents/issues/3716)
   through [#3736](https://github.com/OpenAgentsInc/openagents/issues/3736)
+- executor-class in-model compute lane:
+  [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
 
 Epic 0 and later epics beyond 2 still use roadmap-local IDs until activated.
+
+### Planned Executor-Class In-Model Compute Lane
+
+This track is now explicitly part of Psionic planning.
+
+It is a cross-epic lane that depends on:
+
+- Epic 1 framework-core extensibility and cache identity
+- Epic 2 semantics, export, and attention-family extension contracts
+- Epic 3 model/runtime-family truth
+
+Its declared scope is:
+
+- owner: `crates/psionic/*`
+- first target: WebAssembly-first executor semantics
+- first implementation bar: CPU reference fixture and exact parity harness
+- strategic value: inner exact-computation substrate for larger reasoning
+  systems
+- non-goals: current MVP product scope, kernel authority, or replacement of
+  native CPU execution
+
+The current issue spine is:
+
+- Phase 0 scope, ownership, and issue-spine declaration:
+  [#3743](https://github.com/OpenAgentsInc/openagents/issues/3743)
+- Phase 1 CPU reference WebAssembly executor fixture and exact parity harness:
+  [#3744](https://github.com/OpenAgentsInc/openagents/issues/3744)
+
+Later phases remain dependency-ordered by the March 15 audit until activated as
+their own GitHub issues:
+
+- executor model and program artifacts
+- benchmark and environment packages
+- executor-trace proof bundles
+- hull-cache or geometric retrieval decoding
+- typed runtime capability and refusal surfaces
+- dedicated executor serving where useful
+- hybrid planner-plus-executor routing
 
 ## Epic 0: Governance And Acceptance
 

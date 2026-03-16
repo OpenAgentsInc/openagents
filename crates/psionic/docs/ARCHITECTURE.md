@@ -1,6 +1,6 @@
 # Psionic System Spec
 
-> Status: updated 2026-03-14 after reviewing `docs/MVP.md`,
+> Status: updated 2026-03-15 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`, `crates/psionic/README.md`,
 > `crates/psionic/docs/TRAIN_SYSTEM.md`,
 > `docs/audits/2026-03-14-covenant-code-lessons-for-psionic-train-audit.md`,
@@ -12,7 +12,7 @@
 > `crates/psionic/psionic-collectives/src/lib.rs`,
 > `crates/psionic/psionic-train/src/lib.rs`, and
 > `crates/psionic/psionic-adapters/src/lib.rs`, plus the current open and
-> recently closed issue backlog through `#3609`.
+> recently closed issue backlog through `#3744`.
 
 ## Why This Doc Exists
 
@@ -131,6 +131,29 @@ Psionic is also not:
 - a claim that every compute lane is mature today
 - a hidden Python control plane behind Rust wrappers
 
+## Planned Executor-Class Lane
+
+Psionic now explicitly plans an executor-class in-model compute lane.
+
+The declared scope is:
+
+- owner: `crates/psionic/*`
+- first target: WebAssembly-first executor semantics
+- first implementation bar: CPU reference fixture plus exact parity harness
+- strategic value: giving larger reasoning systems inner exact-computation
+  ability
+
+The declared non-goals are:
+
+- not current MVP compute-market product scope
+- not kernel or Nexus authority work
+- not app-owned UX or orchestration work
+- not a claim that native CPU execution is being replaced
+
+Phase 0 and Phase 1 are tracked in
+[#3743](https://github.com/OpenAgentsInc/openagents/issues/3743) and
+[#3744](https://github.com/OpenAgentsInc/openagents/issues/3744).
+
 ## System Status At A Glance
 
 | Area | Current Status | Current Repo Truth |
@@ -151,6 +174,7 @@ Psionic is also not:
 | Environment package runtime | `implemented_early` | `psionic-environments` now owns the runtime ABI, typed workload/policy/difficulty/benchmark package shape, tool/rubric hooks, expected artifact contracts, deterministic reference sessions, digest-pinned package aliases, mixed-surface composition groups, and train/eval parity receipts, while kernel/Nexus now own environment, checkpoint-family, validator-policy, benchmark-package, and training-policy registry truth |
 | Training core reference loop | `implemented_early` | `psionic-train` now owns a typed fixed-budget trainer-step path with parameter groups, optimizer state, residency transitions, checkpoint restore lineage, and step telemetry; broader distributed trainer completion is still planned |
 | Full synthetic-data or research loop | `partial_outside_psionic` | synthetic-data job and verification flows now exist in kernel/Nexus, but no Psionic-native generation runtime or research-loop crate family exists yet |
+| Executor-class in-model compute lane | `planned` | WebAssembly-first, CPU-reference-first executor lane is now explicitly owned by Psionic as library/runtime work for larger reasoning systems, with Phase 0 and Phase 1 tracked in `#3743` and `#3744`; it is not current MVP product scope |
 
 Recent issue closure changed one important reading of this table:
 
