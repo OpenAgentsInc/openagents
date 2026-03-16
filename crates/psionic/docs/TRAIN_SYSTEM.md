@@ -2034,6 +2034,13 @@ acceptance gate for the `Psionic architecture explainer` target:
 - a reproducible acceptance policy now blocks calling a run "real" unless the
   adapted model beats the base model by the declared score, pass-rate, and
   improved-case thresholds
+- the frozen architecture-explainer experiment manifest now carries one
+  explicit `useful_adapter_gate` contract with:
+  - the standard benchmark-improving bar for the normal reference run
+  - a weaker `overfit_non_zero` benchmark gate that still requires non-zero
+    movement before broader claims are allowed
+  - an explicit `runtime_smoke_required` truth bit so reports can distinguish
+    `accepted` from `exported_but_not_useful`
 
 The canonical gate for that layer is now:
 

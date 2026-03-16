@@ -15,12 +15,16 @@ use psionic_data::{
     AppleAdapterRuntimeCompatibilityProfile,
 };
 use psionic_eval::{
-    AppleAdapterBaseVsAdapterBenchmarkReport, AppleAdapterEvalHarness,
+    AppleAdapterBaseVsAdapterAcceptancePolicy, AppleAdapterBaseVsAdapterBenchmarkReport,
+    AppleAdapterBenchmarkAcceptanceReasonCode, AppleAdapterEvalHarness,
     AppleAdapterObservedSampleOutput, EvalExecutionStrategyFacts, EvalTimerIntegrityFacts,
     EvalVerificationFacts, architecture_explainer_benchmark_key, build_curated_benchmark_package,
     run_curated_base_vs_adapter_benchmark,
 };
-use psionic_train::AppleAdapterExperimentManifest;
+use psionic_train::{
+    AppleAdapterExperimentManifest, AppleAdapterUsefulAdapterAcceptanceGate,
+    AppleAdapterUsefulAdapterBenchmarkMode,
+};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
@@ -37,9 +41,20 @@ const REPORT_SCHEMA_VERSION: u16 = 1;
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ArchitectureExplainerRunDisposition {
     Accepted,
-    RejectedBenchmark,
+    ExportedButNotUseful,
     RejectedAuthorityUnavailable,
     RejectedAuthorityPublishFailed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArchitectureExplainerUsefulAdapterAssessment {
+    pub benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode,
+    pub selected_benchmark_policy: AppleAdapterBaseVsAdapterAcceptancePolicy,
+    pub runtime_smoke_required: bool,
+    pub runtime_smoke_satisfied: bool,
+    pub benchmark_gate_accepted: bool,
+    pub useful_adapter_accepted: bool,
+    pub reason_codes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -81,6 +96,7 @@ pub struct ArchitectureExplainerFirstRunConfig {
     pub apple_fm_base_url: String,
     pub control_base_url: Option<String>,
     pub control_bearer_token: Option<String>,
+    pub benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode,
 }
 
 impl ArchitectureExplainerFirstRunConfig {
@@ -124,6 +140,7 @@ impl ArchitectureExplainerFirstRunConfig {
             apple_fm_base_url: String::from("http://127.0.0.1:11435"),
             control_base_url: None,
             control_bearer_token: None,
+            benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode::Standard,
         }
     }
 }
@@ -137,6 +154,8 @@ pub struct ArchitectureExplainerFirstRunReport {
     pub benchmark_corpus_manifest_path: String,
     pub launch_request: AppleAdapterOperatorLaunchRequest,
     pub operator_run: AppleAdapterOperatorRunStatus,
+    pub useful_adapter_gate: AppleAdapterUsefulAdapterAcceptanceGate,
+    pub useful_adapter_assessment: ArchitectureExplainerUsefulAdapterAssessment,
     pub benchmark_report: AppleAdapterBaseVsAdapterBenchmarkReport,
     pub weak_case_ids: Vec<String>,
     pub disposition: ArchitectureExplainerRunDisposition,
@@ -151,6 +170,8 @@ pub struct ArchitectureExplainerAdapterBenchmarkReport {
     pub generated_at_epoch_ms: u64,
     pub benchmark_corpus_manifest_path: String,
     pub adapter_package_path: String,
+    pub benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode,
+    pub selected_benchmark_policy: AppleAdapterBaseVsAdapterAcceptancePolicy,
     pub benchmark_report: AppleAdapterBaseVsAdapterBenchmarkReport,
     pub weak_case_ids: Vec<String>,
 }
@@ -249,14 +270,23 @@ pub fn run_architecture_explainer_reference_cycle(
         &corpus,
         base_outputs,
         adapted_outputs,
-        &manifest.acceptance_policy,
+        manifest
+            .useful_adapter_gate
+            .policy_for_mode(config.benchmark_mode),
         current_epoch_ms(),
         current_epoch_ms().saturating_add(100),
     )?;
 
-    let mut disposition = ArchitectureExplainerRunDisposition::RejectedBenchmark;
+    let useful_adapter_assessment = assess_useful_adapter_gate(
+        &manifest.useful_adapter_gate,
+        config.benchmark_mode,
+        final_runtime_smoke_passed(&exported_run),
+        benchmark_report.acceptance.accepted,
+        benchmark_report.acceptance.reason_codes.as_slice(),
+    );
+    let mut disposition = ArchitectureExplainerRunDisposition::ExportedButNotUseful;
     let mut acceptance_error = None;
-    if benchmark_report.acceptance.accepted {
+    if useful_adapter_assessment.useful_adapter_accepted {
         if let Some(authority_client) = authority_client(config)? {
             match accept_run(run_id.as_str(), &authority_client) {
                 Ok(_) => {
@@ -293,6 +323,8 @@ pub fn run_architecture_explainer_reference_cycle(
         benchmark_corpus_manifest_path: config.corpus_manifest_path.display().to_string(),
         launch_request,
         operator_run: final_run,
+        useful_adapter_gate: manifest.useful_adapter_gate.clone(),
+        useful_adapter_assessment,
         benchmark_report,
         weak_case_ids,
         disposition,
@@ -335,10 +367,7 @@ pub fn benchmark_architecture_explainer_adapter_package(
         &benchmark_runtime_profile,
     )
     .context("failed to load benchmark dataset")?;
-    let run_id = format!(
-        "benchmark-existing-{}",
-        current_epoch_ms()
-    );
+    let run_id = format!("benchmark-existing-{}", current_epoch_ms());
     let benchmark_environment =
         build_environment_bundle(run_id.as_str(), &train_dataset, &benchmark_dataset)?;
     let benchmark_harness = AppleAdapterEvalHarness::new(benchmark_environment.clone())?;
@@ -370,7 +399,9 @@ pub fn benchmark_architecture_explainer_adapter_package(
         &corpus,
         base_outputs,
         adapted_outputs,
-        &manifest.acceptance_policy,
+        manifest
+            .useful_adapter_gate
+            .policy_for_mode(config.benchmark_mode),
         started_at_ms,
         started_at_ms.saturating_add(100),
     )?;
@@ -385,6 +416,11 @@ pub fn benchmark_architecture_explainer_adapter_package(
         generated_at_epoch_ms: current_epoch_ms(),
         benchmark_corpus_manifest_path: config.corpus_manifest_path.display().to_string(),
         adapter_package_path: adapter_package_path.display().to_string(),
+        benchmark_mode: config.benchmark_mode,
+        selected_benchmark_policy: manifest
+            .useful_adapter_gate
+            .policy_for_mode(config.benchmark_mode)
+            .clone(),
         benchmark_report,
         weak_case_ids,
     })
@@ -692,6 +728,62 @@ fn runtime_error_observed_output(
     observed
 }
 
+fn final_runtime_smoke_passed(run: &AppleAdapterOperatorRunStatus) -> bool {
+    run.runtime_smoke_receipt
+        .as_ref()
+        .map(|receipt| receipt.passed)
+        .unwrap_or(false)
+}
+
+fn assess_useful_adapter_gate(
+    gate: &AppleAdapterUsefulAdapterAcceptanceGate,
+    benchmark_mode: AppleAdapterUsefulAdapterBenchmarkMode,
+    runtime_smoke_satisfied: bool,
+    benchmark_gate_accepted: bool,
+    benchmark_reason_codes: &[AppleAdapterBenchmarkAcceptanceReasonCode],
+) -> ArchitectureExplainerUsefulAdapterAssessment {
+    let mut reason_codes = Vec::new();
+    if gate.runtime_smoke_required && !runtime_smoke_satisfied {
+        reason_codes.push(String::from("runtime_smoke_required_but_not_satisfied"));
+    }
+    reason_codes.extend(
+        benchmark_reason_codes
+            .iter()
+            .map(|code| benchmark_reason_code_label(*code).to_string()),
+    );
+    let useful_adapter_accepted =
+        benchmark_gate_accepted && (!gate.runtime_smoke_required || runtime_smoke_satisfied);
+    ArchitectureExplainerUsefulAdapterAssessment {
+        benchmark_mode,
+        selected_benchmark_policy: gate.policy_for_mode(benchmark_mode).clone(),
+        runtime_smoke_required: gate.runtime_smoke_required,
+        runtime_smoke_satisfied,
+        benchmark_gate_accepted,
+        useful_adapter_accepted,
+        reason_codes,
+    }
+}
+
+fn benchmark_reason_code_label(code: AppleAdapterBenchmarkAcceptanceReasonCode) -> &'static str {
+    match code {
+        AppleAdapterBenchmarkAcceptanceReasonCode::AdapterScoreBelowMinimum => {
+            "adapter_score_below_minimum"
+        }
+        AppleAdapterBenchmarkAcceptanceReasonCode::AdapterPassRateBelowMinimum => {
+            "adapter_pass_rate_below_minimum"
+        }
+        AppleAdapterBenchmarkAcceptanceReasonCode::ScoreDeltaBelowMinimum => {
+            "score_delta_below_minimum"
+        }
+        AppleAdapterBenchmarkAcceptanceReasonCode::PassRateDeltaBelowMinimum => {
+            "pass_rate_delta_below_minimum"
+        }
+        AppleAdapterBenchmarkAcceptanceReasonCode::ImprovedCaseCountBelowMinimum => {
+            "improved_case_count_below_minimum"
+        }
+    }
+}
+
 fn write_report_outputs(
     config: &ArchitectureExplainerFirstRunConfig,
     report: &ArchitectureExplainerFirstRunReport,
@@ -723,7 +815,7 @@ fn render_markdown_report(report: &ArchitectureExplainerFirstRunReport) -> Strin
     let benchmark = &report.benchmark_report;
     let disposition = match report.disposition {
         ArchitectureExplainerRunDisposition::Accepted => "accepted",
-        ArchitectureExplainerRunDisposition::RejectedBenchmark => "rejected_benchmark",
+        ArchitectureExplainerRunDisposition::ExportedButNotUseful => "exported_but_not_useful",
         ArchitectureExplainerRunDisposition::RejectedAuthorityUnavailable => {
             "rejected_authority_unavailable"
         }
@@ -756,6 +848,7 @@ Generated at: `{}`\n\n\
 - runtime_bridge_version: `{}`\n\
 - runtime_bridge_platform: `{}`\n\n\
 ## Benchmark\n\n\
+- benchmark_mode: `{}`\n\
 - accepted: `{}`\n\
 - base_score_bps: `{}`\n\
 - adapted_score_bps: `{}`\n\
@@ -766,6 +859,11 @@ Generated at: `{}`\n\n\
 - improved_case_count: `{}`\n\
 - weak_case_ids: `{}`\n\
 - reason_codes: `{}`\n\n\
+## Useful Adapter Gate\n\n\
+- runtime_smoke_required: `{}`\n\
+- runtime_smoke_satisfied: `{}`\n\
+- useful_adapter_accepted: `{}`\n\
+- useful_adapter_reason_codes: `{}`\n\n\
 ## Notes\n\n\
 - experiment_manifest_digest: `{}`\n\
 - report_json_fixture: `{}`\n\
@@ -820,6 +918,7 @@ Generated at: `{}`\n\n\
         runtime_smoke
             .and_then(|receipt| receipt.runtime_state.bridge_platform.clone())
             .unwrap_or_default(),
+        report.useful_adapter_assessment.benchmark_mode.label(),
         benchmark.acceptance.accepted,
         benchmark.base_summary.aggregate_score_bps.unwrap_or(0),
         benchmark.adapted_summary.aggregate_score_bps.unwrap_or(0),
@@ -836,6 +935,10 @@ Generated at: `{}`\n\n\
             .map(|code| format!("{code:?}"))
             .collect::<Vec<_>>()
             .join(", "),
+        report.useful_adapter_assessment.runtime_smoke_required,
+        report.useful_adapter_assessment.runtime_smoke_satisfied,
+        report.useful_adapter_assessment.useful_adapter_accepted,
+        report.useful_adapter_assessment.reason_codes.join(", "),
         report.experiment_manifest_digest,
         report.benchmark_corpus_manifest_path,
         report
@@ -860,4 +963,57 @@ fn current_epoch_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn useful_adapter_assessment_requires_runtime_smoke_when_declared() {
+        let gate = AppleAdapterUsefulAdapterAcceptanceGate::architecture_explainer_default();
+        let assessment = assess_useful_adapter_gate(
+            &gate,
+            AppleAdapterUsefulAdapterBenchmarkMode::Standard,
+            false,
+            true,
+            &[],
+        );
+        assert!(assessment.runtime_smoke_required);
+        assert!(!assessment.runtime_smoke_satisfied);
+        assert!(!assessment.useful_adapter_accepted);
+        assert!(
+            assessment
+                .reason_codes
+                .contains(&String::from("runtime_smoke_required_but_not_satisfied"))
+        );
+    }
+
+    #[test]
+    fn useful_adapter_assessment_tracks_overfit_non_zero_policy() {
+        let gate = AppleAdapterUsefulAdapterAcceptanceGate::architecture_explainer_default();
+        let assessment = assess_useful_adapter_gate(
+            &gate,
+            AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero,
+            true,
+            false,
+            &[AppleAdapterBenchmarkAcceptanceReasonCode::ImprovedCaseCountBelowMinimum],
+        );
+        assert_eq!(
+            assessment.benchmark_mode,
+            AppleAdapterUsefulAdapterBenchmarkMode::OverfitNonZero
+        );
+        assert_eq!(
+            assessment
+                .selected_benchmark_policy
+                .minimum_improved_case_count,
+            1
+        );
+        assert!(!assessment.useful_adapter_accepted);
+        assert!(
+            assessment
+                .reason_codes
+                .contains(&String::from("improved_case_count_below_minimum"))
+        );
+    }
 }
