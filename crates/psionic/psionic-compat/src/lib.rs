@@ -1079,10 +1079,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The public transform layer exposes grad, value_and_grad, vjp, jvp, vmap, checkpoint, compile-as-transform, and explicit symbolic or shapeless compile boundaries with typed refusals.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public reverse-mode transform layer in psionic-ir with stable grad, value_and_grad, and vjp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected paths, and explicit higher-order-transform refusal anchors, but jvp, vmap, checkpoint, and compile-as-transform remain open.",
+                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, and jvp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, and explicit higher-order-transform refusal anchors, but vmap, checkpoint, and compile-as-transform remain open.",
             ),
             boundary_note: String::from(
-                "Do not infer full MLX transform closure from the first reverse-mode public slice; forward-mode, higher-order transforms, and compile contracts remain open.",
+                "Do not infer full MLX transform closure from the first reverse-plus-forward public slice; higher-order transforms and compile contracts remain open.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1298,14 +1298,17 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                     "cargo test -p psionic-ir autodiff::tests::public_reverse_mode_transforms_expose_grad_value_and_grad_and_vjp -- --exact --nocapture",
                 ),
                 String::from(
+                    "cargo test -p psionic-ir autodiff::tests::public_forward_mode_jvp_exposes_value_and_tangent -- --exact --nocapture",
+                ),
+                String::from(
                     "cargo test -p psionic-ir autodiff::tests::reverse_mode_autodiff_materializes_matmul_chain_gradients -- --exact --nocapture",
                 ),
             ],
             summary: String::from(
-                "The seeded autograd family can now point at a public reverse-mode transform layer with grad, value_and_grad, and vjp plus the existing reverse-mode reference tests as a bounded parity anchor.",
+                "The seeded autograd family can now point at a public transform layer with grad, value_and_grad, vjp, and jvp plus the existing reference tests as a bounded parity anchor.",
             ),
             boundary_note: String::from(
-                "This is only a seeded reverse-mode pass, not a claim that the full public MLX transform API is complete.",
+                "This is only a seeded reverse-plus-forward pass, not a claim that the full public MLX transform API is complete.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1533,25 +1536,25 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_transform_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Convertible,
             summary: String::from(
-                "psionic-ir now exposes a first public reverse-mode transform layer with grad, value_and_grad, and vjp objects above AutodiffGraph, but forward-mode, higher-order transforms, and compile-as-transform are still incomplete.",
+                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, and jvp objects above AutodiffGraph, but higher-order transforms and compile-as-transform are still incomplete.",
             ),
             evidence_refs: vec![
                 String::from("grad"),
                 String::from("value_and_grad"),
                 String::from("vjp"),
+                String::from("jvp"),
                 String::from("MlxParityHarnessReport"),
                 String::from("MlxAcceptanceMatrixReport::transform-compile = partial"),
                 String::from("ProgramTransformCapabilityMatrixReport"),
             ],
             blocking_issue_refs: vec![
-                String::from("PMLX-202 (#3841)"),
                 String::from("PMLX-203 (#3842)"),
                 String::from("PMLX-204 (#3843)"),
                 String::from("PMLX-205 (#3844)"),
                 String::from("PMLX-206 (#3845)"),
             ],
             boundary_note: String::from(
-                "The first public reverse-mode slice is not yet the same thing as full supported MLX transform closure.",
+                "The first public reverse-plus-forward slice is not yet the same thing as full supported MLX transform closure.",
             ),
         },
         MlxCompatibilityMatrixEntry {
