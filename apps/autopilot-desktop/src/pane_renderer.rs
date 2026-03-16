@@ -47,8 +47,9 @@ use crate::pane_system::{
     job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
     job_history_search_input_bounds, job_history_status_button_bounds,
     job_history_time_button_bounds, job_inbox_accept_button_bounds, job_inbox_reject_button_bounds,
-    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_buy_mode_button_bounds,
-    mission_control_buy_mode_history_button_bounds, mission_control_copy_log_stream_button_bounds,
+    job_inbox_row_bounds, job_inbox_visible_row_count, mission_control_alert_dismiss_button_bounds,
+    mission_control_buy_mode_button_bounds, mission_control_buy_mode_history_button_bounds,
+    mission_control_copy_log_stream_button_bounds,
     mission_control_copy_seed_button_bounds_for_scroll, mission_control_layout_for_mode,
     mission_control_load_funds_layout_with_scroll,
     mission_control_load_funds_scroll_viewport_bounds, mission_control_local_fm_test_button_bounds,
@@ -1848,6 +1849,8 @@ fn paint_go_online_pane(
         provider_blockers,
         spark_wallet,
     );
+    let alert_visible = mission_control.should_show_alert(alert_message.signature.as_str());
+    let alert_dismiss_bounds = mission_control_alert_dismiss_button_bounds(content_bounds);
 
     paint
         .scene
@@ -1918,8 +1921,9 @@ fn paint_go_online_pane(
     );
     paint_mission_control_alert_band(
         layout.alert_band,
-        alert_message.0.as_str(),
-        alert_message.1,
+        alert_dismiss_bounds,
+        &alert_message,
+        alert_visible,
         paint,
     );
 
@@ -2797,18 +2801,24 @@ fn paint_mission_control_status_cell(
 
 fn paint_mission_control_alert_band(
     bounds: Bounds,
-    text: &str,
-    accent: Hsla,
+    dismiss_button_bounds: Bounds,
+    alert: &MissionControlAlertDescriptor,
+    show_alert: bool,
     paint: &mut PaintContext,
 ) {
     let anim_t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f32())
         .unwrap_or(0.0);
+    let accent = if show_alert {
+        alert.accent
+    } else {
+        mission_control_muted_color()
+    };
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(accent.with_alpha(0.10))
-            .with_border(accent.with_alpha(0.50), 1.0)
+            .with_background(accent.with_alpha(if show_alert { 0.10 } else { 0.06 }))
+            .with_border(accent.with_alpha(if show_alert { 0.50 } else { 0.24 }), 1.0)
             .with_corner_radius(4.0),
     );
     paint.scene.draw_quad(
@@ -2821,29 +2831,54 @@ fn paint_mission_control_alert_band(
         .with_background(accent.with_alpha(0.95))
         .with_corner_radius(4.0),
     );
-    paint.scene.draw_text(paint.text.layout_mono(
-        "!",
-        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 5.0),
-        12.0,
-        accent,
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        text,
-        Point::new(bounds.origin.x + 28.0, bounds.origin.y + 8.0),
-        11.0,
-        mission_control_text_color(),
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        "X",
-        Point::new(bounds.max_x() - 14.0, bounds.origin.y + 7.0),
-        11.0,
-        accent.with_alpha(0.9),
-    ));
+    if show_alert {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "!",
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 5.0),
+            12.0,
+            accent,
+        ));
+        paint.scene.draw_text(paint.text.layout_mono(
+            alert.text.as_str(),
+            Point::new(bounds.origin.x + 28.0, bounds.origin.y + 8.0),
+            11.0,
+            mission_control_text_color(),
+        ));
+        paint.scene.draw_quad(
+            Quad::new(dismiss_button_bounds)
+                .with_background(accent.with_alpha(0.08))
+                .with_border(accent.with_alpha(0.28), 1.0)
+                .with_corner_radius(3.0),
+        );
+        let mut dismiss_run =
+            paint
+                .text
+                .layout_mono("X", Point::ZERO, 11.0, accent.with_alpha(0.9));
+        let dismiss_run_bounds = dismiss_run.bounds();
+        dismiss_run.origin = Point::new(
+            dismiss_button_bounds.origin.x
+                + ((dismiss_button_bounds.size.width - dismiss_run_bounds.size.width).max(0.0)
+                    * 0.5)
+                - dismiss_run_bounds.origin.x,
+            dismiss_button_bounds.origin.y
+                + ((dismiss_button_bounds.size.height - dismiss_run_bounds.size.height).max(0.0)
+                    * 0.5)
+                - dismiss_run_bounds.origin.y,
+        );
+        paint.scene.draw_text(dismiss_run);
+    } else {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "ALERT DISMISSED // NEXT STATE CHANGE REOPENS THIS BAND",
+            Point::new(bounds.origin.x + 16.0, bounds.origin.y + 8.0),
+            10.0,
+            mission_control_muted_color(),
+        ));
+    }
     let sweep_track = (bounds.size.width - 52.0).max(1.0);
     let sweep = (anim_t * 520.0 + bounds.origin.x * 0.08).rem_euclid(sweep_track);
     let sweep_x = bounds.origin.x + 24.0 + sweep;
     let sweep_width = 16.0_f32.min((bounds.max_x() - 16.0 - sweep_x).max(0.0));
-    if sweep_width > 0.5 {
+    if show_alert && sweep_width > 0.5 {
         paint.scene.draw_quad(
             Quad::new(Bounds::new(sweep_x, bounds.max_y() - 2.0, sweep_width, 1.0))
                 .with_background(accent.with_alpha(0.30)),
@@ -2861,6 +2896,31 @@ fn mission_control_truth_legend() -> &'static str {
     "LEGEND // PROV=SELECTED PROVIDER // WORK=MARKET FLOW // PAY=WALLET FLOW // NEXT=EXPECTED EVENT"
 }
 
+struct MissionControlAlertDescriptor {
+    signature: String,
+    text: String,
+    accent: Hsla,
+}
+
+pub(crate) fn mission_control_current_alert_signature(
+    mission_control: &MissionControlPaneState,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    provider_blockers: &[ProviderBlocker],
+    spark_wallet: &SparkPaneState,
+) -> String {
+    mission_control_alert_message(
+        mission_control,
+        desktop_shell_mode,
+        provider_runtime,
+        local_inference_runtime,
+        provider_blockers,
+        spark_wallet,
+    )
+    .signature
+}
+
 fn mission_control_alert_message(
     mission_control: &MissionControlPaneState,
     desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
@@ -2868,25 +2928,29 @@ fn mission_control_alert_message(
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
     provider_blockers: &[ProviderBlocker],
     spark_wallet: &SparkPaneState,
-) -> (String, Hsla) {
+) -> MissionControlAlertDescriptor {
     if let Some(error) = mission_control.last_error.as_deref().map(str::trim)
         && !error.is_empty()
     {
-        return (
-            format!("ALERT // {}", error.to_ascii_uppercase()),
-            mission_control_red_color(),
-        );
+        let text = format!("ALERT // {}", error.to_ascii_uppercase());
+        return MissionControlAlertDescriptor {
+            signature: text.clone(),
+            text,
+            accent: mission_control_red_color(),
+        };
     }
 
     if let Some(blocker) = provider_blockers.first().copied() {
-        return (
-            format!(
-                "PREFLIGHT // {}",
-                mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
-                    .to_ascii_uppercase()
-            ),
-            mission_control_orange_color(),
+        let text = format!(
+            "PREFLIGHT // {}",
+            mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
+                .to_ascii_uppercase()
         );
+        return MissionControlAlertDescriptor {
+            signature: text.clone(),
+            text,
+            accent: mission_control_orange_color(),
+        };
     }
 
     let load_hint = mission_control_go_online_hint(
@@ -2895,25 +2959,31 @@ fn mission_control_alert_message(
         local_inference_runtime,
     );
     if !load_hint.trim().is_empty() {
-        return (
-            format!("READY PATH // {}", load_hint.to_ascii_uppercase()),
-            mission_control_amber_color(),
-        );
+        let text = format!("READY PATH // {}", load_hint.to_ascii_uppercase());
+        return MissionControlAlertDescriptor {
+            signature: text.clone(),
+            text,
+            accent: mission_control_amber_color(),
+        };
     }
 
     if let Some(action) = mission_control.last_action.as_deref().map(str::trim)
         && !action.is_empty()
     {
-        return (
-            format!("MISSION // {}", action.to_ascii_uppercase()),
-            mission_control_cyan_color(),
-        );
+        let text = format!("MISSION // {}", action.to_ascii_uppercase());
+        return MissionControlAlertDescriptor {
+            signature: text.clone(),
+            text,
+            accent: mission_control_cyan_color(),
+        };
     }
 
-    (
-        "MISSION // APPLE FM EARN LOOP ARMED".to_string(),
-        mission_control_green_color(),
-    )
+    let text = "MISSION // APPLE FM EARN LOOP ARMED".to_string();
+    MissionControlAlertDescriptor {
+        signature: text.clone(),
+        text,
+        accent: mission_control_green_color(),
+    }
 }
 
 fn paint_mission_control_buy_mode_panel(

@@ -395,6 +395,7 @@ pub enum LogStreamPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MissionControlPaneAction {
+    DismissAlert,
     RefreshWallet,
     CreateLightningReceiveTarget,
     CopyLightningReceiveTarget,
@@ -2729,8 +2730,7 @@ pub fn mission_control_layout_for_mode(
         panel_gap * 2.0
     };
     let remaining_after_top =
-        (right_column.size.height - active_jobs_height - buy_mode_height - top_gaps)
-            .max(0.0);
+        (right_column.size.height - active_jobs_height - buy_mode_height - top_gaps).max(0.0);
     let max_load_funds_height = (remaining_after_top - min_log_stream_height).max(0.0);
     let mut load_funds_height = if max_load_funds_height <= 0.0 {
         0.0
@@ -2745,10 +2745,12 @@ pub fn mission_control_layout_for_mode(
             .min(max_load_funds_height - load_funds_height);
         load_funds_height += responsive_growth;
     }
-    let mut log_stream_height =
-        (right_column.size.height - active_jobs_height - buy_mode_height - load_funds_height
-            - top_gaps)
-            .max(0.0);
+    let mut log_stream_height = (right_column.size.height
+        - active_jobs_height
+        - buy_mode_height
+        - load_funds_height
+        - top_gaps)
+        .max(0.0);
     if log_stream_height > min_log_stream_height {
         let active_growth = (target_active_jobs_height - active_jobs_height)
             .max(0.0)
@@ -2827,6 +2829,16 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
         panel.origin.y + top_inset,
         (panel.size.width - 28.0).max(0.0),
         button_height,
+    )
+}
+
+pub fn mission_control_alert_dismiss_button_bounds(content_bounds: Bounds) -> Bounds {
+    let alert_band = mission_control_layout(content_bounds).alert_band;
+    Bounds::new(
+        alert_band.max_x() - 26.0,
+        alert_band.origin.y + 4.0,
+        20.0,
+        16.0,
     )
 }
 
@@ -5884,6 +5896,7 @@ fn pane_hit_action_for_pane(
         }
         PaneKind::GoOnline => {
             let buy_mode_enabled = state.mission_control_buy_mode_enabled();
+            let provider_blockers = state.provider_blockers();
             let lightning_amount_valid = state
                 .mission_control
                 .load_funds_amount_sats
@@ -5909,6 +5922,23 @@ fn pane_hit_action_for_pane(
                 .nostr_identity
                 .as_ref()
                 .is_some_and(|identity| !identity.mnemonic.trim().is_empty());
+            let alert_signature = crate::pane_renderer::mission_control_current_alert_signature(
+                &state.mission_control,
+                state.desktop_shell_mode,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+                provider_blockers.as_slice(),
+                &state.spark_wallet,
+            );
+            if mission_control_alert_dismiss_button_bounds(content_bounds).contains(point)
+                && !state
+                    .mission_control
+                    .alert_is_dismissed(alert_signature.as_str())
+            {
+                return Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::DismissAlert,
+                ));
+            }
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
                 if matches!(
                     state.provider_runtime.mode,
@@ -7973,7 +8003,7 @@ mod tests {
         local_inference_run_button_bounds, local_inference_temperature_input_bounds,
         local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
         local_inference_unload_button_bounds, local_inference_warm_button_bounds,
-        mission_control_layout_for_mode,
+        mission_control_alert_dismiss_button_bounds, mission_control_layout_for_mode,
         mission_control_load_funds_layout, mission_control_load_funds_scroll_viewport_bounds,
         network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
         network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
@@ -8871,6 +8901,17 @@ mod tests {
         let compact_layout = mission_control_load_funds_layout(compact_content, true);
         assert!(compact_layout.controls_column.size.height < 152.0);
         assert!(compact_layout.amount_input.origin.y >= compact_viewport.origin.y + 24.0);
+    }
+
+    #[test]
+    fn mission_control_alert_dismiss_button_stays_inside_alert_band() {
+        let content_bounds = Bounds::new(0.0, 0.0, 1040.0, 620.0);
+        let alert_band = mission_control_layout_for_mode(content_bounds, false).alert_band;
+        let dismiss_button = mission_control_alert_dismiss_button_bounds(content_bounds);
+
+        assert!(alert_band.contains(dismiss_button.origin));
+        assert!(dismiss_button.max_x() <= alert_band.max_x());
+        assert!(dismiss_button.max_y() <= alert_band.max_y());
     }
 
     #[test]
