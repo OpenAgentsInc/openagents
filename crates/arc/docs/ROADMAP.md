@@ -700,7 +700,7 @@ Master issue:
 | --- | --- | --- |
 | `ARC-301` / [#3693](https://github.com/OpenAgentsInc/openagents/issues/3693) | done | Created `crates/arc/solvers` with a bounded Tier A seed DSL and pure interpreter covering typed symbols, empty/input/variable grids, crop/paint/rotate/reflect/recolor transforms, extreme/color selectors, sequencing, let-binding, and conditional object checks. |
 | `ARC-302` / [#3694](https://github.com/OpenAgentsInc/openagents/issues/3694) | done | Added `arc-solvers::model` with typed digests/ids, solver refusal envelopes, candidate identity + deduplication, budget ledgers, hypothesis envelopes, solve-attempt envelopes, and material-distinctness checks for attempt 2. |
-| `ARC-303` / [#3695](https://github.com/OpenAgentsInc/openagents/issues/3695) | planned | Build the common verifier and falsifier, including augmentation stability and holdout-on-train checks. |
+| `ARC-303` / [#3695](https://github.com/OpenAgentsInc/openagents/issues/3695) | done | Added the bounded common verifier in `arc-solvers` with deterministic train-pair execution, per-pair residual reports, augmentation-stability falsification, holdout-on-train checks, budget-aware skip behavior, and explicit refusal for unsupported interactive hypotheses. |
 | `ARC-304` / [#3696](https://github.com/OpenAgentsInc/openagents/issues/3696) | planned | Add trace-bundle writing and replay fixtures for proposal, verification, refinement, and arbiter decisions. |
 
 #### Lanes

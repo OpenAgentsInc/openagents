@@ -16,6 +16,7 @@
 pub mod dsl;
 pub mod interpreter;
 pub mod model;
+pub mod verifier;
 
 pub use dsl::{
     ARC_SOLVER_BOUNDARY_SUMMARY, ArcDslTier, ArcGridBinding, ArcGridExpr, ArcObjectSelector,
@@ -31,6 +32,11 @@ pub use model::{
     SolveAttemptEnvelope, SolveAttemptEnvelopeError, SolveAttemptStatus,
     SolveAttemptVerificationSummary, SolverIdError, SolverLaneId, SolverPhase, SolverRefusalCode,
     TaskBudget,
+};
+pub use verifier::{
+    ArcCommonVerifier, ArcVerifierAugmentation, ArcVerifierConfig, ArcVerifierError,
+    CandidateVerifier, FalsificationCheckKind, FalsificationCheckResult, FalsificationCheckStatus,
+    PairVerificationResult, VERIFIER_BOUNDARY_SUMMARY, VerificationReport,
 };
 
 /// Stable role summary for downstream ARC crates.
