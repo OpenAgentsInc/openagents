@@ -1452,6 +1452,19 @@ pub enum QuantizationMode {
 }
 
 impl QuantizationMode {
+    /// Returns one stable quantization-mode label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Int8Symmetric => "int8_symmetric",
+            Self::GgmlMxfp4 => "ggml_mxfp4",
+            Self::GgmlQ4_0 => "ggml_q4_0",
+            Self::GgmlQ4_1 => "ggml_q4_1",
+            Self::GgmlQ8_0 => "ggml_q8_0",
+        }
+    }
+
     /// Returns the GGML block shape for the quantization mode when one exists.
     #[must_use]
     pub const fn ggml_block_spec(self) -> Option<(usize, usize)> {
@@ -1483,6 +1496,424 @@ impl QuantizationMode {
             element_count / elements_per_block,
         ))
     }
+}
+
+/// Quantization workflow stage covered by the bounded semantics surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationCapabilityStage {
+    /// Post-training quantization after dense optimization.
+    Ptq,
+    /// Quantization-aware training.
+    Qat,
+    /// Quantized runtime execution semantics above raw file-format decode.
+    RuntimeExecution,
+    /// Compiler-lowering semantics for quantized programs.
+    CompilerLowering,
+    /// Export-aware quantization intent on graph handoff surfaces.
+    ExportAware,
+}
+
+impl QuantizationCapabilityStage {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ptq => "ptq",
+            Self::Qat => "qat",
+            Self::RuntimeExecution => "runtime_execution",
+            Self::CompilerLowering => "compiler_lowering",
+            Self::ExportAware => "export_aware",
+        }
+    }
+}
+
+/// Quantization calibration or observer strategy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationCalibrationMode {
+    /// No calibration is required on the bounded path.
+    None,
+    /// Min/max calibration statistics are required.
+    MinMax,
+    /// Histogram or observer-driven calibration statistics are required.
+    Histogram,
+}
+
+/// Granularity used by a quantization configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationGranularity {
+    /// One scale covers the whole tensor.
+    PerTensor,
+    /// One scale per logical output channel.
+    PerChannel,
+    /// One scale per block-quantized storage region.
+    BlockWise,
+}
+
+/// Reusable quantization configuration above loader-only decode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationConfig {
+    /// Quantized weight representation under discussion.
+    pub weight_mode: QuantizationMode,
+    /// Activation dtype exposed to the quantized program.
+    pub activation_dtype: ExtendedDType,
+    /// Scale granularity used by the configuration.
+    pub granularity: QuantizationGranularity,
+    /// Calibration or observer strategy required by the flow.
+    pub calibration: QuantizationCalibrationMode,
+    /// Whether the flow requires explicit fake-quant or observer modules.
+    pub requires_observers: bool,
+}
+
+impl QuantizationConfig {
+    /// Creates one bounded quantization configuration.
+    #[must_use]
+    pub const fn new(
+        weight_mode: QuantizationMode,
+        activation_dtype: ExtendedDType,
+        granularity: QuantizationGranularity,
+        calibration: QuantizationCalibrationMode,
+        requires_observers: bool,
+    ) -> Self {
+        Self {
+            weight_mode,
+            activation_dtype,
+            granularity,
+            calibration,
+            requires_observers,
+        }
+    }
+}
+
+/// Status for one bounded quantization capability case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationCapabilityStatus {
+    /// The flow is explicitly supported in the current bounded scope.
+    Supported,
+    /// The flow is explicitly refused in the current bounded scope.
+    Refused,
+}
+
+/// One machine-readable bounded quantization capability case.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationCapabilityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Quantization workflow stage under test.
+    pub stage: QuantizationCapabilityStage,
+    /// Backend family under test.
+    pub backend: DTypeBackendFamily,
+    /// Quantization configuration under test.
+    pub config: QuantizationConfig,
+    /// Current status for the case.
+    pub status: QuantizationCapabilityStatus,
+    /// Plain-language current scope boundary.
+    pub bounded_scope: String,
+    /// Explicit refusal when the stage/config/backend tuple is unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<PsionicRefusal>,
+}
+
+/// Machine-readable bounded report for quantization capability semantics above
+/// loader-only decode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationCapabilitySemanticsReport {
+    /// Stable schema version for the report.
+    pub schema_version: u32,
+    /// Versioned current-scope window.
+    pub current_scope_window: String,
+    /// Seeded capability cases that define the current scope.
+    pub cases: Vec<QuantizationCapabilityCaseResult>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+}
+
+impl QuantizationCapabilitySemanticsReport {
+    fn new(
+        current_scope_window: impl Into<String>,
+        cases: Vec<QuantizationCapabilityCaseResult>,
+    ) -> Self {
+        let current_scope_window = current_scope_window.into();
+        let report_digest =
+            stable_quantization_capability_digest(current_scope_window.as_str(), cases.as_slice());
+        Self {
+            schema_version: 1,
+            current_scope_window,
+            cases,
+            report_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{}|{:?}",
+                case.case_id,
+                case.stage.label(),
+                case.backend.label(),
+                case.config.weight_mode.label(),
+                case.status
+            ));
+        }
+        lines
+    }
+
+    /// Validates one stage/backend/config tuple against the bounded report.
+    pub fn validate_support(
+        &self,
+        stage: QuantizationCapabilityStage,
+        backend: DTypeBackendFamily,
+        config: &QuantizationConfig,
+    ) -> Result<(), PsionicRefusal> {
+        let Some(case) = self
+            .cases
+            .iter()
+            .find(|case| case.stage == stage && case.backend == backend && case.config == *config)
+        else {
+            return Err(
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedOp,
+                    PsionicRefusalScope::Graph,
+                    format!(
+                        "quantization capability matrix does not declare `{}` / `{}` / `{}` / `{}` in the bounded scope",
+                        stage.label(),
+                        backend.label(),
+                        config.weight_mode.label(),
+                        config.activation_dtype.label()
+                    ),
+                )
+                .with_subject(format!(
+                    "{}:{}:{}:{}",
+                    stage.label(),
+                    backend.label(),
+                    config.weight_mode.label(),
+                    config.activation_dtype.label()
+                )),
+            );
+        };
+        match case.status {
+            QuantizationCapabilityStatus::Supported => Ok(()),
+            QuantizationCapabilityStatus::Refused => Err(case.refusal.clone().unwrap_or_else(|| {
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    format!(
+                        "quantization capability `{}` / `{}` / `{}` / `{}` is intentionally refused in the current scope",
+                        stage.label(),
+                        backend.label(),
+                        config.weight_mode.label(),
+                        config.activation_dtype.label()
+                    ),
+                )
+                .with_subject(format!(
+                    "{}:{}:{}:{}",
+                    stage.label(),
+                    backend.label(),
+                    config.weight_mode.label(),
+                    config.activation_dtype.label()
+                ))
+            })),
+        }
+    }
+}
+
+/// Builds the canonical bounded quantization capability report above
+/// loader-only decode.
+#[must_use]
+pub fn builtin_quantization_capability_semantics_report() -> QuantizationCapabilitySemanticsReport {
+    QuantizationCapabilitySemanticsReport::new(
+        String::from("psionic_quantization_v1"),
+        vec![
+            supported_quantization_case(
+                "current_runtime_backends.ptq.int8_symmetric_per_channel",
+                QuantizationCapabilityStage::Ptq,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                QuantizationConfig::new(
+                    QuantizationMode::Int8Symmetric,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::PerChannel,
+                    QuantizationCalibrationMode::MinMax,
+                    false,
+                ),
+                "Current runtime backends support a bounded PTQ surface for symmetric int8 weights with per-channel scales and explicit calibration metadata.",
+            ),
+            supported_quantization_case(
+                "current_runtime_backends.qat.int8_symmetric_observer",
+                QuantizationCapabilityStage::Qat,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                QuantizationConfig::new(
+                    QuantizationMode::Int8Symmetric,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::PerTensor,
+                    QuantizationCalibrationMode::Histogram,
+                    true,
+                ),
+                "Current runtime backends support a bounded QAT surface for symmetric int8 weights with observer-driven fake-quant metadata instead of implying arbitrary quantizer families.",
+            ),
+            supported_quantization_case(
+                "current_runtime_backends.runtime_execution.ggml_q4_0_f32_activation",
+                QuantizationCapabilityStage::RuntimeExecution,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                QuantizationConfig::new(
+                    QuantizationMode::GgmlQ4_0,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::BlockWise,
+                    QuantizationCalibrationMode::None,
+                    false,
+                ),
+                "Current runtime backends support bounded quantized-matmul execution semantics for `ggml_q4_0` weights with `f32` activations above raw file-format decode.",
+            ),
+            supported_quantization_case(
+                "current_runtime_backends.compiler_lowering.ggml_q4_0_f32_activation",
+                QuantizationCapabilityStage::CompilerLowering,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                QuantizationConfig::new(
+                    QuantizationMode::GgmlQ4_0,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::BlockWise,
+                    QuantizationCalibrationMode::None,
+                    false,
+                ),
+                "Current compiler lowering explicitly preserves bounded quantized-matmul intent for `ggml_q4_0` instead of treating quantization as loader-private trivia.",
+            ),
+            supported_quantization_case(
+                "meta_execution.export_aware.int8_symmetric",
+                QuantizationCapabilityStage::ExportAware,
+                DTypeBackendFamily::MetaExecution,
+                QuantizationConfig::new(
+                    QuantizationMode::Int8Symmetric,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::PerChannel,
+                    QuantizationCalibrationMode::MinMax,
+                    false,
+                ),
+                "Meta execution may carry export-aware int8 quantization intent through graph-level semantics even though deployment artifact contracts remain a later issue.",
+            ),
+            refused_quantization_case(
+                "current_runtime_backends.qat.ggml_q4_0",
+                QuantizationCapabilityStage::Qat,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                QuantizationConfig::new(
+                    QuantizationMode::GgmlQ4_0,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::BlockWise,
+                    QuantizationCalibrationMode::Histogram,
+                    true,
+                ),
+                "Current runtime backends do not yet claim block-quant QAT; that path remains explicitly refused instead of being smuggled in through GGUF decode support.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends do not yet support block-quant QAT",
+                )
+                .with_subject("qat:current_runtime_backends:ggml_q4_0:f32"),
+            ),
+            refused_quantization_case(
+                "current_runtime_backends.runtime_execution.int8_symmetric_bf16_activation",
+                QuantizationCapabilityStage::RuntimeExecution,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                QuantizationConfig::new(
+                    QuantizationMode::Int8Symmetric,
+                    ExtendedDType::BF16,
+                    QuantizationGranularity::PerChannel,
+                    QuantizationCalibrationMode::None,
+                    false,
+                ),
+                "Current runtime backends keep quantized execution semantics bounded to seeded `f32` activation posture instead of claiming broad activation-dtype closure.",
+                PsionicRefusal::new(
+                    PsionicRefusalCode::UnsupportedBackendCapability,
+                    PsionicRefusalScope::Runtime,
+                    "current runtime backends do not yet execute seeded int8 quantization with bf16 activations",
+                )
+                .with_subject("runtime_execution:current_runtime_backends:int8_symmetric:bf16"),
+            ),
+        ],
+    )
+}
+
+fn supported_quantization_case(
+    case_id: &str,
+    stage: QuantizationCapabilityStage,
+    backend: DTypeBackendFamily,
+    config: QuantizationConfig,
+    bounded_scope: &str,
+) -> QuantizationCapabilityCaseResult {
+    QuantizationCapabilityCaseResult {
+        case_id: String::from(case_id),
+        stage,
+        backend,
+        config,
+        status: QuantizationCapabilityStatus::Supported,
+        bounded_scope: String::from(bounded_scope),
+        refusal: None,
+    }
+}
+
+fn refused_quantization_case(
+    case_id: &str,
+    stage: QuantizationCapabilityStage,
+    backend: DTypeBackendFamily,
+    config: QuantizationConfig,
+    bounded_scope: &str,
+    refusal: PsionicRefusal,
+) -> QuantizationCapabilityCaseResult {
+    QuantizationCapabilityCaseResult {
+        case_id: String::from(case_id),
+        stage,
+        backend,
+        config,
+        status: QuantizationCapabilityStatus::Refused,
+        bounded_scope: String::from(bounded_scope),
+        refusal: Some(refusal),
+    }
+}
+
+fn stable_quantization_capability_digest(
+    current_scope_window: &str,
+    cases: &[QuantizationCapabilityCaseResult],
+) -> String {
+    let mut lines = vec![format!("current_scope_window={current_scope_window}")];
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("stage={}", case.stage.label()));
+        lines.push(format!("backend={}", case.backend.label()));
+        lines.push(format!("weight_mode={}", case.config.weight_mode.label()));
+        lines.push(format!(
+            "activation_dtype={}",
+            case.config.activation_dtype.label()
+        ));
+        lines.push(format!("granularity={:?}", case.config.granularity));
+        lines.push(format!("calibration={:?}", case.config.calibration));
+        lines.push(format!(
+            "requires_observers={}",
+            case.config.requires_observers
+        ));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!("bounded_scope={}", case.bounded_scope));
+        if let Some(refusal) = &case.refusal {
+            lines.push(format!("refusal_code={:?}", refusal.code));
+            lines.push(format!("refusal_scope={:?}", refusal.scope));
+            lines.push(format!("refusal_detail={}", refusal.detail));
+            if let Some(subject) = &refusal.subject {
+                lines.push(format!("refusal_subject={subject}"));
+            }
+        }
+    }
+    lines.sort();
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())
 }
 
 /// Stable floating-point parameter encoded via raw `f32` bit representation.
@@ -2289,10 +2720,12 @@ fn is_permutation(order: &[usize]) -> bool {
 mod tests {
     use super::{
         builtin_advanced_dtype_semantics_report, builtin_autocast_policy_matrix_report,
-        AutocastNumericsDiagnostic, AutocastOperationFamily, AutocastPolicyStatus,
-        AutocastPrecisionPolicy, DType, DTypeBackendFamily, DTypeCastKind, DTypeClass, Device,
-        DeviceKind, ExtendedDType, ExtendedDTypeClass, Layout, PsionicRefusal, PsionicRefusalCode,
-        PsionicRefusalScope, Shape, TensorSpec, ViewSemantics,
+        builtin_quantization_capability_semantics_report, AutocastNumericsDiagnostic,
+        AutocastOperationFamily, AutocastPolicyStatus, AutocastPrecisionPolicy, DType,
+        DTypeBackendFamily, DTypeCastKind, DTypeClass, Device, DeviceKind, ExtendedDType,
+        ExtendedDTypeClass, Layout, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope,
+        QuantizationCalibrationMode, QuantizationCapabilityStage, QuantizationConfig,
+        QuantizationGranularity, QuantizationMode, Shape, TensorSpec, ViewSemantics,
     };
 
     #[test]
@@ -2620,6 +3053,97 @@ mod tests {
         .expect_err("missing attention rule should refuse");
         assert_eq!(missing_rule.code, PsionicRefusalCode::UnsupportedOp);
         assert_eq!(missing_rule.scope, PsionicRefusalScope::Graph);
+    }
+
+    #[test]
+    fn quantization_capability_report_tracks_ptq_qat_runtime_and_export_cases() {
+        let report = builtin_quantization_capability_semantics_report();
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.current_scope_window, "psionic_quantization_v1");
+        assert!(report
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("report_digest=")));
+
+        let ptq_config = QuantizationConfig::new(
+            QuantizationMode::Int8Symmetric,
+            ExtendedDType::F32,
+            QuantizationGranularity::PerChannel,
+            QuantizationCalibrationMode::MinMax,
+            false,
+        );
+        assert!(report
+            .validate_support(
+                QuantizationCapabilityStage::Ptq,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                &ptq_config
+            )
+            .is_ok());
+
+        let runtime_config = QuantizationConfig::new(
+            QuantizationMode::GgmlQ4_0,
+            ExtendedDType::F32,
+            QuantizationGranularity::BlockWise,
+            QuantizationCalibrationMode::None,
+            false,
+        );
+        assert!(report
+            .validate_support(
+                QuantizationCapabilityStage::RuntimeExecution,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                &runtime_config
+            )
+            .is_ok());
+
+        let export_config = QuantizationConfig::new(
+            QuantizationMode::Int8Symmetric,
+            ExtendedDType::F32,
+            QuantizationGranularity::PerChannel,
+            QuantizationCalibrationMode::MinMax,
+            false,
+        );
+        assert!(report
+            .validate_support(
+                QuantizationCapabilityStage::ExportAware,
+                DTypeBackendFamily::MetaExecution,
+                &export_config
+            )
+            .is_ok());
+
+        let refused_qat = report
+            .validate_support(
+                QuantizationCapabilityStage::Qat,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                &QuantizationConfig::new(
+                    QuantizationMode::GgmlQ4_0,
+                    ExtendedDType::F32,
+                    QuantizationGranularity::BlockWise,
+                    QuantizationCalibrationMode::Histogram,
+                    true,
+                ),
+            )
+            .expect_err("block-quant qat should refuse");
+        assert_eq!(
+            refused_qat.code,
+            PsionicRefusalCode::UnsupportedBackendCapability
+        );
+        assert_eq!(refused_qat.scope, PsionicRefusalScope::Runtime);
+
+        let missing_case = report
+            .validate_support(
+                QuantizationCapabilityStage::RuntimeExecution,
+                DTypeBackendFamily::CurrentRuntimeBackends,
+                &QuantizationConfig::new(
+                    QuantizationMode::GgmlQ8_0,
+                    ExtendedDType::F16,
+                    QuantizationGranularity::BlockWise,
+                    QuantizationCalibrationMode::None,
+                    false,
+                ),
+            )
+            .expect_err("missing q8 f16 runtime case should refuse");
+        assert_eq!(missing_case.code, PsionicRefusalCode::UnsupportedOp);
+        assert_eq!(missing_case.scope, PsionicRefusalScope::Graph);
     }
 
     #[test]
