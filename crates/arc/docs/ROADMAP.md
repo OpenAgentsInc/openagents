@@ -637,7 +637,7 @@ Master issue:
 | --- | --- | --- |
 | `ARC-201` / [#3680](https://github.com/OpenAgentsInc/openagents/issues/3680) | landed | Create `crates/arc/engine` and port deterministic game execution, including sprites, level logic, and action transitions. |
 | `ARC-202` / [#3681](https://github.com/OpenAgentsInc/openagents/issues/3681) | landed | Add fixture-driven parity against the upstream `ARC-AGI/test_environment_files` samples. |
-| `ARC-203` / [#3682](https://github.com/OpenAgentsInc/openagents/issues/3682) | planned | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
+| `ARC-203` / [#3682](https://github.com/OpenAgentsInc/openagents/issues/3682) | landed | Create `crates/arc/client` with local and remote wrappers, REST models, and cookie-affine session behavior. |
 | `ARC-204` / [#3683](https://github.com/OpenAgentsInc/openagents/issues/3683) | planned | Port the local compatibility server against the ARC docs schema and local-vs-online behavior docs. |
 | `ARC-205` / [#3684](https://github.com/OpenAgentsInc/openagents/issues/3684) | planned | Add local-vs-remote parity harnesses so game-client behavior is explicitly comparable across modes. |
 | `ARC-211` / [#3690](https://github.com/OpenAgentsInc/openagents/issues/3690) | planned | Implement versioned interactive score policies, including the current weighted-and-squared methodology/competition policy and any required compatibility fixtures for upstream preview behavior. |

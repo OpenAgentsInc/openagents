@@ -455,6 +455,7 @@ pub enum ArcOperationMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ArcGameState {
+    NotStarted,
     #[default]
     NotFinished,
     Win,

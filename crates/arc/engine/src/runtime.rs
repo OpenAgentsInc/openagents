@@ -26,7 +26,8 @@ impl ArcEngineGameState {
     #[must_use]
     pub fn to_observation_state(self) -> arc_core::ArcGameState {
         match self {
-            Self::NotPlayed | Self::NotFinished => arc_core::ArcGameState::NotFinished,
+            Self::NotPlayed => arc_core::ArcGameState::NotStarted,
+            Self::NotFinished => arc_core::ArcGameState::NotFinished,
             Self::Win => arc_core::ArcGameState::Win,
             Self::GameOver => arc_core::ArcGameState::GameOver,
         }

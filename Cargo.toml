@@ -7,6 +7,7 @@ members = [
     "crates/arc/core",
     "crates/arc/datasets",
     "crates/arc/engine",
+    "crates/arc/client",
     "crates/cad",
     "crates/autopilot-spacetime",
     "crates/codex-client",
