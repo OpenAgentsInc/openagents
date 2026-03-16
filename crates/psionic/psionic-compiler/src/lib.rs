@@ -2,9 +2,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use psionic_core::TensorId;
+use psionic_core::{
+    DType, Device, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope, Shape, TensorId,
+    TensorSpec,
+};
 use psionic_ir::{
     BUILTIN_OPERATOR_SCHEMA_VERSION, ExecutionOp, ExecutionPlan, ExecutionStep, Graph,
+    GraphBuilder, GraphError, MetaCapabilityProfile, MetaTensor, MetaTensorFamily, OperatorArity,
+    OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry,
+    RegisteredOperatorSchema, RegistryExtensionError, SparseMetaContract, SparseMetaLayout,
+    StorageAwareMetaContract,
 };
 use psionic_runtime::{
     BackendSelection, CacheAction, CacheKind, CacheObservation, CompilePathEvidence,
@@ -40,6 +47,106 @@ pub enum CompileError {
     },
 }
 
+/// Failure returned while constructing the compiler-hygiene parity matrix.
+#[derive(Debug, Error)]
+pub enum CompilerHygieneParityError {
+    /// One graph or meta-execution operation failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// One operator-registry extension operation failed.
+    #[error(transparent)]
+    Registry(#[from] RegistryExtensionError),
+    /// One compiler operation failed.
+    #[error(transparent)]
+    Compile(#[from] CompileError),
+}
+
+/// Outcome status for one compiler-hygiene parity case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompilerHygieneParityStatus {
+    /// The bounded compiler or fake-tensor contract matched the seeded expectation.
+    Supported,
+    /// The bounded contract refused explicitly.
+    Refused,
+}
+
+/// One machine-readable seeded compiler-hygiene parity case result.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerHygieneParityCaseResult {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Stable oracle family label.
+    pub oracle_family: String,
+    /// Stable focus area label.
+    pub focus_area: String,
+    /// Stable capability-profile label.
+    pub capability_profile: String,
+    /// Expected signature lines when the case is supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_signature_lines: Option<Vec<String>>,
+    /// Actual signature lines surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_signature_lines: Option<Vec<String>>,
+    /// Expected refusal when the case is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_refusal: Option<PsionicRefusal>,
+    /// Actual refusal surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_refusal: Option<PsionicRefusal>,
+    /// Stable parity outcome status.
+    pub status: CompilerHygieneParityStatus,
+}
+
+/// Machine-readable seeded symbolic/fake/compiler hygiene parity matrix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerHygieneParityMatrixReport {
+    /// Stable schema version for the parity matrix report.
+    pub schema_version: u32,
+    /// Stable oracle family window label.
+    pub oracle_family_window: String,
+    /// Seeded parity case results.
+    pub cases: Vec<CompilerHygieneParityCaseResult>,
+    /// Stable digest over the report contents.
+    pub matrix_digest: String,
+}
+
+impl CompilerHygieneParityMatrixReport {
+    fn new(
+        oracle_family_window: impl Into<String>,
+        cases: Vec<CompilerHygieneParityCaseResult>,
+    ) -> Self {
+        let oracle_family_window = oracle_family_window.into();
+        let matrix_digest = digest_lines(stable_compiler_hygiene_matrix_lines(
+            oracle_family_window.as_str(),
+            cases.as_slice(),
+        ));
+        Self {
+            schema_version: 1,
+            oracle_family_window,
+            cases,
+            matrix_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("oracle_family_window={}", self.oracle_family_window),
+            format!("matrix_digest={}", self.matrix_digest),
+        ];
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{:?}",
+                case.case_id, case.focus_area, case.status
+            ));
+        }
+        lines
+    }
+}
+
 /// Mutable execution-plan builder.
 #[derive(Clone, Debug, Default)]
 pub struct PlanBuilder {
@@ -71,6 +178,80 @@ impl PlanBuilder {
     ) -> CompiledExecutionPlan {
         CompiledExecutionPlan::new(self.finish(graph), topology)
     }
+}
+
+/// Returns the seeded symbolic-shape, fake-tensor, and compiler-hygiene parity
+/// matrix for the current built-in Psionic surface.
+pub fn builtin_compiler_hygiene_parity_matrix_report()
+-> Result<CompilerHygieneParityMatrixReport, CompilerHygieneParityError> {
+    let cases = vec![
+        run_compiler_hygiene_supported_case(
+            "pytorch.fake_tensor.graph_plan_shape_parity",
+            "fake_tensor",
+            "graph_plan_meta_shape",
+            vec![
+                String::from("graph_output_shape=[2]"),
+                String::from("graph_output_dtype=F32"),
+                String::from("graph_output_family=dense"),
+                String::from("plan_output_shape=[2]"),
+                String::from("plan_output_dtype=F32"),
+                String::from("plan_output_family=dense"),
+                String::from("graph_plan_output_equal=true"),
+            ],
+            fake_tensor_graph_plan_signature_lines()?,
+        ),
+        run_compiler_hygiene_supported_case(
+            "pytorch.fake_tensor.non_dense_meta_contracts",
+            "fake_tensor",
+            "non_dense_meta_contracts",
+            vec![
+                String::from("sparse_kind=sparse"),
+                String::from("sparse_layout=csr"),
+                String::from("sparse_max_nonzero_entries=8"),
+                String::from("storage_kind=storage_aware"),
+                String::from("storage_alias_preserving=true"),
+            ],
+            non_dense_meta_contract_signature_lines()?,
+        ),
+        run_compiler_hygiene_supported_case(
+            "pytorch.compiler.cache_temperature_reuse",
+            "compiler_hygiene",
+            "compile_cache_temperature",
+            vec![
+                String::from("cold_temperature=cold_compile"),
+                String::from("cold_plan_cache_action=rebuild"),
+                String::from("warm_temperature=warm_reuse"),
+                String::from("warm_plan_cache_action=reuse"),
+                String::from("warm_kernel_cache_action=bypass"),
+                String::from("cache_key_equal=true"),
+            ],
+            compiler_cache_signature_lines()?,
+        ),
+        run_compiler_hygiene_supported_case(
+            "pytorch.compiler.alias_aware_view_planning",
+            "compiler_hygiene",
+            "alias_aware_memory_plan",
+            vec![
+                String::from("fusion_group_count=1"),
+                String::from("fusion_group_0_step_indices=3,4,5"),
+                String::from("alias_view_storage_class=alias_view"),
+                String::from("alias_view_allocated_bytes=0"),
+                String::from("alias_view_alias_source=t0"),
+                String::from("add_step_dependency_indices=1,3"),
+            ],
+            alias_aware_memory_signature_lines()?,
+        ),
+        run_compiler_hygiene_refusal_case(
+            "pytorch.symbolic_shape.environment_missing",
+            "symbolic_shape",
+            "symbolic_shape_guard_environment",
+            symbolic_shape_environment_refusal(),
+        ),
+    ];
+    Ok(CompilerHygieneParityMatrixReport::new(
+        "pytorch_compiler_hygiene_seed_v0",
+        cases,
+    ))
 }
 
 /// Logical execution plan plus explicit topology planning for the effective backend path.
@@ -1053,6 +1234,326 @@ fn digest_lines(lines: Vec<String>) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+fn stable_compiler_hygiene_matrix_lines(
+    oracle_family_window: &str,
+    cases: &[CompilerHygieneParityCaseResult],
+) -> Vec<String> {
+    let mut lines = vec![format!("oracle_family_window={oracle_family_window}")];
+    for case in cases {
+        lines.push(format!(
+            "{}|{}|{}|{:?}",
+            case.case_id, case.focus_area, case.capability_profile, case.status
+        ));
+        if let Some(signature_lines) = &case.expected_signature_lines {
+            for line in signature_lines {
+                lines.push(format!("expected={line}"));
+            }
+        }
+        if let Some(signature_lines) = &case.actual_signature_lines {
+            for line in signature_lines {
+                lines.push(format!("actual={line}"));
+            }
+        }
+        if let Some(refusal) = &case.expected_refusal {
+            lines.push(format!(
+                "expected_refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or_default(),
+                refusal.detail
+            ));
+        }
+        if let Some(refusal) = &case.actual_refusal {
+            lines.push(format!(
+                "actual_refusal={:?}|{:?}|{}|{}",
+                refusal.code,
+                refusal.scope,
+                refusal.subject.as_deref().unwrap_or_default(),
+                refusal.detail
+            ));
+        }
+    }
+    lines.sort();
+    lines
+}
+
+fn run_compiler_hygiene_supported_case(
+    case_id: &str,
+    focus_area: &str,
+    capability_profile: &str,
+    expected_signature_lines: Vec<String>,
+    actual_signature_lines: Vec<String>,
+) -> CompilerHygieneParityCaseResult {
+    CompilerHygieneParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_compiler_hygiene_seed"),
+        focus_area: String::from(focus_area),
+        capability_profile: String::from(capability_profile),
+        expected_signature_lines: Some(expected_signature_lines),
+        actual_signature_lines: Some(actual_signature_lines),
+        expected_refusal: None,
+        actual_refusal: None,
+        status: CompilerHygieneParityStatus::Supported,
+    }
+}
+
+fn run_compiler_hygiene_refusal_case(
+    case_id: &str,
+    focus_area: &str,
+    capability_profile: &str,
+    refusal: PsionicRefusal,
+) -> CompilerHygieneParityCaseResult {
+    CompilerHygieneParityCaseResult {
+        case_id: String::from(case_id),
+        oracle_family: String::from("pytorch_compiler_hygiene_seed"),
+        focus_area: String::from(focus_area),
+        capability_profile: String::from(capability_profile),
+        expected_signature_lines: None,
+        actual_signature_lines: None,
+        expected_refusal: Some(refusal.clone()),
+        actual_refusal: Some(refusal),
+        status: CompilerHygieneParityStatus::Refused,
+    }
+}
+
+fn fake_tensor_graph_plan_signature_lines() -> Result<Vec<String>, CompilerHygieneParityError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+    let row = builder.input("row", Shape::new(vec![3]), DType::F32);
+    let shifted = builder.add(&input, &row)?;
+    let reduced = builder.reduce_sum_axis(&shifted, 1)?;
+    let graph = builder.finish(vec![reduced.clone()]);
+    let plan = compile_graph(&graph)?;
+    let registry = OperatorRegistry::builtin();
+    let capabilities = MetaCapabilityProfile::all_builtin();
+    let graph_report = registry.meta_execute_graph(&graph, Some(&capabilities))?;
+    let plan_report = registry.meta_execute_plan(&plan, Some(&capabilities))?;
+    let graph_output = graph_report
+        .output(reduced.id())
+        .expect("graph output should exist");
+    let plan_output = plan_report
+        .output(reduced.id())
+        .expect("plan output should exist");
+    Ok(vec![
+        format!("graph_output_shape={:?}", graph_output.spec.shape().dims()),
+        format!("graph_output_dtype={:?}", graph_output.spec.dtype()),
+        format!(
+            "graph_output_family={}",
+            meta_family_label(&graph_output.family)
+        ),
+        format!("plan_output_shape={:?}", plan_output.spec.shape().dims()),
+        format!("plan_output_dtype={:?}", plan_output.spec.dtype()),
+        format!(
+            "plan_output_family={}",
+            meta_family_label(&plan_output.family)
+        ),
+        format!("graph_plan_output_equal={}", graph_output == plan_output),
+    ])
+}
+
+fn non_dense_meta_contract_signature_lines() -> Result<Vec<String>, CompilerHygieneParityError> {
+    let mut registry = OperatorRegistry::builtin().extensible();
+    registry.register_custom_schema(RegisteredOperatorSchema::custom(
+        "custom_sparse_adapter",
+        1,
+        OperatorArity::Fixed(1),
+        OperatorImplementationKind::BackendKernel,
+        OperatorMetaExecutionKind::DeclaredOutput,
+    ))?;
+    let sparse = registry.validate_declared_custom_meta_output(
+        "custom_sparse_adapter",
+        1,
+        Some(&MetaTensor::with_family(
+            TensorSpec::new(Shape::new(vec![4, 4]), DType::F32, Device::cpu()),
+            MetaTensorFamily::Sparse {
+                contract: SparseMetaContract {
+                    layout: SparseMetaLayout::Csr,
+                    max_nonzero_entries: Some(8),
+                },
+            },
+        )),
+    )?;
+    let storage = registry.validate_declared_custom_meta_output(
+        "custom_sparse_adapter",
+        1,
+        Some(&MetaTensor::with_family(
+            TensorSpec::new(Shape::new(vec![4, 4]), DType::F32, Device::cpu()),
+            MetaTensorFamily::StorageAware {
+                contract: StorageAwareMetaContract {
+                    alias_preserving: true,
+                },
+            },
+        )),
+    )?;
+    let sparse_layout = match &sparse.family {
+        MetaTensorFamily::Sparse { contract } => format!("{:?}", contract.layout).to_lowercase(),
+        _ => String::from("unknown"),
+    };
+    let sparse_max_nonzero_entries = match &sparse.family {
+        MetaTensorFamily::Sparse { contract } => contract.max_nonzero_entries.unwrap_or_default(),
+        _ => 0,
+    };
+    let storage_alias_preserving = match &storage.family {
+        MetaTensorFamily::StorageAware { contract } => contract.alias_preserving,
+        _ => false,
+    };
+    Ok(vec![
+        format!("sparse_kind={}", meta_family_label(&sparse.family)),
+        format!("sparse_layout={sparse_layout}"),
+        format!("sparse_max_nonzero_entries={sparse_max_nonzero_entries}"),
+        format!("storage_kind={}", meta_family_label(&storage.family)),
+        format!("storage_alias_preserving={storage_alias_preserving}"),
+    ])
+}
+
+fn compiler_cache_signature_lines() -> Result<Vec<String>, CompilerHygieneParityError> {
+    let graph = compiler_sample_graph()?;
+    let mut cache = CompilerPlanCache::default();
+    let pipeline = CompilerPipeline::default();
+    let cold =
+        pipeline.compile_with_cache(&mut cache, &graph, None, CompilerContract::default())?;
+    let warm =
+        pipeline.compile_with_cache(&mut cache, &graph, None, CompilerContract::default())?;
+    Ok(vec![
+        format!(
+            "cold_temperature={}",
+            compile_temperature_label(cold.compile_path.temperature)
+        ),
+        format!(
+            "cold_plan_cache_action={}",
+            cache_action_label(cold.compile_path.execution_plan_cache.action)
+        ),
+        format!(
+            "warm_temperature={}",
+            compile_temperature_label(warm.compile_path.temperature)
+        ),
+        format!(
+            "warm_plan_cache_action={}",
+            cache_action_label(warm.compile_path.execution_plan_cache.action)
+        ),
+        format!(
+            "warm_kernel_cache_action={}",
+            cache_action_label(warm.compile_path.kernel_cache.action)
+        ),
+        format!("cache_key_equal={}", cold.cache_key == warm.cache_key),
+    ])
+}
+
+fn alias_aware_memory_signature_lines() -> Result<Vec<String>, CompilerHygieneParityError> {
+    let graph = compiler_fusible_chain_graph()?;
+    let artifacts =
+        compile_graph_artifacts_with_topology(&graph, None, CompilerContract::default())?;
+    let reshape_interval = artifacts
+        .memory_plan
+        .intervals
+        .iter()
+        .find(|interval| interval.start_step == 3)
+        .expect("reshape interval should exist");
+    let add_step = &artifacts.schedule.steps[4];
+    Ok(vec![
+        format!("fusion_group_count={}", artifacts.fusion.groups.len()),
+        format!(
+            "fusion_group_0_step_indices={}",
+            artifacts.fusion.groups[0]
+                .step_indices
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        format!(
+            "alias_view_storage_class={}",
+            memory_storage_class_label(reshape_interval.storage_class)
+        ),
+        format!(
+            "alias_view_allocated_bytes={}",
+            reshape_interval.allocated_bytes
+        ),
+        format!(
+            "alias_view_alias_source={}",
+            reshape_interval
+                .alias_source
+                .map_or_else(|| String::from("none"), |id| id.to_string())
+        ),
+        format!(
+            "add_step_dependency_indices={}",
+            add_step
+                .dependency_indices
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+    ])
+}
+
+fn symbolic_shape_environment_refusal() -> PsionicRefusal {
+    PsionicRefusal::new(
+        PsionicRefusalCode::UnsupportedLayout,
+        PsionicRefusalScope::Graph,
+        "symbolic-shape and guard-environment parity is outside the current bounded harness because TensorSpec still requires concrete usize dimensions",
+    )
+    .with_subject("symbolic_shape_environment")
+}
+
+fn meta_family_label(family: &MetaTensorFamily) -> &'static str {
+    match family {
+        MetaTensorFamily::Dense => "dense",
+        MetaTensorFamily::Sparse { .. } => "sparse",
+        MetaTensorFamily::Nested { .. } => "nested",
+        MetaTensorFamily::Masked { .. } => "masked",
+        MetaTensorFamily::StorageAware { .. } => "storage_aware",
+    }
+}
+
+fn compile_temperature_label(temperature: CompilePathTemperature) -> &'static str {
+    match temperature {
+        CompilePathTemperature::ColdCompile => "cold_compile",
+        CompilePathTemperature::WarmReuse => "warm_reuse",
+    }
+}
+
+fn cache_action_label(action: CacheAction) -> &'static str {
+    match action {
+        CacheAction::Bypass => "bypass",
+        CacheAction::Rebuild => "rebuild",
+        CacheAction::Reuse => "reuse",
+        CacheAction::Invalidate => "invalidate",
+        CacheAction::Restore => "restore",
+    }
+}
+
+fn memory_storage_class_label(class: MemoryStorageClass) -> &'static str {
+    match class {
+        MemoryStorageClass::ExternalInput => "external_input",
+        MemoryStorageClass::Constant => "constant",
+        MemoryStorageClass::Ephemeral => "ephemeral",
+        MemoryStorageClass::MaterializedOutput => "materialized_output",
+        MemoryStorageClass::AliasView => "alias_view",
+    }
+}
+
+fn compiler_sample_graph() -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
+    let weights = builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 0.0, 0.0, 1.0])?;
+    let bias = builder.constant_f32(Shape::new(vec![2, 2]), vec![0.25, 0.25, 0.25, 0.25])?;
+    let projected = builder.matmul(&input, &weights)?;
+    let shifted = builder.add(&projected, &bias)?;
+    Ok(builder.finish(vec![shifted]))
+}
+
+fn compiler_fusible_chain_graph() -> Result<Graph, GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
+    let bias = builder.constant_f32(Shape::new(vec![1, 4]), vec![0.1, 0.2, 0.3, 0.4])?;
+    let scale = builder.constant_f32(Shape::new(vec![1, 4]), vec![2.0, 2.0, 2.0, 2.0])?;
+    let reshaped = builder.reshape(&input, Shape::new(vec![1, 4]))?;
+    let shifted = builder.add(&reshaped, &bias)?;
+    let scaled = builder.mul(&shifted, &scale)?;
+    Ok(builder.finish(vec![scaled]))
+}
+
 fn producer_step_indices(plan: &ExecutionPlan) -> BTreeMap<TensorId, usize> {
     plan.steps
         .iter()
@@ -1276,8 +1777,9 @@ mod tests {
     };
 
     use super::{
-        CompileError, CompilerContract, CompilerPlanCache, FusionMode, MemoryStorageClass,
-        compile_graph, compile_graph_artifacts_with_topology, compile_graph_for_selection,
+        CompileError, CompilerContract, CompilerHygieneParityStatus, CompilerPlanCache, FusionMode,
+        MemoryStorageClass, builtin_compiler_hygiene_parity_matrix_report, compile_graph,
+        compile_graph_artifacts_with_topology, compile_graph_for_selection,
         compile_graph_with_topology,
     };
 
@@ -1573,6 +2075,48 @@ mod tests {
             CacheAction::Reuse
         );
         assert_eq!(warm.compile_path.kernel_cache.action, CacheAction::Bypass);
+    }
+
+    #[test]
+    fn compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_compiler_hygiene_parity_matrix_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.oracle_family_window,
+            "pytorch_compiler_hygiene_seed_v0"
+        );
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
+
+        for case in report
+            .cases
+            .iter()
+            .filter(|case| case.status == CompilerHygieneParityStatus::Supported)
+        {
+            assert_eq!(case.expected_signature_lines, case.actual_signature_lines);
+        }
+
+        let refusal_case = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "pytorch.symbolic_shape.environment_missing")
+            .expect("missing symbolic-shape refusal case");
+        assert_eq!(refusal_case.status, CompilerHygieneParityStatus::Refused);
+        assert_eq!(refusal_case.expected_refusal, refusal_case.actual_refusal);
+        assert_eq!(
+            refusal_case
+                .actual_refusal
+                .as_ref()
+                .and_then(|refusal| refusal.subject.as_deref()),
+            Some("symbolic_shape_environment")
+        );
+
+        Ok(())
     }
 
     fn sample_graph() -> Result<psionic_ir::Graph, psionic_ir::GraphError> {
