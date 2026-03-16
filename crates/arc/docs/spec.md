@@ -1123,6 +1123,24 @@ Required behavior:
 - allow optional test-time updates
 - expose intermediate answer snapshots
 
+Current bounded landing:
+
+- `ARC-307` lands a typed recursive tiny-model lane interface in
+  `arc-solvers::recursive`
+- the lane separates opaque latent state from answer state, records bootstrap,
+  optional test-time-update, and recursive-step traces, and keeps those traces
+  machine-legible through digests, halt/continue scores, and answer snapshots
+- candidate answers are emitted through the existing hypothesis, proposal-batch,
+  budget, and deduplication contracts rather than through lane-local shadow
+  types
+- the first implementation is intentionally small: a generic runner trait plus
+  deterministic scripted tests that prove checkpoint-vs-scratch bootstrap mode,
+  bounded recursive improvement, and optional test-time updates without claiming
+  a larger trained model family than is actually present
+- later work may swap in real tiny checkpoints or trainable recursive models,
+  but must preserve the same latent-state/answer-state split and typed step
+  tracing surface
+
 ### 7.6 Lane D: MDL / compression lane
 
 Required behavior:
