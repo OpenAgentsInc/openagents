@@ -23,7 +23,9 @@ use crate::{
     TrainingRunSummary, TrainingStepInput, TrainingStepReceipt, TrainingTensorBuffer,
 };
 
-/// Canonical backend label for the first open adapter contributor target.
+/// Canonical backend label for the first open adapter contributor target and the
+/// first concrete NVIDIA/CUDA participant in the mixed Apple-plus-NVIDIA
+/// cluster experiment.
 pub const OPEN_ADAPTER_CUDA_BACKEND_LABEL: &str = "open_adapter_backend.cuda.gpt_oss_lm_head";
 /// Canonical adapter family for the first non-Apple decentralized adapter lane.
 pub const OPEN_ADAPTER_REFERENCE_ADAPTER_FAMILY: &str = "gpt_oss.decoder_lm_head_lora";
