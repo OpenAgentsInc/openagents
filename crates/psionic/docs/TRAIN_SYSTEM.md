@@ -283,6 +283,21 @@ That now includes one intentionally narrow executor-training answer:
   exactness while still leaving `0/2` exact validation traces and the first
   divergence bucket at target index `1`; the companion human-readable audit is
   `docs/audits/2026-03-16-tassadar-phase-13-trainable-surface-audit.md`
+- the Phase 15 executor-attention comparison now also exists beside that
+  baseline: `psionic-models` now carries a distinct bounded
+  `TassadarExecutorAttentionTransformer` family with layered causal hard-max
+  attention, fixed 2D head geometry, explicit per-layer semantics, and hull
+  fallback to reference-linear decode; `psionic-eval` and `psionic-research`
+  now materialize a same-corpus comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1`
+  with `architecture_comparison_report.json` plus per-family run bundles
+  against the preserved Phase 13 lookup baseline; the committed report keeps
+  the claim boundary honest by showing the new family is closer to the article
+  structurally but still much worse on the bounded validation window (`0` bps
+  first-target and first-32 exactness, `1333` target tok/s, hull fallback)
+  than the lookup baseline (`10000` / `6563` bps, `32000` target tok/s, direct
+  hull decode), so this phase is a research-family landing rather than a
+  promotion or parity result
 - `psionic-research` can now use that bounded trained-small receipt as an
   explicit comparator inside the learned-plus-compiled and learned-circuit
   Tassadar research family, but that does not expand the train-side claim

@@ -5,6 +5,7 @@ mod harmony;
 mod runtime_tokenizer;
 mod sharding;
 mod tassadar;
+mod tassadar_executor_attention;
 mod tassadar_executor_transformer;
 mod tassadar_sequence;
 
@@ -32,6 +33,7 @@ pub use harmony::*;
 pub use runtime_tokenizer::*;
 pub use sharding::*;
 pub use tassadar::*;
+pub use tassadar_executor_attention::*;
 pub use tassadar_executor_transformer::*;
 pub use tassadar_sequence::*;
 

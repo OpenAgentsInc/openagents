@@ -6789,6 +6789,7 @@ name = "psionic-research"
 version = "0.1.1"
 dependencies = [
  "hex",
+ "psionic-data",
  "psionic-eval",
  "psionic-models",
  "psionic-train",
