@@ -98,6 +98,51 @@ impl AutodiffTensor {
     }
 }
 
+/// Typed support classification for reverse-mode autodiff over one graph op.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "support", rename_all = "snake_case")]
+pub enum AutodiffGradientSupport {
+    /// Reverse-mode semantics are implemented for this op family.
+    Implemented,
+    /// Reverse-mode semantics are intentionally unsupported for now.
+    Unsupported {
+        /// Stable reason code for the refusal family.
+        reason: AutodiffUnsupportedGradientReason,
+    },
+}
+
+/// Stable refusal family for unsupported reverse-mode gradients.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutodiffUnsupportedGradientReason {
+    /// Backend-extension op families still require dedicated reverse-mode
+    /// contracts.
+    BackendExtensionFamily,
+}
+
+/// Returns the reverse-mode support posture for one graph op.
+#[must_use]
+pub const fn gradient_support_for_op(op: &OpKind) -> AutodiffGradientSupport {
+    match op {
+        OpKind::Input { .. }
+        | OpKind::Constant { .. }
+        | OpKind::Detach
+        | OpKind::Add
+        | OpKind::Mul
+        | OpKind::Matmul
+        | OpKind::Reshape
+        | OpKind::Permute { .. }
+        | OpKind::Slice { .. }
+        | OpKind::Select { .. }
+        | OpKind::Concat { .. }
+        | OpKind::Expand { .. }
+        | OpKind::ReduceSum { .. } => AutodiffGradientSupport::Implemented,
+        OpKind::BackendExtension { .. } => AutodiffGradientSupport::Unsupported {
+            reason: AutodiffUnsupportedGradientReason::BackendExtensionFamily,
+        },
+    }
+}
+
 /// Typed error returned by the reference graph evaluator.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum ReferenceEvaluationError {
@@ -350,6 +395,13 @@ impl AutodiffGraph {
                 continue;
             };
             ensure_supported_gradient_dtype(node.tensor())?;
+            if let AutodiffGradientSupport::Unsupported { .. } = gradient_support_for_op(node.op())
+            {
+                return Err(AutodiffError::UnsupportedGradientOp {
+                    tensor_id: output_id,
+                    op: String::from(node.op().label()),
+                });
+            }
 
             match node.op() {
                 OpKind::Input { .. } | OpKind::Constant { .. } | OpKind::Detach => {}
@@ -656,12 +708,9 @@ impl AutodiffGraph {
                         )?;
                     }
                 }
-                OpKind::BackendExtension { .. } => {
-                    return Err(AutodiffError::UnsupportedGradientOp {
-                        tensor_id: output_id,
-                        op: String::from(node.op().label()),
-                    });
-                }
+                OpKind::BackendExtension { .. } => unreachable!(
+                    "backend extensions should have been rejected by the autodiff support matrix"
+                ),
             }
         }
 
@@ -1629,7 +1678,10 @@ mod tests {
 
     use psionic_core::{DType, Device, Shape, TensorData};
 
-    use crate::{AutodiffContext, AutodiffError, AutodiffGraphBuilder, TensorId};
+    use crate::{
+        AutodiffContext, AutodiffError, AutodiffGradientSupport, AutodiffGraphBuilder,
+        AutodiffUnsupportedGradientReason, TensorId, gradient_support_for_op,
+    };
 
     #[test]
     fn reverse_mode_autodiff_materializes_matmul_chain_gradients() -> Result<(), Box<dyn Error>> {
@@ -1726,6 +1778,169 @@ mod tests {
                 op: String::from("rms_norm"),
             })
         );
+        Ok(())
+    }
+
+    #[test]
+    fn autodiff_support_matrix_marks_primitives_and_backend_extensions_explicitly() {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let input = builder.input("x", Shape::new(vec![2, 2]), DType::F32, true);
+        let row = builder.select(&input, 0, 0).expect("select");
+        let row = builder
+            .reshape(&row, Shape::new(vec![1, 2]))
+            .expect("reshape");
+        let tail = builder.slice(&input, 0, 1, 2).expect("slice");
+        let combined = builder.concat(&[row, tail], 0).expect("concat");
+        let expanded = builder
+            .expand(&combined, Shape::new(vec![2, 2]))
+            .expect("expand");
+        let permuted = builder.permute(&expanded, vec![1, 0]).expect("permute");
+        let reduced = builder.reduce_sum_axis(&permuted, 0).expect("axis reduce");
+        let loss = builder.reduce_sum(&reduced);
+        let graph = builder.finish(vec![loss]);
+
+        for node in graph.graph().nodes() {
+            assert_eq!(
+                gradient_support_for_op(node.op()),
+                AutodiffGradientSupport::Implemented
+            );
+        }
+
+        let mut extension_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let ext_input = extension_builder.input("x", Shape::new(vec![1, 2]), DType::F32, true);
+        let ext_weight = extension_builder.input("weight", Shape::new(vec![2]), DType::F32, true);
+        let normalized = extension_builder
+            .rms_norm(&ext_input, &ext_weight, 1e-5)
+            .expect("rms_norm");
+        let extension_graph = extension_builder.finish(vec![normalized]);
+        let Some(node) = extension_graph
+            .graph()
+            .nodes()
+            .iter()
+            .find(|node| matches!(node.op(), crate::OpKind::BackendExtension { .. }))
+        else {
+            panic!("backend extension node should exist");
+        };
+        assert_eq!(
+            gradient_support_for_op(node.op()),
+            AutodiffGradientSupport::Unsupported {
+                reason: AutodiffUnsupportedGradientReason::BackendExtensionFamily
+            }
+        );
+    }
+
+    #[test]
+    fn reverse_mode_autodiff_covers_select_concat_and_reshape_primitives()
+    -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2, 2]), DType::F32, true);
+        let row = builder.select(&x, 0, 0)?;
+        let row = builder.reshape(&row, Shape::new(vec![1, 2]))?;
+        let tail = builder.slice(&x, 0, 1, 2)?;
+        let combined = builder.concat(&[row, tail], 0)?;
+        let loss = builder.reduce_sum(&combined);
+        let graph = builder.finish(vec![loss.clone()]);
+
+        let inputs = BTreeMap::from([(x.id(), TensorData::F32(vec![1.0, 2.0, 3.0, 4.0]))]);
+        let result = graph.backward_materialized(loss.id(), &inputs)?;
+
+        assert_eq!(dense_gradient(&result, x.id()), vec![1.0, 1.0, 1.0, 1.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn reverse_mode_autodiff_accepts_non_scalar_axis_seed() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let x = builder.input("x", Shape::new(vec![2, 2]), DType::F32, true);
+        let axis_sum = builder.reduce_sum_axis(&x, 0)?;
+        let graph = builder.finish(vec![axis_sum.clone()]);
+
+        let inputs = BTreeMap::from([(x.id(), TensorData::F32(vec![1.0, 2.0, 3.0, 4.0]))]);
+        let seed = Some(TensorData::F32(vec![1.0, 2.0]));
+        let result = graph.backward_materialized_with_seed(axis_sum.id(), &inputs, seed)?;
+
+        assert_eq!(dense_gradient(&result, x.id()), vec![1.0, 2.0, 1.0, 2.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn unsupported_gradient_backend_extensions_refuse_per_op_label() -> Result<(), Box<dyn Error>> {
+        let mut builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let input = builder.input("x", Shape::new(vec![1, 2]), DType::F32, true);
+        let weight = builder.input("weight", Shape::new(vec![2]), DType::F32, true);
+        let bias = builder.input("bias", Shape::new(vec![2]), DType::F32, true);
+        let layer_norm = builder.layer_norm(&input, &weight, &bias, 1e-5)?;
+        let layer_loss = builder.reduce_sum(&layer_norm);
+        let layer_graph = builder.finish(vec![layer_loss.clone()]);
+        assert_eq!(
+            layer_graph.backward_plan(layer_loss.id()),
+            Err(AutodiffError::UnsupportedGradientOp {
+                tensor_id: layer_norm.id(),
+                op: String::from("layer_norm"),
+            })
+        );
+
+        let mut rope_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let rope_input = rope_builder.input("x", Shape::new(vec![1, 1, 2, 4]), DType::F32, true);
+        let cos = rope_builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0; 4])?;
+        let sin = rope_builder.constant_f32(Shape::new(vec![2, 2]), vec![0.0; 4])?;
+        let roped = rope_builder.rope(&rope_input, &cos, &sin, false)?;
+        let rope_loss = rope_builder.reduce_sum(&roped);
+        let rope_graph = rope_builder.finish(vec![rope_loss.clone()]);
+        assert_eq!(
+            rope_graph.backward_plan(rope_loss.id()),
+            Err(AutodiffError::UnsupportedGradientOp {
+                tensor_id: roped.id(),
+                op: String::from("rotary_embedding"),
+            })
+        );
+
+        let mut attention_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let query = attention_builder.input("q", Shape::new(vec![1, 1, 2, 4]), DType::F32, true);
+        let key = attention_builder.input("k", Shape::new(vec![1, 1, 2, 4]), DType::F32, true);
+        let value = attention_builder.input("v", Shape::new(vec![1, 1, 2, 4]), DType::F32, true);
+        let attended =
+            attention_builder.scaled_dot_product_attention(&query, &key, &value, 0.5, true)?;
+        let attention_loss = attention_builder.reduce_sum(&attended);
+        let attention_graph = attention_builder.finish(vec![attention_loss.clone()]);
+        assert_eq!(
+            attention_graph.backward_plan(attention_loss.id()),
+            Err(AutodiffError::UnsupportedGradientOp {
+                tensor_id: attended.id(),
+                op: String::from("scaled_dot_product_attention"),
+            })
+        );
+
+        let mut quantized_builder =
+            AutodiffGraphBuilder::with_context(Device::cpu(), AutodiffContext::training());
+        let left = quantized_builder.input("left", Shape::new(vec![2, 32]), DType::F32, true);
+        let rhs = quantized_builder.constant_quantized_blocks(
+            Shape::new(vec![3, 32]),
+            psionic_core::QuantizationMode::GgmlQ4_0,
+            vec![0x88_u8; 54],
+        )?;
+        let output = quantized_builder.quantized_matmul(
+            &left,
+            &rhs,
+            psionic_core::QuantizationMode::GgmlQ4_0,
+        )?;
+        let quantized_loss = quantized_builder.reduce_sum(&output);
+        let quantized_graph = quantized_builder.finish(vec![quantized_loss.clone()]);
+        assert_eq!(
+            quantized_graph.backward_plan(quantized_loss.id()),
+            Err(AutodiffError::UnsupportedGradientOp {
+                tensor_id: output.id(),
+                op: String::from("quantized_matmul"),
+            })
+        );
+
         Ok(())
     }
 
