@@ -284,7 +284,11 @@ sample game package. `ARC-202` is now also landed in bounded form:
 `bt11` and `bt33` sample blobs by SHA-256, drives translated local package
 fixtures, and machine-checks reset semantics, available actions, first-level
 success transitions, and pure failure branches without claiming arbitrary
-Python-environment equivalence.
+Python-environment equivalence. `crates/arc/client` now also exists as the
+typed local/remote wrapper owner: local wrappers run translated packages
+through `arc-engine`, remote wrappers use typed ARC REST models plus a
+cookie-store client for session affinity, and the crate carries smoke tests
+for both paths.
 
 ## 4. Shared domain model
 
@@ -399,6 +403,7 @@ pub enum ArcOperationMode {
 }
 
 pub enum ArcGameState {
+    NotStarted,
     NotFinished,
     Win,
     GameOver,
@@ -1425,8 +1430,12 @@ typed actions deterministically, and replay the same action trace into a stable
 recording digest. The bounded `ARC-202` follow-on is now also live:
 translated `bt11` and `bt33` package fixtures plus a parity manifest pin the
 upstream sample blobs and machine-check the local-wrapper behaviors this crate
-currently claims. Full local-vs-remote wrapper parity remains the next explicit
-follow-on in `ARC-203` through `ARC-205`.
+currently claims. `ARC-203` is now also landed: `arc-client` exposes typed
+environment metadata and scorecard/command models, a local wrapper over
+`arc-engine`, and a blocking remote wrapper/client with cookie-affine session
+behavior proven by an in-process HTTP smoke fixture. Full compatibility-server
+conformance and local-vs-remote parity remain the next explicit follow-on in
+`ARC-204` and `ARC-205`.
 
 ### Phase 3: benchmark runtime
 
