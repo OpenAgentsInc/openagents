@@ -555,6 +555,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/OPERATOR_PARITY_MATRIX.md](docs/OPERATOR_PARITY_MATRIX.md)** —
   canonical seeded operator parity artifact for the current PyTorch-derived
   `OpInfo`-style coverage slice.
+- **[docs/MODULE_PARITY_MATRIX.md](docs/MODULE_PARITY_MATRIX.md)** —
+  canonical seeded module parity artifact for the current PyTorch-derived
+  `module_db`-style state-tree and `state_dict` coverage slice.
 - **[docs/INFERENCE_ENGINE.md](docs/INFERENCE_ENGINE.md)** — canonical
   inference-engine completion criteria and current boundaries.
 - **[docs/TRAIN_SYSTEM.md](docs/TRAIN_SYSTEM.md)** — canonical training

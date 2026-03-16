@@ -121,6 +121,9 @@ It already has real substrate for:
   in `psionic-nn`
 - deterministic `state_dict` naming plus strict/non-strict keyed load behavior
   with explicit size-mismatch refusal in `psionic-nn`
+- a seeded PyTorch-derived module parity matrix for normalized module-tree and
+  `state_dict` semantics in `psionic-nn`, with an explicit refusal proof for
+  registration-order-preserving `state_dict` parity
 - training recovery posture
 - checkpoint lineage
 - elastic membership truth
