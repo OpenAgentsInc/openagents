@@ -1,0 +1,843 @@
+//! Reusable module, parameter, buffer, and state-tree semantics for Psionic.
+
+use std::collections::BTreeMap;
+
+use psionic_core::{DType, QuantizationMode, TensorData, TensorSpec};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use thiserror::Error;
+
+/// Human-readable crate ownership summary.
+pub const CRATE_ROLE: &str = "module, parameter, buffer, and state-tree semantics";
+
+/// Error returned when a module tree or state entry violates Psionic-nn rules.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ModuleStateError {
+    /// The root module identifier was blank.
+    #[error("module tree is missing a module_id")]
+    MissingModuleId,
+    /// The root module kind was blank.
+    #[error("module tree is missing a module_kind")]
+    MissingModuleKind,
+    /// One local parameter, buffer, or submodule name was blank or path-like.
+    #[error("module tree local name `{name}` must be non-empty and may not contain `.`")]
+    InvalidLocalName {
+        /// Invalid local name.
+        name: String,
+    },
+    /// One local name would shadow a parameter, buffer, or submodule already present.
+    #[error("module tree already contains local name `{name}`")]
+    DuplicateLocalName {
+        /// Duplicated local name.
+        name: String,
+    },
+    /// A requested submodule path does not exist.
+    #[error("module tree does not contain submodule path `{path}`")]
+    UnknownSubmodulePath {
+        /// Missing submodule path.
+        path: String,
+    },
+    /// A requested parameter path does not exist.
+    #[error("module tree does not contain parameter path `{path}`")]
+    MissingParameter {
+        /// Missing parameter path.
+        path: String,
+    },
+    /// A requested buffer path does not exist.
+    #[error("module tree does not contain buffer path `{path}`")]
+    MissingBuffer {
+        /// Missing buffer path.
+        path: String,
+    },
+    /// A dense payload length does not match the tensor storage length.
+    #[error("module tensor `{owner}` expected {expected_len} dense values but found {actual_len}")]
+    DensePayloadLengthMismatch {
+        /// State owner name.
+        owner: String,
+        /// Expected dense length.
+        expected_len: usize,
+        /// Actual dense length.
+        actual_len: usize,
+    },
+    /// A quantized payload used a dtype that cannot act as the logical view.
+    #[error("module tensor `{owner}` does not allow quantized payload for dtype {dtype:?}")]
+    QuantizedPayloadUnsupportedDType {
+        /// State owner name.
+        owner: String,
+        /// Logical dtype.
+        dtype: DType,
+    },
+    /// A quantized payload element count does not match the logical tensor shape.
+    #[error(
+        "module tensor `{owner}` expected {expected_elements} logical elements but quantized payload surfaced {actual_elements}"
+    )]
+    QuantizedPayloadElementCountMismatch {
+        /// State owner name.
+        owner: String,
+        /// Expected logical element count.
+        expected_elements: usize,
+        /// Actual logical element count.
+        actual_elements: usize,
+    },
+}
+
+/// One trainable parameter entry owned by a module tree.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleParameter {
+    /// Tensor metadata.
+    pub spec: TensorSpec,
+    /// Stored tensor payload.
+    pub data: TensorData,
+    /// Whether the parameter participates in gradient-bearing update paths.
+    pub requires_grad: bool,
+}
+
+impl ModuleParameter {
+    /// Creates a validated parameter entry.
+    pub fn new(
+        spec: TensorSpec,
+        data: TensorData,
+        requires_grad: bool,
+    ) -> Result<Self, ModuleStateError> {
+        validate_tensor_payload("parameter", &spec, &data)?;
+        Ok(Self {
+            spec,
+            data,
+            requires_grad,
+        })
+    }
+}
+
+/// One buffer entry owned by a module tree.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleBuffer {
+    /// Tensor metadata.
+    pub spec: TensorSpec,
+    /// Stored tensor payload.
+    pub data: TensorData,
+    /// Whether the buffer should appear in persistent state-tree views.
+    pub persistent: bool,
+}
+
+impl ModuleBuffer {
+    /// Creates a validated buffer entry.
+    pub fn new(
+        spec: TensorSpec,
+        data: TensorData,
+        persistent: bool,
+    ) -> Result<Self, ModuleStateError> {
+        validate_tensor_payload("buffer", &spec, &data)?;
+        Ok(Self {
+            spec,
+            data,
+            persistent,
+        })
+    }
+}
+
+/// Declared state-tree view over module buffers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStateView {
+    /// Parameters plus buffers marked persistent.
+    PersistentOnly,
+    /// Parameters plus all buffers, including non-persistent scratch or stats buffers.
+    AllBuffers,
+}
+
+/// Flattened state-tree entry type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStateEntryKind {
+    /// Trainable parameter entry.
+    Parameter,
+    /// Buffer entry.
+    Buffer,
+}
+
+/// One flattened state-tree entry.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleStateEntry {
+    /// Stable dot-separated path from the root module.
+    pub path: String,
+    /// Entry kind.
+    pub kind: ModuleStateEntryKind,
+    /// Tensor metadata.
+    pub spec: TensorSpec,
+    /// Tensor payload.
+    pub data: TensorData,
+    /// Whether gradients are expected for this entry.
+    pub requires_grad: bool,
+    /// Whether the entry is persistent in the module state tree.
+    pub persistent: bool,
+}
+
+/// Flattened state-tree view for one module graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleStateTree {
+    /// Stable root module identifier.
+    pub root_module_id: String,
+    /// Human-readable root module kind.
+    pub root_module_kind: String,
+    /// View used to build the flattened state tree.
+    pub view: ModuleStateView,
+    /// Flattened entries in deterministic path order.
+    pub entries: Vec<ModuleStateEntry>,
+    /// Stable digest over the state tree contents.
+    pub state_tree_digest: String,
+}
+
+impl ModuleStateTree {
+    fn new(
+        root_module_id: String,
+        root_module_kind: String,
+        view: ModuleStateView,
+        entries: Vec<ModuleStateEntry>,
+    ) -> Self {
+        let state_tree_digest = stable_module_state_tree_digest(
+            root_module_id.as_str(),
+            root_module_kind.as_str(),
+            view,
+            entries.as_slice(),
+        );
+        Self {
+            root_module_id,
+            root_module_kind,
+            view,
+            entries,
+            state_tree_digest,
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("root_module_id={}", self.root_module_id),
+            format!("root_module_kind={}", self.root_module_kind),
+            format!("view={:?}", self.view),
+            format!("state_tree_digest={}", self.state_tree_digest),
+        ];
+        for entry in &self.entries {
+            lines.push(format!(
+                "{}|{:?}|persistent={}|requires_grad={}",
+                entry.path, entry.kind, entry.persistent, entry.requires_grad
+            ));
+        }
+        lines
+    }
+}
+
+/// One nested reusable module tree.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Module {
+    /// Stable module identifier.
+    pub module_id: String,
+    /// Human-readable module kind such as `linear` or `transformer_block`.
+    pub module_kind: String,
+    /// Local parameters keyed by local name.
+    pub parameters: BTreeMap<String, ModuleParameter>,
+    /// Local buffers keyed by local name.
+    pub buffers: BTreeMap<String, ModuleBuffer>,
+    /// Local submodules keyed by local name.
+    pub submodules: BTreeMap<String, Module>,
+}
+
+impl Module {
+    /// Creates an empty module tree node.
+    pub fn new(
+        module_id: impl Into<String>,
+        module_kind: impl Into<String>,
+    ) -> Result<Self, ModuleStateError> {
+        let module_id = module_id.into();
+        if module_id.trim().is_empty() {
+            return Err(ModuleStateError::MissingModuleId);
+        }
+        let module_kind = module_kind.into();
+        if module_kind.trim().is_empty() {
+            return Err(ModuleStateError::MissingModuleKind);
+        }
+        Ok(Self {
+            module_id,
+            module_kind,
+            parameters: BTreeMap::new(),
+            buffers: BTreeMap::new(),
+            submodules: BTreeMap::new(),
+        })
+    }
+
+    /// Inserts one local parameter.
+    pub fn insert_parameter(
+        &mut self,
+        name: impl Into<String>,
+        parameter: ModuleParameter,
+    ) -> Result<(), ModuleStateError> {
+        let name = name.into();
+        validate_local_name(name.as_str())?;
+        self.ensure_local_name_available(name.as_str())?;
+        self.parameters.insert(name, parameter);
+        Ok(())
+    }
+
+    /// Inserts one local buffer.
+    pub fn insert_buffer(
+        &mut self,
+        name: impl Into<String>,
+        buffer: ModuleBuffer,
+    ) -> Result<(), ModuleStateError> {
+        let name = name.into();
+        validate_local_name(name.as_str())?;
+        self.ensure_local_name_available(name.as_str())?;
+        self.buffers.insert(name, buffer);
+        Ok(())
+    }
+
+    /// Inserts one local submodule.
+    pub fn insert_submodule(
+        &mut self,
+        name: impl Into<String>,
+        submodule: Module,
+    ) -> Result<(), ModuleStateError> {
+        let name = name.into();
+        validate_local_name(name.as_str())?;
+        self.ensure_local_name_available(name.as_str())?;
+        self.submodules.insert(name, submodule);
+        Ok(())
+    }
+
+    /// Returns a nested submodule by dot-separated path. The empty path returns the current module.
+    pub fn submodule(&self, path: &str) -> Result<&Self, ModuleStateError> {
+        if path.trim().is_empty() {
+            return Ok(self);
+        }
+        let mut current = self;
+        for segment in path.split('.') {
+            validate_local_name(segment)?;
+            current = current.submodules.get(segment).ok_or_else(|| {
+                ModuleStateError::UnknownSubmodulePath {
+                    path: String::from(path),
+                }
+            })?;
+        }
+        Ok(current)
+    }
+
+    /// Returns a mutable nested submodule by dot-separated path. The empty path returns the current module.
+    pub fn submodule_mut(&mut self, path: &str) -> Result<&mut Self, ModuleStateError> {
+        if path.trim().is_empty() {
+            return Ok(self);
+        }
+        let mut current = self;
+        for segment in path.split('.') {
+            validate_local_name(segment)?;
+            current = current.submodules.get_mut(segment).ok_or_else(|| {
+                ModuleStateError::UnknownSubmodulePath {
+                    path: String::from(path),
+                }
+            })?;
+        }
+        Ok(current)
+    }
+
+    /// Returns a parameter by dot-separated path.
+    pub fn parameter(&self, path: &str) -> Result<&ModuleParameter, ModuleStateError> {
+        let (module_path, local_name) = split_state_path(path)?;
+        let module = self.submodule(module_path.as_str())?;
+        module.parameters.get(local_name.as_str()).ok_or_else(|| {
+            ModuleStateError::MissingParameter {
+                path: String::from(path),
+            }
+        })
+    }
+
+    /// Returns a buffer by dot-separated path.
+    pub fn buffer(&self, path: &str) -> Result<&ModuleBuffer, ModuleStateError> {
+        let (module_path, local_name) = split_state_path(path)?;
+        let module = self.submodule(module_path.as_str())?;
+        module
+            .buffers
+            .get(local_name.as_str())
+            .ok_or_else(|| ModuleStateError::MissingBuffer {
+                path: String::from(path),
+            })
+    }
+
+    /// Returns deterministic named parameter traversal.
+    #[must_use]
+    pub fn named_parameters(&self) -> Vec<(String, &ModuleParameter)> {
+        let mut entries = Vec::new();
+        self.collect_named_parameters("", &mut entries);
+        entries
+    }
+
+    /// Returns deterministic named buffer traversal for one state-tree view.
+    #[must_use]
+    pub fn named_buffers(&self, view: ModuleStateView) -> Vec<(String, &ModuleBuffer)> {
+        let mut entries = Vec::new();
+        self.collect_named_buffers("", view, &mut entries);
+        entries
+    }
+
+    /// Returns deterministic named module traversal, including the current root at `\"\"`.
+    #[must_use]
+    pub fn named_modules(&self) -> Vec<(String, &Module)> {
+        let mut entries = Vec::new();
+        self.collect_named_modules("", &mut entries);
+        entries
+    }
+
+    /// Returns a flattened state tree for one view.
+    #[must_use]
+    pub fn state_tree(&self, view: ModuleStateView) -> ModuleStateTree {
+        let mut entries = Vec::new();
+        self.collect_state_entries("", view, &mut entries);
+        ModuleStateTree::new(
+            self.module_id.clone(),
+            self.module_kind.clone(),
+            view,
+            entries,
+        )
+    }
+
+    /// Returns a stable digest over the full module contents.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        self.state_tree(ModuleStateView::AllBuffers)
+            .state_tree_digest
+    }
+
+    fn ensure_local_name_available(&self, name: &str) -> Result<(), ModuleStateError> {
+        if self.parameters.contains_key(name)
+            || self.buffers.contains_key(name)
+            || self.submodules.contains_key(name)
+        {
+            return Err(ModuleStateError::DuplicateLocalName {
+                name: String::from(name),
+            });
+        }
+        Ok(())
+    }
+
+    fn collect_named_parameters<'a>(
+        &'a self,
+        prefix: &str,
+        entries: &mut Vec<(String, &'a ModuleParameter)>,
+    ) {
+        for (name, parameter) in &self.parameters {
+            entries.push((join_path(prefix, name.as_str()), parameter));
+        }
+        for (name, submodule) in &self.submodules {
+            submodule.collect_named_parameters(join_path(prefix, name.as_str()).as_str(), entries);
+        }
+    }
+
+    fn collect_named_buffers<'a>(
+        &'a self,
+        prefix: &str,
+        view: ModuleStateView,
+        entries: &mut Vec<(String, &'a ModuleBuffer)>,
+    ) {
+        for (name, buffer) in &self.buffers {
+            if view == ModuleStateView::AllBuffers || buffer.persistent {
+                entries.push((join_path(prefix, name.as_str()), buffer));
+            }
+        }
+        for (name, submodule) in &self.submodules {
+            submodule.collect_named_buffers(
+                join_path(prefix, name.as_str()).as_str(),
+                view,
+                entries,
+            );
+        }
+    }
+
+    fn collect_named_modules<'a>(&'a self, prefix: &str, entries: &mut Vec<(String, &'a Module)>) {
+        entries.push((String::from(prefix), self));
+        for (name, submodule) in &self.submodules {
+            submodule.collect_named_modules(join_path(prefix, name.as_str()).as_str(), entries);
+        }
+    }
+
+    fn collect_state_entries(
+        &self,
+        prefix: &str,
+        view: ModuleStateView,
+        entries: &mut Vec<ModuleStateEntry>,
+    ) {
+        for (name, parameter) in &self.parameters {
+            entries.push(ModuleStateEntry {
+                path: join_path(prefix, name.as_str()),
+                kind: ModuleStateEntryKind::Parameter,
+                spec: parameter.spec.clone(),
+                data: parameter.data.clone(),
+                requires_grad: parameter.requires_grad,
+                persistent: true,
+            });
+        }
+        for (name, buffer) in &self.buffers {
+            if view == ModuleStateView::AllBuffers || buffer.persistent {
+                entries.push(ModuleStateEntry {
+                    path: join_path(prefix, name.as_str()),
+                    kind: ModuleStateEntryKind::Buffer,
+                    spec: buffer.spec.clone(),
+                    data: buffer.data.clone(),
+                    requires_grad: false,
+                    persistent: buffer.persistent,
+                });
+            }
+        }
+        for (name, submodule) in &self.submodules {
+            submodule.collect_state_entries(
+                join_path(prefix, name.as_str()).as_str(),
+                view,
+                entries,
+            );
+        }
+    }
+}
+
+fn validate_local_name(name: &str) -> Result<(), ModuleStateError> {
+    if name.trim().is_empty() || name.contains('.') {
+        return Err(ModuleStateError::InvalidLocalName {
+            name: String::from(name),
+        });
+    }
+    Ok(())
+}
+
+fn split_state_path(path: &str) -> Result<(String, String), ModuleStateError> {
+    if path.trim().is_empty() {
+        return Err(ModuleStateError::InvalidLocalName {
+            name: String::from(path),
+        });
+    }
+    let mut segments = path.rsplitn(2, '.');
+    let local_name = segments.next().unwrap_or_default();
+    validate_local_name(local_name)?;
+    let module_path = segments.next().unwrap_or_default();
+    if !module_path.is_empty() {
+        for segment in module_path.split('.') {
+            validate_local_name(segment)?;
+        }
+    }
+    Ok((String::from(module_path), String::from(local_name)))
+}
+
+fn join_path(prefix: &str, local_name: &str) -> String {
+    if prefix.is_empty() {
+        String::from(local_name)
+    } else {
+        format!("{prefix}.{local_name}")
+    }
+}
+
+fn validate_tensor_payload(
+    owner: &str,
+    spec: &TensorSpec,
+    data: &TensorData,
+) -> Result<(), ModuleStateError> {
+    match data {
+        TensorData::F32(values) => {
+            let expected_len = spec.storage_size();
+            let actual_len = values.len();
+            if actual_len != expected_len {
+                return Err(ModuleStateError::DensePayloadLengthMismatch {
+                    owner: String::from(owner),
+                    expected_len,
+                    actual_len,
+                });
+            }
+        }
+        TensorData::QuantizedBlocks(quantized) => {
+            if !spec.dtype().supports_quantized_logical_storage() {
+                return Err(ModuleStateError::QuantizedPayloadUnsupportedDType {
+                    owner: String::from(owner),
+                    dtype: spec.dtype(),
+                });
+            }
+            let expected_elements = spec.shape().element_count();
+            let actual_elements = quantized.layout.element_count();
+            if actual_elements != expected_elements {
+                return Err(ModuleStateError::QuantizedPayloadElementCountMismatch {
+                    owner: String::from(owner),
+                    expected_elements,
+                    actual_elements,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn stable_module_state_tree_digest(
+    root_module_id: &str,
+    root_module_kind: &str,
+    view: ModuleStateView,
+    entries: &[ModuleStateEntry],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"module_state_tree|");
+    hasher.update(root_module_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(root_module_kind.as_bytes());
+    hasher.update(b"|view|");
+    hasher.update(match view {
+        ModuleStateView::PersistentOnly => b"persistent_only".as_slice(),
+        ModuleStateView::AllBuffers => b"all_buffers".as_slice(),
+    });
+    for entry in entries {
+        hasher.update(b"|entry|");
+        hasher.update(entry.path.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match entry.kind {
+            ModuleStateEntryKind::Parameter => b"parameter".as_slice(),
+            ModuleStateEntryKind::Buffer => b"buffer".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(if entry.requires_grad {
+            b"requires_grad".as_slice()
+        } else {
+            b"no_grad".as_slice()
+        });
+        hasher.update(b"|");
+        hasher.update(if entry.persistent {
+            b"persistent".as_slice()
+        } else {
+            b"ephemeral".as_slice()
+        });
+        hasher.update(b"|");
+        hasher.update(stable_tensor_spec_digest(&entry.spec).as_bytes());
+        hasher.update(b"|");
+        hasher.update(stable_tensor_data_digest(&entry.data).as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn stable_tensor_spec_digest(spec: &TensorSpec) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"tensor_spec|");
+    for dim in spec.shape().dims() {
+        hasher.update(b"dim|");
+        hasher.update(dim.to_string().as_bytes());
+    }
+    hasher.update(b"|dtype|");
+    hasher.update(match spec.dtype() {
+        DType::F32 => b"f32".as_slice(),
+        DType::F16 => b"f16".as_slice(),
+        DType::BF16 => b"bf16".as_slice(),
+        DType::I8 => b"i8".as_slice(),
+    });
+    hasher.update(b"|device_kind|");
+    hasher.update(spec.device().kind().to_string().as_bytes());
+    hasher.update(b"|device_ordinal|");
+    hasher.update(spec.device().ordinal().to_string().as_bytes());
+    if let Some(label) = spec.device().label() {
+        hasher.update(b"|device_label|");
+        hasher.update(label.as_bytes());
+    }
+    hasher.update(b"|storage_size|");
+    hasher.update(spec.storage_size().to_string().as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn stable_tensor_data_digest(data: &TensorData) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"tensor_data|");
+    match data {
+        TensorData::F32(values) => {
+            hasher.update(b"f32");
+            for value in values {
+                hasher.update(value.to_bits().to_le_bytes());
+            }
+        }
+        TensorData::QuantizedBlocks(quantized) => {
+            hasher.update(b"quantized_blocks|");
+            hasher.update(quantization_mode_label(quantized.mode).as_bytes());
+            hasher.update(b"|");
+            hasher.update(quantized.layout.elements_per_block.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(quantized.layout.bytes_per_block.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(quantized.layout.block_count.to_string().as_bytes());
+            hasher.update(b"|bytes|");
+            hasher.update(quantized.bytes.as_slice());
+        }
+    }
+    hex::encode(hasher.finalize())
+}
+
+const fn quantization_mode_label(mode: QuantizationMode) -> &'static str {
+    match mode {
+        QuantizationMode::None => "none",
+        QuantizationMode::Int8Symmetric => "int8_symmetric",
+        QuantizationMode::GgmlMxfp4 => "ggml_mxfp4",
+        QuantizationMode::GgmlQ4_0 => "ggml_q4_0",
+        QuantizationMode::GgmlQ4_1 => "ggml_q4_1",
+        QuantizationMode::GgmlQ8_0 => "ggml_q8_0",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
+
+    use psionic_core::{Device, Shape, TensorData, TensorSpec};
+
+    use super::{
+        DType, Module, ModuleBuffer, ModuleParameter, ModuleStateEntryKind, ModuleStateError,
+        ModuleStateView,
+    };
+
+    fn f32_parameter(shape: &[usize], values: &[f32]) -> Result<ModuleParameter, ModuleStateError> {
+        ModuleParameter::new(
+            TensorSpec::new(Shape::new(shape.to_vec()), DType::F32, Device::cpu()),
+            TensorData::F32(values.to_vec()),
+            true,
+        )
+    }
+
+    fn f32_buffer(
+        shape: &[usize],
+        values: &[f32],
+        persistent: bool,
+    ) -> Result<ModuleBuffer, ModuleStateError> {
+        ModuleBuffer::new(
+            TensorSpec::new(Shape::new(shape.to_vec()), DType::F32, Device::cpu()),
+            TensorData::F32(values.to_vec()),
+            persistent,
+        )
+    }
+
+    #[test]
+    fn module_tree_traversal_surfaces_named_parameters_buffers_and_modules(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut root = Module::new("toy-transformer", "transformer")?;
+        root.insert_parameter("embedding", f32_parameter(&[2, 2], &[0.1, 0.2, 0.3, 0.4])?)?;
+        root.insert_buffer("running_scale", f32_buffer(&[2], &[1.0, 1.0], true)?)?;
+
+        let mut block = Module::new("block0", "transformer_block")?;
+        block.insert_parameter("weight", f32_parameter(&[2, 2], &[1.0, 2.0, 3.0, 4.0])?)?;
+        block.insert_buffer("dropout_mask", f32_buffer(&[2], &[0.0, 1.0], false)?)?;
+        root.insert_submodule("encoder", block)?;
+
+        let parameter_paths = root
+            .named_parameters()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            parameter_paths,
+            vec![String::from("embedding"), String::from("encoder.weight")]
+        );
+
+        let persistent_buffers = root
+            .named_buffers(ModuleStateView::PersistentOnly)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(persistent_buffers, vec![String::from("running_scale")]);
+
+        let all_buffers = root
+            .named_buffers(ModuleStateView::AllBuffers)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            all_buffers,
+            vec![
+                String::from("running_scale"),
+                String::from("encoder.dropout_mask")
+            ]
+        );
+
+        let module_paths = root
+            .named_modules()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(module_paths, vec![String::new(), String::from("encoder")]);
+        assert_eq!(
+            root.parameter("encoder.weight")?.spec.shape().dims(),
+            &[2, 2]
+        );
+        assert!(root.buffer("encoder.dropout_mask").is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn module_state_tree_persistent_view_omits_nonpersistent_buffers_and_stays_stable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut root = Module::new("toy-module", "normed_linear")?;
+        root.insert_parameter("weight", f32_parameter(&[2, 2], &[1.0, 2.0, 3.0, 4.0])?)?;
+        root.insert_buffer("running_mean", f32_buffer(&[2], &[0.0, 0.1], true)?)?;
+        root.insert_buffer("scratch", f32_buffer(&[2], &[9.0, 9.0], false)?)?;
+
+        let persistent = root.state_tree(ModuleStateView::PersistentOnly);
+        let all = root.state_tree(ModuleStateView::AllBuffers);
+
+        assert_eq!(persistent.entries.len(), 2);
+        assert_eq!(all.entries.len(), 3);
+        assert_ne!(persistent.state_tree_digest, all.state_tree_digest);
+        assert_eq!(persistent.entries[0].kind, ModuleStateEntryKind::Parameter);
+        assert_eq!(persistent.entries[1].kind, ModuleStateEntryKind::Buffer);
+        assert!(persistent.entries.iter().all(|entry| entry.persistent));
+        assert!(persistent
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("state_tree_digest=")));
+        assert_eq!(root.stable_digest(), all.state_tree_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn module_tree_refuses_shadowing_invalid_names_and_missing_paths(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut root = Module::new("toy", "linear")?;
+        root.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
+
+        let duplicate = root
+            .insert_buffer("weight", f32_buffer(&[1], &[0.0], true)?)
+            .expect_err("shadowed local name should refuse");
+        assert_eq!(
+            duplicate,
+            ModuleStateError::DuplicateLocalName {
+                name: String::from("weight"),
+            }
+        );
+
+        let invalid = root
+            .insert_parameter("bad.name", f32_parameter(&[1], &[2.0])?)
+            .expect_err("path-like local name should refuse");
+        assert_eq!(
+            invalid,
+            ModuleStateError::InvalidLocalName {
+                name: String::from("bad.name"),
+            }
+        );
+
+        let mut child = Module::new("child", "leaf")?;
+        child.insert_parameter("bias", f32_parameter(&[1], &[3.0])?)?;
+        root.insert_submodule("child", child)?;
+
+        let missing_parameter = root
+            .parameter("child.weight")
+            .expect_err("missing parameter path should refuse");
+        assert_eq!(
+            missing_parameter,
+            ModuleStateError::MissingParameter {
+                path: String::from("child.weight"),
+            }
+        );
+
+        let missing_submodule = root
+            .submodule("child.inner")
+            .expect_err("missing submodule path should refuse");
+        assert_eq!(
+            missing_submodule,
+            ModuleStateError::UnknownSubmodulePath {
+                path: String::from("child.inner"),
+            }
+        );
+        Ok(())
+    }
+}

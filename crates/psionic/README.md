@@ -197,6 +197,8 @@ Current posture:
 - `psionic-core`: canonical tensor, shape, dtype, and device contract.
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types.
+- `psionic-nn`: reusable module, parameter, buffer, and deterministic
+  state-tree semantics above `psionic-core`.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity, and
   compiler diagnostics.
 - `psionic-runtime`: runtime traits, allocators, compiled-plan execution,

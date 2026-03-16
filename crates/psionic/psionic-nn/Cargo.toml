@@ -1,0 +1,21 @@
+[package]
+name = "psionic-nn"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Reusable module, parameter, buffer, and state-tree semantics for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+hex = { workspace = true }
+psionic-core = { path = "../psionic-core" }
+serde = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
