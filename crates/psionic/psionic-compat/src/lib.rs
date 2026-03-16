@@ -1079,10 +1079,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The public transform layer exposes grad, value_and_grad, vjp, jvp, vmap, checkpoint, compile-as-transform, and explicit symbolic or shapeless compile boundaries with typed refusals.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, vmap, checkpoint, and graph-registry-backed custom_vjp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, checkpoint replay that retains only the requested output then replays backward-plan primal bindings, graph-digest plus reverse-signature keyed transform-hook registration, and explicit cast plus backend-extension refusal for the current vmap and checkpoint coverage, but jacobian and compile-as-transform remain open.",
+                "Psionic now exposes a first public transform layer in psionic-ir with stable grad, value_and_grad, vjp, jvp, vmap, checkpoint, and graph-registry-backed custom_vjp objects above AutodiffGraph, plus typed target validation, zero-cotangent materialization for disconnected reverse-mode targets, dense f32 tangent propagation for primitive forward-mode graphs, per-lane reference vectorization over selected graph inputs, checkpoint replay that retains only the requested output then replays backward-plan primal bindings, graph-digest plus reverse-signature keyed transform-hook registration, and explicit cast plus backend-extension refusal for the current vmap and checkpoint coverage; psionic-compiler now adds a first public compile transform with explicit enable/disable posture, purity declaration, cache reuse versus bypass versus explicit invalidation control, trace capture, and plan-debug output, but jacobian and shapeless or symbolic compile boundaries remain open.",
             ),
             boundary_note: String::from(
-                "Do not infer full MLX transform closure from the current reverse-plus-forward plus bounded-vmap plus checkpoint slice; jacobian and compile contracts remain open, and custom_vjp is still graph-scoped rather than a broad plugin-distribution story.",
+                "Do not infer full MLX transform closure from the current reverse-plus-forward plus bounded-vmap plus checkpoint plus first compile-transform slice; jacobian and shapeless or symbolic compile contracts remain open, and custom_vjp is still graph-scoped rather than a broad plugin-distribution story.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1363,14 +1363,22 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 String::from("python/tests/test_graph.py"),
             ],
             current_outcome: MlxParityHarnessOutcome::Pass,
-            psionic_hook_commands: vec![String::from(
-                "cargo test -p psionic-compiler tests::compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases -- --exact --nocapture",
-            )],
+            psionic_hook_commands: vec![
+                String::from(
+                    "cargo test -p psionic-compiler tests::compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-compiler tests::compile_transform_emits_cold_then_warm_cache_hits_with_trace_and_debug -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-compiler tests::compile_transform_cache_controls_make_bypass_and_invalidation_explicit -- --exact --nocapture",
+                ),
+            ],
             summary: String::from(
-                "The seeded compile family can already point at the compiler-hygiene parity matrix as a bounded parity anchor.",
+                "The seeded compile family can now point at both the compiler-hygiene parity matrix and a first public compile-transform surface with explicit purity, cache, trace, and debug controls.",
             ),
             boundary_note: String::from(
-                "This seed pass does not imply the public MLX compile-as-transform surface already exists.",
+                "This bounded compile-transform pass does not imply shapeless or symbolic compile closure yet.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1563,7 +1571,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_transform_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Convertible,
             summary: String::from(
-                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, jvp, bounded vmap, checkpoint replay, and graph-scoped custom_vjp hooks above AutodiffGraph, but jacobian and compile-as-transform are still incomplete.",
+                "psionic-ir now exposes a first public transform layer with grad, value_and_grad, vjp, jvp, bounded vmap, checkpoint replay, and graph-scoped custom_vjp hooks above AutodiffGraph, while psionic-compiler now exposes compile-as-transform with explicit purity, cache, trace, and debug controls, but jacobian and shapeless or symbolic compile boundaries are still incomplete.",
             ),
             evidence_refs: vec![
                 String::from("grad"),
@@ -1573,16 +1581,14 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("vmap"),
                 String::from("checkpoint"),
                 String::from("custom_vjp"),
+                String::from("compile_transform"),
                 String::from("MlxParityHarnessReport"),
                 String::from("MlxAcceptanceMatrixReport::transform-compile = partial"),
                 String::from("ProgramTransformCapabilityMatrixReport"),
             ],
-            blocking_issue_refs: vec![
-                String::from("PMLX-205 (#3844)"),
-                String::from("PMLX-206 (#3845)"),
-            ],
+            blocking_issue_refs: vec![String::from("PMLX-206 (#3845)")],
             boundary_note: String::from(
-                "The first public reverse-plus-forward plus bounded-vmap plus checkpoint slice is not yet the same thing as full supported MLX transform closure.",
+                "The first public reverse-plus-forward plus bounded-vmap plus checkpoint plus compile-transform slice is not yet the same thing as full supported MLX transform closure.",
             ),
         },
         MlxCompatibilityMatrixEntry {

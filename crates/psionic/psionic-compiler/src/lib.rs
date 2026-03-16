@@ -7,16 +7,16 @@ use psionic_core::{
     TensorSpec,
 };
 use psionic_ir::{
-    ExecutionOp, ExecutionPlan, ExecutionStep, ExportableGraphContract, Graph, GraphBuilder,
-    GraphError, GraphExportContractError, MetaCapabilityProfile, MetaTensor, MetaTensorFamily,
-    OperatorArity, OperatorImplementationKind, OperatorMetaExecutionKind, OperatorRegistry,
-    RegisteredOperatorSchema, RegistryExtensionError, SparseMetaContract, SparseMetaLayout,
-    StorageAwareMetaContract, BUILTIN_OPERATOR_SCHEMA_VERSION,
+    BUILTIN_OPERATOR_SCHEMA_VERSION, ExecutionOp, ExecutionPlan, ExecutionStep,
+    ExportableGraphContract, Graph, GraphBuilder, GraphError, GraphExportContractError,
+    MetaCapabilityProfile, MetaTensor, MetaTensorFamily, OperatorArity, OperatorImplementationKind,
+    OperatorMetaExecutionKind, OperatorRegistry, RegisteredOperatorSchema, RegistryExtensionError,
+    SparseMetaContract, SparseMetaLayout, StorageAwareMetaContract,
 };
 use psionic_runtime::{
-    BackendSelection, CacheAction, CacheKind, CacheObservation, CompilePathEvidence,
-    CompilePathTemperature, DeviceInventoryQualifiers, DeviceMemoryClass, DevicePerformanceClass,
-    ExecutionTopologyPlan,
+    BackendSelection, CacheAction, CacheInvalidationTrigger, CacheKind, CacheObservation,
+    CompilePathEvidence, CompilePathTemperature, DeviceInventoryQualifiers, DeviceMemoryClass,
+    DevicePerformanceClass, ExecutionTopologyPlan,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -183,8 +183,8 @@ impl PlanBuilder {
 
 /// Returns the seeded symbolic-shape, fake-tensor, and compiler-hygiene parity
 /// matrix for the current built-in Psionic surface.
-pub fn builtin_compiler_hygiene_parity_matrix_report(
-) -> Result<CompilerHygieneParityMatrixReport, CompilerHygieneParityError> {
+pub fn builtin_compiler_hygiene_parity_matrix_report()
+-> Result<CompilerHygieneParityMatrixReport, CompilerHygieneParityError> {
     let cases = vec![
         run_compiler_hygiene_supported_case(
             "pytorch.fake_tensor.graph_plan_shape_parity",
@@ -1221,7 +1221,9 @@ pub enum DeploymentArtifactContractError {
     Export(#[from] GraphExportContractError),
     #[error("deployment artifact contract requires a non-empty artifact label")]
     MissingArtifactLabel,
-    #[error("deployment artifact contract expected export graph `{expected}` but compiled plan came from `{actual}`")]
+    #[error(
+        "deployment artifact contract expected export graph `{expected}` but compiled plan came from `{actual}`"
+    )]
     GraphDigestMismatch { expected: String, actual: String },
     #[error(
         "deployment artifact format `topology_aware_bundle` requires an explicit topology plan"
@@ -1363,6 +1365,401 @@ impl CompilerPlanCache {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+/// Explicit purity declaration for one public compile transform.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileTransformPurity {
+    /// The caller declares the traced function pure enough for bounded compile.
+    DeclaredPure,
+    /// The caller declares the traced function impure, so compile must bypass.
+    DeclaredImpure,
+}
+
+impl CompileTransformPurity {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::DeclaredPure => "declared_pure",
+            Self::DeclaredImpure => "declared_impure",
+        }
+    }
+}
+
+/// Explicit cache posture for one public compile transform.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileTransformCacheControl {
+    /// Reuse the in-memory plan cache when the cache identity matches.
+    UsePlanCache,
+    /// Compile fresh artifacts and do not touch the in-memory plan cache.
+    BypassPlanCache,
+    /// Rebuild the matching plan-cache entry explicitly before returning artifacts.
+    InvalidateMatchingEntry,
+}
+
+impl CompileTransformCacheControl {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::UsePlanCache => "use_plan_cache",
+            Self::BypassPlanCache => "bypass_plan_cache",
+            Self::InvalidateMatchingEntry => "invalidate_matching_entry",
+        }
+    }
+}
+
+/// Trace posture for one public compile transform call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileTransformTraceMode {
+    /// Do not emit compiler trace lines.
+    Disabled,
+    /// Emit only cache-identity lines for the compiled artifacts.
+    CacheIdentity,
+    /// Emit the full aggregate compiler-artifact signature lines.
+    FullArtifacts,
+}
+
+/// Debug posture for one public compile transform call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileTransformDebugMode {
+    /// Compile normally without a stable-debug capture.
+    Disabled,
+    /// Return the compiled execution-plan debug string beside the artifacts.
+    PlanDebug,
+    /// Bypass compile explicitly so debugging can remain on the original graph path.
+    DisableCompile,
+}
+
+impl CompileTransformDebugMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::PlanDebug => "plan_debug",
+            Self::DisableCompile => "disable_compile",
+        }
+    }
+}
+
+/// Public configuration for one compile-as-transform invocation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CompileTransformConfig {
+    /// Whether compile is enabled at all.
+    pub enabled: bool,
+    /// Explicit purity declaration for the compiled function boundary.
+    pub purity: CompileTransformPurity,
+    /// Cache control for repeated transform applications.
+    pub cache_control: CompileTransformCacheControl,
+    /// Trace capture posture for compile artifacts.
+    pub trace_mode: CompileTransformTraceMode,
+    /// Debug capture posture for the compiled execution plan.
+    pub debug_mode: CompileTransformDebugMode,
+    /// Optional explicit topology carried into compiler identity.
+    pub topology: Option<ExecutionTopologyPlan>,
+    /// Compiler contract for schedule, fusion, and memory planning.
+    pub compiler_contract: CompilerContract,
+}
+
+impl Default for CompileTransformConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            purity: CompileTransformPurity::DeclaredPure,
+            cache_control: CompileTransformCacheControl::UsePlanCache,
+            trace_mode: CompileTransformTraceMode::Disabled,
+            debug_mode: CompileTransformDebugMode::Disabled,
+            topology: None,
+            compiler_contract: CompilerContract::default(),
+        }
+    }
+}
+
+/// Realized high-level posture for one compile transform application.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileTransformDisposition {
+    /// The graph was compiled into compiler artifacts.
+    Compiled,
+    /// Compile was bypassed intentionally under the current transform rules.
+    Bypassed,
+}
+
+/// Explicit reason why one compile transform bypassed lowering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompileTransformBypassReason {
+    /// Compile was disabled explicitly in the transform config.
+    DisabledByConfig,
+    /// The caller declared the function impure.
+    DeclaredImpure,
+    /// The caller requested compile bypass for debugging.
+    DebugRequestedDisableCompile,
+}
+
+impl CompileTransformBypassReason {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::DisabledByConfig => "disabled_by_config",
+            Self::DeclaredImpure => "declared_impure",
+            Self::DebugRequestedDisableCompile => "debug_requested_disable_compile",
+        }
+    }
+}
+
+/// Trace payload surfaced by one compile transform application.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompileTransformTrace {
+    /// Trace mode requested by the caller.
+    pub mode: CompileTransformTraceMode,
+    /// Stable source graph digest.
+    pub graph_digest: String,
+    /// Line-oriented trace payload for the chosen mode.
+    pub lines: Vec<String>,
+}
+
+/// Public result from one compile-as-transform application.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CompileTransformResult {
+    /// Whether compile ran or bypassed.
+    pub disposition: CompileTransformDisposition,
+    /// Explicit bypass reason when compile did not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bypass_reason: Option<CompileTransformBypassReason>,
+    /// Compiler artifacts when lowering ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<CompilerArtifacts>,
+    /// Stable cache key used by the compiled path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_key: Option<String>,
+    /// Whether the compiled path reused a warm cache entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_hit: Option<bool>,
+    /// Compile-path evidence for the realized path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
+    /// Trace payload for the configured trace posture.
+    pub trace: CompileTransformTrace,
+    /// Stable debug rendering for the compiled execution plan when requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_debug: Option<String>,
+}
+
+/// Typed error returned by the public compile-transform surface.
+#[derive(Debug, Error, PartialEq)]
+pub enum CompileTransformError {
+    /// One lower compiler operation failed.
+    #[error(transparent)]
+    Compile(#[from] CompileError),
+}
+
+/// First-class public compile transform above the compiler pipeline.
+#[derive(Clone, Debug)]
+pub struct CompileTransform {
+    graph: Graph,
+    config: CompileTransformConfig,
+    pipeline: CompilerPipeline<InsertionOrderLowering>,
+    cache: CompilerPlanCache,
+}
+
+impl CompileTransform {
+    /// Creates a compile transform over one graph and explicit config.
+    #[must_use]
+    pub fn new(graph: Graph, config: CompileTransformConfig) -> Self {
+        Self {
+            graph,
+            config,
+            pipeline: CompilerPipeline::default(),
+            cache: CompilerPlanCache::default(),
+        }
+    }
+
+    /// Returns the current transform config.
+    #[must_use]
+    pub fn config(&self) -> &CompileTransformConfig {
+        &self.config
+    }
+
+    /// Returns a mutable handle to the current transform config.
+    pub fn config_mut(&mut self) -> &mut CompileTransformConfig {
+        &mut self.config
+    }
+
+    /// Returns the number of resident plan-cache entries owned by the transform.
+    #[must_use]
+    pub fn cache_len(&self) -> usize {
+        self.cache.len()
+    }
+
+    /// Explicitly invalidates all transform-owned cached plans.
+    pub fn invalidate_cached_plans(&mut self) -> usize {
+        let removed = self.cache.entries.len();
+        self.cache.entries.clear();
+        removed
+    }
+
+    /// Applies the compile transform under the current config.
+    pub fn apply(&mut self) -> Result<CompileTransformResult, CompileTransformError> {
+        let graph_digest = self.graph.stable_digest();
+        if let Some(reason) = self.bypass_reason() {
+            return Ok(CompileTransformResult {
+                disposition: CompileTransformDisposition::Bypassed,
+                bypass_reason: Some(reason),
+                artifacts: None,
+                cache_key: None,
+                cache_hit: None,
+                compile_path: None,
+                trace: compile_transform_bypass_trace(&graph_digest, &self.config, reason),
+                plan_debug: None,
+            });
+        }
+
+        let compiled = match self.config.cache_control {
+            CompileTransformCacheControl::UsePlanCache => {
+                let cache_result = self.pipeline.compile_with_cache(
+                    &mut self.cache,
+                    &self.graph,
+                    self.config.topology.clone(),
+                    self.config.compiler_contract,
+                )?;
+                (
+                    cache_result.artifacts,
+                    cache_result.cache_key,
+                    cache_result.cache_hit,
+                    cache_result.compile_path,
+                )
+            }
+            CompileTransformCacheControl::BypassPlanCache => {
+                let artifacts = self.pipeline.compile_artifacts_with_topology(
+                    &self.graph,
+                    self.config.topology.clone(),
+                    self.config.compiler_contract,
+                )?;
+                let cache_key = artifacts.cache_identity.stable_digest();
+                let compile_path = CompilePathEvidence {
+                    temperature: CompilePathTemperature::ColdCompile,
+                    execution_plan_cache: CacheObservation::new(
+                        CacheKind::ExecutionPlan,
+                        CacheAction::Bypass,
+                        "compile transform cache bypass requested",
+                    ),
+                    kernel_cache: CacheObservation::new(
+                        CacheKind::KernelCache,
+                        CacheAction::Bypass,
+                        "kernel cache evidence begins at runtime realization, not compiler lowering",
+                    ),
+                };
+                (artifacts, cache_key, false, compile_path)
+            }
+            CompileTransformCacheControl::InvalidateMatchingEntry => {
+                let artifacts = self.pipeline.compile_artifacts_with_topology(
+                    &self.graph,
+                    self.config.topology.clone(),
+                    self.config.compiler_contract,
+                )?;
+                let cache_key = artifacts.cache_identity.stable_digest();
+                let detail = if self.cache.entries.remove(&cache_key).is_some() {
+                    "compile transform invalidated a matching cached plan before rebuilding"
+                } else {
+                    "compile transform rebuilt plan artifacts after an explicit invalidation request with no matching warm entry"
+                };
+                self.cache
+                    .entries
+                    .insert(cache_key.clone(), artifacts.clone());
+                let compile_path = CompilePathEvidence {
+                    temperature: CompilePathTemperature::ColdCompile,
+                    execution_plan_cache: CacheObservation::new(
+                        CacheKind::ExecutionPlan,
+                        CacheAction::Rebuild,
+                        detail,
+                    )
+                    .with_trigger(CacheInvalidationTrigger::ExplicitReset),
+                    kernel_cache: CacheObservation::new(
+                        CacheKind::KernelCache,
+                        CacheAction::Bypass,
+                        "kernel cache evidence begins at runtime realization, not compiler lowering",
+                    ),
+                };
+                (artifacts, cache_key, false, compile_path)
+            }
+        };
+
+        let plan_debug = matches!(self.config.debug_mode, CompileTransformDebugMode::PlanDebug)
+            .then(|| compiled.0.compiled.plan.stable_debug());
+        let trace = compile_transform_trace(&compiled.0, self.config.trace_mode);
+        Ok(CompileTransformResult {
+            disposition: CompileTransformDisposition::Compiled,
+            bypass_reason: None,
+            artifacts: Some(compiled.0),
+            cache_key: Some(compiled.1),
+            cache_hit: Some(compiled.2),
+            compile_path: Some(compiled.3),
+            trace,
+            plan_debug,
+        })
+    }
+
+    fn bypass_reason(&self) -> Option<CompileTransformBypassReason> {
+        if !self.config.enabled {
+            Some(CompileTransformBypassReason::DisabledByConfig)
+        } else if matches!(self.config.purity, CompileTransformPurity::DeclaredImpure) {
+            Some(CompileTransformBypassReason::DeclaredImpure)
+        } else if matches!(
+            self.config.debug_mode,
+            CompileTransformDebugMode::DisableCompile
+        ) {
+            Some(CompileTransformBypassReason::DebugRequestedDisableCompile)
+        } else {
+            None
+        }
+    }
+}
+
+/// Creates one public compile transform over the provided graph and config.
+#[must_use]
+pub fn compile_transform(graph: &Graph, config: CompileTransformConfig) -> CompileTransform {
+    CompileTransform::new(graph.clone(), config)
+}
+
+fn compile_transform_trace(
+    artifacts: &CompilerArtifacts,
+    mode: CompileTransformTraceMode,
+) -> CompileTransformTrace {
+    let lines = match mode {
+        CompileTransformTraceMode::Disabled => Vec::new(),
+        CompileTransformTraceMode::CacheIdentity => {
+            artifacts.cache_identity.stable_signature_lines()
+        }
+        CompileTransformTraceMode::FullArtifacts => artifacts.stable_signature_lines(),
+    };
+    CompileTransformTrace {
+        mode,
+        graph_digest: artifacts.compiled.plan.graph_digest.clone(),
+        lines,
+    }
+}
+
+fn compile_transform_bypass_trace(
+    graph_digest: &str,
+    config: &CompileTransformConfig,
+    reason: CompileTransformBypassReason,
+) -> CompileTransformTrace {
+    let lines = if matches!(config.trace_mode, CompileTransformTraceMode::Disabled) {
+        Vec::new()
+    } else {
+        vec![
+            String::from("disposition=bypassed"),
+            format!("reason={}", reason.label()),
+            format!("purity={}", config.purity.label()),
+            format!("cache_control={}", config.cache_control.label()),
+            format!("debug_mode={}", config.debug_mode.label()),
+        ]
+    };
+    CompileTransformTrace {
+        mode: config.trace_mode,
+        graph_digest: String::from(graph_digest),
+        lines,
     }
 }
 
@@ -1509,8 +1906,8 @@ pub fn compile_graph_artifacts_for_selection(
 
 /// Returns the seeded export/deployment artifact semantics report for the current
 /// bounded Psionic surface.
-pub fn builtin_export_deployment_artifact_semantics_report(
-) -> Result<ExportDeploymentArtifactSemanticsReport, ExportDeploymentArtifactSemanticsError> {
+pub fn builtin_export_deployment_artifact_semantics_report()
+-> Result<ExportDeploymentArtifactSemanticsReport, ExportDeploymentArtifactSemanticsError> {
     let export_safe = seeded_export_safe_compiler_graph()?;
     let export_contract = export_safe.exportable_graph_contract("main")?;
     let execution_plan_bundle = compile_graph_artifacts(&export_safe)?;
@@ -2263,12 +2660,15 @@ mod tests {
     };
 
     use super::{
+        CompileError, CompileTransformBypassReason, CompileTransformCacheControl,
+        CompileTransformConfig, CompileTransformDebugMode, CompileTransformDisposition,
+        CompileTransformPurity, CompileTransformTraceMode, CompilerContract,
+        CompilerHygieneParityStatus, CompilerPlanCache, DeploymentArtifactFormat,
+        ExportDeploymentArtifactStatus, FusionMode, MemoryStorageClass,
         builtin_compiler_hygiene_parity_matrix_report,
         builtin_export_deployment_artifact_semantics_report, compile_graph,
         compile_graph_artifacts_with_topology, compile_graph_for_selection,
-        compile_graph_with_topology, CompileError, CompilerContract, CompilerHygieneParityStatus,
-        CompilerPlanCache, DeploymentArtifactFormat, ExportDeploymentArtifactStatus, FusionMode,
-        MemoryStorageClass,
+        compile_graph_with_topology, compile_transform,
     };
 
     #[test]
@@ -2520,8 +2920,8 @@ mod tests {
     }
 
     #[test]
-    fn deployment_artifact_contract_tracks_export_graph_digest_and_topology_attachment(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn deployment_artifact_contract_tracks_export_graph_digest_and_topology_attachment()
+    -> Result<(), Box<dyn std::error::Error>> {
         let graph = super::seeded_export_safe_compiler_graph()?;
         let export_contract = graph.exportable_graph_contract("main")?;
 
@@ -2625,18 +3025,205 @@ mod tests {
     }
 
     #[test]
-    fn compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn compile_transform_bypass_rules_are_explicit() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+
+        let mut disabled = compile_transform(
+            &graph,
+            CompileTransformConfig {
+                enabled: false,
+                trace_mode: CompileTransformTraceMode::CacheIdentity,
+                ..CompileTransformConfig::default()
+            },
+        );
+        let disabled_result = disabled.apply();
+        assert!(disabled_result.is_ok());
+        let Ok(disabled_result) = disabled_result else {
+            return;
+        };
+        assert_eq!(
+            disabled_result.disposition,
+            CompileTransformDisposition::Bypassed
+        );
+        assert_eq!(
+            disabled_result.bypass_reason,
+            Some(CompileTransformBypassReason::DisabledByConfig)
+        );
+        assert!(disabled_result.artifacts.is_none());
+        assert!(!disabled_result.trace.lines.is_empty());
+
+        let mut impure = compile_transform(
+            &graph,
+            CompileTransformConfig {
+                purity: CompileTransformPurity::DeclaredImpure,
+                ..CompileTransformConfig::default()
+            },
+        );
+        let impure_result = impure.apply();
+        assert!(impure_result.is_ok());
+        let Ok(impure_result) = impure_result else {
+            return;
+        };
+        assert_eq!(
+            impure_result.bypass_reason,
+            Some(CompileTransformBypassReason::DeclaredImpure)
+        );
+
+        let mut debug_disabled = compile_transform(
+            &graph,
+            CompileTransformConfig {
+                debug_mode: CompileTransformDebugMode::DisableCompile,
+                ..CompileTransformConfig::default()
+            },
+        );
+        let debug_result = debug_disabled.apply();
+        assert!(debug_result.is_ok());
+        let Ok(debug_result) = debug_result else {
+            return;
+        };
+        assert_eq!(
+            debug_result.bypass_reason,
+            Some(CompileTransformBypassReason::DebugRequestedDisableCompile)
+        );
+    }
+
+    #[test]
+    fn compile_transform_emits_cold_then_warm_cache_hits_with_trace_and_debug() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+
+        let mut transform = compile_transform(
+            &graph,
+            CompileTransformConfig {
+                trace_mode: CompileTransformTraceMode::FullArtifacts,
+                debug_mode: CompileTransformDebugMode::PlanDebug,
+                ..CompileTransformConfig::default()
+            },
+        );
+
+        let cold = transform.apply();
+        assert!(cold.is_ok());
+        let Ok(cold) = cold else {
+            return;
+        };
+        assert_eq!(cold.disposition, CompileTransformDisposition::Compiled);
+        assert_eq!(cold.cache_hit, Some(false));
+        assert_eq!(
+            cold.compile_path.as_ref().map(|path| path.temperature),
+            Some(CompilePathTemperature::ColdCompile)
+        );
+        assert_eq!(
+            cold.compile_path
+                .as_ref()
+                .map(|path| path.execution_plan_cache.action),
+            Some(CacheAction::Rebuild)
+        );
+        assert!(
+            cold.plan_debug
+                .as_ref()
+                .is_some_and(|debug| debug.contains("matmul"))
+        );
+        assert!(!cold.trace.lines.is_empty());
+        assert_eq!(transform.cache_len(), 1);
+
+        let warm = transform.apply();
+        assert!(warm.is_ok());
+        let Ok(warm) = warm else {
+            return;
+        };
+        assert_eq!(warm.cache_hit, Some(true));
+        assert_eq!(
+            warm.compile_path.as_ref().map(|path| path.temperature),
+            Some(CompilePathTemperature::WarmReuse)
+        );
+        assert_eq!(
+            warm.compile_path
+                .as_ref()
+                .map(|path| path.execution_plan_cache.action),
+            Some(CacheAction::Reuse)
+        );
+        assert_eq!(warm.cache_key, cold.cache_key);
+    }
+
+    #[test]
+    fn compile_transform_cache_controls_make_bypass_and_invalidation_explicit() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+
+        let mut transform = compile_transform(&graph, CompileTransformConfig::default());
+        let seeded = transform.apply();
+        assert!(seeded.is_ok());
+        let Ok(_) = seeded else {
+            return;
+        };
+        assert_eq!(transform.cache_len(), 1);
+
+        transform.config_mut().cache_control =
+            CompileTransformCacheControl::InvalidateMatchingEntry;
+        let invalidated = transform.apply();
+        assert!(invalidated.is_ok());
+        let Ok(invalidated) = invalidated else {
+            return;
+        };
+        assert_eq!(invalidated.cache_hit, Some(false));
+        assert_eq!(
+            invalidated
+                .compile_path
+                .as_ref()
+                .map(|path| path.execution_plan_cache.action),
+            Some(CacheAction::Rebuild)
+        );
+        assert_eq!(
+            invalidated
+                .compile_path
+                .as_ref()
+                .and_then(|path| path.execution_plan_cache.trigger),
+            Some(psionic_runtime::CacheInvalidationTrigger::ExplicitReset)
+        );
+        assert_eq!(transform.cache_len(), 1);
+
+        transform.config_mut().cache_control = CompileTransformCacheControl::BypassPlanCache;
+        let bypassed = transform.apply();
+        assert!(bypassed.is_ok());
+        let Ok(bypassed) = bypassed else {
+            return;
+        };
+        assert_eq!(bypassed.cache_hit, Some(false));
+        assert_eq!(
+            bypassed
+                .compile_path
+                .as_ref()
+                .map(|path| path.execution_plan_cache.action),
+            Some(CacheAction::Bypass)
+        );
+        assert_eq!(transform.cache_len(), 1);
+    }
+
+    #[test]
+    fn compiler_hygiene_parity_matrix_tracks_seeded_supported_and_refusal_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_compiler_hygiene_parity_matrix_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(
             report.oracle_family_window,
             "pytorch_compiler_hygiene_seed_v0"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("matrix_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("matrix_digest="))
+        );
 
         for case in report
             .cases
@@ -2665,18 +3252,20 @@ mod tests {
     }
 
     #[test]
-    fn export_deployment_artifact_semantics_report_tracks_seeded_supported_and_refused_cases(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn export_deployment_artifact_semantics_report_tracks_seeded_supported_and_refused_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
         let report = builtin_export_deployment_artifact_semantics_report()?;
         assert_eq!(report.schema_version, 1);
         assert_eq!(
             report.current_scope_window,
             "psionic_export_deployment_artifact_v1"
         );
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let plan_bundle = report
             .cases
