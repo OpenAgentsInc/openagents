@@ -120,6 +120,7 @@ pub enum SemanticsClaimError {
 /// PyTorch-facing posture.
 pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, SemanticsClaimError> {
     let operator = psionic_ir::builtin_operator_parity_matrix_report()?;
+    let extensions = psionic_ir::builtin_extension_contract_semantics_report();
     let program_transforms = psionic_ir::builtin_program_transform_capability_matrix_report();
     let tensor_families = psionic_ir::builtin_tensor_family_capability_matrix_report();
     let advanced_dtypes = psionic_core::builtin_advanced_dtype_semantics_report();
@@ -161,6 +162,19 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
             vec![
                 String::from("broaden transform capability beyond functionalization and export-safe graph readiness"),
                 String::from("connect export-safe graph capability to deployment artifact contracts"),
+            ],
+            vec![String::from("#3736")],
+        ),
+        seeded_area(
+            "extension_contract_semantics",
+            "Current claim is bounded to typed custom-op, custom-kernel, custom-autograd, backend-plugin, and quantizer-plugin contracts above the existing extensible registry, plus explicit refusal for contracts that bypass declared-output or non-dense quantization-mode requirements.",
+            vec![SemanticsEvidenceRef::new(
+                "extension_contract_semantics",
+                extensions.report_digest,
+            )],
+            vec![
+                String::from("broaden extension semantics beyond the current typed contract bundles"),
+                String::from("connect extension contracts to deployment and distribution surfaces"),
             ],
             vec![String::from("#3736")],
         ),
@@ -332,11 +346,11 @@ pub fn builtin_semantics_claim_report() -> Result<SemanticsClaimReport, Semantic
         ),
         future_area(
             "extensions_and_plugins",
-            "User-facing extension and plugin contracts remain future compatibility targets rather than current credibility claims.",
+            "Broader extension and plugin distribution, loading, and deployment behavior remain future compatibility targets after landing bounded typed contracts.",
             vec![String::from(
-                "publish custom-op, custom-kernel, custom-autograd, backend-plugin, and quantizer-plugin contracts",
+                "connect extension contracts to deployment and distribution surfaces",
             )],
-            vec![String::from("#3732")],
+            vec![String::from("#3736")],
         ),
         future_area(
             "advanced_operator_families",
@@ -438,6 +452,7 @@ mod tests {
         for area_id in [
             "operator_semantics",
             "program_transform_semantics",
+            "extension_contract_semantics",
             "tensor_family_semantics",
             "advanced_dtype_semantics",
             "reproducibility_semantics",
