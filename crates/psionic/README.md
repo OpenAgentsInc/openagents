@@ -198,7 +198,8 @@ Current posture:
 - `psionic-ir`: graph, autodiff, `detach`, no-grad/training posture, and
   execution-plan types.
 - `psionic-nn`: reusable module, parameter, buffer, and deterministic
-  state-tree semantics above `psionic-core`.
+  state-dict/state-tree semantics above `psionic-core`, including strict and
+  non-strict keyed load behavior.
 - `psionic-compiler`: lowering, scheduling, replay-stable program identity, and
   compiler diagnostics.
 - `psionic-runtime`: runtime traits, allocators, compiled-plan execution,

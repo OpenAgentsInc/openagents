@@ -414,8 +414,9 @@ The largest open gaps are now more architectural than existential:
 
 - framework-core breadth is still much thinner than PyTorch or Tinygrad
 - operator and module parity harnesses are still too sparse
-- module/state-tree semantics now exist in `psionic-nn`, but state loading,
-  checkpoint interoperability, and parity breadth are still underdeveloped
+- module/state-tree and keyed `state_dict` load semantics now exist in
+  `psionic-nn`, but checkpoint interoperability and parity breadth are still
+  underdeveloped
 - distributed-training semantics are still mostly below the framework line
 - serialization and checkpoint compatibility are still narrower than a
   practical PyTorch replacement needs
@@ -862,7 +863,7 @@ Master issue:
 | ID / GitHub | Status | Work |
 | --- | --- | --- |
 | `PLIB-201` / [#3716](https://github.com/OpenAgentsInc/openagents/issues/3716) | done (2026-03-16) | `psionic-nn` now owns a first-class reusable module tree with validated parameters and buffers, deterministic named traversal, persistent-vs-ephemeral buffer views, flattened digest-bound state trees, and explicit refusal on shadowing, invalid names, missing paths, and malformed tensor payloads. |
-| `PLIB-202` / [#3717](https://github.com/OpenAgentsInc/openagents/issues/3717) | planned | Add deterministic `state_dict`-style naming, strict and non-strict load behavior, and size-mismatch refusal semantics. |
+| `PLIB-202` / [#3717](https://github.com/OpenAgentsInc/openagents/issues/3717) | done (2026-03-16) | `psionic-nn` now owns deterministic keyed `state_dict` views over module trees, persistent-only and all-buffer traversal modes, atomic strict and non-strict load behavior, explicit missing/unexpected-key reporting, and refusal on parameter-vs-buffer, shape, dtype, or payload incompatibility. |
 | `PLIB-203` / [#3718](https://github.com/OpenAgentsInc/openagents/issues/3718) | planned | Widen optimizer coverage with scheduler integration, parameter-group semantics, and stronger state behavior. |
 | `PLIB-204` / [#3719](https://github.com/OpenAgentsInc/openagents/issues/3719) | planned | Define serialization and checkpoint compatibility boundaries for practical PyTorch interoperability without inheriting every historical artifact path. |
 
@@ -1241,10 +1242,11 @@ This is the recommended dependency order for the next full-library work.
 If `PLIB-101` and `PLIB-102` are weak, later parity work becomes expensive
 churn rather than reusable growth.
 
-### Risk 2: module and state semantics lag training and checkpoint work
+### Risk 2: checkpoint and train work outrun the new module-state contracts
 
-If `PLIB-201` and `PLIB-202` slip, Epic 6 will become lane-specific and
-fragile instead of library-reusable.
+If later checkpoint and optimizer work lands without building on the
+`psionic-nn` module/state-dict layer from `PLIB-201` and `PLIB-202`, Epic 6
+will become lane-specific and fragile instead of library-reusable.
 
 ### Risk 3: backend closure racing ahead of CPU reference truth
 

@@ -79,6 +79,16 @@ pub enum ModuleStateError {
         /// Actual logical element count.
         actual_elements: usize,
     },
+    /// One externally supplied state-dict entry key did not match its embedded path.
+    #[error(
+        "module state dict map key `{map_key}` does not match embedded entry path `{entry_path}`"
+    )]
+    StateEntryPathMismatch {
+        /// Stable state-dict map key.
+        map_key: String,
+        /// Embedded entry path.
+        entry_path: String,
+    },
 }
 
 /// One trainable parameter entry owned by a module tree.
@@ -227,6 +237,260 @@ impl ModuleStateTree {
         lines
     }
 }
+
+/// Stable `state_dict` load mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStateLoadMode {
+    /// Missing or unexpected keys refuse the load.
+    Strict,
+    /// Missing or unexpected keys are reported but compatible overlaps still load.
+    NonStrict,
+}
+
+/// Keyed `state_dict` view for one module tree.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModuleStateDict {
+    /// Stable root module identifier.
+    pub root_module_id: String,
+    /// Human-readable root module kind.
+    pub root_module_kind: String,
+    /// View used to build the keyed state dict.
+    pub view: ModuleStateView,
+    /// Flattened entries keyed by deterministic dot-separated path.
+    pub entries: BTreeMap<String, ModuleStateEntry>,
+    /// Stable digest over the keyed state dict contents.
+    pub state_dict_digest: String,
+}
+
+impl ModuleStateDict {
+    /// Creates a validated keyed state-dict view.
+    pub fn new(
+        root_module_id: impl Into<String>,
+        root_module_kind: impl Into<String>,
+        view: ModuleStateView,
+        entries: BTreeMap<String, ModuleStateEntry>,
+    ) -> Result<Self, ModuleStateError> {
+        let root_module_id = root_module_id.into();
+        if root_module_id.trim().is_empty() {
+            return Err(ModuleStateError::MissingModuleId);
+        }
+        let root_module_kind = root_module_kind.into();
+        if root_module_kind.trim().is_empty() {
+            return Err(ModuleStateError::MissingModuleKind);
+        }
+        for (path, entry) in &entries {
+            if path != &entry.path {
+                return Err(ModuleStateError::StateEntryPathMismatch {
+                    map_key: path.clone(),
+                    entry_path: entry.path.clone(),
+                });
+            }
+        }
+        let state_dict_digest = stable_module_state_tree_digest(
+            root_module_id.as_str(),
+            root_module_kind.as_str(),
+            view,
+            &entries.values().cloned().collect::<Vec<_>>(),
+        );
+        Ok(Self {
+            root_module_id,
+            root_module_kind,
+            view,
+            entries,
+            state_dict_digest,
+        })
+    }
+
+    fn from_state_tree(tree: ModuleStateTree) -> Self {
+        let entries = tree
+            .entries
+            .into_iter()
+            .map(|entry| (entry.path.clone(), entry))
+            .collect::<BTreeMap<_, _>>();
+        Self {
+            root_module_id: tree.root_module_id,
+            root_module_kind: tree.root_module_kind,
+            view: tree.view,
+            entries,
+            state_dict_digest: tree.state_tree_digest,
+        }
+    }
+
+    /// Returns the deterministic state-dict key order.
+    #[must_use]
+    pub fn keys(&self) -> Vec<String> {
+        self.entries.keys().cloned().collect()
+    }
+
+    /// Returns one keyed entry.
+    #[must_use]
+    pub fn entry(&self, path: &str) -> Option<&ModuleStateEntry> {
+        self.entries.get(path)
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("root_module_id={}", self.root_module_id),
+            format!("root_module_kind={}", self.root_module_kind),
+            format!("view={:?}", self.view),
+            format!("state_dict_digest={}", self.state_dict_digest),
+        ];
+        for (path, entry) in &self.entries {
+            lines.push(format!(
+                "{path}|{:?}|persistent={}|requires_grad={}",
+                entry.kind, entry.persistent, entry.requires_grad
+            ));
+        }
+        lines
+    }
+}
+
+/// Successful `state_dict` load summary.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleStateLoadReport {
+    /// Load mode used by the caller.
+    pub mode: ModuleStateLoadMode,
+    /// State-dict view that governed expected keys.
+    pub view: ModuleStateView,
+    /// Source keyed state-dict digest.
+    pub source_state_dict_digest: String,
+    /// Target keyed state-dict digest before mutation.
+    pub target_before_digest: String,
+    /// Target keyed state-dict digest after mutation.
+    pub target_after_digest: String,
+    /// Deterministic paths that were loaded into the target module.
+    pub loaded_paths: Vec<String>,
+    /// Missing target keys tolerated under non-strict load.
+    pub missing_keys: Vec<String>,
+    /// Extra source keys tolerated under non-strict load.
+    pub unexpected_keys: Vec<String>,
+}
+
+impl ModuleStateLoadReport {
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("mode={:?}", self.mode),
+            format!("view={:?}", self.view),
+            format!("source_state_dict_digest={}", self.source_state_dict_digest),
+            format!("target_before_digest={}", self.target_before_digest),
+            format!("target_after_digest={}", self.target_after_digest),
+        ];
+        for path in &self.loaded_paths {
+            lines.push(format!("loaded={path}"));
+        }
+        for path in &self.missing_keys {
+            lines.push(format!("missing={path}"));
+        }
+        for path in &self.unexpected_keys {
+            lines.push(format!("unexpected={path}"));
+        }
+        lines
+    }
+}
+
+/// State-dict incompatibility that refused a load.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModuleStateLoadError {
+    /// Strict load found missing or unexpected keys.
+    StrictKeyMismatch {
+        /// Missing target keys.
+        missing_keys: Vec<String>,
+        /// Extra source keys.
+        unexpected_keys: Vec<String>,
+    },
+    /// The source and target disagree on parameter-vs-buffer identity.
+    EntryKindMismatch {
+        /// Stable state-dict key.
+        path: String,
+        /// Expected target kind.
+        expected: ModuleStateEntryKind,
+        /// Actual source kind.
+        actual: ModuleStateEntryKind,
+    },
+    /// The source and target disagree on tensor shape.
+    ShapeMismatch {
+        /// Stable state-dict key.
+        path: String,
+        /// Expected target shape.
+        expected: Vec<usize>,
+        /// Actual source shape.
+        actual: Vec<usize>,
+    },
+    /// The source and target disagree on logical dtype.
+    DTypeMismatch {
+        /// Stable state-dict key.
+        path: String,
+        /// Expected target dtype.
+        expected: DType,
+        /// Actual source dtype.
+        actual: DType,
+    },
+    /// One incoming source payload was structurally malformed for the target spec.
+    InvalidSourcePayload {
+        /// Stable state-dict key.
+        path: String,
+        /// Lower-level payload validation error.
+        source: ModuleStateError,
+    },
+    /// The validated target path disappeared before mutation could be applied.
+    MissingTargetPath {
+        /// Stable state-dict key.
+        path: String,
+        /// Lower-level missing-path error.
+        source: ModuleStateError,
+    },
+}
+
+impl std::fmt::Display for ModuleStateLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StrictKeyMismatch {
+                missing_keys,
+                unexpected_keys,
+            } => write!(
+                f,
+                "strict module state load key mismatch: missing={missing_keys:?} unexpected={unexpected_keys:?}"
+            ),
+            Self::EntryKindMismatch {
+                path,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "module state load entry kind mismatch for `{path}`: expected {expected:?}, found {actual:?}"
+            ),
+            Self::ShapeMismatch {
+                path,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "module state load shape mismatch for `{path}`: expected {expected:?}, found {actual:?}"
+            ),
+            Self::DTypeMismatch {
+                path,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "module state load dtype mismatch for `{path}`: expected {expected:?}, found {actual:?}"
+            ),
+            Self::InvalidSourcePayload { path, source } => {
+                write!(f, "module state load payload for `{path}` is invalid: {source}")
+            }
+            Self::MissingTargetPath { path, source } => {
+                write!(f, "module state load target path `{path}` disappeared: {source}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ModuleStateLoadError {}
 
 /// One nested reusable module tree.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -406,6 +670,114 @@ impl Module {
             .state_tree_digest
     }
 
+    /// Returns the default persistent-only keyed state dict.
+    #[must_use]
+    pub fn state_dict(&self) -> ModuleStateDict {
+        self.state_dict_with_view(ModuleStateView::PersistentOnly)
+    }
+
+    /// Returns a keyed state dict for one buffer view.
+    #[must_use]
+    pub fn state_dict_with_view(&self, view: ModuleStateView) -> ModuleStateDict {
+        ModuleStateDict::from_state_tree(self.state_tree(view))
+    }
+
+    /// Loads one keyed state dict into the current module tree.
+    pub fn load_state_dict(
+        &mut self,
+        state_dict: &ModuleStateDict,
+        mode: ModuleStateLoadMode,
+    ) -> Result<ModuleStateLoadReport, ModuleStateLoadError> {
+        let target_before = self.state_dict_with_view(state_dict.view);
+        let missing_keys = target_before
+            .entries
+            .keys()
+            .filter(|path| !state_dict.entries.contains_key(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+        let unexpected_keys = state_dict
+            .entries
+            .keys()
+            .filter(|path| !target_before.entries.contains_key(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+        if mode == ModuleStateLoadMode::Strict
+            && (!missing_keys.is_empty() || !unexpected_keys.is_empty())
+        {
+            return Err(ModuleStateLoadError::StrictKeyMismatch {
+                missing_keys,
+                unexpected_keys,
+            });
+        }
+
+        let mut updates = Vec::new();
+        for (path, source_entry) in &state_dict.entries {
+            let Some(target_entry) = target_before.entries.get(path) else {
+                continue;
+            };
+            if target_entry.kind != source_entry.kind {
+                return Err(ModuleStateLoadError::EntryKindMismatch {
+                    path: path.clone(),
+                    expected: target_entry.kind,
+                    actual: source_entry.kind,
+                });
+            }
+            if target_entry.spec.shape().dims() != source_entry.spec.shape().dims() {
+                return Err(ModuleStateLoadError::ShapeMismatch {
+                    path: path.clone(),
+                    expected: target_entry.spec.shape().dims().to_vec(),
+                    actual: source_entry.spec.shape().dims().to_vec(),
+                });
+            }
+            if target_entry.spec.dtype() != source_entry.spec.dtype() {
+                return Err(ModuleStateLoadError::DTypeMismatch {
+                    path: path.clone(),
+                    expected: target_entry.spec.dtype(),
+                    actual: source_entry.spec.dtype(),
+                });
+            }
+            validate_tensor_payload(path.as_str(), &target_entry.spec, &source_entry.data)
+                .map_err(|source| ModuleStateLoadError::InvalidSourcePayload {
+                    path: path.clone(),
+                    source,
+                })?;
+            updates.push((path.clone(), target_entry.kind, source_entry.data.clone()));
+        }
+
+        for (path, kind, data) in &updates {
+            match kind {
+                ModuleStateEntryKind::Parameter => {
+                    self.parameter_mut(path.as_str())
+                        .map_err(|source| ModuleStateLoadError::MissingTargetPath {
+                            path: path.clone(),
+                            source,
+                        })?
+                        .data = data.clone();
+                }
+                ModuleStateEntryKind::Buffer => {
+                    self.buffer_mut(path.as_str())
+                        .map_err(|source| ModuleStateLoadError::MissingTargetPath {
+                            path: path.clone(),
+                            source,
+                        })?
+                        .data = data.clone();
+                }
+            }
+        }
+
+        let target_after = self.state_dict_with_view(state_dict.view);
+        Ok(ModuleStateLoadReport {
+            mode,
+            view: state_dict.view,
+            source_state_dict_digest: state_dict.state_dict_digest.clone(),
+            target_before_digest: target_before.state_dict_digest,
+            target_after_digest: target_after.state_dict_digest,
+            loaded_paths: updates.into_iter().map(|(path, _, _)| path).collect(),
+            missing_keys,
+            unexpected_keys,
+        })
+    }
+
     fn ensure_local_name_available(&self, name: &str) -> Result<(), ModuleStateError> {
         if self.parameters.contains_key(name)
             || self.buffers.contains_key(name)
@@ -493,6 +865,28 @@ impl Module {
                 entries,
             );
         }
+    }
+
+    fn parameter_mut(&mut self, path: &str) -> Result<&mut ModuleParameter, ModuleStateError> {
+        let (module_path, local_name) = split_state_path(path)?;
+        let module = self.submodule_mut(module_path.as_str())?;
+        module
+            .parameters
+            .get_mut(local_name.as_str())
+            .ok_or_else(|| ModuleStateError::MissingParameter {
+                path: String::from(path),
+            })
+    }
+
+    fn buffer_mut(&mut self, path: &str) -> Result<&mut ModuleBuffer, ModuleStateError> {
+        let (module_path, local_name) = split_state_path(path)?;
+        let module = self.submodule_mut(module_path.as_str())?;
+        module
+            .buffers
+            .get_mut(local_name.as_str())
+            .ok_or_else(|| ModuleStateError::MissingBuffer {
+                path: String::from(path),
+            })
     }
 }
 
@@ -681,10 +1075,13 @@ const fn quantization_mode_label(mode: QuantizationMode) -> &'static str {
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
 
+    use std::collections::BTreeMap;
+
     use psionic_core::{Device, Shape, TensorData, TensorSpec};
 
     use super::{
-        DType, Module, ModuleBuffer, ModuleParameter, ModuleStateEntryKind, ModuleStateError,
+        DType, Module, ModuleBuffer, ModuleParameter, ModuleStateDict, ModuleStateEntry,
+        ModuleStateEntryKind, ModuleStateError, ModuleStateLoadError, ModuleStateLoadMode,
         ModuleStateView,
     };
 
@@ -837,6 +1234,137 @@ mod tests {
             ModuleStateError::UnknownSubmodulePath {
                 path: String::from("child.inner"),
             }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn module_state_dict_is_deterministic_and_persistent_only_by_default(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut root = Module::new("toy", "encoder")?;
+        root.insert_parameter("weight", f32_parameter(&[2], &[1.0, 2.0])?)?;
+        root.insert_buffer("running_mean", f32_buffer(&[2], &[0.0, 0.1], true)?)?;
+        root.insert_buffer("scratch", f32_buffer(&[2], &[9.0, 9.0], false)?)?;
+
+        let state_dict = root.state_dict();
+        assert_eq!(
+            state_dict.keys(),
+            vec![String::from("running_mean"), String::from("weight")]
+        );
+        assert_eq!(state_dict.view, ModuleStateView::PersistentOnly);
+        assert!(state_dict
+            .stable_signature_lines()
+            .iter()
+            .any(|line| line.starts_with("state_dict_digest=")));
+        assert!(state_dict.entry("scratch").is_none());
+
+        let all_buffers = root.state_dict_with_view(ModuleStateView::AllBuffers);
+        assert!(all_buffers.entry("scratch").is_some());
+        assert_ne!(state_dict.state_dict_digest, all_buffers.state_dict_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn strict_module_state_load_requires_exact_key_match() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut target = Module::new("target", "linear")?;
+        target.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
+        target.insert_buffer("running_mean", f32_buffer(&[1], &[0.0], true)?)?;
+
+        let mut source = Module::new("source", "linear")?;
+        source.insert_parameter("weight", f32_parameter(&[1], &[5.0])?)?;
+
+        let refusal = target
+            .load_state_dict(&source.state_dict(), ModuleStateLoadMode::Strict)
+            .expect_err("missing persistent buffer should refuse strict load");
+        assert_eq!(
+            refusal,
+            ModuleStateLoadError::StrictKeyMismatch {
+                missing_keys: vec![String::from("running_mean")],
+                unexpected_keys: Vec::new(),
+            }
+        );
+        assert_eq!(target.parameter("weight")?.data, TensorData::F32(vec![1.0]));
+        Ok(())
+    }
+
+    #[test]
+    fn non_strict_module_state_load_reports_missing_and_unexpected_keys(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut target = Module::new("target", "linear")?;
+        target.insert_parameter("weight", f32_parameter(&[1], &[1.0])?)?;
+        target.insert_buffer("running_mean", f32_buffer(&[1], &[0.0], true)?)?;
+
+        let mut source = Module::new("source", "linear")?;
+        source.insert_parameter("weight", f32_parameter(&[1], &[7.0])?)?;
+        source.insert_parameter("bias", f32_parameter(&[1], &[9.0])?)?;
+
+        let report =
+            target.load_state_dict(&source.state_dict(), ModuleStateLoadMode::NonStrict)?;
+        assert_eq!(report.loaded_paths, vec![String::from("weight")]);
+        assert_eq!(report.missing_keys, vec![String::from("running_mean")]);
+        assert_eq!(report.unexpected_keys, vec![String::from("bias")]);
+        assert_eq!(target.parameter("weight")?.data, TensorData::F32(vec![7.0]));
+        assert_eq!(
+            target.buffer("running_mean")?.data,
+            TensorData::F32(vec![0.0])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn module_state_load_refuses_shape_and_kind_mismatches_even_non_strict(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut target = Module::new("target", "block")?;
+        target.insert_parameter("weight", f32_parameter(&[2], &[1.0, 2.0])?)?;
+
+        let mut wrong_shape = Module::new("source", "block")?;
+        wrong_shape.insert_parameter("weight", f32_parameter(&[3], &[3.0, 4.0, 5.0])?)?;
+        let shape_refusal = target
+            .load_state_dict(&wrong_shape.state_dict(), ModuleStateLoadMode::NonStrict)
+            .expect_err("shape mismatch should refuse");
+        assert_eq!(
+            shape_refusal,
+            ModuleStateLoadError::ShapeMismatch {
+                path: String::from("weight"),
+                expected: vec![2],
+                actual: vec![3],
+            }
+        );
+
+        let mut wrong_kind_entries = BTreeMap::new();
+        wrong_kind_entries.insert(
+            String::from("weight"),
+            ModuleStateEntry {
+                path: String::from("weight"),
+                kind: ModuleStateEntryKind::Buffer,
+                spec: TensorSpec::new(Shape::new(vec![2]), DType::F32, Device::cpu()),
+                data: TensorData::F32(vec![8.0, 9.0]),
+                requires_grad: false,
+                persistent: true,
+            },
+        );
+        let wrong_kind = ModuleStateDict::new(
+            "source",
+            "block",
+            ModuleStateView::PersistentOnly,
+            wrong_kind_entries,
+        )?;
+        let kind_refusal = target
+            .load_state_dict(&wrong_kind, ModuleStateLoadMode::NonStrict)
+            .expect_err("kind mismatch should refuse");
+        assert_eq!(
+            kind_refusal,
+            ModuleStateLoadError::EntryKindMismatch {
+                path: String::from("weight"),
+                expected: ModuleStateEntryKind::Parameter,
+                actual: ModuleStateEntryKind::Buffer,
+            }
+        );
+
+        assert_eq!(
+            target.parameter("weight")?.data,
+            TensorData::F32(vec![1.0, 2.0])
         );
         Ok(())
     }

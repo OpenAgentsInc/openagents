@@ -119,6 +119,8 @@ It already has real substrate for:
 
 - reusable module, parameter, buffer, and deterministic state-tree semantics
   in `psionic-nn`
+- deterministic `state_dict` naming plus strict/non-strict keyed load behavior
+  with explicit size-mismatch refusal in `psionic-nn`
 - training recovery posture
 - checkpoint lineage
 - elastic membership truth
