@@ -1110,7 +1110,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
         },
         MlxAcceptanceCategory {
             category_id: String::from("export-serialization-tooling"),
-            matrix_status: MlxAcceptanceCategoryStatus::Planned,
+            matrix_status: MlxAcceptanceCategoryStatus::ImplementedEarly,
             epic_id: String::from("PMLX-E4"),
             issue_refs: vec![
                 String::from("PMLX-401 (#3853)"),
@@ -1124,10 +1124,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane supports general array IO, a Psionic-native function export/import artifact, bounded .mlxfn compatibility, memory and cache controls, backend debug hooks, and extension-facing tooling.",
             ),
             current_repo_truth: String::from(
-                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array; psionic-function-io now also exposes both a native .psifn function-artifact slice with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, and a bounded .mlxfn compatibility shell that supports one positional CPU trace over the current primitive and dtype subset while refusing shapeless, keyword, multi-trace, unsupported-device, and unsupported-primitive artifacts honestly; psionic-array now also exposes bounded public runtime memory reporting with active, peak, and cache counters plus explicit cache-limit and reset controls above the current reference eval substrate, plus a public backend-debug layer with lane-specific support matrices for cpu, metal, and cuda, retained runtime log events, bounded runtime-observability snapshots, compiler-backed debug captures, and optional lane-labeled JSON bundles; extension tooling remains open.",
+                "Psionic now has a first public array-IO slice in psionic-array-io with stable receipts plus bounded npy, npz, safetensors, and dense GGUF save/load above psionic-array; psionic-function-io now also exposes both a native .psifn function-artifact slice with export-safe graph contracts, optional compiler artifacts, trace-family identity, deployment bundle binding, and stable import/export receipts, and a bounded .mlxfn compatibility shell that supports one positional CPU trace over the current primitive and dtype subset while refusing shapeless, keyword, multi-trace, unsupported-device, and unsupported-primitive artifacts honestly; psionic-array now also exposes bounded public runtime memory reporting with active, peak, and cache counters plus explicit cache-limit and reset controls above the current reference eval substrate, plus a public backend-debug layer with lane-specific support matrices for cpu, metal, and cuda, retained runtime log events, bounded runtime-observability snapshots, compiler-backed debug captures, optional lane-labeled JSON bundles, and a bounded extension-authoring layer with custom-op, custom-kernel, backend-plugin, and quantizer-plugin registration plus dispatch-resolution and declared-output validation above the extensible operator registry.",
             ),
             boundary_note: String::from(
-                "Do not collapse model loaders, deployment artifacts, or internal runtime diagnostics into MLX export or tooling closure; general array IO, the native .psifn function artifact, a bounded .mlxfn shell, bounded runtime memory/cache controls, and bounded backend debug hooks now exist, but extension tooling is still missing.",
+                "Do not collapse model loaders, runtime diagnostics, or extension-authoring contracts into full MLX execution closure; this category is now implemented early, but generic custom-op runtime execution, vendor-native profiler capture, and broader plugin distribution remain intentionally bounded.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1597,7 +1597,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_array_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, a bounded runtime resource report with active/peak/cache counters plus explicit cache-limit and reset controls, and a bounded backend-debug layer with lane-specific cpu/metal/cuda support matrices, retained runtime log events, bounded observability snapshots, compiler-backed debug capture receipts, and optional lane-labeled JSON bundles, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
+                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, a bounded runtime resource report with active/peak/cache counters plus explicit cache-limit and reset controls, a bounded backend-debug layer with lane-specific cpu/metal/cuda support matrices, retained runtime log events, bounded observability snapshots, compiler-backed debug capture receipts, optional lane-labeled JSON bundles, and a bounded extension-authoring layer with custom-op, custom-kernel, backend-plugin, and quantizer-plugin registration plus dispatch-resolution and declared-output validation, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
             ),
             evidence_refs: vec![
                 String::from("ArrayDevice"),
@@ -1615,6 +1615,8 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
                 String::from("ArrayCacheResetReceipt"),
                 String::from("ArrayBackendDebugSnapshot"),
                 String::from("ArrayBackendCaptureReceipt"),
+                String::from("ArrayExtensionRegistrySnapshot"),
+                String::from("ArrayExtensionRegistrationReceipt"),
                 String::from("ArrayArtifactReceipt"),
                 String::from("encode_npy"),
                 String::from("decode_npz"),
@@ -1626,7 +1628,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             ],
             blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "This is a bounded supported early array surface; it does not imply MLX transform, nn, native function export, or distributed support.",
+                "This is a bounded supported early array surface; it does not imply MLX transform, nn, native function export, distributed support, or generic custom-op runtime execution.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2160,6 +2162,7 @@ mod tests {
                 "array-runtime-surface" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "transform-compile" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "nn-optimizer" => MlxAcceptanceCategoryStatus::ImplementedEarly,
+                "export-serialization-tooling" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 _ => MlxAcceptanceCategoryStatus::Planned,
             };
             assert_eq!(category.matrix_status, expected_status);
