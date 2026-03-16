@@ -59,17 +59,15 @@ So the honest current answer is:
 > the repo still carries Python toolkit debt until the remaining gate and
 > cleanup issues remove that oracle path from the tree entirely.
 
-That is also why the operator UI and CLI feel blind during long runs:
+That specific operator-blindness problem is no longer the shipped behavior
+after `#3771` and `#3772`:
 
-- the toolkit wrapper uses `std::process::Command::output()`
-- stdout and stderr are buffered until the child process exits
-- the app only sees "training started" and then "training finished"
-- progress, loss updates, checkpoint milestones, and export phases are not
-  streamed
-
-The current lane is therefore failing one major remaining goal:
-
-1. It still does not expose live step telemetry during long-running work.
+- the app-owned operator path now emits typed live phase, heartbeat, ETA, and
+  recent-event telemetry
+- the legacy toolkit wrapper now streams stdout/stderr lines instead of
+  waiting on `Command::output()`
+- the remaining Python concern is boundary honesty and cleanup, not silent
+  thirty-minute waits in the shipped operator lane
 
 ## Current Code Reality
 
@@ -189,46 +187,38 @@ This is why the run feels like "nothing is happening for thirty minutes".
 That is not just a UI complaint. It is a real missing contract in the operator
 path.
 
-## Why Python Is Still In The Loop
+## Why Python Is Still In Tree
 
-The honest reasons are:
+The honest reasons are now narrower:
 
-### 1. Apple-valid export is still coupled to the external toolkit path
+### 1. The legacy toolkit wrapper still exists as a compatibility oracle and cleanup target
 
-The current live lane still relies on the toolkit exporter because that is the
-only proven Apple-valid runtime-asset path in the current repo workflow.
+`crates/psionic/psionic-train/src/apple_toolkit.rs` still carries toolkit-root
+discovery, Python-interpreter discovery, and toolkit shell-out code.
 
-The Rust operator path stages repo-owned package metadata, but the actual
-runtime asset bytes currently come from the toolkit export result.
+That module is no longer the shipped operator path, but it is still in-tree as
+the legacy compatibility surface until the final cleanup issue removes it.
 
-### 2. The Rust reference backend is not yet Apple-runtime-parity training
+### 2. The shipped lane is now Rust-only, but it still needs an explicit regression gate
 
-The current Rust backend is useful and important, but it is still a narrower
-reference backend. It is not yet the authoritative path for:
+Without a hard gate, the repo could drift back into a dishonest state where the
+desktop operator or release validation silently reintroduces toolkit discovery
+or Python shell-outs.
 
-- the exact Apple adapter weight update contract
-- the exact Apple-valid export payload contract
-- the exact structured generation and tool-calling parity needed for the real
-  runtime lane
+That is why `#3774` adds a dedicated release gate instead of relying on docs or
+memory.
 
-### 3. The shipped operator path was optimized for "get one real Apple-valid
-path working" before "delete all Python"
+## Why The Current Experience Used To Be So Bad During Long Runs
 
-That tradeoff was pragmatic at the time, but it is now the wrong steady-state.
-
-If the product claim is "Psionic owns the Apple training lane", then the
-current Python dependency is technical debt, not an acceptable final boundary.
-
-## Why The Current Experience Is So Bad During Long Runs
-
-There are three separate problems:
+The original operator-blindness problem had three parts:
 
 ### 1. Blocking subprocess collection
 
-`run_toolkit_command(...)` waits for the child process to exit before surfacing
-output.
+`run_toolkit_command(...)` used to wait for the child process to exit before
+surfacing output.
 
-So the operator does not receive:
+That specific transport problem is now fixed, but it was the reason the older
+lane did not emit:
 
 - incremental stdout lines
 - incremental stderr lines
@@ -237,7 +227,7 @@ So the operator does not receive:
 
 ### 2. No typed training-progress event stream
 
-The status model has final summaries, but it does not have a durable
+The status model originally had final summaries, but it did not have a durable
 event-stream model for live work such as:
 
 - `training_started`
