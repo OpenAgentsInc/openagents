@@ -11,6 +11,16 @@ pub enum DataAssetStatus {
     Retired,
 }
 
+impl DataAssetStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Disabled => "disabled",
+            Self::Retired => "retired",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessGrantStatus {
@@ -23,6 +33,19 @@ pub enum AccessGrantStatus {
     Expired,
 }
 
+impl AccessGrantStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Offered => "offered",
+            Self::Accepted => "accepted",
+            Self::Delivered => "delivered",
+            Self::Revoked => "revoked",
+            Self::Refunded => "refunded",
+            Self::Expired => "expired",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryBundleStatus {
@@ -33,12 +56,32 @@ pub enum DeliveryBundleStatus {
     Expired,
 }
 
+impl DeliveryBundleStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Issued => "issued",
+            Self::Accessed => "accessed",
+            Self::Revoked => "revoked",
+            Self::Expired => "expired",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RevocationStatus {
     #[default]
     Revoked,
     Refunded,
+}
+
+impl RevocationStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Revoked => "revoked",
+            Self::Refunded => "refunded",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]

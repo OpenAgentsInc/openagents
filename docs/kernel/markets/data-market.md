@@ -23,7 +23,7 @@ smuggled through opaque prompt state.
 | Dimension | Status | Notes |
 | --- | --- | --- |
 | Product surface | not productized | there is no dedicated data-market buyer or seller UX in the desktop app today |
-| Kernel authority | `implemented` starter slice | authority flows exist in `openagents-kernel-core` and `apps/nexus-control` |
+| Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
 | Planned | yes | broader discovery, pricing, payouts, provider economics, and product-facing UX remain planned |
@@ -51,14 +51,25 @@ Authenticated HTTP mutation routes are live under:
 - `POST /v1/kernel/data/grants/{grant_id}/deliveries`
 - `POST /v1/kernel/data/grants/{grant_id}/revoke`
 
+Authenticated HTTP read routes are live under:
+
+- `GET /v1/kernel/data/assets`
+- `GET /v1/kernel/data/assets/{asset_id}`
+- `GET /v1/kernel/data/grants`
+- `GET /v1/kernel/data/grants/{grant_id}`
+- `GET /v1/kernel/data/deliveries`
+- `GET /v1/kernel/data/deliveries/{delivery_bundle_id}`
+- `GET /v1/kernel/data/revocations`
+- `GET /v1/kernel/data/revocations/{revocation_id}`
+
 ## Local prototype or partial only
 
 - richer provenance modeling beyond the starter permission and delivery objects
 - private-data packaging and policy detail beyond the current starter shapes
 - local or adjacent desktop concepts for context packaging, but not a
   generalized canonical data-market product surface
-- broader discovery and indexing ideas still live in docs rather than in a
-  full authority or read-model surface
+- broader public discovery and richer indexing ideas still live in docs rather
+  than in a full market-facing catalog surface
 
 ## Not implemented yet
 
@@ -67,8 +78,6 @@ Authenticated HTTP mutation routes are live under:
 - discovery, listing, and pricing surfaces for data buyers
 - payout and provider-economics flows specific to data access
 - a dedicated checked-in `openagents.data.v1` proto package
-- fuller read-model APIs for browsing the market rather than only mutating
-  starter objects
 
 ## Current repo truth lives in
 
