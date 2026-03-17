@@ -7,13 +7,10 @@ use psionic_data::TassadarSequenceSplit;
 use psionic_eval::{
     TassadarExecutorArchitectureComparisonError, TassadarExecutorArchitectureComparisonReport,
     TassadarExecutorArchitectureFamilyKind, TassadarExecutorArchitectureFamilyReport,
-    TassadarSequenceEvalError,
-    build_tassadar_executor_architecture_comparison_report, build_tassadar_sequence_dataset,
-    evaluate_attention_family_for_architecture_comparison,
+    TassadarSequenceEvalError, build_tassadar_executor_architecture_comparison_report,
+    build_tassadar_sequence_dataset, evaluate_attention_family_for_architecture_comparison,
 };
-use psionic_models::{
-    TassadarExecutorAttentionTransformer, TassadarExecutorTransformerDescriptor,
-};
+use psionic_models::{TassadarExecutorAttentionTransformer, TassadarExecutorTransformerDescriptor};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -27,7 +24,7 @@ pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2";
 /// Canonical output root for the boundary-first attention-family comparison.
 pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_BOUNDARY_ATTENTION_OUTPUT_DIR: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7";
 /// Canonical machine-readable architecture-comparison artifact.
 pub const TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE: &str =
     "architecture_comparison_report.json";
@@ -37,20 +34,17 @@ const EXECUTOR_ATTENTION_DIR: &str = "executor_attention_candidate";
 const FAMILY_REPORT_FILE: &str = "family_report.json";
 const RUN_BUNDLE_FILE: &str = "run_bundle.json";
 const MODEL_DESCRIPTOR_FILE: &str = "model_descriptor.json";
-const LOOKUP_BASELINE_SOURCE_RUN_BUNDLE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1/output_head_embeddings_and_small_learned_mixer/run_bundle.json";
-const LOOKUP_BASELINE_PRESERVED_FAMILY_REPORT: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/lookup_baseline/family_report.json";
-const LOOKUP_BASELINE_PRESERVED_MODEL_DESCRIPTOR: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/lookup_baseline/model_descriptor.json";
+const LOOKUP_BASELINE_SOURCE_RUN_BUNDLE: &str = "crates/psionic/fixtures/tassadar/runs/sudoku_v0_trainable_surface_ablation_v1/output_head_embeddings_and_small_learned_mixer/run_bundle.json";
+const LOOKUP_BASELINE_PRESERVED_FAMILY_REPORT: &str = "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/lookup_baseline/family_report.json";
+const LOOKUP_BASELINE_PRESERVED_MODEL_DESCRIPTOR: &str = "crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v1/lookup_baseline/model_descriptor.json";
 const TRAINED_ATTENTION_CHECKPOINT_STATE: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/checkpoint_state.json";
 const TRAINED_ATTENTION_SOURCE_RUN_BUNDLE: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1/run_bundle.json";
 const BOUNDARY_ATTENTION_CHECKPOINT_STATE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/checkpoint_state.json";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5/checkpoint_state.json";
 const BOUNDARY_ATTENTION_SOURCE_RUN_BUNDLE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/run_bundle.json";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5/run_bundle.json";
 const PROMPT_WINDOW_TOKEN_CAP: usize = 256;
 const TARGET_TOKEN_CAP: usize = 32;
 
@@ -118,8 +112,10 @@ impl TassadarExecutorArchitectureRunBundle {
             family_report_digest: report.report_digest.clone(),
             bundle_digest: String::new(),
         };
-        bundle.bundle_digest =
-            stable_digest(b"psionic_tassadar_executor_architecture_run_bundle|", &bundle);
+        bundle.bundle_digest = stable_digest(
+            b"psionic_tassadar_executor_architecture_run_bundle|",
+            &bundle,
+        );
         bundle
     }
 }
@@ -181,8 +177,10 @@ pub enum TassadarExecutorArchitectureComparisonPersistError {
 /// resulting family bundles plus the top-level report.
 pub fn run_tassadar_executor_architecture_comparison(
     output_dir: &Path,
-) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
-{
+) -> Result<
+    TassadarExecutorArchitectureComparisonReport,
+    TassadarExecutorArchitectureComparisonPersistError,
+> {
     run_tassadar_executor_architecture_comparison_with_attention_candidate(
         output_dir,
         "v1",
@@ -195,9 +193,12 @@ pub fn run_tassadar_executor_architecture_comparison(
 /// attention-family checkpoint from the canonical attention-training bundle.
 pub fn run_tassadar_executor_architecture_comparison_with_trained_attention(
     output_dir: &Path,
-) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
-{
-    let trained_attention = load_attention_candidate_from_checkpoint(TRAINED_ATTENTION_CHECKPOINT_STATE)?;
+) -> Result<
+    TassadarExecutorArchitectureComparisonReport,
+    TassadarExecutorArchitectureComparisonPersistError,
+> {
+    let trained_attention =
+        load_attention_candidate_from_checkpoint(TRAINED_ATTENTION_CHECKPOINT_STATE)?;
     run_tassadar_executor_architecture_comparison_with_attention_candidate(
         output_dir,
         "v2",
@@ -210,20 +211,21 @@ pub fn run_tassadar_executor_architecture_comparison_with_trained_attention(
 /// boundary-first trained attention-family checkpoint.
 pub fn run_tassadar_executor_architecture_comparison_with_boundary_attention(
     output_dir: &Path,
-) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
-{
+) -> Result<
+    TassadarExecutorArchitectureComparisonReport,
+    TassadarExecutorArchitectureComparisonPersistError,
+> {
     let trained_attention =
         load_attention_candidate_from_checkpoint(BOUNDARY_ATTENTION_CHECKPOINT_STATE)?;
     run_tassadar_executor_architecture_comparison_with_attention_candidate(
         output_dir,
-        "v6",
+        "v7",
         &trained_attention,
         Some(String::from(BOUNDARY_ATTENTION_SOURCE_RUN_BUNDLE)),
     )
 }
 
-fn load_lookup_baseline(
-) -> Result<
+fn load_lookup_baseline() -> Result<
     (
         TassadarExecutorArchitectureFamilyReport,
         TassadarExecutorTransformerDescriptor,
@@ -243,7 +245,8 @@ fn load_lookup_baseline(
 
 fn load_attention_candidate_from_checkpoint(
     checkpoint_path: &str,
-) -> Result<TassadarExecutorAttentionTransformer, TassadarExecutorArchitectureComparisonPersistError> {
+) -> Result<TassadarExecutorAttentionTransformer, TassadarExecutorArchitectureComparisonPersistError>
+{
     let checkpoint: crate::TassadarExecutorAttentionCheckpointState = read_json(
         repo_root().join(checkpoint_path),
         "tassadar_executor_attention_checkpoint_state",
@@ -261,8 +264,10 @@ fn run_tassadar_executor_architecture_comparison_with_attention_candidate(
     run_revision: &str,
     executor_attention_candidate: &TassadarExecutorAttentionTransformer,
     attention_source_artifact_ref: Option<String>,
-) -> Result<TassadarExecutorArchitectureComparisonReport, TassadarExecutorArchitectureComparisonPersistError>
-{
+) -> Result<
+    TassadarExecutorArchitectureComparisonReport,
+    TassadarExecutorArchitectureComparisonPersistError,
+> {
     fs::create_dir_all(output_dir).map_err(|error| {
         TassadarExecutorArchitectureComparisonPersistError::CreateDir {
             path: output_dir.display().to_string(),
@@ -270,8 +275,10 @@ fn run_tassadar_executor_architecture_comparison_with_attention_candidate(
         }
     })?;
 
-    let dataset =
-        build_tassadar_sequence_dataset(psionic_eval::TassadarSequenceWorkload::SudokuV0, "train-v0")?;
+    let dataset = build_tassadar_sequence_dataset(
+        psionic_eval::TassadarSequenceWorkload::SudokuV0,
+        "train-v0",
+    )?;
     let (lookup_report, lookup_descriptor) = load_lookup_baseline()?;
     let candidate_report = evaluate_attention_family_for_architecture_comparison(
         executor_attention_candidate,
@@ -418,8 +425,8 @@ mod tests {
 
     use super::{
         TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_BOUNDARY_ATTENTION_OUTPUT_DIR,
-        TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR,
         TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE,
+        TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_TRAINED_ATTENTION_OUTPUT_DIR,
         run_tassadar_executor_architecture_comparison,
         run_tassadar_executor_architecture_comparison_with_boundary_attention,
         run_tassadar_executor_architecture_comparison_with_trained_attention,
@@ -437,7 +444,12 @@ mod tests {
                 .join(TASSADAR_EXECUTOR_ARCHITECTURE_COMPARISON_REPORT_FILE)
                 .exists()
         );
-        assert!(temp.path().join("lookup_baseline").join("run_bundle.json").exists());
+        assert!(
+            temp.path()
+                .join("lookup_baseline")
+                .join("run_bundle.json")
+                .exists()
+        );
         assert!(
             temp.path()
                 .join("executor_attention_candidate")
@@ -451,9 +463,8 @@ mod tests {
     fn trained_attention_architecture_comparison_writes_top_level_report()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
-        let report = run_tassadar_executor_architecture_comparison_with_trained_attention(
-            temp.path(),
-        )?;
+        let report =
+            run_tassadar_executor_architecture_comparison_with_trained_attention(temp.path())?;
 
         assert!(report.candidate_closer_to_article_fidelity);
         assert!(
@@ -478,9 +489,8 @@ mod tests {
     fn boundary_attention_architecture_comparison_writes_top_level_report()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
-        let report = run_tassadar_executor_architecture_comparison_with_boundary_attention(
-            temp.path(),
-        )?;
+        let report =
+            run_tassadar_executor_architecture_comparison_with_boundary_attention(temp.path())?;
 
         assert!(report.candidate_closer_to_article_fidelity);
         assert!(

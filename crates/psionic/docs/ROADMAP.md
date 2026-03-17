@@ -653,15 +653,18 @@ Its declared scope is:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
   the later hidden-state projection-adapter follow-ons under
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, the
+  newer transition-adapter follow-on under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, and
   the current same-corpus comparison under
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`;
-  those artifacts keep the first attention-family bounded correctness win over
-  the preserved lookup baseline (`10000` bps first-target, `7500` bps first-8,
-  `6875` bps first-32 versus `10000` / `6250` / `6563`) but now also record
-  the sharper learned blocker explicitly: the attention lane still diverges at
-  token `1` by predicting `<byte_00>` where the reference requires
-  `<step_index>`, so exact validation traces still remain `0/2`
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7`;
+  those artifacts keep extending the first attention-family bounded correctness
+  win over the preserved lookup baseline, and the latest pair now records
+  `10000` bps first-target, `8750` bps first-8, `7188` bps first-32 versus
+  lookup `10000` / `6250` / `6563`, but the learned gate is still red because
+  exact validation traces remain `0/2` and the sharper blocker is now token
+  `6`: the attention lane predicts `<byte_00>` where the reference requires
+  `<pc>`
 - landed trained-executor Phase 17 bar from the post-audit issue spine:
   `psionic-models` now carries a bounded typed
   `TassadarCompiledProgramExecutor` surface with persisted compile-evidence
@@ -891,8 +894,10 @@ is tracked under the post-audit umbrella
   [#3814](https://github.com/OpenAgentsInc/openagents/issues/3814)
   canonical promotion tooling and the repo bundle now exist at
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v1`, but the gate
-  remains red at `10000` bps first-target, `6875` bps first-32, and `0`
-  exact validation traces
+  remains red: the promotion bundle itself is still `10000` bps first-target,
+  `6875` bps first-32, and `0` exact validation traces, while the latest
+  bounded attention-family follow-on reaches `10000` / `8750` / `7188` over
+  first-target / first-8 / first-32 and still leaves `0` exact traces
 - Phase 15 add a true executor-attention candidate family:
   [#3815](https://github.com/OpenAgentsInc/openagents/issues/3815)
   landed as a bounded research candidate; does not close the Phase 14 gate

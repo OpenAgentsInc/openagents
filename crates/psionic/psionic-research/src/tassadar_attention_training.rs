@@ -16,17 +16,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-const BOUNDARY_ATTENTION_V2_CHECKPOINT_STATE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2/checkpoint_state.json";
-const BOUNDARY_ATTENTION_V2_RUN_BUNDLE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2/run_bundle.json";
+const BOUNDARY_ATTENTION_V4_CHECKPOINT_STATE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/checkpoint_state.json";
+const BOUNDARY_ATTENTION_V4_RUN_BUNDLE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/run_bundle.json";
 
 /// Canonical output root for the first bounded learned attention-family run.
 pub const TASSADAR_EXECUTOR_ATTENTION_TRAINING_OUTPUT_DIR: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1";
 /// Canonical output root for the first boundary-first attention-family run.
 pub const TASSADAR_EXECUTOR_ATTENTION_BOUNDARY_OUTPUT_DIR: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5";
 /// Canonical machine-readable training report artifact.
 pub const TASSADAR_EXECUTOR_ATTENTION_TRAINING_REPORT_FILE: &str = "training_report.json";
 /// Canonical machine-readable validation family report artifact.
@@ -76,11 +76,7 @@ pub struct TassadarExecutorAttentionTrainingStage {
 impl TassadarExecutorAttentionTrainingStage {
     /// Creates one bounded training stage.
     #[must_use]
-    pub fn new(
-        stage_id: impl Into<String>,
-        target_token_cap: usize,
-        epoch_count: u32,
-    ) -> Self {
+    pub fn new(stage_id: impl Into<String>, target_token_cap: usize, epoch_count: u32) -> Self {
         Self {
             stage_id: stage_id.into(),
             target_token_cap: target_token_cap.max(1),
@@ -154,10 +150,18 @@ pub struct TassadarExecutorAttentionTrainingConfig {
     /// projection adapter should be trainable.
     #[serde(default)]
     pub train_relative_target_output_projection: bool,
+    /// Whether the bounded previous-token-conditioned relative-target output
+    /// bias adapter should be trainable.
+    #[serde(default)]
+    pub train_relative_target_transition_output_bias: bool,
     /// Learning-rate multiplier applied only to the bounded relative-target
     /// hidden-state-conditioned output projection adapter.
     #[serde(default = "default_one")]
     pub relative_target_output_projection_learning_rate_scale: f32,
+    /// Learning-rate multiplier applied only to the bounded previous-token-
+    /// conditioned relative-target output bias adapter.
+    #[serde(default = "default_one")]
+    pub relative_target_transition_output_bias_learning_rate_scale: f32,
 }
 
 impl TassadarExecutorAttentionTrainingConfig {
@@ -171,13 +175,19 @@ impl TassadarExecutorAttentionTrainingConfig {
             learning_rate: 0.1,
             prompt_window_token_cap: 256,
             target_token_cap: 32,
-            stages: vec![TassadarExecutorAttentionTrainingStage::new("full_suffix", 32, 32)],
+            stages: vec![TassadarExecutorAttentionTrainingStage::new(
+                "full_suffix",
+                32,
+                32,
+            )],
             initial_checkpoint_state_ref: None,
             initial_run_bundle_ref: None,
             train_output_head: true,
             train_relative_target_output_bias: false,
             train_relative_target_output_projection: false,
+            train_relative_target_transition_output_bias: false,
             relative_target_output_projection_learning_rate_scale: 1.0,
+            relative_target_transition_output_bias_learning_rate_scale: 1.0,
         }
     }
 
@@ -185,7 +195,7 @@ impl TassadarExecutorAttentionTrainingConfig {
     #[must_use]
     pub fn boundary_curriculum_reference() -> Self {
         Self {
-            run_id: String::from("tassadar-executor-attention-sudoku-v0-boundary-v4"),
+            run_id: String::from("tassadar-executor-attention-sudoku-v0-boundary-v5"),
             dataset_version: String::from("train-v0"),
             epochs: 32,
             learning_rate: 0.02,
@@ -218,13 +228,15 @@ impl TassadarExecutorAttentionTrainingConfig {
                     .with_early_prefix_weighting(8, 1.25),
             ],
             initial_checkpoint_state_ref: Some(String::from(
-                BOUNDARY_ATTENTION_V2_CHECKPOINT_STATE,
+                BOUNDARY_ATTENTION_V4_CHECKPOINT_STATE,
             )),
-            initial_run_bundle_ref: Some(String::from(BOUNDARY_ATTENTION_V2_RUN_BUNDLE)),
+            initial_run_bundle_ref: Some(String::from(BOUNDARY_ATTENTION_V4_RUN_BUNDLE)),
             train_output_head: false,
             train_relative_target_output_bias: false,
-            train_relative_target_output_projection: true,
-            relative_target_output_projection_learning_rate_scale: 8.0,
+            train_relative_target_output_projection: false,
+            train_relative_target_transition_output_bias: true,
+            relative_target_output_projection_learning_rate_scale: 1.0,
+            relative_target_transition_output_bias_learning_rate_scale: 6.0,
         }
     }
 }
@@ -294,8 +306,10 @@ impl TassadarExecutorAttentionTrainingReport {
             validation,
             report_digest: String::new(),
         };
-        report.report_digest =
-            stable_digest(b"psionic_tassadar_executor_attention_training_report|", &report);
+        report.report_digest = stable_digest(
+            b"psionic_tassadar_executor_attention_training_report|",
+            &report,
+        );
         report
     }
 }
@@ -322,6 +336,10 @@ pub struct TassadarExecutorAttentionCheckpointState {
     /// projection adapter values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relative_target_output_projection: Vec<f32>,
+    /// Trained bounded previous-token-conditioned relative-target output-bias
+    /// adapter values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relative_target_transition_output_bias: Vec<f32>,
     /// Stable digest over the persisted state.
     pub state_digest: String,
 }
@@ -344,10 +362,16 @@ impl TassadarExecutorAttentionCheckpointState {
                 .weights()
                 .relative_target_output_projection()
                 .to_vec(),
+            relative_target_transition_output_bias: model
+                .weights()
+                .relative_target_transition_output_bias()
+                .to_vec(),
             state_digest: String::new(),
         };
-        checkpoint.state_digest =
-            stable_digest(b"psionic_tassadar_executor_attention_checkpoint_state|", &checkpoint);
+        checkpoint.state_digest = stable_digest(
+            b"psionic_tassadar_executor_attention_checkpoint_state|",
+            &checkpoint,
+        );
         checkpoint
     }
 
@@ -357,38 +381,64 @@ impl TassadarExecutorAttentionCheckpointState {
     ) -> Result<TassadarExecutorAttentionTransformer, TassadarExecutorAttentionTrainingError> {
         let mut model = TassadarExecutorAttentionTransformer::sudoku_v0();
         if model.weights().output_projection().len() != self.output_projection.len() {
-            return Err(TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
-                tensor: String::from("output_projection"),
-                expected: model.weights().output_projection().len(),
-                actual: self.output_projection.len(),
-            });
+            return Err(
+                TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
+                    tensor: String::from("output_projection"),
+                    expected: model.weights().output_projection().len(),
+                    actual: self.output_projection.len(),
+                },
+            );
         }
         if model.weights().output_bias().len() != self.output_bias.len() {
-            return Err(TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
-                tensor: String::from("output_bias"),
-                expected: model.weights().output_bias().len(),
-                actual: self.output_bias.len(),
-            });
+            return Err(
+                TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
+                    tensor: String::from("output_bias"),
+                    expected: model.weights().output_bias().len(),
+                    actual: self.output_bias.len(),
+                },
+            );
         }
         if !self.relative_target_output_bias.is_empty()
             && model.weights().relative_target_output_bias().len()
                 != self.relative_target_output_bias.len()
         {
-            return Err(TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
-                tensor: String::from("relative_target_output_bias"),
-                expected: model.weights().relative_target_output_bias().len(),
-                actual: self.relative_target_output_bias.len(),
-            });
+            return Err(
+                TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
+                    tensor: String::from("relative_target_output_bias"),
+                    expected: model.weights().relative_target_output_bias().len(),
+                    actual: self.relative_target_output_bias.len(),
+                },
+            );
         }
         if !self.relative_target_output_projection.is_empty()
             && model.weights().relative_target_output_projection().len()
                 != self.relative_target_output_projection.len()
         {
-            return Err(TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
-                tensor: String::from("relative_target_output_projection"),
-                expected: model.weights().relative_target_output_projection().len(),
-                actual: self.relative_target_output_projection.len(),
-            });
+            return Err(
+                TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
+                    tensor: String::from("relative_target_output_projection"),
+                    expected: model.weights().relative_target_output_projection().len(),
+                    actual: self.relative_target_output_projection.len(),
+                },
+            );
+        }
+        if !self.relative_target_transition_output_bias.is_empty()
+            && model
+                .weights()
+                .relative_target_transition_output_bias()
+                .len()
+                != self.relative_target_transition_output_bias.len()
+        {
+            return Err(
+                TassadarExecutorAttentionTrainingError::CheckpointWidthMismatch {
+                    tensor: String::from("relative_target_transition_output_bias"),
+                    expected: model
+                        .weights()
+                        .relative_target_transition_output_bias()
+                        .len(),
+                    actual: self.relative_target_transition_output_bias.len(),
+                },
+            );
         }
         model
             .weights_mut()
@@ -409,6 +459,12 @@ impl TassadarExecutorAttentionCheckpointState {
                 .weights_mut()
                 .relative_target_output_projection_mut()
                 .copy_from_slice(self.relative_target_output_projection.as_slice());
+        }
+        if !self.relative_target_transition_output_bias.is_empty() {
+            model
+                .weights_mut()
+                .relative_target_transition_output_bias_mut()
+                .copy_from_slice(self.relative_target_transition_output_bias.as_slice());
         }
         model.refresh_after_training();
         Ok(model)
@@ -551,9 +607,7 @@ pub fn train_tassadar_executor_attention_windowed(
         let checkpoint: TassadarExecutorAttentionCheckpointState =
             serde_json::from_slice(&checkpoint_bytes).map_err(|error| {
                 TassadarExecutorAttentionTrainingError::Deserialize {
-                    artifact_kind: String::from(
-                        "tassadar_executor_attention_checkpoint_state",
-                    ),
+                    artifact_kind: String::from("tassadar_executor_attention_checkpoint_state"),
                     path: checkpoint_ref.clone(),
                     error,
                 }
@@ -573,7 +627,7 @@ pub fn train_tassadar_executor_attention_windowed(
     let total_epochs = total_stage_epochs(config);
 
     emit_tassadar_progress(format!(
-        "tassadar_attention_progress phase=train_start run={} epochs={} stages={} learning_rate={:.6} prompt_cap={} validation_target_cap={} train_examples={} validation_examples={} train_output_head={} train_relative_target_output_bias={} train_relative_target_output_projection={} projection_lr_scale={:.4}",
+        "tassadar_attention_progress phase=train_start run={} epochs={} stages={} learning_rate={:.6} prompt_cap={} validation_target_cap={} train_examples={} validation_examples={} train_output_head={} train_relative_target_output_bias={} train_relative_target_output_projection={} train_relative_target_transition_output_bias={} projection_lr_scale={:.4} transition_lr_scale={:.4}",
         config.run_id,
         total_epochs,
         config.stages.len(),
@@ -581,11 +635,16 @@ pub fn train_tassadar_executor_attention_windowed(
         config.prompt_window_token_cap,
         config.target_token_cap,
         train_examples.len(),
-        bundle.dataset.split_examples(TassadarSequenceSplit::Validation).len(),
+        bundle
+            .dataset
+            .split_examples(TassadarSequenceSplit::Validation)
+            .len(),
         config.train_output_head,
         config.train_relative_target_output_bias,
         config.train_relative_target_output_projection,
+        config.train_relative_target_transition_output_bias,
         config.relative_target_output_projection_learning_rate_scale,
+        config.relative_target_transition_output_bias_learning_rate_scale,
     ));
     let mut global_epoch_index = 0_u32;
 
@@ -609,13 +668,16 @@ pub fn train_tassadar_executor_attention_windowed(
             let vocab_size = model.descriptor().config.vocab_size;
             let mut projection_grad = vec![0.0; model_width * vocab_size];
             let mut bias_grad = vec![0.0; vocab_size];
-            let mut relative_target_output_bias_grad = vec![
+            let mut relative_target_output_bias_grad =
+                vec![0.0; model.weights().relative_target_output_bias().len()];
+            let mut relative_target_output_projection_grad =
+                vec![0.0; model.weights().relative_target_output_projection().len()];
+            let mut relative_target_transition_output_bias_grad = vec![
                 0.0;
-                model.weights().relative_target_output_bias().len()
-            ];
-            let mut relative_target_output_projection_grad = vec![
-                0.0;
-                model.weights().relative_target_output_projection().len()
+                model
+                    .weights()
+                    .relative_target_transition_output_bias()
+                    .len()
             ];
             let mut total_loss = 0.0_f32;
             let mut total_target_tokens = 0_u32;
@@ -649,9 +711,11 @@ pub fn train_tassadar_executor_attention_windowed(
                 let end_logit_index = start_logit_index + window.reference_target.len();
                 let mut sequence_loss = 0.0_f32;
 
-                for (target_index, logit_index) in (start_logit_index..end_logit_index).enumerate() {
+                for (target_index, logit_index) in (start_logit_index..end_logit_index).enumerate()
+                {
                     let loss_scale = loss_scale_for_target_index(stage, target_index);
                     let mut adjusted_logits = forward.logits[logit_index].clone();
+                    let previous_token = sequence.as_slice()[logit_index];
                     model.apply_relative_target_output_bias_in_place(
                         adjusted_logits.as_mut_slice(),
                         target_index,
@@ -659,6 +723,11 @@ pub fn train_tassadar_executor_attention_windowed(
                     model.apply_relative_target_output_projection_in_place(
                         adjusted_logits.as_mut_slice(),
                         &forward.hidden_states[logit_index],
+                        target_index,
+                    );
+                    model.apply_relative_target_transition_output_bias_in_place(
+                        adjusted_logits.as_mut_slice(),
+                        Some(previous_token),
                         target_index,
                     );
                     sequence_loss += accumulate_attention_output_step_gradients(
@@ -686,6 +755,12 @@ pub fn train_tassadar_executor_attention_windowed(
                         } else {
                             None
                         },
+                        if config.train_relative_target_transition_output_bias {
+                            Some(relative_target_transition_output_bias_grad.as_mut_slice())
+                        } else {
+                            None
+                        },
+                        previous_token,
                         target_index,
                         vocab_size,
                     );
@@ -752,6 +827,18 @@ pub fn train_tassadar_executor_attention_windowed(
                         *weight -= projection_scale * gradient;
                     }
                 }
+                if config.train_relative_target_transition_output_bias {
+                    let transition_scale =
+                        scale * config.relative_target_transition_output_bias_learning_rate_scale;
+                    for (weight, gradient) in model
+                        .weights_mut()
+                        .relative_target_transition_output_bias_mut()
+                        .iter_mut()
+                        .zip(relative_target_transition_output_bias_grad.iter())
+                    {
+                        *weight -= transition_scale * gradient;
+                    }
+                }
                 model.refresh_after_training();
             }
 
@@ -795,15 +882,15 @@ pub fn train_tassadar_executor_attention_windowed(
                 target_token_count: total_target_tokens,
                 validation: validation.clone(),
             };
-            let should_replace_best = best_validation
-                .as_ref()
-                .is_none_or(|best: &TassadarExecutorArchitectureFamilyReport| {
+            let should_replace_best = best_validation.as_ref().is_none_or(
+                |best: &TassadarExecutorArchitectureFamilyReport| {
                     let candidate_rank = attention_correctness_rank(&validation);
                     let best_rank = attention_correctness_rank(best);
                     candidate_rank > best_rank
                         || (candidate_rank == best_rank
                             && best_mean_loss.is_some_and(|best_loss| mean_loss < best_loss))
-                });
+                },
+            );
             if should_replace_best {
                 best_model = Some(model.clone());
                 best_checkpoint = Some(TassadarExecutorAttentionCheckpointState::new(
@@ -946,6 +1033,8 @@ fn accumulate_attention_output_step_gradients(
     bias_grad: Option<&mut [f32]>,
     relative_target_output_bias_grad: Option<&mut [f32]>,
     relative_target_output_projection_grad: Option<&mut [f32]>,
+    relative_target_transition_output_bias_grad: Option<&mut [f32]>,
+    previous_token: TokenId,
     relative_target_index: usize,
     vocab_size: usize,
 ) -> f32 {
@@ -956,8 +1045,13 @@ fn accumulate_attention_output_step_gradients(
     let mut bias_grad = bias_grad;
     let mut relative_target_output_bias_grad = relative_target_output_bias_grad;
     let mut relative_target_output_projection_grad = relative_target_output_projection_grad;
+    let mut relative_target_transition_output_bias_grad =
+        relative_target_transition_output_bias_grad;
     let relative_target_bias_offset = relative_target_index * vocab_size;
     let relative_target_projection_offset = relative_target_index * hidden.len() * vocab_size;
+    let previous_token_index = previous_token.as_u32() as usize;
+    let relative_target_transition_offset =
+        (relative_target_index * vocab_size + previous_token_index) * vocab_size;
     for (token_index, probability) in probabilities.iter().enumerate() {
         let delta = (probability - f32::from(token_index == target_token_index)) * loss_scale;
         if let Some(bias_grad) = bias_grad.as_deref_mut() {
@@ -989,6 +1083,14 @@ fn accumulate_attention_output_step_gradients(
                 }
             }
         }
+        if let Some(relative_target_transition_output_bias_grad) =
+            relative_target_transition_output_bias_grad.as_deref_mut()
+        {
+            let transition_index = relative_target_transition_offset + token_index;
+            if transition_index < relative_target_transition_output_bias_grad.len() {
+                relative_target_transition_output_bias_grad[transition_index] += delta;
+            }
+        }
     }
     -probability.ln() * loss_scale
 }
@@ -1007,10 +1109,7 @@ fn loss_scale_for_target_index(
 }
 
 fn softmax(logits: &[f32]) -> Vec<f32> {
-    let max_logit = logits
-        .iter()
-        .copied()
-        .fold(f32::NEG_INFINITY, f32::max);
+    let max_logit = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let mut exps = logits
         .iter()
         .map(|logit| (logit - max_logit).exp())
@@ -1079,17 +1178,16 @@ mod tests {
 
     use super::{
         TASSADAR_EXECUTOR_ATTENTION_RUN_BUNDLE_FILE,
-        TASSADAR_EXECUTOR_ATTENTION_TRAINING_REPORT_FILE,
-        run_tassadar_executor_attention_training,
-        train_tassadar_executor_attention_windowed,
-        TassadarExecutorAttentionTrainingConfig,
+        TASSADAR_EXECUTOR_ATTENTION_TRAINING_REPORT_FILE, TassadarExecutorAttentionTrainingConfig,
+        run_tassadar_executor_attention_training, train_tassadar_executor_attention_windowed,
     };
 
     #[test]
     fn attention_training_reduces_loss_and_writes_bundle() -> Result<(), Box<dyn std::error::Error>>
     {
-        let outcome =
-            train_tassadar_executor_attention_windowed(&TassadarExecutorAttentionTrainingConfig::reference())?;
+        let outcome = train_tassadar_executor_attention_windowed(
+            &TassadarExecutorAttentionTrainingConfig::reference(),
+        )?;
         let first_loss = outcome
             .report
             .epoch_reports

@@ -197,15 +197,19 @@ The next honest dependency is stronger work on the post-Phase-15 path:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
   the later hidden-state projection-adapter follow-ons under
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, and
+  the later transition-adapter follow-on under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`
   together show real progress over the seeded Phase 15 candidate and still beat
-  the preserved lookup baseline on the bounded comparison window via
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`,
+  the preserved lookup baseline on the bounded comparison windows via
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`
+  and `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7`,
   but the gate is still not cleared because the best learned attention artifact
-  remains at `10000` bps first-target, `6875` bps first-32, `0/2` exact
-  validation traces, and now has an explicit divergence signature:
-  `<step>` is followed by predicted `<byte_00>` where the reference requires
-  `<step_index>`
+  now sits at `10000` bps first-target, `8750` bps first-8, `7188` bps
+  first-32, `0/2` exact validation traces, and still has an explicit
+  divergence signature at a later structural field: the model now holds through
+  the first six target tokens but then predicts `<byte_00>` where the
+  reference requires `<pc>`
 - do not widen claims until one family actually clears the Phase 14 gate
 - do not promote 9x9 or Hungarian off this result
 
