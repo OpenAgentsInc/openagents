@@ -1,8 +1,16 @@
 # AttnRes Lab
 
-`AttnRes Lab` is the retained desktop pane that ports the original Burn/TUI
-demo into `apps/autopilot-desktop` using WGPUI for presentation and Psionic for
-all model, routing, parity, and training truth.
+`AttnRes Lab` is the retained desktop pane that ports the Burn/TUI AttnRes
+inspection flow into `apps/autopilot-desktop` using WGPUI for presentation and
+Psionic for model, routing, parity, and training truth.
+
+Important scope note:
+
+- the desktop lane now uses the Psionic local-reference AttnRes run rather
+  than the earlier bounded `6`-step reference lane
+- the local-reference run targets the Burn `demo_tui` full local-run bar at
+  `320` steps and keeps the same speed ladder semantics (`260/150/85/45/20 ms`)
+- the large-scale Moonshot paper results are a separate scale target entirely
 
 ## Open The Pane
 
@@ -12,15 +20,25 @@ all model, routing, parity, and training truth.
   and stepped training position.
 - If the app closed while a run was active, the pane restores in a paused state
   rather than silently resuming.
+- Incompatible persisted `Completed` state from the retired `6`-step lane is
+  reset on load so the pane cannot reopen in a stale "completed" state against
+  the new `320`-step local-reference run.
 
 ## What The Pane Runs
 
-- Training uses the repo-owned Psionic tiny-training reference corpus and the
-  Psionic stepwise runner.
+- Training now uses the repo-owned Psionic local-reference corpus and the
+  Psionic local-reference stepwise runner.
 - Inference uses the current stepped Psionic model through the local AttnRes
   generation service.
 - Routing diagnostics and two-phase parity are computed from real Psionic model
   and runtime outputs.
+- Programmatic control via `autopilotctl` operates the same full local run
+  without booting the pane.
+
+Current limitation:
+
+- this is now the full local reference run, but it is still not the same thing
+  as the paper-scale Moonshot research regime
 
 ## Views
 
@@ -48,6 +66,12 @@ all model, routing, parity, and training truth.
 - Training telemetry uses ring gauges, signal triplets, and ribbon-history
   rails for loss, EMA, and selectivity instead of text-only summaries, so the
   desktop port is strictly denser and more legible than the terminal original.
+- The pane now budgets long strings against card width/height instead of
+  painting unbounded mono text through panel edges, and `Selected Detail` has
+  a compact rendering path for shorter inference cards.
+- Runtime cards and `autopilotctl attnres status` now expose loop timing,
+  throughput, and ETA so the longer `320`-step run remains inspectable instead
+  of feeling like an opaque background spinner.
 
 ## Controls
 

@@ -2194,6 +2194,14 @@ fn print_attnres_text(status: &DesktopControlAttnResStatus) {
         status.current_block_fill,
         status.completed_blocks
     );
+    println!(
+        "timing: train_ms={:.1} diag_ms={:.1} avg_loop_ms={:.1} steps_per_second={:.1} eta_seconds={:.1}",
+        status.last_train_ms,
+        status.last_diag_ms,
+        status.avg_loop_ms,
+        status.steps_per_second,
+        status.eta_seconds
+    );
     if let Some(selected) = status.selected_sublayer.as_ref() {
         println!(
             "selected: index={} label={} kind={} target_block={} dominant={} ({:.1}%) cache={:.1}% partial={:.1}% query_norm={:.3} selectivity={:.1}%",

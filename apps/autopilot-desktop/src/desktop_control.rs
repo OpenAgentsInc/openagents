@@ -266,6 +266,11 @@ pub struct DesktopControlAttnResStatus {
     pub model_label: String,
     pub architecture_label: String,
     pub run_label: String,
+    pub last_train_ms: f64,
+    pub last_diag_ms: f64,
+    pub avg_loop_ms: f64,
+    pub steps_per_second: f64,
+    pub eta_seconds: f64,
     pub training_loss: f32,
     pub ema_loss: f32,
     pub avg_selectivity: f32,
@@ -2787,6 +2792,11 @@ fn desktop_control_attnres_status(state: &RenderState) -> DesktopControlAttnResS
         model_label: snapshot.model_label.clone(),
         architecture_label: snapshot.architecture_label.clone(),
         run_label: snapshot.run_label.clone(),
+        last_train_ms: snapshot.last_train_ms,
+        last_diag_ms: snapshot.last_diag_ms,
+        avg_loop_ms: snapshot.avg_loop_ms,
+        steps_per_second: snapshot.steps_per_second,
+        eta_seconds: snapshot.eta_seconds,
         training_loss: snapshot.training_loss,
         ema_loss: snapshot.ema_loss,
         avg_selectivity: snapshot.avg_selectivity,
@@ -3317,7 +3327,8 @@ fn snapshot_payload_response(
     state: &RenderState,
     message: impl Into<String>,
 ) -> DesktopControlActionOutcome {
-    let snapshot = snapshot_for_state(state);
+    let mut snapshot = snapshot_for_state(state);
+    refresh_snapshot_attnres_summary(&mut snapshot);
     match serde_json::to_value(&snapshot) {
         Ok(payload) => DesktopControlActionOutcome::with_snapshot(
             DesktopControlActionResponse::ok_with_payload(message, payload),
@@ -7743,16 +7754,39 @@ fn auth_token_preview(auth_token: &str) -> String {
     }
 }
 
+fn refresh_snapshot_attnres_summary(snapshot: &mut DesktopControlSnapshot) {
+    let Ok(status) = crate::attnres_lab_control::current_status() else {
+        return;
+    };
+    snapshot.attnres_lab.available = true;
+    snapshot.attnres_lab.playback_state = status.playback_state.status_label().to_string();
+    snapshot.attnres_lab.running = status.playback_state.is_running();
+    snapshot.attnres_lab.selected_view = status.selected_view.label().to_string();
+    snapshot.attnres_lab.selected_sublayer = status.selected_sublayer;
+    snapshot.attnres_lab.selected_sublayer_label = status
+        .snapshot
+        .sublayers
+        .get(status.selected_sublayer)
+        .map(|sublayer| sublayer.label.clone());
+    snapshot.attnres_lab.step = status.snapshot.step;
+    snapshot.attnres_lab.max_steps = status.snapshot.max_steps;
+    snapshot.attnres_lab.speed_multiplier = status.snapshot.speed_multiplier;
+    snapshot.attnres_lab.run_status = status.snapshot.run_status.clone();
+    snapshot.attnres_lab.last_action = status.last_action.clone();
+    snapshot.attnres_lab.last_error = status.last_error.clone();
+}
+
 async fn desktop_control_snapshot(
     State(state): State<DesktopControlHttpState>,
     headers: HeaderMap,
 ) -> Result<Json<DesktopControlSnapshot>, StatusCode> {
     authorize_request(&headers, &state)?;
-    let snapshot = state
+    let mut snapshot = state
         .snapshot
         .lock()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .clone();
+    refresh_snapshot_attnres_summary(&mut snapshot);
     Ok(Json(snapshot))
 }
 

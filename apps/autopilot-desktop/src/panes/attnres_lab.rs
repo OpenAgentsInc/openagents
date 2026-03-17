@@ -8,8 +8,8 @@ use crate::app_state::{
     AttnResLabSublayerSnapshot, AttnResLabViewMode,
 };
 use crate::pane_renderer::{
-    paint_action_button, paint_label_line, paint_multiline_phrase, paint_secondary_button,
-    paint_source_badge, paint_state_summary, paint_tertiary_button,
+    paint_action_button, paint_secondary_button, paint_source_badge, paint_state_summary,
+    paint_tertiary_button, split_text_for_display,
 };
 use crate::pane_system::{
     attnres_lab_faster_button_bounds, attnres_lab_help_button_bounds,
@@ -28,6 +28,8 @@ const ACCENT_CORAL: u32 = 0xFDA4AF;
 const MESH_ROWS: usize = 8;
 const MESH_COLS: usize = 20;
 const RIBBON_SEGMENTS: usize = 32;
+const PANEL_LINE_HEIGHT: f32 = 18.0;
+const PANEL_TEXT_RIGHT_PAD: f32 = 12.0;
 
 const ALGO_STEPS: [(&str, &str); 5] = [
     (
@@ -237,6 +239,8 @@ fn paint_title_block(
         pane_state.snapshot.max_steps,
         pane_state.snapshot.speed_multiplier
     );
+    let summary_x = bounds.max_x() - 266.0;
+    let hero_text_right = summary_x - 18.0;
 
     paint.scene.draw_text(paint.text.layout_mono(
         title,
@@ -244,14 +248,26 @@ fn paint_title_block(
         12.0,
         theme::text::PRIMARY,
     ));
-    paint.scene.draw_text(paint.text.layout(
+    let fitted_subtitle = truncate_text_to_width(
+        paint,
         subtitle.as_str(),
+        hero_text_right - (bounds.origin.x + 14.0),
+        10.0,
+    );
+    paint.scene.draw_text(paint.text.layout(
+        fitted_subtitle.as_str(),
         Point::new(bounds.origin.x + 14.0, bounds.origin.y + 36.0),
         10.0,
         theme::text::MUTED,
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
+    let fitted_selection_line = truncate_mono_text_to_width(
+        paint,
         selection_line.as_str(),
+        hero_text_right - (bounds.origin.x + 14.0),
+        10.0,
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        fitted_selection_line.as_str(),
         Point::new(bounds.origin.x + 14.0, bounds.origin.y + 54.0),
         10.0,
         accent.with_alpha(0.9),
@@ -259,7 +275,7 @@ fn paint_title_block(
 
     let summary_bottom = paint_state_summary(
         paint,
-        bounds.max_x() - 266.0,
+        summary_x,
         bounds.origin.y + 10.0,
         pane_state.load_state,
         summary.as_str(),
@@ -359,7 +375,7 @@ fn paint_overview(
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
-    paint_runtime_panel(runtime_bounds, snapshot, selected, phase, paint);
+    paint_runtime_panel(runtime_bounds, snapshot, phase, paint);
 
     let selected_width = (bottom_bounds.size.width * 0.40).max(268.0);
     let loss_width = (bottom_bounds.size.width * 0.24).clamp(180.0, 260.0);
@@ -569,9 +585,9 @@ fn paint_inference(
     );
     let cache_bounds = Bounds::new(
         right_bounds.origin.x,
-        right_bounds.max_y() - (right_bounds.size.height * 0.34).max(88.0),
+        right_bounds.max_y() - (right_bounds.size.height * 0.26).clamp(76.0, 112.0),
         right_bounds.size.width,
-        (right_bounds.size.height * 0.34).max(88.0),
+        (right_bounds.size.height * 0.26).clamp(76.0, 112.0),
     );
     let detail_bounds = Bounds::new(
         right_bounds.origin.x,
@@ -709,8 +725,10 @@ fn paint_heatmap_panel(
             .map(|selected| selected.label.as_str())
             .unwrap_or("-")
     );
+    let fitted_legend =
+        truncate_mono_text_to_width(paint, legend.as_str(), bounds.size.width - 24.0, 10.0);
     paint.scene.draw_text(paint.text.layout_mono(
-        legend.as_str(),
+        fitted_legend.as_str(),
         Point::new(bounds.origin.x + 12.0, bounds.max_y() - 10.0),
         10.0,
         theme::text::MUTED,
@@ -773,23 +791,26 @@ fn paint_metrics_panel(
 
     let meta_x = (bounds.origin.x + 196.0).min(bounds.max_x() - 146.0);
     let mut y = bounds.origin.y + 40.0;
-    y = paint_label_line(paint, meta_x, y, "Run", snapshot.run_label.as_str());
-    y = paint_label_line(
+    y = paint_panel_label_line(paint, bounds, meta_x, y, "Run", snapshot.run_label.as_str());
+    y = paint_panel_label_line(
         paint,
+        bounds,
         meta_x,
         y,
         "Loss",
         format!("{:.3}", snapshot.training_loss).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         meta_x,
         y,
         "EMA",
         format!("{:.3}", snapshot.ema_loss).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         meta_x,
         y,
         "Block",
@@ -802,8 +823,9 @@ fn paint_metrics_panel(
     let query_norm = selected
         .map(|sublayer| sublayer.query_norm)
         .unwrap_or_else(|| mean_query_norm(snapshot));
-    let _ = paint_label_line(
+    let _ = paint_panel_label_line(
         paint,
+        bounds,
         meta_x,
         y,
         "Selected q",
@@ -899,8 +921,9 @@ fn paint_topology_panel(
     paint_panel_texture(bounds, accent, phase, paint);
 
     let mut y = bounds.origin.y + 34.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Layers",
@@ -911,8 +934,9 @@ fn paint_topology_panel(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Blocks",
@@ -922,15 +946,17 @@ fn paint_topology_panel(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Heads",
         format!("{}", snapshot.num_heads).as_str(),
     );
-    let _ = paint_label_line(
+    let _ = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Boundaries",
@@ -987,7 +1013,6 @@ fn paint_topology_panel(
 fn paint_runtime_panel(
     bounds: Bounds,
     snapshot: &crate::app_state::AttnResLabSnapshot,
-    selected: Option<&AttnResLabSublayerSnapshot>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -995,8 +1020,9 @@ fn paint_runtime_panel(
     paint_panel_texture(bounds, accent, phase, paint);
 
     let mut y = bounds.origin.y + 34.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Tensor",
@@ -1006,8 +1032,9 @@ fn paint_runtime_panel(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Query",
@@ -1017,28 +1044,47 @@ fn paint_runtime_panel(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
-        "Regime",
-        snapshot_route_regime(snapshot),
+        "Throughput",
+        format!("{:.1} steps/s", snapshot.steps_per_second).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Loop",
+        format!(
+            "{:.1} ms train // {:.1} ms diag // {:.1} ms avg",
+            snapshot.last_train_ms, snapshot.last_diag_ms, snapshot.avg_loop_ms
+        )
+        .as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "ETA",
+        format!("{:.1}s remaining", snapshot.eta_seconds).as_str(),
+    );
+    let _ = paint_panel_label_line(
+        paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Playback",
-        format!("{} // {}x", snapshot.run_status, snapshot.speed_multiplier).as_str(),
-    );
-    let _ = paint_label_line(
-        paint,
-        bounds.origin.x + 12.0,
-        y,
-        "Selected",
-        selected
-            .map(|sublayer| sublayer.route_mode_label())
-            .unwrap_or("no selection"),
+        format!(
+            "{} // {}x // {}",
+            snapshot.run_status,
+            snapshot.speed_multiplier,
+            snapshot_route_regime(snapshot)
+        )
+        .as_str(),
     );
 
     let signals_y = (bounds.max_y() - 74.0).max(bounds.origin.y + 54.0);
@@ -1081,29 +1127,33 @@ fn paint_loss_stream(
     paint_panel_texture(bounds, accent, phase, paint);
 
     let mut y = bounds.origin.y + 34.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Window",
         format!("{} points", snapshot.metrics.len()).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Loss",
         format!("{:.3}", snapshot.training_loss).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "EMA",
         format!("{:.3}", snapshot.ema_loss).as_str(),
     );
-    let _ = paint_label_line(
+    let _ = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Selectivity",
@@ -1183,15 +1233,17 @@ fn paint_pipeline_inspector(
     };
 
     let mut y = bounds.origin.y + 34.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Label",
         selected.label.as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Layer / slot",
@@ -1202,21 +1254,23 @@ fn paint_pipeline_inspector(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Mode",
         selected.route_mode_label(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Entropy",
         format!("{:.2}", selected.entropy).as_str(),
     );
-    let _ = paint_label_line(paint, bounds.origin.x + 12.0, y, "Regime", regime);
+    let _ = paint_panel_label_line(paint, bounds, bounds.origin.x + 12.0, y, "Regime", regime);
 }
 
 fn paint_selected_sublayer(
@@ -1273,16 +1327,19 @@ fn paint_selected_sublayer(
         Hsla::from_hex(ACCENT_GOLD).with_alpha(0.86),
     ));
 
+    let compact = bounds.size.height < 190.0 || bounds.size.width < 360.0;
     let mut y = bounds.origin.y + 36.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Label",
         selected.label.as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Layer / slot",
@@ -1293,15 +1350,17 @@ fn paint_selected_sublayer(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Mode",
         selected.route_mode_label(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Dominant route",
@@ -1312,22 +1371,25 @@ fn paint_selected_sublayer(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Kind / block",
         format!("{} // B{}", selected.kind_label, selected.target_block).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Query / entropy",
         format!("{:.2} // {:.2}", selected.query_norm, selected.entropy).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Cache / partial",
@@ -1338,34 +1400,40 @@ fn paint_selected_sublayer(
         )
         .as_str(),
     );
-    y = paint_label_line(
+    if !compact {
+        y = paint_panel_label_line(
+            paint,
+            bounds,
+            bounds.origin.x + 12.0,
+            y,
+            "Sources",
+            format!("{}", selected.source_count()).as_str(),
+        );
+        y = paint_panel_label_line(
+            paint,
+            bounds,
+            bounds.origin.x + 12.0,
+            y,
+            "Boundary",
+            if selected.starts_new_block_before {
+                "opened before sublayer"
+            } else {
+                "stayed inside block"
+            },
+        );
+    }
+    y = paint_panel_multiline_phrase(
         paint,
-        bounds.origin.x + 12.0,
-        y,
-        "Sources",
-        format!("{}", selected.source_count()).as_str(),
-    );
-    y = paint_label_line(
-        paint,
-        bounds.origin.x + 12.0,
-        y,
-        "Boundary",
-        if selected.starts_new_block_before {
-            "opened before sublayer"
-        } else {
-            "stayed inside block"
-        },
-    );
-    y = paint_multiline_phrase(
-        paint,
+        bounds,
         bounds.origin.x + 12.0,
         y + 8.0,
         "route",
         selected.route_note.as_str(),
+        if compact { 2 } else { 3 },
     );
 
     let ribbon_top = (y + 8.0).min(bounds.max_y() - 28.0);
-    if ribbon_top + 12.0 <= bounds.max_y() - 10.0 {
+    if !compact && ribbon_top + 12.0 <= bounds.max_y() - 10.0 {
         paint.scene.draw_text(paint.text.layout_mono(
             "ROUTE FIELD",
             Point::new(bounds.origin.x + 12.0, ribbon_top + 9.0),
@@ -1414,19 +1482,24 @@ fn paint_event_feed(bounds: Bounds, events: &[String], phase: f32, paint: &mut P
     );
 
     let mut y = bounds.origin.y + 38.0;
-    for (index, event) in events.iter().take(5).enumerate() {
+    let remaining_events = ((bounds.max_y() - y - 16.0) / (PANEL_LINE_HEIGHT + 8.0))
+        .floor()
+        .max(1.0) as usize;
+    for (index, event) in events.iter().take(remaining_events.min(5)).enumerate() {
         let pulse = if index == 0 { 0.12 + phase * 0.12 } else { 0.0 };
         paint.scene.draw_quad(
             Quad::new(Bounds::new(rail_x - 4.0, y + 3.0, 9.0, 9.0))
                 .with_background(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.74 + pulse))
                 .with_corner_radius(4.5),
         );
-        y = paint_multiline_phrase(
+        y = paint_panel_multiline_phrase(
             paint,
+            bounds,
             bounds.origin.x + 34.0,
             y,
             format!("E{:02}", index + 1).as_str(),
             event.as_str(),
+            2,
         );
         y += 8.0;
     }
@@ -1504,14 +1577,17 @@ fn paint_algorithm_steps(
                 accent.with_alpha(0.82)
             },
         ));
+        let fitted_title = truncate_text_to_width(paint, title, row_bounds.size.width - 56.0, 11.0);
         paint.scene.draw_text(paint.text.layout(
-            title,
+            fitted_title.as_str(),
             Point::new(row_bounds.origin.x + 40.0, row_bounds.origin.y + 12.0),
             11.0,
             theme::text::PRIMARY,
         ));
+        let fitted_detail =
+            truncate_text_to_width(paint, detail, row_bounds.size.width - 56.0, 10.0);
         paint.scene.draw_text(paint.text.layout(
-            detail,
+            fitted_detail.as_str(),
             Point::new(row_bounds.origin.x + 40.0, row_bounds.origin.y + 26.0),
             10.0,
             theme::text::MUTED,
@@ -1702,24 +1778,28 @@ fn paint_route_metric_panel(
         Hsla::from_hex(ACCENT_CYAN)
     };
     paint_panel_texture(bounds, accent, phase, paint);
-    paint.scene.draw_text(
-        paint.text.layout(
-            format!(
-                "{} {} at {:.0}%.",
-                if use_logits {
-                    "Score field favors"
-                } else {
-                    "Routing mass favors"
-                },
-                selected.dominant_source_label,
-                selected.dominant_weight * 100.0
-            )
-            .as_str(),
-            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 30.0),
-            10.0,
-            theme::text::MUTED,
-        ),
+    let route_metric_summary = format!(
+        "{} {} at {:.0}%.",
+        if use_logits {
+            "Score field favors"
+        } else {
+            "Routing mass favors"
+        },
+        selected.dominant_source_label,
+        selected.dominant_weight * 100.0
     );
+    let fitted_route_metric_summary = truncate_text_to_width(
+        paint,
+        route_metric_summary.as_str(),
+        bounds.size.width - 24.0,
+        10.0,
+    );
+    paint.scene.draw_text(paint.text.layout(
+        fitted_route_metric_summary.as_str(),
+        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 30.0),
+        10.0,
+        theme::text::MUTED,
+    ));
     paint_bar_series(
         Bounds::new(
             bounds.origin.x + 12.0,
@@ -1753,20 +1833,25 @@ fn paint_route_story(
     let accent = Hsla::from_hex(ACCENT_CORAL);
     paint_panel_texture(bounds, accent, phase, paint);
 
+    let compact = bounds.size.height < 128.0;
     let mut y = bounds.origin.y + 34.0;
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "selected",
         selected.label.as_str(),
+        1,
     );
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y + 6.0,
         "story",
         selected.route_note.as_str(),
+        if compact { 1 } else { 2 },
     );
 
     let timeline_top = (y + 8.0).min(bounds.max_y() - 48.0);
@@ -1798,13 +1883,16 @@ fn paint_route_story(
         Hsla::from_hex(ACCENT_MINT),
         paint,
     );
+    let boundary_note = if selected.starts_new_block_before {
+        "Boundary opened before this sublayer"
+    } else {
+        "Boundary remained inside the active block"
+    };
+    let fitted_boundary_note =
+        truncate_mono_text_to_width(paint, boundary_note, bounds.size.width - 24.0, 10.0);
 
     paint.scene.draw_text(paint.text.layout_mono(
-        if selected.starts_new_block_before {
-            "Boundary opened before this sublayer"
-        } else {
-            "Boundary remained inside the active block"
-        },
+        fitted_boundary_note.as_str(),
         Point::new(
             bounds.origin.x + 12.0,
             (timeline_top + 58.0).min(bounds.max_y() - 10.0),
@@ -1880,36 +1968,41 @@ fn paint_inference_parity(
 
     let mut y = bounds.origin.y + 42.0;
     let x = bounds.origin.x + 194.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         x,
         y,
         "Hidden",
         snapshot.inference.hidden_parity_label.as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         x,
         y,
         "Hidden max abs",
         format!("{:.2e}", snapshot.inference.hidden_max_abs_diff).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         x,
         y,
         "Logits",
         snapshot.inference.logit_parity_label.as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         x,
         y,
         "Logit max abs",
         format!("{:.2e}", snapshot.inference.logit_max_abs_diff).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         x,
         y,
         "Merge Split",
@@ -1920,8 +2013,9 @@ fn paint_inference_parity(
         )
         .as_str(),
     );
-    let _ = paint_label_line(
+    let _ = paint_panel_label_line(
         paint,
+        bounds,
         x,
         y,
         "Block Cache",
@@ -1944,40 +2038,46 @@ fn paint_two_phase_schedule(
     paint_panel_texture(bounds, accent, phase, paint);
 
     let mut y = bounds.origin.y + 34.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Prompt",
         format!("{} tokens", snapshot.inference.prompt_token_count).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Generated",
         format!("{} tokens", snapshot.inference.generated_token_count).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Sequence",
         format!("{} total", snapshot.inference.decoded_token_count).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Boundaries",
         join_labels(snapshot.inference.boundary_layers.as_slice()).as_str(),
     );
-    let _ = paint_multiline_phrase(
+    let _ = paint_panel_multiline_phrase(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y + 8.0,
         "schedule",
         snapshot.inference.schedule_note.as_str(),
+        2,
     );
 }
 
@@ -2033,12 +2133,14 @@ fn paint_online_merge(
             )
         })
         .unwrap_or_else(|| snapshot.inference.merge_note.clone());
-    let _ = paint_multiline_phrase(
+    let _ = paint_panel_multiline_phrase(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         bounds.max_y() - 34.0,
         "merge",
         merge_summary.as_str(),
+        1,
     );
 }
 
@@ -2052,22 +2154,25 @@ fn paint_cache_health(
     paint_panel_texture(bounds, accent, phase, paint);
 
     let mut y = bounds.origin.y + 34.0;
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Cached blocks",
         format!("{}", snapshot.inference.cached_blocks).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Active block",
         format!("{}", snapshot.active_block).as_str(),
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Partial block",
@@ -2077,19 +2182,22 @@ fn paint_cache_health(
             "closed"
         },
     );
-    y = paint_label_line(
+    y = paint_panel_label_line(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y,
         "Fill",
         format!("{:.0}%", snapshot.inference.block_cache_fill_share * 100.0).as_str(),
     );
-    let _ = paint_multiline_phrase(
+    let _ = paint_panel_multiline_phrase(
         paint,
+        bounds,
         bounds.origin.x + 12.0,
         y + 8.0,
         "cache",
         snapshot.inference.cache_note.as_str(),
+        1,
     );
 
     let track_bounds = Bounds::new(
@@ -2633,6 +2741,192 @@ fn build_ribbon_values(level: f32, phase: f32, frequency: f32) -> Vec<f32> {
         .collect()
 }
 
+fn paint_panel_label_line(
+    paint: &mut PaintContext,
+    bounds: Bounds,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+) -> f32 {
+    if remaining_panel_line_capacity(bounds, y) == 0 {
+        return y;
+    }
+
+    let value_x = x + panel_value_x_offset(bounds, x, label);
+    let max_width = (bounds.max_x() - value_x - PANEL_TEXT_RIGHT_PAD).max(24.0);
+    paint.scene.draw_text(paint.text.layout(
+        &format!("{label}:"),
+        Point::new(x, y),
+        theme::font_size::SM,
+        theme::text::MUTED,
+    ));
+    let fitted_value = truncate_mono_text_to_width(paint, value, max_width, theme::font_size::SM);
+    paint.scene.draw_text(paint.text.layout_mono(
+        fitted_value.as_str(),
+        Point::new(value_x, y),
+        theme::font_size::SM,
+        theme::text::PRIMARY,
+    ));
+    y + PANEL_LINE_HEIGHT
+}
+
+fn paint_panel_multiline_phrase(
+    paint: &mut PaintContext,
+    bounds: Bounds,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    max_lines: usize,
+) -> f32 {
+    let capacity = remaining_panel_line_capacity(bounds, y).min(max_lines.max(1));
+    if capacity == 0 {
+        return y;
+    }
+
+    let value_x = x + panel_value_x_offset(bounds, x, label);
+    let max_width = (bounds.max_x() - value_x - PANEL_TEXT_RIGHT_PAD).max(24.0);
+    let chunk_len = mono_chunk_len_for_width(max_width, theme::font_size::SM);
+    let lines = truncated_display_lines(value, chunk_len, capacity);
+
+    paint.scene.draw_text(paint.text.layout(
+        &format!("{label}:"),
+        Point::new(x, y),
+        theme::font_size::SM,
+        theme::text::MUTED,
+    ));
+
+    let mut line_y = y;
+    for line in lines {
+        paint.scene.draw_text(paint.text.layout_mono(
+            line.as_str(),
+            Point::new(value_x, line_y),
+            theme::font_size::SM,
+            theme::text::PRIMARY,
+        ));
+        line_y += PANEL_LINE_HEIGHT;
+    }
+    line_y
+}
+
+fn remaining_panel_line_capacity(bounds: Bounds, y: f32) -> usize {
+    let available_height = bounds.max_y() - y - PANEL_TEXT_RIGHT_PAD;
+    if available_height < 12.0 {
+        0
+    } else {
+        (available_height / PANEL_LINE_HEIGHT).floor().max(1.0) as usize
+    }
+}
+
+fn panel_value_x_offset(bounds: Bounds, x: f32, label: &str) -> f32 {
+    let available = (bounds.max_x() - x - PANEL_TEXT_RIGHT_PAD).max(64.0);
+    let preferred = (label.chars().count() as f32 * 6.2 + 18.0).clamp(72.0, 122.0);
+    preferred.min((available * 0.42).max(56.0))
+}
+
+fn mono_chunk_len_for_width(width: f32, font_size: f32) -> usize {
+    ((width / (font_size * 0.62)).floor() as usize).max(8)
+}
+
+fn truncated_display_lines(value: &str, chunk_len: usize, max_lines: usize) -> Vec<String> {
+    let mut lines = split_text_for_display(value, chunk_len.max(1));
+    if lines.len() <= max_lines {
+        return lines;
+    }
+
+    lines.truncate(max_lines);
+    if let Some(last) = lines.last_mut() {
+        *last = ellipsize_to_chars(last, chunk_len.max(4));
+    }
+    lines
+}
+
+fn ellipsize_to_chars(value: &str, max_chars: usize) -> String {
+    if max_chars <= 3 {
+        return ".".repeat(max_chars);
+    }
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let prefix = value.chars().take(max_chars - 3).collect::<String>();
+    format!("{prefix}...")
+}
+
+fn truncate_mono_text_to_width(
+    paint: &mut PaintContext,
+    value: &str,
+    max_width: f32,
+    font_size: f32,
+) -> String {
+    truncate_text_to_width_with_renderer(paint, value, max_width, font_size, true)
+}
+
+fn truncate_text_to_width(
+    paint: &mut PaintContext,
+    value: &str,
+    max_width: f32,
+    font_size: f32,
+) -> String {
+    truncate_text_to_width_with_renderer(paint, value, max_width, font_size, false)
+}
+
+fn truncate_text_to_width_with_renderer(
+    paint: &mut PaintContext,
+    value: &str,
+    max_width: f32,
+    font_size: f32,
+    mono: bool,
+) -> String {
+    if value.is_empty() || max_width <= 0.0 {
+        return String::new();
+    }
+
+    let measure = |candidate: &str, paint: &mut PaintContext| -> f32 {
+        if mono {
+            paint
+                .text
+                .layout_mono(candidate, Point::ZERO, font_size, theme::text::PRIMARY)
+                .bounds()
+                .size
+                .width
+        } else {
+            paint
+                .text
+                .layout(candidate, Point::ZERO, font_size, theme::text::PRIMARY)
+                .bounds()
+                .size
+                .width
+        }
+    };
+
+    if measure(value, paint) <= max_width {
+        return value.to_string();
+    }
+    if measure("...", paint) > max_width {
+        return String::new();
+    }
+
+    let chars: Vec<char> = value.chars().collect();
+    let mut low = 0usize;
+    let mut high = chars.len();
+    while low < high {
+        let mid = (low + high + 1) / 2;
+        let candidate = format!("{}...", chars[..mid].iter().collect::<String>());
+        if measure(candidate.as_str(), paint) <= max_width {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    if low == 0 {
+        String::from("...")
+    } else {
+        format!("{}...", chars[..low].iter().collect::<String>())
+    }
+}
+
 fn join_labels(values: &[String]) -> String {
     if values.is_empty() {
         String::from("-")
@@ -2876,59 +3170,73 @@ fn paint_help_overlay(
     paint_panel_texture(overlay, accent, 0.32, paint);
 
     let mut y = overlay.origin.y + 38.0;
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y,
         "Space",
         match playback_state {
-            AttnResLabPlaybackState::Armed => "Start live tiny-training",
+            AttnResLabPlaybackState::Armed => "Start the current Psionic run",
             AttnResLabPlaybackState::Running => "Pause the current run",
             AttnResLabPlaybackState::Paused => "Resume the current run",
             AttnResLabPlaybackState::Completed => "Restart from the seeded model",
         },
+        2,
     );
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
         "Up / Down",
         "Increase or decrease training speed (1x to 5x)",
+        2,
     );
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
         "Left / Right",
         "Inspect the previous or next AttnRes sublayer",
+        2,
     );
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
         "Tab or 1/2/3",
         "Cycle views or jump directly to Overview, Pipeline, or Inference",
+        2,
     );
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
         "r",
         "Reset the pane to the seeded Psionic checkpoint",
+        2,
     );
-    y = paint_multiline_phrase(
+    y = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
         "? / Esc",
         "Show or dismiss this overlay without closing the pane",
+        2,
     );
-    let _ = paint_multiline_phrase(
+    let _ = paint_panel_multiline_phrase(
         paint,
+        overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
         "Mouse",
         "Use the top-row controls for playback, speed, help, refresh, and sublayer inspection",
+        2,
     );
 }
 
