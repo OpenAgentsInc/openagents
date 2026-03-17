@@ -316,16 +316,19 @@ The current scope is:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, the
   newer transition-adapter follow-on now lives at
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, the
+  later joint-adapter fine-tune now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, and
   the current same-corpus comparison now lives at
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7`;
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v8`;
   those artifacts keep improving the first executor-attention boundary surface
   over the lookup baseline, and the latest bounded pair now records
   `10000` bps first-target, `8750` bps first-8, and `7188` bps first-32
   versus lookup `10000` / `6250` / `6563`, but the learned gate is still not
   green because exact validation traces remain `0/2` and the sharper remaining
-  blocker is now token `6`: the model predicts `<byte_00>` where the reference
-  requires `<pc>`
+  blocker is still token `6`: the model predicts `<byte_00>` where the
+  reference requires `<pc>`, and the later joint transition+projection
+  fine-tune reproduces that ceiling rather than beating it
 - landed trained-executor Phase 17 follow-on bar: `psionic-models` now carries
   a bounded typed `TassadarCompiledProgramExecutor` surface with persisted
   compile-evidence bundles, `psionic-eval` now emits exactness and

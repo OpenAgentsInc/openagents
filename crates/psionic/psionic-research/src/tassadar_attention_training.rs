@@ -16,17 +16,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-const BOUNDARY_ATTENTION_V4_CHECKPOINT_STATE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/checkpoint_state.json";
-const BOUNDARY_ATTENTION_V4_RUN_BUNDLE: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4/run_bundle.json";
+const BOUNDARY_ATTENTION_V5_CHECKPOINT_STATE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5/checkpoint_state.json";
+const BOUNDARY_ATTENTION_V5_RUN_BUNDLE: &str =
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5/run_bundle.json";
 
 /// Canonical output root for the first bounded learned attention-family run.
 pub const TASSADAR_EXECUTOR_ATTENTION_TRAINING_OUTPUT_DIR: &str =
     "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1";
 /// Canonical output root for the first boundary-first attention-family run.
 pub const TASSADAR_EXECUTOR_ATTENTION_BOUNDARY_OUTPUT_DIR: &str =
-    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5";
+    "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6";
 /// Canonical machine-readable training report artifact.
 pub const TASSADAR_EXECUTOR_ATTENTION_TRAINING_REPORT_FILE: &str = "training_report.json";
 /// Canonical machine-readable validation family report artifact.
@@ -195,10 +195,10 @@ impl TassadarExecutorAttentionTrainingConfig {
     #[must_use]
     pub fn boundary_curriculum_reference() -> Self {
         Self {
-            run_id: String::from("tassadar-executor-attention-sudoku-v0-boundary-v5"),
+            run_id: String::from("tassadar-executor-attention-sudoku-v0-boundary-v6"),
             dataset_version: String::from("train-v0"),
             epochs: 32,
-            learning_rate: 0.02,
+            learning_rate: 0.01,
             prompt_window_token_cap: 256,
             target_token_cap: 32,
             stages: vec![
@@ -228,15 +228,15 @@ impl TassadarExecutorAttentionTrainingConfig {
                     .with_early_prefix_weighting(8, 1.25),
             ],
             initial_checkpoint_state_ref: Some(String::from(
-                BOUNDARY_ATTENTION_V4_CHECKPOINT_STATE,
+                BOUNDARY_ATTENTION_V5_CHECKPOINT_STATE,
             )),
-            initial_run_bundle_ref: Some(String::from(BOUNDARY_ATTENTION_V4_RUN_BUNDLE)),
+            initial_run_bundle_ref: Some(String::from(BOUNDARY_ATTENTION_V5_RUN_BUNDLE)),
             train_output_head: false,
             train_relative_target_output_bias: false,
-            train_relative_target_output_projection: false,
+            train_relative_target_output_projection: true,
             train_relative_target_transition_output_bias: true,
-            relative_target_output_projection_learning_rate_scale: 1.0,
-            relative_target_transition_output_bias_learning_rate_scale: 6.0,
+            relative_target_output_projection_learning_rate_scale: 2.0,
+            relative_target_transition_output_bias_learning_rate_scale: 4.0,
         }
     }
 }

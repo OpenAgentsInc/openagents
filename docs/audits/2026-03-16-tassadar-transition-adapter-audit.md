@@ -6,6 +6,11 @@ hidden-state projection.
 
 It is still not a promotion note.
 
+It remains the first positive step deeper into the trace. The later
+joint-adapter fine-tune is recorded separately in
+`docs/audits/2026-03-16-tassadar-joint-adapter-audit.md` and reproduces this
+ceiling rather than beating it.
+
 ## Why This Note Exists
 
 The prior bounded attention-family evidence had already cleared the token-0
