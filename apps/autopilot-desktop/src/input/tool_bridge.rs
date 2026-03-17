@@ -1971,6 +1971,8 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     "tassadar_lab".to_string(),
                     json!({
                         "playback_state": state.tassadar_lab.playback_state.status_label(),
+                        "selected_source_mode": state.tassadar_lab.selected_source_mode.label(),
+                        "selected_source_label": state.tassadar_lab.current_source_label(),
                         "selected_view": state.tassadar_lab.selected_view.label(),
                         "selected_replay": state.tassadar_lab.current_replay().map(|entry| entry.label.as_str()),
                         "selected_update": state.tassadar_lab.selected_update,
@@ -1994,6 +1996,7 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                             "value": chip.value,
                             "tone": chip.tone,
                         })).collect::<Vec<_>>(),
+                        "local_events": state.tassadar_lab.local_events.iter().rev().take(6).collect::<Vec<_>>(),
                         "recent_events": state.tassadar_lab.snapshot().events.iter().rev().take(6).collect::<Vec<_>>(),
                         "last_action": state.tassadar_lab.last_action,
                         "last_error": state.tassadar_lab.last_error,

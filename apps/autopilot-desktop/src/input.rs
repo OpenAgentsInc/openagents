@@ -4259,9 +4259,21 @@ fn tassadar_lab_keyboard_action(key: Key, help_visible: bool) -> Option<Tassadar
         Key::Character(value) if value == "4" => Some(TassadarLabPaneAction::SetView(
             crate::app_state::TassadarLabViewMode::Evidence,
         )),
+        Key::Character(value) if value == "5" => Some(TassadarLabPaneAction::SetSourceMode(
+            crate::app_state::TassadarLabSourceMode::Replay,
+        )),
+        Key::Character(value) if value == "6" => Some(TassadarLabPaneAction::SetSourceMode(
+            crate::app_state::TassadarLabSourceMode::LiveArticleSession,
+        )),
+        Key::Character(value) if value == "7" => Some(TassadarLabPaneAction::SetSourceMode(
+            crate::app_state::TassadarLabSourceMode::LiveArticleHybridWorkflow,
+        )),
         Key::Character(value) if value == "?" => Some(TassadarLabPaneAction::ToggleHelp),
         Key::Character(value) if value == "[" => Some(TassadarLabPaneAction::PreviousFactLine),
         Key::Character(value) if value == "]" => Some(TassadarLabPaneAction::NextFactLine),
+        Key::Character(value) if value.eq_ignore_ascii_case("r") => {
+            Some(TassadarLabPaneAction::RefreshSnapshot)
+        }
         _ => None,
     }
 }
@@ -4649,7 +4661,7 @@ mod tests {
     }
 
     #[test]
-    fn tassadar_keyboard_mapping_tracks_replay_controls() {
+    fn tassadar_keyboard_mapping_tracks_live_and_replay_controls() {
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Named(NamedKey::Tab), false),
             Some(TassadarLabPaneAction::CycleView)
@@ -4685,6 +4697,28 @@ mod tests {
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Character("]".to_string()), false),
             Some(TassadarLabPaneAction::NextFactLine)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("5".to_string()), false),
+            Some(TassadarLabPaneAction::SetSourceMode(
+                crate::app_state::TassadarLabSourceMode::Replay
+            ))
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("6".to_string()), false),
+            Some(TassadarLabPaneAction::SetSourceMode(
+                crate::app_state::TassadarLabSourceMode::LiveArticleSession
+            ))
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("7".to_string()), false),
+            Some(TassadarLabPaneAction::SetSourceMode(
+                crate::app_state::TassadarLabSourceMode::LiveArticleHybridWorkflow
+            ))
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("r".to_string()), false),
+            Some(TassadarLabPaneAction::RefreshSnapshot)
         );
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Character("?".to_string()), false),

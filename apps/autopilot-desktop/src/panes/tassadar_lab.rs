@@ -4,15 +4,17 @@ use psionic_serve::{TassadarLabMetricChip, TassadarLabSourceKind, TassadarLabUpd
 use wgpui::components::hud::{DotShape, DotsGrid, Scanlines, SignalMeter};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{TassadarLabPaneState, TassadarLabViewMode};
+use crate::app_state::{TassadarLabPaneState, TassadarLabSourceMode, TassadarLabViewMode};
 use crate::pane_renderer::{
     paint_action_button, paint_secondary_button, paint_source_badge, paint_state_summary,
     paint_wrapped_label_line, split_text_for_display,
 };
 use crate::pane_system::{
-    tassadar_lab_evidence_button_bounds, tassadar_lab_help_button_bounds,
+    tassadar_lab_article_mode_button_bounds, tassadar_lab_evidence_button_bounds,
+    tassadar_lab_help_button_bounds, tassadar_lab_hybrid_mode_button_bounds,
     tassadar_lab_next_replay_button_bounds, tassadar_lab_overview_button_bounds,
     tassadar_lab_previous_replay_button_bounds, tassadar_lab_program_button_bounds,
+    tassadar_lab_refresh_button_bounds, tassadar_lab_replay_mode_button_bounds,
     tassadar_lab_trace_button_bounds,
 };
 
@@ -59,12 +61,35 @@ pub fn paint(content_bounds: Bounds, pane_state: &TassadarLabPaneState, paint: &
     );
     paint_action_button(
         tassadar_lab_previous_replay_button_bounds(content_bounds),
-        "Prev replay",
+        "Prev case",
         paint,
     );
     paint_action_button(
         tassadar_lab_next_replay_button_bounds(content_bounds),
-        "Next replay",
+        "Next case",
+        paint,
+    );
+    paint_filter_button(
+        tassadar_lab_replay_mode_button_bounds(content_bounds),
+        TassadarLabSourceMode::Replay.short_label(),
+        pane_state.selected_source_mode == TassadarLabSourceMode::Replay,
+        paint,
+    );
+    paint_filter_button(
+        tassadar_lab_article_mode_button_bounds(content_bounds),
+        TassadarLabSourceMode::LiveArticleSession.short_label(),
+        pane_state.selected_source_mode == TassadarLabSourceMode::LiveArticleSession,
+        paint,
+    );
+    paint_filter_button(
+        tassadar_lab_hybrid_mode_button_bounds(content_bounds),
+        TassadarLabSourceMode::LiveArticleHybridWorkflow.short_label(),
+        pane_state.selected_source_mode == TassadarLabSourceMode::LiveArticleHybridWorkflow,
+        paint,
+    );
+    paint_secondary_button(
+        tassadar_lab_refresh_button_bounds(content_bounds),
+        "Refresh",
         paint,
     );
     paint_secondary_button(
@@ -167,24 +192,29 @@ fn paint_hero(
     paint_panel_shell(bounds, accent, paint);
     paint_panel_texture(bounds, accent, phase, paint);
 
-    let replay_label = pane_state
-        .current_replay()
-        .map_or("Curated replay", |entry| entry.label.as_str());
-    let title = "TASSADAR LAB  //  REPLAY SHELL";
+    let replay_label = pane_state.current_source_label();
+    let title = format!(
+        "TASSADAR LAB  //  {}",
+        pane_state
+            .selected_source_mode
+            .hero_label()
+            .to_ascii_uppercase()
+    );
     let subtitle = format!(
         "{}  //  {}",
         replay_label,
         pane_state.snapshot().family_label
     );
     let status = format!(
-        "{}  //  {}  //  {} updates",
+        "{}  //  {}  //  {} cases  //  {} updates",
         pane_state.playback_state.status_label(),
         pane_state.snapshot().status_label,
+        pane_state.source_case_count(),
         pane_state.updates().len()
     );
 
     paint.scene.draw_text(paint.text.layout_mono(
-        title,
+        title.as_str(),
         Point::new(bounds.origin.x + 14.0, bounds.origin.y + 18.0),
         12.0,
         theme::text::PRIMARY,
@@ -202,7 +232,7 @@ fn paint_hero(
         accent.with_alpha(0.88),
     ));
     paint.scene.draw_text(paint.text.layout(
-        pane_state.snapshot().detail_label.as_str(),
+        pane_state.current_source_description(),
         Point::new(bounds.origin.x + 14.0, bounds.origin.y + 72.0),
         10.0,
         theme::text::MUTED,
@@ -279,7 +309,7 @@ fn paint_overview(
             .snapshot()
             .route_state_label
             .as_deref()
-            .unwrap_or("replay"),
+            .unwrap_or("none"),
         42,
     );
     let _ = paint_wrapped_label_line(
@@ -630,11 +660,19 @@ fn paint_fact_lines(bounds: Bounds, pane_state: &TassadarLabPaneState, paint: &m
 
 fn paint_event_feed(bounds: Bounds, pane_state: &TassadarLabPaneState, paint: &mut PaintContext) {
     let mut lines = pane_state
-        .snapshot()
-        .events
+        .local_events
         .iter()
-        .map(|line| format!("snapshot // {line}"))
+        .rev()
+        .map(|line| format!("desktop // {line}"))
         .collect::<Vec<_>>();
+    lines.extend(
+        pane_state
+            .snapshot()
+            .events
+            .iter()
+            .map(|line| format!("snapshot // {line}"))
+            .collect::<Vec<_>>(),
+    );
     lines.extend(
         pane_state
             .updates()
@@ -840,10 +878,11 @@ fn paint_help_overlay(content_bounds: Bounds, paint: &mut PaintContext) {
     let lines = [
         "TASSADAR LAB",
         "",
-        "Replay-first shell over Psionic lab surfaces.",
-        "This first pane only exposes curated committed replays:",
-        "- direct article session",
-        "- compiled article closure report",
+        "Live and replay shell over Psionic Tassadar lab surfaces.",
+        "Source modes:",
+        "- Replay: curated committed artifact roots",
+        "- Session: live article executor sessions",
+        "- Hybrid: live planner-owned hybrid workflows",
         "",
         "Views:",
         "- Overview: workload, posture, outputs, event feed",
@@ -851,7 +890,12 @@ fn paint_help_overlay(content_bounds: Bounds, paint: &mut PaintContext) {
         "- Program: runtime, decode, fact lines",
         "- Evidence: proof identity, lineage, selected update",
         "",
-        "This issue does not add live executor sessions, persistence, or CLI control yet.",
+        "Controls:",
+        "- Replay / Session / Hybrid buttons switch source mode",
+        "- Prev case / Next case step within the active source mode",
+        "- Refresh reloads the current live or replay source from Psionic",
+        "",
+        "Persistence, CLI control, and wider run-family browsing land later.",
     ];
     let mut y = overlay.origin.y + 18.0;
     for line in lines {

@@ -342,7 +342,7 @@ const PANE_SPECS: [PaneSpec; 59] = [
         command: Some(PaneCommandSpec {
             id: "pane.tassadar_lab",
             label: "Tassadar Lab",
-            description: "Open the replay-first Tassadar desktop lab pane",
+            description: "Open the replay and live Tassadar desktop lab pane",
             keybinding: None,
         }),
         hotbar: None,

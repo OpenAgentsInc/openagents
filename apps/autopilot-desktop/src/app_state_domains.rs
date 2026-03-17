@@ -1,15 +1,19 @@
 use super::*;
 use psionic_apple_fm::{AppleFmAdapterInventoryEntry, AppleFmAdapterSelection};
+use psionic_runtime::TassadarExecutorDecodeMode;
 use psionic_serve::{
-    LocalTassadarLabService, TassadarLabPreparedView, TassadarLabReplayCatalogEntry,
+    LocalTassadarLabService, TassadarArticleExecutorSessionRequest,
+    TassadarArticleHybridWorkflowRequest, TassadarLabPreparedView, TassadarLabReplayCatalogEntry,
     TassadarLabReplayId, TassadarLabRequest, TassadarLabSnapshot, TassadarLabSourceKind,
-    TassadarLabUpdate,
+    TassadarLabUpdate, TassadarPlannerFallbackPolicy, TassadarPlannerRoutingBudget,
+    TassadarPlannerRoutingPolicy,
 };
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
 const FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY: usize = 1_024;
 const TASSADAR_LAB_TRACE_CHUNK_SIZE: usize = 32;
+const TASSADAR_LAB_LOCAL_EVENT_LIMIT: usize = 12;
 
 pub struct LocalInferencePaneState {
     pub load_state: PaneLoadState,
@@ -648,6 +652,46 @@ mod attnres_lab_tests {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum TassadarLabSourceMode {
+    Replay,
+    LiveArticleSession,
+    LiveArticleHybridWorkflow,
+}
+
+impl TassadarLabSourceMode {
+    pub const ALL: [Self; 3] = [
+        Self::Replay,
+        Self::LiveArticleSession,
+        Self::LiveArticleHybridWorkflow,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Replay => "Replay",
+            Self::LiveArticleSession => "Article Session",
+            Self::LiveArticleHybridWorkflow => "Hybrid Workflow",
+        }
+    }
+
+    pub const fn short_label(self) -> &'static str {
+        match self {
+            Self::Replay => "Replay",
+            Self::LiveArticleSession => "Session",
+            Self::LiveArticleHybridWorkflow => "Hybrid",
+        }
+    }
+
+    pub const fn hero_label(self) -> &'static str {
+        match self {
+            Self::Replay => "Replay artifact",
+            Self::LiveArticleSession => "Live article session",
+            Self::LiveArticleHybridWorkflow => "Live hybrid workflow",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TassadarLabViewMode {
     Overview,
     Trace,
@@ -672,6 +716,7 @@ impl TassadarLabViewMode {
 #[serde(rename_all = "snake_case")]
 pub enum TassadarLabPlaybackState {
     Replay,
+    Live,
     Paused,
 }
 
@@ -679,9 +724,18 @@ impl TassadarLabPlaybackState {
     pub const fn status_label(self) -> &'static str {
         match self {
             Self::Replay => "replay loaded",
+            Self::Live => "live snapshot",
             Self::Paused => "paused inspection",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TassadarLabLiveCaseEntry {
+    pub source_mode: TassadarLabSourceMode,
+    pub label: String,
+    pub description: String,
+    pub request: TassadarLabRequest,
 }
 
 pub struct TassadarLabPaneState {
@@ -689,26 +743,36 @@ pub struct TassadarLabPaneState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub playback_state: TassadarLabPlaybackState,
+    pub selected_source_mode: TassadarLabSourceMode,
     pub show_help: bool,
     pub selected_view: TassadarLabViewMode,
     pub selected_replay: usize,
+    pub selected_article_session_case: usize,
+    pub selected_hybrid_workflow_case: usize,
     pub selected_update: usize,
     pub selected_readable_log_line: usize,
     pub selected_token_chunk: usize,
     pub selected_fact_line: usize,
     pub replay_catalog: Vec<TassadarLabReplayCatalogEntry>,
+    pub article_session_catalog: Vec<TassadarLabLiveCaseEntry>,
+    pub hybrid_workflow_catalog: Vec<TassadarLabLiveCaseEntry>,
+    pub local_events: Vec<String>,
     pub prepared_view: TassadarLabPreparedView,
 }
 
 impl Default for TassadarLabPaneState {
     fn default() -> Self {
         let replay_catalog = curated_tassadar_lab_replay_catalog();
+        let article_session_catalog = canonical_tassadar_lab_article_session_catalog();
+        let hybrid_workflow_catalog = canonical_tassadar_lab_hybrid_workflow_catalog();
         let selected_replay = 0usize;
         let default_replay_id = replay_catalog
             .get(selected_replay)
             .map(|entry| entry.replay_id)
             .unwrap_or(TassadarLabReplayId::ArticleSessionDirectMemoryHeavy);
-        match load_tassadar_lab_prepared_view(default_replay_id) {
+        match load_tassadar_lab_prepared_view(&TassadarLabRequest::Replay {
+            replay_id: default_replay_id,
+        }) {
             Ok(prepared_view) => Self {
                 load_state: PaneLoadState::Ready,
                 last_error: None,
@@ -719,14 +783,22 @@ impl Default for TassadarLabPaneState {
                         .map_or("Tassadar Lab", |entry| entry.label.as_str())
                 )),
                 playback_state: TassadarLabPlaybackState::Replay,
+                selected_source_mode: TassadarLabSourceMode::Replay,
                 show_help: false,
                 selected_view: TassadarLabViewMode::Overview,
                 selected_replay,
+                selected_article_session_case: 0,
+                selected_hybrid_workflow_case: 0,
                 selected_update: prepared_view.updates.len().saturating_sub(1),
                 selected_readable_log_line: 0,
                 selected_token_chunk: 0,
                 selected_fact_line: 0,
                 replay_catalog,
+                article_session_catalog,
+                hybrid_workflow_catalog,
+                local_events: vec![String::from(
+                    "Loaded replay artifact // Direct memory-heavy article session",
+                )],
                 prepared_view,
             },
             Err(error) => Self {
@@ -734,14 +806,20 @@ impl Default for TassadarLabPaneState {
                 last_error: Some(error.clone()),
                 last_action: Some(String::from("Failed to load replay Tassadar lab snapshot")),
                 playback_state: TassadarLabPlaybackState::Paused,
+                selected_source_mode: TassadarLabSourceMode::Replay,
                 show_help: false,
                 selected_view: TassadarLabViewMode::Overview,
                 selected_replay,
+                selected_article_session_case: 0,
+                selected_hybrid_workflow_case: 0,
                 selected_update: 0,
                 selected_readable_log_line: 0,
                 selected_token_chunk: 0,
                 selected_fact_line: 0,
                 replay_catalog,
+                article_session_catalog,
+                hybrid_workflow_catalog,
+                local_events: vec![format!("Load error // {error}")],
                 prepared_view: fallback_tassadar_lab_prepared_view(error.as_str()),
             },
         }
@@ -762,6 +840,97 @@ impl TassadarLabPaneState {
             self.selected_replay
                 .min(self.replay_catalog.len().saturating_sub(1)),
         )
+    }
+
+    pub fn current_article_session_case(&self) -> Option<&TassadarLabLiveCaseEntry> {
+        self.article_session_catalog.get(
+            self.selected_article_session_case
+                .min(self.article_session_catalog.len().saturating_sub(1)),
+        )
+    }
+
+    pub fn current_hybrid_workflow_case(&self) -> Option<&TassadarLabLiveCaseEntry> {
+        self.hybrid_workflow_catalog.get(
+            self.selected_hybrid_workflow_case
+                .min(self.hybrid_workflow_catalog.len().saturating_sub(1)),
+        )
+    }
+
+    pub fn current_source_label(&self) -> &str {
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => self
+                .current_replay()
+                .map(|entry| entry.label.as_str())
+                .unwrap_or("Replay"),
+            TassadarLabSourceMode::LiveArticleSession => self
+                .current_article_session_case()
+                .map(|entry| entry.label.as_str())
+                .unwrap_or("Live article session"),
+            TassadarLabSourceMode::LiveArticleHybridWorkflow => self
+                .current_hybrid_workflow_case()
+                .map(|entry| entry.label.as_str())
+                .unwrap_or("Live hybrid workflow"),
+        }
+    }
+
+    pub fn current_source_description(&self) -> &str {
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => self
+                .current_replay()
+                .map(|entry| entry.description.as_str())
+                .unwrap_or("Replay artifact"),
+            TassadarLabSourceMode::LiveArticleSession => self
+                .current_article_session_case()
+                .map(|entry| entry.description.as_str())
+                .unwrap_or("Live article session"),
+            TassadarLabSourceMode::LiveArticleHybridWorkflow => self
+                .current_hybrid_workflow_case()
+                .map(|entry| entry.description.as_str())
+                .unwrap_or("Live hybrid workflow"),
+        }
+    }
+
+    pub fn current_source_request(&self) -> TassadarLabRequest {
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => TassadarLabRequest::Replay {
+                replay_id: self
+                    .current_replay()
+                    .map(|entry| entry.replay_id)
+                    .unwrap_or(TassadarLabReplayId::ArticleSessionDirectMemoryHeavy),
+            },
+            TassadarLabSourceMode::LiveArticleSession => self
+                .current_article_session_case()
+                .map(|entry| entry.request.clone())
+                .unwrap_or_else(|| {
+                    canonical_tassadar_lab_article_session_catalog()[0]
+                        .request
+                        .clone()
+                }),
+            TassadarLabSourceMode::LiveArticleHybridWorkflow => self
+                .current_hybrid_workflow_case()
+                .map(|entry| entry.request.clone())
+                .unwrap_or_else(|| {
+                    canonical_tassadar_lab_hybrid_workflow_catalog()[0]
+                        .request
+                        .clone()
+                }),
+        }
+    }
+
+    pub fn source_case_count(&self) -> usize {
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => self.replay_catalog.len(),
+            TassadarLabSourceMode::LiveArticleSession => self.article_session_catalog.len(),
+            TassadarLabSourceMode::LiveArticleHybridWorkflow => self.hybrid_workflow_catalog.len(),
+        }
+    }
+
+    pub fn selected_source_index(&self) -> usize {
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => self.selected_replay,
+            TassadarLabSourceMode::LiveArticleSession => self.selected_article_session_case,
+            TassadarLabSourceMode::LiveArticleHybridWorkflow => self.selected_hybrid_workflow_case,
+        }
     }
 
     pub fn current_update(&self) -> Option<&TassadarLabUpdate> {
@@ -805,6 +974,33 @@ impl TassadarLabPaneState {
             .map(|fact| (fact.label.as_str(), fact.value.as_str()))
     }
 
+    pub fn push_local_event(&mut self, event: impl Into<String>) {
+        self.local_events.push(event.into());
+        if self.local_events.len() > TASSADAR_LAB_LOCAL_EVENT_LIMIT {
+            let excess = self.local_events.len() - TASSADAR_LAB_LOCAL_EVENT_LIMIT;
+            self.local_events.drain(0..excess);
+        }
+    }
+
+    pub fn apply_prepared_view(
+        &mut self,
+        prepared_view: TassadarLabPreparedView,
+        playback_state: TassadarLabPlaybackState,
+        action: impl Into<String>,
+    ) {
+        let action = action.into();
+        self.prepared_view = prepared_view;
+        self.selected_update = self.prepared_view.updates.len().saturating_sub(1);
+        self.selected_readable_log_line = 0;
+        self.selected_token_chunk = 0;
+        self.selected_fact_line = 0;
+        self.playback_state = playback_state;
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(action.clone());
+        self.push_local_event(action);
+    }
+
     pub fn cycle_view(&mut self) {
         let index = TassadarLabViewMode::ALL
             .iter()
@@ -813,31 +1009,25 @@ impl TassadarLabPaneState {
         self.selected_view = TassadarLabViewMode::ALL[(index + 1) % TassadarLabViewMode::ALL.len()];
     }
 
-    pub fn move_selected_replay(&mut self, delta: isize) -> Result<(), String> {
-        let len = self.replay_catalog.len();
+    pub fn move_selected_source_item(&mut self, delta: isize) -> Result<(), String> {
+        let len = self.source_case_count();
         if len == 0 {
             return Ok(());
         }
-        let next = (self.selected_replay as isize + delta).rem_euclid(len as isize) as usize;
-        self.load_replay_by_index(next)
+        let next =
+            (self.selected_source_index() as isize + delta).rem_euclid(len as isize) as usize;
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => self.selected_replay = next,
+            TassadarLabSourceMode::LiveArticleSession => self.selected_article_session_case = next,
+            TassadarLabSourceMode::LiveArticleHybridWorkflow => {
+                self.selected_hybrid_workflow_case = next;
+            }
+        }
+        Ok(())
     }
 
-    pub fn load_replay_by_index(&mut self, index: usize) -> Result<(), String> {
-        let Some(entry) = self.replay_catalog.get(index) else {
-            return Ok(());
-        };
-        let prepared_view = load_tassadar_lab_prepared_view(entry.replay_id)?;
-        self.selected_replay = index;
-        self.prepared_view = prepared_view;
-        self.selected_update = self.prepared_view.updates.len().saturating_sub(1);
-        self.selected_readable_log_line = 0;
-        self.selected_token_chunk = 0;
-        self.selected_fact_line = 0;
-        self.playback_state = TassadarLabPlaybackState::Replay;
-        self.load_state = PaneLoadState::Ready;
-        self.last_error = None;
-        self.last_action = Some(format!("Loaded {} replay", entry.label));
-        Ok(())
+    pub fn set_source_mode(&mut self, source_mode: TassadarLabSourceMode) {
+        self.selected_source_mode = source_mode;
     }
 
     pub fn move_selected_update(&mut self, delta: isize) {
@@ -896,11 +1086,132 @@ fn curated_tassadar_lab_replay_catalog() -> Vec<TassadarLabReplayCatalogEntry> {
 }
 
 fn load_tassadar_lab_prepared_view(
-    replay_id: TassadarLabReplayId,
+    request: &TassadarLabRequest,
 ) -> Result<TassadarLabPreparedView, String> {
     LocalTassadarLabService::new()
-        .prepare(&TassadarLabRequest::Replay { replay_id })
+        .prepare(request)
         .map_err(|error| error.to_string())
+}
+
+fn canonical_tassadar_lab_article_session_catalog() -> Vec<TassadarLabLiveCaseEntry> {
+    vec![
+        TassadarLabLiveCaseEntry {
+            source_mode: TassadarLabSourceMode::LiveArticleSession,
+            label: String::from("Direct memory-heavy article session"),
+            description: String::from(
+                "Live direct article session over the canonical memory-heavy kernel.",
+            ),
+            request: TassadarLabRequest::ArticleExecutorSession {
+                request: TassadarArticleExecutorSessionRequest::new(
+                    "desktop-tassadar-live-direct-memory-heavy",
+                    "memory_heavy_kernel",
+                    TassadarExecutorDecodeMode::HullCache,
+                ),
+            },
+        },
+        TassadarLabLiveCaseEntry {
+            source_mode: TassadarLabSourceMode::LiveArticleSession,
+            label: String::from("Fallback branch-heavy article session"),
+            description: String::from(
+                "Live article session that preserves sparse-top-k fallback on the branch-heavy kernel.",
+            ),
+            request: TassadarLabRequest::ArticleExecutorSession {
+                request: TassadarArticleExecutorSessionRequest::new(
+                    "desktop-tassadar-live-fallback-branch-heavy",
+                    "branch_heavy_kernel",
+                    TassadarExecutorDecodeMode::SparseTopK,
+                ),
+            },
+        },
+        TassadarLabLiveCaseEntry {
+            source_mode: TassadarLabSourceMode::LiveArticleSession,
+            label: String::from("Refused non-article article session"),
+            description: String::from(
+                "Live article-session refusal showing the typed non-article guardrail.",
+            ),
+            request: TassadarLabRequest::ArticleExecutorSession {
+                request: TassadarArticleExecutorSessionRequest::new(
+                    "desktop-tassadar-live-refusal-non-article",
+                    "locals_add",
+                    TassadarExecutorDecodeMode::ReferenceLinear,
+                ),
+            },
+        },
+    ]
+}
+
+fn canonical_tassadar_lab_hybrid_workflow_catalog() -> Vec<TassadarLabLiveCaseEntry> {
+    let branch_heavy_fallback_request = {
+        let request = TassadarArticleHybridWorkflowRequest::new(
+            "desktop-tassadar-live-hybrid-fallback-branch-heavy",
+            "planner-session-lab-beta",
+            "planner-article-fixture-v0",
+            "workflow-step-branch-heavy",
+            "delegate exact branch-heavy article workload into Tassadar",
+            "branch_heavy_kernel",
+            TassadarExecutorDecodeMode::SparseTopK,
+        )
+        .with_routing_policy(
+            TassadarPlannerRoutingPolicy::exact_executor_default()
+                .with_fallback_policy(TassadarPlannerFallbackPolicy::PlannerSummary),
+        );
+        TassadarArticleHybridWorkflowRequest {
+            routing_policy: TassadarPlannerRoutingPolicy {
+                allow_runtime_decode_fallback: false,
+                ..request.routing_policy
+            },
+            ..request
+        }
+    };
+    vec![
+        TassadarLabLiveCaseEntry {
+            source_mode: TassadarLabSourceMode::LiveArticleHybridWorkflow,
+            label: String::from("Delegated memory-heavy hybrid workflow"),
+            description: String::from(
+                "Live planner-owned workflow that delegates the memory-heavy article case into Tassadar.",
+            ),
+            request: TassadarLabRequest::ArticleHybridWorkflow {
+                request: TassadarArticleHybridWorkflowRequest::new(
+                    "desktop-tassadar-live-hybrid-delegated-memory-heavy",
+                    "planner-session-lab-alpha",
+                    "planner-article-fixture-v0",
+                    "workflow-step-memory-heavy",
+                    "delegate exact memory-heavy article workload into Tassadar",
+                    "memory_heavy_kernel",
+                    TassadarExecutorDecodeMode::HullCache,
+                ),
+            },
+        },
+        TassadarLabLiveCaseEntry {
+            source_mode: TassadarLabSourceMode::LiveArticleHybridWorkflow,
+            label: String::from("Fallback branch-heavy hybrid workflow"),
+            description: String::from(
+                "Live planner fallback case that preserves typed route fallback instead of flattening it.",
+            ),
+            request: TassadarLabRequest::ArticleHybridWorkflow {
+                request: branch_heavy_fallback_request,
+            },
+        },
+        TassadarLabLiveCaseEntry {
+            source_mode: TassadarLabSourceMode::LiveArticleHybridWorkflow,
+            label: String::from("Refused over-budget hybrid workflow"),
+            description: String::from(
+                "Live planner refusal when the workflow budget disallows exact delegation.",
+            ),
+            request: TassadarLabRequest::ArticleHybridWorkflow {
+                request: TassadarArticleHybridWorkflowRequest::new(
+                    "desktop-tassadar-live-hybrid-refusal-memory-heavy",
+                    "planner-session-lab-gamma",
+                    "planner-article-fixture-v0",
+                    "workflow-step-memory-heavy-refusal",
+                    "delegate exact memory-heavy article workload into Tassadar",
+                    "memory_heavy_kernel",
+                    TassadarExecutorDecodeMode::HullCache,
+                )
+                .with_routing_budget(TassadarPlannerRoutingBudget::new(1, 32, 8)),
+            },
+        },
+    ]
 }
 
 fn fallback_tassadar_lab_prepared_view(detail: &str) -> TassadarLabPreparedView {
@@ -950,7 +1261,7 @@ fn move_wrapped_index(len: usize, current: usize, delta: isize) -> usize {
 mod tassadar_lab_tests {
     use super::{
         PaneLoadState, TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabReplayId,
-        TassadarLabViewMode,
+        TassadarLabRequest, TassadarLabSourceMode, TassadarLabViewMode,
     };
 
     #[test]
@@ -958,27 +1269,52 @@ mod tassadar_lab_tests {
         let state = TassadarLabPaneState::default();
         assert_eq!(state.load_state, PaneLoadState::Ready);
         assert_eq!(state.playback_state, TassadarLabPlaybackState::Replay);
+        assert_eq!(state.selected_source_mode, TassadarLabSourceMode::Replay);
         assert_eq!(state.selected_view, TassadarLabViewMode::Overview);
         assert_eq!(state.replay_catalog.len(), 2);
+        assert_eq!(state.article_session_catalog.len(), 3);
+        assert_eq!(state.hybrid_workflow_catalog.len(), 3);
         assert_eq!(
             state.current_replay().map(|entry| entry.replay_id),
             Some(TassadarLabReplayId::ArticleSessionDirectMemoryHeavy)
         );
         assert!(state.snapshot().source_badge.contains("tassadar"));
         assert!(!state.updates().is_empty());
+        assert!(!state.local_events.is_empty());
     }
 
     #[test]
     fn tassadar_lab_can_switch_between_curated_replays() {
         let mut state = TassadarLabPaneState::default();
         state
-            .move_selected_replay(1)
-            .expect("curated replay switch should load");
+            .move_selected_source_item(1)
+            .expect("curated replay switch should update selection");
         assert_eq!(
             state.current_replay().map(|entry| entry.replay_id),
             Some(TassadarLabReplayId::CompiledArticleClosureReport)
         );
-        assert!(state.snapshot().status_label.contains("closure"));
+        assert_eq!(
+            state.current_source_request(),
+            TassadarLabRequest::Replay {
+                replay_id: TassadarLabReplayId::CompiledArticleClosureReport
+            }
+        );
+    }
+
+    #[test]
+    fn tassadar_lab_can_expose_live_source_requests() {
+        let mut state = TassadarLabPaneState::default();
+        state.set_source_mode(TassadarLabSourceMode::LiveArticleSession);
+        assert!(matches!(
+            state.current_source_request(),
+            TassadarLabRequest::ArticleExecutorSession { .. }
+        ));
+
+        state.set_source_mode(TassadarLabSourceMode::LiveArticleHybridWorkflow);
+        assert!(matches!(
+            state.current_source_request(),
+            TassadarLabRequest::ArticleHybridWorkflow { .. }
+        ));
     }
 
     #[test]
@@ -1003,6 +1339,23 @@ mod tassadar_lab_tests {
         assert_eq!(state.selected_view, TassadarLabViewMode::Evidence);
         state.cycle_view();
         assert_eq!(state.selected_view, TassadarLabViewMode::Overview);
+    }
+
+    #[test]
+    fn tassadar_lab_local_events_are_capped() {
+        let mut state = TassadarLabPaneState::default();
+        for index in 0..24 {
+            state.push_local_event(format!("event-{index}"));
+        }
+        assert_eq!(state.local_events.len(), 12);
+        assert_eq!(
+            state.local_events.first().map(String::as_str),
+            Some("event-12")
+        );
+        assert_eq!(
+            state.local_events.last().map(String::as_str),
+            Some("event-23")
+        );
     }
 }
 
