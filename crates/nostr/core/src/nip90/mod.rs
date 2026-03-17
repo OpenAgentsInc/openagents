@@ -8,6 +8,7 @@
 //! - `kinds`: event kind constants + kind classification helpers
 //! - `model`: request/result/feedback data models + tag parsing/serialization
 //! - `builders`: `EventTemplate` construction helpers
+//! - `data_vending`: OpenAgents data-vending profile helpers on top of generic NIP-90
 //! - `tests`: protocol and workflow coverage
 //!
 //! **Money in, data out.**
@@ -136,10 +137,16 @@
 //! for complete details.
 
 mod builders;
+mod data_vending;
 mod kinds;
 mod model;
 
 pub use builders::{create_job_feedback_event, create_job_request_event, create_job_result_event};
+pub use data_vending::{
+    DataVendingDeliveryMode, DataVendingFeedback, DataVendingPreviewPosture, DataVendingRequest,
+    DataVendingResult, OPENAGENTS_DATA_VENDING_PROFILE, create_data_vending_feedback_event,
+    create_data_vending_request_event, create_data_vending_result_event,
+};
 pub use kinds::{
     JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN,
     KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN,

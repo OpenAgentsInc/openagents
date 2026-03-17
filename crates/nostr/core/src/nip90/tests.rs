@@ -467,6 +467,63 @@ fn test_job_feedback_to_tags() {
     assert!(tags.iter().any(|t| t[0] == "p" && t[1] == "cust456"));
 }
 
+#[test]
+fn test_job_feedback_from_event() {
+    let event = Event {
+        id: "feedback123".to_string(),
+        pubkey: "11".repeat(32),
+        created_at: 1_760_000_101,
+        kind: KIND_JOB_FEEDBACK,
+        tags: vec![
+            vec![
+                "status".to_string(),
+                "payment-required".to_string(),
+                "pay to continue".to_string(),
+            ],
+            vec![
+                "e".to_string(),
+                "request123".to_string(),
+                "wss://relay.com".to_string(),
+            ],
+            vec!["p".to_string(), "22".repeat(32)],
+            vec![
+                "amount".to_string(),
+                "1500".to_string(),
+                "lnbc...".to_string(),
+            ],
+        ],
+        content: "preview available".to_string(),
+        sig: "33".repeat(64),
+    };
+
+    let feedback = JobFeedback::from_event(&event).unwrap();
+    assert_eq!(feedback.status, JobStatus::PaymentRequired);
+    assert_eq!(feedback.status_extra.as_deref(), Some("pay to continue"));
+    assert_eq!(feedback.request_id, "request123");
+    assert_eq!(feedback.request_relay.as_deref(), Some("wss://relay.com"));
+    assert_eq!(feedback.amount, Some(1500));
+    assert_eq!(feedback.bolt11.as_deref(), Some("lnbc..."));
+    assert_eq!(feedback.content, "preview available");
+}
+
+#[test]
+fn test_job_feedback_from_event_requires_status() {
+    let event = Event {
+        id: "feedback123".to_string(),
+        pubkey: "11".repeat(32),
+        created_at: 1_760_000_101,
+        kind: KIND_JOB_FEEDBACK,
+        tags: vec![
+            vec!["e".to_string(), "request123".to_string()],
+            vec!["p".to_string(), "22".repeat(32)],
+        ],
+        content: String::new(),
+        sig: "33".repeat(64),
+    };
+
+    assert!(JobFeedback::from_event(&event).is_err());
+}
+
 // =========================================================================
 // Integration tests - DVM workflow
 // =========================================================================
