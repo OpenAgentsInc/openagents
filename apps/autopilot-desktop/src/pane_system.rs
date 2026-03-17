@@ -483,6 +483,7 @@ pub enum AttnResLabPaneAction {
 pub enum TassadarLabPaneAction {
     SetView(crate::app_state::TassadarLabViewMode),
     SetSourceMode(crate::app_state::TassadarLabSourceMode),
+    SetReplayFamily(crate::app_state::TassadarLabReplayFamily),
     CycleView,
     TogglePlayback,
     ResetPlayback,
@@ -490,6 +491,8 @@ pub enum TassadarLabPaneAction {
     IncreaseSpeed,
     DecreaseTraceWindow,
     IncreaseTraceWindow,
+    PreviousReplayFamily,
+    NextReplayFamily,
     PreviousReplay,
     NextReplay,
     RefreshSnapshot,
@@ -3578,6 +3581,26 @@ pub fn tassadar_lab_faster_button_bounds(content_bounds: Bounds) -> Bounds {
         slower.origin.y,
         84.0,
         slower.size.height,
+    )
+}
+
+pub fn tassadar_lab_previous_family_button_bounds(content_bounds: Bounds) -> Bounds {
+    let faster = tassadar_lab_faster_button_bounds(content_bounds);
+    Bounds::new(
+        faster.max_x() + JOB_INBOX_BUTTON_GAP,
+        faster.origin.y,
+        104.0,
+        faster.size.height,
+    )
+}
+
+pub fn tassadar_lab_next_family_button_bounds(content_bounds: Bounds) -> Bounds {
+    let previous_family = tassadar_lab_previous_family_button_bounds(content_bounds);
+    Bounds::new(
+        previous_family.max_x() + JOB_INBOX_BUTTON_GAP,
+        previous_family.origin.y,
+        104.0,
+        previous_family.size.height,
     )
 }
 
@@ -7615,6 +7638,14 @@ fn pane_hit_action_for_pane(
             } else if tassadar_lab_faster_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::TassadarLab(
                     TassadarLabPaneAction::IncreaseSpeed,
+                ))
+            } else if tassadar_lab_previous_family_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::PreviousReplayFamily,
+                ))
+            } else if tassadar_lab_next_family_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::NextReplayFamily,
                 ))
             } else if tassadar_lab_help_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::TassadarLab(

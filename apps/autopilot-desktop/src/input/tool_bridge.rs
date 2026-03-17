@@ -1973,6 +1973,31 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "playback_state": state.tassadar_lab.playback_status_label(),
                         "playback_running": state.tassadar_lab.playback_running,
                         "selected_source_mode": state.tassadar_lab.selected_source_mode.label(),
+                        "selected_replay_family": if state.tassadar_lab.selected_source_mode == crate::app_state::TassadarLabSourceMode::Replay {
+                            Some(state.tassadar_lab.current_replay_family().label())
+                        } else {
+                            None
+                        },
+                        "replay_family_position": if state.tassadar_lab.selected_source_mode == crate::app_state::TassadarLabSourceMode::Replay {
+                            state.tassadar_lab.replay_family_position()
+                        } else {
+                            0
+                        },
+                        "replay_family_count": if state.tassadar_lab.selected_source_mode == crate::app_state::TassadarLabSourceMode::Replay {
+                            state.tassadar_lab.replay_family_count()
+                        } else {
+                            0
+                        },
+                        "replay_family_case_position": if state.tassadar_lab.selected_source_mode == crate::app_state::TassadarLabSourceMode::Replay {
+                            state.tassadar_lab.replay_family_case_position()
+                        } else {
+                            0
+                        },
+                        "replay_family_case_count": if state.tassadar_lab.selected_source_mode == crate::app_state::TassadarLabSourceMode::Replay {
+                            state.tassadar_lab.replay_family_case_count()
+                        } else {
+                            0
+                        },
                         "selected_source_label": state.tassadar_lab.current_source_label(),
                         "selected_view": state.tassadar_lab.selected_view.label(),
                         "selected_replay": state.tassadar_lab.current_replay().map(|entry| entry.label.as_str()),

@@ -14,8 +14,8 @@ use autopilot_desktop::desktop_control::{
     DesktopControlAttnResView, DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus,
     DesktopControlEventBatch, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
     DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-    DesktopControlTassadarSourceMode, DesktopControlTassadarStatus, DesktopControlTassadarView,
-    control_manifest_path,
+    DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+    DesktopControlTassadarStatus, DesktopControlTassadarView, control_manifest_path,
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
@@ -219,6 +219,10 @@ enum TassadarCommand {
         #[arg(value_enum)]
         source: TassadarSourceArg,
     },
+    Family {
+        #[command(subcommand)]
+        command: TassadarFamilyCommand,
+    },
     Case {
         #[command(subcommand)]
         command: TassadarNavigationCommand,
@@ -251,6 +255,16 @@ enum TassadarCommand {
 
 #[derive(Subcommand, Debug)]
 enum TassadarNavigationCommand {
+    Next,
+    Prev,
+}
+
+#[derive(Subcommand, Debug)]
+enum TassadarFamilyCommand {
+    Set {
+        #[arg(value_enum)]
+        family: TassadarReplayFamilyArg,
+    },
     Next,
     Prev,
 }
@@ -639,6 +653,23 @@ impl TassadarSourceArg {
     }
 }
 
+impl TassadarReplayFamilyArg {
+    const fn into_request_family(self) -> DesktopControlTassadarReplayFamily {
+        match self {
+            Self::ArticleSessions => DesktopControlTassadarReplayFamily::ArticleSessions,
+            Self::HybridWorkflows => DesktopControlTassadarReplayFamily::HybridWorkflows,
+            Self::CompiledClosure => DesktopControlTassadarReplayFamily::CompiledClosure,
+            Self::Acceptance => DesktopControlTassadarReplayFamily::Acceptance,
+            Self::LearnedPromotion => DesktopControlTassadarReplayFamily::LearnedPromotion,
+            Self::Learned9x9Fit => DesktopControlTassadarReplayFamily::Learned9x9Fit,
+            Self::LearnedHorizon => DesktopControlTassadarReplayFamily::LearnedHorizon,
+            Self::ArchitectureComparison => {
+                DesktopControlTassadarReplayFamily::ArchitectureComparison
+            }
+        }
+    }
+}
+
 impl TassadarCommand {
     fn action_request(&self) -> DesktopControlActionRequest {
         match self {
@@ -652,6 +683,19 @@ impl TassadarCommand {
             },
             Self::Source { source } => DesktopControlActionRequest::SetTassadarSourceMode {
                 source_mode: source.into_request_source(),
+            },
+            Self::Family { command } => match command {
+                TassadarFamilyCommand::Set { family } => {
+                    DesktopControlActionRequest::SetTassadarReplayFamily {
+                        family: family.into_request_family(),
+                    }
+                }
+                TassadarFamilyCommand::Next => {
+                    DesktopControlActionRequest::NextTassadarReplayFamily
+                }
+                TassadarFamilyCommand::Prev => {
+                    DesktopControlActionRequest::PreviousTassadarReplayFamily
+                }
             },
             Self::Case { command } => match command {
                 TassadarNavigationCommand::Next => DesktopControlActionRequest::NextTassadarCase,
@@ -1038,6 +1082,25 @@ enum TassadarSourceArg {
     ArticleSession,
     #[value(name = "hybrid-workflow")]
     HybridWorkflow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum TassadarReplayFamilyArg {
+    #[value(name = "article-sessions")]
+    ArticleSessions,
+    #[value(name = "hybrid-workflows")]
+    HybridWorkflows,
+    #[value(name = "compiled-closure")]
+    CompiledClosure,
+    Acceptance,
+    #[value(name = "learned-promotion")]
+    LearnedPromotion,
+    #[value(name = "learned-9x9-fit")]
+    Learned9x9Fit,
+    #[value(name = "learned-horizon")]
+    LearnedHorizon,
+    #[value(name = "architecture-comparison")]
+    ArchitectureComparison,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -2467,6 +2530,16 @@ fn print_tassadar_text(status: &DesktopControlTassadarStatus) {
         status.summary.open_instances,
         status.summary.active
     );
+    if let Some(replay_family) = status.summary.selected_replay_family.as_deref() {
+        println!(
+            "explorer: family={} family_index={}/{} case_index={}/{}",
+            replay_family,
+            status.summary.replay_family_position,
+            status.summary.replay_family_count.max(1),
+            status.summary.replay_family_case_position,
+            status.summary.replay_family_case_count.max(1)
+        );
+    }
     println!(
         "surface: badge={} kind={} family={} subject={} status={}",
         status.source_badge,
@@ -5531,19 +5604,21 @@ mod tests {
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand,
-        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarNavigationCommand,
-        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
-        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
-        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
-        ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
-        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
-        request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
+        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
+        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
+        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
+        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
+        buy_mode_has_paid_request, buyer_procurement_status_lines, ensure_buy_mode_budget_ack,
+        inventory_status_lines, nip90_sent_payments_report_lines, parse_local_daily_window,
+        parse_nip90_sent_payments_report, parse_report_boundary, request_has_failed,
+        request_has_paid, request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlAttnResView, DesktopControlBuyModeRequestStatus,
         DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus,
         DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
+        DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+        DesktopControlTassadarView,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -6329,6 +6404,24 @@ mod tests {
             DesktopControlActionRequest::SetTassadarSourceMode {
                 source_mode: DesktopControlTassadarSourceMode::HybridWorkflow,
             }
+        );
+        assert_eq!(
+            TassadarCommand::Family {
+                command: TassadarFamilyCommand::Set {
+                    family: TassadarReplayFamilyArg::Learned9x9Fit,
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetTassadarReplayFamily {
+                family: DesktopControlTassadarReplayFamily::Learned9x9Fit,
+            }
+        );
+        assert_eq!(
+            TassadarCommand::Family {
+                command: TassadarFamilyCommand::Next,
+            }
+            .action_request(),
+            DesktopControlActionRequest::NextTassadarReplayFamily
         );
         assert_eq!(
             TassadarCommand::Case {

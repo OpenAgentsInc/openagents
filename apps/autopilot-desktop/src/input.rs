@@ -4274,6 +4274,8 @@ fn tassadar_lab_keyboard_action(key: Key, help_visible: bool) -> Option<Tassadar
         Key::Character(value) if value == "7" => Some(TassadarLabPaneAction::SetSourceMode(
             crate::app_state::TassadarLabSourceMode::LiveArticleHybridWorkflow,
         )),
+        Key::Character(value) if value == "8" => Some(TassadarLabPaneAction::PreviousReplayFamily),
+        Key::Character(value) if value == "9" => Some(TassadarLabPaneAction::NextReplayFamily),
         Key::Character(value) if value == "?" => Some(TassadarLabPaneAction::ToggleHelp),
         Key::Character(value) if value == "[" => Some(TassadarLabPaneAction::PreviousFactLine),
         Key::Character(value) if value == "]" => Some(TassadarLabPaneAction::NextFactLine),
@@ -4738,6 +4740,14 @@ mod tests {
             Some(TassadarLabPaneAction::SetSourceMode(
                 crate::app_state::TassadarLabSourceMode::LiveArticleHybridWorkflow
             ))
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("8".to_string()), false),
+            Some(TassadarLabPaneAction::PreviousReplayFamily)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("9".to_string()), false),
+            Some(TassadarLabPaneAction::NextReplayFamily)
         );
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Character("r".to_string()), false),
