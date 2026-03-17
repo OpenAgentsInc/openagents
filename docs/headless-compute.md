@@ -46,6 +46,8 @@ It can:
 - refresh, warm, unload, and wait on GPT-OSS directly
 - bring the provider online or offline
 - inspect active-job and buy-mode state
+- create, start, pause, reset, retarget, and inspect desktop-owned AttnRes lab
+  runs without opening the pane UI
 - create, upload, start, wait on, and inspect desktop-owned sandbox jobs
 - download sandbox workspace files and declared sandbox artifacts through the
   control plane
@@ -105,6 +107,12 @@ autopilotctl apple-fm list
 autopilotctl gpt-oss status
 autopilotctl gpt-oss warm --wait
 autopilotctl wait gpt-oss-ready
+autopilotctl attnres status
+autopilotctl attnres start
+autopilotctl attnres view inference
+autopilotctl attnres sublayer set 4
+autopilotctl attnres speed set 5
+autopilotctl wait attnres-completed
 autopilotctl provider online
 autopilotctl chat status
 autopilotctl chat messages --tail 20
@@ -129,6 +137,12 @@ autopilotctl pane status frame_debugger --json
 autopilotctl pane close provider_control
 autopilotctl pane open provider_control
 ```
+
+The AttnRes command group drives the same persisted Psionic-backed lab state the
+desktop pane uses. `autopilotctl attnres status` hydrates the current lab state
+from the app-owned controller, and the mutating commands update that same
+desktop-owned state machine rather than creating a separate headless AttnRes
+runtime.
 
 `autopilotctl perf` is a convenience wrapper over the `frame_debugger` pane
 snapshot. It emits the rolling redraw cadence plus grouped and recent timing

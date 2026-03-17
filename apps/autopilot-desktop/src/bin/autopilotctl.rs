@@ -10,10 +10,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
-    DesktopControlAppleAdapterOperatorRunStatus, DesktopControlBuyModeRequestStatus,
-    DesktopControlBuyModeStatus, DesktopControlEventBatch, DesktopControlLocalRuntimeStatus,
-    DesktopControlManifest, DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-    control_manifest_path,
+    DesktopControlAppleAdapterOperatorRunStatus, DesktopControlAttnResStatus,
+    DesktopControlAttnResView, DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus,
+    DesktopControlEventBatch, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
+    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot, control_manifest_path,
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
@@ -56,6 +56,11 @@ struct Cli {
 enum Command {
     Status,
     Perf,
+    #[command(name = "attnres")]
+    AttnRes {
+        #[command(subcommand)]
+        command: AttnResCommand,
+    },
     Cluster {
         #[command(subcommand)]
         command: ClusterCommand,
@@ -169,6 +174,41 @@ enum PaneCommand {
     Focus { pane: String },
     Close { pane: String },
     Status { pane: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum AttnResCommand {
+    Status,
+    Start,
+    Pause,
+    Reset,
+    Refresh,
+    View {
+        #[arg(value_enum)]
+        view: AttnResViewArg,
+    },
+    Sublayer {
+        #[command(subcommand)]
+        command: AttnResSublayerCommand,
+    },
+    Speed {
+        #[command(subcommand)]
+        command: AttnResSpeedCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AttnResSublayerCommand {
+    Set { index: usize },
+    Next,
+    Prev,
+}
+
+#[derive(Subcommand, Debug)]
+enum AttnResSpeedCommand {
+    Set { speed_multiplier: usize },
+    Increase,
+    Decrease,
 }
 
 #[derive(Subcommand, Debug)]
@@ -459,6 +499,49 @@ impl PaneCommand {
             Self::Status { pane } => {
                 DesktopControlActionRequest::GetPaneSnapshot { pane: pane.clone() }
             }
+        }
+    }
+}
+
+impl AttnResViewArg {
+    const fn into_request_view(self) -> DesktopControlAttnResView {
+        match self {
+            Self::Overview => DesktopControlAttnResView::Overview,
+            Self::Pipeline => DesktopControlAttnResView::Pipeline,
+            Self::Inference => DesktopControlAttnResView::Inference,
+        }
+    }
+}
+
+impl AttnResCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetAttnResStatus,
+            Self::Start => DesktopControlActionRequest::StartAttnRes,
+            Self::Pause => DesktopControlActionRequest::PauseAttnRes,
+            Self::Reset => DesktopControlActionRequest::ResetAttnRes,
+            Self::Refresh => DesktopControlActionRequest::RefreshAttnRes,
+            Self::View { view } => DesktopControlActionRequest::SetAttnResView {
+                view: view.into_request_view(),
+            },
+            Self::Sublayer { command } => match command {
+                AttnResSublayerCommand::Set { index } => {
+                    DesktopControlActionRequest::SetAttnResSublayer { index: *index }
+                }
+                AttnResSublayerCommand::Next => DesktopControlActionRequest::NextAttnResSublayer,
+                AttnResSublayerCommand::Prev => {
+                    DesktopControlActionRequest::PreviousAttnResSublayer
+                }
+            },
+            Self::Speed { command } => match command {
+                AttnResSpeedCommand::Set { speed_multiplier } => {
+                    DesktopControlActionRequest::SetAttnResSpeed {
+                        speed_multiplier: *speed_multiplier,
+                    }
+                }
+                AttnResSpeedCommand::Increase => DesktopControlActionRequest::IncreaseAttnResSpeed,
+                AttnResSpeedCommand::Decrease => DesktopControlActionRequest::DecreaseAttnResSpeed,
+            },
         }
     }
 }
@@ -765,6 +848,13 @@ enum LogSourceArg {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum AttnResViewArg {
+    Overview,
+    Pipeline,
+    Inference,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum WaitConditionArg {
     ProviderOnline,
     ProviderOffline,
@@ -782,6 +872,12 @@ enum WaitConditionArg {
     BuyModePaymentRequired,
     BuyModePaid,
     BuyModeFailed,
+    #[value(name = "attnres-running")]
+    AttnResRunning,
+    #[value(name = "attnres-paused")]
+    AttnResPaused,
+    #[value(name = "attnres-completed")]
+    AttnResCompleted,
     ActiveJobPresent,
     ActiveJobRunning,
     ActiveJobDelivered,
@@ -821,6 +917,9 @@ enum WaitCondition {
     BuyModePaymentRequired,
     BuyModePaid,
     BuyModeFailed,
+    AttnResRunning,
+    AttnResPaused,
+    AttnResCompleted,
     ActiveJobPresent,
     ActiveJobRunning,
     ActiveJobDelivered,
@@ -888,6 +987,19 @@ fn main() -> Result<()> {
                 print_json(perf_payload)?;
             } else {
                 print_perf_text(perf_payload);
+            }
+        }
+        Command::AttnRes { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let status = parse_attnres_status(response.payload.as_ref())?;
+            if json_output {
+                print_json(&status)?;
+            } else {
+                if !matches!(command, AttnResCommand::Status) {
+                    println!("{}", response.message);
+                }
+                print_attnres_text(&status);
             }
         }
         Command::Cluster { command } => {
@@ -1627,6 +1739,9 @@ impl WaitConditionArg {
             Self::BuyModePaymentRequired => WaitCondition::BuyModePaymentRequired,
             Self::BuyModePaid => WaitCondition::BuyModePaid,
             Self::BuyModeFailed => WaitCondition::BuyModeFailed,
+            Self::AttnResRunning => WaitCondition::AttnResRunning,
+            Self::AttnResPaused => WaitCondition::AttnResPaused,
+            Self::AttnResCompleted => WaitCondition::AttnResCompleted,
             Self::ActiveJobPresent => WaitCondition::ActiveJobPresent,
             Self::ActiveJobRunning => WaitCondition::ActiveJobRunning,
             Self::ActiveJobDelivered => WaitCondition::ActiveJobDelivered,
@@ -1654,6 +1769,9 @@ impl WaitConditionArg {
             Self::BuyModePaymentRequired => "buy-mode-payment-required",
             Self::BuyModePaid => "buy-mode-paid",
             Self::BuyModeFailed => "buy-mode-failed",
+            Self::AttnResRunning => "attnres-running",
+            Self::AttnResPaused => "attnres-paused",
+            Self::AttnResCompleted => "attnres-completed",
             Self::ActiveJobPresent => "active-job-present",
             Self::ActiveJobRunning => "active-job-running",
             Self::ActiveJobDelivered => "active-job-delivered",
@@ -1683,6 +1801,9 @@ impl WaitCondition {
             Self::BuyModePaymentRequired => "buy mode payment-required",
             Self::BuyModePaid => "buy mode paid",
             Self::BuyModeFailed => "buy mode failed",
+            Self::AttnResRunning => "AttnRes running",
+            Self::AttnResPaused => "AttnRes paused",
+            Self::AttnResCompleted => "AttnRes completed",
             Self::ActiveJobPresent => "active job present",
             Self::ActiveJobRunning => "active job running",
             Self::ActiveJobDelivered => "active job delivered",
@@ -1725,6 +1846,11 @@ impl WaitCondition {
                 .any(request_has_payment_required),
             Self::BuyModePaid => buy_mode_has_paid_request(&snapshot.buy_mode),
             Self::BuyModeFailed => buy_mode_has_failed_request(&snapshot.buy_mode),
+            Self::AttnResRunning => snapshot.attnres_lab.running,
+            Self::AttnResPaused => {
+                !snapshot.attnres_lab.running && snapshot.attnres_lab.playback_state == "paused"
+            }
+            Self::AttnResCompleted => snapshot.attnres_lab.playback_state == "completed",
             Self::ActiveJobPresent => snapshot.active_job.is_some(),
             Self::ActiveJobRunning => snapshot
                 .active_job
@@ -1848,6 +1974,12 @@ fn parse_nip90_sent_payments_report(
     let payload = payload.ok_or_else(|| anyhow!("missing NIP-90 sent-payments report payload"))?;
     serde_json::from_value::<DesktopControlNip90SentPaymentsReport>(payload.clone())
         .context("decode NIP-90 sent-payments report payload")
+}
+
+fn parse_attnres_status(payload: Option<&Value>) -> Result<DesktopControlAttnResStatus> {
+    let payload = payload.ok_or_else(|| anyhow!("missing AttnRes status payload"))?;
+    serde_json::from_value::<DesktopControlAttnResStatus>(payload.clone())
+        .context("decode AttnRes status payload")
 }
 
 fn parse_local_daily_window(date: &str) -> Result<(u64, u64)> {
@@ -2021,6 +2153,86 @@ fn print_pane_snapshot_text(payload: &Value) {
     }
 }
 
+fn print_attnres_text(status: &DesktopControlAttnResStatus) {
+    println!(
+        "attnres: playback={} running={} view={} selected={} step={}/{} speed={}x open_instances={} active={}",
+        status.summary.playback_state,
+        status.summary.running,
+        status.summary.selected_view,
+        status
+            .summary
+            .selected_sublayer_label
+            .as_deref()
+            .unwrap_or("-"),
+        status.summary.step,
+        status.summary.max_steps,
+        status.summary.speed_multiplier,
+        status.summary.open_instances,
+        status.summary.active
+    );
+    println!(
+        "run: label={} status={} source={} model={} architecture={}",
+        status.run_label,
+        status.summary.run_status,
+        status.source_badge,
+        status.model_label,
+        status.architecture_label
+    );
+    println!(
+        "metrics: loss={:.4} ema={:.4} avg_selectivity={:.1}% active_block={} current_block_fill={} completed_blocks={}",
+        status.training_loss,
+        status.ema_loss,
+        status.avg_selectivity * 100.0,
+        status.active_block,
+        status.current_block_fill,
+        status.completed_blocks
+    );
+    if let Some(selected) = status.selected_sublayer.as_ref() {
+        println!(
+            "selected: index={} label={} kind={} target_block={} dominant={} ({:.1}%) cache={:.1}% partial={:.1}% query_norm={:.3} selectivity={:.1}%",
+            selected.sublayer_index,
+            selected.label,
+            selected.kind_label,
+            selected.target_block,
+            selected.dominant_source_label,
+            selected.dominant_weight * 100.0,
+            selected.cache_mass * 100.0,
+            selected.partial_mass * 100.0,
+            selected.query_norm,
+            selected.selectivity * 100.0
+        );
+        println!("selected route: {}", selected.route_note);
+    }
+    println!(
+        "parity: hidden={} diff={:.6} logit={} diff={:.6} merge_partial={:.1}% merge_cache={:.1}% cache_fill={:.1}%",
+        status.inference.hidden_parity_label,
+        status.inference.hidden_max_abs_diff,
+        status.inference.logit_parity_label,
+        status.inference.logit_max_abs_diff,
+        status.inference.partial_merge_share * 100.0,
+        status.inference.cache_merge_share * 100.0,
+        status.inference.block_cache_fill_share * 100.0
+    );
+    if let Some(last_action) = status.summary.last_action.as_deref() {
+        println!("last action: {last_action}");
+    }
+    if let Some(last_error) = status.summary.last_error.as_deref() {
+        println!("last error: {last_error}");
+    }
+    for block in status.block_summaries.iter().take(4) {
+        println!(
+            "block: index={} avg_selectivity={:.1}% avg_query_norm={:.3} sublayers={}",
+            block.block_index,
+            block.avg_selectivity * 100.0,
+            block.avg_query_norm,
+            block.sublayers
+        );
+    }
+    for event in status.recent_events.iter().rev().take(6) {
+        println!("event: {event}");
+    }
+}
+
 fn print_perf_text(payload: &Value) {
     let rolling_fps = payload
         .get("rolling_fps")
@@ -2122,6 +2334,22 @@ fn print_status_text(target: &ResolvedTarget, snapshot: &DesktopControlSnapshot)
         snapshot.local_runtime.model_label,
         snapshot.local_runtime.backend_label,
         snapshot.local_runtime.load_label
+    );
+    println!(
+        "attnres: playback={} running={} view={} selected={} step={}/{} speed={}x open_instances={} active={}",
+        snapshot.attnres_lab.playback_state,
+        snapshot.attnres_lab.running,
+        snapshot.attnres_lab.selected_view,
+        snapshot
+            .attnres_lab
+            .selected_sublayer_label
+            .as_deref()
+            .unwrap_or("-"),
+        snapshot.attnres_lab.step,
+        snapshot.attnres_lab.max_steps,
+        snapshot.attnres_lab.speed_multiplier,
+        snapshot.attnres_lab.open_instances,
+        snapshot.attnres_lab.active
     );
     println!(
         "apple fm: ready={} reachable={} model={} adapters={} attached={}",
@@ -5015,7 +5243,8 @@ fn print_event_batch_text(batch: &DesktopControlEventBatch) {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppleFmCommand, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
+        AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
+        AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand,
         SandboxCommand, SandboxEntrypointTypeArg, TrainingCommand, WaitCondition, WaitConditionArg,
         WalletCommand, buy_mode_has_failed_request, buy_mode_has_paid_request,
@@ -5025,7 +5254,7 @@ mod tests {
         request_has_paid, request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
-        DesktopControlActionRequest, DesktopControlBuyModeRequestStatus,
+        DesktopControlActionRequest, DesktopControlAttnResView, DesktopControlBuyModeRequestStatus,
         DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus,
         DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
     };
@@ -5045,13 +5274,21 @@ mod tests {
     use std::path::PathBuf;
 
     fn sample_snapshot() -> DesktopControlSnapshot {
-        DesktopControlSnapshot {
-            buy_mode: DesktopControlBuyModeStatus {
-                approved_budget_sats: 2,
-                ..DesktopControlBuyModeStatus::default()
-            },
-            ..DesktopControlSnapshot::default()
-        }
+        let mut snapshot = DesktopControlSnapshot::default();
+        snapshot.buy_mode = DesktopControlBuyModeStatus {
+            approved_budget_sats: 2,
+            ..DesktopControlBuyModeStatus::default()
+        };
+        snapshot.attnres_lab.available = true;
+        snapshot.attnres_lab.playback_state = "armed".to_string();
+        snapshot.attnres_lab.selected_view = "overview".to_string();
+        snapshot.attnres_lab.selected_sublayer = 4;
+        snapshot.attnres_lab.selected_sublayer_label = Some("L2 Attention".to_string());
+        snapshot.attnres_lab.step = 18;
+        snapshot.attnres_lab.max_steps = 24;
+        snapshot.attnres_lab.speed_multiplier = 3;
+        snapshot.attnres_lab.run_status = "replay loaded".to_string();
+        snapshot
     }
 
     fn sample_nip90_sent_payments_report() -> DesktopControlNip90SentPaymentsReport {
@@ -5466,6 +5703,81 @@ mod tests {
         assert_eq!(
             WalletCommand::Refresh.action_request(),
             DesktopControlActionRequest::RefreshWallet
+        );
+        assert_eq!(
+            AttnResCommand::Status.action_request(),
+            DesktopControlActionRequest::GetAttnResStatus
+        );
+        assert_eq!(
+            AttnResCommand::Start.action_request(),
+            DesktopControlActionRequest::StartAttnRes
+        );
+        assert_eq!(
+            AttnResCommand::Pause.action_request(),
+            DesktopControlActionRequest::PauseAttnRes
+        );
+        assert_eq!(
+            AttnResCommand::Reset.action_request(),
+            DesktopControlActionRequest::ResetAttnRes
+        );
+        assert_eq!(
+            AttnResCommand::Refresh.action_request(),
+            DesktopControlActionRequest::RefreshAttnRes
+        );
+        assert_eq!(
+            AttnResCommand::View {
+                view: AttnResViewArg::Inference,
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetAttnResView {
+                view: DesktopControlAttnResView::Inference,
+            }
+        );
+        assert_eq!(
+            AttnResCommand::Sublayer {
+                command: AttnResSublayerCommand::Set { index: 4 },
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetAttnResSublayer { index: 4 }
+        );
+        assert_eq!(
+            AttnResCommand::Sublayer {
+                command: AttnResSublayerCommand::Next,
+            }
+            .action_request(),
+            DesktopControlActionRequest::NextAttnResSublayer
+        );
+        assert_eq!(
+            AttnResCommand::Sublayer {
+                command: AttnResSublayerCommand::Prev,
+            }
+            .action_request(),
+            DesktopControlActionRequest::PreviousAttnResSublayer
+        );
+        assert_eq!(
+            AttnResCommand::Speed {
+                command: AttnResSpeedCommand::Set {
+                    speed_multiplier: 5,
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetAttnResSpeed {
+                speed_multiplier: 5,
+            }
+        );
+        assert_eq!(
+            AttnResCommand::Speed {
+                command: AttnResSpeedCommand::Increase,
+            }
+            .action_request(),
+            DesktopControlActionRequest::IncreaseAttnResSpeed
+        );
+        assert_eq!(
+            AttnResCommand::Speed {
+                command: AttnResSpeedCommand::Decrease,
+            }
+            .action_request(),
+            DesktopControlActionRequest::DecreaseAttnResSpeed
         );
         assert_eq!(
             BuyModeCommand::Start {
@@ -6110,6 +6422,8 @@ mod tests {
                 attempt_count: 1,
             });
         snapshot.nip28.publishing_outbound_count = 0;
+        snapshot.attnres_lab.playback_state = "running".to_string();
+        snapshot.attnres_lab.running = true;
 
         assert!(WaitCondition::LocalRuntimeReady.matches(&snapshot));
         assert!(WaitCondition::GptOssReady.matches(&snapshot));
@@ -6117,6 +6431,9 @@ mod tests {
         assert!(WaitCondition::Nip28Ready.matches(&snapshot));
         assert!(WaitCondition::Nip28MessagePresent.matches(&snapshot));
         assert!(WaitCondition::Nip28OutboundIdle.matches(&snapshot));
+        assert!(WaitCondition::AttnResRunning.matches(&snapshot));
+        assert!(!WaitCondition::AttnResPaused.matches(&snapshot));
+        assert!(!WaitCondition::AttnResCompleted.matches(&snapshot));
         assert_eq!(
             WaitConditionArg::LocalRuntimeReady.into_condition(),
             WaitCondition::LocalRuntimeReady
@@ -6161,6 +6478,32 @@ mod tests {
             WaitCondition::BuyModeFailed
         );
         assert_eq!(WaitConditionArg::BuyModeFailed.as_str(), "buy-mode-failed");
+        assert_eq!(
+            WaitConditionArg::AttnResRunning.into_condition(),
+            WaitCondition::AttnResRunning
+        );
+        assert_eq!(WaitConditionArg::AttnResRunning.as_str(), "attnres-running");
+        assert_eq!(
+            WaitConditionArg::AttnResPaused.into_condition(),
+            WaitCondition::AttnResPaused
+        );
+        assert_eq!(WaitConditionArg::AttnResPaused.as_str(), "attnres-paused");
+        assert_eq!(
+            WaitConditionArg::AttnResCompleted.into_condition(),
+            WaitCondition::AttnResCompleted
+        );
+        assert_eq!(
+            WaitConditionArg::AttnResCompleted.as_str(),
+            "attnres-completed"
+        );
+
+        snapshot.attnres_lab.playback_state = "paused".to_string();
+        snapshot.attnres_lab.running = false;
+        assert!(WaitCondition::AttnResPaused.matches(&snapshot));
+        assert!(!WaitCondition::AttnResCompleted.matches(&snapshot));
+
+        snapshot.attnres_lab.playback_state = "completed".to_string();
+        assert!(WaitCondition::AttnResCompleted.matches(&snapshot));
 
         snapshot.gpt_oss.ready = false;
         snapshot.gpt_oss.loaded = false;
