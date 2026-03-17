@@ -15,7 +15,7 @@ use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
     BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction,
     LogStreamPaneAction, MissionControlPaneAction, Nip90SentPaymentsPaneAction,
-    ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction,
+    ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -8984,6 +8984,61 @@ pub(super) fn run_attnres_lab_action(
         }
         AttnResLabPaneAction::NextSublayer => {
             crate::attnres_lab_control::move_selected_sublayer(&mut state.attnres_lab, 1);
+        }
+    }
+
+    true
+}
+
+pub(super) fn run_tassadar_lab_action(
+    state: &mut crate::app_state::RenderState,
+    action: TassadarLabPaneAction,
+) -> bool {
+    match action {
+        TassadarLabPaneAction::SetView(view) => {
+            crate::tassadar_lab_control::select_view(&mut state.tassadar_lab, view);
+        }
+        TassadarLabPaneAction::CycleView => {
+            crate::tassadar_lab_control::cycle_view(&mut state.tassadar_lab);
+        }
+        TassadarLabPaneAction::PreviousReplay => {
+            crate::tassadar_lab_control::move_selected_replay(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::NextReplay => {
+            crate::tassadar_lab_control::move_selected_replay(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::PreviousUpdate => {
+            crate::tassadar_lab_control::move_selected_update(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::NextUpdate => {
+            crate::tassadar_lab_control::move_selected_update(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::PreviousReadableLogLine => {
+            crate::tassadar_lab_control::move_selected_readable_log_line(
+                &mut state.tassadar_lab,
+                -1,
+            );
+        }
+        TassadarLabPaneAction::NextReadableLogLine => {
+            crate::tassadar_lab_control::move_selected_readable_log_line(
+                &mut state.tassadar_lab,
+                1,
+            );
+        }
+        TassadarLabPaneAction::PreviousTokenChunk => {
+            crate::tassadar_lab_control::move_selected_token_chunk(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::NextTokenChunk => {
+            crate::tassadar_lab_control::move_selected_token_chunk(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::PreviousFactLine => {
+            crate::tassadar_lab_control::move_selected_fact_line(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::NextFactLine => {
+            crate::tassadar_lab_control::move_selected_fact_line(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::ToggleHelp => {
+            crate::tassadar_lab_control::toggle_help(&mut state.tassadar_lab);
         }
     }
 

@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 58] = [
+const PANE_SPECS: [PaneSpec; 59] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -328,6 +328,21 @@ const PANE_SPECS: [PaneSpec; 58] = [
             id: "pane.attnres_lab",
             label: "AttnRes Lab",
             description: "Open the replay-first AttnRes desktop lab pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::TassadarLab,
+        title: "Tassadar Lab",
+        default_width: 1120.0,
+        default_height: 720.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.tassadar_lab",
+            label: "Tassadar Lab",
+            description: "Open the replay-first Tassadar desktop lab pane",
             keybinding: None,
         }),
         hotbar: None,
@@ -1112,6 +1127,18 @@ mod tests {
         assert!(
             !spec.startup,
             "attnres lab pane should remain opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn tassadar_lab_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.tassadar_lab")
+            .expect("tassadar lab command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::TassadarLab);
+        assert!(spec.singleton, "tassadar lab pane must be singleton");
+        assert!(
+            !spec.startup,
+            "tassadar lab pane should remain opt-in instead of opening at startup"
         );
     }
 

@@ -28,4 +28,5 @@ pub mod settlement_atlas;
 pub mod settlement_ladder;
 pub mod skill;
 pub mod spark_replay;
+pub mod tassadar_lab;
 pub mod wallet;
