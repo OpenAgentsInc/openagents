@@ -38,13 +38,19 @@ The Phase 14 substrate is now real in the repo rather than scratch-only:
 - live run-progress output from the trainer and promotion wrapper
   - stage start
   - epoch start
+  - batch start
+  - sequence start
+  - sequence completion
+  - validation start
+  - validation case completion
   - batch completion
   - validation summary
   - best-checkpoint updates
   - benchmark/persist/telemetry/promotion phases
 
 That last item matters operationally. The run is no longer a silent multi-minute
-black box.
+black box, and later reruns now expose which exact sequence or validation case
+is currently consuming time.
 
 ## Canonical Promotion Run
 
@@ -103,6 +109,16 @@ The progress stream exposed the run shape clearly:
 
 That means the run failed for inspectable reasons, not because it disappeared
 into silent training time.
+
+The trainer now goes one step further than the canonical run did on March 16:
+
+- training emits per-batch estimated target-token counts before work starts
+- each sequence now emits a start line with prompt/target length and prefix mode
+- each sequence emits a completion line with token count and per-sequence mean loss
+- validation emits one case-complete line with divergence and exactness facts
+
+That does not improve the model by itself, but it does remove the remaining
+multi-minute blind spots from the Phase 14 loop.
 
 ## Stable Failure Pattern
 
@@ -169,7 +185,46 @@ Schedule churn on the current lookup-family lane is not enough.
 The next honest dependency is stronger work on the post-Phase-15 path:
 
 - keep the current lookup-family promotion bundle as the weak baseline
-- use the separate executor-attention family only with same-corpus comparisons
+- keep the separate teacher-forced continuation bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2` as additional
+  negative evidence that schedule-only churn does not beat the current ceiling
+- use the separate executor-attention family only with same-corpus comparisons;
+  the trained-attention floor under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1`, the
+  rejected boundary-output-head run under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`, and
+  the improved boundary-adapter run under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the later hidden-state projection-adapter follow-ons under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, and
+  the later transition-adapter follow-on under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, and
+  the later joint-adapter fine-tune under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`
+  together show real progress over the seeded Phase 15 candidate and still beat
+  the preserved lookup baseline on the bounded comparison windows via
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v6`
+  and `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7`
+  plus the later `v8` repeat, but the gate is still not cleared because the
+  best learned attention artifact now sits at `10000` bps first-target,
+  `8750` bps first-8, `7188` bps first-32, `0/2` exact validation traces, and
+  still has an explicit divergence signature at a later structural field: the
+  model now holds through the first six target tokens but then predicts
+  `<byte_00>` where the reference requires `<pc>`, and the later joint
+  transition+projection fine-tune reproduces that ceiling rather than beating
+  it
+- keep the later structural-adapter saturation evidence under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v8`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v11`;
+  those artifacts show that adding a trace-schema-conditioned adapter, then a
+  per-position adapter, then a high-gain per-position adapter still leaves all
+  `32/32` checkpoints on the exact same validation signature (`token 6`,
+  reference `<pc>`, predicted `<byte_00>`, `7188` bps first-32, `0/2` exact
+  traces), so the current bounded adapter family is saturated rather than
+  merely under-tuned
 - do not widen claims until one family actually clears the Phase 14 gate
 - do not promote 9x9 or Hungarian off this result
 

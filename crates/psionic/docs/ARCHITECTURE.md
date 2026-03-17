@@ -273,6 +273,15 @@ The current scope is:
   `6875` bps first-32, `0/2` exact validation traces), so this phase closes
   the “promotion tooling exists” gap without pretending the learned 4x4 gate is
   green
+- landed trained-executor Phase 14A follow-on bar: `psionic-train` now also
+  preserves a separate teacher-forced continuation bundle at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2`; that run
+  proves schedule-only churn on the current lookup family does not beat the
+  canonical ceiling, because its selected checkpoint `epoch_0008` exactly
+  reproduces the same gate result (`10000` bps first-target, `7500` bps
+  first-8, `6875` bps first-32, `0/2` exact validation traces) before later
+  32-token epochs regress again, so the next honest move is model/architecture
+  change rather than more schedule tuning
 - landed trained-executor Phase 15 follow-on bar: `psionic-models` now carries
   a separate bounded `TassadarExecutorAttentionTransformer` family with layered
   full-prefix causal hard-max attention, fixed 2D head geometry, explicit
@@ -285,6 +294,48 @@ The current scope is:
   first-32 exactness and `1333` target tok/s, versus `10000` / `6563` bps and
   `32000` target tok/s for the lookup baseline), so this phase lands as a
   research candidate rather than a promotion result
+- landed trained-executor Phase 15A follow-on bar: `psionic-research` now also
+  owns a bounded attention-family training loop plus a preserved trained-family
+  comparison root at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`;
+  the resulting artifacts prove the executor-attention family is no longer just
+  a seeded architectural candidate because it now trains off the `0`-bps floor
+  to `6563` bps aggregate / first-32 exactness on the bounded window, but it
+  still fails the first-token boundary (`0` bps first-target), still stays at
+  `0` exact bounded traces, and still loses the preserved lookup baseline on
+  the open 4x4 promotion metric, so the claim boundary remains
+  `research_windowed_decode_only` rather than learned-lane success
+- landed trained-executor Phase 15B follow-on bar: the same executor-attention
+  family now also carries a bounded relative-target output-bias adapter in
+  `psionic-models`, the preserved destructive boundary-first output-head
+  attempt now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`, the
+  improved adapter-backed run now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the later projection-adapter follow-ons now live at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, the
+  newer transition-adapter follow-on now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, the
+  later joint-adapter fine-tune now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, the
+  later trace-schema and per-position saturation runs now live at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v8`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9`, and
+  the current same-corpus comparison now lives at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v11`;
+  those artifacts keep improving the first executor-attention boundary surface
+  over the lookup baseline, and the latest bounded pair now records
+  `10000` bps first-target, `8750` bps first-8, and `7188` bps first-32
+  versus lookup `10000` / `6250` / `6563`, but the learned gate is still not
+  green because exact validation traces remain `0/2` and the sharper remaining
+  blocker is still token `6`: the model predicts `<byte_00>` where the
+  reference requires `<pc>`; the later joint transition+projection fine-tune
+  reproduces that ceiling rather than beating it, and the later trace-schema /
+  per-position saturation set proves the current bounded adapter family is
+  saturated rather than merely under-tuned
 - landed trained-executor Phase 17 follow-on bar: `psionic-models` now carries
   a bounded typed `TassadarCompiledProgramExecutor` surface with persisted
   compile-evidence bundles, `psionic-eval` now emits exactness and

@@ -1,0 +1,58 @@
+{
+  "family_kind": "lookup_baseline",
+  "model_id": "tassadar-executor-transformer-sudoku-v0-v0",
+  "model_descriptor_digest": "a75c4d1653d6f3c2e1ae8248a0ac05216ff4b05695ee24ec2acdc38679ee7793",
+  "trained_weight_digest": "20518a553a62b5c8de9c83367c9979e4a5b4c852b23fec2dc9b2d4d05768b7f2",
+  "claim_boundary": "greedy_decode_unvalidated",
+  "attention_mode": "hard_max_lookup",
+  "layer_count": 1,
+  "head_count": 5,
+  "head_dim": 2,
+  "prompt_window_token_cap": 256,
+  "target_token_cap": 32,
+  "article_fidelity_summary": "fixed relative-offset lookup heads plus optional learned mixer; not a layered causal-attention stack",
+  "correctness": {
+    "aggregate_target_token_exactness_bps": 6563,
+    "first_target_exactness_bps": 10000,
+    "first_8_token_exactness_bps": 6250,
+    "first_32_token_exactness_bps": 6563,
+    "exact_trace_case_count": 0
+  },
+  "speed": {
+    "decode_mode": "reference_linear",
+    "neural_tokens_per_second": 32000,
+    "cpu_tokens_per_second": 32000
+  },
+  "requested_hull_decode": {
+    "requested_decode_mode": "hull_cache",
+    "effective_decode_mode": "hull_cache",
+    "hull_decode_posture": "direct"
+  },
+  "case_reports": [
+    {
+      "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+      "case_id": "sudoku_v0_validation_a",
+      "target_token_count": 32,
+      "target_token_exactness_bps": 6563,
+      "first_target_exactness_bps": 10000,
+      "first_8_token_exactness_bps": 6250,
+      "first_32_token_exactness_bps": 6563,
+      "matched_target_token_count": 1,
+      "first_divergence_index": 1,
+      "exact_trace_match": false
+    },
+    {
+      "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+      "case_id": "sudoku_v0_validation_b",
+      "target_token_count": 32,
+      "target_token_exactness_bps": 6563,
+      "first_target_exactness_bps": 10000,
+      "first_8_token_exactness_bps": 6250,
+      "first_32_token_exactness_bps": 6563,
+      "matched_target_token_count": 1,
+      "first_divergence_index": 1,
+      "exact_trace_match": false
+    }
+  ],
+  "report_digest": "1da0175dcbf904d5b309df9ee038bb51212b60e6fd9b1037ae436a8cd4c3b206"
+}

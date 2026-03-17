@@ -1,0 +1,16 @@
+{
+  "family_kind": "executor_attention_candidate",
+  "run_id": "tassadar-executor-architecture-executor_attention_candidate-v11",
+  "run_directory": "executor_attention_candidate",
+  "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+  "model_descriptor_digest": "0bda341ee2606c453cceafb5553b35a5ab8f2cabeba344ef524a6b39b3efd29b",
+  "trained_weight_digest": "0c92bce4d445ed4a0c46aa2d441d081b04d3754fd0477421de2f4e56adc7d1ab",
+  "claim_boundary": "research_windowed_decode_only",
+  "prompt_window_token_cap": 256,
+  "target_token_cap": 32,
+  "family_report_file": "family_report.json",
+  "model_descriptor_file": "model_descriptor.json",
+  "source_artifact_ref": "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9/run_bundle.json",
+  "family_report_digest": "60ecc8e1be692ed79a1a701e4fea6b16924ab6c019ed2b35cb932dc3b7ac732f",
+  "bundle_digest": "18f586dd37c58a87e13416c92dd2ab5b9fa58b10ea27f2f7539afdc36d6fb00e"
+}

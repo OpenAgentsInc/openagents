@@ -336,6 +336,18 @@ That now includes one intentionally narrow executor-training answer:
   `6875` bps first-32 exactness, and `0/2` exact validation traces, so the
   promotion gate remains red and the companion human-readable audit is
   `docs/audits/2026-03-16-tassadar-phase-14-blocker-audit.md`
+- the Phase 14 teacher-forced continuation now also exists beside that
+  baseline: `psionic-train` can execute the separate preserved config under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_promotion_v2`, keeping the
+  same lookup-family surface and Phase 14 gate while removing greedy-rollout
+  refinement and extending teacher-forced 16-/32-token supervision; the
+  resulting selected checkpoint `epoch_0008` reproduces but does not beat the
+  prior best (`10000` bps first-target, `7500` bps first-8, `6875` bps
+  first-32, `0/2` exact traces), and later 32-token epochs still regress, so
+  that bundle closes the “maybe this was just a schedule problem” question
+  without pretending the learned 4x4 gate is any closer to green; the
+  companion audit is
+  `docs/audits/2026-03-16-tassadar-promotion-v2-teacher-forced-audit.md`
 - the Phase 15 executor-attention comparison now also exists beside that
   baseline: `psionic-models` now carries a distinct bounded
   `TassadarExecutorAttentionTransformer` family with layered causal hard-max
@@ -351,6 +363,51 @@ That now includes one intentionally narrow executor-training answer:
   than the lookup baseline (`10000` / `6563` bps, `32000` target tok/s, direct
   hull decode), so this phase is a research-family landing rather than a
   promotion or parity result
+- the post-Phase-15 trained-attention follow-on now also exists beside that
+  seeded comparison: `psionic-research` now runs a bounded attention-family
+  output-head training loop and persists its artifacts under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_training_v1`,
+  while a trained-family comparison is now preserved under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v2`;
+  the resulting artifacts show real learning progress off the seeded
+  attention-family floor (`6563` bps aggregate and first-32 exactness instead
+  of `0`), but they also show the same remaining blocker plainly: the trained
+  attention family still gets the first target token wrong (`0` bps
+  first-target), still yields `0/2` exact bounded traces, and therefore still
+  does not clear the open Phase 14 gate
+- the post-Phase-15 boundary-adapter follow-on now also exists beside that
+  trained attention floor: `psionic-models` now carries a bounded
+  relative-target output-bias adapter, `psionic-research` now preserves the
+  failed output-head-only boundary attempt under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`,
+  the improved adapter-backed run under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
+  the later hidden-state projection-adapter follow-ons under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, the
+  newer previous-token-conditioned transition-adapter follow-on under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, the
+  later joint transition+projection fine-tune under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, the
+  later trace-schema and per-position saturation runs under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v8`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9`, and
+  the current same-corpus comparison under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v11`;
+  the accepted `boundary_v2` run keeps the token-0 fix without destroying the
+  bounded suffix (`10000` bps first-target, `7500` bps first-8, `6875` bps
+  first-32), the later `boundary_v3` / `boundary_v4` follow-ons prove the
+  remaining blocker is structural rather than vague, and the newer
+  `boundary_v5` / `v7` pair proves the structural-transition surface can move
+  that blocker deeper into the trace (`10000` bps first-target, `8750` bps
+  first-8, `7188` bps first-32), while the later `boundary_v6` / `v8`
+  joint-adapter fine-tune reproduces but does not beat that ceiling and the
+  later `boundary_v7` / `boundary_v8` / `boundary_v9` saturation set proves
+  the current bounded adapter family is stuck on the exact same validation
+  signature; the promotion gate is still red, though, because exact validation
+  traces remain `0/2` and the learned lane still first diverges at token `6`
+  by predicting `<byte_00>` where the reference requires `<pc>`
 - the separate Phase 17 compiled lane now also exists beside that learned
   stack: `psionic-models` now exposes a bounded typed
   `TassadarCompiledProgramExecutor` with compile-evidence bundles,
