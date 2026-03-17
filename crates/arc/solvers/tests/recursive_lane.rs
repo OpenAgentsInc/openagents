@@ -128,14 +128,8 @@ fn recursive_lane_tracks_bounded_steps_and_solves() {
     let raw_task = task(
         "recursive-tiny-model",
         &[
-            (
-                grid(2, 2, &[&[1, 0], &[0, 1]]),
-                solved.clone(),
-            ),
-            (
-                grid(2, 2, &[&[0, 1], &[1, 0]]),
-                solved.clone(),
-            ),
+            (grid(2, 2, &[&[1, 0], &[0, 1]]), solved.clone()),
+            (grid(2, 2, &[&[0, 1], &[1, 0]]), solved.clone()),
         ],
         vec![grid(2, 2, &[&[1, 0], &[1, 0]])],
     );
@@ -226,7 +220,10 @@ fn recursive_lane_applies_test_time_update_and_records_mode() {
     );
 
     let run = lane.run(&task, budget()).expect("lane should run");
-    assert_eq!(run.bootstrap_mode, ArcRecursiveTinyModelBootstrapMode::Scratch);
+    assert_eq!(
+        run.bootstrap_mode,
+        ArcRecursiveTinyModelBootstrapMode::Scratch
+    );
     assert_eq!(run.ttt_updates_applied, 1);
     assert_eq!(run.step_traces.len(), 3);
     assert_eq!(

@@ -224,7 +224,9 @@ pub fn run_static_hygiene_suite(
 
 #[derive(Debug, Error)]
 pub enum ArcBenchmarkHygieneError {
-    #[error("static hygiene suite currently supports ARC-AGI-1 and ARC-AGI-2 only, got {benchmark:?}")]
+    #[error(
+        "static hygiene suite currently supports ARC-AGI-1 and ARC-AGI-2 only, got {benchmark:?}"
+    )]
     UnsupportedBenchmark { benchmark: ArcBenchmark },
     #[error("static hygiene suite `{suite_id}` must include at least one case")]
     EmptySuite { suite_id: String },
@@ -325,15 +327,12 @@ fn summarize_visibility(
 ) -> Result<Vec<ArcVisibilitySummary>, ArcBenchmarkHygieneError> {
     let mut buckets = BTreeMap::<ArcEvaluationVisibility, Vec<ArcExactMatchTaskReport>>::new();
     for case in &suite.cases {
-        buckets
-            .entry(case.visibility)
-            .or_default()
-            .push(
-                reports
-                    .get(case.task.id.as_str())
-                    .expect("report exists")
-                    .clone(),
-            );
+        buckets.entry(case.visibility).or_default().push(
+            reports
+                .get(case.task.id.as_str())
+                .expect("report exists")
+                .clone(),
+        );
     }
 
     buckets
@@ -358,15 +357,12 @@ fn summarize_concepts(
     let mut buckets = BTreeMap::<String, Vec<ArcExactMatchTaskReport>>::new();
     for case in &suite.cases {
         for concept in &case.concept_slices {
-            buckets
-                .entry(concept.clone())
-                .or_default()
-                .push(
-                    reports
-                        .get(case.task.id.as_str())
-                        .expect("report exists")
-                        .clone(),
-                );
+            buckets.entry(concept.clone()).or_default().push(
+                reports
+                    .get(case.task.id.as_str())
+                    .expect("report exists")
+                    .clone(),
+            );
         }
     }
 

@@ -1,4 +1,4 @@
-use arc_core::{ArcAction, ArcActionKind, ARC_ACTION6_COORDINATE_MAX};
+use arc_core::{ARC_ACTION6_COORDINATE_MAX, ArcAction, ArcActionKind};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;

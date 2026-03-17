@@ -12,7 +12,8 @@ use psionic_apple_fm::{
 };
 use psionic_data::{
     AppleAdapterCuratedCorpusManifest, AppleAdapterDatasetContract, AppleAdapterMessageRole,
-    AppleAdapterResponseFormat, AppleAdapterRuntimeCompatibilityProfile, AppleAdapterTrainingSample,
+    AppleAdapterResponseFormat, AppleAdapterRuntimeCompatibilityProfile,
+    AppleAdapterTrainingSample,
 };
 use psionic_eval::{
     AppleAdapterBaseVsAdapterAcceptancePolicy, AppleAdapterBaseVsAdapterBenchmarkReport,
@@ -514,12 +515,8 @@ pub fn run_architecture_explainer_acceptance_harness(
         .filter(|value| !value.is_empty())
         .unwrap_or("openagents_psionic_apple_acceptance_report");
     let report_dir = report_root.join(report_stem);
-    fs::create_dir_all(report_dir.as_path()).with_context(|| {
-        format!(
-            "failed to create stage report dir {}",
-            report_dir.display()
-        )
-    })?;
+    fs::create_dir_all(report_dir.as_path())
+        .with_context(|| format!("failed to create stage report dir {}", report_dir.display()))?;
 
     let overfit_config = acceptance_stage_config(
         base_config,
@@ -1014,7 +1011,10 @@ fn benchmark_behavior_addendum(sample: &AppleAdapterTrainingSample) -> &'static 
     "Answer directly from repo truth in one short factual sentence. Do not apologize, hedge, or claim missing access if the repo already states the answer."
 }
 
-fn structured_fallback_prompt(prompt: &str, response_format: &AppleAdapterResponseFormat) -> String {
+fn structured_fallback_prompt(
+    prompt: &str,
+    response_format: &AppleAdapterResponseFormat,
+) -> String {
     let schema = &response_format.json_schema.schema;
     let schema_summary = structured_schema_summary(schema);
     format!(
@@ -1042,10 +1042,7 @@ fn structured_schema_summary(schema: &Value) -> String {
             properties
                 .iter()
                 .map(|(key, value)| {
-                    let kind = value
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .unwrap_or("value");
+                    let kind = value.get("type").and_then(Value::as_str).unwrap_or("value");
                     format!("{key}:{kind}")
                 })
                 .collect::<Vec<_>>()
@@ -1118,12 +1115,20 @@ fn retry_tool_routed_live_runtime_output(
             adapter: None,
         },
     ) {
-        Ok(response) => AppleAdapterObservedSampleOutput::from_text(sample.sample_id.clone(), response.output),
-        Err(error) => runtime_error_observed_output(sample.sample_id.as_str(), error.to_string(), false),
+        Ok(response) => {
+            AppleAdapterObservedSampleOutput::from_text(sample.sample_id.clone(), response.output)
+        }
+        Err(error) => {
+            runtime_error_observed_output(sample.sample_id.as_str(), error.to_string(), false)
+        }
     };
     let retry_output = retry_recorder.attach_to_output(retry_output)?;
     let _ = client.delete_session(retry_session.id.as_str());
-    Ok(select_preferred_tool_output(sample, first_output, retry_output))
+    Ok(select_preferred_tool_output(
+        sample,
+        first_output,
+        retry_output,
+    ))
 }
 
 fn should_retry_tool_routed_output(
@@ -1135,7 +1140,9 @@ fn should_retry_tool_routed_output(
         return false;
     }
     let observed = observed_tool_names(output);
-    let missing_required = required.iter().any(|tool_name| !observed.contains(*tool_name));
+    let missing_required = required
+        .iter()
+        .any(|tool_name| !observed.contains(*tool_name));
     missing_required && retryable_model_request_failure_count(output) > 0
 }
 
@@ -1220,8 +1227,11 @@ fn tool_retry_prompt(
     } else {
         guidance.join(" ")
     };
-    let suggestion_text = tool_retry_suggestion_text(output)
-        .unwrap_or_else(|| String::from("Prefer the concrete repo paths already implied by the prompt and system instruction."));
+    let suggestion_text = tool_retry_suggestion_text(output).unwrap_or_else(|| {
+        String::from(
+            "Prefer the concrete repo paths already implied by the prompt and system instruction.",
+        )
+    });
     format!(
         "{prompt}\n\nRetry after tool-call failure. Required tools: {required}. {guidance_text} {suggestion_text} Use the exact tool names above. Call the tools before answering, and do not invent new file names when one of the suggested concrete paths already matches the request."
     )

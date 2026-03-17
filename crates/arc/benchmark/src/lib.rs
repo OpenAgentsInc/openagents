@@ -34,8 +34,8 @@ pub use exact_match::{
 pub use hygiene::{
     ArcBenchmarkHygieneError, ArcConceptSliceSummary, ArcEvaluationVisibility,
     ArcPublicEvalArtifactManifest, ArcPublicEvalValidationResult, ArcStaticHygieneCase,
-    ArcStaticHygieneReport, ArcStaticHygieneSuite, ArcSyntheticDerivation,
-    ArcVisibilitySummary, run_static_hygiene_suite, validate_public_eval_artifact_manifest,
+    ArcStaticHygieneReport, ArcStaticHygieneSuite, ArcSyntheticDerivation, ArcVisibilitySummary,
+    run_static_hygiene_suite, validate_public_eval_artifact_manifest,
 };
 pub use interactive::{
     ArcInteractiveRunReport, ArcInteractiveStepSummary, score_interactive_recording,

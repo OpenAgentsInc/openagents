@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
-use arc_benchmark::{score_interactive_recording, ArcBenchmarkError, ArcInteractiveRunReport};
-use arc_core::{canonical_sha256_hex, ArcBenchmark, ArcRecording, ArcScorecardMetadata, ArcTaskId};
+use arc_benchmark::{ArcBenchmarkError, ArcInteractiveRunReport, score_interactive_recording};
+use arc_core::{ArcBenchmark, ArcRecording, ArcScorecardMetadata, ArcTaskId, canonical_sha256_hex};
 use psionic_eval::BenchmarkPackageKey;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
