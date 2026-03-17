@@ -101,6 +101,16 @@ pub struct PanePaintReport {
 
 const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
 const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
+const MISSION_CONTROL_LABEL_ROW_LINE_HEIGHT: f32 = 18.0;
+const MISSION_CONTROL_BODY_BLOCK_LINE_HEIGHT: f32 = 16.0;
+const MISSION_CONTROL_ROW_DIVIDER_TOP_GAP: f32 = 10.0;
+const MISSION_CONTROL_ROW_DIVIDER_HEIGHT: f32 = 1.0;
+const MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP: f32 = 10.0;
+const MISSION_CONTROL_LABEL_ROW_TRAILING_GAP: f32 = 20.0;
+const MISSION_CONTROL_BODY_BLOCK_LABEL_GAP: f32 = 16.0;
+const MISSION_CONTROL_BODY_BLOCK_BOTTOM_GAP: f32 = 4.0;
+const MISSION_CONTROL_BODY_BLOCK_TRAILING_GAP: f32 = 12.0;
+const MISSION_CONTROL_LOAD_FUNDS_CONTENT_BOTTOM_PADDING: f32 = 8.0;
 const MISSION_CONTROL_REFRESH_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M129.9 292.5C143.2 199.5 223.3 128 320 128C373 128 421 149.5 455.8 184.2C456 184.4 456.2 184.6 456.4 184.8L464 192L416.1 192C398.4 192 384.1 206.3 384.1 224C384.1 241.7 398.4 256 416.1 256L544.1 256C561.8 256 576.1 241.7 576.1 224L576.1 96C576.1 78.3 561.8 64 544.1 64C526.4 64 512.1 78.3 512.1 96L512.1 149.4L500.8 138.7C454.5 92.6 390.5 64 320 64C191 64 84.3 159.4 66.6 283.5C64.1 301 76.2 317.2 93.7 319.7C111.2 322.2 127.4 310 129.9 292.6zM573.4 356.5C575.9 339 563.7 322.8 546.3 320.3C528.9 317.8 512.6 330 510.1 347.4C496.8 440.4 416.7 511.9 320 511.9C267 511.9 219 490.4 184.2 455.7C184 455.5 183.8 455.3 183.6 455.1L176 447.9L223.9 447.9C241.6 447.9 255.9 433.6 255.9 415.9C255.9 398.2 241.6 383.9 223.9 383.9L96 384C87.5 384 79.3 387.4 73.3 393.5C67.3 399.6 63.9 407.7 64 416.3L65 543.3C65.1 561 79.6 575.2 97.3 575C115 574.8 129.2 560.4 129 542.7L128.6 491.2L139.3 501.3C185.6 547.4 249.5 576 320 576C449 576 555.7 480.6 573.4 356.5z"/></svg>"##;
 const MISSION_CONTROL_COPY_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M480 400L288 400C279.2 400 272 392.8 272 384L272 128C272 119.2 279.2 112 288 112L421.5 112C425.7 112 429.8 113.7 432.8 116.7L491.3 175.2C494.3 178.2 496 182.3 496 186.5L496 384C496 392.8 488.8 400 480 400zM288 448L480 448C515.3 448 544 419.3 544 384L544 186.5C544 169.5 537.3 153.2 525.3 141.2L466.7 82.7C454.7 70.7 438.5 64 421.5 64L288 64C252.7 64 224 92.7 224 128L224 384C224 419.3 252.7 448 288 448zM160 192C124.7 192 96 220.7 96 256L96 512C96 547.3 124.7 576 160 576L352 576C387.3 576 416 547.3 416 512L416 496L368 496L368 512C368 520.8 360.8 528 352 528L160 528C151.2 528 144 520.8 144 512L144 256C144 247.2 151.2 240 160 240L176 240L176 192L160 192z"/></svg>"##;
 
@@ -2444,12 +2454,17 @@ fn paint_go_online_pane(
         }
         SparkInvoiceState::Empty => "Generate a Lightning invoice to fund this wallet.".to_string(),
     };
-    let detail_lines = lightning_target_text.lines().count().max(1)
-        + mission_control_recent_receive_history(spark_wallet)
-            .lines()
-            .count()
-            .max(1);
-    let load_funds_content_height = 170.0 + detail_lines as f32 * 16.0;
+    let recent_receive_history = mission_control_recent_receive_history(spark_wallet);
+    let load_funds_measurement_layout =
+        mission_control_load_funds_layout_with_scroll(content_bounds, buy_mode_enabled, 0.0);
+    let load_funds_content_height = mission_control_load_funds_content_height(
+        &load_funds_measurement_layout,
+        &wallet_network,
+        wallet_status,
+        mission_control_lightning_receive_state_label(lightning_state),
+        &lightning_target_text,
+        &recent_receive_history,
+    );
     let load_funds_max_scroll =
         mission_control_max_scroll_for_viewport(load_funds_viewport, load_funds_content_height);
     let load_funds_scroll = mission_control.clamp_load_funds_scroll_offset(load_funds_max_scroll);
@@ -2599,7 +2614,7 @@ fn paint_go_online_pane(
         load_funds_layout.details_column.origin.x,
         load_funds_y,
         "Recent receives",
-        &mission_control_recent_receive_history(spark_wallet),
+        &recent_receive_history,
         load_funds_body_chunk_len,
         load_funds_layout.details_column.size.width,
         false,
@@ -7797,14 +7812,32 @@ fn paint_wrapped_label_line_mission_control_label(
             12.0,
             mission_control_text_color(),
         ));
-        line_y += 18.0;
+        line_y += MISSION_CONTROL_LABEL_ROW_LINE_HEIGHT;
     }
-    let row_bottom = line_y.max(y + 18.0);
+    let row_bottom = line_y.max(y + MISSION_CONTROL_LABEL_ROW_LINE_HEIGHT);
     if show_divider {
         paint_mission_control_row_divider(paint, x, row_bottom, row_width)
     } else {
-        row_bottom + 20.0
+        row_bottom + MISSION_CONTROL_LABEL_ROW_TRAILING_GAP
     }
+}
+
+fn mission_control_wrapped_label_line_height(
+    value: &str,
+    value_chunk_len: usize,
+    show_divider: bool,
+) -> f32 {
+    let line_count = split_text_for_display(value, value_chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    line_count * MISSION_CONTROL_LABEL_ROW_LINE_HEIGHT
+        + if show_divider {
+            MISSION_CONTROL_ROW_DIVIDER_TOP_GAP
+                + MISSION_CONTROL_ROW_DIVIDER_HEIGHT
+                + MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+        } else {
+            MISSION_CONTROL_LABEL_ROW_TRAILING_GAP
+        }
 }
 
 fn paint_mission_control_body_block(
@@ -7824,7 +7857,7 @@ fn paint_mission_control_body_block(
         mission_control_muted_color(),
     ));
 
-    let mut line_y = y + 16.0;
+    let mut line_y = y + MISSION_CONTROL_BODY_BLOCK_LABEL_GAP;
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
@@ -7832,14 +7865,60 @@ fn paint_mission_control_body_block(
             11.0,
             mission_control_text_color(),
         ));
-        line_y += 16.0;
+        line_y += MISSION_CONTROL_BODY_BLOCK_LINE_HEIGHT;
     }
-    let row_bottom = line_y + 4.0;
+    let row_bottom = line_y + MISSION_CONTROL_BODY_BLOCK_BOTTOM_GAP;
     if show_divider {
         paint_mission_control_row_divider(paint, x, row_bottom, row_width)
     } else {
-        row_bottom + 12.0
+        row_bottom + MISSION_CONTROL_BODY_BLOCK_TRAILING_GAP
     }
+}
+
+fn mission_control_body_block_height(
+    value: &str,
+    value_chunk_len: usize,
+    show_divider: bool,
+) -> f32 {
+    let line_count = split_text_for_display(value, value_chunk_len.max(1))
+        .len()
+        .max(1) as f32;
+    MISSION_CONTROL_BODY_BLOCK_LABEL_GAP
+        + line_count * MISSION_CONTROL_BODY_BLOCK_LINE_HEIGHT
+        + MISSION_CONTROL_BODY_BLOCK_BOTTOM_GAP
+        + if show_divider {
+            MISSION_CONTROL_ROW_DIVIDER_TOP_GAP
+                + MISSION_CONTROL_ROW_DIVIDER_HEIGHT
+                + MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP
+        } else {
+            MISSION_CONTROL_BODY_BLOCK_TRAILING_GAP
+        }
+}
+
+fn mission_control_load_funds_content_height(
+    layout: &crate::pane_system::MissionControlLoadFundsLayout,
+    wallet_network: &str,
+    wallet_status: &str,
+    lightning_state_label: &str,
+    lightning_target_text: &str,
+    recent_receive_history: &str,
+) -> f32 {
+    let value_chunk_len = mission_control_value_chunk_len(layout.details_column);
+    let body_chunk_len = mission_control_body_chunk_len(layout.details_column);
+    let detail_height =
+        mission_control_wrapped_label_line_height(wallet_network, value_chunk_len, true)
+            + mission_control_wrapped_label_line_height(wallet_status, value_chunk_len, true)
+            + mission_control_wrapped_label_line_height(
+                lightning_state_label,
+                value_chunk_len,
+                true,
+            )
+            + mission_control_body_block_height(lightning_target_text, body_chunk_len, true)
+            + mission_control_body_block_height(recent_receive_history, body_chunk_len, false);
+    let controls_height =
+        (layout.copy_seed_button.max_y() - layout.controls_column.origin.y).max(0.0);
+
+    controls_height.max(detail_height) + MISSION_CONTROL_LOAD_FUNDS_CONTENT_BOTTOM_PADDING
 }
 
 fn paint_mission_control_row_divider(
@@ -7848,12 +7927,12 @@ fn paint_mission_control_row_divider(
     row_bottom: f32,
     row_width: f32,
 ) -> f32 {
-    let divider_y = row_bottom + 10.0;
+    let divider_y = row_bottom + MISSION_CONTROL_ROW_DIVIDER_TOP_GAP;
     paint.scene.draw_quad(
         Quad::new(Bounds::new(x, divider_y, row_width.max(0.0), 1.0))
             .with_background(mission_control_panel_border_color().with_alpha(0.36)),
     );
-    divider_y + 1.0 + 10.0
+    divider_y + MISSION_CONTROL_ROW_DIVIDER_HEIGHT + MISSION_CONTROL_ROW_DIVIDER_BOTTOM_GAP
 }
 
 fn paint_wrapped_label_line_with_style(
@@ -8105,12 +8184,12 @@ mod tests {
         mission_control_active_jobs_panel_state, mission_control_backend_label,
         mission_control_body_chunk_len, mission_control_buy_mode_panel_state,
         mission_control_buy_mode_payment_label, mission_control_go_online_hint,
-        mission_control_lightning_receive_state_label, mission_control_local_action_enabled,
-        mission_control_local_fm_test_button_label, mission_control_local_fm_test_enabled,
-        mission_control_local_model_button_label, mission_control_model_load_status,
-        mission_control_primary_model_label, mission_control_value_chunk_len,
-        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, provider_control_inactive_preview_state,
+        mission_control_lightning_receive_state_label, mission_control_load_funds_content_height,
+        mission_control_local_action_enabled, mission_control_local_fm_test_button_label,
+        mission_control_local_fm_test_enabled, mission_control_local_model_button_label,
+        mission_control_model_load_status, mission_control_primary_model_label,
+        mission_control_value_chunk_len, mission_control_value_x_offset, nostr_identity_view_state,
+        pay_invoice_view_state, payment_terminal_status, provider_control_inactive_preview_state,
         request_freshness_summary, scrollbar_thumb_height, spark_wallet_view_state,
         split_text_for_display,
     };
@@ -8121,6 +8200,7 @@ mod tests {
         ProviderControlPaneState,
     };
     use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
+    use crate::pane_system::mission_control_load_funds_layout_with_scroll;
     use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
     use crate::state::operations::{
         BuyerResolutionMode, NetworkRequestSubmission, NetworkRequestsState,
@@ -8734,6 +8814,41 @@ mod tests {
         assert!(mission_control_body_chunk_len(narrow) >= 12);
         assert!(mission_control_value_chunk_len(wide) > mission_control_value_chunk_len(narrow));
         assert!(mission_control_body_chunk_len(wide) > mission_control_body_chunk_len(narrow));
+    }
+
+    #[test]
+    fn load_funds_content_height_grows_when_wrapped_invoice_needs_more_lines() {
+        let invoice = "lnbc1".repeat(64);
+        let recent_receives = "2026-03-17 09:31 // +100 sats // ready";
+        let narrow_layout = mission_control_load_funds_layout_with_scroll(
+            Bounds::new(0.0, 0.0, 720.0, 680.0),
+            false,
+            0.0,
+        );
+        let wide_layout = mission_control_load_funds_layout_with_scroll(
+            Bounds::new(0.0, 0.0, 1180.0, 680.0),
+            false,
+            0.0,
+        );
+
+        let narrow_height = mission_control_load_funds_content_height(
+            &narrow_layout,
+            "Spark // mainnet",
+            "connected",
+            "invoice ready",
+            &invoice,
+            recent_receives,
+        );
+        let wide_height = mission_control_load_funds_content_height(
+            &wide_layout,
+            "Spark // mainnet",
+            "connected",
+            "invoice ready",
+            &invoice,
+            recent_receives,
+        );
+
+        assert!(narrow_height > wide_height);
     }
 
     #[test]

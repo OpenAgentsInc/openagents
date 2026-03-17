@@ -33,6 +33,87 @@ const APPLE_ADAPTER_REFERENCE_CHECKPOINT_FAMILY: &str = "apple_adapter";
 const APPLE_ADAPTER_REFERENCE_ADAPTER_FAMILY: &str = "apple_adapter";
 const APPLE_ADAPTER_REFERENCE_ADAPTER_FORMAT: &str = "openagents.apple-fmadapter.v1";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderIngressPolicyFilterKind {
+    UnsupportedKind,
+    TargetMismatch,
+}
+
+pub(crate) fn classify_provider_ingress_policy_filter_reason(
+    reason: &str,
+) -> Option<ProviderIngressPolicyFilterKind> {
+    let normalized = reason.trim().to_ascii_lowercase();
+    if normalized.contains("unsupported request kind") {
+        Some(ProviderIngressPolicyFilterKind::UnsupportedKind)
+    } else if normalized.contains("target policy mismatch") {
+        Some(ProviderIngressPolicyFilterKind::TargetMismatch)
+    } else {
+        None
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProviderIngressPolicyFilterSummaryState {
+    pub unsupported_kind_count: u64,
+    pub target_mismatch_count: u64,
+}
+
+impl ProviderIngressPolicyFilterSummaryState {
+    pub const fn is_empty(&self) -> bool {
+        self.unsupported_kind_count == 0 && self.target_mismatch_count == 0
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn record_reason(&mut self, reason: &str) -> Option<ProviderIngressPolicyFilterKind> {
+        let kind = classify_provider_ingress_policy_filter_reason(reason)?;
+        match kind {
+            ProviderIngressPolicyFilterKind::UnsupportedKind => {
+                self.unsupported_kind_count = self.unsupported_kind_count.saturating_add(1);
+            }
+            ProviderIngressPolicyFilterKind::TargetMismatch => {
+                self.target_mismatch_count = self.target_mismatch_count.saturating_add(1);
+            }
+        }
+        Some(kind)
+    }
+
+    pub fn provider_status_line(&self) -> Option<String> {
+        (!self.is_empty()).then(|| {
+            format!(
+                "ingress policy filtered expected relay traffic ({})",
+                self.counts_fragment()
+            )
+        })
+    }
+
+    pub fn inbox_status_line(&self) -> Option<String> {
+        (!self.is_empty()).then(|| {
+            format!(
+                "Policy-filtered live NIP-90 traffic is visible in Activity diagnostics ({})",
+                self.counts_fragment()
+            )
+        })
+    }
+
+    fn counts_fragment(&self) -> String {
+        let mut parts = Vec::new();
+        if self.unsupported_kind_count > 0 {
+            parts.push(format!("unsupported_kind={}", self.unsupported_kind_count));
+        }
+        if self.target_mismatch_count > 0 {
+            parts.push(format!("target_mismatch={}", self.target_mismatch_count));
+        }
+        if parts.is_empty() {
+            "none".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ProviderGptOssRuntimeState {
     pub reachable: bool,
@@ -256,6 +337,7 @@ pub struct ProviderRuntimeState {
     pub last_authoritative_status: Option<String>,
     pub last_authoritative_event_id: Option<String>,
     pub last_authoritative_error_class: Option<EarnFailureClass>,
+    pub ingress_policy_filters: ProviderIngressPolicyFilterSummaryState,
     pub inventory_controls: ProviderInventoryControls,
     pub inventory_rows: Vec<ProviderInventoryRow>,
     pub inventory_last_action: Option<String>,
@@ -291,6 +373,7 @@ impl Default for ProviderRuntimeState {
             last_authoritative_status: None,
             last_authoritative_event_id: None,
             last_authoritative_error_class: None,
+            ingress_policy_filters: ProviderIngressPolicyFilterSummaryState::default(),
             inventory_controls: ProviderInventoryControls::default(),
             inventory_rows: Vec::new(),
             inventory_last_action: Some(
@@ -413,6 +496,7 @@ mod tests {
         APPLE_ADAPTER_REFERENCE_ADAPTER_FAMILY, APPLE_ADAPTER_REFERENCE_ADAPTER_FORMAT,
         APPLE_ADAPTER_REFERENCE_VALIDATOR_POLICY_REF, LocalInferenceBackend,
         ProviderAdapterTrainingExecutionBackend, ProviderAdapterTrainingSettlementTrigger,
+        ProviderIngressPolicyFilterKind, ProviderIngressPolicyFilterSummaryState,
         ProviderInventoryControls, ProviderInventoryProductToggleTarget, ProviderRuntimeState,
     };
     use psionic_apple_fm::AppleFmSystemLanguageModelUnavailableReason;
@@ -436,6 +520,45 @@ mod tests {
             "projected / non-authoritative"
         );
         assert_eq!(runtime.settlement_truth_label(), "wallet-authoritative");
+    }
+
+    #[test]
+    fn ingress_policy_filter_summary_counts_expected_public_relay_noise() {
+        let mut summary = ProviderIngressPolicyFilterSummaryState::default();
+
+        assert_eq!(
+            summary.record_reason(
+                "unsupported request kind 5001; provider currently serves only kind 5050 text generation",
+            ),
+            Some(ProviderIngressPolicyFilterKind::UnsupportedKind)
+        );
+        assert_eq!(
+            summary.record_reason(
+                "request target policy mismatch (targets=[npub1other], local=[npub1local])",
+            ),
+            Some(ProviderIngressPolicyFilterKind::TargetMismatch)
+        );
+        assert_eq!(
+            summary.record_reason("decrypt failed before payload parse"),
+            None
+        );
+        assert_eq!(
+            summary.provider_status_line().as_deref(),
+            Some(
+                "ingress policy filtered expected relay traffic (unsupported_kind=1, target_mismatch=1)",
+            )
+        );
+        assert_eq!(
+            summary.inbox_status_line().as_deref(),
+            Some(
+                "Policy-filtered live NIP-90 traffic is visible in Activity diagnostics (unsupported_kind=1, target_mismatch=1)",
+            )
+        );
+
+        summary.clear();
+        assert!(summary.is_empty());
+        assert_eq!(summary.provider_status_line(), None);
+        assert_eq!(summary.inbox_status_line(), None);
     }
 
     #[test]

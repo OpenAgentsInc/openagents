@@ -60,6 +60,7 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
 
 pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderState) {
     let now = std::time::Instant::now();
+    let previous_mode = state.provider_runtime.mode;
     let availability = state.provider_runtime.availability();
     let backend_unavailable_detail = state
         .provider_runtime
@@ -80,6 +81,9 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
             state.provider_runtime.mode = ProviderMode::Offline;
             state.provider_runtime.degraded_reason_code = None;
             state.provider_runtime.last_error_detail = None;
+            if previous_mode != ProviderMode::Offline {
+                state.provider_runtime.ingress_policy_filters.clear();
+            }
             if matches!(
                 state.provider_nip90_lane.mode,
                 ProviderNip90LaneMode::Preview | ProviderNip90LaneMode::Connecting
@@ -154,6 +158,9 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
             state.provider_runtime.mode = ProviderMode::Online;
             state.provider_runtime.degraded_reason_code = None;
             state.provider_runtime.last_error_detail = None;
+            if previous_mode != ProviderMode::Online {
+                state.provider_runtime.ingress_policy_filters.clear();
+            }
             if state.provider_runtime.last_authoritative_error_class
                 == Some(EarnFailureClass::Relay)
                 || state.provider_runtime.last_authoritative_error_class
@@ -462,17 +469,21 @@ fn apply_ignored_ingress_request(
 
     state.job_inbox.load_state = PaneLoadState::Ready;
     state.job_inbox.last_error = None;
-    state.job_inbox.last_action = Some(format!(
-        "Ignored live NIP-90 request {} ({})",
-        request.request_id, reason
-    ));
-
-    state.provider_runtime.last_result = Some(format!(
-        "relay ingress ignored request {} ({})",
-        request.request_id, reason
-    ));
-    state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
-    state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+    if apply_ingress_policy_filter_summary(state, reason) {
+        state.provider_runtime.last_authoritative_status = Some("filtered".to_string());
+        state.provider_runtime.last_authoritative_event_id = None;
+    } else {
+        state.job_inbox.last_action = Some(format!(
+            "Ignored live NIP-90 request {} ({})",
+            request.request_id, reason
+        ));
+        state.provider_runtime.last_result = Some(format!(
+            "relay ingress ignored request {} ({})",
+            request.request_id, reason
+        ));
+        state.provider_runtime.last_authoritative_status = Some("ignored".to_string());
+        state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+    }
     if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
         state.provider_runtime.last_authoritative_error_class = None;
     }
@@ -484,7 +495,7 @@ fn apply_ignored_ingress_request(
         event_id: format!("nip90:req:ignored:{}", request.request_id),
         domain: ActivityEventDomain::Network,
         source_tag: "nip90.policy".to_string(),
-        summary: "Ignored live NIP-90 request".to_string(),
+        summary: "Policy filtered live NIP-90 request".to_string(),
         detail: format!(
             "request={} requester={} targets={} encrypted={} reason={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
             request.request_id,
@@ -512,6 +523,27 @@ fn apply_ignored_ingress_request(
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn apply_ingress_policy_filter_summary(state: &mut RenderState, reason: &str) -> bool {
+    if state
+        .provider_runtime
+        .ingress_policy_filters
+        .record_reason(reason)
+        .is_none()
+    {
+        return false;
+    }
+
+    state.provider_runtime.last_result = state
+        .provider_runtime
+        .ingress_policy_filters
+        .provider_status_line();
+    state.job_inbox.last_action = state
+        .provider_runtime
+        .ingress_policy_filters
+        .inbox_status_line();
+    true
 }
 
 fn ingress_is_preview_only(mode: ProviderNip90LaneMode) -> bool {
