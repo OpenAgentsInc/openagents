@@ -63,6 +63,30 @@ The top-row WGPUI controls expose the same actions for pointer-driven use:
 - help
 - previous / next sublayer
 
+## CLI Control
+
+The running desktop app exposes the same AttnRes controller through
+`autopilotctl`, so you can manage the lab without opening the pane:
+
+```bash
+autopilotctl attnres status
+autopilotctl attnres start
+autopilotctl attnres pause
+autopilotctl attnres reset
+autopilotctl attnres refresh
+autopilotctl attnres view overview
+autopilotctl attnres sublayer next
+autopilotctl attnres sublayer set 4
+autopilotctl attnres speed increase
+autopilotctl attnres speed set 5
+autopilotctl wait attnres-running
+autopilotctl wait attnres-paused
+autopilotctl wait attnres-completed
+```
+
+These commands target the existing desktop-control runtime and mutate the same
+persisted pane-owned AttnRes state the WGPUI surface reads.
+
 ## Persistence
 
 The pane persists desktop-owned state in the Autopilot log directory:

@@ -1918,6 +1918,49 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     }),
                 );
             }
+            PaneKind::AttnResLab => {
+                let selected = state.attnres_lab.current_sublayer();
+                map.insert(
+                    "attnres_lab".to_string(),
+                    json!({
+                        "playback_state": state.attnres_lab.playback_state.status_label(),
+                        "running": state.attnres_lab.playback_state.is_running(),
+                        "selected_view": state.attnres_lab.selected_view.label(),
+                        "selected_sublayer": state.attnres_lab.selected_sublayer,
+                        "selected_sublayer_label": selected.map(|sublayer| sublayer.label.as_str()),
+                        "show_help": state.attnres_lab.show_help,
+                        "step": state.attnres_lab.snapshot.step,
+                        "max_steps": state.attnres_lab.snapshot.max_steps,
+                        "speed_multiplier": state.attnres_lab.snapshot.speed_multiplier,
+                        "run_status": state.attnres_lab.snapshot.run_status,
+                        "training_loss": state.attnres_lab.snapshot.training_loss,
+                        "ema_loss": state.attnres_lab.snapshot.ema_loss,
+                        "avg_selectivity": state.attnres_lab.snapshot.avg_selectivity,
+                        "active_block": state.attnres_lab.snapshot.active_block,
+                        "completed_blocks": state.attnres_lab.snapshot.completed_blocks,
+                        "source_badge": state.attnres_lab.snapshot.source_badge,
+                        "model_label": state.attnres_lab.snapshot.model_label,
+                        "architecture_label": state.attnres_lab.snapshot.architecture_label,
+                        "run_label": state.attnres_lab.snapshot.run_label,
+                        "hidden_parity_label": state.attnres_lab.snapshot.inference.hidden_parity_label,
+                        "logit_parity_label": state.attnres_lab.snapshot.inference.logit_parity_label,
+                        "last_action": state.attnres_lab.last_action,
+                        "last_error": state.attnres_lab.last_error,
+                        "recent_events": state.attnres_lab.snapshot.events.iter().rev().take(6).collect::<Vec<_>>(),
+                        "selected_detail": selected.map(|sublayer| json!({
+                            "label": sublayer.label,
+                            "kind_label": sublayer.kind_label,
+                            "dominant_source_label": sublayer.dominant_source_label,
+                            "dominant_weight": sublayer.dominant_weight,
+                            "cache_mass": sublayer.cache_mass,
+                            "partial_mass": sublayer.partial_mass,
+                            "selectivity": sublayer.selectivity,
+                            "query_norm": sublayer.query_norm,
+                            "route_note": sublayer.route_note,
+                        })),
+                    }),
+                );
+            }
             PaneKind::AppleFmWorkbench => {
                 map.insert(
                     "apple_fm_workbench".to_string(),

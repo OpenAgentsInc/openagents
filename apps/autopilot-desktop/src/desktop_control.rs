@@ -51,7 +51,7 @@ pub use crate::provider_inventory::{
 };
 
 use crate::app_state::{
-    DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
+    AttnResLabViewMode, DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
     SnapshotTimingSample, mission_control_buy_mode_interval_label,
@@ -73,7 +73,7 @@ use crate::pane_system::{BuyModePaymentsPaneAction, PaneController, ProviderCont
 use crate::research_control;
 use crate::spark_pane::{PayInvoicePaneAction, SparkPaneAction};
 
-const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 14;
+const DESKTOP_CONTROL_SCHEMA_VERSION: u16 = 15;
 const DESKTOP_CONTROL_SYNC_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_CONTROL_MANIFEST_SCHEMA_VERSION: u16 = 1;
 const DESKTOP_CONTROL_MANIFEST_FILENAME: &str = "desktop-control.json";
@@ -100,6 +100,7 @@ pub struct DesktopControlSnapshot {
     pub mission_control: DesktopControlMissionControlStatus,
     pub provider: DesktopControlProviderStatus,
     pub local_runtime: DesktopControlLocalRuntimeStatus,
+    pub attnres_lab: DesktopControlAttnResSummary,
     pub gpt_oss: DesktopControlGptOssStatus,
     pub apple_fm: DesktopControlAppleFmStatus,
     pub wallet: DesktopControlWalletStatus,
@@ -175,6 +176,107 @@ pub struct DesktopControlLocalRuntimeStatus {
     pub status_line: String,
     pub detail_lines: Vec<String>,
     pub diagnostics: LocalRuntimeDiagnostics,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAttnResSummary {
+    pub available: bool,
+    pub open_instances: usize,
+    pub top_pane_id: Option<u64>,
+    pub active: bool,
+    pub playback_state: String,
+    pub running: bool,
+    pub selected_view: String,
+    pub selected_sublayer: usize,
+    pub selected_sublayer_label: Option<String>,
+    pub step: u64,
+    pub max_steps: u64,
+    pub speed_multiplier: usize,
+    pub run_status: String,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopControlAttnResView {
+    Overview,
+    Pipeline,
+    Inference,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAttnResSelectedSublayerStatus {
+    pub sublayer_index: usize,
+    pub label: String,
+    pub kind_label: String,
+    pub target_block: usize,
+    pub dominant_source_label: String,
+    pub dominant_weight: f32,
+    pub selectivity: f32,
+    pub query_norm: f32,
+    pub partial_mass: f32,
+    pub cache_mass: f32,
+    pub source_labels: Vec<String>,
+    pub source_logits: Vec<f32>,
+    pub routing_weights: Vec<f32>,
+    pub route_note: String,
+    pub starts_new_block_before: bool,
+    pub completed_blocks_before: usize,
+    pub completed_blocks_after: usize,
+    pub partial_block_present_before: bool,
+    pub partial_block_present_after: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAttnResMetricStatus {
+    pub global_step: u64,
+    pub training_loss: f32,
+    pub ema_loss: f32,
+    pub selectivity: f32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAttnResBlockStatus {
+    pub block_index: usize,
+    pub avg_selectivity: f32,
+    pub avg_query_norm: f32,
+    pub sublayers: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAttnResInferenceStatus {
+    pub hidden_parity_label: String,
+    pub logit_parity_label: String,
+    pub hidden_max_abs_diff: f32,
+    pub logit_max_abs_diff: f32,
+    pub partial_merge_share: f32,
+    pub cache_merge_share: f32,
+    pub block_cache_fill_share: f32,
+    pub schedule_note: String,
+    pub merge_note: String,
+    pub cache_note: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlAttnResStatus {
+    pub summary: DesktopControlAttnResSummary,
+    pub show_help: bool,
+    pub source_badge: String,
+    pub model_label: String,
+    pub architecture_label: String,
+    pub run_label: String,
+    pub training_loss: f32,
+    pub ema_loss: f32,
+    pub avg_selectivity: f32,
+    pub active_block: usize,
+    pub current_block_fill: usize,
+    pub completed_blocks: usize,
+    pub metrics: Vec<DesktopControlAttnResMetricStatus>,
+    pub block_summaries: Vec<DesktopControlAttnResBlockStatus>,
+    pub inference: DesktopControlAttnResInferenceStatus,
+    pub selected_sublayer: Option<DesktopControlAttnResSelectedSublayerStatus>,
+    pub recent_events: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1046,6 +1148,24 @@ pub enum DesktopControlActionRequest {
     GetPaneSnapshot {
         pane: String,
     },
+    GetAttnResStatus,
+    StartAttnRes,
+    PauseAttnRes,
+    ResetAttnRes,
+    RefreshAttnRes,
+    SetAttnResView {
+        view: DesktopControlAttnResView,
+    },
+    SetAttnResSublayer {
+        index: usize,
+    },
+    NextAttnResSublayer,
+    PreviousAttnResSublayer,
+    SetAttnResSpeed {
+        speed_multiplier: usize,
+    },
+    IncreaseAttnResSpeed,
+    DecreaseAttnResSpeed,
     SetProviderMode {
         online: bool,
     },
@@ -1127,6 +1247,18 @@ impl DesktopControlActionRequest {
             Self::FocusPane { .. } => "pane-focus",
             Self::ClosePane { .. } => "pane-close",
             Self::GetPaneSnapshot { .. } => "pane-snapshot",
+            Self::GetAttnResStatus => "attnres-status",
+            Self::StartAttnRes => "attnres-start",
+            Self::PauseAttnRes => "attnres-pause",
+            Self::ResetAttnRes => "attnres-reset",
+            Self::RefreshAttnRes => "attnres-refresh",
+            Self::SetAttnResView { .. } => "attnres-view",
+            Self::SetAttnResSublayer { .. } => "attnres-sublayer-set",
+            Self::NextAttnResSublayer => "attnres-sublayer-next",
+            Self::PreviousAttnResSublayer => "attnres-sublayer-prev",
+            Self::SetAttnResSpeed { .. } => "attnres-speed-set",
+            Self::IncreaseAttnResSpeed => "attnres-speed-increase",
+            Self::DecreaseAttnResSpeed => "attnres-speed-decrease",
             Self::SetProviderMode { online: true } => "provider-online",
             Self::SetProviderMode { online: false } => "provider-offline",
             Self::RefreshLocalRuntime => "local-runtime-refresh",
@@ -1950,6 +2082,29 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             "command_label": action.label(),
             "pane": pane,
         }),
+        DesktopControlActionRequest::GetAttnResStatus
+        | DesktopControlActionRequest::StartAttnRes
+        | DesktopControlActionRequest::PauseAttnRes
+        | DesktopControlActionRequest::ResetAttnRes
+        | DesktopControlActionRequest::RefreshAttnRes
+        | DesktopControlActionRequest::NextAttnResSublayer
+        | DesktopControlActionRequest::PreviousAttnResSublayer
+        | DesktopControlActionRequest::IncreaseAttnResSpeed
+        | DesktopControlActionRequest::DecreaseAttnResSpeed => {
+            json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::SetAttnResView { view } => json!({
+            "command_label": action.label(),
+            "view": view,
+        }),
+        DesktopControlActionRequest::SetAttnResSublayer { index } => json!({
+            "command_label": action.label(),
+            "index": index,
+        }),
+        DesktopControlActionRequest::SetAttnResSpeed { speed_multiplier } => json!({
+            "command_label": action.label(),
+            "speed_multiplier": speed_multiplier,
+        }),
         DesktopControlActionRequest::SetProviderMode { online } => {
             json!({ "command_label": action.label(), "online": online })
         }
@@ -2058,6 +2213,16 @@ fn snapshot_change_events(
             command_label: None,
             success: None,
             payload: serde_json::to_value(&current.local_runtime).ok(),
+        });
+    }
+    if previous.is_none_or(|snapshot| snapshot.attnres_lab != current.attnres_lab) {
+        changed_domains.push("attnres_lab");
+        events.push(DesktopControlEventDraft {
+            event_type: "attnres_lab.state.changed".to_string(),
+            summary: attnres_status_summary(&current.attnres_lab),
+            command_label: None,
+            success: None,
+            payload: serde_json::to_value(&current.attnres_lab).ok(),
         });
     }
     if previous.is_none_or(|snapshot| snapshot.gpt_oss != current.gpt_oss) {
@@ -2570,6 +2735,138 @@ fn buy_mode_status_summary(status: &DesktopControlBuyModeStatus) -> String {
     }
 }
 
+fn attnres_view_mode(view: DesktopControlAttnResView) -> AttnResLabViewMode {
+    match view {
+        DesktopControlAttnResView::Overview => AttnResLabViewMode::Overview,
+        DesktopControlAttnResView::Pipeline => AttnResLabViewMode::Pipeline,
+        DesktopControlAttnResView::Inference => AttnResLabViewMode::Inference,
+    }
+}
+
+fn desktop_control_attnres_summary(state: &RenderState) -> DesktopControlAttnResSummary {
+    let open_instances = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == crate::app_state::PaneKind::AttnResLab)
+        .collect::<Vec<_>>();
+    let top = open_instances.iter().max_by_key(|pane| pane.z_index);
+    let active_pane_id = PaneController::active(state);
+    let pane_state = &state.attnres_lab;
+    DesktopControlAttnResSummary {
+        available: true,
+        open_instances: open_instances.len(),
+        top_pane_id: top.map(|pane| pane.id),
+        active: state
+            .panes
+            .iter()
+            .find(|pane| Some(pane.id) == active_pane_id)
+            .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::AttnResLab),
+        playback_state: pane_state.playback_state.status_label().to_string(),
+        running: pane_state.playback_state.is_running(),
+        selected_view: pane_state.selected_view.label().to_string(),
+        selected_sublayer: pane_state.selected_sublayer,
+        selected_sublayer_label: pane_state
+            .current_sublayer()
+            .map(|sublayer| sublayer.label.clone()),
+        step: pane_state.snapshot.step,
+        max_steps: pane_state.snapshot.max_steps,
+        speed_multiplier: pane_state.snapshot.speed_multiplier,
+        run_status: pane_state.snapshot.run_status.clone(),
+        last_action: pane_state.last_action.clone(),
+        last_error: pane_state.last_error.clone(),
+    }
+}
+
+fn desktop_control_attnres_status(state: &RenderState) -> DesktopControlAttnResStatus {
+    let pane_state = &state.attnres_lab;
+    let snapshot = &pane_state.snapshot;
+    DesktopControlAttnResStatus {
+        summary: desktop_control_attnres_summary(state),
+        show_help: pane_state.show_help,
+        source_badge: snapshot.source_badge.clone(),
+        model_label: snapshot.model_label.clone(),
+        architecture_label: snapshot.architecture_label.clone(),
+        run_label: snapshot.run_label.clone(),
+        training_loss: snapshot.training_loss,
+        ema_loss: snapshot.ema_loss,
+        avg_selectivity: snapshot.avg_selectivity,
+        active_block: snapshot.active_block,
+        current_block_fill: snapshot.current_block_fill,
+        completed_blocks: snapshot.completed_blocks,
+        metrics: snapshot
+            .metrics
+            .iter()
+            .map(|metric| DesktopControlAttnResMetricStatus {
+                global_step: metric.global_step,
+                training_loss: metric.training_loss,
+                ema_loss: metric.ema_loss,
+                selectivity: metric.selectivity,
+            })
+            .collect(),
+        block_summaries: snapshot
+            .block_summaries
+            .iter()
+            .map(|block| DesktopControlAttnResBlockStatus {
+                block_index: block.block_index,
+                avg_selectivity: block.avg_selectivity,
+                avg_query_norm: block.avg_query_norm,
+                sublayers: block.sublayers,
+            })
+            .collect(),
+        inference: DesktopControlAttnResInferenceStatus {
+            hidden_parity_label: snapshot.inference.hidden_parity_label.clone(),
+            logit_parity_label: snapshot.inference.logit_parity_label.clone(),
+            hidden_max_abs_diff: snapshot.inference.hidden_max_abs_diff,
+            logit_max_abs_diff: snapshot.inference.logit_max_abs_diff,
+            partial_merge_share: snapshot.inference.partial_merge_share,
+            cache_merge_share: snapshot.inference.cache_merge_share,
+            block_cache_fill_share: snapshot.inference.block_cache_fill_share,
+            schedule_note: snapshot.inference.schedule_note.clone(),
+            merge_note: snapshot.inference.merge_note.clone(),
+            cache_note: snapshot.inference.cache_note.clone(),
+        },
+        selected_sublayer: pane_state.current_sublayer().map(|sublayer| {
+            DesktopControlAttnResSelectedSublayerStatus {
+                sublayer_index: sublayer.sublayer_index,
+                label: sublayer.label.clone(),
+                kind_label: sublayer.kind_label.clone(),
+                target_block: sublayer.target_block,
+                dominant_source_label: sublayer.dominant_source_label.clone(),
+                dominant_weight: sublayer.dominant_weight,
+                selectivity: sublayer.selectivity,
+                query_norm: sublayer.query_norm,
+                partial_mass: sublayer.partial_mass,
+                cache_mass: sublayer.cache_mass,
+                source_labels: sublayer.source_labels.clone(),
+                source_logits: sublayer.source_logits.clone(),
+                routing_weights: sublayer.routing_weights.clone(),
+                route_note: sublayer.route_note.clone(),
+                starts_new_block_before: sublayer.starts_new_block_before,
+                completed_blocks_before: sublayer.completed_blocks_before,
+                completed_blocks_after: sublayer.completed_blocks_after,
+                partial_block_present_before: sublayer.partial_block_present_before,
+                partial_block_present_after: sublayer.partial_block_present_after,
+            }
+        }),
+        recent_events: snapshot.events.clone(),
+    }
+}
+
+fn attnres_status_summary(status: &DesktopControlAttnResSummary) -> String {
+    format!(
+        "attnres playback={} running={} view={} selected={} step={}/{} speed={}x open_instances={} active={}",
+        status.playback_state,
+        status.running,
+        status.selected_view,
+        status.selected_sublayer_label.as_deref().unwrap_or("-"),
+        status.step,
+        status.max_steps,
+        status.speed_multiplier,
+        status.open_instances,
+        status.active
+    )
+}
+
 fn active_job_status_summary(active_job: Option<&DesktopControlActiveJobStatus>) -> String {
     let Some(active_job) = active_job else {
         return "no active job".to_string();
@@ -2838,6 +3135,32 @@ fn apply_action_request(
         }
         DesktopControlActionRequest::GetPaneSnapshot { pane } => {
             pane_snapshot_payload_response(state, pane.as_str()).into()
+        }
+        DesktopControlActionRequest::GetAttnResStatus => attnres_status_payload_response(state),
+        DesktopControlActionRequest::StartAttnRes => start_attnres_action(state).into(),
+        DesktopControlActionRequest::PauseAttnRes => pause_attnres_action(state).into(),
+        DesktopControlActionRequest::ResetAttnRes => reset_attnres_action(state).into(),
+        DesktopControlActionRequest::RefreshAttnRes => refresh_attnres_action(state).into(),
+        DesktopControlActionRequest::SetAttnResView { view } => {
+            set_attnres_view_action(state, *view).into()
+        }
+        DesktopControlActionRequest::SetAttnResSublayer { index } => {
+            set_attnres_sublayer_action(state, *index).into()
+        }
+        DesktopControlActionRequest::NextAttnResSublayer => {
+            move_attnres_sublayer_action(state, 1).into()
+        }
+        DesktopControlActionRequest::PreviousAttnResSublayer => {
+            move_attnres_sublayer_action(state, -1).into()
+        }
+        DesktopControlActionRequest::SetAttnResSpeed { speed_multiplier } => {
+            set_attnres_speed_action(state, *speed_multiplier).into()
+        }
+        DesktopControlActionRequest::IncreaseAttnResSpeed => {
+            adjust_attnres_speed_action(state, 1).into()
+        }
+        DesktopControlActionRequest::DecreaseAttnResSpeed => {
+            adjust_attnres_speed_action(state, -1).into()
         }
         DesktopControlActionRequest::RefreshLocalRuntime => {
             refresh_local_runtime_action(state).into()
@@ -3706,6 +4029,198 @@ fn pane_snapshot_payload_response(
         ),
         crate::input::desktop_control_pane_snapshot_details(state, kind),
     )
+}
+
+fn attnres_status_response(
+    state: &RenderState,
+    message: impl Into<String>,
+) -> DesktopControlActionResponse {
+    let payload =
+        serde_json::to_value(desktop_control_attnres_status(state)).unwrap_or_else(|_| Value::Null);
+    DesktopControlActionResponse::ok_with_payload(message, payload)
+}
+
+fn attnres_error_response(error: impl Into<String>) -> DesktopControlActionResponse {
+    DesktopControlActionResponse::error(error.into())
+}
+
+fn attnres_last_error(state: &RenderState) -> Option<String> {
+    state.attnres_lab.last_error.clone()
+}
+
+fn attnres_status_payload_response(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    match attnres_last_error(state) {
+        Some(error) => DesktopControlActionResponse::error(error).into(),
+        None => attnres_status_response(state, "Captured AttnRes lab state").into(),
+    }
+}
+
+fn start_attnres_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::start_or_resume(&mut state.attnres_lab);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "AttnRes training started".to_string()),
+        )
+        .into(),
+    }
+}
+
+fn pause_attnres_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::pause(&mut state.attnres_lab);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "AttnRes training paused".to_string()),
+        )
+        .into(),
+    }
+}
+
+fn reset_attnres_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::reset_training(&mut state.attnres_lab);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "AttnRes lab reset".to_string()),
+        )
+        .into(),
+    }
+}
+
+fn refresh_attnres_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::refresh_live_snapshot(&mut state.attnres_lab);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "Refreshed AttnRes live snapshot".to_string()),
+        )
+        .into(),
+    }
+}
+
+fn set_attnres_view_action(
+    state: &mut RenderState,
+    view: DesktopControlAttnResView,
+) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::select_view(&mut state.attnres_lab, attnres_view_mode(view));
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "Selected AttnRes view".to_string()),
+        )
+        .into(),
+    }
+}
+
+fn set_attnres_sublayer_action(
+    state: &mut RenderState,
+    index: usize,
+) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::set_selected_sublayer(&mut state.attnres_lab, index);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| format!("Selected AttnRes sublayer {index}")),
+        )
+        .into(),
+    }
+}
+
+fn move_attnres_sublayer_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::move_selected_sublayer(&mut state.attnres_lab, delta);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "Moved AttnRes sublayer selection".to_string()),
+        )
+        .into(),
+    }
+}
+
+fn set_attnres_speed_action(
+    state: &mut RenderState,
+    speed_multiplier: usize,
+) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::set_speed_multiplier(&mut state.attnres_lab, speed_multiplier);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| format!("AttnRes speed set to {}x", speed_multiplier)),
+        )
+        .into(),
+    }
+}
+
+fn adjust_attnres_speed_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+    crate::attnres_lab_control::adjust_speed(&mut state.attnres_lab, delta);
+    match attnres_last_error(state) {
+        Some(error) => attnres_error_response(error).into(),
+        None => attnres_status_response(
+            state,
+            state
+                .attnres_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| "Adjusted AttnRes speed".to_string()),
+        )
+        .into(),
+    }
 }
 
 fn start_buy_mode_action(state: &mut RenderState) -> DesktopControlActionResponse {
@@ -6748,6 +7263,7 @@ fn snapshot_for_state_with_signature(
             relay_urls: state.configured_provider_relay_urls(),
         },
         local_runtime,
+        attnres_lab: desktop_control_attnres_summary(state),
         gpt_oss,
         apple_fm: DesktopControlAppleFmStatus {
             reachable: state.provider_runtime.apple_fm.reachable,
@@ -7470,24 +7986,25 @@ mod tests {
     use super::{
         DESKTOP_CONTROL_SCHEMA_VERSION, DesktopControlActionRequest, DesktopControlActionResponse,
         DesktopControlAppleAdapterOperatorStatus, DesktopControlAppleFmStatus,
-        DesktopControlBuyModeStatus, DesktopControlBuyModeTargetSelectionStatus,
-        DesktopControlBuyerProcurementOrderStatus, DesktopControlBuyerProcurementQuoteStatus,
-        DesktopControlBuyerProcurementStatus, DesktopControlChallengeStatus,
-        DesktopControlClusterStatus, DesktopControlEventBatch, DesktopControlEventDraft,
-        DesktopControlGptOssStatus, DesktopControlInventoryProjectionStatus,
-        DesktopControlInventorySectionStatus, DesktopControlInventoryStatus,
-        DesktopControlLocalRuntimeStatus, DesktopControlMissionControlStatus,
-        DesktopControlNip90SentPaymentsReport, DesktopControlProofStatus,
-        DesktopControlProviderStatus, DesktopControlRuntime, DesktopControlRuntimeConfig,
-        DesktopControlRuntimeUpdate, DesktopControlSandboxStatus, DesktopControlSessionStatus,
-        DesktopControlSnapshot, DesktopControlTrainingParticipantStatus,
-        DesktopControlTrainingRunStatus, DesktopControlTrainingStatus,
-        DesktopControlTunnelServiceStatus, DesktopControlTunnelsStatus, DesktopControlWalletStatus,
-        LocalRuntimeDiagnostics, apply_response_snapshot_metadata,
-        build_nip90_sent_payments_report_payload, build_settlement_history,
-        challenges_by_delivery_proof, command_outcome_event, command_received_event,
-        desktop_control_challenge_history_status, desktop_control_proof_history_status,
-        snapshot_change_events, snapshot_sync_signature, validate_control_bind_addr,
+        DesktopControlAttnResSummary, DesktopControlAttnResView, DesktopControlBuyModeStatus,
+        DesktopControlBuyModeTargetSelectionStatus, DesktopControlBuyerProcurementOrderStatus,
+        DesktopControlBuyerProcurementQuoteStatus, DesktopControlBuyerProcurementStatus,
+        DesktopControlChallengeStatus, DesktopControlClusterStatus, DesktopControlEventBatch,
+        DesktopControlEventDraft, DesktopControlGptOssStatus,
+        DesktopControlInventoryProjectionStatus, DesktopControlInventorySectionStatus,
+        DesktopControlInventoryStatus, DesktopControlLocalRuntimeStatus,
+        DesktopControlMissionControlStatus, DesktopControlNip90SentPaymentsReport,
+        DesktopControlProofStatus, DesktopControlProviderStatus, DesktopControlRuntime,
+        DesktopControlRuntimeConfig, DesktopControlRuntimeUpdate, DesktopControlSandboxStatus,
+        DesktopControlSessionStatus, DesktopControlSnapshot,
+        DesktopControlTrainingParticipantStatus, DesktopControlTrainingRunStatus,
+        DesktopControlTrainingStatus, DesktopControlTunnelServiceStatus,
+        DesktopControlTunnelsStatus, DesktopControlWalletStatus, LocalRuntimeDiagnostics,
+        apply_response_snapshot_metadata, build_nip90_sent_payments_report_payload,
+        build_settlement_history, challenges_by_delivery_proof, command_outcome_event,
+        command_received_event, desktop_control_challenge_history_status,
+        desktop_control_proof_history_status, snapshot_change_events, snapshot_sync_signature,
+        validate_control_bind_addr,
     };
     use crate::app_state::{
         AutopilotChatState, DefaultNip28ChannelConfig, ManagedChatDeliveryState,
@@ -7594,6 +8111,23 @@ mod tests {
                     "Apple FM: Refreshed Apple FM bridge health; model ready.".to_string(),
                 ],
                 diagnostics: LocalRuntimeDiagnostics::default(),
+            },
+            attnres_lab: DesktopControlAttnResSummary {
+                available: true,
+                open_instances: 0,
+                top_pane_id: None,
+                active: false,
+                playback_state: "armed".to_string(),
+                running: false,
+                selected_view: "overview".to_string(),
+                selected_sublayer: 4,
+                selected_sublayer_label: Some("L2 Attention".to_string()),
+                step: 18,
+                max_steps: 24,
+                speed_multiplier: 3,
+                run_status: "replay loaded".to_string(),
+                last_action: Some("Loaded replay AttnRes lab snapshot".to_string()),
+                last_error: None,
             },
             gpt_oss: DesktopControlGptOssStatus {
                 detected: false,
@@ -8262,6 +8796,26 @@ mod tests {
                 .iter()
                 .any(|value| value.as_str() == Some("gpt_oss"))
         );
+    }
+
+    #[test]
+    fn snapshot_change_events_emit_attnres_domain_when_lab_state_changes() {
+        let previous = sample_snapshot();
+        let mut current = sample_snapshot();
+        current.attnres_lab.playback_state = "running".to_string();
+        current.attnres_lab.running = true;
+        current.attnres_lab.step = 19;
+        current.attnres_lab.last_action = Some("AttnRes training started".to_string());
+
+        let events = snapshot_change_events(Some(&previous), &current);
+        let attnres = events
+            .iter()
+            .find(|event| event.event_type == "attnres_lab.state.changed")
+            .expect("attnres change event should be emitted");
+
+        assert!(attnres.summary.contains("attnres playback=running"));
+        assert_eq!(attnres.command_label, None);
+        assert_eq!(attnres.success, None);
     }
 
     fn repeated_hex(ch: char, len: usize) -> String {
@@ -9580,6 +10134,32 @@ mod tests {
             }
             .label(),
             "nip90-sent-payments-report"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::GetAttnResStatus.label(),
+            "attnres-status"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::StartAttnRes.label(),
+            "attnres-start"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::SetAttnResView {
+                view: DesktopControlAttnResView::Inference,
+            }
+            .label(),
+            "attnres-view"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::SetAttnResSublayer { index: 4 }.label(),
+            "attnres-sublayer-set"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::SetAttnResSpeed {
+                speed_multiplier: 5,
+            }
+            .label(),
+            "attnres-speed-set"
         );
     }
 
