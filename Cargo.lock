@@ -6774,6 +6774,7 @@ dependencies = [
  "psionic-array",
  "psionic-cluster",
  "psionic-core",
+ "psionic-nn",
  "psionic-runtime",
  "psionic-sandbox",
  "serde",

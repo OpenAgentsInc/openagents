@@ -147,6 +147,12 @@ It already has real substrate for:
   deterministic tree structure, grouped small-leaf all-reduce, and
   floating-point `average_gradients` above the current reference-emulated
   multi-rank surface
+- bounded reusable tensor-parallel linear wrappers in
+  `psionic-distributed` that reuse bounded `psionic-nn::Linear` plus the
+  public collective layer while keeping deterministic row/column sharding,
+  inspectable shard layouts, local shard-input splitting, and explicit
+  reference-emulated `ShardedToAllLinear` reconstruction above the current
+  non-transport-backed public surface
 - a bounded reusable public scheduler and parameter-group shell in
   `psionic-nn` that reuses `psionic-train` scheduler primitives while keeping
   scheduler bindings, group-level learning-rate and weight-decay scaling, and

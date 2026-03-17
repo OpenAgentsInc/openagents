@@ -4,7 +4,8 @@
 //! slices: explicit group initialization from current mesh facts, honest
 //! singleton fallback, global-group reuse, plan-backed subgroup split
 //! semantics, a reference-first collective helper layer above that group
-//! surface, and a bounded launch/config planning shell that maps explicit
+//! surface, tree-aware gradient reduction, bounded tensor-parallel linear
+//! wrappers, and a bounded launch/config planning shell that maps explicit
 //! hostfile-like input onto Psionic cluster, sandbox, and mesh truth.
 //! Backend-family transport mapping and broader helper families still land
 //! later.
@@ -27,6 +28,7 @@ use psionic_cluster::{
     ClusterNodeTelemetry, ClusterState,
 };
 use psionic_core::{DType, Shape};
+use psionic_nn::{LayerError, Linear, NnTensor};
 use psionic_runtime::{
     ClusterCommitAuthorityEvidence, ClusterCommunicationClass, ClusterCommunicationEligibility,
     ClusterExecutionContext, ClusterExecutionDisposition, ClusterSelectedNode,
@@ -42,7 +44,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "public framework-distributed groups and bounded collective helpers above Psionic runtime mesh truth";
+pub const CRATE_ROLE: &str = "public framework-distributed groups, bounded collective and tensor-parallel helpers, and launch/config planning above Psionic runtime mesh truth";
 
 /// Default threshold used to group small gradient leaves into one all-reduce payload.
 pub const DEFAULT_GROUPED_ALL_REDUCE_THRESHOLD_BYTES: usize = 64 * 1024;
@@ -608,6 +610,565 @@ impl DistributedGradientReductionOptions {
     pub fn with_small_tensor_bytes_threshold(mut self, threshold: usize) -> Self {
         self.small_tensor_bytes_threshold = threshold;
         self
+    }
+}
+
+/// Direction of tensor-parallel sharding for one linear helper.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TensorParallelLinearKind {
+    /// Replicated input projected onto one output shard.
+    AllToSharded,
+    /// One input shard projected and reduced back to the full output space.
+    ShardedToAll,
+}
+
+impl TensorParallelLinearKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AllToSharded => "all_to_sharded",
+            Self::ShardedToAll => "sharded_to_all",
+        }
+    }
+}
+
+impl fmt::Display for TensorParallelLinearKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Inspectable shard layout for one public tensor-parallel linear wrapper.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TensorParallelLinearLayout {
+    /// Helper family this layout belongs to.
+    pub helper: TensorParallelLinearKind,
+    /// Group snapshot the wrapper was partitioned against.
+    pub group: DistributedGroupSnapshot,
+    /// Global input width before tensor parallel sharding.
+    pub global_in_features: usize,
+    /// Global output width before tensor parallel sharding.
+    pub global_out_features: usize,
+    /// Sharded axis for this helper family.
+    pub shard_axis: usize,
+    /// Inclusive shard start on the sharded axis.
+    pub shard_start: usize,
+    /// Exclusive shard end on the sharded axis.
+    pub shard_end: usize,
+}
+
+impl TensorParallelLinearLayout {
+    #[must_use]
+    pub fn shard_width(&self) -> usize {
+        self.shard_end.saturating_sub(self.shard_start)
+    }
+
+    #[must_use]
+    pub fn local_in_features(&self) -> usize {
+        match self.helper {
+            TensorParallelLinearKind::AllToSharded => self.global_in_features,
+            TensorParallelLinearKind::ShardedToAll => self.shard_width(),
+        }
+    }
+
+    #[must_use]
+    pub fn local_out_features(&self) -> usize {
+        match self.helper {
+            TensorParallelLinearKind::AllToSharded => self.shard_width(),
+            TensorParallelLinearKind::ShardedToAll => self.global_out_features,
+        }
+    }
+}
+
+/// Failure for bounded tensor-parallel linear wrappers.
+#[derive(Debug, Error, PartialEq)]
+pub enum TensorParallelLinearError {
+    /// Layer creation or execution refused on the bounded CPU-reference surface.
+    #[error(transparent)]
+    Layer(#[from] LayerError),
+    /// Collective emulation refused while reconstructing one sharded-to-all output.
+    #[error(transparent)]
+    Collective(#[from] DistributedCollectiveError),
+    /// Array construction or host export refused while bridging into collectives.
+    #[error(transparent)]
+    Array(#[from] ArrayError),
+    /// The logical feature axis cannot be partitioned honestly over the current world.
+    #[error(
+        "public tensor-parallel `{helper}` cannot shard axis of size {axis_size} across world size {world_size}"
+    )]
+    FeatureAxisTooSmall {
+        /// Helper family that refused.
+        helper: TensorParallelLinearKind,
+        /// Logical axis size to partition.
+        axis_size: usize,
+        /// Requested world size.
+        world_size: usize,
+    },
+    /// The caller supplied a group that does not match the wrapper's stored layout.
+    #[error(
+        "public tensor-parallel `{helper}` expected group `{expected_group_id}` rank {expected_rank}/{expected_world_size}, got group `{actual_group_id}` rank {actual_rank}/{actual_world_size}"
+    )]
+    GroupMismatch {
+        /// Helper family that refused.
+        helper: TensorParallelLinearKind,
+        /// Group identifier stored on the wrapper.
+        expected_group_id: String,
+        /// Local rank stored on the wrapper.
+        expected_rank: usize,
+        /// World size stored on the wrapper.
+        expected_world_size: usize,
+        /// Actual supplied group identifier.
+        actual_group_id: String,
+        /// Actual supplied local rank.
+        actual_rank: usize,
+        /// Actual supplied world size.
+        actual_world_size: usize,
+    },
+    /// The bias-owner rank falls outside the world.
+    #[error(
+        "public tensor-parallel sharded_to_all bias owner rank {bias_owner_rank} is out of bounds for world size {world_size}"
+    )]
+    InvalidBiasOwnerRank {
+        /// Rank selected to own the full bias vector.
+        bias_owner_rank: usize,
+        /// World size used by the wrapper.
+        world_size: usize,
+    },
+    /// The wrapper needs all rank wrappers to emulate one multi-rank forward pass.
+    #[error(
+        "public tensor-parallel sharded_to_all forward requires rank wrappers for all group members; missing {missing_ranks:?}"
+    )]
+    MissingRankModules {
+        /// Missing ranks in ascending order.
+        missing_ranks: Vec<usize>,
+    },
+    /// The supplied rank-wrapper map referenced ranks outside the current group.
+    #[error(
+        "public tensor-parallel sharded_to_all rank-wrapper map contains invalid ranks {invalid_ranks:?} for group size {group_size}"
+    )]
+    InvalidRankModules {
+        /// Invalid ranks in the supplied map.
+        invalid_ranks: Vec<usize>,
+        /// Group size used for validation.
+        group_size: usize,
+    },
+    /// One supplied rank wrapper does not match the expected tensor-parallel layout.
+    #[error(
+        "public tensor-parallel sharded_to_all wrapper for rank {rank} does not match the current layout: {detail}"
+    )]
+    RankModuleMismatch {
+        /// Rank whose wrapper disagreed.
+        rank: usize,
+        /// Plain-language mismatch detail.
+        detail: String,
+    },
+    /// The wrapper needs all local shard inputs to emulate one multi-rank forward pass.
+    #[error(
+        "public tensor-parallel sharded_to_all forward requires shard inputs for all group members; missing {missing_ranks:?}"
+    )]
+    MissingRankInputs {
+        /// Missing ranks in ascending order.
+        missing_ranks: Vec<usize>,
+    },
+    /// The supplied rank-input map referenced ranks outside the current group.
+    #[error(
+        "public tensor-parallel sharded_to_all rank-input map contains invalid ranks {invalid_ranks:?} for group size {group_size}"
+    )]
+    InvalidRankInputs {
+        /// Invalid ranks in the supplied map.
+        invalid_ranks: Vec<usize>,
+        /// Group size used for validation.
+        group_size: usize,
+    },
+    /// One local or remote shard input disagreed with the expected prefix or local width.
+    #[error(
+        "public tensor-parallel sharded_to_all rank {rank} input shape mismatch: expected prefix {expected_prefix:?} with trailing width {expected_last_dim}, got {actual:?}"
+    )]
+    RankInputShapeMismatch {
+        /// Rank whose input disagreed.
+        rank: usize,
+        /// Expected prefix dimensions shared across ranks.
+        expected_prefix: Vec<usize>,
+        /// Expected trailing local width for this rank.
+        expected_last_dim: usize,
+        /// Actual supplied dimensions.
+        actual: Vec<usize>,
+    },
+    /// The explicit local-rank shard input did not match the supplied local input.
+    #[error(
+        "public tensor-parallel sharded_to_all local rank {rank} shard input does not match the supplied local input"
+    )]
+    LocalRankInputMismatch {
+        /// Local rank whose explicit input disagreed.
+        rank: usize,
+    },
+    /// Multi-rank sharded-to-all reconstruction needs explicit remote inputs and wrappers.
+    #[error(
+        "public tensor-parallel sharded_to_all forward for group `{group_id}` of size {world_size} requires explicit rank wrappers and shard inputs"
+    )]
+    MultiRankForwardRequiresExplicitInputs {
+        /// Group identifier stored on the wrapper.
+        group_id: String,
+        /// World size stored on the wrapper.
+        world_size: usize,
+    },
+    /// One full or sharded input tensor did not match the helper's expected shape contract.
+    #[error(
+        "public tensor-parallel `{helper}` input shape mismatch: expected {expected}, got {actual:?}"
+    )]
+    InputShapeMismatch {
+        /// Helper family that refused.
+        helper: TensorParallelLinearKind,
+        /// Plain-language expected shape.
+        expected: String,
+        /// Actual supplied dimensions.
+        actual: Vec<usize>,
+    },
+    /// The collective result could not be rebuilt into the bounded `NnTensor` surface.
+    #[error(
+        "public tensor-parallel sharded_to_all expected dense cpu f32 collective output, found dtype {dtype:?}"
+    )]
+    OutputDTypeMismatch {
+        /// Dtype surfaced by the collective output.
+        dtype: DType,
+    },
+}
+
+/// Public options for bounded multi-rank `ShardedToAllLinear` emulation.
+#[derive(Clone, Debug, Default)]
+pub struct TensorParallelShardedToAllOptions {
+    /// Explicit group override; defaults to the current reusable group or singleton fallback.
+    pub group: Option<DistributedGroup>,
+    /// Explicit wrappers for every rank in the current group.
+    pub rank_modules: BTreeMap<usize, ShardedToAllLinear>,
+    /// Explicit local shard inputs for every rank in the current group.
+    pub rank_inputs: BTreeMap<usize, NnTensor>,
+}
+
+impl TensorParallelShardedToAllOptions {
+    /// Creates the default sharded-to-all forward options.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Overrides the distributed group used to validate the reconstruction.
+    #[must_use]
+    pub fn with_group(mut self, group: DistributedGroup) -> Self {
+        self.group = Some(group);
+        self
+    }
+
+    /// Adds one explicit rank wrapper.
+    #[must_use]
+    pub fn with_rank_module(mut self, rank: usize, module: ShardedToAllLinear) -> Self {
+        self.rank_modules.insert(rank, module);
+        self
+    }
+
+    /// Replaces the explicit rank-wrapper map.
+    #[must_use]
+    pub fn with_rank_modules(mut self, rank_modules: BTreeMap<usize, ShardedToAllLinear>) -> Self {
+        self.rank_modules = rank_modules;
+        self
+    }
+
+    /// Adds one explicit shard input for one rank.
+    #[must_use]
+    pub fn with_rank_input(mut self, rank: usize, input: NnTensor) -> Self {
+        self.rank_inputs.insert(rank, input);
+        self
+    }
+
+    /// Replaces the explicit rank-input map.
+    #[must_use]
+    pub fn with_rank_inputs(mut self, rank_inputs: BTreeMap<usize, NnTensor>) -> Self {
+        self.rank_inputs = rank_inputs;
+        self
+    }
+}
+
+/// Bounded MLX-style linear wrapper that keeps the input replicated and shards
+/// the output width across ranks.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AllToShardedLinear {
+    layout: TensorParallelLinearLayout,
+    local_linear: Linear,
+}
+
+impl AllToShardedLinear {
+    /// Builds one local output shard from a full bounded `Linear`.
+    pub fn from_linear(
+        linear: &Linear,
+        group: &DistributedGroup,
+    ) -> Result<Self, TensorParallelLinearError> {
+        let snapshot = group.snapshot();
+        let layout = tensor_parallel_linear_layout(
+            TensorParallelLinearKind::AllToSharded,
+            snapshot,
+            linear.in_features(),
+            linear.out_features(),
+        )?;
+        let local_weight = slice_linear_rows(
+            linear.weight_f32()?,
+            linear.out_features(),
+            linear.in_features(),
+            layout.shard_start,
+            layout.shard_end,
+        );
+        let local_bias = linear
+            .bias_f32()?
+            .map(|bias| bias[layout.shard_start..layout.shard_end].to_vec());
+        Ok(Self {
+            local_linear: Linear::from_f32_parts(
+                format!(
+                    "{}.rank{}.all_to_sharded",
+                    linear.module().module_id,
+                    layout.group.rank
+                ),
+                layout.local_in_features(),
+                layout.local_out_features(),
+                local_weight,
+                local_bias,
+            )?,
+            layout,
+        })
+    }
+
+    #[must_use]
+    pub fn layout(&self) -> &TensorParallelLinearLayout {
+        &self.layout
+    }
+
+    #[must_use]
+    pub fn local_linear(&self) -> &Linear {
+        &self.local_linear
+    }
+
+    pub fn forward(&self, input: &NnTensor) -> Result<NnTensor, TensorParallelLinearError> {
+        Ok(self.local_linear.forward(input)?)
+    }
+}
+
+/// Bounded MLX-style linear wrapper that keeps one local input shard and
+/// reconstructs the full output with an `all_sum`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShardedToAllLinear {
+    layout: TensorParallelLinearLayout,
+    local_linear: Linear,
+    bias_owner_rank: usize,
+}
+
+impl ShardedToAllLinear {
+    /// Builds one local input shard from a full bounded `Linear`, storing the
+    /// full bias only on rank `0` so the final `all_sum` adds it exactly once.
+    pub fn from_linear(
+        linear: &Linear,
+        group: &DistributedGroup,
+    ) -> Result<Self, TensorParallelLinearError> {
+        Self::from_linear_with_bias_owner(linear, group, 0)
+    }
+
+    /// Builds one local input shard from a full bounded `Linear` while placing
+    /// the full bias vector on one explicit owner rank.
+    pub fn from_linear_with_bias_owner(
+        linear: &Linear,
+        group: &DistributedGroup,
+        bias_owner_rank: usize,
+    ) -> Result<Self, TensorParallelLinearError> {
+        let snapshot = group.snapshot();
+        if bias_owner_rank >= snapshot.size {
+            return Err(TensorParallelLinearError::InvalidBiasOwnerRank {
+                bias_owner_rank,
+                world_size: snapshot.size,
+            });
+        }
+        let layout = tensor_parallel_linear_layout(
+            TensorParallelLinearKind::ShardedToAll,
+            snapshot,
+            linear.in_features(),
+            linear.out_features(),
+        )?;
+        let local_weight = slice_linear_columns(
+            linear.weight_f32()?,
+            linear.out_features(),
+            linear.in_features(),
+            layout.shard_start,
+            layout.shard_end,
+        );
+        let local_bias = if layout.group.rank == bias_owner_rank {
+            linear.bias_f32()?.map(ToOwned::to_owned)
+        } else {
+            None
+        };
+        Ok(Self {
+            local_linear: Linear::from_f32_parts(
+                format!(
+                    "{}.rank{}.sharded_to_all",
+                    linear.module().module_id,
+                    layout.group.rank
+                ),
+                layout.local_in_features(),
+                layout.local_out_features(),
+                local_weight,
+                local_bias,
+            )?,
+            layout,
+            bias_owner_rank,
+        })
+    }
+
+    #[must_use]
+    pub fn layout(&self) -> &TensorParallelLinearLayout {
+        &self.layout
+    }
+
+    #[must_use]
+    pub fn local_linear(&self) -> &Linear {
+        &self.local_linear
+    }
+
+    #[must_use]
+    pub const fn bias_owner_rank(&self) -> usize {
+        self.bias_owner_rank
+    }
+
+    /// Splits one full input over this wrapper's local input-shard range.
+    pub fn shard_input(&self, input: &NnTensor) -> Result<NnTensor, TensorParallelLinearError> {
+        slice_last_dim(
+            input,
+            self.layout.shard_start,
+            self.layout.shard_end,
+            TensorParallelLinearKind::ShardedToAll,
+            self.layout.global_in_features,
+        )
+    }
+
+    /// Runs only the local partial projection for one sharded input.
+    pub fn local_forward_partial(
+        &self,
+        input: &NnTensor,
+    ) -> Result<NnTensor, TensorParallelLinearError> {
+        Ok(self.local_linear.forward(input)?)
+    }
+
+    /// Runs the bounded forward path. Singleton wrappers run directly; multi-rank
+    /// wrappers require `forward_with_options(...)`.
+    pub fn forward(&self, input: &NnTensor) -> Result<NnTensor, TensorParallelLinearError> {
+        if self.layout.group.size == 1 {
+            return Ok(self.local_linear.forward(input)?);
+        }
+        let _ = self.local_linear.forward(input)?;
+        Err(
+            TensorParallelLinearError::MultiRankForwardRequiresExplicitInputs {
+                group_id: self.layout.group.group_id.clone(),
+                world_size: self.layout.group.size,
+            },
+        )
+    }
+
+    /// Reconstructs one full output with explicit per-rank wrappers and shard inputs.
+    pub fn forward_with_options(
+        &self,
+        input: &NnTensor,
+        options: TensorParallelShardedToAllOptions,
+    ) -> Result<NnTensor, TensorParallelLinearError> {
+        if self.layout.group.size == 1 {
+            return Ok(self.local_linear.forward(input)?);
+        }
+
+        let group = resolve_collective_group(options.group)?;
+        validate_tensor_parallel_group(
+            &self.layout,
+            &group.snapshot(),
+            TensorParallelLinearKind::ShardedToAll,
+        )?;
+        validate_rank_modules(&self.layout, &options.rank_modules)?;
+
+        let group_size = self.layout.group.size;
+        let invalid_ranks = options
+            .rank_inputs
+            .keys()
+            .copied()
+            .filter(|rank| *rank >= group_size)
+            .collect::<Vec<_>>();
+        if !invalid_ranks.is_empty() {
+            return Err(TensorParallelLinearError::InvalidRankInputs {
+                invalid_ranks,
+                group_size,
+            });
+        }
+        let missing_ranks = (0..group_size)
+            .filter(|rank| !options.rank_inputs.contains_key(rank))
+            .collect::<Vec<_>>();
+        if !missing_ranks.is_empty() {
+            return Err(TensorParallelLinearError::MissingRankInputs { missing_ranks });
+        }
+        if options
+            .rank_inputs
+            .get(&self.layout.group.rank)
+            .is_some_and(|rank_input| rank_input != input)
+        {
+            return Err(TensorParallelLinearError::LocalRankInputMismatch {
+                rank: self.layout.group.rank,
+            });
+        }
+        if input.dims().is_empty() {
+            return Err(TensorParallelLinearError::InputShapeMismatch {
+                helper: TensorParallelLinearKind::ShardedToAll,
+                expected: format!(
+                    "rank >= 1 with trailing dimension {}",
+                    self.layout.local_in_features()
+                ),
+                actual: input.dims().to_vec(),
+            });
+        }
+
+        let expected_prefix = input.dims()[..input.dims().len() - 1].to_vec();
+        let array_context = ArrayContext::cpu();
+        let mut local_partial = None;
+        let mut partial_rank_inputs = BTreeMap::new();
+
+        for rank in 0..group_size {
+            let Some(module) = options.rank_modules.get(&rank) else {
+                return Err(TensorParallelLinearError::MissingRankModules {
+                    missing_ranks: vec![rank],
+                });
+            };
+            let Some(rank_input) = options.rank_inputs.get(&rank) else {
+                return Err(TensorParallelLinearError::MissingRankInputs {
+                    missing_ranks: vec![rank],
+                });
+            };
+            let expected_last_dim = module.layout.local_in_features();
+            validate_sharded_rank_input(
+                rank,
+                rank_input,
+                expected_prefix.as_slice(),
+                expected_last_dim,
+            )?;
+            let partial = module.local_forward_partial(rank_input)?;
+            if rank == self.layout.group.rank {
+                local_partial = Some(partial.clone());
+            }
+            partial_rank_inputs.insert(rank, distributed_reference_tensor_from_nn(&partial)?);
+        }
+
+        let Some(local_partial) = local_partial else {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank: self.layout.group.rank,
+                detail: String::from("local rank wrapper did not participate in reconstruction"),
+            });
+        };
+        let local_partial_array = array_from_nn_tensor(&array_context, &local_partial)?;
+        let reduced = all_sum(
+            &local_partial_array,
+            DistributedCollectiveOptions::new()
+                .with_group(group)
+                .with_rank_inputs(partial_rank_inputs),
+        )?;
+        nn_tensor_from_array(&reduced)
     }
 }
 
@@ -2410,6 +2971,286 @@ fn resolve_collective_group(
     }
 }
 
+fn tensor_parallel_linear_layout(
+    helper: TensorParallelLinearKind,
+    group: DistributedGroupSnapshot,
+    global_in_features: usize,
+    global_out_features: usize,
+) -> Result<TensorParallelLinearLayout, TensorParallelLinearError> {
+    let axis_size = match helper {
+        TensorParallelLinearKind::AllToSharded => global_out_features,
+        TensorParallelLinearKind::ShardedToAll => global_in_features,
+    };
+    let (shard_start, shard_end) = partition_feature_axis(axis_size, group.rank, group.size)
+        .ok_or(TensorParallelLinearError::FeatureAxisTooSmall {
+            helper,
+            axis_size,
+            world_size: group.size,
+        })?;
+    Ok(TensorParallelLinearLayout {
+        helper,
+        group,
+        global_in_features,
+        global_out_features,
+        shard_axis: match helper {
+            TensorParallelLinearKind::AllToSharded => 0,
+            TensorParallelLinearKind::ShardedToAll => 1,
+        },
+        shard_start,
+        shard_end,
+    })
+}
+
+fn partition_feature_axis(
+    axis_size: usize,
+    rank: usize,
+    world_size: usize,
+) -> Option<(usize, usize)> {
+    if world_size == 0 || rank >= world_size || axis_size < world_size {
+        return None;
+    }
+    let base = axis_size / world_size;
+    let remainder = axis_size % world_size;
+    let start = (rank * base) + remainder.min(rank);
+    let width = base + usize::from(rank < remainder);
+    Some((start, start + width))
+}
+
+fn slice_linear_rows(
+    weight: &[f32],
+    out_features: usize,
+    in_features: usize,
+    row_start: usize,
+    row_end: usize,
+) -> Vec<f32> {
+    let mut local_weight = Vec::with_capacity((row_end - row_start) * in_features);
+    for row in row_start..row_end {
+        let offset = row * in_features;
+        local_weight.extend_from_slice(&weight[offset..offset + in_features]);
+    }
+    debug_assert_eq!(weight.len(), out_features * in_features);
+    local_weight
+}
+
+fn slice_linear_columns(
+    weight: &[f32],
+    out_features: usize,
+    in_features: usize,
+    column_start: usize,
+    column_end: usize,
+) -> Vec<f32> {
+    let local_in_features = column_end - column_start;
+    let mut local_weight = Vec::with_capacity(out_features * local_in_features);
+    for row in 0..out_features {
+        let offset = row * in_features;
+        local_weight.extend_from_slice(&weight[offset + column_start..offset + column_end]);
+    }
+    local_weight
+}
+
+fn slice_last_dim(
+    input: &NnTensor,
+    shard_start: usize,
+    shard_end: usize,
+    helper: TensorParallelLinearKind,
+    global_width: usize,
+) -> Result<NnTensor, TensorParallelLinearError> {
+    let dims = input.dims();
+    if dims.is_empty() {
+        return Err(TensorParallelLinearError::InputShapeMismatch {
+            helper,
+            expected: format!("rank >= 1 with trailing dimension {global_width}"),
+            actual: dims.to_vec(),
+        });
+    }
+    if dims[dims.len() - 1] != global_width {
+        return Err(TensorParallelLinearError::InputShapeMismatch {
+            helper,
+            expected: format!("last dimension {global_width}"),
+            actual: dims.to_vec(),
+        });
+    }
+    let values = input.as_f32_slice()?;
+    let shard_width = shard_end - shard_start;
+    let rows = dims[..dims.len() - 1].iter().product::<usize>().max(1);
+    let mut output = Vec::with_capacity(rows * shard_width);
+    for row in 0..rows {
+        let offset = row * global_width;
+        output.extend_from_slice(&values[offset + shard_start..offset + shard_end]);
+    }
+    let mut output_dims = dims.to_vec();
+    let Some(last_dim) = output_dims.last_mut() else {
+        return Err(TensorParallelLinearError::InputShapeMismatch {
+            helper,
+            expected: format!("rank >= 1 with trailing dimension {global_width}"),
+            actual: dims.to_vec(),
+        });
+    };
+    *last_dim = shard_width;
+    Ok(NnTensor::f32(Shape::new(output_dims), output)?)
+}
+
+fn validate_tensor_parallel_group(
+    layout: &TensorParallelLinearLayout,
+    actual: &DistributedGroupSnapshot,
+    helper: TensorParallelLinearKind,
+) -> Result<(), TensorParallelLinearError> {
+    if layout.group.group_id != actual.group_id
+        || layout.group.rank != actual.rank
+        || layout.group.size != actual.size
+    {
+        return Err(TensorParallelLinearError::GroupMismatch {
+            helper,
+            expected_group_id: layout.group.group_id.clone(),
+            expected_rank: layout.group.rank,
+            expected_world_size: layout.group.size,
+            actual_group_id: actual.group_id.clone(),
+            actual_rank: actual.rank,
+            actual_world_size: actual.size,
+        });
+    }
+    Ok(())
+}
+
+fn validate_rank_modules(
+    layout: &TensorParallelLinearLayout,
+    rank_modules: &BTreeMap<usize, ShardedToAllLinear>,
+) -> Result<(), TensorParallelLinearError> {
+    let invalid_ranks = rank_modules
+        .keys()
+        .copied()
+        .filter(|rank| *rank >= layout.group.size)
+        .collect::<Vec<_>>();
+    if !invalid_ranks.is_empty() {
+        return Err(TensorParallelLinearError::InvalidRankModules {
+            invalid_ranks,
+            group_size: layout.group.size,
+        });
+    }
+    let missing_ranks = (0..layout.group.size)
+        .filter(|rank| !rank_modules.contains_key(rank))
+        .collect::<Vec<_>>();
+    if !missing_ranks.is_empty() {
+        return Err(TensorParallelLinearError::MissingRankModules { missing_ranks });
+    }
+    for rank in 0..layout.group.size {
+        let Some(module) = rank_modules.get(&rank) else {
+            return Err(TensorParallelLinearError::MissingRankModules {
+                missing_ranks: vec![rank],
+            });
+        };
+        if module.layout.helper != TensorParallelLinearKind::ShardedToAll {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank,
+                detail: String::from("wrapper is not a sharded_to_all tensor-parallel module"),
+            });
+        }
+        if module.layout.group.group_id != layout.group.group_id
+            || module.layout.group.size != layout.group.size
+        {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank,
+                detail: format!(
+                    "expected group `{}` of size {}, found group `{}` of size {}",
+                    layout.group.group_id,
+                    layout.group.size,
+                    module.layout.group.group_id,
+                    module.layout.group.size,
+                ),
+            });
+        }
+        if module.layout.group.rank != rank {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank,
+                detail: format!(
+                    "wrapper stores local rank {} instead of {rank}",
+                    module.layout.group.rank
+                ),
+            });
+        }
+        if module.layout.global_in_features != layout.global_in_features
+            || module.layout.global_out_features != layout.global_out_features
+        {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank,
+                detail: format!(
+                    "expected global shape [{} -> {}], found [{} -> {}]",
+                    layout.global_in_features,
+                    layout.global_out_features,
+                    module.layout.global_in_features,
+                    module.layout.global_out_features,
+                ),
+            });
+        }
+        let Some((expected_start, expected_end)) =
+            partition_feature_axis(layout.global_in_features, rank, layout.group.size)
+        else {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank,
+                detail: String::from("current world cannot shard the input axis honestly"),
+            });
+        };
+        if module.layout.shard_start != expected_start || module.layout.shard_end != expected_end {
+            return Err(TensorParallelLinearError::RankModuleMismatch {
+                rank,
+                detail: format!(
+                    "expected shard [{expected_start}, {expected_end}), found [{}, {})",
+                    module.layout.shard_start, module.layout.shard_end
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_sharded_rank_input(
+    rank: usize,
+    input: &NnTensor,
+    expected_prefix: &[usize],
+    expected_last_dim: usize,
+) -> Result<(), TensorParallelLinearError> {
+    let dims = input.dims();
+    if dims.is_empty()
+        || dims[..dims.len() - 1] != *expected_prefix
+        || dims[dims.len() - 1] != expected_last_dim
+    {
+        return Err(TensorParallelLinearError::RankInputShapeMismatch {
+            rank,
+            expected_prefix: expected_prefix.to_vec(),
+            expected_last_dim,
+            actual: dims.to_vec(),
+        });
+    }
+    Ok(())
+}
+
+fn distributed_reference_tensor_from_nn(
+    tensor: &NnTensor,
+) -> Result<DistributedReferenceTensor, TensorParallelLinearError> {
+    Ok(DistributedReferenceTensor::f32(
+        tensor.spec.shape().clone(),
+        tensor.as_f32_slice()?.to_vec(),
+    )?)
+}
+
+fn array_from_nn_tensor(
+    context: &ArrayContext,
+    tensor: &NnTensor,
+) -> Result<Array, TensorParallelLinearError> {
+    Ok(context.constant_f32(tensor.spec.shape().clone(), tensor.as_f32_slice()?.to_vec())?)
+}
+
+fn nn_tensor_from_array(array: &Array) -> Result<NnTensor, TensorParallelLinearError> {
+    let host = array.to_host_data()?;
+    let values = host
+        .as_f32_slice()
+        .ok_or(TensorParallelLinearError::OutputDTypeMismatch {
+            dtype: array.dtype(),
+        })?
+        .to_vec();
+    Ok(NnTensor::f32(array.shape().clone(), values)?)
+}
+
 fn validate_launch_config(
     cluster_state: &ClusterState,
     sandbox_profile: &ProviderSandboxProfile,
@@ -3591,6 +4432,37 @@ mod tests {
                 DistributedGroupMember::new("node-b", 1, 1, "cuda:1"),
                 DistributedGroupMember::new("node-c", 2, 2, "cuda:2"),
                 DistributedGroupMember::new("node-d", 3, 3, "cuda:3"),
+            ],
+        )
+    }
+
+    fn sample_two_rank_membership() -> TrainingElasticMembershipContext {
+        TrainingElasticMembershipContext::new(
+            3,
+            "cluster_state_v3",
+            "topology_v3",
+            vec![String::from("node-a"), String::from("node-b")],
+        )
+    }
+
+    fn sample_two_rank_mesh() -> TrainingDeviceMeshContext {
+        TrainingDeviceMeshContext::new(
+            "mesh.tensor.v2",
+            3,
+            "cuda",
+            ClusterCommunicationClass::TensorCollectiveMesh,
+            sample_two_rank_membership(),
+            vec![String::from("node-a"), String::from("node-b")],
+        )
+    }
+
+    fn sample_two_rank_bootstrap(local_node_id: &str) -> DistributedGroupBootstrap {
+        DistributedGroupBootstrap::new(
+            sample_two_rank_mesh(),
+            local_node_id,
+            vec![
+                DistributedGroupMember::new("node-a", 0, 0, "cuda:0"),
+                DistributedGroupMember::new("node-b", 1, 1, "cuda:1"),
             ],
         )
     }
@@ -4964,6 +5836,186 @@ mod tests {
             DistributedGradientReductionError::NonFloatingGradientLeaf {
                 leaf_index: 0,
                 dtype: DType::I8,
+            }
+        );
+    }
+
+    #[test]
+    fn all_to_sharded_linear_slices_output_rows_into_local_wrappers() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let rank0_group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-a")))
+                .expect("rank 0 bootstrap");
+        let rank1_group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-b")))
+                .expect("rank 1 bootstrap");
+        let linear = Linear::from_f32_parts(
+            "tp_all_to_sharded",
+            2,
+            5,
+            vec![1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 1.0, 1.0, 2.0],
+            Some(vec![0.0, 1.0, 2.0, 3.0, 4.0]),
+        )
+        .expect("full linear");
+        let input = NnTensor::f32(Shape::new(vec![1, 2]), vec![1.0, 2.0]).expect("input");
+        let full = linear.forward(&input).expect("full output");
+
+        let rank0 = AllToShardedLinear::from_linear(&linear, &rank0_group).expect("rank 0 shard");
+        let rank1 = AllToShardedLinear::from_linear(&linear, &rank1_group).expect("rank 1 shard");
+
+        assert_eq!(rank0.layout().shard_start, 0);
+        assert_eq!(rank0.layout().shard_end, 3);
+        assert_eq!(rank1.layout().shard_start, 3);
+        assert_eq!(rank1.layout().shard_end, 5);
+        assert_eq!(
+            rank0.local_linear().bias_f32().expect("rank 0 bias"),
+            Some(&[0.0, 1.0, 2.0][..])
+        );
+        assert_eq!(
+            rank1.local_linear().bias_f32().expect("rank 1 bias"),
+            Some(&[3.0, 4.0][..])
+        );
+
+        let mut sharded = rank0
+            .forward(&input)
+            .expect("rank 0 forward")
+            .as_f32_slice()
+            .expect("rank 0 host")
+            .to_vec();
+        sharded.extend_from_slice(
+            rank1
+                .forward(&input)
+                .expect("rank 1 forward")
+                .as_f32_slice()
+                .expect("rank 1 host"),
+        );
+        assert_eq!(sharded, full.as_f32_slice().expect("full host"));
+    }
+
+    #[test]
+    fn sharded_to_all_linear_reconstructs_full_output_from_rank_wrappers() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let rank0_group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-a")))
+                .expect("rank 0 bootstrap");
+        let rank1_group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-b")))
+                .expect("rank 1 bootstrap");
+        let linear = Linear::from_f32_parts(
+            "tp_sharded_to_all",
+            5,
+            2,
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            Some(vec![10.0, 20.0]),
+        )
+        .expect("full linear");
+        let full_input = NnTensor::f32(Shape::new(vec![1, 5]), vec![1.0, 1.0, 1.0, 1.0, 1.0])
+            .expect("full input");
+        let full_output = linear.forward(&full_input).expect("full output");
+
+        let rank0 = ShardedToAllLinear::from_linear(&linear, &rank0_group).expect("rank 0 wrapper");
+        let rank1 = ShardedToAllLinear::from_linear(&linear, &rank1_group).expect("rank 1 wrapper");
+        let rank0_input = rank0.shard_input(&full_input).expect("rank 0 shard input");
+        let rank1_input = rank1.shard_input(&full_input).expect("rank 1 shard input");
+
+        assert_eq!(rank0.layout().local_in_features(), 3);
+        assert_eq!(rank1.layout().local_in_features(), 2);
+        assert!(rank0.local_linear().uses_bias());
+        assert!(!rank1.local_linear().uses_bias());
+
+        let mut rank_modules = BTreeMap::new();
+        rank_modules.insert(0, rank0.clone());
+        rank_modules.insert(1, rank1.clone());
+
+        let mut rank_inputs = BTreeMap::new();
+        rank_inputs.insert(0, rank0_input.clone());
+        rank_inputs.insert(1, rank1_input.clone());
+
+        let reconstructed = rank0
+            .forward_with_options(
+                &rank0_input,
+                TensorParallelShardedToAllOptions::new()
+                    .with_group(rank0_group)
+                    .with_rank_modules(rank_modules)
+                    .with_rank_inputs(rank_inputs),
+            )
+            .expect("reference-emulated reconstruction");
+        assert_eq!(
+            reconstructed.as_f32_slice().expect("reconstructed host"),
+            full_output.as_f32_slice().expect("full host"),
+        );
+    }
+
+    #[test]
+    fn tensor_parallel_wrappers_refuse_missing_rank_state_and_tiny_axes() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let rank0_group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-a")))
+                .expect("rank 0 bootstrap");
+        let rank1_group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-b")))
+                .expect("rank 1 bootstrap");
+        let linear = Linear::from_f32_parts(
+            "tp_sharded_to_all_refusal",
+            5,
+            2,
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+            Some(vec![10.0, 20.0]),
+        )
+        .expect("full linear");
+        let rank0 = ShardedToAllLinear::from_linear(&linear, &rank0_group).expect("rank 0 wrapper");
+        let rank1 = ShardedToAllLinear::from_linear(&linear, &rank1_group).expect("rank 1 wrapper");
+        let full_input = NnTensor::f32(Shape::new(vec![1, 5]), vec![1.0, 1.0, 1.0, 1.0, 1.0])
+            .expect("full input");
+        let rank0_input = rank0.shard_input(&full_input).expect("rank 0 shard input");
+        let rank1_input = rank1.shard_input(&full_input).expect("rank 1 shard input");
+
+        let direct_error = rank0
+            .forward(&rank0_input)
+            .expect_err("multi-rank forward should require explicit remote state");
+        assert_eq!(
+            direct_error,
+            TensorParallelLinearError::MultiRankForwardRequiresExplicitInputs {
+                group_id: rank0.layout().group.group_id.clone(),
+                world_size: 2,
+            }
+        );
+
+        let mut partial_inputs = BTreeMap::new();
+        partial_inputs.insert(0, rank0_input.clone());
+        partial_inputs.insert(1, rank1_input);
+        let missing_module_error = rank0
+            .forward_with_options(
+                &rank0_input,
+                TensorParallelShardedToAllOptions::new()
+                    .with_group(rank0_group)
+                    .with_rank_module(0, rank0.clone())
+                    .with_rank_inputs(partial_inputs),
+            )
+            .expect_err("missing remote wrapper should refuse");
+        assert_eq!(
+            missing_module_error,
+            TensorParallelLinearError::MissingRankModules {
+                missing_ranks: vec![1]
+            }
+        );
+
+        let tiny =
+            Linear::from_f32_parts("tiny_tp", 1, 2, vec![1.0, 2.0], None).expect("tiny linear");
+        let tiny_error = ShardedToAllLinear::from_linear(&tiny, &rank1_group)
+            .expect_err("world size larger than input axis should refuse");
+        assert_eq!(
+            tiny_error,
+            TensorParallelLinearError::FeatureAxisTooSmall {
+                helper: TensorParallelLinearKind::ShardedToAll,
+                axis_size: 1,
+                world_size: 2,
             }
         );
     }
