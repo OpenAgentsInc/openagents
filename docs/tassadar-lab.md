@@ -16,11 +16,18 @@ Important scope note:
 
 ## Current Scope
 
-- The pane now supports both curated replays and live local Psionic-prepared
-  article views.
-- The current replay shell exposes:
-  - the direct article-session replay
-  - the compiled article-closure replay
+- The pane now supports both a canonical replay-family explorer and live local
+  Psionic-prepared article views.
+- The replay explorer now exposes the full canonical Psionic replay catalog,
+  grouped into explicit families:
+  - article-session artifacts
+  - article-hybrid workflow artifacts
+  - compiled article closure
+  - acceptance report
+  - learned promotion
+  - learned 9x9 fit
+  - learned horizon policy
+  - architecture comparison
 - The current live shells expose:
   - canonical article executor sessions for direct, fallback, and refusal cases
   - canonical planner-owned hybrid workflows for delegated, fallback, and
@@ -55,8 +62,9 @@ Important scope note:
 - `[` / `]`: move focused fact line.
 - `Tab`: cycle views.
 - `1` / `2` / `3` / `4`: jump to `Overview`, `Trace`, `Program`, or `Evidence`.
-- `5` / `6` / `7`: switch between `Replay`, `Article Session`, and
+- `5` / `6` / `7`: switch between `Artifact Explorer`, `Article Session`, and
   `Hybrid Workflow` source modes.
+- `8` / `9`: move to the previous or next replay family inside explorer mode.
 - `r`: reset local playback focus to the start of the current source.
 - `f`: refresh the current source from Psionic.
 - `-` / `=`: decrease or increase local playback speed.
@@ -66,8 +74,9 @@ Important scope note:
 
 The top-row WGPUI controls expose the same actions for pointer-driven use:
 
+- previous / next replay family
 - previous / next case
-- replay / article-session / hybrid-workflow source switching
+- artifact-explorer / article-session / hybrid-workflow source switching
 - refresh
 - help
 - playback
@@ -87,6 +96,8 @@ autopilotctl tassadar reset
 autopilotctl tassadar refresh
 autopilotctl tassadar view trace
 autopilotctl tassadar source article-session
+autopilotctl tassadar family next
+autopilotctl tassadar family set learned-9x9-fit
 autopilotctl tassadar case next
 autopilotctl tassadar update prev
 autopilotctl tassadar readable-log next
@@ -110,7 +121,7 @@ The pane persists desktop-owned state in the Autopilot log directory:
 Persisted state is intentionally pane-owned only:
 
 - playback mode and running or paused posture
-- source mode and selected case
+- source mode, selected replay family, and selected case
 - selected view
 - focused replay update
 - readable-log, token-trace, and fact-line cursors

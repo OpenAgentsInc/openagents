@@ -9001,6 +9001,12 @@ pub(super) fn run_tassadar_lab_action(
         TassadarLabPaneAction::SetSourceMode(source_mode) => {
             crate::tassadar_lab_control::select_source_mode(&mut state.tassadar_lab, source_mode);
         }
+        TassadarLabPaneAction::SetReplayFamily(replay_family) => {
+            crate::tassadar_lab_control::select_replay_family(
+                &mut state.tassadar_lab,
+                replay_family,
+            );
+        }
         TassadarLabPaneAction::CycleView => {
             crate::tassadar_lab_control::cycle_view(&mut state.tassadar_lab);
         }
@@ -9021,6 +9027,12 @@ pub(super) fn run_tassadar_lab_action(
         }
         TassadarLabPaneAction::IncreaseTraceWindow => {
             crate::tassadar_lab_control::adjust_trace_chunk_size(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::PreviousReplayFamily => {
+            crate::tassadar_lab_control::move_selected_replay_family(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::NextReplayFamily => {
+            crate::tassadar_lab_control::move_selected_replay_family(&mut state.tassadar_lab, 1);
         }
         TassadarLabPaneAction::PreviousReplay => {
             crate::tassadar_lab_control::move_selected_replay(&mut state.tassadar_lab, -1);

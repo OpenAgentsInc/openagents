@@ -12,8 +12,9 @@ use crate::pane_renderer::{
 use crate::pane_system::{
     tassadar_lab_article_mode_button_bounds, tassadar_lab_evidence_button_bounds,
     tassadar_lab_faster_button_bounds, tassadar_lab_help_button_bounds,
-    tassadar_lab_hybrid_mode_button_bounds, tassadar_lab_next_replay_button_bounds,
-    tassadar_lab_overview_button_bounds, tassadar_lab_play_button_bounds,
+    tassadar_lab_hybrid_mode_button_bounds, tassadar_lab_next_family_button_bounds,
+    tassadar_lab_next_replay_button_bounds, tassadar_lab_overview_button_bounds,
+    tassadar_lab_play_button_bounds, tassadar_lab_previous_family_button_bounds,
     tassadar_lab_previous_replay_button_bounds, tassadar_lab_program_button_bounds,
     tassadar_lab_refresh_button_bounds, tassadar_lab_replay_mode_button_bounds,
     tassadar_lab_reset_button_bounds, tassadar_lab_slower_button_bounds,
@@ -123,6 +124,16 @@ pub fn paint(content_bounds: Bounds, pane_state: &TassadarLabPaneState, paint: &
         "Faster",
         paint,
     );
+    paint_secondary_button(
+        tassadar_lab_previous_family_button_bounds(content_bounds),
+        "Prev family",
+        paint,
+    );
+    paint_secondary_button(
+        tassadar_lab_next_family_button_bounds(content_bounds),
+        "Next family",
+        paint,
+    );
 
     let hero_bounds = Bounds::new(
         content_bounds.origin.x + 12.0,
@@ -222,18 +233,39 @@ fn paint_hero(
             .hero_label()
             .to_ascii_uppercase()
     );
-    let subtitle = format!(
-        "{}  //  {}",
-        replay_label,
-        pane_state.snapshot().family_label
-    );
-    let status = format!(
-        "{}  //  {}  //  {} cases  //  {} updates",
-        pane_state.playback_status_label(),
-        pane_state.snapshot().status_label,
-        pane_state.source_case_count(),
-        pane_state.updates().len()
-    );
+    let subtitle = if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+        format!(
+            "{}  //  {}",
+            pane_state.current_replay_family().label(),
+            replay_label
+        )
+    } else {
+        format!(
+            "{}  //  {}",
+            replay_label,
+            pane_state.snapshot().family_label
+        )
+    };
+    let status = if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+        format!(
+            "{}  //  {}  //  family {}/{}  //  case {}/{}  //  {} updates",
+            pane_state.playback_status_label(),
+            pane_state.snapshot().status_label,
+            pane_state.replay_family_position(),
+            pane_state.replay_family_count(),
+            pane_state.replay_family_case_position(),
+            pane_state.replay_family_case_count(),
+            pane_state.updates().len()
+        )
+    } else {
+        format!(
+            "{}  //  {}  //  {} cases  //  {} updates",
+            pane_state.playback_status_label(),
+            pane_state.snapshot().status_label,
+            pane_state.source_case_count(),
+            pane_state.updates().len()
+        )
+    };
 
     paint.scene.draw_text(paint.text.layout_mono(
         title.as_str(),
@@ -306,8 +338,48 @@ fn paint_overview(
     paint_panel_texture(left_bounds, accent, phase, paint);
     paint_panel_texture(right_bounds, accent.with_alpha(0.9), phase * 0.8, paint);
 
-    paint_section_title(left_bounds, "RUN SURFACE", accent, paint);
+    paint_section_title(
+        left_bounds,
+        if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+            "ARTIFACT EXPLORER"
+        } else {
+            "RUN SURFACE"
+        },
+        accent,
+        paint,
+    );
     let mut y = left_bounds.origin.y + 30.0;
+    if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+        y = paint_wrapped_label_line(
+            paint,
+            left_bounds.origin.x + 12.0,
+            y,
+            "Explorer family",
+            pane_state.current_replay_family().label(),
+            42,
+        );
+        y = paint_wrapped_label_line(
+            paint,
+            left_bounds.origin.x + 12.0,
+            y,
+            "Family case",
+            format!(
+                "{}/{}",
+                pane_state.replay_family_case_position(),
+                pane_state.replay_family_case_count().max(1)
+            )
+            .as_str(),
+            42,
+        );
+        y = paint_wrapped_label_line(
+            paint,
+            left_bounds.origin.x + 12.0,
+            y,
+            "Explorer note",
+            pane_state.current_replay_family().description(),
+            42,
+        );
+    }
     y = paint_wrapped_label_line(
         paint,
         left_bounds.origin.x + 12.0,
@@ -907,9 +979,9 @@ fn paint_help_overlay(content_bounds: Bounds, paint: &mut PaintContext) {
     let lines = [
         "TASSADAR LAB",
         "",
-        "Live and replay shell over Psionic Tassadar lab surfaces.",
+        "Artifact explorer plus live shell over Psionic Tassadar lab surfaces.",
         "Source modes:",
-        "- Replay: curated committed artifact roots",
+        "- Explorer: canonical committed artifact families",
         "- Session: live article executor sessions",
         "- Hybrid: live planner-owned hybrid workflows",
         "",
@@ -920,12 +992,13 @@ fn paint_help_overlay(content_bounds: Bounds, paint: &mut PaintContext) {
         "- Evidence: proof identity, lineage, selected update",
         "",
         "Controls:",
-        "- Replay / Session / Hybrid buttons switch source mode",
+        "- Explorer / Session / Hybrid buttons switch source mode",
+        "- Prev family / Next family step replay families inside explorer mode",
         "- Prev case / Next case step within the active source mode",
         "- Refresh reloads the current live or replay source from Psionic",
         "",
         "Playback, persistence, and CLI control are desktop-owned.",
-        "Wider run-family browsing lands later.",
+        "Explorer mode keeps compiled, learned, acceptance, and comparison roots separate.",
     ];
     let mut y = overlay.origin.y + 18.0;
     for line in lines {

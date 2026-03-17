@@ -670,7 +670,7 @@ impl TassadarLabSourceMode {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Replay => "Replay",
+            Self::Replay => "Artifact Explorer",
             Self::LiveArticleSession => "Article Session",
             Self::LiveArticleHybridWorkflow => "Hybrid Workflow",
         }
@@ -678,7 +678,7 @@ impl TassadarLabSourceMode {
 
     pub const fn short_label(self) -> &'static str {
         match self {
-            Self::Replay => "Replay",
+            Self::Replay => "Explorer",
             Self::LiveArticleSession => "Session",
             Self::LiveArticleHybridWorkflow => "Hybrid",
         }
@@ -686,9 +686,140 @@ impl TassadarLabSourceMode {
 
     pub const fn hero_label(self) -> &'static str {
         match self {
-            Self::Replay => "Replay artifact",
+            Self::Replay => "Artifact explorer",
             Self::LiveArticleSession => "Live article session",
             Self::LiveArticleHybridWorkflow => "Live hybrid workflow",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarLabReplayFamily {
+    ArticleSessions,
+    HybridWorkflows,
+    CompiledClosure,
+    Acceptance,
+    LearnedPromotion,
+    Learned9x9Fit,
+    LearnedHorizon,
+    ArchitectureComparison,
+}
+
+impl TassadarLabReplayFamily {
+    pub const ALL: [Self; 8] = [
+        Self::ArticleSessions,
+        Self::HybridWorkflows,
+        Self::CompiledClosure,
+        Self::Acceptance,
+        Self::LearnedPromotion,
+        Self::Learned9x9Fit,
+        Self::LearnedHorizon,
+        Self::ArchitectureComparison,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ArticleSessions => "Article Sessions",
+            Self::HybridWorkflows => "Hybrid Workflows",
+            Self::CompiledClosure => "Compiled Closure",
+            Self::Acceptance => "Acceptance",
+            Self::LearnedPromotion => "Learned Promotion",
+            Self::Learned9x9Fit => "Learned 9x9 Fit",
+            Self::LearnedHorizon => "Learned Horizon",
+            Self::ArchitectureComparison => "Architecture Comparison",
+        }
+    }
+
+    pub const fn short_label(self) -> &'static str {
+        match self {
+            Self::ArticleSessions => "Sessions",
+            Self::HybridWorkflows => "Hybrid",
+            Self::CompiledClosure => "Compiled",
+            Self::Acceptance => "Accept",
+            Self::LearnedPromotion => "Promote",
+            Self::Learned9x9Fit => "9x9 Fit",
+            Self::LearnedHorizon => "Horizon",
+            Self::ArchitectureComparison => "Compare",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::ArticleSessions => {
+                "Committed article-session artifacts over the canonical direct, fallback, and refusal cases."
+            }
+            Self::HybridWorkflows => {
+                "Committed planner-owned hybrid workflow artifacts for delegated, fallback, and refusal routing."
+            }
+            Self::CompiledClosure => {
+                "Compiled article-class closure over the exact 9x9 Sudoku, 10x10 Hungarian, and kernel-suite evidence."
+            }
+            Self::Acceptance => {
+                "Repo-owned acceptance verdicts that define the current honest Tassadar claim boundary."
+            }
+            Self::LearnedPromotion => {
+                "Green bounded learned 4x4 promotion evidence and its exactness gate."
+            }
+            Self::Learned9x9Fit => {
+                "Bounded learned 9x9 fit evidence that keeps long-horizon overflow explicit."
+            }
+            Self::LearnedHorizon => {
+                "Long-horizon learned policy evidence that records what the repo can and cannot claim."
+            }
+            Self::ArchitectureComparison => {
+                "Same-corpus architecture-family comparison across hull, sparse, hybrid, and recurrent learned lanes."
+            }
+        }
+    }
+
+    pub const fn includes(self, replay_id: TassadarLabReplayId) -> bool {
+        match self {
+            Self::ArticleSessions => matches!(
+                replay_id,
+                TassadarLabReplayId::ArticleSessionDirectMemoryHeavy
+                    | TassadarLabReplayId::ArticleSessionFallbackBranchHeavy
+                    | TassadarLabReplayId::ArticleSessionRefusalNonArticle
+            ),
+            Self::HybridWorkflows => matches!(
+                replay_id,
+                TassadarLabReplayId::ArticleHybridDelegatedMemoryHeavy
+                    | TassadarLabReplayId::ArticleHybridFallbackBranchHeavy
+                    | TassadarLabReplayId::ArticleHybridRefusalOverBudget
+            ),
+            Self::CompiledClosure => {
+                matches!(replay_id, TassadarLabReplayId::CompiledArticleClosureReport)
+            }
+            Self::Acceptance => matches!(replay_id, TassadarLabReplayId::AcceptanceReport),
+            Self::LearnedPromotion => {
+                matches!(replay_id, TassadarLabReplayId::LearnedPromotionGateV3)
+            }
+            Self::Learned9x9Fit => {
+                matches!(replay_id, TassadarLabReplayId::LearnedSudoku9x9FitReport)
+            }
+            Self::LearnedHorizon => {
+                matches!(replay_id, TassadarLabReplayId::LearnedHorizonPolicyReport)
+            }
+            Self::ArchitectureComparison => {
+                matches!(replay_id, TassadarLabReplayId::ArchitectureComparisonV12)
+            }
+        }
+    }
+
+    pub const fn from_replay_id(replay_id: TassadarLabReplayId) -> Self {
+        match replay_id {
+            TassadarLabReplayId::ArticleSessionDirectMemoryHeavy
+            | TassadarLabReplayId::ArticleSessionFallbackBranchHeavy
+            | TassadarLabReplayId::ArticleSessionRefusalNonArticle => Self::ArticleSessions,
+            TassadarLabReplayId::ArticleHybridDelegatedMemoryHeavy
+            | TassadarLabReplayId::ArticleHybridFallbackBranchHeavy
+            | TassadarLabReplayId::ArticleHybridRefusalOverBudget => Self::HybridWorkflows,
+            TassadarLabReplayId::AcceptanceReport => Self::Acceptance,
+            TassadarLabReplayId::CompiledArticleClosureReport => Self::CompiledClosure,
+            TassadarLabReplayId::LearnedHorizonPolicyReport => Self::LearnedHorizon,
+            TassadarLabReplayId::LearnedPromotionGateV3 => Self::LearnedPromotion,
+            TassadarLabReplayId::LearnedSudoku9x9FitReport => Self::Learned9x9Fit,
+            TassadarLabReplayId::ArchitectureComparisonV12 => Self::ArchitectureComparison,
         }
     }
 }
@@ -750,6 +881,7 @@ pub struct TassadarLabPaneState {
     pub selected_source_mode: TassadarLabSourceMode,
     pub show_help: bool,
     pub selected_view: TassadarLabViewMode,
+    pub selected_replay_family: TassadarLabReplayFamily,
     pub selected_replay: usize,
     pub selected_article_session_case: usize,
     pub selected_hybrid_workflow_case: usize,
@@ -770,7 +902,7 @@ pub struct TassadarLabPaneState {
 
 impl Default for TassadarLabPaneState {
     fn default() -> Self {
-        let replay_catalog = curated_tassadar_lab_replay_catalog();
+        let replay_catalog = canonical_tassadar_lab_replay_catalog();
         let article_session_catalog = canonical_tassadar_lab_article_session_catalog();
         let hybrid_workflow_catalog = canonical_tassadar_lab_hybrid_workflow_catalog();
         let selected_replay = 0usize;
@@ -778,6 +910,7 @@ impl Default for TassadarLabPaneState {
             .get(selected_replay)
             .map(|entry| entry.replay_id)
             .unwrap_or(TassadarLabReplayId::ArticleSessionDirectMemoryHeavy);
+        let selected_replay_family = TassadarLabReplayFamily::from_replay_id(default_replay_id);
         match load_tassadar_lab_prepared_view(&TassadarLabRequest::Replay {
             replay_id: default_replay_id,
         }) {
@@ -795,6 +928,7 @@ impl Default for TassadarLabPaneState {
                 selected_source_mode: TassadarLabSourceMode::Replay,
                 show_help: false,
                 selected_view: TassadarLabViewMode::Overview,
+                selected_replay_family,
                 selected_replay,
                 selected_article_session_case: 0,
                 selected_hybrid_workflow_case: 0,
@@ -823,6 +957,7 @@ impl Default for TassadarLabPaneState {
                 selected_source_mode: TassadarLabSourceMode::Replay,
                 show_help: false,
                 selected_view: TassadarLabViewMode::Overview,
+                selected_replay_family,
                 selected_replay,
                 selected_article_session_case: 0,
                 selected_hybrid_workflow_case: 0,
@@ -853,11 +988,57 @@ impl TassadarLabPaneState {
         &self.prepared_view.updates
     }
 
+    pub fn current_replay_family(&self) -> TassadarLabReplayFamily {
+        self.selected_replay_family
+    }
+
+    pub fn replay_family_count(&self) -> usize {
+        TassadarLabReplayFamily::ALL.len()
+    }
+
+    pub fn replay_family_position(&self) -> usize {
+        TassadarLabReplayFamily::ALL
+            .iter()
+            .position(|candidate| *candidate == self.selected_replay_family)
+            .unwrap_or_default()
+            + 1
+    }
+
+    pub fn replay_family_case_count(&self) -> usize {
+        self.replay_family_absolute_indices().len()
+    }
+
+    pub fn replay_family_case_position(&self) -> usize {
+        if self.replay_family_case_count() == 0 {
+            0
+        } else {
+            self.selected_replay_case_index() + 1
+        }
+    }
+
+    fn replay_family_absolute_indices(&self) -> Vec<usize> {
+        self.replay_catalog
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| self.selected_replay_family.includes(entry.replay_id))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    fn selected_replay_case_index(&self) -> usize {
+        self.replay_family_absolute_indices()
+            .iter()
+            .position(|index| *index == self.selected_replay)
+            .unwrap_or_default()
+    }
+
     pub fn current_replay(&self) -> Option<&TassadarLabReplayCatalogEntry> {
-        self.replay_catalog.get(
-            self.selected_replay
-                .min(self.replay_catalog.len().saturating_sub(1)),
-        )
+        let absolute_index = self
+            .replay_family_absolute_indices()
+            .into_iter()
+            .find(|index| *index == self.selected_replay)
+            .or_else(|| self.replay_family_absolute_indices().into_iter().next())?;
+        self.replay_catalog.get(absolute_index)
     }
 
     pub fn current_article_session_case(&self) -> Option<&TassadarLabLiveCaseEntry> {
@@ -937,7 +1118,7 @@ impl TassadarLabPaneState {
 
     pub fn source_case_count(&self) -> usize {
         match self.selected_source_mode {
-            TassadarLabSourceMode::Replay => self.replay_catalog.len(),
+            TassadarLabSourceMode::Replay => self.replay_family_case_count(),
             TassadarLabSourceMode::LiveArticleSession => self.article_session_catalog.len(),
             TassadarLabSourceMode::LiveArticleHybridWorkflow => self.hybrid_workflow_catalog.len(),
         }
@@ -945,7 +1126,7 @@ impl TassadarLabPaneState {
 
     pub fn selected_source_index(&self) -> usize {
         match self.selected_source_mode {
-            TassadarLabSourceMode::Replay => self.selected_replay,
+            TassadarLabSourceMode::Replay => self.selected_replay_case_index(),
             TassadarLabSourceMode::LiveArticleSession => self.selected_article_session_case,
             TassadarLabSourceMode::LiveArticleHybridWorkflow => self.selected_hybrid_workflow_case,
         }
@@ -1113,17 +1294,67 @@ impl TassadarLabPaneState {
         self.selected_view = TassadarLabViewMode::ALL[(index + 1) % TassadarLabViewMode::ALL.len()];
     }
 
+    pub fn align_replay_selection_to_family(&mut self) {
+        let Some(replay_index) = self
+            .replay_family_absolute_indices()
+            .into_iter()
+            .find(|index| *index == self.selected_replay)
+            .or_else(|| self.replay_family_absolute_indices().into_iter().next())
+        else {
+            self.selected_replay = 0;
+            return;
+        };
+        self.selected_replay = replay_index;
+    }
+
+    pub fn set_replay_family(&mut self, replay_family: TassadarLabReplayFamily) {
+        self.selected_replay_family = replay_family;
+        self.align_replay_selection_to_family();
+    }
+
+    pub fn move_selected_replay_family(&mut self, delta: isize) {
+        let current_index = TassadarLabReplayFamily::ALL
+            .iter()
+            .position(|candidate| *candidate == self.selected_replay_family)
+            .unwrap_or_default();
+        let next_index = (current_index as isize + delta)
+            .rem_euclid(TassadarLabReplayFamily::ALL.len() as isize)
+            as usize;
+        self.set_replay_family(TassadarLabReplayFamily::ALL[next_index]);
+    }
+
     pub fn move_selected_source_item(&mut self, delta: isize) -> Result<(), String> {
-        let len = self.source_case_count();
-        if len == 0 {
-            return Ok(());
-        }
-        let next =
-            (self.selected_source_index() as isize + delta).rem_euclid(len as isize) as usize;
         match self.selected_source_mode {
-            TassadarLabSourceMode::Replay => self.selected_replay = next,
-            TassadarLabSourceMode::LiveArticleSession => self.selected_article_session_case = next,
+            TassadarLabSourceMode::Replay => {
+                let replay_indices = self.replay_family_absolute_indices();
+                if replay_indices.is_empty() {
+                    return Ok(());
+                }
+                let current_index = replay_indices
+                    .iter()
+                    .position(|index| *index == self.selected_replay)
+                    .unwrap_or_default();
+                let next_index = (current_index as isize + delta)
+                    .rem_euclid(replay_indices.len() as isize)
+                    as usize;
+                self.selected_replay = replay_indices[next_index];
+            }
+            TassadarLabSourceMode::LiveArticleSession => {
+                let len = self.article_session_catalog.len();
+                if len == 0 {
+                    return Ok(());
+                }
+                let next = (self.selected_article_session_case as isize + delta)
+                    .rem_euclid(len as isize) as usize;
+                self.selected_article_session_case = next;
+            }
             TassadarLabSourceMode::LiveArticleHybridWorkflow => {
+                let len = self.hybrid_workflow_catalog.len();
+                if len == 0 {
+                    return Ok(());
+                }
+                let next = (self.selected_hybrid_workflow_case as isize + delta)
+                    .rem_euclid(len as isize) as usize;
                 self.selected_hybrid_workflow_case = next;
             }
         }
@@ -1174,20 +1405,8 @@ impl TassadarLabPaneState {
     }
 }
 
-fn curated_tassadar_lab_replay_catalog() -> Vec<TassadarLabReplayCatalogEntry> {
-    let catalog = LocalTassadarLabService::new().replay_catalog();
-    [
-        TassadarLabReplayId::ArticleSessionDirectMemoryHeavy,
-        TassadarLabReplayId::CompiledArticleClosureReport,
-    ]
-    .into_iter()
-    .filter_map(|replay_id| {
-        catalog
-            .iter()
-            .find(|entry| entry.replay_id == replay_id)
-            .cloned()
-    })
-    .collect()
+fn canonical_tassadar_lab_replay_catalog() -> Vec<TassadarLabReplayCatalogEntry> {
+    LocalTassadarLabService::new().replay_catalog()
 }
 
 fn load_tassadar_lab_prepared_view(
@@ -1365,8 +1584,8 @@ fn move_wrapped_index(len: usize, current: usize, delta: isize) -> usize {
 #[cfg(test)]
 mod tassadar_lab_tests {
     use super::{
-        PaneLoadState, TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabReplayId,
-        TassadarLabRequest, TassadarLabSourceMode, TassadarLabViewMode,
+        PaneLoadState, TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabReplayFamily,
+        TassadarLabReplayId, TassadarLabRequest, TassadarLabSourceMode, TassadarLabViewMode,
     };
 
     #[test]
@@ -1376,7 +1595,12 @@ mod tassadar_lab_tests {
         assert_eq!(state.playback_state, TassadarLabPlaybackState::Replay);
         assert_eq!(state.selected_source_mode, TassadarLabSourceMode::Replay);
         assert_eq!(state.selected_view, TassadarLabViewMode::Overview);
-        assert_eq!(state.replay_catalog.len(), 2);
+        assert_eq!(state.replay_catalog.len(), 12);
+        assert_eq!(
+            state.current_replay_family(),
+            TassadarLabReplayFamily::ArticleSessions
+        );
+        assert_eq!(state.replay_family_count(), 8);
         assert_eq!(state.article_session_catalog.len(), 3);
         assert_eq!(state.hybrid_workflow_catalog.len(), 3);
         assert_eq!(
@@ -1389,11 +1613,19 @@ mod tassadar_lab_tests {
     }
 
     #[test]
-    fn tassadar_lab_can_switch_between_curated_replays() {
+    fn tassadar_lab_replay_family_filters_canonical_catalog() {
         let mut state = TassadarLabPaneState::default();
         state
             .move_selected_source_item(1)
-            .expect("curated replay switch should update selection");
+            .expect("family replay switch should update selection");
+        assert_eq!(
+            state.current_replay().map(|entry| entry.replay_id),
+            Some(TassadarLabReplayId::ArticleSessionFallbackBranchHeavy)
+        );
+
+        state.set_replay_family(TassadarLabReplayFamily::CompiledClosure);
+        assert_eq!(state.source_case_count(), 1);
+        assert_eq!(state.replay_family_case_position(), 1);
         assert_eq!(
             state.current_replay().map(|entry| entry.replay_id),
             Some(TassadarLabReplayId::CompiledArticleClosureReport)
@@ -1403,6 +1635,16 @@ mod tassadar_lab_tests {
             TassadarLabRequest::Replay {
                 replay_id: TassadarLabReplayId::CompiledArticleClosureReport
             }
+        );
+
+        state.move_selected_replay_family(1);
+        assert_eq!(
+            state.current_replay_family(),
+            TassadarLabReplayFamily::Acceptance
+        );
+        assert_eq!(
+            state.current_replay().map(|entry| entry.replay_id),
+            Some(TassadarLabReplayId::AcceptanceReport)
         );
     }
 

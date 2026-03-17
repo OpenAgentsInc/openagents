@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::app_state::{
-    PaneStatusAccess, TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabSourceMode,
-    TassadarLabViewMode,
+    PaneStatusAccess, TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabReplayFamily,
+    TassadarLabSourceMode, TassadarLabViewMode,
 };
 use psionic_serve::LocalTassadarLabService;
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,8 @@ struct PersistedTassadarLabState {
     playback_running: bool,
     selected_source_mode: TassadarLabSourceMode,
     selected_view: TassadarLabViewMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    selected_replay_family: Option<TassadarLabReplayFamily>,
     show_help: bool,
     selected_replay: usize,
     selected_article_session_case: usize,
@@ -70,6 +72,13 @@ fn load_persisted_from_path(pane_state: &mut TassadarLabPaneState, path: &Path) 
     pane_state.selected_view = persisted.selected_view;
     pane_state.show_help = persisted.show_help;
     pane_state.selected_replay = persisted.selected_replay;
+    pane_state.selected_replay_family = persisted.selected_replay_family.unwrap_or_else(|| {
+        pane_state
+            .replay_catalog
+            .get(pane_state.selected_replay)
+            .map(|entry| TassadarLabReplayFamily::from_replay_id(entry.replay_id))
+            .unwrap_or(TassadarLabReplayFamily::ArticleSessions)
+    });
     pane_state.selected_article_session_case = persisted.selected_article_session_case;
     pane_state.selected_hybrid_workflow_case = persisted.selected_hybrid_workflow_case;
     pane_state.speed_multiplier = persisted.speed_multiplier;
@@ -78,6 +87,7 @@ fn load_persisted_from_path(pane_state: &mut TassadarLabPaneState, path: &Path) 
     pane_state.last_action = persisted.last_action;
     pane_state.last_error = persisted.last_error;
     clamp_source_indices(pane_state);
+    pane_state.align_replay_selection_to_family();
     pane_state.playback_running = false;
     pane_state.playback_state = restored_playback_state;
     pane_state.last_playback_tick_at = None;
@@ -152,6 +162,55 @@ pub(crate) fn select_source_mode(
         pane_state.push_local_event(format!(
             "Load error // {} // {}",
             source_mode.hero_label(),
+            error
+        ));
+        let _ = pane_state.pane_set_error(error);
+    } else {
+        persist_or_error(pane_state);
+    }
+}
+
+pub(crate) fn select_replay_family(
+    pane_state: &mut TassadarLabPaneState,
+    replay_family: TassadarLabReplayFamily,
+) {
+    ensure_loaded(pane_state);
+    pane_state.selected_source_mode = TassadarLabSourceMode::Replay;
+    pane_state.set_replay_family(replay_family);
+    if let Err(error) = reload_current_source(
+        pane_state,
+        format!(
+            "Loaded {} // {}",
+            replay_family.label(),
+            pane_state.current_source_label()
+        ),
+    ) {
+        pane_state.push_local_event(format!(
+            "Load error // {} // {}",
+            replay_family.label(),
+            error
+        ));
+        let _ = pane_state.pane_set_error(error);
+    } else {
+        persist_or_error(pane_state);
+    }
+}
+
+pub(crate) fn move_selected_replay_family(pane_state: &mut TassadarLabPaneState, delta: isize) {
+    ensure_loaded(pane_state);
+    pane_state.selected_source_mode = TassadarLabSourceMode::Replay;
+    pane_state.move_selected_replay_family(delta);
+    if let Err(error) = reload_current_source(
+        pane_state,
+        format!(
+            "Loaded {} // {}",
+            pane_state.current_replay_family().label(),
+            pane_state.current_source_label()
+        ),
+    ) {
+        pane_state.push_local_event(format!(
+            "Load error // {} // {}",
+            pane_state.current_replay_family().label(),
             error
         ));
         let _ = pane_state.pane_set_error(error);
@@ -433,6 +492,7 @@ fn persist_state_to_path(pane_state: &TassadarLabPaneState, path: &Path) -> Resu
         playback_running: pane_state.playback_running,
         selected_source_mode: pane_state.selected_source_mode,
         selected_view: pane_state.selected_view,
+        selected_replay_family: Some(pane_state.selected_replay_family),
         show_help: pane_state.show_help,
         selected_replay: pane_state.selected_replay,
         selected_article_session_case: pane_state.selected_article_session_case,
@@ -490,11 +550,13 @@ mod tests {
     use super::{
         TassadarLabSourceMode, TassadarLabViewMode, adjust_trace_chunk_size, background_tick,
         load_persisted_from_path, move_selected_fact_line, move_selected_readable_log_line,
-        move_selected_replay, move_selected_update, persist_state_to_path, refresh_current_source,
-        reset_playback, select_source_mode, select_view, set_speed_multiplier, toggle_help,
-        toggle_playback,
+        move_selected_replay, move_selected_replay_family, move_selected_update,
+        persist_state_to_path, refresh_current_source, reset_playback, select_replay_family,
+        select_source_mode, select_view, set_speed_multiplier, toggle_help, toggle_playback,
     };
-    use crate::app_state::{TassadarLabPaneState, TassadarLabPlaybackState};
+    use crate::app_state::{
+        TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabReplayFamily,
+    };
     use psionic_serve::TassadarLabSourceKind;
     use tempfile::tempdir;
 
@@ -648,5 +710,29 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("Completed local Tassadar playback"))
         );
+    }
+
+    #[test]
+    fn replay_family_selection_switches_between_canonical_artifact_roots() {
+        let mut state = isolated_state();
+        select_replay_family(&mut state, TassadarLabReplayFamily::CompiledClosure);
+
+        assert_eq!(state.selected_source_mode, TassadarLabSourceMode::Replay);
+        assert_eq!(
+            state.current_replay_family(),
+            TassadarLabReplayFamily::CompiledClosure
+        );
+        assert_eq!(state.source_case_count(), 1);
+        assert_eq!(
+            state.current_source_label(),
+            "Compiled article closure report"
+        );
+
+        move_selected_replay_family(&mut state, 1);
+        assert_eq!(
+            state.current_replay_family(),
+            TassadarLabReplayFamily::Acceptance
+        );
+        assert_eq!(state.current_source_label(), "Tassadar acceptance report");
     }
 }

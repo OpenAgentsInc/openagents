@@ -54,7 +54,7 @@ use crate::app_state::{
     AttnResLabViewMode, DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
-    SnapshotTimingSample, TassadarLabSourceMode, TassadarLabViewMode,
+    SnapshotTimingSample, TassadarLabReplayFamily, TassadarLabSourceMode, TassadarLabViewMode,
     mission_control_buy_mode_interval_label, mission_control_local_runtime_view_model,
 };
 use crate::apple_adapter_training_control::{
@@ -294,6 +294,11 @@ pub struct DesktopControlTassadarSummary {
     pub playback_state: String,
     pub running: bool,
     pub selected_source_mode: String,
+    pub selected_replay_family: Option<String>,
+    pub replay_family_position: usize,
+    pub replay_family_count: usize,
+    pub replay_family_case_position: usize,
+    pub replay_family_case_count: usize,
     pub selected_source_label: String,
     pub selected_view: String,
     pub selected_update: usize,
@@ -321,6 +326,19 @@ pub enum DesktopControlTassadarSourceMode {
     Replay,
     ArticleSession,
     HybridWorkflow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopControlTassadarReplayFamily {
+    ArticleSessions,
+    HybridWorkflows,
+    CompiledClosure,
+    Acceptance,
+    LearnedPromotion,
+    Learned9x9Fit,
+    LearnedHorizon,
+    ArchitectureComparison,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1258,6 +1276,11 @@ pub enum DesktopControlActionRequest {
     SetTassadarSourceMode {
         source_mode: DesktopControlTassadarSourceMode,
     },
+    SetTassadarReplayFamily {
+        family: DesktopControlTassadarReplayFamily,
+    },
+    NextTassadarReplayFamily,
+    PreviousTassadarReplayFamily,
     NextTassadarCase,
     PreviousTassadarCase,
     NextTassadarUpdate,
@@ -1375,6 +1398,9 @@ impl DesktopControlActionRequest {
             Self::RefreshTassadar => "tassadar-refresh",
             Self::SetTassadarView { .. } => "tassadar-view",
             Self::SetTassadarSourceMode { .. } => "tassadar-source",
+            Self::SetTassadarReplayFamily { .. } => "tassadar-family",
+            Self::NextTassadarReplayFamily => "tassadar-family-next",
+            Self::PreviousTassadarReplayFamily => "tassadar-family-prev",
             Self::NextTassadarCase => "tassadar-case-next",
             Self::PreviousTassadarCase => "tassadar-case-prev",
             Self::NextTassadarUpdate => "tassadar-update-next",
@@ -2241,6 +2267,8 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::PauseTassadarPlayback
         | DesktopControlActionRequest::ResetTassadarPlayback
         | DesktopControlActionRequest::RefreshTassadar
+        | DesktopControlActionRequest::NextTassadarReplayFamily
+        | DesktopControlActionRequest::PreviousTassadarReplayFamily
         | DesktopControlActionRequest::NextTassadarCase
         | DesktopControlActionRequest::PreviousTassadarCase
         | DesktopControlActionRequest::NextTassadarUpdate
@@ -2264,6 +2292,10 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         DesktopControlActionRequest::SetTassadarSourceMode { source_mode } => json!({
             "command_label": action.label(),
             "source_mode": source_mode,
+        }),
+        DesktopControlActionRequest::SetTassadarReplayFamily { family } => json!({
+            "command_label": action.label(),
+            "family": family,
         }),
         DesktopControlActionRequest::SetTassadarSpeed { speed_multiplier } => json!({
             "command_label": action.label(),
@@ -3348,6 +3380,15 @@ fn apply_action_request(
         }
         DesktopControlActionRequest::SetTassadarSourceMode { source_mode } => {
             set_tassadar_source_mode_action(state, *source_mode).into()
+        }
+        DesktopControlActionRequest::SetTassadarReplayFamily { family } => {
+            set_tassadar_replay_family_action(state, *family).into()
+        }
+        DesktopControlActionRequest::NextTassadarReplayFamily => {
+            move_tassadar_replay_family_action(state, 1).into()
+        }
+        DesktopControlActionRequest::PreviousTassadarReplayFamily => {
+            move_tassadar_replay_family_action(state, -1).into()
         }
         DesktopControlActionRequest::NextTassadarCase => move_tassadar_case_action(state, 1).into(),
         DesktopControlActionRequest::PreviousTassadarCase => {
@@ -4475,6 +4516,31 @@ fn tassadar_source_mode(source_mode: DesktopControlTassadarSourceMode) -> Tassad
     }
 }
 
+fn tassadar_replay_family(family: DesktopControlTassadarReplayFamily) -> TassadarLabReplayFamily {
+    match family {
+        DesktopControlTassadarReplayFamily::ArticleSessions => {
+            TassadarLabReplayFamily::ArticleSessions
+        }
+        DesktopControlTassadarReplayFamily::HybridWorkflows => {
+            TassadarLabReplayFamily::HybridWorkflows
+        }
+        DesktopControlTassadarReplayFamily::CompiledClosure => {
+            TassadarLabReplayFamily::CompiledClosure
+        }
+        DesktopControlTassadarReplayFamily::Acceptance => TassadarLabReplayFamily::Acceptance,
+        DesktopControlTassadarReplayFamily::LearnedPromotion => {
+            TassadarLabReplayFamily::LearnedPromotion
+        }
+        DesktopControlTassadarReplayFamily::Learned9x9Fit => TassadarLabReplayFamily::Learned9x9Fit,
+        DesktopControlTassadarReplayFamily::LearnedHorizon => {
+            TassadarLabReplayFamily::LearnedHorizon
+        }
+        DesktopControlTassadarReplayFamily::ArchitectureComparison => {
+            TassadarLabReplayFamily::ArchitectureComparison
+        }
+    }
+}
+
 fn desktop_control_tassadar_summary(state: &RenderState) -> DesktopControlTassadarSummary {
     let open_instances = state
         .panes
@@ -4484,6 +4550,29 @@ fn desktop_control_tassadar_summary(state: &RenderState) -> DesktopControlTassad
     let top = open_instances.iter().max_by_key(|pane| pane.z_index);
     let active_pane_id = PaneController::active(state);
     let pane_state = &state.tassadar_lab;
+    let replay_family_position = if pane_state.selected_source_mode == TassadarLabSourceMode::Replay
+    {
+        pane_state.replay_family_position()
+    } else {
+        0
+    };
+    let replay_family_count = if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+        pane_state.replay_family_count()
+    } else {
+        0
+    };
+    let replay_family_case_position =
+        if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+            pane_state.replay_family_case_position()
+        } else {
+            0
+        };
+    let replay_family_case_count =
+        if pane_state.selected_source_mode == TassadarLabSourceMode::Replay {
+            pane_state.replay_family_case_count()
+        } else {
+            0
+        };
     DesktopControlTassadarSummary {
         available: true,
         open_instances: open_instances.len(),
@@ -4496,6 +4585,12 @@ fn desktop_control_tassadar_summary(state: &RenderState) -> DesktopControlTassad
         playback_state: pane_state.playback_status_label().to_string(),
         running: pane_state.playback_running,
         selected_source_mode: pane_state.selected_source_mode.label().to_string(),
+        selected_replay_family: (pane_state.selected_source_mode == TassadarLabSourceMode::Replay)
+            .then(|| pane_state.current_replay_family().label().to_string()),
+        replay_family_position,
+        replay_family_count,
+        replay_family_case_position,
+        replay_family_case_count,
         selected_source_label: pane_state.current_source_label().to_string(),
         selected_view: pane_state.selected_view.label().to_string(),
         selected_update: pane_state.selected_update,
@@ -4636,6 +4731,27 @@ fn set_tassadar_source_mode_action(
         tassadar_source_mode(source_mode),
     );
     tassadar_action_outcome(state, "Selected Tassadar source mode")
+}
+
+fn set_tassadar_replay_family_action(
+    state: &mut RenderState,
+    family: DesktopControlTassadarReplayFamily,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::select_replay_family(
+        &mut state.tassadar_lab,
+        tassadar_replay_family(family),
+    );
+    tassadar_action_outcome(state, "Selected Tassadar replay family")
+}
+
+fn move_tassadar_replay_family_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::move_selected_replay_family(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Moved Tassadar replay family selection")
 }
 
 fn move_tassadar_case_action(state: &mut RenderState, delta: isize) -> DesktopControlActionOutcome {
