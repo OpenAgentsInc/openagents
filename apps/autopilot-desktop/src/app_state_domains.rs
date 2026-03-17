@@ -41,16 +41,18 @@ pub enum AttnResLabViewMode {
     Overview,
     Pipeline,
     Inference,
+    Loss,
 }
 
 impl AttnResLabViewMode {
-    pub const ALL: [Self; 3] = [Self::Overview, Self::Pipeline, Self::Inference];
+    pub const ALL: [Self; 4] = [Self::Overview, Self::Pipeline, Self::Inference, Self::Loss];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
             Self::Pipeline => "Pipeline",
             Self::Inference => "Inference",
+            Self::Loss => "Loss",
         }
     }
 }
@@ -631,6 +633,8 @@ mod attnres_lab_tests {
         assert_eq!(state.selected_view, AttnResLabViewMode::Pipeline);
         state.cycle_view();
         assert_eq!(state.selected_view, AttnResLabViewMode::Inference);
+        state.cycle_view();
+        assert_eq!(state.selected_view, AttnResLabViewMode::Loss);
         state.cycle_view();
         assert_eq!(state.selected_view, AttnResLabViewMode::Overview);
     }

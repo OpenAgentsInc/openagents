@@ -48,6 +48,8 @@ Current limitation:
   softmax routing mass, route story, block schedule, and event feed.
 - `Inference`: two-phase parity, two-phase schedule, online merge, block cache
   health, selected detail, and event feed.
+- `Loss`: a dedicated large loss curve with live loss/EMA history, loss rails,
+  run summary, and loss-focused event feed.
 
 ## Visual Language
 
@@ -66,6 +68,10 @@ Current limitation:
 - Training telemetry uses ring gauges, signal triplets, and ribbon-history
   rails for loss, EMA, and selectivity instead of text-only summaries, so the
   desktop port is strictly denser and more legible than the terminal original.
+- The loss history now rebuilds from the true seeded step-0 Psionic state
+  before appending stepped metrics, so the loss ribbon and focused loss view
+  track the live descent correctly instead of starting from a stale current
+  sample mislabeled as step zero.
 - The pane now budgets long strings against card width/height instead of
   painting unbounded mono text through panel edges, and `Selected Detail` has
   a compact rendering path for shorter inference cards.
@@ -79,7 +85,7 @@ Current limitation:
 - `Up` / `Down`: increase or decrease training speed.
 - `Left` / `Right`: inspect the previous or next sublayer.
 - `Tab`: cycle views.
-- `1` / `2` / `3`: jump to `Overview`, `Pipeline`, or `Inference`.
+- `1` / `2` / `3` / `4`: jump to `Overview`, `Pipeline`, `Inference`, or `Loss`.
 - `?`: toggle the help overlay.
 - `Esc`: dismiss the help overlay if it is open.
 - `r`: reset to the seeded reference checkpoint.
@@ -105,6 +111,7 @@ autopilotctl attnres pause
 autopilotctl attnres reset
 autopilotctl attnres refresh
 autopilotctl attnres view overview
+autopilotctl attnres view loss
 autopilotctl attnres sublayer next
 autopilotctl attnres sublayer set 4
 autopilotctl attnres speed increase

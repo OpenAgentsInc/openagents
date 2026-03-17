@@ -835,7 +835,9 @@ fn bootstrap_events() -> Vec<String> {
         .unwrap_or_else(|| String::from("s000  block schedule unavailable"));
     vec![
         block_line,
-        String::from("s000  inspect sublayers with Left/Right and switch views with Tab or 1/2/3"),
+        String::from(
+            "s000  inspect sublayers with Left/Right and switch views with Tab or 1/2/3/4",
+        ),
         String::from("s000  dashboard armed; press Space to start training"),
     ]
 }
@@ -892,7 +894,7 @@ fn build_snapshot_from_runner(
     )
     .map_err(|error| error.to_string())?;
 
-    let (metrics, final_ema_loss) = collect_metric_points(runner);
+    let (metrics, final_ema_loss) = collect_metric_points(runner)?;
     let sublayers = map_sublayers(&update.diagnostics, &corpus.config);
     let avg_selectivity = mean_selectivity(sublayers.as_slice());
     let block_summaries = build_block_summaries(sublayers.as_slice(), corpus.config.num_blocks);
@@ -979,8 +981,9 @@ fn build_snapshot_from_runner(
 
 fn collect_metric_points(
     runner: &AttnResLocalReferenceTrainingRunner,
-) -> (Vec<AttnResLabMetricPoint>, f32) {
-    let initial = runner.current_update();
+) -> Result<(Vec<AttnResLabMetricPoint>, f32), String> {
+    let seeded_runner = build_runner_to_step(0)?;
+    let initial = seeded_runner.current_update();
     let mut metrics = vec![AttnResLabMetricPoint {
         global_step: 0,
         training_loss: initial.current_training_mean_loss,
@@ -1001,7 +1004,7 @@ fn collect_metric_points(
             selectivity: step_metrics.mean_selectivity,
         });
     }
-    (metrics, ema_loss)
+    Ok((metrics, ema_loss))
 }
 
 fn generate_preview_response(
@@ -1403,8 +1406,8 @@ mod tests {
 
     use super::{
         ATTNRES_LAB_SCHEMA_VERSION, DEFAULT_SPEED_MULTIPLIER, DesktopAttnResLabController,
-        aggregate_source_values, kind_label, parity_status_label, routing_band,
-        selectivity_from_weights, speed_poll_interval,
+        aggregate_source_values, build_runner_to_step, collect_metric_points, kind_label,
+        parity_status_label, routing_band, selectivity_from_weights, speed_poll_interval,
     };
     use crate::app_state::{AttnResLabPlaybackState, AttnResLabViewMode};
     use psionic_models::{
@@ -1603,6 +1606,26 @@ mod tests {
             controller.state.playback_state,
             AttnResLabPlaybackState::Paused
         );
+    }
+
+    #[test]
+    fn collect_metric_points_preserves_seeded_step_zero_loss() {
+        let mut runner = build_runner_to_step(0).expect("seed runner");
+        runner.step().expect("step one");
+        runner.step().expect("step two");
+
+        let progressed_loss = runner.current_update().current_training_mean_loss;
+        let seeded_loss = build_runner_to_step(0)
+            .expect("seed runner for comparison")
+            .current_update()
+            .current_training_mean_loss;
+
+        let (metrics, _) = collect_metric_points(&runner).expect("collect metric points");
+        assert_eq!(metrics[0].global_step, 0);
+        assert_eq!(metrics[1].global_step, 1);
+        assert_eq!(metrics[2].global_step, 2);
+        assert!((metrics[0].training_loss - seeded_loss).abs() < 1.0e-6);
+        assert!((metrics[0].training_loss - progressed_loss).abs() > 1.0e-4);
     }
 
     #[test]

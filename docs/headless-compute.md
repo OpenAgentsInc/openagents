@@ -110,6 +110,7 @@ autopilotctl wait gpt-oss-ready
 autopilotctl attnres status
 autopilotctl attnres start
 autopilotctl attnres view inference
+autopilotctl attnres view loss
 autopilotctl attnres sublayer set 4
 autopilotctl attnres speed set 5
 autopilotctl wait attnres-completed

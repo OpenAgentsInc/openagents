@@ -3292,13 +3292,23 @@ pub fn attnres_lab_inference_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn attnres_lab_toggle_playback_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn attnres_lab_loss_button_bounds(content_bounds: Bounds) -> Bounds {
     let inference = attnres_lab_inference_button_bounds(content_bounds);
     Bounds::new(
         inference.max_x() + JOB_INBOX_BUTTON_GAP,
         inference.origin.y,
-        102.0,
+        92.0,
         inference.size.height,
+    )
+}
+
+pub fn attnres_lab_toggle_playback_button_bounds(content_bounds: Bounds) -> Bounds {
+    let loss = attnres_lab_loss_button_bounds(content_bounds);
+    Bounds::new(
+        loss.max_x() + JOB_INBOX_BUTTON_GAP,
+        loss.origin.y,
+        102.0,
+        loss.size.height,
     )
 }
 
@@ -7304,6 +7314,10 @@ fn pane_hit_action_for_pane(
             } else if attnres_lab_inference_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
                     crate::app_state::AttnResLabViewMode::Inference,
+                )))
+            } else if attnres_lab_loss_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
+                    crate::app_state::AttnResLabViewMode::Loss,
                 )))
             } else if attnres_lab_toggle_playback_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::AttnResLab(
