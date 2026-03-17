@@ -4,29 +4,30 @@
   "target_id": "apple_adapter.psionic_architecture_explainer",
   "dataset": {
     "dataset_ref": "dataset://openagents/apple_adapter/psionic_architecture_explainer",
-    "version": "2026.03.15.2"
+    "version": "2026.03.16.2"
   },
-  "train_split_digest": "sha256:a2c76ea8b4852bac55e3e497bb6166cb7ab85494dd7bcef2c48a4263feb9bde9",
-  "held_out_split_digest": "sha256:fee97de9e5632dadb4ff6156f3d0d293c9632f9f46f296e3ccf7c4608f2797be",
-  "benchmark_split_digest": "sha256:942b85a3aa5a72b1bcba42b343972cbe4502af22db20dc2322886ac8c632a9ec",
-  "corpus_manifest_digest": "sha256:3f4baf816383c5ea589b2665121c5f4f739846340bbb48a7ad5c8cbaf87c66f4",
+  "train_split_digest": "sha256:853700fa150d5e1e69dc4384ddb728fac77efd2d899f8a5151e9fe42bba64959",
+  "held_out_split_digest": "sha256:5fc622eebf6e6f9b7c1e6d17da4c0e03524bc781b18e8b33b61d3de4ca44ed2e",
+  "benchmark_split_digest": "sha256:8a6c9759880350b2a6c0fcfae7bc8d3e9bed0f6b7dfa2f7bde71bc963e766b6d",
+  "corpus_manifest_digest": "sha256:79c9c418b9bd9335d23a94deae34fcc148b34b1ee2fe3dfa456d4e88987033cb",
   "base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1",
-  "tokenizer_digest": "sha256:89c79f8570c6e6f6e5b5e04fcb754e57e8ea2ff296f7c9138ffb0f9cb44220b1",
-  "prompt_shaping_digest": "sha256:42180344e12144b8ffb9fbc264b4fa6a88f8412bb4f5ca3c4f42ec0e1b6f5f9b",
+  "tokenizer_digest": "sha256:2e0575bd61810e1dc9c266d5a92799ce920814806dd039e7363482ecbf2485db",
+  "prompt_shaping_digest": "sha256:7d503a14f998038f0ed32d89ee75f9739947d21169feb1ab158089ee10640cdc",
   "environment_ref": "env.openagents.apple.architecture_explainer.core",
   "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
   "fidelity_plan_id": "openagents.apple.token_sequence_reference.v1",
   "input_width": 2048,
   "output_width": 2048,
   "lora_targets": [
-    "decoder.attn.q_proj"
+    "decoder.attn.q_proj",
+    "decoder.attn.output_proj"
   ],
   "lora_rank": 32,
-  "max_steps": 8,
+  "max_steps": 64,
   "training_policy": {
     "optimizer": {
       "kind": "adam_w",
-      "learning_rate": 0.05,
+      "learning_rate": 0.005,
       "weight_decay": 0.0,
       "gradient_clip_norm": 1.0,
       "beta1": 0.9,
