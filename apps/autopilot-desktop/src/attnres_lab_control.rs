@@ -53,14 +53,14 @@ struct PersistedAttnResLabState {
 }
 
 #[derive(Clone, Debug)]
-struct DesktopAttnResLabStatus {
-    playback_state: AttnResLabPlaybackState,
-    selected_view: AttnResLabViewMode,
-    selected_sublayer: usize,
-    show_help: bool,
-    snapshot: AttnResLabSnapshot,
-    last_action: Option<String>,
-    last_error: Option<String>,
+pub(crate) struct DesktopAttnResLabStatus {
+    pub(crate) playback_state: AttnResLabPlaybackState,
+    pub(crate) selected_view: AttnResLabViewMode,
+    pub(crate) selected_sublayer: usize,
+    pub(crate) show_help: bool,
+    pub(crate) snapshot: AttnResLabSnapshot,
+    pub(crate) last_action: Option<String>,
+    pub(crate) last_error: Option<String>,
 }
 
 struct DesktopAttnResLabController {
@@ -78,6 +78,10 @@ pub(crate) fn ensure_live_snapshot_loaded(pane_state: &mut AttnResLabPaneState) 
             let _ = pane_state.pane_set_error(error);
         }
     }
+}
+
+pub(crate) fn current_status() -> Result<DesktopAttnResLabStatus, String> {
+    with_controller(|controller| Ok(controller.status()))
 }
 
 pub(crate) fn refresh_live_snapshot(pane_state: &mut AttnResLabPaneState) {
@@ -128,6 +132,31 @@ pub(crate) fn select_view(pane_state: &mut AttnResLabPaneState, view: AttnResLab
     }
 }
 
+pub(crate) fn start_or_resume(pane_state: &mut AttnResLabPaneState) {
+    let now = Instant::now();
+    match with_controller(|controller| {
+        controller.start_or_resume(now)?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn pause(pane_state: &mut AttnResLabPaneState) {
+    match with_controller(|controller| {
+        controller.pause()?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
 pub(crate) fn move_selected_sublayer(pane_state: &mut AttnResLabPaneState, delta: isize) {
     match with_controller(|controller| {
         controller.move_selected_sublayer(delta)?;
@@ -140,9 +169,33 @@ pub(crate) fn move_selected_sublayer(pane_state: &mut AttnResLabPaneState, delta
     }
 }
 
+pub(crate) fn set_selected_sublayer(pane_state: &mut AttnResLabPaneState, index: usize) {
+    match with_controller(|controller| {
+        controller.set_selected_sublayer(index)?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
 pub(crate) fn adjust_speed(pane_state: &mut AttnResLabPaneState, delta: isize) {
     match with_controller(|controller| {
         controller.adjust_speed(delta)?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn set_speed_multiplier(pane_state: &mut AttnResLabPaneState, speed_multiplier: usize) {
+    match with_controller(|controller| {
+        controller.set_speed_multiplier(speed_multiplier)?;
         Ok(controller.status())
     }) {
         Ok(status) => sync_pane_state(pane_state, status),
@@ -338,12 +391,39 @@ impl DesktopAttnResLabController {
         self.persist()
     }
 
+    fn set_selected_sublayer(&mut self, index: usize) -> Result<(), String> {
+        self.state.selected_sublayer = index.min(self.snapshot.sublayers.len().saturating_sub(1));
+        let label = self
+            .snapshot
+            .sublayer(self.state.selected_sublayer)
+            .map(|sublayer| sublayer.label.as_str())
+            .unwrap_or("none");
+        self.state.last_action = Some(format!("Selected sublayer {label}"));
+        self.state.last_error = None;
+        self.persist()
+    }
+
     fn adjust_speed(&mut self, delta: isize) -> Result<(), String> {
         let next = ((self.state.speed_multiplier as isize) + delta)
             .clamp(MIN_SPEED_MULTIPLIER as isize, MAX_SPEED_MULTIPLIER as isize)
             as usize;
         if next == self.state.speed_multiplier {
             return Ok(());
+        }
+        self.state.speed_multiplier = next;
+        self.snapshot.speed_multiplier = next;
+        self.push_event(format!("speed -> {}x", next));
+        self.state.last_action = Some(format!("AttnRes speed set to {}x", next));
+        self.state.last_error = None;
+        self.persist()
+    }
+
+    fn set_speed_multiplier(&mut self, speed_multiplier: usize) -> Result<(), String> {
+        let next = speed_multiplier.clamp(MIN_SPEED_MULTIPLIER, MAX_SPEED_MULTIPLIER);
+        if next == self.state.speed_multiplier {
+            self.state.last_action = Some(format!("AttnRes speed already {}x", next));
+            self.state.last_error = None;
+            return self.persist();
         }
         self.state.speed_multiplier = next;
         self.snapshot.speed_multiplier = next;
@@ -367,6 +447,41 @@ impl DesktopAttnResLabController {
         self.state.events = bootstrap_events();
         self.last_tick_at = None;
         self.refresh_runtime()
+    }
+
+    fn start_or_resume(&mut self, now: Instant) -> Result<(), String> {
+        match self.state.playback_state {
+            AttnResLabPlaybackState::Running => {
+                self.state.last_action = Some(String::from("AttnRes training already running"));
+                self.state.last_error = None;
+                self.last_tick_at = Some(now);
+                self.persist()
+            }
+            AttnResLabPlaybackState::Armed
+            | AttnResLabPlaybackState::Paused
+            | AttnResLabPlaybackState::Completed => self.toggle_playback(now),
+        }
+    }
+
+    fn pause(&mut self) -> Result<(), String> {
+        match self.state.playback_state {
+            AttnResLabPlaybackState::Running => self.toggle_playback(Instant::now()),
+            AttnResLabPlaybackState::Paused => {
+                self.state.last_action = Some(String::from("AttnRes training already paused"));
+                self.state.last_error = None;
+                self.persist()
+            }
+            AttnResLabPlaybackState::Armed => {
+                self.state.last_action = Some(String::from("AttnRes training has not started yet"));
+                self.state.last_error = None;
+                self.persist()
+            }
+            AttnResLabPlaybackState::Completed => {
+                self.state.last_action = Some(String::from("AttnRes run already completed"));
+                self.state.last_error = None;
+                self.persist()
+            }
+        }
     }
 
     fn toggle_playback(&mut self, now: Instant) -> Result<(), String> {
@@ -725,15 +840,25 @@ fn build_snapshot_from_update(
                 .unwrap_or_else(|| String::from("seed"))
         ),
         run_status: playback_state.status_label().to_string(),
+        num_transformer_layers: corpus.config.num_transformer_layers(),
+        num_residual_blocks: corpus.config.num_blocks,
+        block_size: corpus.config.block_size().unwrap_or(1),
+        num_heads: corpus.config.num_heads,
+        batch_size: update.diagnostics.batch_size,
+        sequence_length: update.diagnostics.sequence_length,
+        hidden_size: update.diagnostics.hidden_size,
         step: update.current_global_step,
         max_steps: update.max_steps,
         speed_multiplier,
         training_loss: update.current_training_mean_loss,
         ema_loss: final_ema_loss,
         avg_selectivity,
+        mean_query_norm: mean_query_norm(sublayers.as_slice()),
+        max_query_norm: max_query_norm(sublayers.as_slice()),
         active_block,
         current_block_fill,
         completed_blocks,
+        final_partial_block_present: update.diagnostics.final_partial_block_present,
         metrics,
         sublayers,
         block_summaries,
@@ -867,9 +992,16 @@ fn build_inference_summary(
         logit_parity_label: parity_status_label(logit_parity.status).to_string(),
         hidden_max_abs_diff: hidden_parity.summary.max_abs_delta,
         logit_max_abs_diff: logit_parity.summary.max_abs_delta,
+        prompt_token_count: generation_response.prompt_tokens.len(),
+        generated_token_count: generation_response.generated_tokens.len(),
+        decoded_token_count: generation_response.full_sequence.len(),
+        inspected_sublayers: diagnostics.sublayers.len(),
         partial_merge_share,
         cache_merge_share,
         block_cache_fill_share,
+        cached_blocks: diagnostics.final_completed_blocks,
+        partial_block_present: diagnostics.final_partial_block_present,
+        boundary_layers: boundary_layers.clone(),
         schedule_note: format!(
             "decoded {} tokens over {} sublayers; block boundaries at {}",
             generation_response.full_sequence.len(),
@@ -912,9 +1044,12 @@ fn map_sublayers(
                 .unwrap_or(0.0);
             let cache_mass = (routing_weights.iter().sum::<f32>() - partial_mass).clamp(0.0, 1.0);
             let selectivity = selectivity_from_weights(routing_weights.as_slice());
+            let entropy = entropy_from_weights(routing_weights.as_slice());
             let target_block = sublayer.sublayer_index / block_size;
             AttnResLabSublayerSnapshot {
                 sublayer_index: sublayer.sublayer_index,
+                transformer_layer_index: sublayer.transformer_layer_index,
+                slot_in_block: sublayer.sublayer_index % block_size,
                 label: format!(
                     "L{} {}",
                     sublayer.transformer_layer_index,
@@ -925,6 +1060,7 @@ fn map_sublayers(
                 dominant_source_label: dominant_source_label.clone(),
                 dominant_weight,
                 selectivity,
+                entropy,
                 query_norm: sublayer.query_norm,
                 partial_mass,
                 cache_mass,
@@ -1008,6 +1144,10 @@ fn dominant_source(labels: &[String], weights: &[f32]) -> (String, f32) {
 }
 
 fn selectivity_from_weights(weights: &[f32]) -> f32 {
+    1.0 - entropy_from_weights(weights)
+}
+
+fn entropy_from_weights(weights: &[f32]) -> f32 {
     if weights.len() <= 1 {
         return 0.0;
     }
@@ -1021,7 +1161,7 @@ fn selectivity_from_weights(weights: &[f32]) -> f32 {
         }
     });
     let max_entropy = (weights.len() as f32).ln().max(f32::EPSILON);
-    (1.0 - (entropy / max_entropy)).clamp(0.0, 1.0)
+    (entropy / max_entropy).clamp(0.0, 1.0)
 }
 
 fn mean_selectivity_from_diagnostics(diagnostics: &AttnResDiagnosticsSnapshot) -> f32 {
@@ -1050,6 +1190,25 @@ fn mean_selectivity_values(values: &[f32]) -> f32 {
     } else {
         values.iter().sum::<f32>() / values.len() as f32
     }
+}
+
+fn mean_query_norm(sublayers: &[AttnResLabSublayerSnapshot]) -> f32 {
+    if sublayers.is_empty() {
+        0.0
+    } else {
+        sublayers
+            .iter()
+            .map(|sublayer| sublayer.query_norm)
+            .sum::<f32>()
+            / sublayers.len() as f32
+    }
+}
+
+fn max_query_norm(sublayers: &[AttnResLabSublayerSnapshot]) -> f32 {
+    sublayers
+        .iter()
+        .map(|sublayer| sublayer.query_norm)
+        .fold(0.0_f32, f32::max)
 }
 
 fn build_block_summaries(
@@ -1238,6 +1397,52 @@ mod tests {
         assert_eq!(routing_band(0.05), "uniform");
         assert_eq!(routing_band(0.25), "forming");
         assert_eq!(routing_band(0.55), "selective");
+    }
+
+    #[test]
+    fn explicit_controls_are_idempotent_and_allow_direct_selection() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("attnres-state.json");
+        let mut controller = DesktopAttnResLabController::load(path);
+
+        controller
+            .set_selected_sublayer(4)
+            .expect("set sublayer should succeed");
+        assert_eq!(controller.state.selected_sublayer, 4);
+
+        controller
+            .set_speed_multiplier(5)
+            .expect("set speed should succeed");
+        assert_eq!(controller.state.speed_multiplier, 5);
+
+        let now = Instant::now();
+        controller
+            .start_or_resume(now)
+            .expect("start should succeed");
+        assert_eq!(
+            controller.state.playback_state,
+            AttnResLabPlaybackState::Running
+        );
+
+        controller
+            .start_or_resume(now + Duration::from_millis(5))
+            .expect("repeated start should succeed");
+        assert_eq!(
+            controller.state.playback_state,
+            AttnResLabPlaybackState::Running
+        );
+
+        controller.pause().expect("pause should succeed");
+        assert_eq!(
+            controller.state.playback_state,
+            AttnResLabPlaybackState::Paused
+        );
+
+        controller.pause().expect("repeated pause should succeed");
+        assert_eq!(
+            controller.state.playback_state,
+            AttnResLabPlaybackState::Paused
+        );
     }
 
     #[test]
