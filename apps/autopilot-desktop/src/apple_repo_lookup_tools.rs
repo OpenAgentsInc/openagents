@@ -13,9 +13,9 @@ use psionic_eval::{AppleAdapterObservedSampleOutput, AppleAdapterObservedToolCal
 use serde::Serialize;
 use serde_json::{Value, json};
 
-const MAX_DOC_EXCERPT_CHARS: usize = 32_000;
-const MAX_CODE_EXCERPT_HEAD_CHARS: usize = 12_000;
-const MAX_CODE_EXCERPT_TAIL_CHARS: usize = 4_000;
+const MAX_DOC_EXCERPT_CHARS: usize = 6_000;
+const MAX_CODE_EXCERPT_HEAD_CHARS: usize = 2_500;
+const MAX_CODE_EXCERPT_TAIL_CHARS: usize = 800;
 
 #[derive(Clone, Default)]
 pub(crate) struct AppleRepoLookupRecorder {

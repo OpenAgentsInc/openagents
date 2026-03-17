@@ -3213,6 +3213,7 @@ pub(crate) fn build_environment_bundle(
     train_dataset: &AppleAdapterDatasetContract,
     held_out_dataset: &AppleAdapterDatasetContract,
 ) -> Result<AppleAdapterEnvironmentBundle> {
+    let tools = build_environment_tools(train_dataset)?;
     Ok(AppleAdapterEnvironmentSpec {
         version: "2026.03.15".to_string(),
         display_name: format!("Apple Adapter Operator {}", run_id),
@@ -3289,18 +3290,7 @@ pub(crate) fn build_environment_bundle(
             max_session_turns: 4,
             time_budget_ms: 30_000,
         },
-        tools: train_dataset
-            .samples
-            .iter()
-            .flat_map(|sample| sample.tools.iter())
-            .map(|tool| EnvironmentToolContract {
-                tool_name: tool.function.name.clone(),
-                interface: EnvironmentToolInterface::NativeFunction,
-                description: tool.function.description.clone().unwrap_or_default(),
-                args_schema: tool.function.arguments.clone(),
-                result_schema: None,
-            })
-            .collect(),
+        tools,
         rubric_hooks: vec![EnvironmentRubricHook {
             rubric_ref: format!(
                 "rubric://apple_adapter/operator/{}/held_out",
@@ -3654,6 +3644,34 @@ fn resolve_apple_training_policy(
     })
 }
 
+fn build_environment_tools(
+    train_dataset: &AppleAdapterDatasetContract,
+) -> Result<Vec<EnvironmentToolContract>> {
+    let mut tools = BTreeMap::<String, EnvironmentToolContract>::new();
+    for tool in train_dataset.samples.iter().flat_map(|sample| sample.tools.iter()) {
+        let contract = EnvironmentToolContract {
+            tool_name: tool.function.name.clone(),
+            interface: EnvironmentToolInterface::NativeFunction,
+            description: tool.function.description.clone().unwrap_or_default(),
+            args_schema: tool.function.arguments.clone(),
+            result_schema: None,
+        };
+        match tools.get(contract.tool_name.as_str()) {
+            Some(existing) if existing != &contract => {
+                bail!(
+                    "train dataset defines conflicting tool contract `{}` across samples",
+                    contract.tool_name
+                );
+            }
+            Some(_) => {}
+            None => {
+                tools.insert(contract.tool_name.clone(), contract);
+            }
+        }
+    }
+    Ok(tools.into_values().collect())
+}
+
 fn normalize_optimizer_family_fields(optimizer: &mut TrainingOptimizerConfig) {
     match optimizer.kind {
         TrainingOptimizerKind::Sgd => {
@@ -3780,6 +3798,26 @@ fn manifest_trainable_targets(
             "decoder.attn.q_proj" => {
                 q_projection_trainable_targets(optimizer, optimizer_residency_policy, scheduler)
             }
+            "decoder.attn.output_proj" => output_projection_trainable_targets(
+                optimizer,
+                optimizer_residency_policy,
+                scheduler,
+            ),
+            "decoder.ffn.up_proj" => ffn_up_projection_trainable_targets(
+                optimizer,
+                optimizer_residency_policy,
+                scheduler,
+            ),
+            "decoder.ffn.gate_proj" => ffn_gate_projection_trainable_targets(
+                optimizer,
+                optimizer_residency_policy,
+                scheduler,
+            ),
+            "decoder.ffn.down_proj" => ffn_down_projection_trainable_targets(
+                optimizer,
+                optimizer_residency_policy,
+                scheduler,
+            ),
             other => {
                 return Err(format!(
                     "Apple experiment manifest target `{other}` is not supported by the live runtime-exportable operator lane"
@@ -3813,7 +3851,9 @@ fn q_projection_trainable_targets(
                 "layers.segment_0.layer_{layer}.attention.qkv_transform.adapters.base_adapter.lora_0"
             ),
             lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
-            lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: None,
+            output_width: None,
             optimizer: optimizer.clone(),
             optimizer_residency_policy,
             scheduler: scheduler.cloned(),
@@ -3827,7 +3867,173 @@ fn q_projection_trainable_targets(
                 "layers.segment_1.layer_{layer}.attention.q_transform.adapters.base_adapter"
             ),
             lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
-            lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: None,
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    targets
+}
+
+fn output_projection_trainable_targets(
+    optimizer: &TrainingOptimizerConfig,
+    optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<&TrainingSchedulerConfig>,
+) -> Vec<psionic_train::AppleAdapterTrainableTarget> {
+    let mut targets = Vec::new();
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_0.layer_{layer}.attention.output_transform.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: None,
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_1.layer_{layer}.attention.output_transform.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: None,
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    targets
+}
+
+fn ffn_up_projection_trainable_targets(
+    optimizer: &TrainingOptimizerConfig,
+    optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<&TrainingSchedulerConfig>,
+) -> Vec<psionic_train::AppleAdapterTrainableTarget> {
+    let mut targets = Vec::new();
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_0.layer_{layer}.feed_forward.hidden_transform.linear_0.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: Some(psionic_train::APPLE_RUNTIME_FEED_FORWARD_WIDTH),
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_1.layer_{layer}.feed_forward.hidden_transform.linear_0.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: Some(psionic_train::APPLE_RUNTIME_FEED_FORWARD_WIDTH),
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    targets
+}
+
+fn ffn_gate_projection_trainable_targets(
+    optimizer: &TrainingOptimizerConfig,
+    optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<&TrainingSchedulerConfig>,
+) -> Vec<psionic_train::AppleAdapterTrainableTarget> {
+    let mut targets = Vec::new();
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_0.layer_{layer}.feed_forward.hidden_transform.linear_1.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: Some(psionic_train::APPLE_RUNTIME_FEED_FORWARD_WIDTH),
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_1.layer_{layer}.feed_forward.hidden_transform.linear_1.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: Some(psionic_train::APPLE_RUNTIME_FEED_FORWARD_WIDTH),
+            output_width: None,
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    targets
+}
+
+fn ffn_down_projection_trainable_targets(
+    optimizer: &TrainingOptimizerConfig,
+    optimizer_residency_policy: TrainingOptimizerResidencyPolicy,
+    scheduler: Option<&TrainingSchedulerConfig>,
+) -> Vec<psionic_train::AppleAdapterTrainableTarget> {
+    let mut targets = Vec::new();
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_0.layer_{layer}.feed_forward.output_transform.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: None,
+            output_width: Some(psionic_train::APPLE_RUNTIME_FEED_FORWARD_WIDTH),
+            optimizer: optimizer.clone(),
+            optimizer_residency_policy,
+            scheduler: scheduler.cloned(),
+        });
+    }
+    for layer in
+        APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER..APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
+    {
+        targets.push(psionic_train::AppleAdapterTrainableTarget {
+            target_id: format!(
+                "layers.segment_1.layer_{layer}.feed_forward.output_transform.adapters.base_adapter"
+            ),
+            lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
+            lora_alpha: (APPLE_LIVE_REFERENCE_LORA_RANK as f32) * 4.0,
+            input_width: None,
+            output_width: Some(psionic_train::APPLE_RUNTIME_FEED_FORWARD_WIDTH),
             optimizer: optimizer.clone(),
             optimizer_residency_policy,
             scheduler: scheduler.cloned(),
@@ -4047,9 +4253,24 @@ fn symbolic_target_families_for_execution_config(
                 Some("decoder.attn.q_proj".to_string())
             } else if target
                 .target_id
+                .contains("attention.output_transform.adapters.base_adapter")
+            {
+                Some("decoder.attn.output_proj".to_string())
+            } else if target
+                .target_id
                 .contains("feed_forward.hidden_transform.linear_0.adapters.base_adapter")
             {
                 Some("decoder.ffn.up_proj".to_string())
+            } else if target
+                .target_id
+                .contains("feed_forward.hidden_transform.linear_1.adapters.base_adapter")
+            {
+                Some("decoder.ffn.gate_proj".to_string())
+            } else if target
+                .target_id
+                .contains("feed_forward.output_transform.adapters.base_adapter")
+            {
+                Some("decoder.ffn.down_proj".to_string())
             } else {
                 None
             }
@@ -4817,21 +5038,25 @@ mod tests {
         AppleAdapterOperatorPolicyValueSource, AppleAdapterOperatorProgressEvent,
         AppleAdapterOperatorProgressEventKind, AppleAdapterOperatorProgressPhase,
         AppleAdapterOperatorProgressUpdate, AppleAdapterPrecisionPolicy,
-        AppleAdapterTrainingController, build_psionic_execution_config, current_epoch_ms,
-        q_projection_trainable_targets, resolve_apple_training_policy,
+        AppleAdapterTrainingController, build_environment_bundle,
+        build_psionic_execution_config, current_epoch_ms,
+        output_projection_trainable_targets, q_projection_trainable_targets,
+        resolve_apple_training_policy,
+        symbolic_target_families_for_execution_config,
         validate_manifest_against_live_exportable_lane,
     };
     use psionic_data::{
-        AppleAdapterRuntimeCompatibilityProfile, DatasetKey, DatasetPackingMode,
-        DatasetPackingPolicy,
+        AppleAdapterDatasetContract, AppleAdapterRuntimeCompatibilityProfile, DatasetKey,
+        DatasetPackingMode, DatasetPackingPolicy,
     };
     use psionic_train::{
         APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
-        APPLE_LIVE_REFERENCE_LORA_RANK, AppleAdapterExperimentManifest,
+        APPLE_LIVE_REFERENCE_LORA_RANK, APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE,
+        AppleAdapterExecutionConfig, AppleAdapterExperimentManifest,
         AppleAdapterExperimentTrainingPolicy, AppleAdapterOptimizerOverrides,
-        AppleAdapterPackingPolicyOverrides, AppleAdapterTrainingPolicyOverrides,
-        AppleAdapterUsefulAdapterAcceptanceGate, TrainingOptimizerConfig,
-        TrainingOptimizerResidencyPolicy,
+        AppleAdapterPackingPolicyOverrides, AppleAdapterReferenceModel,
+        AppleAdapterTrainingPolicyOverrides, AppleAdapterUsefulAdapterAcceptanceGate,
+        TrainingLoopBudget, TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
     };
 
     #[test]
@@ -4879,6 +5104,87 @@ mod tests {
     }
 
     #[test]
+    fn symbolic_output_projection_targets_expand_to_exportable_runtime_targets() {
+        let optimizer =
+            TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0);
+        let targets = output_projection_trainable_targets(
+            &optimizer,
+            TrainingOptimizerResidencyPolicy::host_only(),
+            None,
+        );
+        assert_eq!(
+            targets.len(),
+            (APPLE_LIVE_REFERENCE_SEGMENT0_END_LAYER_EXCLUSIVE
+                - APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER)
+                + (APPLE_LIVE_REFERENCE_SEGMENT1_END_LAYER_EXCLUSIVE
+                    - APPLE_LIVE_REFERENCE_SEGMENT1_START_LAYER)
+        );
+        assert!(targets.iter().all(|target| {
+            target.lora_rank == APPLE_LIVE_REFERENCE_LORA_RANK
+                && target
+                    .target_id
+                    .contains("attention.output_transform.adapters.base_adapter")
+        }));
+    }
+
+    #[test]
+    fn symbolic_target_family_summary_includes_output_projection_targets() {
+        let optimizer =
+            TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8).with_gradient_clip_norm(1.0);
+        let execution_config = AppleAdapterExecutionConfig {
+            run_id: "summary".to_string(),
+            checkpoint_family: "summary".to_string(),
+            budget: TrainingLoopBudget::new(1, 1, 1).expect("budget"),
+            packing_policy: DatasetPackingPolicy::new(
+                DatasetPackingMode::PackIntoContextWindow,
+                96,
+                192,
+                2,
+            ),
+            precision_policy: AppleAdapterPrecisionPolicy::F32Reference,
+            activation_checkpoint_policy: AppleAdapterActivationCheckpointPolicy::Disabled,
+            model: AppleAdapterReferenceModel {
+                base_model_signature: APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE.to_string(),
+                tokenizer_digest: "tok".to_string(),
+                prompt_shaping_digest: "prompt".to_string(),
+                input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+                output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+                targets: output_projection_trainable_targets(
+                    &optimizer,
+                    TrainingOptimizerResidencyPolicy::host_only(),
+                    None,
+                ),
+            },
+        };
+        let families = symbolic_target_families_for_execution_config(&execution_config);
+        assert_eq!(families, vec!["decoder.attn.output_proj".to_string()]);
+    }
+
+    #[test]
+    fn build_environment_bundle_dedups_identical_tool_contracts() {
+        let runtime_profile = AppleAdapterRuntimeCompatibilityProfile::new(
+            "apple-foundation-model",
+            "general",
+            "default",
+        );
+        let train_dataset = AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"system","content":"Use tools before answering.","tools":[{"type":"function","function":{"name":"lookup_doc","description":"Inspect a canonical repo document by path.","arguments":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}}}]},{"role":"user","content":"What should you inspect first?"},{"role":"assistant","content":"Use `lookup_doc` on `docs/OWNERSHIP.md` before answering."}]
+[{"role":"system","content":"Use tools before answering.","tools":[{"type":"function","function":{"name":"lookup_doc","description":"Inspect a canonical repo document by path.","arguments":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}}}]},{"role":"user","content":"What should you inspect next?"},{"role":"assistant","content":"Use `lookup_doc` on `docs/MVP.md` before answering."}]"#,
+            runtime_profile.dataset_metadata(),
+        )
+        .expect("train dataset");
+        let held_out_dataset = AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"system","content":"Answer from docs only."},{"role":"user","content":"What owns pane orchestration?"},{"role":"assistant","content":"`apps/autopilot-desktop` owns pane orchestration."}]"#,
+            runtime_profile.dataset_metadata(),
+        )
+        .expect("held out dataset");
+        let bundle =
+            build_environment_bundle("duplicate-tools", &train_dataset, &held_out_dataset)
+                .expect("bundle should build");
+        assert_eq!(bundle.core_package.tools.len(), 1);
+        assert_eq!(bundle.core_package.tools[0].tool_name, "lookup_doc");
+    }
+
     fn manifest_backed_psionic_execution_config_respects_manifest_step_budget() {
         let runtime_profile = AppleAdapterRuntimeCompatibilityProfile::new(
             "apple-foundation-model",
@@ -4968,7 +5274,7 @@ mod tests {
             fidelity_plan_id: "openagents.apple.token_sequence_reference.v1".to_string(),
             input_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
             output_width: APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
-            lora_targets: vec!["decoder.ffn.up_proj".to_string()],
+            lora_targets: vec!["decoder.attn.k_proj".to_string()],
             lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
             max_steps: 8,
             training_policy: None,
@@ -5002,7 +5308,7 @@ mod tests {
             Some(&manifest),
         )
         .expect_err("unsupported target should fail fast");
-        assert!(error.contains("decoder.ffn.up_proj"));
+        assert!(error.contains("decoder.attn.k_proj"));
     }
 
     #[test]

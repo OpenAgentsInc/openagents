@@ -3,7 +3,7 @@
   "target_title": "Psionic architecture explainer",
   "dataset": {
     "dataset_ref": "dataset://openagents/apple_adapter/psionic_architecture_explainer",
-    "version": "2026.03.15.2"
+    "version": "2026.03.16.2"
   },
   "target_scope": "Teach stable Psionic architecture, ownership boundaries, truthful implemented-vs-planned answers, and operator workflow explanations. Use retrieval for volatile repo state instead of weight memorization.",
   "source_inventory": [
@@ -136,6 +136,54 @@
     {
       "split": "train",
       "sample_id": "sample-000009",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system", "headless_compute"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000010",
+      "task_family": "implemented_vs_planned_truthfulness",
+      "expected_behavior": "direct_answer",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000011",
+      "task_family": "operator_workflow_explanation",
+      "expected_behavior": "direct_answer",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["compute_training_authority", "apple_training_control"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000012",
+      "task_family": "structured_summary_conformance",
+      "expected_behavior": "structured_answer",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000013",
+      "task_family": "tool_calling_lookup_routing",
+      "expected_behavior": "tool_lookup_routing",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["ownership", "apple_training_control"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000014",
+      "task_family": "negative_refusal_correction",
+      "expected_behavior": "correction",
+      "review_status": "maintainer_reviewed",
+      "source_ids": ["train_system"]
+    },
+    {
+      "split": "train",
+      "sample_id": "sample-000015",
       "task_family": "negative_refusal_correction",
       "expected_behavior": "correction",
       "review_status": "maintainer_reviewed",

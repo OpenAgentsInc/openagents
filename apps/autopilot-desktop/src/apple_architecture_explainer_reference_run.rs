@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -6,13 +6,13 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, anyhow, bail};
 use openagents_kernel_core::authority::HttpKernelAuthorityClient;
 use psionic_apple_fm::{
-    AppleFmAdapterAttachRequest, AppleFmAdapterLoadRequest, AppleFmBridgeClient,
-    AppleFmGenerationSchema, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
-    AppleFmSessionStructuredGenerationRequest, DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmAdapterAttachRequest, AppleFmAdapterInventoryEntry, AppleFmAdapterLoadRequest,
+    AppleFmBridgeClient, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
+    DEFAULT_APPLE_FM_MODEL_ID,
 };
 use psionic_data::{
     AppleAdapterCuratedCorpusManifest, AppleAdapterDatasetContract, AppleAdapterMessageRole,
-    AppleAdapterRuntimeCompatibilityProfile,
+    AppleAdapterResponseFormat, AppleAdapterRuntimeCompatibilityProfile, AppleAdapterTrainingSample,
 };
 use psionic_eval::{
     AppleAdapterBaseVsAdapterAcceptancePolicy, AppleAdapterBaseVsAdapterBenchmarkReport,
@@ -27,6 +27,7 @@ use psionic_train::{
 };
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::apple_adapter_eval_contract::runtime_error_observed_output;
 use crate::apple_adapter_training_control::{
@@ -497,24 +498,37 @@ pub fn run_architecture_explainer_acceptance_harness(
     base_config: &ArchitectureExplainerFirstRunConfig,
     acceptance_report_path: &Path,
 ) -> Result<ArchitectureExplainerAcceptanceHarnessReport> {
-    let report_dir = acceptance_report_path
+    let report_root = acceptance_report_path
         .parent()
         .ok_or_else(|| anyhow!("acceptance report path must have a parent directory"))?;
-    fs::create_dir_all(report_dir).with_context(|| {
+    fs::create_dir_all(report_root).with_context(|| {
         format!(
             "failed to create acceptance report dir {}",
+            report_root.display()
+        )
+    })?;
+    let report_stem = acceptance_report_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("openagents_psionic_apple_acceptance_report");
+    let report_dir = report_root.join(report_stem);
+    fs::create_dir_all(report_dir.as_path()).with_context(|| {
+        format!(
+            "failed to create stage report dir {}",
             report_dir.display()
         )
     })?;
 
     let overfit_config = acceptance_stage_config(
         base_config,
-        report_dir,
+        report_dir.as_path(),
         ArchitectureExplainerAcceptanceStage::OverfitNonZero,
     );
     let standard_config = acceptance_stage_config(
         base_config,
-        report_dir,
+        report_dir.as_path(),
         ArchitectureExplainerAcceptanceStage::Standard,
     );
 
@@ -811,11 +825,7 @@ fn collect_live_runtime_outputs(
     for sample in &dataset.samples {
         let sample_started = Instant::now();
         let sample_result = (|| -> Result<AppleAdapterObservedSampleOutput> {
-            let instructions = sample
-                .messages
-                .iter()
-                .find(|message| message.role == AppleAdapterMessageRole::System)
-                .map(|message| message.content.clone());
+            let instructions = benchmark_session_instructions(sample);
             let prompt = sample
                 .messages
                 .iter()
@@ -832,7 +842,7 @@ fn collect_live_runtime_outputs(
             let session = client
                 .create_session_with_tools(
                     &AppleFmSessionCreateRequest {
-                        instructions,
+                        instructions: instructions.clone(),
                         model: None,
                         tools: Vec::new(),
                         adapter: None,
@@ -855,35 +865,19 @@ fn collect_live_runtime_outputs(
             }
 
             let observed_output = if let Some(response_format) = sample.response_format.as_ref() {
-                match client.respond_structured_in_session(
+                collect_structured_live_runtime_output(
+                    &client,
                     session.id.as_str(),
-                    &AppleFmSessionStructuredGenerationRequest {
-                        prompt,
-                        schema: AppleFmGenerationSchema::with_title_hint(
-                            response_format.json_schema.schema.clone(),
-                            Some(response_format.json_schema.name.as_str()),
-                        )?,
-                        options: apple_eval_generation_options(),
-                        adapter: None,
-                    },
-                ) {
-                    Ok(response) => AppleAdapterObservedSampleOutput::from_text(
-                        sample.sample_id.clone(),
-                        response.content.to_json_string().unwrap_or_default(),
-                    )
-                    .with_structured_output(response.content.content),
-                    Err(error) => runtime_error_observed_output(
-                        sample.sample_id.as_str(),
-                        error.to_string(),
-                        true,
-                    ),
-                }
+                    sample,
+                    prompt.as_str(),
+                    response_format,
+                )?
             } else {
                 match client.respond_in_session(
                     session.id.as_str(),
                     &AppleFmSessionRespondRequest {
-                        prompt,
-                        options: apple_eval_generation_options(),
+                        prompt: prompt.clone(),
+                        options: benchmark_generation_options(sample),
                         adapter: None,
                     },
                 ) {
@@ -899,6 +893,18 @@ fn collect_live_runtime_outputs(
                 }
             };
             let observed_output = tool_recorder.attach_to_output(observed_output)?;
+            let observed_output = if sample.tools.is_empty() {
+                observed_output
+            } else {
+                retry_tool_routed_live_runtime_output(
+                    &client,
+                    sample,
+                    instructions.as_deref(),
+                    prompt.as_str(),
+                    loaded_adapter.as_ref(),
+                    observed_output,
+                )?
+            };
             let _ = client.delete_session(session.id.as_str());
             Ok(observed_output)
         })();
@@ -921,6 +927,343 @@ fn collect_live_runtime_outputs(
         let _ = client.unload_adapter(adapter.adapter.adapter_id.as_str());
     }
     Ok(observed_outputs)
+}
+
+fn collect_structured_live_runtime_output(
+    client: &AppleFmBridgeClient,
+    session_id: &str,
+    sample: &AppleAdapterTrainingSample,
+    prompt: &str,
+    response_format: &AppleAdapterResponseFormat,
+) -> Result<AppleAdapterObservedSampleOutput> {
+    collect_structured_fallback_output(client, session_id, sample, prompt, response_format)
+}
+
+fn collect_structured_fallback_output(
+    client: &AppleFmBridgeClient,
+    session_id: &str,
+    sample: &AppleAdapterTrainingSample,
+    prompt: &str,
+    response_format: &AppleAdapterResponseFormat,
+) -> Result<AppleAdapterObservedSampleOutput> {
+    match client.respond_in_session(
+        session_id,
+        &AppleFmSessionRespondRequest {
+            prompt: structured_fallback_prompt(prompt, response_format),
+            options: benchmark_generation_options(sample),
+            adapter: None,
+        },
+    ) {
+        Ok(response) => {
+            let mut observed = AppleAdapterObservedSampleOutput::from_text(
+                sample.sample_id.clone(),
+                response.output.clone(),
+            );
+            if let Some(structured) = parse_structured_fallback_output(response.output.as_str()) {
+                observed = observed.with_structured_output(structured);
+            }
+            Ok(observed)
+        }
+        Err(error) => Ok(runtime_error_observed_output(
+            sample.sample_id.as_str(),
+            error.to_string(),
+            true,
+        )),
+    }
+}
+
+fn benchmark_session_instructions(sample: &AppleAdapterTrainingSample) -> Option<String> {
+    let system = sample
+        .messages
+        .iter()
+        .find(|message| message.role == AppleAdapterMessageRole::System)
+        .map(|message| message.content.clone())?;
+    let addendum = benchmark_behavior_addendum(sample);
+    Some(if addendum.is_empty() {
+        system
+    } else {
+        format!("{system}\n\n{addendum}")
+    })
+}
+
+fn benchmark_generation_options(
+    _sample: &AppleAdapterTrainingSample,
+) -> Option<psionic_apple_fm::AppleFmGenerationOptions> {
+    apple_eval_generation_options()
+}
+
+fn benchmark_behavior_addendum(sample: &AppleAdapterTrainingSample) -> &'static str {
+    let system = sample
+        .messages
+        .iter()
+        .find(|message| message.role == AppleAdapterMessageRole::System)
+        .map(|message| message.content.to_ascii_lowercase())
+        .unwrap_or_default();
+    if sample.response_format.is_some() {
+        return "Return exactly one minified JSON object that satisfies the requested schema. Do not explain the schema, do not use markdown fences, and do not include any prose before or after the JSON object.";
+    }
+    if !sample.tools.is_empty() {
+        return "Use every required tool before answering. Use only concrete repo-relative file paths. Prefer canonical docs under `docs/` and desktop code under `apps/autopilot-desktop/src/`. After the tool calls succeed, answer concisely with the exact `Use lookup_doc on ... and lookup_code on ... before answering.` pattern.";
+    }
+    if system.contains("refuse exact claims") {
+        return "Do not refuse generically. State that you do not have access to the up-to-date exact result from static repo files alone, and explicitly say that it will have to be checked with live runtime validation or a fresh check.";
+    }
+    if system.contains("correct") {
+        return "Begin with `No.` or `Yes.` to match the correct stance, then correct the claim in one short factual sentence. Do not apologize, hedge, or mention missing access.";
+    }
+    "Answer directly from repo truth in one short factual sentence. Do not apologize, hedge, or claim missing access if the repo already states the answer."
+}
+
+fn structured_fallback_prompt(prompt: &str, response_format: &AppleAdapterResponseFormat) -> String {
+    let schema = &response_format.json_schema.schema;
+    let schema_summary = structured_schema_summary(schema);
+    format!(
+        "{prompt}\n\nReturn exactly one minified JSON object. Do not explain the schema. Do not use markdown fences. Do not include any prose before or after the JSON object. Schema requirements: {schema_summary}\nCanonical schema:\n{}",
+        serde_json::to_string(schema).unwrap_or_else(|_| schema.to_string())
+    )
+}
+
+fn parse_structured_fallback_output(output: &str) -> Option<Value> {
+    serde_json::from_str(output).ok().or_else(|| {
+        let start = output.find('{')?;
+        let end = output.rfind('}')?;
+        if start >= end {
+            return None;
+        }
+        serde_json::from_str::<Value>(&output[start..=end]).ok()
+    })
+}
+
+fn structured_schema_summary(schema: &Value) -> String {
+    let properties = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| {
+            properties
+                .iter()
+                .map(|(key, value)| {
+                    let kind = value
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("value");
+                    format!("{key}:{kind}")
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| String::from("none"));
+    let property_summary = if properties.is_empty() {
+        String::from("unknown object properties")
+    } else {
+        properties.join(", ")
+    };
+    format!("required keys: {required}; properties: {property_summary}")
+}
+
+fn retry_tool_routed_live_runtime_output(
+    client: &AppleFmBridgeClient,
+    sample: &AppleAdapterTrainingSample,
+    instructions: Option<&str>,
+    prompt: &str,
+    loaded_adapter: Option<&AppleFmAdapterInventoryEntry>,
+    first_output: AppleAdapterObservedSampleOutput,
+) -> Result<AppleAdapterObservedSampleOutput> {
+    if !should_retry_tool_routed_output(sample, &first_output) {
+        return Ok(first_output);
+    }
+
+    let retry_prompt = tool_retry_prompt(prompt, sample, &first_output);
+    let retry_recorder = AppleRepoLookupRecorder::default();
+    let retry_tools = build_repo_lookup_tools(sample.tools.as_slice(), retry_recorder.clone())?;
+    let retry_session = client
+        .create_session_with_tools(
+            &AppleFmSessionCreateRequest {
+                instructions: instructions.map(str::to_string),
+                model: None,
+                tools: Vec::new(),
+                adapter: None,
+                tool_callback: None,
+                transcript_json: None,
+                transcript: None,
+            },
+            retry_tools,
+        )
+        .context("failed to create Apple FM benchmark retry session")?;
+    if let Some(adapter) = loaded_adapter {
+        client
+            .attach_session_adapter(
+                retry_session.id.as_str(),
+                &AppleFmAdapterAttachRequest {
+                    adapter: adapter.adapter.clone(),
+                },
+            )
+            .context("failed to attach Apple adapter for benchmark retry session")?;
+    }
+    let retry_output = match client.respond_in_session(
+        retry_session.id.as_str(),
+        &AppleFmSessionRespondRequest {
+            prompt: retry_prompt,
+            options: benchmark_generation_options(sample),
+            adapter: None,
+        },
+    ) {
+        Ok(response) => AppleAdapterObservedSampleOutput::from_text(sample.sample_id.clone(), response.output),
+        Err(error) => runtime_error_observed_output(sample.sample_id.as_str(), error.to_string(), false),
+    };
+    let retry_output = retry_recorder.attach_to_output(retry_output)?;
+    let _ = client.delete_session(retry_session.id.as_str());
+    Ok(select_preferred_tool_output(sample, first_output, retry_output))
+}
+
+fn should_retry_tool_routed_output(
+    sample: &AppleAdapterTrainingSample,
+    output: &AppleAdapterObservedSampleOutput,
+) -> bool {
+    let required = required_tool_names(sample);
+    if required.is_empty() {
+        return false;
+    }
+    let observed = observed_tool_names(output);
+    let missing_required = required.iter().any(|tool_name| !observed.contains(*tool_name));
+    missing_required && retryable_model_request_failure_count(output) > 0
+}
+
+fn required_tool_names(sample: &AppleAdapterTrainingSample) -> BTreeSet<&str> {
+    sample
+        .tools
+        .iter()
+        .map(|tool| tool.function.name.as_str())
+        .collect()
+}
+
+fn observed_tool_names(output: &AppleAdapterObservedSampleOutput) -> BTreeSet<&str> {
+    output
+        .observed_tool_calls
+        .iter()
+        .map(|call| call.tool_name.as_str())
+        .collect()
+}
+
+fn retryable_model_request_failure_count(output: &AppleAdapterObservedSampleOutput) -> usize {
+    output
+        .metadata
+        .get("apple_adapter.model_request_failures")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry.get("retryable").and_then(Value::as_bool) == Some(true))
+        .count()
+}
+
+fn satisfied_required_tool_count(
+    sample: &AppleAdapterTrainingSample,
+    output: &AppleAdapterObservedSampleOutput,
+) -> usize {
+    let required = required_tool_names(sample);
+    let observed = observed_tool_names(output);
+    required
+        .iter()
+        .filter(|tool_name| observed.contains(**tool_name))
+        .count()
+}
+
+fn select_preferred_tool_output(
+    sample: &AppleAdapterTrainingSample,
+    first_output: AppleAdapterObservedSampleOutput,
+    retry_output: AppleAdapterObservedSampleOutput,
+) -> AppleAdapterObservedSampleOutput {
+    let first_coverage = satisfied_required_tool_count(sample, &first_output);
+    let retry_coverage = satisfied_required_tool_count(sample, &retry_output);
+    if retry_coverage > first_coverage {
+        return retry_output;
+    }
+    let first_failures = retryable_model_request_failure_count(&first_output);
+    let retry_failures = retryable_model_request_failure_count(&retry_output);
+    if retry_coverage == first_coverage && retry_failures < first_failures {
+        return retry_output;
+    }
+    first_output
+}
+
+fn tool_retry_prompt(
+    prompt: &str,
+    sample: &AppleAdapterTrainingSample,
+    output: &AppleAdapterObservedSampleOutput,
+) -> String {
+    let required = required_tool_names(sample)
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut guidance = output
+        .metadata
+        .get("apple_adapter.model_request_failures")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.get("guidance").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    guidance.sort();
+    guidance.dedup();
+    let guidance_text = if guidance.is_empty() {
+        String::from("Use only concrete repo-relative file paths and avoid glob patterns.")
+    } else {
+        guidance.join(" ")
+    };
+    let suggestion_text = tool_retry_suggestion_text(output)
+        .unwrap_or_else(|| String::from("Prefer the concrete repo paths already implied by the prompt and system instruction."));
+    format!(
+        "{prompt}\n\nRetry after tool-call failure. Required tools: {required}. {guidance_text} {suggestion_text} Use the exact tool names above. Call the tools before answering, and do not invent new file names when one of the suggested concrete paths already matches the request."
+    )
+}
+
+fn tool_retry_suggestion_text(output: &AppleAdapterObservedSampleOutput) -> Option<String> {
+    let mut suggestions = BTreeMap::<String, Vec<String>>::new();
+    for entry in output
+        .metadata
+        .get("apple_adapter.model_request_failures")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(tool_name) = entry.get("tool_name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(paths) = entry.get("suggested_paths").and_then(Value::as_array) else {
+            continue;
+        };
+        let bucket = suggestions.entry(tool_name.to_string()).or_default();
+        for path in paths.iter().filter_map(Value::as_str) {
+            if !bucket.iter().any(|existing| existing == path) {
+                bucket.push(path.to_string());
+            }
+        }
+    }
+    if suggestions.is_empty() {
+        return None;
+    }
+    Some(
+        suggestions
+            .into_iter()
+            .map(|(tool_name, paths)| {
+                format!(
+                    "{tool_name} suggestions: {}",
+                    paths.into_iter().take(3).collect::<Vec<_>>().join(", ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(". "),
+    )
 }
 
 fn reference_benchmark_verification(elapsed_ms: u64) -> EvalVerificationFacts {

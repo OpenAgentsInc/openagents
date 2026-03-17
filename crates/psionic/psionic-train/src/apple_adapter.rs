@@ -36,7 +36,7 @@ pub const APPLE_LIVE_REFERENCE_LORA_RANK: usize = 32;
 pub const APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE: &str =
     "9799725ff8e851184037110b422d891ad3b92ec1";
 const APPLE_RUNTIME_KV_FEATURE_WIDTH: usize = 256;
-const APPLE_RUNTIME_FEED_FORWARD_WIDTH: usize = 6656;
+pub const APPLE_RUNTIME_FEED_FORWARD_WIDTH: usize = 6656;
 const APPLE_RUNTIME_SEGMENT0_LAYER_COUNT: usize = 35;
 const APPLE_RUNTIME_SEGMENT1_LAYER_COUNT: usize = 21;
 const APPLE_LIVE_REFERENCE_SEGMENT0_START_LAYER: usize = 30;
@@ -47,10 +47,10 @@ const APPLE_RUNTIME_BLOB_ALIGNMENT_BYTES: usize = 64;
 const APPLE_RUNTIME_BLOB_VERSION: u32 = 2;
 const APPLE_RUNTIME_BLOB_KIND_FP16: u32 = 1;
 const APPLE_RUNTIME_BLOB_ENTRY_MAGIC: u32 = 0xDEAD_BEEF;
-const APPLE_TARGET_ALIGNMENT_LOGIT_SCALE: f32 = 12.0;
-const APPLE_TARGET_ALIGNMENT_LOSS_WEIGHT: f32 = 1.5;
-const APPLE_RUNTIME_NEGATIVE_MARGIN: f32 = 0.2;
-const APPLE_RUNTIME_NEGATIVE_LOSS_WEIGHT: f32 = 1.0;
+const APPLE_TARGET_ALIGNMENT_LOGIT_SCALE: f32 = 14.0;
+const APPLE_TARGET_ALIGNMENT_LOSS_WEIGHT: f32 = 2.5;
+const APPLE_RUNTIME_NEGATIVE_MARGIN: f32 = 0.35;
+const APPLE_RUNTIME_NEGATIVE_LOSS_WEIGHT: f32 = 2.5;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct AppleAdapterTargetPrototype {
@@ -88,6 +88,12 @@ pub struct AppleAdapterTrainableTarget {
     pub lora_rank: usize,
     /// LoRA scaling factor.
     pub lora_alpha: f32,
+    /// Optional target-local input width for runtime-native adapter tensors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_width: Option<usize>,
+    /// Optional target-local output width for runtime-native adapter tensors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_width: Option<usize>,
     /// Optimizer config reused by the fixed-budget core.
     pub optimizer: TrainingOptimizerConfig,
     /// Residency policy reused by the fixed-budget core.
@@ -126,11 +132,25 @@ impl AppleAdapterTrainableTarget {
                 alpha: self.lora_alpha,
             });
         }
+        if self.input_width == Some(0) || self.output_width == Some(0) {
+            return Err(AppleAdapterTrainingExecutionError::InvalidFeatureWidth {
+                input_width: self.input_width.unwrap_or_default(),
+                output_width: self.output_width.unwrap_or_default(),
+            });
+        }
         Ok(())
     }
 
     fn scale(&self) -> f32 {
         self.lora_alpha / self.lora_rank as f32
+    }
+
+    fn effective_input_width(&self, model: &AppleAdapterReferenceModel) -> usize {
+        self.input_width.unwrap_or(model.input_width)
+    }
+
+    fn effective_output_width(&self, model: &AppleAdapterReferenceModel) -> usize {
+        self.output_width.unwrap_or(model.output_width)
     }
 }
 
@@ -154,6 +174,8 @@ pub fn apple_live_reference_trainable_targets(
                 target_id: stem,
                 lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
                 lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                input_width: None,
+                output_width: None,
                 optimizer: optimizer.clone(),
                 optimizer_residency_policy,
                 scheduler: None,
@@ -171,6 +193,8 @@ pub fn apple_live_reference_trainable_targets(
                 target_id: stem,
                 lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
                 lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                input_width: None,
+                output_width: None,
                 optimizer: optimizer.clone(),
                 optimizer_residency_policy,
                 scheduler: None,
@@ -387,9 +411,18 @@ pub struct AppleAdapterTrainingExecutionBackend {
     provenance: AppleAdapterExecutionProvenance,
     batches: Vec<AppleAdapterPackedTrainingBatch>,
     frozen_base_projection: Vec<f32>,
+    runtime_base_output_features_by_sample: BTreeMap<String, Vec<f32>>,
+    sample_weight_by_sample: BTreeMap<String, f32>,
     target_prototypes: Vec<AppleAdapterTargetPrototype>,
     target_prototype_index: BTreeMap<String, usize>,
     negative_target_features_by_sample: BTreeMap<String, Vec<f32>>,
+    target_projection_cache: BTreeMap<String, AppleAdapterTargetProjectionCache>,
+}
+
+#[derive(Clone, Debug)]
+struct AppleAdapterTargetProjectionCache {
+    prompt_encoder: Option<Vec<f32>>,
+    output_decoder: Option<Vec<f32>>,
 }
 
 impl AppleAdapterTrainingExecutionBackend {
@@ -444,6 +477,16 @@ impl AppleAdapterTrainingExecutionBackend {
             config.model.input_width,
             config.model.output_width,
         )?;
+        let sample_weight_by_sample = dataset
+            .samples
+            .iter()
+            .map(|sample| {
+                (
+                    sample.sample_id.clone(),
+                    architecture_explainer_sample_weight(sample),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         let target_prototypes =
             build_target_prototypes(dataset, captures, config.model.output_width);
         let target_prototype_index = target_prototypes
@@ -463,6 +506,18 @@ impl AppleAdapterTrainingExecutionBackend {
             config.model.input_width,
             0.05,
         );
+        let runtime_base_output_features_by_sample = negative_target_features_by_sample.clone();
+        let target_projection_cache = config
+            .model
+            .targets
+            .iter()
+            .map(|target| {
+                (
+                    target.target_id.clone(),
+                    build_target_projection_cache(&config.model, target),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
         Ok(Self {
             provenance: AppleAdapterExecutionProvenance {
                 dataset_digest: dataset.stable_digest(),
@@ -481,9 +536,12 @@ impl AppleAdapterTrainingExecutionBackend {
             config,
             batches,
             frozen_base_projection,
+            runtime_base_output_features_by_sample,
+            sample_weight_by_sample,
             target_prototypes,
             target_prototype_index,
             negative_target_features_by_sample,
+            target_projection_cache,
         })
     }
 
@@ -511,7 +569,9 @@ impl AppleAdapterTrainingExecutionBackend {
     ) -> Result<Vec<TrainingParameterGroupState>, AppleAdapterTrainingExecutionError> {
         let mut groups = Vec::with_capacity(self.config.model.targets.len() * 2);
         for target in &self.config.model.targets {
-            let a_spec = lora_a_spec(self.config.model.output_width, target.lora_rank);
+            let target_output_width = target.effective_output_width(&self.config.model);
+            let target_input_width = target.effective_input_width(&self.config.model);
+            let a_spec = lora_a_spec(target_output_width, target.lora_rank);
             let mut lora_a = TrainingParameterGroupState::new(
                 target.lora_a_group_id(),
                 TrainingParameterClass::Matrix,
@@ -524,7 +584,7 @@ impl AppleAdapterTrainingExecutionBackend {
                             self.config.model.base_model_signature, target.target_id
                         )
                         .as_str(),
-                        self.config.model.output_width,
+                        target_output_width,
                         target.lora_rank,
                         0.01,
                     ),
@@ -537,7 +597,7 @@ impl AppleAdapterTrainingExecutionBackend {
             }
             groups.push(lora_a);
 
-            let b_spec = lora_b_spec(target.lora_rank, self.config.model.input_width);
+            let b_spec = lora_b_spec(target.lora_rank, target_input_width);
             let mut lora_b = TrainingParameterGroupState::new(
                 target.lora_b_group_id(),
                 TrainingParameterClass::Matrix,
@@ -551,7 +611,7 @@ impl AppleAdapterTrainingExecutionBackend {
                         )
                         .as_str(),
                         target.lora_rank,
-                        self.config.model.input_width,
+                        target_input_width,
                         0.02,
                     ),
                 )?,
@@ -610,6 +670,12 @@ impl AppleAdapterTrainingExecutionBackend {
         let mut gradients = BTreeMap::new();
         let mut gradient_norms_l2 = BTreeMap::new();
         let mut mean_loss = 0.0_f32;
+        let total_record_weight = batch
+            .records
+            .iter()
+            .map(|record| self.sample_training_weight(record.sample_id.as_str()))
+            .sum::<f32>()
+            .max(f32::EPSILON);
 
         for target in &self.config.model.targets {
             let group_a_id = target.lora_a_group_id();
@@ -623,19 +689,27 @@ impl AppleAdapterTrainingExecutionBackend {
 
             for record in &batch.records {
                 let forward = self.forward_sample(record, run)?;
-                mean_loss += forward.loss;
+                let record_weight = self.sample_training_weight(record.sample_id.as_str());
+                mean_loss += forward.loss * record_weight;
+                let target_prompt_features =
+                    self.target_prompt_features(target, record.prompt_features.as_slice());
+                let target_gradient = self.project_global_gradient_to_target_output(
+                    target,
+                    forward.prediction_gradient.as_slice(),
+                );
                 accumulate_target_gradients(
                     &mut grad_a,
                     &mut grad_b,
                     a_values,
                     b_values,
                     target,
-                    &record.prompt_features,
-                    forward.prediction_gradient.as_slice(),
+                    target_prompt_features.as_slice(),
+                    target_gradient.as_slice(),
+                    record_weight,
                 );
             }
 
-            let scale = 1.0_f32 / batch.records.len() as f32;
+            let scale = 1.0_f32 / total_record_weight;
             for value in &mut grad_a {
                 *value *= scale;
             }
@@ -662,7 +736,7 @@ impl AppleAdapterTrainingExecutionBackend {
             );
         }
 
-        mean_loss /= batch.records.len() as f32;
+        mean_loss /= total_record_weight;
         let training_batch = TrainingGradientBatch::new(
             format!("{}-gradient", batch.batch_id),
             mean_loss,
@@ -719,34 +793,126 @@ impl AppleAdapterTrainingExecutionBackend {
         })
     }
 
+    fn sample_training_weight(&self, sample_id: &str) -> f32 {
+        self.sample_weight_by_sample
+            .get(sample_id)
+            .copied()
+            .unwrap_or(1.0)
+            .max(0.1)
+    }
+
+    fn target_prompt_features(
+        &self,
+        target: &AppleAdapterTrainableTarget,
+        prompt_features: &[f32],
+    ) -> Vec<f32> {
+        let target_input_width = target.effective_input_width(&self.config.model);
+        if target_input_width == self.config.model.input_width {
+            return prompt_features.to_vec();
+        }
+        let Some(cache) = self.target_projection_cache.get(target.target_id.as_str()) else {
+            return prompt_features.to_vec();
+        };
+        let Some(matrix) = cache.prompt_encoder.as_ref() else {
+            return prompt_features.to_vec();
+        };
+        let mut projected = mat_vec(
+            matrix.as_slice(),
+            target_input_width,
+            self.config.model.input_width,
+            prompt_features,
+        );
+        normalize_unit(projected.as_mut_slice());
+        projected
+    }
+
+    fn project_target_output_to_global(
+        &self,
+        target: &AppleAdapterTrainableTarget,
+        local_output: &[f32],
+    ) -> Vec<f32> {
+        let target_output_width = target.effective_output_width(&self.config.model);
+        if target_output_width == self.config.model.output_width {
+            return local_output.to_vec();
+        }
+        let Some(cache) = self.target_projection_cache.get(target.target_id.as_str()) else {
+            return local_output.to_vec();
+        };
+        let Some(matrix) = cache.output_decoder.as_ref() else {
+            return local_output.to_vec();
+        };
+        mat_vec(
+            matrix.as_slice(),
+            self.config.model.output_width,
+            target_output_width,
+            local_output,
+        )
+    }
+
+    fn project_global_gradient_to_target_output(
+        &self,
+        target: &AppleAdapterTrainableTarget,
+        gradient: &[f32],
+    ) -> Vec<f32> {
+        let target_output_width = target.effective_output_width(&self.config.model);
+        if target_output_width == self.config.model.output_width {
+            return gradient.to_vec();
+        }
+        let Some(cache) = self.target_projection_cache.get(target.target_id.as_str()) else {
+            return gradient.to_vec();
+        };
+        let Some(matrix) = cache.output_decoder.as_ref() else {
+            return gradient.to_vec();
+        };
+        mat_t_vec(
+            matrix.as_slice(),
+            self.config.model.output_width,
+            target_output_width,
+            gradient,
+        )
+    }
+
     fn forward_sample(
         &self,
         record: &AppleAdapterBatchFeatureRecord,
         run: &FixedBudgetTrainingRun,
     ) -> Result<ForwardRecord, AppleAdapterTrainingExecutionError> {
-        let mut prediction = mat_vec(
-            self.frozen_base_projection.as_slice(),
-            self.config.model.output_width,
-            self.config.model.input_width,
-            record.prompt_features.as_slice(),
-        );
+        // When live runtime anchors are available, train deltas against the real
+        // base-model behavior we observed for this sample instead of a seeded
+        // synthetic baseline. The seeded projection remains as the offline-only
+        // fallback used by unit tests and non-runtime construction paths.
+        let mut prediction = self
+            .runtime_base_output_features_by_sample
+            .get(record.sample_id.as_str())
+            .cloned()
+            .unwrap_or_else(|| {
+                mat_vec(
+                    self.frozen_base_projection.as_slice(),
+                    self.config.model.output_width,
+                    self.config.model.input_width,
+                    record.prompt_features.as_slice(),
+                )
+            });
         for target in &self.config.model.targets {
             let group_a = self.training_group(run, target.lora_a_group_id().as_str())?;
             let group_b = self.training_group(run, target.lora_b_group_id().as_str())?;
             let a_values = dense_values(group_a, target.lora_a_group_id().as_str())?;
             let b_values = dense_values(group_b, target.lora_b_group_id().as_str())?;
+            let target_prompt_features =
+                self.target_prompt_features(target, record.prompt_features.as_slice());
             let low_rank = mat_vec(
                 b_values,
                 target.lora_rank,
-                self.config.model.input_width,
-                record.prompt_features.as_slice(),
+                target.effective_input_width(&self.config.model),
+                target_prompt_features.as_slice(),
             );
-            let delta = mat_vec(
+            let local_delta = mat_vec(
                 a_values,
-                self.config.model.output_width,
+                target.effective_output_width(&self.config.model),
                 target.lora_rank,
                 low_rank.as_slice(),
             );
+            let delta = self.project_target_output_to_global(target, local_delta.as_slice());
             add_scaled(prediction.as_mut_slice(), delta.as_slice(), target.scale());
         }
         let residual = prediction
@@ -2761,7 +2927,13 @@ fn build_packed_batches(
                     sample_id: sample.sample_id.clone(),
                     sample_kind: sample.sample_kind,
                     prompt_features: prompt_feature_vector(sample, capture, input_width),
-                    target_features: target_feature_vector(sample, capture, output_width),
+                    // Keep the regression target answer-focused. The prompt,
+                    // schema, and tool contract still participate in the
+                    // prototype bank used by the alignment objective, but the
+                    // dense reconstruction target should emphasize the desired
+                    // response semantics instead of echoing the request
+                    // envelope back at the model.
+                    target_features: sample_target_feature_vector(sample, capture, output_width),
                     prompt_tokens: capture.prompt_tokens,
                     completion_tokens: capture.completion_tokens,
                     feature_digest: stable_feature_digest(
@@ -2808,7 +2980,7 @@ fn build_target_prototypes(
             capture_by_id.get(sample.sample_id.as_str()).map(|capture| {
                 AppleAdapterTargetPrototype {
                     sample_id: sample.sample_id.clone(),
-                    target_features: target_feature_vector(sample, capture, output_width),
+                    target_features: sample_target_feature_vector(sample, capture, output_width),
                     feature_digest: stable_feature_digest(
                         sample,
                         capture,
@@ -2873,22 +3045,42 @@ fn prompt_feature_vector(
             turn_index,
             role_label(message.role),
         );
+        accumulate_text_signature_features(
+            features.as_mut_slice(),
+            message.content.as_str(),
+            format!("prompt_exact|role={}", role_label(message.role)).as_str(),
+            1.25,
+        );
         if let Some(response_format) = &message.response_format {
+            let canonical = canonical_json(response_format);
             accumulate_sequence_text(
                 features.as_mut_slice(),
-                canonical_json(response_format).as_str(),
+                canonical.as_str(),
                 capture.response_schema_tokens.max(1) as f32 / total_tokens,
                 turn_index,
                 "response_schema",
             );
+            accumulate_text_signature_features(
+                features.as_mut_slice(),
+                canonical.as_str(),
+                "prompt_exact|response_schema",
+                1.5,
+            );
         }
         if !message.tools.is_empty() {
+            let canonical = canonical_json(&message.tools);
             accumulate_sequence_text(
                 features.as_mut_slice(),
-                canonical_json(&message.tools).as_str(),
+                canonical.as_str(),
                 capture.tool_tokens.max(1) as f32 / total_tokens,
                 turn_index,
                 "tools",
+            );
+            accumulate_text_signature_features(
+                features.as_mut_slice(),
+                canonical.as_str(),
+                "prompt_exact|tools",
+                1.5,
             );
         }
     }
@@ -2929,15 +3121,35 @@ pub fn apple_adapter_response_feature_vector(
         0,
         "assistant_target",
     );
+    accumulate_text_signature_features(
+        features.as_mut_slice(),
+        response_text,
+        "assistant_exact",
+        3.5,
+    );
     if let Some(structured) = structured_output {
+        let canonical = canonical_json(structured);
         accumulate_sequence_text(
             features.as_mut_slice(),
-            canonical_json(structured).as_str(),
+            canonical.as_str(),
             scale,
             0,
             "assistant_structured",
         );
+        accumulate_text_signature_features(
+            features.as_mut_slice(),
+            canonical.as_str(),
+            "assistant_structured_exact",
+            4.0,
+        );
     }
+    accumulate_response_posture_features(
+        features.as_mut_slice(),
+        response_text,
+        structured_output,
+        sample_kind,
+        scale,
+    );
     accumulate_ratio_feature(
         features.as_mut_slice(),
         "completion_token_ratio",
@@ -2957,6 +3169,61 @@ fn target_feature_vector(
         .messages
         .last()
         .expect("validated Apple samples always end with assistant");
+    let mut features = apple_adapter_response_feature_vector(
+        assistant.content.as_str(),
+        sample.structured_assistant_output.as_ref(),
+        sample.sample_kind,
+        capture,
+        width,
+    );
+    let total_tokens = capture.total_tokens().max(1) as f32;
+    for (turn_index, message) in prompt_messages(sample).iter().enumerate() {
+        accumulate_sequence_text(
+            features.as_mut_slice(),
+            role_label(message.role),
+            0.08,
+            turn_index,
+            "target_contract_role",
+        );
+        accumulate_sequence_text(
+            features.as_mut_slice(),
+            message.content.as_str(),
+            0.18,
+            turn_index,
+            "target_contract_prompt",
+        );
+        if let Some(response_format) = &message.response_format {
+            accumulate_sequence_text(
+                features.as_mut_slice(),
+                canonical_json(response_format).as_str(),
+                (capture.response_schema_tokens.max(1) as f32 / total_tokens) * 0.75,
+                turn_index,
+                "target_contract_schema",
+            );
+        }
+        if !message.tools.is_empty() {
+            accumulate_sequence_text(
+                features.as_mut_slice(),
+                canonical_json(&message.tools).as_str(),
+                (capture.tool_tokens.max(1) as f32 / total_tokens) * 0.75,
+                turn_index,
+                "target_contract_tools",
+            );
+        }
+    }
+    normalize_unit(features.as_mut_slice());
+    features
+}
+
+fn response_target_feature_vector(
+    sample: &psionic_data::AppleAdapterTrainingSample,
+    capture: &AppleAdapterSampleTokenCapture,
+    width: usize,
+) -> Vec<f32> {
+    let assistant = sample
+        .messages
+        .last()
+        .expect("validated Apple samples always end with assistant");
     apple_adapter_response_feature_vector(
         assistant.content.as_str(),
         sample.structured_assistant_output.as_ref(),
@@ -2964,6 +3231,21 @@ fn target_feature_vector(
         capture,
         width,
     )
+}
+
+fn sample_target_feature_vector(
+    sample: &psionic_data::AppleAdapterTrainingSample,
+    capture: &AppleAdapterSampleTokenCapture,
+    width: usize,
+) -> Vec<f32> {
+    match sample.sample_kind {
+        AppleAdapterSampleKind::GuidedGenerationWithSchema
+        | AppleAdapterSampleKind::ToolCalling => target_feature_vector(sample, capture, width),
+        AppleAdapterSampleKind::SupervisedFineTune
+        | AppleAdapterSampleKind::SchemaFreeGuidedGeneration => {
+            response_target_feature_vector(sample, capture, width)
+        }
+    }
 }
 
 fn prompt_messages(sample: &psionic_data::AppleAdapterTrainingSample) -> Vec<&AppleAdapterMessage> {
@@ -3000,6 +3282,7 @@ fn accumulate_target_gradients(
     target: &AppleAdapterTrainableTarget,
     prompt_features: &[f32],
     residual: &[f32],
+    record_weight: f32,
 ) {
     let rank = target.lora_rank;
     let scale = target.scale();
@@ -3007,14 +3290,17 @@ fn accumulate_target_gradients(
     for output_index in 0..residual.len() {
         for rank_index in 0..rank {
             grad_a[output_index * rank + rank_index] +=
-                residual[output_index] * low_rank[rank_index] * scale;
+                residual[output_index] * low_rank[rank_index] * scale * record_weight;
         }
     }
     let mut propagated = vec![0.0_f32; rank];
     for rank_index in 0..rank {
         for output_index in 0..residual.len() {
             propagated[rank_index] +=
-                a_values[output_index * rank + rank_index] * residual[output_index] * scale;
+                a_values[output_index * rank + rank_index]
+                    * residual[output_index]
+                    * scale
+                    * record_weight;
         }
     }
     for rank_index in 0..rank {
@@ -3023,6 +3309,54 @@ fn accumulate_target_gradients(
                 propagated[rank_index] * prompt_features[input_index];
         }
     }
+}
+
+fn architecture_explainer_sample_weight(sample: &psionic_data::AppleAdapterTrainingSample) -> f32 {
+    let mut weight = match sample.sample_kind {
+        AppleAdapterSampleKind::GuidedGenerationWithSchema => 6.0,
+        AppleAdapterSampleKind::ToolCalling => 7.0,
+        AppleAdapterSampleKind::SchemaFreeGuidedGeneration => 2.0,
+        AppleAdapterSampleKind::SupervisedFineTune => 1.5,
+    };
+    let system = sample
+        .messages
+        .iter()
+        .find(|message| message.role == AppleAdapterMessageRole::System)
+        .map(|message| message.content.to_ascii_lowercase())
+        .unwrap_or_default();
+    let user = sample
+        .messages
+        .iter()
+        .find(|message| message.role == AppleAdapterMessageRole::User)
+        .map(|message| message.content.to_ascii_lowercase())
+        .unwrap_or_default();
+    if system.contains("correct") || system.contains("refuse exact claims") {
+        weight *= 3.0;
+    }
+    if system.contains("answer from the canonical train-system truth") {
+        weight *= 2.4;
+    }
+    if system.contains("kernel-training authority outputs") {
+        weight *= 2.8;
+    }
+    if system.contains("return only json") {
+        weight *= 2.8;
+    }
+    if system.contains("provided lookup tools") {
+        weight *= 3.2;
+    }
+    if system.contains("kernel-authority")
+        || user.contains("kernel authority")
+        || user.contains("decentralized adapter")
+        || user.contains("foundation models bridge")
+        || user.contains("collective-backed gradient exchange")
+    {
+        weight *= 1.8;
+    }
+    if user.contains("what should you inspect first") {
+        weight *= 1.4;
+    }
+    weight
 }
 
 fn dense_values<'a>(
@@ -3036,6 +3370,34 @@ fn dense_values<'a>(
                 group_id: String::from(group_id),
             })
         }
+    }
+}
+
+fn build_target_projection_cache(
+    model: &AppleAdapterReferenceModel,
+    target: &AppleAdapterTrainableTarget,
+) -> AppleAdapterTargetProjectionCache {
+    let target_input_width = target.effective_input_width(model);
+    let target_output_width = target.effective_output_width(model);
+    let prompt_encoder = (target_input_width != model.input_width).then(|| {
+        seeded_matrix(
+            format!("{}|{}|prompt_encoder", model.base_model_signature, target.target_id).as_str(),
+            target_input_width,
+            model.input_width,
+            1.0 / (model.input_width.max(1) as f32).sqrt(),
+        )
+    });
+    let output_decoder = (target_output_width != model.output_width).then(|| {
+        seeded_matrix(
+            format!("{}|{}|output_decoder", model.base_model_signature, target.target_id).as_str(),
+            model.output_width,
+            target_output_width,
+            1.0 / (target_output_width.max(1) as f32).sqrt(),
+        )
+    });
+    AppleAdapterTargetProjectionCache {
+        prompt_encoder,
+        output_decoder,
     }
 }
 
@@ -3063,6 +3425,16 @@ fn mat_vec(matrix: &[f32], rows: usize, cols: usize, vector: &[f32]) -> Vec<f32>
             total += matrix[row * cols + col] * vector[col];
         }
         out[row] = total;
+    }
+    out
+}
+
+fn mat_t_vec(matrix: &[f32], rows: usize, cols: usize, vector: &[f32]) -> Vec<f32> {
+    let mut out = vec![0.0_f32; cols];
+    for row in 0..rows {
+        for col in 0..cols {
+            out[col] += matrix[row * cols + col] * vector[row];
+        }
     }
     out
 }
@@ -3117,6 +3489,10 @@ fn accumulate_sequence_text(
         scale * 0.35,
     );
 
+    let normalized_tokens = tokens
+        .iter()
+        .map(|token| token.to_ascii_lowercase())
+        .collect::<Vec<_>>();
     let turn_scale = 1.0_f32 / (1.0 + turn_index as f32 * 0.15);
     for (token_index, token) in tokens.iter().enumerate() {
         let position_scale =
@@ -3126,6 +3502,31 @@ fn accumulate_sequence_text(
             format!("{channel}|turn={turn_index}|token={token_index}|{token}").as_str(),
             position_scale,
         );
+        let normalized_token = normalized_tokens[token_index].as_str();
+        if normalized_token != token {
+            accumulate_hashed_feature(
+                out,
+                format!("{channel}|turn={turn_index}|token_norm={token_index}|{normalized_token}")
+                    .as_str(),
+                position_scale * 0.35,
+            );
+        }
+        if normalized_token.contains('_') {
+            for (subtoken_index, subtoken) in normalized_token
+                .split('_')
+                .filter(|value| !value.is_empty())
+                .enumerate()
+            {
+                accumulate_hashed_feature(
+                    out,
+                    format!(
+                        "{channel}|turn={turn_index}|token_sub={token_index}:{subtoken_index}|{subtoken}"
+                    )
+                    .as_str(),
+                    position_scale * 0.45,
+                );
+            }
+        }
         accumulate_hashed_feature(
             out,
             format!(
@@ -3146,6 +3547,74 @@ fn accumulate_sequence_text(
                 .as_str(),
                 position_scale * 0.5,
             );
+            let previous_normalized = normalized_tokens[token_index - 1].as_str();
+            accumulate_hashed_feature(
+                out,
+                format!(
+                    "{channel}|turn={turn_index}|bigram_norm={}>{}",
+                    previous_normalized, normalized_token
+                )
+                .as_str(),
+                position_scale * 0.2,
+            );
+        }
+        if token_index > 1 {
+            accumulate_hashed_feature(
+                out,
+                format!(
+                    "{channel}|turn={turn_index}|trigram_norm={}>{}>{}",
+                    normalized_tokens[token_index - 2],
+                    normalized_tokens[token_index - 1],
+                    normalized_token
+                )
+                .as_str(),
+                position_scale * 0.16,
+            );
+        }
+    }
+
+    let normalized_words = normalized_tokens
+        .iter()
+        .filter(|token| lexical_token_class(token.as_str()) == "word")
+        .cloned()
+        .collect::<Vec<_>>();
+    if !normalized_words.is_empty() {
+        let prefix = normalized_words
+            .iter()
+            .take(4)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        accumulate_hashed_feature(
+            out,
+            format!("{channel}|turn={turn_index}|prefix_norm|{prefix}").as_str(),
+            scale * 0.5,
+        );
+        let suffix = normalized_words
+            .iter()
+            .rev()
+            .take(4)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" ");
+        accumulate_hashed_feature(
+            out,
+            format!("{channel}|turn={turn_index}|suffix_norm|{suffix}").as_str(),
+            scale * 0.35,
+        );
+        if normalized_words.len() <= 48 {
+            accumulate_hashed_feature(
+                out,
+                format!(
+                    "{channel}|turn={turn_index}|normalized_full|{}",
+                    normalized_words.join(" ")
+                )
+                .as_str(),
+                scale * 0.14,
+            );
         }
     }
 
@@ -3165,11 +3634,169 @@ fn accumulate_ratio_feature(out: &mut [f32], channel: &str, ratio: f32) {
     );
 }
 
+fn accumulate_text_signature_features(out: &mut [f32], text: &str, channel: &str, scale: f32) {
+    let normalized = normalized_signature_text(text);
+    if normalized.is_empty() {
+        return;
+    }
+    accumulate_hashed_feature(
+        out,
+        format!("{channel}|full|{normalized}").as_str(),
+        scale,
+    );
+    let tokens = normalized.split_whitespace().collect::<Vec<_>>();
+    if !tokens.is_empty() {
+        let prefix = tokens.iter().take(6).copied().collect::<Vec<_>>().join(" ");
+        accumulate_hashed_feature(
+            out,
+            format!("{channel}|prefix|{prefix}").as_str(),
+            scale * 0.8,
+        );
+        let suffix = tokens
+            .iter()
+            .rev()
+            .take(6)
+            .copied()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" ");
+        accumulate_hashed_feature(
+            out,
+            format!("{channel}|suffix|{suffix}").as_str(),
+            scale * 0.55,
+        );
+    }
+}
+
 fn accumulate_hashed_feature(out: &mut [f32], key: &str, scale: f32) {
     let digest = Sha256::digest(key.as_bytes());
-    let index = (((digest[0] as usize) << 8) | digest[1] as usize) % out.len().max(1);
-    let sign = if digest[2] & 1 == 0 { 1.0 } else { -1.0 };
-    out[index] += sign * scale;
+    let width = out.len().max(1);
+    const LANE_WEIGHTS: [f32; 4] = [0.40, 0.30, 0.20, 0.10];
+    for (lane, lane_weight) in LANE_WEIGHTS.into_iter().enumerate() {
+        let byte_index = lane * 2;
+        let index =
+            (((digest[byte_index] as usize) << 8) | digest[byte_index + 1] as usize) % width;
+        let sign = if digest[8 + lane] & 1 == 0 { 1.0 } else { -1.0 };
+        out[index] += sign * scale * lane_weight;
+    }
+}
+
+fn accumulate_response_posture_features(
+    out: &mut [f32],
+    response_text: &str,
+    structured_output: Option<&serde_json::Value>,
+    sample_kind: AppleAdapterSampleKind,
+    scale: f32,
+) {
+    let normalized = response_text.trim().to_ascii_lowercase();
+    let posture_scale = scale.max(0.24);
+    accumulate_hashed_feature(
+        out,
+        format!(
+            "assistant_posture|sample_kind={}",
+            response_sample_kind_label(sample_kind)
+        )
+        .as_str(),
+        posture_scale * 0.45,
+    );
+    if structured_output.is_some() {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|structured_present",
+            posture_scale * 1.35,
+        );
+    }
+    if normalized.starts_with("no") {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|answer_stance=no",
+            posture_scale * 1.75,
+        );
+    }
+    if normalized.starts_with("yes") {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|answer_stance=yes",
+            posture_scale * 1.75,
+        );
+    }
+    if normalized.contains("lookup_doc") {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|tool_lookup_doc",
+            posture_scale * 1.35,
+        );
+    }
+    if normalized.contains("lookup_code") {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|tool_lookup_code",
+            posture_scale * 1.35,
+        );
+    }
+    if normalized.starts_with("i'm sorry")
+        || normalized.starts_with("i apologize")
+        || normalized.contains("cannot provide an answer")
+        || normalized.contains("can't assist")
+        || normalized.contains("cannot assist")
+    {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|generic_apology_or_refusal",
+            posture_scale * 1.4,
+        );
+    }
+    if normalized.contains("\"type\"")
+        || normalized.contains("\"properties\"")
+        || normalized.contains("\"required\"")
+        || normalized.contains("additionalproperties")
+        || normalized.contains("```json")
+    {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|schema_echo_or_markdown_json",
+            posture_scale * 1.4,
+        );
+    }
+    if normalized.contains("illegal activit")
+        || normalized.contains("cryptocurrency")
+        || normalized.contains("blockchain")
+        || normalized.contains("ethereum")
+        || normalized.contains("erc-20")
+    {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|apple_lane_blockchain_hallucination",
+            posture_scale * 1.25,
+        );
+    }
+    if normalized.contains("runtime validation")
+        || normalized.contains("current apple runtime")
+        || normalized.contains("current installed assets")
+        || normalized.contains("current run artifacts")
+        || normalized.contains("need retrieval")
+        || normalized.contains("would need retrieval")
+        || normalized.contains("do not have access")
+        || normalized.contains("don't have access")
+        || normalized.contains("cannot answer that from static")
+    {
+        accumulate_hashed_feature(
+            out,
+            "assistant_posture|currentness_refusal_or_retrieval",
+            posture_scale,
+        );
+    }
+}
+
+fn response_sample_kind_label(sample_kind: AppleAdapterSampleKind) -> &'static str {
+    match sample_kind {
+        AppleAdapterSampleKind::SupervisedFineTune => "supervised_fine_tune",
+        AppleAdapterSampleKind::SchemaFreeGuidedGeneration => "schema_free_guided_generation",
+        AppleAdapterSampleKind::GuidedGenerationWithSchema => "guided_generation_with_schema",
+        AppleAdapterSampleKind::ToolCalling => "tool_calling",
+    }
 }
 
 fn lexical_tokens(input: &str) -> Vec<String> {
@@ -3210,6 +3837,14 @@ fn lexical_token_class(token: &str) -> &'static str {
     } else {
         "word"
     }
+}
+
+fn normalized_signature_text(input: &str) -> String {
+    lexical_tokens(input)
+        .into_iter()
+        .map(|token| token.to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn seeded_matrix(seed: &str, rows: usize, cols: usize, scale: f32) -> Vec<f32> {
@@ -3469,6 +4104,8 @@ mod tests {
                         ),
                         lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
                         lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                        input_width: None,
+                        output_width: None,
                         optimizer: TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8)
                             .with_gradient_clip_norm(1.0),
                         optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
@@ -3480,6 +4117,8 @@ mod tests {
                         ),
                         lora_rank: APPLE_LIVE_REFERENCE_LORA_RANK,
                         lora_alpha: APPLE_LIVE_REFERENCE_LORA_RANK as f32,
+                        input_width: None,
+                        output_width: None,
                         optimizer: TrainingOptimizerConfig::adamw(0.01, 0.9, 0.99, 1e-8)
                             .with_gradient_clip_norm(1.0),
                         optimizer_residency_policy: TrainingOptimizerResidencyPolicy::host_only(),
@@ -3656,6 +4295,25 @@ mod tests {
     }
 
     #[test]
+    fn apple_adapter_response_features_capture_posture_and_tool_cues()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = AppleAdapterDatasetContract::from_jsonl_str(
+            r#"[{"role":"system","content":"Use tools and refuse stale exact claims when needed."},{"role":"user","content":"What should I inspect first?"},{"role":"assistant","content":"No. Use lookup_doc and lookup_code, and say you would need retrieval for exact current runtime results."}]"#,
+            dataset_metadata(),
+        )?;
+        let captures = dataset.derive_token_captures()?;
+        let features = apple_adapter_response_feature_vector(
+            dataset.samples[0].messages[2].content.as_str(),
+            None,
+            dataset.samples[0].sample_kind,
+            &captures[0],
+            128,
+        );
+        assert!(features.iter().any(|value| value.abs() > 0.0));
+        Ok(())
+    }
+
+    #[test]
     fn apple_adapter_target_alignment_signal_improves_correct_probability()
     -> Result<(), Box<dyn std::error::Error>> {
         let dataset = dataset();
@@ -3698,6 +4356,60 @@ mod tests {
         assert!(
             after > before,
             "target alignment should improve after training: before={before} after={after}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apple_adapter_backend_uses_runtime_base_output_features_when_present()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dataset = dataset();
+        let environment = environment_bundle();
+        let captures = captures(&dataset);
+        let anchor = apple_adapter_response_feature_vector(
+            "No. Use runtime validation before making exact compatibility claims.",
+            None,
+            dataset.samples[0].sample_kind,
+            &captures[0],
+            APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
+        );
+        let backend = AppleAdapterTrainingExecutionBackend::new_with_negative_targets(
+            config(),
+            &dataset,
+            captures.as_slice(),
+            &environment,
+            BTreeMap::from([(dataset.samples[0].sample_id.clone(), anchor.clone())]),
+        )?;
+        let run = backend.initialize_run()?;
+        let record = &backend.batches()[0].records[0];
+        let forward = backend.forward_sample(record, &run)?;
+        let offline = mat_vec(
+            backend.frozen_base_projection.as_slice(),
+            backend.config().model.output_width,
+            backend.config().model.input_width,
+            record.prompt_features.as_slice(),
+        );
+        let anchored_distance = forward
+            .prediction
+            .iter()
+            .zip(anchor.iter())
+            .map(|(left, right)| {
+                let delta = left - right;
+                delta * delta
+            })
+            .sum::<f32>();
+        let offline_distance = forward
+            .prediction
+            .iter()
+            .zip(offline.iter())
+            .map(|(left, right)| {
+                let delta = left - right;
+                delta * delta
+            })
+            .sum::<f32>();
+        assert!(
+            anchored_distance < offline_distance,
+            "runtime-anchored baseline should dominate the offline seeded projection"
         );
         Ok(())
     }

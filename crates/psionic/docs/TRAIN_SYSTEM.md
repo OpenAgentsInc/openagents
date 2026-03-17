@@ -2340,6 +2340,28 @@ flat-zero benchmark floor without weakening the structured or tool contract:
   - structured summary and tool-routing rows remain unresolved
 - multiple plain-text rows still fail outright
 
+Later 2026-03-16 follow-up tuning on that same Rust-only lane tightened both
+the trainer and the live benchmark harness again without reverting to Python or
+toolkit ownership:
+
+- the Rust-owned Apple backend now uses stronger target-alignment and
+  runtime-negative weighting, heavier reviewed-sample weighting, richer exact
+  text-signature features, and posture-sensitive answer features for direct
+  answer, correction, tool, schema, and stale-evidence refusal rows
+- the live benchmark harness now uses a raw-JSON fallback prompt for schema
+  rows and a retry path that feeds concrete suggested repo paths back into tool
+  rows after model-request failures, so structured/tool benchmark failures are
+  less contaminated by avoidable harness behavior
+- the honest result is still not "useful adapter achieved":
+  - local overfit reruns can now reach materially higher aggregate score than
+    the earlier flat-zero floor while still exporting, loading, and runtime
+    smoking valid `.fmadapter` packages
+  - but the useful-adapter gate is still not met because the adapted path still
+    does not produce a durable pass-rate improvement over base
+  - the remaining stubborn benchmark rows are still the kernel-authority direct
+    answer, the structured lane-summary JSON row, and the exact tool-routing
+    ownership-path row
+
 On 2026-03-16, GitHub issue `#3894` closed the manifest-to-live parity gap for
 that same first reviewed Apple lane:
 
