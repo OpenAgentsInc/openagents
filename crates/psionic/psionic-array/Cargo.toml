@@ -14,6 +14,7 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+psionic-backend-metal = { path = "../psionic-backend-metal" }
 psionic-compiler = { path = "../psionic-compiler" }
 psionic-core = { path = "../psionic-core" }
 psionic-ir = { path = "../psionic-ir" }
