@@ -341,8 +341,12 @@ Current posture:
   `grouped_all_reduce`, floating-point `average_gradients`, and bounded
   MLX-style `AllToShardedLinear` / `ShardedToAllLinear` wrappers with
   deterministic row/column sharding plus explicit reference-emulated
-  multi-rank reconstruction while FSDP helpers, backend transport, and
-  backend-family mapping remain later work.
+  multi-rank reconstruction, and a bounded MLX-style
+  `fsdp_apply_gradients` helper above distributed optimizer contracts with
+  typed `zero_stage3` admission, mixed replicated/full-shard handling,
+  optional global-norm clipping, shard-local optimizer updates, and gathered
+  full-parameter reconstruction while backend transport and backend-family
+  mapping remain later work.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

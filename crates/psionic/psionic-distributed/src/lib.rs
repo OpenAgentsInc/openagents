@@ -4,9 +4,10 @@
 //! slices: explicit group initialization from current mesh facts, honest
 //! singleton fallback, global-group reuse, plan-backed subgroup split
 //! semantics, a reference-first collective helper layer above that group
-//! surface, tree-aware gradient reduction, bounded tensor-parallel linear
-//! wrappers, and a bounded launch/config planning shell that maps explicit
-//! hostfile-like input onto Psionic cluster, sandbox, and mesh truth.
+//! surface, tree-aware gradient reduction, bounded tensor-parallel and
+//! FSDP-style framework helpers, and a bounded launch/config planning shell
+//! that maps explicit hostfile-like input onto Psionic cluster, sandbox, and
+//! mesh truth.
 //! Backend-family transport mapping and broader helper families still land
 //! later.
 
@@ -27,7 +28,7 @@ use psionic_cluster::{
     ClusterBackendReadinessStatus, ClusterMembershipRecord, ClusterMembershipStatus,
     ClusterNodeTelemetry, ClusterState,
 };
-use psionic_core::{DType, Shape};
+use psionic_core::{DType, Shape, TensorData};
 use psionic_nn::{LayerError, Linear, NnTensor};
 use psionic_runtime::{
     ClusterCommitAuthorityEvidence, ClusterCommunicationClass, ClusterCommunicationEligibility,
@@ -39,12 +40,21 @@ use psionic_sandbox::{
     ProviderSandboxEntrypointType, ProviderSandboxEnvironmentVar, ProviderSandboxExecutionClass,
     ProviderSandboxJobRequest, ProviderSandboxProfile, ProviderSandboxResourceRequest,
 };
+use psionic_train::{
+    DistributedOptimizerContract, DistributedOptimizerGroupContract, OptimizerResidencyTransition,
+    OptimizerResidencyTransitionReason, OptimizerStateResidency, TrainingCoreError,
+    TrainingDistributedOptimizerKind, TrainingGradientBatch, TrainingOptimizerConfig,
+    TrainingOptimizerError, TrainingOptimizerState, TrainingOptimizerStateShardKind,
+    TrainingParameterGroupState, TrainingParameterShardKind, TrainingSchedulerBinding,
+    TrainingSchedulerKind, TrainingShardPlacement, TrainingShardRange, TrainingTensorBuffer,
+    apply_training_optimizer_step, scheduled_learning_rate,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "public framework-distributed groups, bounded collective and tensor-parallel helpers, and launch/config planning above Psionic runtime mesh truth";
+pub const CRATE_ROLE: &str = "public framework-distributed groups, bounded collective, tensor-parallel, and FSDP-style helpers, and launch/config planning above Psionic runtime mesh truth";
 
 /// Default threshold used to group small gradient leaves into one all-reduce payload.
 pub const DEFAULT_GROUPED_ALL_REDUCE_THRESHOLD_BYTES: usize = 64 * 1024;
@@ -1170,6 +1180,688 @@ impl ShardedToAllLinear {
         )?;
         nn_tensor_from_array(&reduced)
     }
+}
+
+/// Public options for bounded MLX-style `fsdp_apply_gradients` emulation.
+#[derive(Clone, Debug, Default)]
+pub struct FsdpApplyGradientsOptions {
+    /// Explicit distributed group override; defaults to the current reusable
+    /// group or singleton fallback.
+    pub group: Option<DistributedGroup>,
+    /// Explicit remote-rank parameter-group state used to emulate remote shard
+    /// optimizer updates. The local rank state comes from the mutable
+    /// `parameter_groups` slice passed to `fsdp_apply_gradients`.
+    pub remote_rank_group_states: BTreeMap<usize, Vec<TrainingParameterGroupState>>,
+    /// Explicit remote-rank gradient batches used to emulate reduce-scatter and
+    /// all-gather above the public collective layer.
+    pub remote_rank_batches: BTreeMap<usize, TrainingGradientBatch>,
+    /// Optional global-norm clip applied after mesh reduction and before local
+    /// shard optimizer updates.
+    pub clip_global_norm: Option<f32>,
+}
+
+impl FsdpApplyGradientsOptions {
+    /// Creates the default FSDP helper options.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Overrides the distributed group used by the helper.
+    #[must_use]
+    pub fn with_group(mut self, group: DistributedGroup) -> Self {
+        self.group = Some(group);
+        self
+    }
+
+    /// Adds one remote-rank parameter-group state set.
+    #[must_use]
+    pub fn with_remote_rank_group_states(
+        mut self,
+        rank: usize,
+        groups: Vec<TrainingParameterGroupState>,
+    ) -> Self {
+        self.remote_rank_group_states.insert(rank, groups);
+        self
+    }
+
+    /// Replaces the full remote-rank parameter-group state map.
+    #[must_use]
+    pub fn with_remote_rank_group_state_map(
+        mut self,
+        remote_rank_group_states: BTreeMap<usize, Vec<TrainingParameterGroupState>>,
+    ) -> Self {
+        self.remote_rank_group_states = remote_rank_group_states;
+        self
+    }
+
+    /// Adds one remote-rank gradient batch.
+    #[must_use]
+    pub fn with_remote_rank_batch(mut self, rank: usize, batch: TrainingGradientBatch) -> Self {
+        self.remote_rank_batches.insert(rank, batch);
+        self
+    }
+
+    /// Replaces the full remote-rank batch map.
+    #[must_use]
+    pub fn with_remote_rank_batches(
+        mut self,
+        remote_rank_batches: BTreeMap<usize, TrainingGradientBatch>,
+    ) -> Self {
+        self.remote_rank_batches = remote_rank_batches;
+        self
+    }
+
+    /// Attaches one optional global-norm clip.
+    #[must_use]
+    pub fn with_clip_global_norm(mut self, clip_global_norm: f32) -> Self {
+        self.clip_global_norm = Some(clip_global_norm);
+        self
+    }
+}
+
+/// One group-level summary emitted by `fsdp_apply_gradients`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FsdpGroupApplyReceipt {
+    /// Stable parameter-group identifier.
+    pub group_id: String,
+    /// Parameter sharding posture used for this group.
+    pub parameter_shard_kind: TrainingParameterShardKind,
+    /// Optimizer-state sharding posture used for this group.
+    pub optimizer_state_shard_kind: TrainingOptimizerStateShardKind,
+    /// Local shard range updated on the current rank.
+    pub local_shard_range: TrainingShardRange,
+    /// L2 norm of the reduced full gradient before optional global clipping.
+    pub reduced_full_gradient_norm_l2: f32,
+    /// L2 norm of the local shard gradient after optional clipping.
+    pub local_shard_gradient_norm_l2: f32,
+    /// Effective learning rate applied to the shard update.
+    pub effective_learning_rate: f32,
+    /// Effective weight decay applied to the shard update.
+    pub effective_weight_decay: f32,
+    /// Scheduler family that contributed to the effective rate when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler_kind: Option<TrainingSchedulerKind>,
+    /// L2 norm of the local update vector.
+    pub local_update_norm_l2: f32,
+    /// L2 norm of the full gathered parameter tensor after the update.
+    pub gathered_parameter_norm_l2_after: f32,
+    /// Residency transitions emitted for the local shard owner.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub residency_transitions: Vec<OptimizerResidencyTransition>,
+}
+
+/// Full receipt emitted by `fsdp_apply_gradients`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FsdpApplyGradientsReceipt {
+    /// Stable distributed group identifier used by the helper.
+    pub distributed_group_id: String,
+    /// Stable distributed-optimizer contract digest.
+    pub contract_digest: String,
+    /// Local rank that owned the current helper call.
+    pub local_rank: usize,
+    /// Total world size for the helper call.
+    pub world_size: usize,
+    /// Stable local batch identifier.
+    pub batch_id: String,
+    /// Optional global-norm clip requested by the caller.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clip_global_norm: Option<f32>,
+    /// Global reduced-gradient norm before optional clipping.
+    pub global_gradient_norm_l2: f32,
+    /// Effective global clipping scale when one was applied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_clipping_scale: Option<f32>,
+    /// Group-level step receipts.
+    pub groups: Vec<FsdpGroupApplyReceipt>,
+    /// Stable digest over the receipt contents.
+    pub receipt_digest: String,
+}
+
+/// Failure for the bounded public `fsdp_apply_gradients` helper.
+#[derive(Debug, Error)]
+pub enum FsdpApplyGradientsError {
+    /// Public collectives refused while reducing or gathering one FSDP payload.
+    #[error(transparent)]
+    DistributedCollective(#[from] DistributedCollectiveError),
+    /// Array materialization or host export refused while bridging into public collectives.
+    #[error(transparent)]
+    Array(#[from] ArrayError),
+    /// Core tensor validation refused for one parameter or gradient buffer.
+    #[error(transparent)]
+    TrainingCore(#[from] TrainingCoreError),
+    /// Optimizer math refused for one shard-local update.
+    #[error(transparent)]
+    TrainingOptimizer(#[from] TrainingOptimizerError),
+    /// The helper only truthfully supports ZeRO stage 3 / FSDP-style contracts today.
+    #[error("public fsdp_apply_gradients requires `zero_stage3`, found `{optimizer_kind:?}`")]
+    UnsupportedOptimizerKind {
+        /// Distributed optimizer family declared on the contract.
+        optimizer_kind: TrainingDistributedOptimizerKind,
+    },
+    /// A requested global clip norm was zero or negative.
+    #[error(
+        "public fsdp_apply_gradients clip_global_norm must be greater than zero, found {clip_global_norm}"
+    )]
+    InvalidClipGlobalNorm {
+        /// Invalid global clip norm.
+        clip_global_norm: f32,
+    },
+    /// The local parameter-group slice does not include one contract group.
+    #[error("public fsdp_apply_gradients local parameter groups are missing `{group_id}`")]
+    MissingLocalGroup {
+        /// Missing contract group identifier.
+        group_id: String,
+    },
+    /// Remote-rank group state is missing for one or more ranks.
+    #[error(
+        "public fsdp_apply_gradients requires remote parameter-group state for ranks {missing_ranks:?}"
+    )]
+    MissingRemoteRankStates {
+        /// Missing remote ranks.
+        missing_ranks: Vec<usize>,
+    },
+    /// Remote-rank gradient batches are missing for one or more ranks.
+    #[error("public fsdp_apply_gradients requires remote batches for ranks {missing_ranks:?}")]
+    MissingRemoteRankBatches {
+        /// Missing remote ranks.
+        missing_ranks: Vec<usize>,
+    },
+    /// A remote-rank state or batch map referenced invalid ranks.
+    #[error(
+        "public fsdp_apply_gradients `{kind}` map contains invalid ranks {invalid_ranks:?} for world size {world_size}"
+    )]
+    InvalidRemoteRanks {
+        /// Whether the invalid map was `state` or `batch`.
+        kind: &'static str,
+        /// Invalid rank ids.
+        invalid_ranks: Vec<usize>,
+        /// World size used for validation.
+        world_size: usize,
+    },
+    /// A remote-rank state map duplicated one group identifier.
+    #[error(
+        "public fsdp_apply_gradients remote rank {rank} duplicated parameter group `{group_id}`"
+    )]
+    DuplicateRemoteGroup {
+        /// Rank whose remote group list duplicated an identifier.
+        rank: usize,
+        /// Group identifier that was duplicated.
+        group_id: String,
+    },
+    /// One remote-rank group set is missing a contract group.
+    #[error(
+        "public fsdp_apply_gradients remote rank {rank} is missing parameter group `{group_id}`"
+    )]
+    MissingRemoteGroup {
+        /// Rank whose remote group list omitted the group.
+        rank: usize,
+        /// Missing group identifier.
+        group_id: String,
+    },
+    /// One remote-rank batch omitted a required gradient.
+    #[error(
+        "public fsdp_apply_gradients remote rank {rank} batch `{batch_id}` is missing gradient for group `{group_id}`"
+    )]
+    MissingRemoteGradient {
+        /// Rank whose batch omitted the gradient.
+        rank: usize,
+        /// Batch identifier on that rank.
+        batch_id: String,
+        /// Group identifier omitted by the batch.
+        group_id: String,
+    },
+    /// A remote rank drifted from the local optimizer-facing contract.
+    #[error(
+        "public fsdp_apply_gradients remote rank {rank} group `{group_id}` does not match the local state: {detail}"
+    )]
+    RemoteStateMismatch {
+        /// Rank whose state drifted.
+        rank: usize,
+        /// Group identifier that mismatched.
+        group_id: String,
+        /// Plain-language mismatch detail.
+        detail: String,
+    },
+    /// The contract group layout is outside the first truthful helper scope.
+    #[error(
+        "public fsdp_apply_gradients group `{group_id}` requires replicated or full-shard parameters plus matching gradient/optimizer-state layouts, found parameter={parameter_kind:?}, gradient={gradient_kind:?}, optimizer_state={optimizer_state_kind:?}"
+    )]
+    UnsupportedGroupLayout {
+        /// Contract group identifier.
+        group_id: String,
+        /// Parameter sharding posture.
+        parameter_kind: TrainingParameterShardKind,
+        /// Gradient sharding posture.
+        gradient_kind: TrainingParameterShardKind,
+        /// Optimizer-state sharding posture.
+        optimizer_state_kind: TrainingOptimizerStateShardKind,
+    },
+    /// One full-shard group did not expose one equal-size shard per rank.
+    #[error(
+        "public fsdp_apply_gradients group `{group_id}` requires exactly one contiguous equal-size shard per rank"
+    )]
+    UnevenFullShardLayout {
+        /// Contract group identifier.
+        group_id: String,
+    },
+}
+
+/// Applies one bounded MLX-style FSDP-class update above the typed distributed
+/// optimizer contract.
+pub fn fsdp_apply_gradients(
+    parameter_groups: &mut [TrainingParameterGroupState],
+    local_batch: &TrainingGradientBatch,
+    contract: &DistributedOptimizerContract,
+    options: FsdpApplyGradientsOptions,
+) -> Result<FsdpApplyGradientsReceipt, FsdpApplyGradientsError> {
+    if contract.optimizer_kind != TrainingDistributedOptimizerKind::ZeroStage3 {
+        return Err(FsdpApplyGradientsError::UnsupportedOptimizerKind {
+            optimizer_kind: contract.optimizer_kind,
+        });
+    }
+    if let Some(clip_global_norm) = options.clip_global_norm
+        && clip_global_norm <= 0.0
+    {
+        return Err(FsdpApplyGradientsError::InvalidClipGlobalNorm { clip_global_norm });
+    }
+
+    let group = resolve_collective_group(options.group)?;
+    let local_rank = group.rank();
+    let world_size = group.size();
+    validate_remote_rank_map_keys(
+        local_rank,
+        world_size,
+        options
+            .remote_rank_group_states
+            .keys()
+            .copied()
+            .collect::<Vec<_>>(),
+        "state",
+    )?;
+    validate_remote_rank_map_keys(
+        local_rank,
+        world_size,
+        options
+            .remote_rank_batches
+            .keys()
+            .copied()
+            .collect::<Vec<_>>(),
+        "batch",
+    )?;
+    if world_size > 1 {
+        let missing_states = (0..world_size)
+            .filter(|rank| {
+                *rank != local_rank && !options.remote_rank_group_states.contains_key(rank)
+            })
+            .collect::<Vec<_>>();
+        if !missing_states.is_empty() {
+            return Err(FsdpApplyGradientsError::MissingRemoteRankStates {
+                missing_ranks: missing_states,
+            });
+        }
+        let missing_batches = (0..world_size)
+            .filter(|rank| *rank != local_rank && !options.remote_rank_batches.contains_key(rank))
+            .collect::<Vec<_>>();
+        if !missing_batches.is_empty() {
+            return Err(FsdpApplyGradientsError::MissingRemoteRankBatches {
+                missing_ranks: missing_batches,
+            });
+        }
+    }
+
+    let local_group_indices = local_group_indices(parameter_groups);
+    let remote_rank_group_maps = options
+        .remote_rank_group_states
+        .iter()
+        .map(|(rank, groups)| Ok((*rank, remote_group_map(*rank, groups.clone())?)))
+        .collect::<Result<BTreeMap<_, _>, FsdpApplyGradientsError>>()?;
+
+    let group_plans = contract
+        .groups
+        .iter()
+        .map(|group_contract| {
+            let Some(local_index) = local_group_indices.get(group_contract.group_id.as_str())
+            else {
+                return Err(FsdpApplyGradientsError::MissingLocalGroup {
+                    group_id: group_contract.group_id.clone(),
+                });
+            };
+            let local_group = &parameter_groups[*local_index];
+            validate_remote_group_state_contract(
+                group_contract.group_id.as_str(),
+                local_group,
+                &remote_rank_group_maps,
+                world_size,
+            )?;
+            Ok((
+                group_contract.group_id.clone(),
+                build_fsdp_group_plan(
+                    group_contract,
+                    local_group.parameter.spec.storage_size(),
+                    world_size,
+                )?,
+            ))
+        })
+        .collect::<Result<BTreeMap<_, _>, FsdpApplyGradientsError>>()?;
+
+    let reduced_full_gradients = contract
+        .groups
+        .iter()
+        .map(|group_contract| {
+            let Some(local_gradient) = local_batch.gradients.get(group_contract.group_id.as_str())
+            else {
+                return Err(TrainingCoreError::MissingGradient {
+                    batch_id: local_batch.batch_id.clone(),
+                    group_id: group_contract.group_id.clone(),
+                }
+                .into());
+            };
+            let Some(local_group_index) = local_group_indices.get(group_contract.group_id.as_str())
+            else {
+                return Err(FsdpApplyGradientsError::MissingLocalGroup {
+                    group_id: group_contract.group_id.clone(),
+                });
+            };
+            let local_group = &parameter_groups[*local_group_index];
+            validate_training_buffer_compatibility(
+                local_batch.batch_id.as_str(),
+                group_contract.group_id.as_str(),
+                &local_group.parameter.spec,
+                &local_gradient.spec,
+            )?;
+            let mut reduced =
+                training_buffer_values(group_contract.group_id.as_str(), local_gradient)?.to_vec();
+            for (rank, batch) in &options.remote_rank_batches {
+                let Some(remote_gradient) = batch.gradients.get(group_contract.group_id.as_str())
+                else {
+                    return Err(FsdpApplyGradientsError::MissingRemoteGradient {
+                        rank: *rank,
+                        batch_id: batch.batch_id.clone(),
+                        group_id: group_contract.group_id.clone(),
+                    });
+                };
+                validate_training_buffer_compatibility(
+                    batch.batch_id.as_str(),
+                    group_contract.group_id.as_str(),
+                    &local_group.parameter.spec,
+                    &remote_gradient.spec,
+                )?;
+                for (destination, value) in reduced.iter_mut().zip(
+                    training_buffer_values(group_contract.group_id.as_str(), remote_gradient)?
+                        .iter(),
+                ) {
+                    *destination += value;
+                }
+            }
+            Ok((group_contract.group_id.clone(), reduced))
+        })
+        .collect::<Result<BTreeMap<_, _>, FsdpApplyGradientsError>>()?;
+
+    let global_gradient_norm_l2 = reduced_full_gradients
+        .values()
+        .flat_map(|values| values.iter())
+        .map(|value| value * value)
+        .sum::<f32>()
+        .sqrt();
+    let global_clipping_scale = match options.clip_global_norm {
+        Some(clip_norm) if global_gradient_norm_l2 > clip_norm && global_gradient_norm_l2 > 0.0 => {
+            Some(clip_norm / global_gradient_norm_l2)
+        }
+        Some(_) => Some(1.0),
+        None => None,
+    };
+
+    let array_context = ArrayContext::cpu();
+    let mut group_receipts = Vec::new();
+    for group_contract in &contract.groups {
+        let local_group_index = *local_group_indices
+            .get(group_contract.group_id.as_str())
+            .ok_or_else(|| FsdpApplyGradientsError::MissingLocalGroup {
+                group_id: group_contract.group_id.clone(),
+            })?;
+        let plan = group_plans
+            .get(group_contract.group_id.as_str())
+            .ok_or_else(|| FsdpApplyGradientsError::MissingLocalGroup {
+                group_id: group_contract.group_id.clone(),
+            })?;
+        let reduced_full = reduced_full_gradients
+            .get(group_contract.group_id.as_str())
+            .ok_or_else(|| FsdpApplyGradientsError::MissingLocalGroup {
+                group_id: group_contract.group_id.clone(),
+            })?;
+        let reduced_full_gradient_norm_l2 = l2_norm(reduced_full.as_slice());
+
+        match &plan.kind {
+            FsdpGroupExecutionKind::Replicated => {
+                let local_gradient_values = training_buffer_values(
+                    group_contract.group_id.as_str(),
+                    local_batch
+                        .gradients
+                        .get(group_contract.group_id.as_str())
+                        .ok_or_else(|| TrainingCoreError::MissingGradient {
+                            batch_id: local_batch.batch_id.clone(),
+                            group_id: group_contract.group_id.clone(),
+                        })?,
+                )?
+                .to_vec();
+                let mut rank_inputs = BTreeMap::from([(
+                    local_rank,
+                    DistributedReferenceTensor::f32(
+                        Shape::new(vec![local_gradient_values.len()]),
+                        local_gradient_values.clone(),
+                    )?,
+                )]);
+                for (rank, batch) in &options.remote_rank_batches {
+                    let remote_gradient = batch
+                        .gradients
+                        .get(group_contract.group_id.as_str())
+                        .ok_or_else(|| FsdpApplyGradientsError::MissingRemoteGradient {
+                            rank: *rank,
+                            batch_id: batch.batch_id.clone(),
+                            group_id: group_contract.group_id.clone(),
+                        })?;
+                    rank_inputs.insert(
+                        *rank,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![local_gradient_values.len()]),
+                            training_buffer_values(
+                                group_contract.group_id.as_str(),
+                                remote_gradient,
+                            )?
+                            .to_vec(),
+                        )?,
+                    );
+                }
+                let local_gradient_array = array_context.constant_f32(
+                    Shape::new(vec![local_gradient_values.len()]),
+                    local_gradient_values,
+                )?;
+                let reduced = all_sum(
+                    &local_gradient_array,
+                    DistributedCollectiveOptions::new()
+                        .with_group(group.clone())
+                        .with_rank_inputs(rank_inputs),
+                )?;
+                let clipped_full = apply_optional_global_clip(
+                    array_values(&reduced)?.as_slice(),
+                    global_clipping_scale,
+                );
+                let update = apply_fsdp_local_update(
+                    &mut parameter_groups[local_group_index],
+                    &TrainingShardRange::new(0, clipped_full.len()),
+                    clipped_full.as_slice(),
+                )?;
+                group_receipts.push(FsdpGroupApplyReceipt {
+                    group_id: group_contract.group_id.clone(),
+                    parameter_shard_kind: group_contract.parameter_layout.kind,
+                    optimizer_state_shard_kind: group_contract.optimizer_state_layout.kind,
+                    local_shard_range: TrainingShardRange::new(0, clipped_full.len()),
+                    reduced_full_gradient_norm_l2,
+                    local_shard_gradient_norm_l2: update.clipped_gradient_norm_l2,
+                    effective_learning_rate: update.effective_learning_rate,
+                    effective_weight_decay: update.effective_weight_decay,
+                    scheduler_kind: update.scheduler_kind,
+                    local_update_norm_l2: update.update_norm_l2,
+                    gathered_parameter_norm_l2_after: l2_norm(training_buffer_values(
+                        group_contract.group_id.as_str(),
+                        &parameter_groups[local_group_index].parameter,
+                    )?),
+                    residency_transitions: update.transitions,
+                });
+            }
+            FsdpGroupExecutionKind::FullShard { shard_ranges } => {
+                let local_full_gradient = local_batch
+                    .gradients
+                    .get(group_contract.group_id.as_str())
+                    .ok_or_else(|| TrainingCoreError::MissingGradient {
+                        batch_id: local_batch.batch_id.clone(),
+                        group_id: group_contract.group_id.clone(),
+                    })?;
+                let local_gradient_values =
+                    training_buffer_values(group_contract.group_id.as_str(), local_full_gradient)?
+                        .to_vec();
+                let local_gradient_array = array_context.constant_f32(
+                    Shape::new(vec![local_gradient_values.len()]),
+                    local_gradient_values.clone(),
+                )?;
+                let mut rank_inputs = BTreeMap::from([(
+                    local_rank,
+                    DistributedReferenceTensor::f32(
+                        Shape::new(vec![local_gradient_values.len()]),
+                        local_gradient_values,
+                    )?,
+                )]);
+                for (rank, batch) in &options.remote_rank_batches {
+                    let remote_gradient = batch
+                        .gradients
+                        .get(group_contract.group_id.as_str())
+                        .ok_or_else(|| FsdpApplyGradientsError::MissingRemoteGradient {
+                            rank: *rank,
+                            batch_id: batch.batch_id.clone(),
+                            group_id: group_contract.group_id.clone(),
+                        })?;
+                    rank_inputs.insert(
+                        *rank,
+                        DistributedReferenceTensor::f32(
+                            Shape::new(vec![reduced_full.len()]),
+                            training_buffer_values(
+                                group_contract.group_id.as_str(),
+                                remote_gradient,
+                            )?
+                            .to_vec(),
+                        )?,
+                    );
+                }
+                let _local_scattered = reduce_scatter(
+                    &local_gradient_array,
+                    DistributedCollectiveOptions::new()
+                        .with_group(group.clone())
+                        .with_rank_inputs(rank_inputs),
+                )?;
+                let mut gathered_rank_shards = BTreeMap::new();
+                let mut local_update = None;
+                for rank in 0..world_size {
+                    let shard_range = shard_ranges.get(rank).ok_or_else(|| {
+                        FsdpApplyGradientsError::UnevenFullShardLayout {
+                            group_id: group_contract.group_id.clone(),
+                        }
+                    })?;
+                    let shard_gradient = apply_optional_global_clip(
+                        &reduced_full[shard_range.offset_elements
+                            ..shard_range.offset_elements + shard_range.element_count],
+                        global_clipping_scale,
+                    );
+                    if rank == local_rank {
+                        let update = apply_fsdp_local_update(
+                            &mut parameter_groups[local_group_index],
+                            shard_range,
+                            shard_gradient.as_slice(),
+                        )?;
+                        gathered_rank_shards.insert(
+                            rank,
+                            DistributedReferenceTensor::f32(
+                                Shape::new(vec![update.updated_shard_values.len()]),
+                                update.updated_shard_values.clone(),
+                            )?,
+                        );
+                        local_update = Some(update);
+                    } else {
+                        let remote_group = remote_rank_group_maps
+                            .get(&rank)
+                            .and_then(|groups| groups.get(group_contract.group_id.as_str()))
+                            .ok_or_else(|| FsdpApplyGradientsError::MissingRemoteGroup {
+                                rank,
+                                group_id: group_contract.group_id.clone(),
+                            })?;
+                        let mut remote_group = remote_group.clone();
+                        let remote_update = apply_fsdp_local_update(
+                            &mut remote_group,
+                            shard_range,
+                            shard_gradient.as_slice(),
+                        )?;
+                        gathered_rank_shards.insert(
+                            rank,
+                            DistributedReferenceTensor::f32(
+                                Shape::new(vec![remote_update.updated_shard_values.len()]),
+                                remote_update.updated_shard_values,
+                            )?,
+                        );
+                    }
+                }
+                let local_update = local_update.ok_or_else(|| {
+                    FsdpApplyGradientsError::MissingRemoteRankStates {
+                        missing_ranks: vec![local_rank],
+                    }
+                })?;
+                let local_shard_array = array_context.constant_f32(
+                    Shape::new(vec![local_update.updated_shard_values.len()]),
+                    local_update.updated_shard_values.clone(),
+                )?;
+                let gathered = all_gather(
+                    &local_shard_array,
+                    DistributedCollectiveOptions::new()
+                        .with_group(group.clone())
+                        .with_rank_inputs(gathered_rank_shards),
+                )?;
+                let gathered_values = array_values(&gathered)?;
+                assign_training_buffer_values(
+                    group_contract.group_id.as_str(),
+                    &mut parameter_groups[local_group_index].parameter,
+                    gathered_values.as_slice(),
+                )?;
+                group_receipts.push(FsdpGroupApplyReceipt {
+                    group_id: group_contract.group_id.clone(),
+                    parameter_shard_kind: group_contract.parameter_layout.kind,
+                    optimizer_state_shard_kind: group_contract.optimizer_state_layout.kind,
+                    local_shard_range: shard_ranges[local_rank].clone(),
+                    reduced_full_gradient_norm_l2,
+                    local_shard_gradient_norm_l2: local_update.clipped_gradient_norm_l2,
+                    effective_learning_rate: local_update.effective_learning_rate,
+                    effective_weight_decay: local_update.effective_weight_decay,
+                    scheduler_kind: local_update.scheduler_kind,
+                    local_update_norm_l2: local_update.update_norm_l2,
+                    gathered_parameter_norm_l2_after: l2_norm(gathered_values.as_slice()),
+                    residency_transitions: local_update.transitions,
+                });
+            }
+        }
+    }
+
+    let mut receipt = FsdpApplyGradientsReceipt {
+        distributed_group_id: group.group_id().to_string(),
+        contract_digest: contract.contract_digest.clone(),
+        local_rank,
+        world_size,
+        batch_id: local_batch.batch_id.clone(),
+        clip_global_norm: options.clip_global_norm,
+        global_gradient_norm_l2,
+        global_clipping_scale,
+        groups: group_receipts,
+        receipt_digest: String::new(),
+    };
+    receipt.receipt_digest = stable_fsdp_apply_gradients_receipt_digest(&receipt);
+    Ok(receipt)
 }
 
 /// Public options for one point-to-point helper over a distributed group.
@@ -3251,6 +3943,924 @@ fn nn_tensor_from_array(array: &Array) -> Result<NnTensor, TensorParallelLinearE
     Ok(NnTensor::f32(array.shape().clone(), values)?)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FsdpGroupExecutionPlan {
+    kind: FsdpGroupExecutionKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FsdpGroupExecutionKind {
+    Replicated,
+    FullShard {
+        shard_ranges: Vec<TrainingShardRange>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FsdpLocalUpdate {
+    updated_shard_values: Vec<f32>,
+    clipped_gradient_norm_l2: f32,
+    effective_learning_rate: f32,
+    effective_weight_decay: f32,
+    scheduler_kind: Option<TrainingSchedulerKind>,
+    update_norm_l2: f32,
+    transitions: Vec<OptimizerResidencyTransition>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ResolvedFsdpOptimizerStep {
+    optimizer: TrainingOptimizerConfig,
+    effective_learning_rate: f32,
+    effective_weight_decay: f32,
+    scheduler_kind: Option<TrainingSchedulerKind>,
+}
+
+fn validate_remote_rank_map_keys(
+    local_rank: usize,
+    world_size: usize,
+    ranks: Vec<usize>,
+    kind: &'static str,
+) -> Result<(), FsdpApplyGradientsError> {
+    let invalid_ranks = ranks
+        .into_iter()
+        .filter(|rank| *rank >= world_size || *rank == local_rank)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if invalid_ranks.is_empty() {
+        return Ok(());
+    }
+    Err(FsdpApplyGradientsError::InvalidRemoteRanks {
+        kind,
+        invalid_ranks,
+        world_size,
+    })
+}
+
+fn local_group_indices(
+    parameter_groups: &[TrainingParameterGroupState],
+) -> BTreeMap<String, usize> {
+    parameter_groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| (group.group_id.clone(), index))
+        .collect()
+}
+
+fn remote_group_map(
+    rank: usize,
+    groups: Vec<TrainingParameterGroupState>,
+) -> Result<BTreeMap<String, TrainingParameterGroupState>, FsdpApplyGradientsError> {
+    let mut map = BTreeMap::new();
+    for group in groups {
+        let group_id = group.group_id.clone();
+        if map.insert(group_id.clone(), group).is_some() {
+            return Err(FsdpApplyGradientsError::DuplicateRemoteGroup { rank, group_id });
+        }
+    }
+    Ok(map)
+}
+
+fn validate_remote_group_state_contract(
+    group_id: &str,
+    local_group: &TrainingParameterGroupState,
+    remote_rank_group_maps: &BTreeMap<usize, BTreeMap<String, TrainingParameterGroupState>>,
+    _world_size: usize,
+) -> Result<(), FsdpApplyGradientsError> {
+    for (rank, groups) in remote_rank_group_maps {
+        let remote_group =
+            groups
+                .get(group_id)
+                .ok_or_else(|| FsdpApplyGradientsError::MissingRemoteGroup {
+                    rank: *rank,
+                    group_id: group_id.to_string(),
+                })?;
+        if remote_group.group_id != local_group.group_id {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "group id drifted from `{}` to `{}`",
+                    local_group.group_id, remote_group.group_id
+                ),
+            });
+        }
+        if remote_group.class != local_group.class {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "class drifted from {:?} to {:?}",
+                    local_group.class, remote_group.class
+                ),
+            });
+        }
+        if remote_group.parameter.spec != local_group.parameter.spec {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "parameter spec drifted from {:?} to {:?}",
+                    local_group.parameter.spec, remote_group.parameter.spec
+                ),
+            });
+        }
+        if remote_group.optimizer != local_group.optimizer {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "optimizer config drifted from {:?} to {:?}",
+                    local_group.optimizer, remote_group.optimizer
+                ),
+            });
+        }
+        if remote_group.parameter_semantics != local_group.parameter_semantics {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "parameter semantics drifted from {:?} to {:?}",
+                    local_group.parameter_semantics, remote_group.parameter_semantics
+                ),
+            });
+        }
+        if scheduler_binding_config(remote_group.scheduler.as_ref())
+            != scheduler_binding_config(local_group.scheduler.as_ref())
+        {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: String::from("scheduler config drifted"),
+            });
+        }
+        if remote_group.optimizer_residency_policy != local_group.optimizer_residency_policy {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "optimizer residency policy drifted from {:?} to {:?}",
+                    local_group.optimizer_residency_policy, remote_group.optimizer_residency_policy,
+                ),
+            });
+        }
+        if remote_group.applied_steps != local_group.applied_steps {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank: *rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "applied step count drifted from {} to {}",
+                    local_group.applied_steps, remote_group.applied_steps
+                ),
+            });
+        }
+        validate_matching_optimizer_state_shapes(group_id, *rank, local_group, remote_group)?;
+    }
+    Ok(())
+}
+
+fn scheduler_binding_config(
+    binding: Option<&TrainingSchedulerBinding>,
+) -> Option<&psionic_train::TrainingSchedulerConfig> {
+    binding.map(|binding| &binding.config)
+}
+
+fn validate_matching_optimizer_state_shapes(
+    group_id: &str,
+    rank: usize,
+    local_group: &TrainingParameterGroupState,
+    remote_group: &TrainingParameterGroupState,
+) -> Result<(), FsdpApplyGradientsError> {
+    match (&local_group.optimizer_state, &remote_group.optimizer_state) {
+        (
+            TrainingOptimizerState::Sgd {
+                momentum_buffer: local,
+            },
+            TrainingOptimizerState::Sgd {
+                momentum_buffer: remote,
+            },
+        )
+        | (
+            TrainingOptimizerState::Lars {
+                momentum_buffer: local,
+            },
+            TrainingOptimizerState::Lars {
+                momentum_buffer: remote,
+            },
+        ) => {
+            if local.as_ref().map(Vec::len) != remote.as_ref().map(Vec::len) {
+                return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                    rank,
+                    group_id: group_id.to_string(),
+                    detail: format!(
+                        "momentum-buffer lengths drifted from {:?} to {:?}",
+                        local.as_ref().map(Vec::len),
+                        remote.as_ref().map(Vec::len)
+                    ),
+                });
+            }
+        }
+        (
+            TrainingOptimizerState::Adam {
+                first_moment: local_first,
+                second_moment: local_second,
+            },
+            TrainingOptimizerState::Adam {
+                first_moment: remote_first,
+                second_moment: remote_second,
+            },
+        )
+        | (
+            TrainingOptimizerState::AdamW {
+                first_moment: local_first,
+                second_moment: local_second,
+            },
+            TrainingOptimizerState::AdamW {
+                first_moment: remote_first,
+                second_moment: remote_second,
+            },
+        )
+        | (
+            TrainingOptimizerState::Lamb {
+                first_moment: local_first,
+                second_moment: local_second,
+            },
+            TrainingOptimizerState::Lamb {
+                first_moment: remote_first,
+                second_moment: remote_second,
+            },
+        ) => {
+            if local_first.len() != remote_first.len() || local_second.len() != remote_second.len()
+            {
+                return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                    rank,
+                    group_id: group_id.to_string(),
+                    detail: format!(
+                        "moment lengths drifted from ({}, {}) to ({}, {})",
+                        local_first.len(),
+                        local_second.len(),
+                        remote_first.len(),
+                        remote_second.len(),
+                    ),
+                });
+            }
+        }
+        _ => {
+            return Err(FsdpApplyGradientsError::RemoteStateMismatch {
+                rank,
+                group_id: group_id.to_string(),
+                detail: format!(
+                    "optimizer state kind drifted from {:?} to {:?}",
+                    local_group.optimizer_state.kind(),
+                    remote_group.optimizer_state.kind(),
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn build_fsdp_group_plan(
+    group_contract: &DistributedOptimizerGroupContract,
+    tensor_elements: usize,
+    world_size: usize,
+) -> Result<FsdpGroupExecutionPlan, FsdpApplyGradientsError> {
+    match (
+        group_contract.parameter_layout.kind,
+        group_contract.gradient_layout.kind,
+        group_contract.optimizer_state_layout.kind,
+    ) {
+        (
+            TrainingParameterShardKind::Replicated,
+            TrainingParameterShardKind::Replicated,
+            TrainingOptimizerStateShardKind::Replicated,
+        ) => {
+            validate_replicated_layout(
+                group_contract.group_id.as_str(),
+                world_size,
+                tensor_elements,
+                &group_contract.parameter_layout.placements,
+            )?;
+            validate_replicated_layout(
+                group_contract.group_id.as_str(),
+                world_size,
+                tensor_elements,
+                &group_contract.gradient_layout.placements,
+            )?;
+            validate_replicated_layout(
+                group_contract.group_id.as_str(),
+                world_size,
+                tensor_elements,
+                &group_contract.optimizer_state_layout.placements,
+            )?;
+            Ok(FsdpGroupExecutionPlan {
+                kind: FsdpGroupExecutionKind::Replicated,
+            })
+        }
+        (
+            TrainingParameterShardKind::FullShard,
+            TrainingParameterShardKind::FullShard,
+            TrainingOptimizerStateShardKind::ZeroStage3,
+        ) => {
+            let parameter_ranges = contiguous_equal_shard_ranges(
+                group_contract.group_id.as_str(),
+                world_size,
+                tensor_elements,
+                &group_contract.parameter_layout.placements,
+            )?;
+            let gradient_ranges = contiguous_equal_shard_ranges(
+                group_contract.group_id.as_str(),
+                world_size,
+                tensor_elements,
+                &group_contract.gradient_layout.placements,
+            )?;
+            let optimizer_ranges = contiguous_equal_shard_ranges(
+                group_contract.group_id.as_str(),
+                world_size,
+                tensor_elements,
+                &group_contract.optimizer_state_layout.placements,
+            )?;
+            if parameter_ranges != gradient_ranges || parameter_ranges != optimizer_ranges {
+                return Err(FsdpApplyGradientsError::UnevenFullShardLayout {
+                    group_id: group_contract.group_id.clone(),
+                });
+            }
+            Ok(FsdpGroupExecutionPlan {
+                kind: FsdpGroupExecutionKind::FullShard {
+                    shard_ranges: parameter_ranges,
+                },
+            })
+        }
+        (parameter_kind, gradient_kind, optimizer_state_kind) => {
+            Err(FsdpApplyGradientsError::UnsupportedGroupLayout {
+                group_id: group_contract.group_id.clone(),
+                parameter_kind,
+                gradient_kind,
+                optimizer_state_kind,
+            })
+        }
+    }
+}
+
+fn validate_replicated_layout(
+    group_id: &str,
+    world_size: usize,
+    tensor_elements: usize,
+    placements: &[TrainingShardPlacement],
+) -> Result<(), FsdpApplyGradientsError> {
+    if placements.len() != world_size {
+        return Err(FsdpApplyGradientsError::UnsupportedGroupLayout {
+            group_id: group_id.to_string(),
+            parameter_kind: TrainingParameterShardKind::Replicated,
+            gradient_kind: TrainingParameterShardKind::Replicated,
+            optimizer_state_kind: TrainingOptimizerStateShardKind::Replicated,
+        });
+    }
+    let mut ordered = placements.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|placement| placement.shard_id);
+    let valid = ordered.iter().enumerate().all(|(rank, placement)| {
+        placement.shard_id == rank
+            && placement.range.offset_elements == 0
+            && placement.range.element_count == tensor_elements
+    });
+    if valid {
+        return Ok(());
+    }
+    Err(FsdpApplyGradientsError::UnsupportedGroupLayout {
+        group_id: group_id.to_string(),
+        parameter_kind: TrainingParameterShardKind::Replicated,
+        gradient_kind: TrainingParameterShardKind::Replicated,
+        optimizer_state_kind: TrainingOptimizerStateShardKind::Replicated,
+    })
+}
+
+fn contiguous_equal_shard_ranges(
+    group_id: &str,
+    world_size: usize,
+    tensor_elements: usize,
+    placements: &[TrainingShardPlacement],
+) -> Result<Vec<TrainingShardRange>, FsdpApplyGradientsError> {
+    if world_size == 0
+        || placements.len() != world_size
+        || tensor_elements == 0
+        || !tensor_elements.is_multiple_of(world_size)
+    {
+        return Err(FsdpApplyGradientsError::UnevenFullShardLayout {
+            group_id: group_id.to_string(),
+        });
+    }
+    let shard_width = tensor_elements / world_size;
+    let mut ordered = placements.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|placement| placement.shard_id);
+    let mut shard_ranges = Vec::with_capacity(world_size);
+    for (rank, placement) in ordered.into_iter().enumerate() {
+        if placement.shard_id != rank
+            || placement.range.offset_elements != rank * shard_width
+            || placement.range.element_count != shard_width
+        {
+            return Err(FsdpApplyGradientsError::UnevenFullShardLayout {
+                group_id: group_id.to_string(),
+            });
+        }
+        shard_ranges.push(placement.range.clone());
+    }
+    Ok(shard_ranges)
+}
+
+fn validate_training_buffer_compatibility(
+    batch_id: &str,
+    group_id: &str,
+    expected: &psionic_core::TensorSpec,
+    actual: &psionic_core::TensorSpec,
+) -> Result<(), TrainingCoreError> {
+    if expected == actual {
+        return Ok(());
+    }
+    Err(TrainingCoreError::GradientTensorMismatch {
+        batch_id: batch_id.to_string(),
+        group_id: group_id.to_string(),
+        expected: expected.clone(),
+        actual: actual.clone(),
+    })
+}
+
+fn training_buffer_values<'a>(
+    group_id: &str,
+    buffer: &'a TrainingTensorBuffer,
+) -> Result<&'a [f32], TrainingCoreError> {
+    match &buffer.data {
+        TensorData::F32(values) => {
+            let expected_len = buffer.spec.storage_size();
+            if values.len() != expected_len {
+                return Err(TrainingCoreError::TensorLengthMismatch {
+                    group_id: group_id.to_string(),
+                    expected_len,
+                    actual_len: values.len(),
+                });
+            }
+            Ok(values.as_slice())
+        }
+        TensorData::QuantizedBlocks(_) => Err(TrainingCoreError::UnsupportedTensorDType {
+            group_id: group_id.to_string(),
+            dtype: buffer.spec.dtype(),
+        }),
+    }
+}
+
+fn assign_training_buffer_values(
+    group_id: &str,
+    buffer: &mut TrainingTensorBuffer,
+    values: &[f32],
+) -> Result<(), TrainingCoreError> {
+    let expected_len = buffer.spec.storage_size();
+    if values.len() != expected_len {
+        return Err(TrainingCoreError::TensorLengthMismatch {
+            group_id: group_id.to_string(),
+            expected_len,
+            actual_len: values.len(),
+        });
+    }
+    match &mut buffer.data {
+        TensorData::F32(existing) => {
+            *existing = values.to_vec();
+            Ok(())
+        }
+        TensorData::QuantizedBlocks(_) => Err(TrainingCoreError::UnsupportedTensorDType {
+            group_id: group_id.to_string(),
+            dtype: buffer.spec.dtype(),
+        }),
+    }
+}
+
+fn array_values(array: &Array) -> Result<Vec<f32>, ArrayError> {
+    let host = array.to_host_data()?;
+    let values = host
+        .as_f32_slice()
+        .ok_or_else(|| ArrayError::HostInteropRefusal {
+            tensor: array.tensor_id(),
+            dtype: array.dtype(),
+            detail: String::from("expected floating host storage for FSDP reference emulation"),
+        })?;
+    Ok(values.to_vec())
+}
+
+fn l2_norm(values: &[f32]) -> f32 {
+    values.iter().map(|value| value * value).sum::<f32>().sqrt()
+}
+
+fn apply_optional_global_clip(values: &[f32], scale: Option<f32>) -> Vec<f32> {
+    match scale {
+        Some(scale) => values.iter().map(|value| value * scale).collect(),
+        None => values.to_vec(),
+    }
+}
+
+fn clip_gradient_values(gradients: &[f32], clip_norm: Option<f32>) -> (Vec<f32>, f32) {
+    let gradient_norm_l2 = l2_norm(gradients);
+    let Some(clip_norm) = clip_norm else {
+        return (gradients.to_vec(), gradient_norm_l2);
+    };
+    if gradient_norm_l2 <= clip_norm || gradient_norm_l2 == 0.0 {
+        return (gradients.to_vec(), gradient_norm_l2);
+    }
+    let scale = clip_norm / gradient_norm_l2;
+    (
+        gradients.iter().map(|value| value * scale).collect(),
+        clip_norm,
+    )
+}
+
+fn maybe_transition_fsdp_group(
+    group: &mut TrainingParameterGroupState,
+    target: OptimizerStateResidency,
+    global_step: u64,
+    reason: OptimizerResidencyTransitionReason,
+    transitions: &mut Vec<OptimizerResidencyTransition>,
+) {
+    if group.optimizer_residency == target {
+        return;
+    }
+    transitions.push(OptimizerResidencyTransition {
+        group_id: group.group_id.clone(),
+        global_step,
+        from: group.optimizer_residency,
+        to: target,
+        reason,
+    });
+    group.optimizer_residency = target;
+}
+
+fn resolve_fsdp_group_optimizer_step(
+    group: &mut TrainingParameterGroupState,
+    step_number: u64,
+) -> Result<ResolvedFsdpOptimizerStep, TrainingOptimizerError> {
+    let mut optimizer = group.optimizer.clone();
+    optimizer.learning_rate *= group.parameter_semantics.learning_rate_scale;
+    optimizer.weight_decay *= group.parameter_semantics.weight_decay_scale;
+    let scheduler_kind = group
+        .scheduler
+        .as_ref()
+        .map(|binding| binding.config.kind());
+    if let Some(binding) = &mut group.scheduler {
+        optimizer.learning_rate =
+            scheduled_learning_rate(binding, optimizer.learning_rate, step_number)?;
+    }
+    Ok(ResolvedFsdpOptimizerStep {
+        effective_learning_rate: optimizer.learning_rate,
+        effective_weight_decay: optimizer.weight_decay,
+        optimizer,
+        scheduler_kind,
+    })
+}
+
+fn apply_fsdp_local_update(
+    group: &mut TrainingParameterGroupState,
+    shard_range: &TrainingShardRange,
+    gradient_values: &[f32],
+) -> Result<FsdpLocalUpdate, FsdpApplyGradientsError> {
+    if shard_range.element_count != gradient_values.len() {
+        return Err(TrainingOptimizerError::GradientLengthMismatch {
+            optimizer: group.optimizer.kind,
+            parameter_len: shard_range.element_count,
+            gradient_len: gradient_values.len(),
+        }
+        .into());
+    }
+    let full_parameter_values =
+        training_buffer_values(group.group_id.as_str(), &group.parameter)?.to_vec();
+    let shard_end = shard_range
+        .offset_elements
+        .saturating_add(shard_range.element_count);
+    if shard_end > full_parameter_values.len() {
+        return Err(TrainingOptimizerError::GradientLengthMismatch {
+            optimizer: group.optimizer.kind,
+            parameter_len: full_parameter_values.len(),
+            gradient_len: shard_end,
+        }
+        .into());
+    }
+
+    let global_step = group.applied_steps.saturating_add(1);
+    let mut transitions = Vec::new();
+    maybe_transition_fsdp_group(
+        group,
+        group.optimizer_residency_policy.step_residency,
+        global_step,
+        OptimizerResidencyTransitionReason::PrefetchForStep,
+        &mut transitions,
+    );
+
+    let resolved_optimizer = resolve_fsdp_group_optimizer_step(group, global_step)?;
+    let (clipped_gradient_values, clipped_gradient_norm_l2) =
+        clip_gradient_values(gradient_values, group.optimizer.gradient_clip_norm);
+    let mut updated_parameter_values = full_parameter_values;
+    let mut shard_parameter_values =
+        updated_parameter_values[shard_range.offset_elements..shard_end].to_vec();
+    let mut shard_optimizer_state =
+        slice_training_optimizer_state(&group.optimizer_state, shard_range)?;
+    let optimizer_report = apply_training_optimizer_step(
+        &mut shard_parameter_values,
+        clipped_gradient_values.as_slice(),
+        &resolved_optimizer.optimizer,
+        &mut shard_optimizer_state,
+        global_step,
+    )?;
+    updated_parameter_values[shard_range.offset_elements..shard_end]
+        .copy_from_slice(shard_parameter_values.as_slice());
+    assign_training_buffer_values(
+        group.group_id.as_str(),
+        &mut group.parameter,
+        updated_parameter_values.as_slice(),
+    )?;
+    assign_training_optimizer_state_shard(
+        &mut group.optimizer_state,
+        shard_range,
+        &shard_optimizer_state,
+    )?;
+    group.applied_steps = global_step;
+    maybe_transition_fsdp_group(
+        group,
+        group.optimizer_residency_policy.idle_residency,
+        global_step,
+        OptimizerResidencyTransitionReason::OffloadAfterStep,
+        &mut transitions,
+    );
+    Ok(FsdpLocalUpdate {
+        updated_shard_values: shard_parameter_values,
+        clipped_gradient_norm_l2,
+        effective_learning_rate: optimizer_report.effective_learning_rate,
+        effective_weight_decay: optimizer_report.effective_weight_decay,
+        scheduler_kind: resolved_optimizer.scheduler_kind,
+        update_norm_l2: optimizer_report.update_norm_l2,
+        transitions,
+    })
+}
+
+fn slice_training_optimizer_state(
+    state: &TrainingOptimizerState,
+    shard_range: &TrainingShardRange,
+) -> Result<TrainingOptimizerState, TrainingOptimizerError> {
+    match state {
+        TrainingOptimizerState::Sgd { momentum_buffer } => Ok(TrainingOptimizerState::Sgd {
+            momentum_buffer: slice_optional_optimizer_buffer(
+                state.kind(),
+                momentum_buffer.as_ref(),
+                shard_range,
+            )?,
+        }),
+        TrainingOptimizerState::Adam {
+            first_moment,
+            second_moment,
+        } => Ok(TrainingOptimizerState::Adam {
+            first_moment: slice_optimizer_buffer(state.kind(), first_moment, shard_range)?,
+            second_moment: slice_optimizer_buffer(state.kind(), second_moment, shard_range)?,
+        }),
+        TrainingOptimizerState::AdamW {
+            first_moment,
+            second_moment,
+        } => Ok(TrainingOptimizerState::AdamW {
+            first_moment: slice_optimizer_buffer(state.kind(), first_moment, shard_range)?,
+            second_moment: slice_optimizer_buffer(state.kind(), second_moment, shard_range)?,
+        }),
+        TrainingOptimizerState::Lars { momentum_buffer } => Ok(TrainingOptimizerState::Lars {
+            momentum_buffer: slice_optional_optimizer_buffer(
+                state.kind(),
+                momentum_buffer.as_ref(),
+                shard_range,
+            )?,
+        }),
+        TrainingOptimizerState::Lamb {
+            first_moment,
+            second_moment,
+        } => Ok(TrainingOptimizerState::Lamb {
+            first_moment: slice_optimizer_buffer(state.kind(), first_moment, shard_range)?,
+            second_moment: slice_optimizer_buffer(state.kind(), second_moment, shard_range)?,
+        }),
+    }
+}
+
+fn assign_training_optimizer_state_shard(
+    state: &mut TrainingOptimizerState,
+    shard_range: &TrainingShardRange,
+    shard_state: &TrainingOptimizerState,
+) -> Result<(), TrainingOptimizerError> {
+    let optimizer = state.kind();
+    match (state, shard_state) {
+        (
+            TrainingOptimizerState::Sgd {
+                momentum_buffer: target,
+            },
+            TrainingOptimizerState::Sgd {
+                momentum_buffer: source,
+            },
+        )
+        | (
+            TrainingOptimizerState::Lars {
+                momentum_buffer: target,
+            },
+            TrainingOptimizerState::Lars {
+                momentum_buffer: source,
+            },
+        ) => assign_optional_optimizer_buffer(optimizer, target, source.as_ref(), shard_range),
+        (
+            TrainingOptimizerState::Adam {
+                first_moment: target_first,
+                second_moment: target_second,
+            },
+            TrainingOptimizerState::Adam {
+                first_moment: source_first,
+                second_moment: source_second,
+            },
+        )
+        | (
+            TrainingOptimizerState::AdamW {
+                first_moment: target_first,
+                second_moment: target_second,
+            },
+            TrainingOptimizerState::AdamW {
+                first_moment: source_first,
+                second_moment: source_second,
+            },
+        )
+        | (
+            TrainingOptimizerState::Lamb {
+                first_moment: target_first,
+                second_moment: target_second,
+            },
+            TrainingOptimizerState::Lamb {
+                first_moment: source_first,
+                second_moment: source_second,
+            },
+        ) => {
+            assign_optimizer_buffer(optimizer, target_first, source_first, shard_range)?;
+            assign_optimizer_buffer(optimizer, target_second, source_second, shard_range)
+        }
+        (_, _) => Err(TrainingOptimizerError::StateKindMismatch {
+            optimizer,
+            state_kind: shard_state.kind(),
+        }),
+    }
+}
+
+fn slice_optimizer_buffer(
+    optimizer: psionic_train::TrainingOptimizerKind,
+    values: &[f32],
+    shard_range: &TrainingShardRange,
+) -> Result<Vec<f32>, TrainingOptimizerError> {
+    let shard_end = shard_range
+        .offset_elements
+        .saturating_add(shard_range.element_count);
+    if shard_end > values.len() {
+        return Err(TrainingOptimizerError::StateLengthMismatch {
+            optimizer,
+            expected_len: shard_end,
+            actual_len: values.len(),
+        });
+    }
+    Ok(values[shard_range.offset_elements..shard_end].to_vec())
+}
+
+fn slice_optional_optimizer_buffer(
+    optimizer: psionic_train::TrainingOptimizerKind,
+    values: Option<&Vec<f32>>,
+    shard_range: &TrainingShardRange,
+) -> Result<Option<Vec<f32>>, TrainingOptimizerError> {
+    values
+        .map(|values| slice_optimizer_buffer(optimizer, values.as_slice(), shard_range))
+        .transpose()
+}
+
+fn assign_optimizer_buffer(
+    optimizer: psionic_train::TrainingOptimizerKind,
+    target: &mut [f32],
+    source: &[f32],
+    shard_range: &TrainingShardRange,
+) -> Result<(), TrainingOptimizerError> {
+    if source.len() != shard_range.element_count {
+        return Err(TrainingOptimizerError::StateLengthMismatch {
+            optimizer,
+            expected_len: shard_range.element_count,
+            actual_len: source.len(),
+        });
+    }
+    let shard_end = shard_range
+        .offset_elements
+        .saturating_add(shard_range.element_count);
+    if shard_end > target.len() {
+        return Err(TrainingOptimizerError::StateLengthMismatch {
+            optimizer,
+            expected_len: shard_end,
+            actual_len: target.len(),
+        });
+    }
+    target[shard_range.offset_elements..shard_end].copy_from_slice(source);
+    Ok(())
+}
+
+fn assign_optional_optimizer_buffer(
+    optimizer: psionic_train::TrainingOptimizerKind,
+    target: &mut Option<Vec<f32>>,
+    source: Option<&Vec<f32>>,
+    shard_range: &TrainingShardRange,
+) -> Result<(), TrainingOptimizerError> {
+    match (target.as_mut(), source) {
+        (Some(target), Some(source)) => assign_optimizer_buffer(
+            optimizer,
+            target.as_mut_slice(),
+            source.as_slice(),
+            shard_range,
+        ),
+        (None, None) => Ok(()),
+        (Some(_), None) | (None, Some(_)) => Err(TrainingOptimizerError::StateLengthMismatch {
+            optimizer,
+            expected_len: shard_range.element_count,
+            actual_len: source.map_or(0, Vec::len),
+        }),
+    }
+}
+
+fn stable_fsdp_apply_gradients_receipt_digest(receipt: &FsdpApplyGradientsReceipt) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"psionic_distributed_fsdp_apply_gradients|");
+    hasher.update(receipt.distributed_group_id.as_bytes());
+    hasher.update(b"|contract|");
+    hasher.update(receipt.contract_digest.as_bytes());
+    hasher.update(b"|rank|");
+    hasher.update(receipt.local_rank.to_le_bytes());
+    hasher.update(b"|world|");
+    hasher.update(receipt.world_size.to_le_bytes());
+    hasher.update(b"|batch|");
+    hasher.update(receipt.batch_id.as_bytes());
+    hasher.update(b"|clip|");
+    hasher.update(
+        receipt
+            .clip_global_norm
+            .map(f32::to_bits)
+            .unwrap_or_default()
+            .to_le_bytes(),
+    );
+    hasher.update(b"|global_norm|");
+    hasher.update(receipt.global_gradient_norm_l2.to_bits().to_le_bytes());
+    hasher.update(b"|global_scale|");
+    hasher.update(
+        receipt
+            .global_clipping_scale
+            .map(f32::to_bits)
+            .unwrap_or_default()
+            .to_le_bytes(),
+    );
+    for group in &receipt.groups {
+        hasher.update(b"|group|");
+        hasher.update(group.group_id.as_bytes());
+        hasher.update(b"|parameter_kind|");
+        hasher.update(format!("{:?}", group.parameter_shard_kind).as_bytes());
+        hasher.update(b"|optimizer_state_kind|");
+        hasher.update(format!("{:?}", group.optimizer_state_shard_kind).as_bytes());
+        hasher.update(b"|offset|");
+        hasher.update(group.local_shard_range.offset_elements.to_le_bytes());
+        hasher.update(b"|count|");
+        hasher.update(group.local_shard_range.element_count.to_le_bytes());
+        hasher.update(b"|reduced_norm|");
+        hasher.update(group.reduced_full_gradient_norm_l2.to_bits().to_le_bytes());
+        hasher.update(b"|local_norm|");
+        hasher.update(group.local_shard_gradient_norm_l2.to_bits().to_le_bytes());
+        hasher.update(b"|lr|");
+        hasher.update(group.effective_learning_rate.to_bits().to_le_bytes());
+        hasher.update(b"|wd|");
+        hasher.update(group.effective_weight_decay.to_bits().to_le_bytes());
+        hasher.update(b"|scheduler|");
+        hasher.update(
+            group
+                .scheduler_kind
+                .map(|kind| format!("{kind:?}"))
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        hasher.update(b"|update_norm|");
+        hasher.update(group.local_update_norm_l2.to_bits().to_le_bytes());
+        hasher.update(b"|parameter_norm|");
+        hasher.update(
+            group
+                .gathered_parameter_norm_l2_after
+                .to_bits()
+                .to_le_bytes(),
+        );
+        for transition in &group.residency_transitions {
+            hasher.update(b"|transition|");
+            hasher.update(transition.group_id.as_bytes());
+            hasher.update(b"|step|");
+            hasher.update(transition.global_step.to_le_bytes());
+            hasher.update(b"|from|");
+            hasher.update(format!("{:?}", transition.from).as_bytes());
+            hasher.update(b"|to|");
+            hasher.update(format!("{:?}", transition.to).as_bytes());
+            hasher.update(b"|reason|");
+            hasher.update(format!("{:?}", transition.reason).as_bytes());
+        }
+    }
+    hex::encode(hasher.finalize())
+}
+
 fn validate_launch_config(
     cluster_state: &ClusterState,
     sandbox_profile: &ProviderSandboxProfile,
@@ -4390,7 +6000,7 @@ mod tests {
         AdmissionToken, ClusterEventIndex, ClusterId, ClusterLeadershipRecord, ClusterNamespace,
         ClusterSnapshot, ClusterTerm, NodeEpoch, NodeId, NodeRole,
     };
-    use psionic_core::{DType, Shape};
+    use psionic_core::{DType, Device, Shape, TensorSpec};
     use psionic_sandbox::ProviderSandboxRuntimeKind;
 
     fn sample_membership() -> TrainingElasticMembershipContext {
@@ -4591,6 +6201,190 @@ mod tests {
         .with_hostfile_entries(hostfile_entries)
         .with_provider_id("provider-alpha")
         .with_expected_outputs(vec![String::from("artifacts/weights.bin")])
+    }
+
+    fn training_spec(width: usize) -> TensorSpec {
+        TensorSpec::new(Shape::new(vec![width]), DType::F32, Device::cpu())
+    }
+
+    fn training_buffer(group_id: &str, values: Vec<f32>) -> TrainingTensorBuffer {
+        TrainingTensorBuffer::from_f32(group_id, training_spec(values.len()), values)
+            .expect("training buffer")
+    }
+
+    fn training_group(
+        group_id: &str,
+        class: psionic_train::TrainingParameterClass,
+        values: Vec<f32>,
+        optimizer: psionic_train::TrainingOptimizerConfig,
+    ) -> TrainingParameterGroupState {
+        TrainingParameterGroupState::new(
+            group_id,
+            class,
+            training_buffer(group_id, values),
+            optimizer,
+            psionic_train::TrainingOptimizerResidencyPolicy::device_step_offload_idle(),
+        )
+        .expect("training group")
+    }
+
+    fn two_rank_full_shard_placements(width: usize) -> Vec<TrainingShardPlacement> {
+        assert!(
+            width.is_multiple_of(2),
+            "test full-shard width must divide evenly"
+        );
+        let shard_width = width / 2;
+        vec![
+            TrainingShardPlacement::new(
+                0,
+                "tensor",
+                "node-a",
+                "cuda:0",
+                0,
+                TrainingShardRange::new(0, shard_width),
+            ),
+            TrainingShardPlacement::new(
+                1,
+                "tensor",
+                "node-b",
+                "cuda:1",
+                0,
+                TrainingShardRange::new(shard_width, shard_width),
+            ),
+        ]
+    }
+
+    fn two_rank_replicated_placements(width: usize) -> Vec<TrainingShardPlacement> {
+        vec![
+            TrainingShardPlacement::new(
+                0,
+                "replica",
+                "node-a",
+                "cuda:0",
+                0,
+                TrainingShardRange::new(0, width),
+            ),
+            TrainingShardPlacement::new(
+                1,
+                "replica",
+                "node-b",
+                "cuda:1",
+                0,
+                TrainingShardRange::new(0, width),
+            ),
+        ]
+    }
+
+    fn fsdp_sync_plan() -> psionic_collectives::CollectiveSyncExecutionPlan {
+        psionic_collectives::CollectiveSyncExecutionPlan {
+            cadence_receipt: psionic_collectives::CollectiveSyncCadenceReceipt::new(
+                1,
+                1,
+                psionic_collectives::CollectiveSyncCadenceClass::EveryStepGlobal,
+                1,
+                2,
+                None,
+                psionic_runtime::TrainingCollectiveQuantization::None,
+                psionic_runtime::TrainingCollectiveQuantization::None,
+                false,
+                Vec::new(),
+                None,
+            ),
+            stages: Vec::new(),
+        }
+    }
+
+    fn fsdp_contract(
+        groups: Vec<DistributedOptimizerGroupContract>,
+    ) -> DistributedOptimizerContract {
+        DistributedOptimizerContract::new(
+            "fsdp.contract.v1",
+            TrainingDistributedOptimizerKind::ZeroStage3,
+            psionic_train::TrainingPrecisionPolicy {
+                parameter_precision: psionic_train::TrainingPrecisionMode::Fp32,
+                gradient_precision: psionic_train::TrainingPrecisionMode::Fp32,
+                optimizer_state_precision: psionic_train::TrainingPrecisionMode::Fp32,
+                master_weight_precision: psionic_train::TrainingPrecisionMode::Fp32,
+                reduction_precision: psionic_train::TrainingPrecisionMode::Fp32,
+                communication_quantization: psionic_runtime::TrainingCollectiveQuantization::None,
+                stochastic_rounding: false,
+                loss_scale: None,
+            },
+            psionic_train::TrainingGradientAccumulationPolicy::new(
+                1,
+                psionic_train::TrainingGradientAccumulationReduction::Sum,
+                psionic_runtime::TrainingCollectiveKind::AllReduce,
+            ),
+            psionic_train::TrainingActivationCheckpointPolicy::Disabled {
+                activation_peak_bytes: 0,
+            },
+            psionic_train::DistributedTrainingMemoryBudget::new(1_000_000, 1_000_000, 0),
+            fsdp_sync_plan(),
+            groups,
+        )
+        .expect("distributed optimizer contract")
+    }
+
+    fn full_shard_matrix_contract(
+        group_id: &str,
+        width: usize,
+    ) -> DistributedOptimizerGroupContract {
+        DistributedOptimizerGroupContract::new(
+            group_id,
+            psionic_train::TrainingParameterClass::Matrix,
+            psionic_train::TrainingParameterShardLayout::new(
+                TrainingParameterShardKind::FullShard,
+                two_rank_full_shard_placements(width),
+            ),
+            psionic_train::TrainingParameterShardLayout::new(
+                TrainingParameterShardKind::FullShard,
+                two_rank_full_shard_placements(width),
+            ),
+            psionic_train::TrainingOptimizerStateShardLayout::new(
+                TrainingOptimizerStateShardKind::ZeroStage3,
+                psionic_train::TrainingOptimizerShardResidency::DeviceResident,
+                two_rank_full_shard_placements(width),
+            ),
+            OptimizerStateResidency::Offloaded,
+        )
+    }
+
+    fn replicated_bias_contract(group_id: &str, width: usize) -> DistributedOptimizerGroupContract {
+        DistributedOptimizerGroupContract::new(
+            group_id,
+            psionic_train::TrainingParameterClass::Bias,
+            psionic_train::TrainingParameterShardLayout::new(
+                TrainingParameterShardKind::Replicated,
+                two_rank_replicated_placements(width),
+            ),
+            psionic_train::TrainingParameterShardLayout::new(
+                TrainingParameterShardKind::Replicated,
+                two_rank_replicated_placements(width),
+            ),
+            psionic_train::TrainingOptimizerStateShardLayout::new(
+                TrainingOptimizerStateShardKind::Replicated,
+                psionic_train::TrainingOptimizerShardResidency::DeviceResident,
+                two_rank_replicated_placements(width),
+            ),
+            OptimizerStateResidency::Offloaded,
+        )
+    }
+
+    fn training_batch(batch_id: &str, gradients: &[(&str, Vec<f32>)]) -> TrainingGradientBatch {
+        TrainingGradientBatch::new(
+            batch_id,
+            0.0,
+            1,
+            gradients
+                .iter()
+                .map(|(group_id, values)| {
+                    (
+                        (*group_id).to_string(),
+                        training_buffer(group_id, values.clone()),
+                    )
+                })
+                .collect(),
+        )
     }
 
     #[test]
@@ -6018,5 +7812,238 @@ mod tests {
                 world_size: 2,
             }
         );
+    }
+
+    #[test]
+    fn fsdp_apply_gradients_updates_mixed_full_shard_and_replicated_groups() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-b")))
+                .expect("rank 1 bootstrap");
+        let mut local_groups = vec![
+            training_group(
+                "matrix",
+                psionic_train::TrainingParameterClass::Matrix,
+                vec![10.0, 20.0, 30.0, 40.0],
+                psionic_train::TrainingOptimizerConfig::sgd(0.1),
+            ),
+            training_group(
+                "bias",
+                psionic_train::TrainingParameterClass::Bias,
+                vec![1.0, 2.0],
+                psionic_train::TrainingOptimizerConfig::sgd(0.1),
+            ),
+        ];
+        let remote_groups = local_groups.clone();
+        let contract = fsdp_contract(vec![
+            full_shard_matrix_contract("matrix", 4),
+            replicated_bias_contract("bias", 2),
+        ]);
+        let local_batch = training_batch(
+            "batch.local",
+            &[
+                ("matrix", vec![1.0, 2.0, 3.0, 4.0]),
+                ("bias", vec![0.5, 1.5]),
+            ],
+        );
+        let remote_batch = training_batch(
+            "batch.remote",
+            &[
+                ("matrix", vec![5.0, 6.0, 7.0, 8.0]),
+                ("bias", vec![1.5, 2.5]),
+            ],
+        );
+
+        let receipt = fsdp_apply_gradients(
+            local_groups.as_mut_slice(),
+            &local_batch,
+            &contract,
+            FsdpApplyGradientsOptions::new()
+                .with_group(group)
+                .with_remote_rank_group_states(0, remote_groups)
+                .with_remote_rank_batch(0, remote_batch),
+        )
+        .expect("mixed FSDP update should succeed");
+
+        assert_eq!(receipt.local_rank, 1);
+        assert_eq!(receipt.world_size, 2);
+        assert_eq!(receipt.batch_id, "batch.local");
+        assert!(receipt.global_clipping_scale.is_none());
+        assert!((receipt.global_gradient_norm_l2 - 364.0_f32.sqrt()).abs() < 1e-6);
+
+        assert_eq!(
+            training_buffer_values("matrix", &local_groups[0].parameter).expect("matrix values"),
+            &[9.4, 19.2, 29.0, 38.8],
+        );
+        assert_eq!(
+            training_buffer_values("bias", &local_groups[1].parameter).expect("bias values"),
+            &[0.8, 1.6],
+        );
+        assert_eq!(local_groups[0].applied_steps, 1);
+        assert_eq!(local_groups[1].applied_steps, 1);
+
+        let matrix_receipt = receipt
+            .groups
+            .iter()
+            .find(|group| group.group_id == "matrix")
+            .expect("matrix receipt");
+        assert_eq!(
+            matrix_receipt.local_shard_range,
+            TrainingShardRange::new(2, 2)
+        );
+        assert_eq!(
+            matrix_receipt.parameter_shard_kind,
+            TrainingParameterShardKind::FullShard
+        );
+        assert_eq!(
+            matrix_receipt.optimizer_state_shard_kind,
+            TrainingOptimizerStateShardKind::ZeroStage3
+        );
+        assert_eq!(matrix_receipt.residency_transitions.len(), 2);
+
+        let bias_receipt = receipt
+            .groups
+            .iter()
+            .find(|group| group.group_id == "bias")
+            .expect("bias receipt");
+        assert_eq!(
+            bias_receipt.local_shard_range,
+            TrainingShardRange::new(0, 2)
+        );
+        assert_eq!(
+            bias_receipt.parameter_shard_kind,
+            TrainingParameterShardKind::Replicated
+        );
+        assert_eq!(
+            bias_receipt.optimizer_state_shard_kind,
+            TrainingOptimizerStateShardKind::Replicated
+        );
+    }
+
+    #[test]
+    fn fsdp_apply_gradients_applies_global_norm_clip_before_local_update() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-a")))
+                .expect("rank 0 bootstrap");
+        let mut local_groups = vec![training_group(
+            "matrix",
+            psionic_train::TrainingParameterClass::Matrix,
+            vec![10.0, 20.0, 30.0, 40.0],
+            psionic_train::TrainingOptimizerConfig::sgd(0.1),
+        )];
+        let remote_groups = local_groups.clone();
+        let contract = fsdp_contract(vec![full_shard_matrix_contract("matrix", 4)]);
+        let local_batch =
+            training_batch("batch.local.clip", &[("matrix", vec![3.0, 4.0, 0.0, 0.0])]);
+        let remote_batch =
+            training_batch("batch.remote.clip", &[("matrix", vec![0.0, 0.0, 0.0, 0.0])]);
+
+        let receipt = fsdp_apply_gradients(
+            local_groups.as_mut_slice(),
+            &local_batch,
+            &contract,
+            FsdpApplyGradientsOptions::new()
+                .with_group(group)
+                .with_remote_rank_group_states(1, remote_groups)
+                .with_remote_rank_batch(1, remote_batch)
+                .with_clip_global_norm(2.5),
+        )
+        .expect("global-norm clipping should succeed");
+
+        assert!((receipt.global_gradient_norm_l2 - 5.0).abs() < 1e-6);
+        assert_eq!(receipt.global_clipping_scale, Some(0.5));
+        assert_eq!(
+            training_buffer_values("matrix", &local_groups[0].parameter).expect("matrix values"),
+            &[9.85, 19.8, 30.0, 40.0],
+        );
+        assert!((receipt.groups[0].local_shard_gradient_norm_l2 - 2.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn fsdp_apply_gradients_refuses_invalid_remote_maps_and_unsupported_layouts() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let group =
+            init(DistributedInitOptions::new().with_bootstrap(sample_two_rank_bootstrap("node-a")))
+                .expect("rank 0 bootstrap");
+        let mut local_groups = vec![training_group(
+            "matrix",
+            psionic_train::TrainingParameterClass::Matrix,
+            vec![10.0, 20.0, 30.0, 40.0],
+            psionic_train::TrainingOptimizerConfig::sgd(0.1),
+        )];
+        let contract = fsdp_contract(vec![full_shard_matrix_contract("matrix", 4)]);
+        let local_batch = training_batch(
+            "batch.local.refusal",
+            &[("matrix", vec![1.0, 1.0, 1.0, 1.0])],
+        );
+        let remote_groups = local_groups.clone();
+        let remote_batch = training_batch(
+            "batch.remote.refusal",
+            &[("matrix", vec![1.0, 1.0, 1.0, 1.0])],
+        );
+
+        let invalid_rank_error = fsdp_apply_gradients(
+            local_groups.as_mut_slice(),
+            &local_batch,
+            &contract,
+            FsdpApplyGradientsOptions::new()
+                .with_group(group.clone())
+                .with_remote_rank_group_states(0, remote_groups.clone())
+                .with_remote_rank_batch(1, remote_batch.clone()),
+        )
+        .expect_err("local rank should not appear in the remote-state map");
+        assert!(matches!(
+            invalid_rank_error,
+            FsdpApplyGradientsError::InvalidRemoteRanks {
+                kind: "state",
+                invalid_ranks,
+                world_size: 2,
+            } if invalid_ranks == vec![0]
+        ));
+
+        let bad_contract = fsdp_contract(vec![DistributedOptimizerGroupContract::new(
+            "matrix",
+            psionic_train::TrainingParameterClass::Matrix,
+            psionic_train::TrainingParameterShardLayout::new(
+                TrainingParameterShardKind::FullShard,
+                two_rank_full_shard_placements(4),
+            ),
+            psionic_train::TrainingParameterShardLayout::new(
+                TrainingParameterShardKind::Replicated,
+                two_rank_replicated_placements(4),
+            ),
+            psionic_train::TrainingOptimizerStateShardLayout::new(
+                TrainingOptimizerStateShardKind::ZeroStage3,
+                psionic_train::TrainingOptimizerShardResidency::DeviceResident,
+                two_rank_full_shard_placements(4),
+            ),
+            OptimizerStateResidency::Offloaded,
+        )]);
+        let unsupported_layout_error = fsdp_apply_gradients(
+            local_groups.as_mut_slice(),
+            &local_batch,
+            &bad_contract,
+            FsdpApplyGradientsOptions::new()
+                .with_group(group)
+                .with_remote_rank_group_states(1, remote_groups)
+                .with_remote_rank_batch(1, remote_batch),
+        )
+        .expect_err("unsupported layout combinations should refuse");
+        assert!(matches!(
+            unsupported_layout_error,
+            FsdpApplyGradientsError::UnsupportedGroupLayout {
+                group_id,
+                parameter_kind: TrainingParameterShardKind::FullShard,
+                gradient_kind: TrainingParameterShardKind::Replicated,
+                optimizer_state_kind: TrainingOptimizerStateShardKind::ZeroStage3,
+            } if group_id == "matrix"
+        ));
     }
 }
