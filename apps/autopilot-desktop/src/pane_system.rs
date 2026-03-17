@@ -466,6 +466,12 @@ pub enum LocalInferencePaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AttnResLabPaneAction {
     SetView(crate::app_state::AttnResLabViewMode),
+    CycleView,
+    TogglePlayback,
+    ResetTraining,
+    DecreaseSpeed,
+    IncreaseSpeed,
+    ToggleHelp,
     RefreshSnapshot,
     PreviousSublayer,
     NextSublayer,
@@ -3286,20 +3292,70 @@ pub fn attnres_lab_inference_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn attnres_lab_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn attnres_lab_toggle_playback_button_bounds(content_bounds: Bounds) -> Bounds {
     let inference = attnres_lab_inference_button_bounds(content_bounds);
     Bounds::new(
         inference.max_x() + JOB_INBOX_BUTTON_GAP,
         inference.origin.y,
-        118.0,
+        102.0,
         inference.size.height,
+    )
+}
+
+pub fn attnres_lab_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let playback = attnres_lab_toggle_playback_button_bounds(content_bounds);
+    Bounds::new(
+        playback.max_x() + JOB_INBOX_BUTTON_GAP,
+        playback.origin.y,
+        96.0,
+        playback.size.height,
+    )
+}
+
+pub fn attnres_lab_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let overview = attnres_lab_overview_button_bounds(content_bounds);
+    Bounds::new(
+        overview.origin.x,
+        overview.max_y() + JOB_INBOX_BUTTON_GAP,
+        118.0,
+        overview.size.height,
+    )
+}
+
+pub fn attnres_lab_slower_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = attnres_lab_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        92.0,
+        refresh.size.height,
+    )
+}
+
+pub fn attnres_lab_faster_button_bounds(content_bounds: Bounds) -> Bounds {
+    let slower = attnres_lab_slower_button_bounds(content_bounds);
+    Bounds::new(
+        slower.max_x() + JOB_INBOX_BUTTON_GAP,
+        slower.origin.y,
+        92.0,
+        slower.size.height,
+    )
+}
+
+pub fn attnres_lab_help_button_bounds(content_bounds: Bounds) -> Bounds {
+    let faster = attnres_lab_faster_button_bounds(content_bounds);
+    Bounds::new(
+        faster.max_x() + JOB_INBOX_BUTTON_GAP,
+        faster.origin.y,
+        88.0,
+        faster.size.height,
     )
 }
 
 pub fn attnres_lab_previous_sublayer_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.max_x() - CHAT_PAD - 212.0,
-        content_bounds.origin.y + CHAT_PAD,
+        attnres_lab_refresh_button_bounds(content_bounds).origin.y,
         100.0,
         JOB_INBOX_BUTTON_HEIGHT,
     )
@@ -7249,10 +7305,28 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
                     crate::app_state::AttnResLabViewMode::Inference,
                 )))
+            } else if attnres_lab_toggle_playback_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::TogglePlayback,
+                ))
+            } else if attnres_lab_reset_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::ResetTraining,
+                ))
             } else if attnres_lab_refresh_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::AttnResLab(
                     AttnResLabPaneAction::RefreshSnapshot,
                 ))
+            } else if attnres_lab_slower_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::DecreaseSpeed,
+                ))
+            } else if attnres_lab_faster_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::IncreaseSpeed,
+                ))
+            } else if attnres_lab_help_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::ToggleHelp))
             } else if attnres_lab_previous_sublayer_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::AttnResLab(
                     AttnResLabPaneAction::PreviousSublayer,

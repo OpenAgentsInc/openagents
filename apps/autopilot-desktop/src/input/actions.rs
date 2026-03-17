@@ -1,5 +1,4 @@
 use super::*;
-use crate::app_state::PaneStatusAccess;
 use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmMissionControlSummaryCommand, AppleFmWorkbenchCommand,
     AppleFmWorkbenchOperation, AppleFmWorkbenchToolMode,
@@ -8957,40 +8956,34 @@ pub(super) fn run_attnres_lab_action(
 ) -> bool {
     match action {
         AttnResLabPaneAction::SetView(view) => {
-            state.attnres_lab.selected_view = view;
-            state
-                .attnres_lab
-                .pane_set_ready(format!("Selected {} view", view.label()));
+            crate::attnres_lab_control::select_view(&mut state.attnres_lab, view);
+        }
+        AttnResLabPaneAction::CycleView => {
+            crate::attnres_lab_control::cycle_view(&mut state.attnres_lab);
+        }
+        AttnResLabPaneAction::TogglePlayback => {
+            crate::attnres_lab_control::toggle_playback(&mut state.attnres_lab);
+        }
+        AttnResLabPaneAction::ResetTraining => {
+            crate::attnres_lab_control::reset_training(&mut state.attnres_lab);
+        }
+        AttnResLabPaneAction::DecreaseSpeed => {
+            crate::attnres_lab_control::adjust_speed(&mut state.attnres_lab, -1);
+        }
+        AttnResLabPaneAction::IncreaseSpeed => {
+            crate::attnres_lab_control::adjust_speed(&mut state.attnres_lab, 1);
+        }
+        AttnResLabPaneAction::ToggleHelp => {
+            crate::attnres_lab_control::toggle_help(&mut state.attnres_lab);
         }
         AttnResLabPaneAction::RefreshSnapshot => {
             crate::attnres_lab_control::refresh_live_snapshot(&mut state.attnres_lab);
         }
         AttnResLabPaneAction::PreviousSublayer => {
-            state.attnres_lab.selected_sublayer =
-                state.attnres_lab.selected_sublayer.saturating_sub(1);
-            state.attnres_lab.clamp_selected_sublayer();
-            let label = state
-                .attnres_lab
-                .current_sublayer()
-                .map(|sublayer| sublayer.label.as_str())
-                .unwrap_or("none");
-            state
-                .attnres_lab
-                .pane_set_ready(format!("Selected previous sublayer: {label}"));
+            crate::attnres_lab_control::move_selected_sublayer(&mut state.attnres_lab, -1);
         }
         AttnResLabPaneAction::NextSublayer => {
-            let max_index = state.attnres_lab.snapshot.sublayers.len().saturating_sub(1);
-            state.attnres_lab.selected_sublayer =
-                (state.attnres_lab.selected_sublayer + 1).min(max_index);
-            state.attnres_lab.clamp_selected_sublayer();
-            let label = state
-                .attnres_lab
-                .current_sublayer()
-                .map(|sublayer| sublayer.label.as_str())
-                .unwrap_or("none");
-            state
-                .attnres_lab
-                .pane_set_ready(format!("Selected next sublayer: {label}"));
+            crate::attnres_lab_control::move_selected_sublayer(&mut state.attnres_lab, 1);
         }
     }
 

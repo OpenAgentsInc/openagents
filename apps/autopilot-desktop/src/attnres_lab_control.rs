@@ -1,10 +1,15 @@
+use std::fs;
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
 use crate::app_state::{
     AttnResLabBlockSummary, AttnResLabInferenceSummary, AttnResLabMetricPoint, AttnResLabPaneState,
-    AttnResLabSnapshot, AttnResLabSublayerSnapshot, PaneLoadState, PaneStatusAccess,
+    AttnResLabPlaybackState, AttnResLabSnapshot, AttnResLabSublayerSnapshot, AttnResLabViewMode,
+    PaneLoadState, PaneStatusAccess,
 };
 use psionic_models::{
-    AttnResConfig, AttnResDiagnosticsSnapshot, AttnResNextTokenSample, AttnResSublayerKind,
-    TokenId, TokenSequence,
+    AttnResConfig, AttnResCpuReferenceModel, AttnResDiagnosticsSnapshot, AttnResSublayerKind,
 };
 use psionic_runtime::{
     AttnResHiddenParityReport, AttnResLogitParityReport, AttnResTwoPhaseParityBudget,
@@ -16,101 +21,644 @@ use psionic_serve::{
     LocalAttnResTextGenerationService,
 };
 use psionic_train::{
-    AttnResTinyTrainingConfig, AttnResTinyTrainingCorpus, AttnResTinyTrainingOutcome,
-    AttnResTinyTrainingStepMetrics, train_attnres_tiny_next_token,
+    AttnResTinyTrainingConfig, AttnResTinyTrainingCorpus, AttnResTinyTrainingLifecycleStatus,
+    AttnResTinyTrainingRunner, TrainingLoopBudget, train_attnres_tiny_next_token,
 };
+use serde::{Deserialize, Serialize};
 
 const LIVE_SOURCE_BADGE: &str = "psionic.attnres";
-const LIVE_REFRESH_ACTION: &str = "Refreshing Psionic AttnRes snapshot";
+const ATTNRES_LAB_SCHEMA_VERSION: u16 = 1;
+const ATTNRES_LAB_STATE_FILENAME: &str = "attnres-lab.json";
+const ATTNRES_EVENT_LIMIT: usize = 12;
+const DEFAULT_SPEED_MULTIPLIER: usize = 3;
+const MIN_SPEED_MULTIPLIER: usize = 1;
+const MAX_SPEED_MULTIPLIER: usize = 5;
+
+static DESKTOP_ATTNRES_LAB_CONTROLLER: OnceLock<Mutex<DesktopAttnResLabController>> =
+    OnceLock::new();
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PersistedAttnResLabState {
+    schema_version: u16,
+    updated_at_epoch_ms: u64,
+    playback_state: AttnResLabPlaybackState,
+    selected_view: AttnResLabViewMode,
+    selected_sublayer: usize,
+    show_help: bool,
+    current_step: u64,
+    speed_multiplier: usize,
+    events: Vec<String>,
+    last_action: Option<String>,
+    last_error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct DesktopAttnResLabStatus {
+    playback_state: AttnResLabPlaybackState,
+    selected_view: AttnResLabViewMode,
+    selected_sublayer: usize,
+    show_help: bool,
+    snapshot: AttnResLabSnapshot,
+    last_action: Option<String>,
+    last_error: Option<String>,
+}
+
+struct DesktopAttnResLabController {
+    storage_path: PathBuf,
+    state: PersistedAttnResLabState,
+    runner: Option<AttnResTinyTrainingRunner>,
+    snapshot: AttnResLabSnapshot,
+    last_tick_at: Option<Instant>,
+}
 
 pub(crate) fn ensure_live_snapshot_loaded(pane_state: &mut AttnResLabPaneState) {
-    if pane_state.snapshot.source_badge.starts_with("replay.") {
-        refresh_live_snapshot(pane_state);
+    match with_controller(|controller| Ok(controller.status())) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
     }
 }
 
 pub(crate) fn refresh_live_snapshot(pane_state: &mut AttnResLabPaneState) {
-    pane_state.load_state = PaneLoadState::Loading;
-    pane_state.last_error = None;
-    pane_state.last_action = Some(LIVE_REFRESH_ACTION.to_string());
-    apply_refresh_result(pane_state, build_live_snapshot());
-}
-
-fn apply_refresh_result(
-    pane_state: &mut AttnResLabPaneState,
-    result: Result<AttnResLabSnapshot, String>,
-) {
-    match result {
-        Ok(snapshot) => {
-            let run_label = snapshot.run_label.clone();
-            pane_state.snapshot = snapshot;
-            pane_state.clamp_selected_sublayer();
-            pane_state.pane_set_ready(format!("Loaded Psionic AttnRes snapshot for {run_label}"));
-        }
+    match with_controller(|controller| {
+        controller.state.last_action = Some(String::from("Rebuilt live AttnRes snapshot"));
+        controller.state.last_error = None;
+        controller.refresh_runtime()?;
+        controller.persist()?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
         Err(error) => {
-            let _ =
-                pane_state.pane_set_error(format!("AttnRes live snapshot refresh failed: {error}"));
+            let _ = pane_state.pane_set_error(error);
         }
     }
 }
 
-fn build_live_snapshot() -> Result<AttnResLabSnapshot, String> {
-    let corpus = lab_corpus();
-    let training_config =
-        AttnResTinyTrainingConfig::reference().map_err(|error| error.to_string())?;
-    let training_outcome = train_attnres_tiny_next_token(&corpus, &training_config)
-        .map_err(|error| error.to_string())?;
+pub(crate) fn cycle_view(pane_state: &mut AttnResLabPaneState) {
+    match with_controller(|controller| {
+        controller.state.selected_view = next_view(controller.state.selected_view);
+        controller.state.last_action = Some(format!(
+            "Selected {} view",
+            controller.state.selected_view.label()
+        ));
+        controller.state.last_error = None;
+        controller.persist()?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
 
-    let prompt_sample = corpus
-        .held_out_samples
-        .first()
-        .cloned()
-        .or_else(|| corpus.training_samples.first().cloned())
-        .ok_or_else(|| String::from("AttnRes lab corpus is empty"))?;
-    let request = AttnResTextGenerationRequest::new(
-        "attnres-lab-preview",
-        prompt_sample.input_tokens.clone(),
-        2,
-    )
-    .with_requested_model_id(
-        training_outcome
-            .trained_model
-            .descriptor()
-            .model
-            .model_id
-            .clone(),
-    );
-    let generation_service =
-        LocalAttnResTextGenerationService::new().with_model(training_outcome.trained_model.clone());
-    let generation_response = match generation_service
-        .execute(&request)
-        .map_err(|error| error.to_string())?
-    {
-        AttnResTextGenerationOutcome::Completed { response } => response,
-        AttnResTextGenerationOutcome::Refused { refusal } => {
-            return Err(format!("AttnRes generation refused: {}", refusal.detail));
+pub(crate) fn select_view(pane_state: &mut AttnResLabPaneState, view: AttnResLabViewMode) {
+    match with_controller(|controller| {
+        controller.state.selected_view = view;
+        controller.state.last_action = Some(format!("Selected {} view", view.label()));
+        controller.state.last_error = None;
+        controller.persist()?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn move_selected_sublayer(pane_state: &mut AttnResLabPaneState, delta: isize) {
+    match with_controller(|controller| {
+        controller.move_selected_sublayer(delta)?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn adjust_speed(pane_state: &mut AttnResLabPaneState, delta: isize) {
+    match with_controller(|controller| {
+        controller.adjust_speed(delta)?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn toggle_help(pane_state: &mut AttnResLabPaneState) {
+    match with_controller(|controller| {
+        controller.state.show_help = !controller.state.show_help;
+        controller.state.last_action = Some(if controller.state.show_help {
+            String::from("AttnRes help overlay shown")
+        } else {
+            String::from("AttnRes help overlay hidden")
+        });
+        controller.state.last_error = None;
+        controller.persist()?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn toggle_playback(pane_state: &mut AttnResLabPaneState) {
+    let now = Instant::now();
+    match with_controller(|controller| {
+        controller.toggle_playback(now)?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn reset_training(pane_state: &mut AttnResLabPaneState) {
+    match with_controller(|controller| {
+        controller.reset_training()?;
+        Ok(controller.status())
+    }) {
+        Ok(status) => sync_pane_state(pane_state, status),
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+        }
+    }
+}
+
+pub(crate) fn background_tick(pane_state: &mut AttnResLabPaneState) -> bool {
+    let Some(controller) = DESKTOP_ATTNRES_LAB_CONTROLLER.get() else {
+        return false;
+    };
+    let mut controller = match controller.lock() {
+        Ok(controller) => controller,
+        Err(_) => {
+            let _ = pane_state.pane_set_error("AttnRes lab controller lock poisoned");
+            return true;
         }
     };
+    match controller.tick(Instant::now()) {
+        Ok(changed) => {
+            if changed {
+                sync_pane_state(pane_state, controller.status());
+            }
+            changed
+        }
+        Err(error) => {
+            let _ = pane_state.pane_set_error(error);
+            true
+        }
+    }
+}
 
+pub(crate) fn running_poll_interval(pane_state: &AttnResLabPaneState) -> Option<Duration> {
+    pane_state
+        .playback_state
+        .is_running()
+        .then_some(speed_poll_interval(pane_state.snapshot.speed_multiplier))
+}
+
+fn with_controller<T>(
+    f: impl FnOnce(&mut DesktopAttnResLabController) -> Result<T, String>,
+) -> Result<T, String> {
+    let controller = DESKTOP_ATTNRES_LAB_CONTROLLER
+        .get_or_init(|| Mutex::new(DesktopAttnResLabController::load(attnres_lab_state_path())));
+    let mut controller = controller
+        .lock()
+        .map_err(|_| String::from("AttnRes lab controller lock poisoned"))?;
+    f(&mut controller)
+}
+
+fn sync_pane_state(pane_state: &mut AttnResLabPaneState, status: DesktopAttnResLabStatus) {
+    pane_state.playback_state = status.playback_state;
+    pane_state.show_help = status.show_help;
+    pane_state.selected_view = status.selected_view;
+    pane_state.selected_sublayer = status.selected_sublayer;
+    pane_state.snapshot = status.snapshot;
+    pane_state.clamp_selected_sublayer();
+    pane_state.load_state = if status.last_error.is_some() {
+        PaneLoadState::Error
+    } else {
+        PaneLoadState::Ready
+    };
+    pane_state.last_action = status.last_action;
+    pane_state.last_error = status.last_error;
+}
+
+impl DesktopAttnResLabController {
+    fn load(storage_path: PathBuf) -> Self {
+        let mut state = fs::read(storage_path.as_path())
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<PersistedAttnResLabState>(&raw).ok())
+            .unwrap_or_else(default_persisted_state);
+        normalize_persisted_state(&mut state);
+
+        let mut controller = Self {
+            storage_path,
+            state,
+            runner: None,
+            snapshot: crate::app_state::replay_attnres_lab_snapshot(),
+            last_tick_at: None,
+        };
+        if let Err(error) = controller.refresh_runtime() {
+            controller.state.last_error = Some(format!(
+                "Failed to hydrate persisted AttnRes state: {error}"
+            ));
+            controller.state.last_action = Some(String::from(
+                "Showing replay fallback until live Psionic state is available",
+            ));
+        }
+        controller
+    }
+
+    fn status(&self) -> DesktopAttnResLabStatus {
+        DesktopAttnResLabStatus {
+            playback_state: self.state.playback_state,
+            selected_view: self.state.selected_view,
+            selected_sublayer: self.state.selected_sublayer,
+            show_help: self.state.show_help,
+            snapshot: self.snapshot.clone(),
+            last_action: self.state.last_action.clone(),
+            last_error: self.state.last_error.clone(),
+        }
+    }
+
+    fn persist(&mut self) -> Result<(), String> {
+        if let Some(parent) = self.storage_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create AttnRes lab state dir: {error}"))?;
+        }
+        self.state.schema_version = ATTNRES_LAB_SCHEMA_VERSION;
+        self.state.updated_at_epoch_ms = current_epoch_ms();
+        let raw = serde_json::to_vec_pretty(&self.state)
+            .map_err(|error| format!("Failed to encode AttnRes lab state: {error}"))?;
+        fs::write(self.storage_path.as_path(), raw)
+            .map_err(|error| format!("Failed to write AttnRes lab state: {error}"))
+    }
+
+    fn refresh_runtime(&mut self) -> Result<(), String> {
+        let runner = build_runner_to_step(self.state.current_step)?;
+        let snapshot = build_snapshot_from_runner(
+            &runner,
+            self.state.speed_multiplier,
+            self.state.playback_state,
+            self.state.events.as_slice(),
+        )?;
+        self.runner = Some(runner);
+        self.snapshot = snapshot;
+        self.sync_selection_bounds();
+        Ok(())
+    }
+
+    fn move_selected_sublayer(&mut self, delta: isize) -> Result<(), String> {
+        let len = self.snapshot.sublayers.len();
+        if len == 0 {
+            self.state.selected_sublayer = 0;
+        } else {
+            self.state.selected_sublayer =
+                (self.state.selected_sublayer as isize + delta).rem_euclid(len as isize) as usize;
+        }
+        let label = self
+            .snapshot
+            .sublayer(self.state.selected_sublayer)
+            .map(|sublayer| sublayer.label.as_str())
+            .unwrap_or("none");
+        self.state.last_action = Some(format!("Selected sublayer {label}"));
+        self.state.last_error = None;
+        self.persist()
+    }
+
+    fn adjust_speed(&mut self, delta: isize) -> Result<(), String> {
+        let next = ((self.state.speed_multiplier as isize) + delta)
+            .clamp(MIN_SPEED_MULTIPLIER as isize, MAX_SPEED_MULTIPLIER as isize)
+            as usize;
+        if next == self.state.speed_multiplier {
+            return Ok(());
+        }
+        self.state.speed_multiplier = next;
+        self.snapshot.speed_multiplier = next;
+        self.push_event(format!("speed -> {}x", next));
+        self.state.last_action = Some(format!("AttnRes speed set to {}x", next));
+        self.state.last_error = None;
+        self.persist()
+    }
+
+    fn reset_training(&mut self) -> Result<(), String> {
+        self.reset_training_internal()?;
+        self.state.last_action = Some(String::from("AttnRes lab reset to seeded state"));
+        self.persist()
+    }
+
+    fn reset_training_internal(&mut self) -> Result<(), String> {
+        self.state.playback_state = AttnResLabPlaybackState::Armed;
+        self.state.current_step = 0;
+        self.state.speed_multiplier = DEFAULT_SPEED_MULTIPLIER;
+        self.state.last_error = None;
+        self.state.events = bootstrap_events();
+        self.last_tick_at = None;
+        self.refresh_runtime()
+    }
+
+    fn toggle_playback(&mut self, now: Instant) -> Result<(), String> {
+        match self.state.playback_state {
+            AttnResLabPlaybackState::Armed => {
+                self.state.playback_state = AttnResLabPlaybackState::Running;
+                self.state.last_action = Some(String::from("Started AttnRes training"));
+                self.state.last_error = None;
+                self.push_event("new training run started");
+                self.snapshot.run_status = self.state.playback_state.status_label().to_string();
+                self.last_tick_at = Some(now);
+            }
+            AttnResLabPlaybackState::Running => {
+                self.state.playback_state = AttnResLabPlaybackState::Paused;
+                self.state.last_action = Some(String::from("Paused AttnRes training"));
+                self.state.last_error = None;
+                self.push_event("training paused");
+                self.snapshot.run_status = self.state.playback_state.status_label().to_string();
+                self.last_tick_at = None;
+            }
+            AttnResLabPlaybackState::Paused => {
+                self.state.playback_state = AttnResLabPlaybackState::Running;
+                self.state.last_action = Some(String::from("Resumed AttnRes training"));
+                self.state.last_error = None;
+                self.push_event("training resumed");
+                self.snapshot.run_status = self.state.playback_state.status_label().to_string();
+                self.last_tick_at = Some(now);
+            }
+            AttnResLabPlaybackState::Completed => {
+                self.reset_training_internal()?;
+                self.state.playback_state = AttnResLabPlaybackState::Running;
+                self.state.last_action = Some(String::from("Started a fresh AttnRes run"));
+                self.state.last_error = None;
+                self.push_event("new training run started");
+                self.snapshot.run_status = self.state.playback_state.status_label().to_string();
+                self.last_tick_at = Some(now);
+            }
+        }
+        self.persist()
+    }
+
+    fn tick(&mut self, now: Instant) -> Result<bool, String> {
+        if !self.state.playback_state.is_running() {
+            return Ok(false);
+        }
+        let interval = speed_poll_interval(self.state.speed_multiplier);
+        if self
+            .last_tick_at
+            .is_some_and(|last_tick| now.saturating_duration_since(last_tick) < interval)
+        {
+            return Ok(false);
+        }
+
+        let previous_snapshot = self.snapshot.clone();
+        let update = {
+            let runner = self.ensure_runner()?;
+            runner.step().map_err(|error| error.to_string())?
+        };
+
+        self.state.current_step = update.current_global_step;
+        self.last_tick_at = Some(now);
+        self.snapshot = build_snapshot_from_update(
+            &update,
+            self.state.speed_multiplier,
+            self.state.playback_state,
+            self.state.events.as_slice(),
+        )?;
+        self.sync_selection_bounds();
+        self.note_training_step(&previous_snapshot);
+
+        if update.lifecycle == AttnResTinyTrainingLifecycleStatus::Completed {
+            self.state.playback_state = AttnResLabPlaybackState::Completed;
+            self.snapshot.run_status = self.state.playback_state.status_label().to_string();
+            self.last_tick_at = None;
+            self.push_event("run complete; press Space to restart or r to reset");
+            self.state.last_action = Some(String::from("AttnRes training run completed"));
+        } else {
+            self.snapshot.run_status = self.state.playback_state.status_label().to_string();
+            self.state.last_action = Some(format!(
+                "Applied AttnRes training step {} of {}",
+                update.current_global_step, update.max_steps
+            ));
+        }
+        self.state.last_error = None;
+        self.snapshot.events = self.state.events.clone();
+        self.persist()?;
+        Ok(true)
+    }
+
+    fn ensure_runner(&mut self) -> Result<&mut AttnResTinyTrainingRunner, String> {
+        let needs_refresh = self.runner.as_ref().is_none_or(|runner| {
+            runner.current_update().current_global_step != self.state.current_step
+        });
+        if needs_refresh {
+            self.refresh_runtime()?;
+        }
+        self.runner
+            .as_mut()
+            .ok_or_else(|| String::from("AttnRes runner is unavailable"))
+    }
+
+    fn note_training_step(&mut self, previous_snapshot: &AttnResLabSnapshot) {
+        self.push_event(format!(
+            "step {}/{} loss {:.3} selectivity {:.0}%",
+            self.snapshot.step,
+            self.snapshot.max_steps,
+            self.snapshot.training_loss,
+            self.snapshot.avg_selectivity * 100.0
+        ));
+
+        if self.snapshot.step == 1 {
+            self.push_event("loss stream live; zero-init routing starts near-uniform");
+        }
+
+        let previous_band = routing_band(previous_snapshot.avg_selectivity);
+        let next_band = routing_band(self.snapshot.avg_selectivity);
+        if previous_band != next_band {
+            self.push_event(format!("routing regime -> {}", band_description(next_band)));
+        }
+
+        if let (Some(previous), Some(current)) = (
+            previous_snapshot.sublayer(self.state.selected_sublayer),
+            self.snapshot.sublayer(self.state.selected_sublayer),
+        ) {
+            if previous.dominant_source_label != current.dominant_source_label {
+                self.push_event(format!(
+                    "{} now favors {} ({:.0}%)",
+                    current.label,
+                    current.dominant_source_label,
+                    current.dominant_weight * 100.0
+                ));
+            }
+        }
+    }
+
+    fn push_event(&mut self, message: impl Into<String>) {
+        self.state.events.insert(
+            0,
+            format!("s{:03}  {}", self.state.current_step, message.into()),
+        );
+        if self.state.events.len() > ATTNRES_EVENT_LIMIT {
+            self.state.events.truncate(ATTNRES_EVENT_LIMIT);
+        }
+        self.snapshot.events = self.state.events.clone();
+    }
+
+    fn sync_selection_bounds(&mut self) {
+        self.state.selected_sublayer = self
+            .state
+            .selected_sublayer
+            .min(self.snapshot.sublayers.len().saturating_sub(1));
+    }
+}
+
+fn default_persisted_state() -> PersistedAttnResLabState {
+    PersistedAttnResLabState {
+        schema_version: ATTNRES_LAB_SCHEMA_VERSION,
+        updated_at_epoch_ms: current_epoch_ms(),
+        playback_state: AttnResLabPlaybackState::Armed,
+        selected_view: AttnResLabViewMode::Overview,
+        selected_sublayer: 0,
+        show_help: false,
+        current_step: 0,
+        speed_multiplier: DEFAULT_SPEED_MULTIPLIER,
+        events: bootstrap_events(),
+        last_action: Some(String::from("AttnRes lab armed and ready")),
+        last_error: None,
+    }
+}
+
+fn normalize_persisted_state(state: &mut PersistedAttnResLabState) {
+    state.speed_multiplier = state
+        .speed_multiplier
+        .clamp(MIN_SPEED_MULTIPLIER, MAX_SPEED_MULTIPLIER);
+    let max_steps = lab_training_config()
+        .map(|config| config.budget.max_steps)
+        .unwrap_or(1);
+    state.current_step = state.current_step.min(max_steps);
+    if state.current_step >= max_steps {
+        state.playback_state = AttnResLabPlaybackState::Completed;
+    } else if state.playback_state.is_running() {
+        state.playback_state = AttnResLabPlaybackState::Paused;
+        state.last_action = Some(String::from(
+            "Restored AttnRes run in paused state after app restart",
+        ));
+    }
+    if state.events.is_empty() {
+        state.events = bootstrap_events();
+    }
+}
+
+fn attnres_lab_state_path() -> PathBuf {
+    crate::runtime_log::autopilot_log_dir().join(ATTNRES_LAB_STATE_FILENAME)
+}
+
+fn current_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u64::MAX as u128) as u64)
+        .unwrap_or(0)
+}
+
+fn speed_poll_interval(speed: usize) -> Duration {
+    match speed.clamp(MIN_SPEED_MULTIPLIER, MAX_SPEED_MULTIPLIER) {
+        1 => Duration::from_millis(260),
+        2 => Duration::from_millis(150),
+        3 => Duration::from_millis(85),
+        4 => Duration::from_millis(45),
+        _ => Duration::from_millis(20),
+    }
+}
+
+fn next_view(view: AttnResLabViewMode) -> AttnResLabViewMode {
+    let index = AttnResLabViewMode::ALL
+        .iter()
+        .position(|candidate| *candidate == view)
+        .unwrap_or_default();
+    AttnResLabViewMode::ALL[(index + 1) % AttnResLabViewMode::ALL.len()]
+}
+
+fn bootstrap_events() -> Vec<String> {
+    let corpus = lab_corpus().ok();
+    let block_line = corpus
+        .as_ref()
+        .and_then(|corpus| corpus.config.block_size().ok())
+        .map(|block_size| {
+            format!(
+                "s000  block size {} over {} residual blocks",
+                block_size,
+                corpus
+                    .as_ref()
+                    .map(|corpus| corpus.config.num_blocks)
+                    .unwrap_or(0)
+            )
+        })
+        .unwrap_or_else(|| String::from("s000  block schedule unavailable"));
+    vec![
+        block_line,
+        String::from("s000  inspect sublayers with Left/Right and switch views with Tab or 1/2/3"),
+        String::from("s000  dashboard armed; press Space to start training"),
+    ]
+}
+
+fn build_runner_to_step(step: u64) -> Result<AttnResTinyTrainingRunner, String> {
+    let corpus = lab_corpus()?;
+    let config = lab_training_config()?;
+    let mut runner = AttnResTinyTrainingRunner::new(&corpus, &config)
+        .map_err(|error| format!("Failed to seed AttnRes runner: {error}"))?;
+    let target_step = step.min(config.budget.max_steps);
+    while runner.current_update().current_global_step < target_step {
+        runner.step().map_err(|error| error.to_string())?;
+    }
+    Ok(runner)
+}
+
+fn build_snapshot_from_runner(
+    runner: &AttnResTinyTrainingRunner,
+    speed_multiplier: usize,
+    playback_state: AttnResLabPlaybackState,
+    events: &[String],
+) -> Result<AttnResLabSnapshot, String> {
+    build_snapshot_from_update(
+        &runner.current_update(),
+        speed_multiplier,
+        playback_state,
+        events,
+    )
+}
+
+fn build_snapshot_from_update(
+    update: &psionic_train::AttnResTinyTrainingUpdate,
+    speed_multiplier: usize,
+    playback_state: AttnResLabPlaybackState,
+    events: &[String],
+) -> Result<AttnResLabSnapshot, String> {
+    let corpus = lab_corpus()?;
+    let training_config = lab_training_config()?;
+    let (_initial_model, current_model) =
+        materialize_models_for_step(&corpus, &training_config, update.current_global_step)?;
+    let generation_response =
+        generate_preview_response(&corpus, &current_model, update.current_global_step)?;
     let inspection_sequence = generation_response.full_sequence.clone();
-    let (_, diagnostics) = training_outcome
-        .trained_model
-        .forward_hidden_with_diagnostics(std::slice::from_ref(&inspection_sequence))
-        .map_err(|error| error.to_string())?;
-    let standard_hidden = training_outcome
-        .trained_model
+    let standard_hidden = current_model
         .forward_hidden(std::slice::from_ref(&inspection_sequence))
         .map_err(|error| error.to_string())?;
-    let standard_logits = training_outcome
-        .trained_model
+    let standard_logits = current_model
         .forward(std::slice::from_ref(&inspection_sequence))
         .map_err(|error| error.to_string())?;
-    let two_phase_hidden = training_outcome
-        .trained_model
+    let two_phase_hidden = current_model
         .forward_two_phase_hidden(std::slice::from_ref(&inspection_sequence))
         .map_err(|error| error.to_string())?;
-    let two_phase_logits = training_outcome
-        .trained_model
+    let two_phase_logits = current_model
         .forward_two_phase(std::slice::from_ref(&inspection_sequence))
         .map_err(|error| error.to_string())?;
 
@@ -128,12 +676,8 @@ fn build_live_snapshot() -> Result<AttnResLabSnapshot, String> {
     )
     .map_err(|error| error.to_string())?;
 
-    let (_, baseline_diagnostics) = training_outcome
-        .initial_model
-        .forward_hidden_with_diagnostics(std::slice::from_ref(&inspection_sequence))
-        .map_err(|error| error.to_string())?;
-    let baseline_selectivity = mean_selectivity_from_diagnostics(&baseline_diagnostics);
-    let sublayers = map_sublayers(&diagnostics, &corpus.config);
+    let (metrics, final_ema_loss) = collect_metric_points(update.current_global_step)?;
+    let sublayers = map_sublayers(&update.diagnostics, &corpus.config);
     let avg_selectivity = mean_selectivity(sublayers.as_slice());
     let block_summaries = build_block_summaries(sublayers.as_slice(), corpus.config.num_blocks);
     let final_block_index = block_summaries
@@ -144,61 +688,47 @@ fn build_live_snapshot() -> Result<AttnResLabSnapshot, String> {
         .iter()
         .filter(|sublayer| sublayer.target_block == final_block_index)
         .count();
-    let completed_blocks = diagnostics.final_completed_blocks;
+    let completed_blocks = update.diagnostics.final_completed_blocks;
     let active_block = completed_blocks
-        + if diagnostics.final_partial_block_present {
+        + if update.diagnostics.final_partial_block_present {
             1
         } else {
             0
         };
     let active_block = active_block.max(1);
-    let final_training_loss = training_outcome.summary.final_training_mean_loss;
-    let final_ema_loss = ema_loss(
-        training_outcome.step_metrics.as_slice(),
-        final_training_loss,
-    );
-    let metrics = build_metric_points(
-        &training_outcome,
-        baseline_selectivity,
-        avg_selectivity,
-        final_ema_loss,
-    );
     let inference = build_inference_summary(
         &corpus.config,
-        &diagnostics,
+        &update.diagnostics,
         &generation_response,
         &hidden_parity,
         &logit_parity,
     );
-    let events = build_events(
-        &corpus,
-        &training_config,
-        &training_outcome,
-        &generation_response,
-        &hidden_parity,
-        &logit_parity,
-    );
-    let model_descriptor = training_outcome.trained_model.descriptor();
 
     Ok(AttnResLabSnapshot {
         source_badge: LIVE_SOURCE_BADGE.to_string(),
         model_label: format!(
             "{} // {}",
-            model_descriptor.model.model_id, model_descriptor.model.revision
+            current_model.descriptor().model.model_id,
+            current_model.descriptor().model.revision
         ),
         architecture_label: format!(
             "{} sublayers // {} residual blocks // {} heads",
             corpus.config.num_layers, corpus.config.num_blocks, corpus.config.num_heads
         ),
         run_label: format!(
-            "{} // request {}",
-            training_config.run_id, generation_response.request_id
+            "{} // {}",
+            update.run_id,
+            update
+                .checkpoint
+                .checkpoint_ref
+                .clone()
+                .unwrap_or_else(|| String::from("seed"))
         ),
-        run_status: String::from("psionic snapshot ready"),
-        step: training_outcome.summary.run_summary.completed_steps,
-        max_steps: training_outcome.summary.run_summary.budget.max_steps,
-        speed_multiplier: 1,
-        training_loss: final_training_loss,
+        run_status: playback_state.status_label().to_string(),
+        step: update.current_global_step,
+        max_steps: update.max_steps,
+        speed_multiplier,
+        training_loss: update.current_training_mean_loss,
         ema_loss: final_ema_loss,
         avg_selectivity,
         active_block,
@@ -208,67 +738,101 @@ fn build_live_snapshot() -> Result<AttnResLabSnapshot, String> {
         sublayers,
         block_summaries,
         inference,
-        events,
+        events: events.to_vec(),
     })
 }
 
-fn lab_corpus() -> AttnResTinyTrainingCorpus {
-    let config = AttnResConfig::new(8, 4, 2)
-        .with_num_heads(2)
-        .with_d_ff(16)
-        .with_vocab_size(8);
-    AttnResTinyTrainingCorpus {
-        description: String::from("OpenAgents desktop AttnRes lab reference corpus"),
-        config,
-        training_samples: vec![
-            sample("train-001", &[0, 1, 2], 3),
-            sample("train-002", &[1, 2, 3], 4),
-            sample("train-003", &[2, 3, 4], 5),
-            sample("train-004", &[3, 4, 5], 6),
-            sample("train-005", &[4, 5, 6], 7),
-            sample("train-006", &[5, 6, 7], 0),
-        ],
-        held_out_samples: vec![
-            sample("hold-001", &[6, 7, 0], 1),
-            sample("hold-002", &[7, 0, 1], 2),
-        ],
+fn collect_metric_points(max_step: u64) -> Result<(Vec<AttnResLabMetricPoint>, f32), String> {
+    let corpus = lab_corpus()?;
+    let config = lab_training_config()?;
+    let mut runner = AttnResTinyTrainingRunner::new(&corpus, &config)
+        .map_err(|error| format!("Failed to seed AttnRes metrics replay: {error}"))?;
+    let initial = runner.current_update();
+    let mut metrics = vec![AttnResLabMetricPoint {
+        global_step: 0,
+        training_loss: initial.current_training_mean_loss,
+        ema_loss: initial.current_training_mean_loss,
+        selectivity: mean_selectivity_from_diagnostics(&initial.diagnostics),
+    }];
+    let mut ema_loss = initial.current_training_mean_loss;
+    while runner.current_update().current_global_step < max_step {
+        let update = runner.step().map_err(|error| error.to_string())?;
+        ema_loss = if metrics.len() == 1 {
+            update.current_training_mean_loss
+        } else {
+            (ema_loss * 0.6) + (update.current_training_mean_loss * 0.4)
+        };
+        metrics.push(AttnResLabMetricPoint {
+            global_step: update.current_global_step,
+            training_loss: update.current_training_mean_loss,
+            ema_loss,
+            selectivity: mean_selectivity_from_diagnostics(&update.diagnostics),
+        });
+    }
+    Ok((metrics, ema_loss))
+}
+
+fn materialize_models_for_step(
+    corpus: &AttnResTinyTrainingCorpus,
+    training_config: &AttnResTinyTrainingConfig,
+    step: u64,
+) -> Result<(AttnResCpuReferenceModel, AttnResCpuReferenceModel), String> {
+    if step == 0 {
+        let seeded = AttnResCpuReferenceModel::seeded(
+            training_config.model_id.clone(),
+            training_config.model_revision.clone(),
+            corpus.config.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        return Ok((seeded.clone(), seeded));
+    }
+    let mut limited_config = training_config.clone();
+    limited_config.budget = TrainingLoopBudget::new(
+        step,
+        training_config.budget.steps_per_window,
+        training_config.budget.windows_per_cadence,
+    )
+    .map_err(|error| error.to_string())?;
+    let outcome = train_attnres_tiny_next_token(corpus, &limited_config)
+        .map_err(|error| error.to_string())?;
+    Ok((outcome.initial_model, outcome.trained_model))
+}
+
+fn generate_preview_response(
+    corpus: &AttnResTinyTrainingCorpus,
+    model: &AttnResCpuReferenceModel,
+    step: u64,
+) -> Result<AttnResTextGenerationResponse, String> {
+    let prompt_sample = corpus
+        .held_out_samples
+        .first()
+        .cloned()
+        .or_else(|| corpus.training_samples.first().cloned())
+        .ok_or_else(|| String::from("AttnRes lab corpus is empty"))?;
+    let request = AttnResTextGenerationRequest::new(
+        format!("attnres-lab-preview-step-{step}"),
+        prompt_sample.input_tokens.clone(),
+        2,
+    )
+    .with_requested_model_id(model.descriptor().model.model_id.clone());
+    let generation_service = LocalAttnResTextGenerationService::new().with_model(model.clone());
+    match generation_service
+        .execute(&request)
+        .map_err(|error| error.to_string())?
+    {
+        AttnResTextGenerationOutcome::Completed { response } => Ok(response),
+        AttnResTextGenerationOutcome::Refused { refusal } => {
+            Err(format!("AttnRes generation refused: {}", refusal.detail))
+        }
     }
 }
 
-fn sample(sample_id: &str, input_tokens: &[u32], target_token: u32) -> AttnResNextTokenSample {
-    AttnResNextTokenSample::new(
-        sample_id,
-        TokenSequence::new(
-            input_tokens
-                .iter()
-                .copied()
-                .map(TokenId)
-                .collect::<Vec<_>>(),
-        ),
-        TokenId(target_token),
-    )
+fn lab_training_config() -> Result<AttnResTinyTrainingConfig, String> {
+    AttnResTinyTrainingConfig::reference().map_err(|error| error.to_string())
 }
 
-fn build_metric_points(
-    outcome: &AttnResTinyTrainingOutcome,
-    baseline_selectivity: f32,
-    final_selectivity: f32,
-    final_ema_loss: f32,
-) -> Vec<AttnResLabMetricPoint> {
-    vec![
-        AttnResLabMetricPoint {
-            global_step: 0,
-            training_loss: outcome.summary.initial_training_mean_loss,
-            ema_loss: outcome.summary.initial_training_mean_loss,
-            selectivity: baseline_selectivity,
-        },
-        AttnResLabMetricPoint {
-            global_step: outcome.summary.run_summary.completed_steps,
-            training_loss: outcome.summary.final_training_mean_loss,
-            ema_loss: final_ema_loss,
-            selectivity: final_selectivity,
-        },
-    ]
+fn lab_corpus() -> Result<AttnResTinyTrainingCorpus, String> {
+    AttnResTinyTrainingCorpus::reference().map_err(|error| error.to_string())
 }
 
 fn build_inference_summary(
@@ -322,55 +886,6 @@ fn build_inference_summary(
             diagnostics.final_completed_blocks, diagnostics.final_partial_block_present
         ),
     }
-}
-
-fn build_events(
-    corpus: &AttnResTinyTrainingCorpus,
-    training_config: &AttnResTinyTrainingConfig,
-    training_outcome: &AttnResTinyTrainingOutcome,
-    generation_response: &AttnResTextGenerationResponse,
-    hidden_parity: &AttnResHiddenParityReport,
-    logit_parity: &AttnResLogitParityReport,
-) -> Vec<String> {
-    let loss_direction = if training_outcome.summary.final_training_mean_loss
-        <= training_outcome.summary.initial_training_mean_loss
-    {
-        "improved"
-    } else {
-        "moved"
-    };
-    vec![
-        format!(
-            "seeded {} with {} train / {} held-out samples",
-            training_config.run_id,
-            corpus.training_samples.len(),
-            corpus.held_out_samples.len()
-        ),
-        format!(
-            "completed {} steps in the bounded tiny-training lane",
-            training_outcome.summary.run_summary.completed_steps
-        ),
-        format!(
-            "training loss {loss_direction} {:.3} -> {:.3}",
-            training_outcome.summary.initial_training_mean_loss,
-            training_outcome.summary.final_training_mean_loss
-        ),
-        format!(
-            "held-out routing delta {:.3} across {} improved cases",
-            training_outcome.summary.held_out_eval.mean_routing_l2_delta,
-            training_outcome.summary.held_out_eval.improved_case_count
-        ),
-        format!(
-            "generated [{}] from prompt [{}]",
-            format_token_sequence(generation_response.generated_tokens.as_slice()),
-            format_token_sequence(generation_response.prompt_tokens.as_slice())
-        ),
-        format!(
-            "two-phase parity hidden={} logits={}",
-            parity_status_label(hidden_parity.status),
-            parity_status_label(logit_parity.status)
-        ),
-    ]
 }
 
 fn map_sublayers(
@@ -609,16 +1124,6 @@ fn parity_status_label(status: AttnResTwoPhaseParityStatus) -> &'static str {
     }
 }
 
-fn ema_loss(step_metrics: &[AttnResTinyTrainingStepMetrics], fallback: f32) -> f32 {
-    let mut iter = step_metrics.iter();
-    let Some(first) = iter.next() else {
-        return fallback;
-    };
-    iter.fold(first.training_mean_loss, |ema, step| {
-        (ema * 0.6) + (step.training_mean_loss * 0.4)
-    })
-}
-
 fn join_or_dash(values: &[String]) -> String {
     if values.is_empty() {
         String::from("-")
@@ -627,93 +1132,86 @@ fn join_or_dash(values: &[String]) -> String {
     }
 }
 
-fn format_token_sequence(tokens: &[TokenId]) -> String {
-    if tokens.is_empty() {
-        return String::from("-");
+fn band_description(band: &'static str) -> &'static str {
+    match band {
+        "uniform" => "uniform averaging",
+        "forming" => "emerging preferences",
+        _ => "selective routing",
     }
-    tokens
-        .iter()
-        .map(|token| token.as_u32().to_string())
-        .collect::<Vec<_>>()
-        .join(" ")
+}
+
+fn routing_band(selectivity: f32) -> &'static str {
+    if selectivity < 0.18 {
+        "uniform"
+    } else if selectivity < 0.36 {
+        "forming"
+    } else {
+        "selective"
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
+    use tempfile::tempdir;
+
     use super::{
-        LIVE_SOURCE_BADGE, aggregate_source_values, apply_refresh_result, build_live_snapshot,
-        kind_label, parity_status_label, selectivity_from_weights,
+        DEFAULT_SPEED_MULTIPLIER, DesktopAttnResLabController, aggregate_source_values, kind_label,
+        parity_status_label, routing_band, selectivity_from_weights, speed_poll_interval,
     };
-    use crate::app_state::{AttnResLabPaneState, AttnResLabSnapshot, AttnResLabViewMode};
+    use crate::app_state::{AttnResLabPlaybackState, AttnResLabViewMode};
     use psionic_models::{
         AttnResDiagnosticsSnapshot, AttnResSublayerKind, AttnResSublayerSnapshot,
     };
     use psionic_runtime::AttnResTwoPhaseParityStatus;
 
     #[test]
-    fn refresh_result_replaces_replay_snapshot_and_clamps_selection() {
-        let mut pane_state = AttnResLabPaneState::default();
-        pane_state.selected_view = AttnResLabViewMode::Inference;
-        pane_state.selected_sublayer = usize::MAX;
-        let snapshot = AttnResLabSnapshot {
-            source_badge: LIVE_SOURCE_BADGE.to_string(),
-            model_label: String::from("model"),
-            architecture_label: String::from("arch"),
-            run_label: String::from("run"),
-            run_status: String::from("ready"),
-            step: 1,
-            max_steps: 1,
-            speed_multiplier: 1,
-            training_loss: 1.0,
-            ema_loss: 1.0,
-            avg_selectivity: 0.5,
-            active_block: 1,
-            current_block_fill: 1,
-            completed_blocks: 0,
-            metrics: Vec::new(),
-            sublayers: vec![crate::app_state::AttnResLabSublayerSnapshot {
-                sublayer_index: 0,
-                label: String::from("L0 Attention"),
-                kind_label: String::from("attention"),
-                target_block: 0,
-                dominant_source_label: String::from("seed"),
-                dominant_weight: 1.0,
-                selectivity: 0.0,
-                query_norm: 0.0,
-                partial_mass: 0.0,
-                cache_mass: 1.0,
-                source_labels: vec![String::from("seed")],
-                source_logits: vec![0.0],
-                routing_weights: vec![1.0],
-                route_note: String::from("route"),
-                starts_new_block_before: false,
-                completed_blocks_before: 0,
-                completed_blocks_after: 0,
-                partial_block_present_before: false,
-                partial_block_present_after: true,
-            }],
-            block_summaries: Vec::new(),
-            inference: crate::app_state::AttnResLabInferenceSummary {
-                hidden_parity_label: String::from("exact"),
-                logit_parity_label: String::from("exact"),
-                hidden_max_abs_diff: 0.0,
-                logit_max_abs_diff: 0.0,
-                partial_merge_share: 0.0,
-                cache_merge_share: 1.0,
-                block_cache_fill_share: 0.0,
-                schedule_note: String::from("schedule"),
-                merge_note: String::from("merge"),
-                cache_note: String::from("cache"),
-            },
-            events: vec![String::from("loaded")],
-        };
+    fn controller_persists_view_speed_help_and_selection() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("attnres-state.json");
+        let mut controller = DesktopAttnResLabController::load(path.clone());
+        controller.state.selected_view = AttnResLabViewMode::Inference;
+        controller.state.show_help = true;
+        controller.adjust_speed(2).expect("speed change");
+        controller
+            .move_selected_sublayer(1)
+            .expect("move selection");
+        controller.persist().expect("persist");
 
-        apply_refresh_result(&mut pane_state, Ok(snapshot));
+        let reloaded = DesktopAttnResLabController::load(path);
+        assert_eq!(reloaded.state.selected_view, AttnResLabViewMode::Inference);
+        assert!(reloaded.state.show_help);
+        assert_eq!(
+            reloaded.state.speed_multiplier,
+            DEFAULT_SPEED_MULTIPLIER + 2
+        );
+        assert_eq!(reloaded.state.selected_sublayer, 1);
+    }
 
-        assert_eq!(pane_state.snapshot.source_badge, LIVE_SOURCE_BADGE);
-        assert_eq!(pane_state.selected_view, AttnResLabViewMode::Inference);
-        assert_eq!(pane_state.selected_sublayer, 0);
-        assert!(pane_state.last_error.is_none());
+    #[test]
+    fn controller_ticks_to_completion_and_space_restarts() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("attnres-state.json");
+        let mut controller = DesktopAttnResLabController::load(path);
+        let mut now = Instant::now();
+        controller.toggle_playback(now).expect("start run");
+        while controller.state.playback_state != AttnResLabPlaybackState::Completed {
+            now +=
+                speed_poll_interval(controller.state.speed_multiplier) + Duration::from_millis(5);
+            assert!(controller.tick(now).expect("tick should succeed"));
+        }
+        assert_eq!(
+            controller.snapshot.step, controller.snapshot.max_steps,
+            "run should complete its full bounded budget"
+        );
+        now += Duration::from_millis(25);
+        controller.toggle_playback(now).expect("restart run");
+        assert_eq!(
+            controller.state.playback_state,
+            AttnResLabPlaybackState::Running
+        );
+        assert_eq!(controller.snapshot.step, 0);
     }
 
     #[test]
@@ -730,18 +1228,6 @@ mod tests {
     }
 
     #[test]
-    fn live_snapshot_builds_real_psionic_payload() {
-        let snapshot = build_live_snapshot().expect("live snapshot should build");
-        assert_eq!(snapshot.source_badge, LIVE_SOURCE_BADGE);
-        assert!(!snapshot.events.is_empty());
-        assert!(!snapshot.sublayers.is_empty());
-        assert!(
-            snapshot.inference.hidden_parity_label.contains("exact")
-                || snapshot.inference.hidden_parity_label.contains("budget")
-        );
-    }
-
-    #[test]
     fn helper_labels_match_runtime_contract() {
         assert_eq!(kind_label(AttnResSublayerKind::Attention), "Attention");
         assert_eq!(kind_label(AttnResSublayerKind::FeedForward), "MLP");
@@ -749,6 +1235,9 @@ mod tests {
             parity_status_label(AttnResTwoPhaseParityStatus::OutsideBudget),
             "outside budget"
         );
+        assert_eq!(routing_band(0.05), "uniform");
+        assert_eq!(routing_band(0.25), "forming");
+        assert_eq!(routing_band(0.55), "selective");
     }
 
     #[test]

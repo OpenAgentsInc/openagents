@@ -35,7 +35,8 @@ impl Default for LocalInferencePaneState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AttnResLabViewMode {
     Overview,
     Pipeline,
@@ -51,6 +52,39 @@ impl AttnResLabViewMode {
             Self::Pipeline => "Pipeline",
             Self::Inference => "Inference",
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttnResLabPlaybackState {
+    Armed,
+    Running,
+    Paused,
+    Completed,
+}
+
+impl AttnResLabPlaybackState {
+    pub const fn button_label(self) -> &'static str {
+        match self {
+            Self::Armed => "Start",
+            Self::Running => "Pause",
+            Self::Paused => "Resume",
+            Self::Completed => "Restart",
+        }
+    }
+
+    pub const fn status_label(self) -> &'static str {
+        match self {
+            Self::Armed => "dashboard armed",
+            Self::Running => "training live",
+            Self::Paused => "training paused",
+            Self::Completed => "run complete",
+        }
+    }
+
+    pub const fn is_running(self) -> bool {
+        matches!(self, Self::Running)
     }
 }
 
@@ -155,6 +189,8 @@ pub struct AttnResLabPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub playback_state: AttnResLabPlaybackState,
+    pub show_help: bool,
     pub selected_view: AttnResLabViewMode,
     pub selected_sublayer: usize,
     pub snapshot: AttnResLabSnapshot,
@@ -167,6 +203,8 @@ impl Default for AttnResLabPaneState {
             load_state: PaneLoadState::Ready,
             last_error: None,
             last_action: Some("Loaded replay AttnRes lab snapshot".to_string()),
+            playback_state: AttnResLabPlaybackState::Armed,
+            show_help: false,
             selected_view: AttnResLabViewMode::Overview,
             selected_sublayer: 4.min(snapshot.sublayers.len().saturating_sub(1)),
             snapshot,
@@ -183,6 +221,24 @@ impl AttnResLabPaneState {
         self.selected_sublayer = self
             .selected_sublayer
             .min(self.snapshot.sublayers.len().saturating_sub(1));
+    }
+
+    pub fn move_selected_sublayer(&mut self, delta: isize) {
+        let len = self.snapshot.sublayers.len();
+        if len == 0 {
+            self.selected_sublayer = 0;
+            return;
+        }
+        let next = (self.selected_sublayer as isize + delta).rem_euclid(len as isize) as usize;
+        self.selected_sublayer = next;
+    }
+
+    pub fn cycle_view(&mut self) {
+        let index = AttnResLabViewMode::ALL
+            .iter()
+            .position(|candidate| *candidate == self.selected_view)
+            .unwrap_or_default();
+        self.selected_view = AttnResLabViewMode::ALL[(index + 1) % AttnResLabViewMode::ALL.len()];
     }
 }
 
@@ -448,7 +504,8 @@ pub fn replay_attnres_lab_snapshot() -> AttnResLabSnapshot {
 #[cfg(test)]
 mod attnres_lab_tests {
     use super::{
-        AttnResLabPaneState, AttnResLabViewMode, PaneLoadState, replay_attnres_lab_snapshot,
+        AttnResLabPaneState, AttnResLabPlaybackState, AttnResLabViewMode, PaneLoadState,
+        replay_attnres_lab_snapshot,
     };
 
     #[test]
@@ -463,6 +520,7 @@ mod attnres_lab_tests {
     fn pane_state_defaults_to_ready_overview_with_valid_selection() {
         let state = AttnResLabPaneState::default();
         assert_eq!(state.load_state, PaneLoadState::Ready);
+        assert_eq!(state.playback_state, AttnResLabPlaybackState::Armed);
         assert_eq!(state.selected_view, AttnResLabViewMode::Overview);
         assert!(state.current_sublayer().is_some());
     }
@@ -476,6 +534,30 @@ mod attnres_lab_tests {
             state.selected_sublayer,
             state.snapshot.sublayers.len().saturating_sub(1)
         );
+    }
+
+    #[test]
+    fn pane_state_wraps_sublayer_navigation() {
+        let mut state = AttnResLabPaneState::default();
+        state.selected_sublayer = 0;
+        state.move_selected_sublayer(-1);
+        assert_eq!(
+            state.selected_sublayer,
+            state.snapshot.sublayers.len().saturating_sub(1)
+        );
+        state.move_selected_sublayer(1);
+        assert_eq!(state.selected_sublayer, 0);
+    }
+
+    #[test]
+    fn pane_state_cycles_views_in_tui_order() {
+        let mut state = AttnResLabPaneState::default();
+        state.cycle_view();
+        assert_eq!(state.selected_view, AttnResLabViewMode::Pipeline);
+        state.cycle_view();
+        assert_eq!(state.selected_view, AttnResLabViewMode::Inference);
+        state.cycle_view();
+        assert_eq!(state.selected_view, AttnResLabViewMode::Overview);
     }
 }
 
