@@ -76,6 +76,7 @@ mod state;
 mod sync_apply;
 mod sync_bootstrap;
 mod sync_lifecycle;
+mod tassadar_lab_control;
 pub mod throughput_bench;
 
 #[cfg(test)]

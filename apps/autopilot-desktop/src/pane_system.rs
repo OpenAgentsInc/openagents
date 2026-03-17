@@ -480,6 +480,23 @@ pub enum AttnResLabPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TassadarLabPaneAction {
+    SetView(crate::app_state::TassadarLabViewMode),
+    CycleView,
+    PreviousReplay,
+    NextReplay,
+    PreviousUpdate,
+    NextUpdate,
+    PreviousReadableLogLine,
+    NextReadableLogLine,
+    PreviousTokenChunk,
+    NextTokenChunk,
+    PreviousFactLine,
+    NextFactLine,
+    ToggleHelp,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RivePreviewPaneAction {
     ReloadAsset,
     TogglePlayback,
@@ -1013,6 +1030,7 @@ pub enum PaneHitAction {
     ProviderStatus(ProviderStatusPaneAction),
     LocalInference(LocalInferencePaneAction),
     AttnResLab(AttnResLabPaneAction),
+    TassadarLab(TassadarLabPaneAction),
     RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     AppleAdapterTraining(AppleAdapterTrainingPaneAction),
@@ -1131,7 +1149,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
-        PaneKind::AttnResLab => pane_size_for_content(1080.0, 680.0),
+        PaneKind::AttnResLab | PaneKind::TassadarLab => pane_size_for_content(1080.0, 680.0),
         PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
         PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
         PaneKind::FrameDebugger => pane_size_for_content(1080.0, 600.0),
@@ -1712,6 +1730,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
             | PaneKind::AttnResLab
+            | PaneKind::TassadarLab
             | PaneKind::RivePreview
             | PaneKind::Presentation
             | PaneKind::FrameDebugger
@@ -3402,6 +3421,75 @@ fn attnres_playback_button_width() -> f32 {
         .into_iter()
         .map(|label| attnres_button_width(label, 84.0))
         .fold(84.0, f32::max)
+}
+
+pub fn tassadar_lab_overview_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        108.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn tassadar_lab_trace_button_bounds(content_bounds: Bounds) -> Bounds {
+    let overview = tassadar_lab_overview_button_bounds(content_bounds);
+    Bounds::new(
+        overview.max_x() + JOB_INBOX_BUTTON_GAP,
+        overview.origin.y,
+        92.0,
+        overview.size.height,
+    )
+}
+
+pub fn tassadar_lab_program_button_bounds(content_bounds: Bounds) -> Bounds {
+    let trace = tassadar_lab_trace_button_bounds(content_bounds);
+    Bounds::new(
+        trace.max_x() + JOB_INBOX_BUTTON_GAP,
+        trace.origin.y,
+        108.0,
+        trace.size.height,
+    )
+}
+
+pub fn tassadar_lab_evidence_button_bounds(content_bounds: Bounds) -> Bounds {
+    let program = tassadar_lab_program_button_bounds(content_bounds);
+    Bounds::new(
+        program.max_x() + JOB_INBOX_BUTTON_GAP,
+        program.origin.y,
+        108.0,
+        program.size.height,
+    )
+}
+
+pub fn tassadar_lab_previous_replay_button_bounds(content_bounds: Bounds) -> Bounds {
+    let evidence = tassadar_lab_evidence_button_bounds(content_bounds);
+    Bounds::new(
+        evidence.max_x() + JOB_INBOX_BUTTON_GAP,
+        evidence.origin.y,
+        112.0,
+        evidence.size.height,
+    )
+}
+
+pub fn tassadar_lab_next_replay_button_bounds(content_bounds: Bounds) -> Bounds {
+    let previous = tassadar_lab_previous_replay_button_bounds(content_bounds);
+    Bounds::new(
+        previous.max_x() + JOB_INBOX_BUTTON_GAP,
+        previous.origin.y,
+        112.0,
+        previous.size.height,
+    )
+}
+
+pub fn tassadar_lab_help_button_bounds(content_bounds: Bounds) -> Bounds {
+    let next = tassadar_lab_next_replay_button_bounds(content_bounds);
+    Bounds::new(
+        next.max_x() + JOB_INBOX_BUTTON_GAP,
+        next.origin.y,
+        88.0,
+        next.size.height,
+    )
 }
 
 pub fn rive_preview_reload_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -7371,6 +7459,39 @@ fn pane_hit_action_for_pane(
             } else if attnres_lab_next_sublayer_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::AttnResLab(
                     AttnResLabPaneAction::NextSublayer,
+                ))
+            } else {
+                None
+            }
+        }
+        PaneKind::TassadarLab => {
+            if tassadar_lab_overview_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(TassadarLabPaneAction::SetView(
+                    crate::app_state::TassadarLabViewMode::Overview,
+                )))
+            } else if tassadar_lab_trace_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(TassadarLabPaneAction::SetView(
+                    crate::app_state::TassadarLabViewMode::Trace,
+                )))
+            } else if tassadar_lab_program_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(TassadarLabPaneAction::SetView(
+                    crate::app_state::TassadarLabViewMode::Program,
+                )))
+            } else if tassadar_lab_evidence_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(TassadarLabPaneAction::SetView(
+                    crate::app_state::TassadarLabViewMode::Evidence,
+                )))
+            } else if tassadar_lab_previous_replay_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::PreviousReplay,
+                ))
+            } else if tassadar_lab_next_replay_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::NextReplay,
+                ))
+            } else if tassadar_lab_help_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::ToggleHelp,
                 ))
             } else {
                 None

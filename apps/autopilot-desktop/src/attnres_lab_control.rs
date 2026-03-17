@@ -21,9 +21,8 @@ use psionic_serve::{
     LocalAttnResTextGenerationService,
 };
 use psionic_train::{
-    AttnResLocalReferenceTrainingConfig, AttnResLocalReferenceTrainingCorpus,
-    AttnResLocalReferenceTrainingLifecycleStatus, AttnResLocalReferenceTrainingRunner,
-    attnres_local_reference_training_config, attnres_local_reference_training_corpus,
+    AttnResTinyTrainingConfig, AttnResTinyTrainingCorpus, AttnResTinyTrainingLifecycleStatus,
+    AttnResTinyTrainingRunner,
 };
 use serde::{Deserialize, Serialize};
 
@@ -67,7 +66,7 @@ pub(crate) struct DesktopAttnResLabStatus {
 struct DesktopAttnResLabController {
     storage_path: PathBuf,
     state: PersistedAttnResLabState,
-    runner: Option<AttnResLocalReferenceTrainingRunner>,
+    runner: Option<AttnResTinyTrainingRunner>,
     snapshot: AttnResLabSnapshot,
     runtime_telemetry: AttnResLabRunTelemetry,
     last_tick_at: Option<Instant>,
@@ -636,7 +635,7 @@ impl DesktopAttnResLabController {
         self.sync_selection_bounds();
         self.note_training_step(&previous_snapshot);
 
-        if update.lifecycle == AttnResLocalReferenceTrainingLifecycleStatus::Completed {
+        if update.lifecycle == AttnResTinyTrainingLifecycleStatus::Completed {
             self.state.playback_state = AttnResLabPlaybackState::Completed;
             self.snapshot.run_status = self.state.playback_state.status_label().to_string();
             self.last_tick_at = None;
@@ -655,7 +654,7 @@ impl DesktopAttnResLabController {
         Ok(true)
     }
 
-    fn ensure_runner(&mut self) -> Result<&mut AttnResLocalReferenceTrainingRunner, String> {
+    fn ensure_runner(&mut self) -> Result<&mut AttnResTinyTrainingRunner, String> {
         let needs_refresh = self.runner.as_ref().is_none_or(|runner| {
             runner.current_update().current_global_step != self.state.current_step
         });
@@ -842,10 +841,10 @@ fn bootstrap_events() -> Vec<String> {
     ]
 }
 
-fn build_runner_to_step(step: u64) -> Result<AttnResLocalReferenceTrainingRunner, String> {
+fn build_runner_to_step(step: u64) -> Result<AttnResTinyTrainingRunner, String> {
     let corpus = lab_corpus()?;
     let config = lab_training_config()?;
-    let mut runner = AttnResLocalReferenceTrainingRunner::new(&corpus, &config)
+    let mut runner = AttnResTinyTrainingRunner::new(&corpus, &config)
         .map_err(|error| format!("Failed to seed AttnRes runner: {error}"))?;
     let target_step = step.min(config.budget.max_steps);
     while runner.current_update().current_global_step < target_step {
@@ -855,17 +854,23 @@ fn build_runner_to_step(step: u64) -> Result<AttnResLocalReferenceTrainingRunner
 }
 
 fn build_snapshot_from_runner(
-    runner: &AttnResLocalReferenceTrainingRunner,
+    runner: &AttnResTinyTrainingRunner,
     speed_multiplier: usize,
     playback_state: AttnResLabPlaybackState,
     events: &[String],
     runtime_telemetry: AttnResLabRunTelemetry,
 ) -> Result<AttnResLabSnapshot, String> {
     let update = runner.current_update();
-    let corpus = runner.corpus();
-    let current_model = runner.current_model();
+    let corpus = lab_corpus()?;
+    let config = lab_training_config()?;
+    let current_model = AttnResCpuReferenceModel::seeded(
+        config.model_id.clone(),
+        config.model_revision.clone(),
+        corpus.config.clone(),
+    )
+    .map_err(|error| error.to_string())?;
     let generation_response =
-        generate_preview_response(corpus, current_model, update.current_global_step)?;
+        generate_preview_response(&corpus, &current_model, update.current_global_step)?;
     let inspection_sequence = generation_response.full_sequence.clone();
     let standard_hidden = current_model
         .forward_hidden(std::slice::from_ref(&inspection_sequence))
@@ -924,11 +929,7 @@ fn build_snapshot_from_runner(
 
     Ok(AttnResLabSnapshot {
         source_badge: LIVE_SOURCE_BADGE.to_string(),
-        model_label: format!(
-            "{} // {}",
-            current_model.descriptor().model.model_id,
-            current_model.descriptor().model.revision
-        ),
+        model_label: format!("{} // {}", config.model_id, config.model_revision),
         architecture_label: format!(
             "{} sublayers // {} residual blocks // {} heads",
             corpus.config.num_layers, corpus.config.num_blocks, corpus.config.num_heads
@@ -980,7 +981,7 @@ fn build_snapshot_from_runner(
 }
 
 fn collect_metric_points(
-    runner: &AttnResLocalReferenceTrainingRunner,
+    runner: &AttnResTinyTrainingRunner,
 ) -> Result<(Vec<AttnResLabMetricPoint>, f32), String> {
     let seeded_runner = build_runner_to_step(0)?;
     let initial = seeded_runner.current_update();
@@ -991,24 +992,27 @@ fn collect_metric_points(
         selectivity: mean_selectivity_from_diagnostics(&initial.diagnostics),
     }];
     let mut ema_loss = initial.current_training_mean_loss;
-    for step_metrics in runner.step_metrics() {
+    let target_step = runner.current_update().current_global_step;
+    let mut replay_runner = build_runner_to_step(0)?;
+    while replay_runner.current_update().current_global_step < target_step {
+        let update = replay_runner.step().map_err(|error| error.to_string())?;
         ema_loss = if metrics.len() == 1 {
-            step_metrics.training_mean_loss
+            update.current_training_mean_loss
         } else {
-            (ema_loss * 0.6) + (step_metrics.training_mean_loss * 0.4)
+            (ema_loss * 0.6) + (update.current_training_mean_loss * 0.4)
         };
         metrics.push(AttnResLabMetricPoint {
-            global_step: step_metrics.global_step,
-            training_loss: step_metrics.training_mean_loss,
+            global_step: update.current_global_step,
+            training_loss: update.current_training_mean_loss,
             ema_loss,
-            selectivity: step_metrics.mean_selectivity,
+            selectivity: mean_selectivity_from_diagnostics(&update.diagnostics),
         });
     }
     Ok((metrics, ema_loss))
 }
 
 fn generate_preview_response(
-    corpus: &AttnResLocalReferenceTrainingCorpus,
+    corpus: &AttnResTinyTrainingCorpus,
     model: &AttnResCpuReferenceModel,
     step: u64,
 ) -> Result<AttnResTextGenerationResponse, String> {
@@ -1036,12 +1040,12 @@ fn generate_preview_response(
     }
 }
 
-fn lab_training_config() -> Result<AttnResLocalReferenceTrainingConfig, String> {
-    attnres_local_reference_training_config().map_err(|error| error.to_string())
+fn lab_training_config() -> Result<AttnResTinyTrainingConfig, String> {
+    AttnResTinyTrainingConfig::reference().map_err(|error| error.to_string())
 }
 
-fn lab_corpus() -> Result<AttnResLocalReferenceTrainingCorpus, String> {
-    attnres_local_reference_training_corpus().map_err(|error| error.to_string())
+fn lab_corpus() -> Result<AttnResTinyTrainingCorpus, String> {
+    AttnResTinyTrainingCorpus::reference().map_err(|error| error.to_string())
 }
 
 fn build_inference_summary(

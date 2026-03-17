@@ -1,9 +1,15 @@
 use super::*;
 use psionic_apple_fm::{AppleFmAdapterInventoryEntry, AppleFmAdapterSelection};
+use psionic_serve::{
+    LocalTassadarLabService, TassadarLabPreparedView, TassadarLabReplayCatalogEntry,
+    TassadarLabReplayId, TassadarLabRequest, TassadarLabSnapshot, TassadarLabSourceKind,
+    TassadarLabUpdate,
+};
 use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
 const FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY: usize = 1_024;
+const TASSADAR_LAB_TRACE_CHUNK_SIZE: usize = 32;
 
 pub struct LocalInferencePaneState {
     pub load_state: PaneLoadState,
@@ -637,6 +643,366 @@ mod attnres_lab_tests {
         assert_eq!(state.selected_view, AttnResLabViewMode::Loss);
         state.cycle_view();
         assert_eq!(state.selected_view, AttnResLabViewMode::Overview);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarLabViewMode {
+    Overview,
+    Trace,
+    Program,
+    Evidence,
+}
+
+impl TassadarLabViewMode {
+    pub const ALL: [Self; 4] = [Self::Overview, Self::Trace, Self::Program, Self::Evidence];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::Trace => "Trace",
+            Self::Program => "Program",
+            Self::Evidence => "Evidence",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TassadarLabPlaybackState {
+    Replay,
+    Paused,
+}
+
+impl TassadarLabPlaybackState {
+    pub const fn status_label(self) -> &'static str {
+        match self {
+            Self::Replay => "replay loaded",
+            Self::Paused => "paused inspection",
+        }
+    }
+}
+
+pub struct TassadarLabPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub playback_state: TassadarLabPlaybackState,
+    pub show_help: bool,
+    pub selected_view: TassadarLabViewMode,
+    pub selected_replay: usize,
+    pub selected_update: usize,
+    pub selected_readable_log_line: usize,
+    pub selected_token_chunk: usize,
+    pub selected_fact_line: usize,
+    pub replay_catalog: Vec<TassadarLabReplayCatalogEntry>,
+    pub prepared_view: TassadarLabPreparedView,
+}
+
+impl Default for TassadarLabPaneState {
+    fn default() -> Self {
+        let replay_catalog = curated_tassadar_lab_replay_catalog();
+        let selected_replay = 0usize;
+        let default_replay_id = replay_catalog
+            .get(selected_replay)
+            .map(|entry| entry.replay_id)
+            .unwrap_or(TassadarLabReplayId::ArticleSessionDirectMemoryHeavy);
+        match load_tassadar_lab_prepared_view(default_replay_id) {
+            Ok(prepared_view) => Self {
+                load_state: PaneLoadState::Ready,
+                last_error: None,
+                last_action: Some(format!(
+                    "Loaded {} replay",
+                    replay_catalog
+                        .get(selected_replay)
+                        .map_or("Tassadar Lab", |entry| entry.label.as_str())
+                )),
+                playback_state: TassadarLabPlaybackState::Replay,
+                show_help: false,
+                selected_view: TassadarLabViewMode::Overview,
+                selected_replay,
+                selected_update: prepared_view.updates.len().saturating_sub(1),
+                selected_readable_log_line: 0,
+                selected_token_chunk: 0,
+                selected_fact_line: 0,
+                replay_catalog,
+                prepared_view,
+            },
+            Err(error) => Self {
+                load_state: PaneLoadState::Error,
+                last_error: Some(error.clone()),
+                last_action: Some(String::from("Failed to load replay Tassadar lab snapshot")),
+                playback_state: TassadarLabPlaybackState::Paused,
+                show_help: false,
+                selected_view: TassadarLabViewMode::Overview,
+                selected_replay,
+                selected_update: 0,
+                selected_readable_log_line: 0,
+                selected_token_chunk: 0,
+                selected_fact_line: 0,
+                replay_catalog,
+                prepared_view: fallback_tassadar_lab_prepared_view(error.as_str()),
+            },
+        }
+    }
+}
+
+impl TassadarLabPaneState {
+    pub fn snapshot(&self) -> &TassadarLabSnapshot {
+        &self.prepared_view.snapshot
+    }
+
+    pub fn updates(&self) -> &[TassadarLabUpdate] {
+        &self.prepared_view.updates
+    }
+
+    pub fn current_replay(&self) -> Option<&TassadarLabReplayCatalogEntry> {
+        self.replay_catalog.get(
+            self.selected_replay
+                .min(self.replay_catalog.len().saturating_sub(1)),
+        )
+    }
+
+    pub fn current_update(&self) -> Option<&TassadarLabUpdate> {
+        self.prepared_view.updates.get(
+            self.selected_update
+                .min(self.prepared_view.updates.len().saturating_sub(1)),
+        )
+    }
+
+    pub fn current_readable_log_line(&self) -> Option<&str> {
+        self.snapshot()
+            .readable_log
+            .as_ref()
+            .and_then(|excerpt| excerpt.lines.get(self.selected_readable_log_line))
+            .map(String::as_str)
+    }
+
+    pub fn token_trace_chunk_count(&self) -> usize {
+        self.snapshot().token_trace.as_ref().map_or(0, |excerpt| {
+            excerpt.tokens.len().div_ceil(TASSADAR_LAB_TRACE_CHUNK_SIZE)
+        })
+    }
+
+    pub fn current_token_trace_chunk(&self) -> Option<Vec<String>> {
+        self.snapshot().token_trace.as_ref().and_then(|excerpt| {
+            let start = self
+                .selected_token_chunk
+                .saturating_mul(TASSADAR_LAB_TRACE_CHUNK_SIZE);
+            (start < excerpt.tokens.len()).then(|| {
+                excerpt.tokens
+                    [start..(start + TASSADAR_LAB_TRACE_CHUNK_SIZE).min(excerpt.tokens.len())]
+                    .to_vec()
+            })
+        })
+    }
+
+    pub fn current_fact_line(&self) -> Option<(&str, &str)> {
+        self.snapshot()
+            .fact_lines
+            .get(self.selected_fact_line)
+            .map(|fact| (fact.label.as_str(), fact.value.as_str()))
+    }
+
+    pub fn cycle_view(&mut self) {
+        let index = TassadarLabViewMode::ALL
+            .iter()
+            .position(|candidate| *candidate == self.selected_view)
+            .unwrap_or_default();
+        self.selected_view = TassadarLabViewMode::ALL[(index + 1) % TassadarLabViewMode::ALL.len()];
+    }
+
+    pub fn move_selected_replay(&mut self, delta: isize) -> Result<(), String> {
+        let len = self.replay_catalog.len();
+        if len == 0 {
+            return Ok(());
+        }
+        let next = (self.selected_replay as isize + delta).rem_euclid(len as isize) as usize;
+        self.load_replay_by_index(next)
+    }
+
+    pub fn load_replay_by_index(&mut self, index: usize) -> Result<(), String> {
+        let Some(entry) = self.replay_catalog.get(index) else {
+            return Ok(());
+        };
+        let prepared_view = load_tassadar_lab_prepared_view(entry.replay_id)?;
+        self.selected_replay = index;
+        self.prepared_view = prepared_view;
+        self.selected_update = self.prepared_view.updates.len().saturating_sub(1);
+        self.selected_readable_log_line = 0;
+        self.selected_token_chunk = 0;
+        self.selected_fact_line = 0;
+        self.playback_state = TassadarLabPlaybackState::Replay;
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!("Loaded {} replay", entry.label));
+        Ok(())
+    }
+
+    pub fn move_selected_update(&mut self, delta: isize) {
+        self.selected_update = move_wrapped_index(
+            self.prepared_view.updates.len(),
+            self.selected_update,
+            delta,
+        );
+        self.playback_state = TassadarLabPlaybackState::Paused;
+    }
+
+    pub fn move_selected_readable_log_line(&mut self, delta: isize) {
+        let count = self
+            .snapshot()
+            .readable_log
+            .as_ref()
+            .map_or(0, |excerpt| excerpt.lines.len());
+        self.selected_readable_log_line =
+            move_wrapped_index(count, self.selected_readable_log_line, delta);
+        self.playback_state = TassadarLabPlaybackState::Paused;
+    }
+
+    pub fn move_selected_token_chunk(&mut self, delta: isize) {
+        self.selected_token_chunk = move_wrapped_index(
+            self.token_trace_chunk_count(),
+            self.selected_token_chunk,
+            delta,
+        );
+        self.playback_state = TassadarLabPlaybackState::Paused;
+    }
+
+    pub fn move_selected_fact_line(&mut self, delta: isize) {
+        self.selected_fact_line = move_wrapped_index(
+            self.snapshot().fact_lines.len(),
+            self.selected_fact_line,
+            delta,
+        );
+        self.playback_state = TassadarLabPlaybackState::Paused;
+    }
+}
+
+fn curated_tassadar_lab_replay_catalog() -> Vec<TassadarLabReplayCatalogEntry> {
+    let catalog = LocalTassadarLabService::new().replay_catalog();
+    [
+        TassadarLabReplayId::ArticleSessionDirectMemoryHeavy,
+        TassadarLabReplayId::CompiledArticleClosureReport,
+    ]
+    .into_iter()
+    .filter_map(|replay_id| {
+        catalog
+            .iter()
+            .find(|entry| entry.replay_id == replay_id)
+            .cloned()
+    })
+    .collect()
+}
+
+fn load_tassadar_lab_prepared_view(
+    replay_id: TassadarLabReplayId,
+) -> Result<TassadarLabPreparedView, String> {
+    LocalTassadarLabService::new()
+        .prepare(&TassadarLabRequest::Replay { replay_id })
+        .map_err(|error| error.to_string())
+}
+
+fn fallback_tassadar_lab_prepared_view(detail: &str) -> TassadarLabPreparedView {
+    TassadarLabPreparedView {
+        snapshot: TassadarLabSnapshot {
+            schema_version: 1,
+            source_badge: String::from("replay.tassadar"),
+            source_kind: TassadarLabSourceKind::ReplayArtifact,
+            replay_id: None,
+            family_label: String::from("Tassadar Lab"),
+            subject_label: String::from("Replay unavailable"),
+            status_label: String::from("load error"),
+            detail_label: detail.to_string(),
+            artifact_ref: None,
+            benchmark_identity: None,
+            proof_identity: None,
+            runtime_capability: None,
+            requested_decode_mode: None,
+            effective_decode_mode: None,
+            route_state_label: None,
+            route_detail: Some(detail.to_string()),
+            program_id: None,
+            wasm_profile_id: None,
+            readable_log: None,
+            token_trace: None,
+            final_outputs: Vec::new(),
+            metric_chips: Vec::new(),
+            fact_lines: Vec::new(),
+            events: vec![detail.to_string()],
+        },
+        updates: vec![TassadarLabUpdate::Terminal {
+            status_label: String::from("load error"),
+            detail: detail.to_string(),
+        }],
+    }
+}
+
+fn move_wrapped_index(len: usize, current: usize, delta: isize) -> usize {
+    if len == 0 {
+        0
+    } else {
+        (current as isize + delta).rem_euclid(len as isize) as usize
+    }
+}
+
+#[cfg(test)]
+mod tassadar_lab_tests {
+    use super::{
+        PaneLoadState, TassadarLabPaneState, TassadarLabPlaybackState, TassadarLabReplayId,
+        TassadarLabViewMode,
+    };
+
+    #[test]
+    fn tassadar_lab_defaults_to_ready_replay_shell() {
+        let state = TassadarLabPaneState::default();
+        assert_eq!(state.load_state, PaneLoadState::Ready);
+        assert_eq!(state.playback_state, TassadarLabPlaybackState::Replay);
+        assert_eq!(state.selected_view, TassadarLabViewMode::Overview);
+        assert_eq!(state.replay_catalog.len(), 2);
+        assert_eq!(
+            state.current_replay().map(|entry| entry.replay_id),
+            Some(TassadarLabReplayId::ArticleSessionDirectMemoryHeavy)
+        );
+        assert!(state.snapshot().source_badge.contains("tassadar"));
+        assert!(!state.updates().is_empty());
+    }
+
+    #[test]
+    fn tassadar_lab_can_switch_between_curated_replays() {
+        let mut state = TassadarLabPaneState::default();
+        state
+            .move_selected_replay(1)
+            .expect("curated replay switch should load");
+        assert_eq!(
+            state.current_replay().map(|entry| entry.replay_id),
+            Some(TassadarLabReplayId::CompiledArticleClosureReport)
+        );
+        assert!(state.snapshot().status_label.contains("closure"));
+    }
+
+    #[test]
+    fn tassadar_lab_selection_navigation_wraps() {
+        let mut state = TassadarLabPaneState::default();
+        state.move_selected_update(-1);
+        assert_eq!(state.playback_state, TassadarLabPlaybackState::Paused);
+        state.move_selected_readable_log_line(1);
+        state.move_selected_token_chunk(1);
+        state.move_selected_fact_line(1);
+        assert!(state.current_update().is_some());
+    }
+
+    #[test]
+    fn tassadar_lab_cycles_views_in_dashboard_order() {
+        let mut state = TassadarLabPaneState::default();
+        state.cycle_view();
+        assert_eq!(state.selected_view, TassadarLabViewMode::Trace);
+        state.cycle_view();
+        assert_eq!(state.selected_view, TassadarLabViewMode::Program);
+        state.cycle_view();
+        assert_eq!(state.selected_view, TassadarLabViewMode::Evidence);
+        state.cycle_view();
+        assert_eq!(state.selected_view, TassadarLabViewMode::Overview);
     }
 }
 

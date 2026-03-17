@@ -58,8 +58,8 @@ use crate::pane_system::{
     NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
     PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
-    clamp_all_panes_to_window, dispatch_active_job_scroll_event,
+    SyncHealthPaneAction, TassadarLabPaneAction, cad_demo_context_menu_bounds,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_active_job_scroll_event,
     dispatch_activity_feed_detail_scroll_event, dispatch_apple_adapter_training_input_event,
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
@@ -3294,6 +3294,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
         || handle_attnres_lab_keyboard_input(state, logical_key)
+        || handle_tassadar_lab_keyboard_input(state, logical_key)
         || handle_cad_timeline_keyboard_input(state, logical_key)
 }
 
@@ -3424,6 +3425,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
         PaneHitAction::AttnResLab(action) => run_attnres_lab_action(state, action),
+        PaneHitAction::TassadarLab(action) => run_tassadar_lab_action(state, action),
         PaneHitAction::RivePreview(action) => run_rive_preview_action(state, action),
         PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::AppleAdapterTraining(action) => {
@@ -4118,6 +4120,29 @@ fn handle_attnres_lab_keyboard_input(
         .is_some_and(|action| run_attnres_lab_action(state, action))
 }
 
+fn handle_tassadar_lab_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_tassadar_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::TassadarLab);
+    if !is_tassadar_active {
+        return false;
+    }
+
+    tassadar_lab_keyboard_action(key, state.tassadar_lab.show_help)
+        .is_some_and(|action| run_tassadar_lab_action(state, action))
+}
+
 fn handle_cad_timeline_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -4210,6 +4235,37 @@ fn attnres_lab_keyboard_action(key: Key, help_visible: bool) -> Option<AttnResLa
     }
 }
 
+fn tassadar_lab_keyboard_action(key: Key, help_visible: bool) -> Option<TassadarLabPaneAction> {
+    match key {
+        Key::Named(NamedKey::Escape) if help_visible => Some(TassadarLabPaneAction::ToggleHelp),
+        Key::Named(NamedKey::Tab) => Some(TassadarLabPaneAction::CycleView),
+        Key::Named(NamedKey::ArrowLeft) => Some(TassadarLabPaneAction::PreviousReplay),
+        Key::Named(NamedKey::ArrowRight) => Some(TassadarLabPaneAction::NextReplay),
+        Key::Named(NamedKey::ArrowUp) => Some(TassadarLabPaneAction::PreviousUpdate),
+        Key::Named(NamedKey::ArrowDown) => Some(TassadarLabPaneAction::NextUpdate),
+        Key::Named(NamedKey::PageUp) => Some(TassadarLabPaneAction::PreviousReadableLogLine),
+        Key::Named(NamedKey::PageDown) => Some(TassadarLabPaneAction::NextReadableLogLine),
+        Key::Named(NamedKey::Home) => Some(TassadarLabPaneAction::PreviousTokenChunk),
+        Key::Named(NamedKey::End) => Some(TassadarLabPaneAction::NextTokenChunk),
+        Key::Character(value) if value == "1" => Some(TassadarLabPaneAction::SetView(
+            crate::app_state::TassadarLabViewMode::Overview,
+        )),
+        Key::Character(value) if value == "2" => Some(TassadarLabPaneAction::SetView(
+            crate::app_state::TassadarLabViewMode::Trace,
+        )),
+        Key::Character(value) if value == "3" => Some(TassadarLabPaneAction::SetView(
+            crate::app_state::TassadarLabViewMode::Program,
+        )),
+        Key::Character(value) if value == "4" => Some(TassadarLabPaneAction::SetView(
+            crate::app_state::TassadarLabViewMode::Evidence,
+        )),
+        Key::Character(value) if value == "?" => Some(TassadarLabPaneAction::ToggleHelp),
+        Key::Character(value) if value == "[" => Some(TassadarLabPaneAction::PreviousFactLine),
+        Key::Character(value) if value == "]" => Some(TassadarLabPaneAction::NextFactLine),
+        _ => None,
+    }
+}
+
 fn cad_hotkey_action_matrix() -> &'static [(CadHotkeyAction, CadDemoPaneAction)] {
     const MATRIX: [(CadHotkeyAction, CadDemoPaneAction); 10] = [
         (CadHotkeyAction::SnapTop, CadDemoPaneAction::SnapViewTop),
@@ -4297,15 +4353,15 @@ mod tests {
         parse_chat_turn_prompt, parse_positive_amount_str, provider_blocker_detail,
         resolve_turn_skill_by_name, resolve_turn_skill_by_path, rive_preview_cadence_active,
         should_mirror_provider_preflight_error, should_open_command_palette,
-        should_request_desktop_redraw, terminal_goal_labor_linkage,
+        should_request_desktop_redraw, tassadar_lab_keyboard_action, terminal_goal_labor_linkage,
         validate_lightning_payment_request,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
         CodexRunTrigger, CodexTurnExecutionRequest, orchestrate_codex_turn,
     };
-    use crate::pane_system::AttnResLabPaneAction;
     use crate::pane_system::cad_palette_command_specs;
+    use crate::pane_system::{AttnResLabPaneAction, TassadarLabPaneAction};
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
     };
@@ -4589,6 +4645,54 @@ mod tests {
         assert_eq!(
             attnres_lab_keyboard_action(Key::Character("r".to_string()), false),
             Some(AttnResLabPaneAction::ResetTraining)
+        );
+    }
+
+    #[test]
+    fn tassadar_keyboard_mapping_tracks_replay_controls() {
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::Tab), false),
+            Some(TassadarLabPaneAction::CycleView)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::ArrowLeft), false),
+            Some(TassadarLabPaneAction::PreviousReplay)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::ArrowRight), false),
+            Some(TassadarLabPaneAction::NextReplay)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::ArrowUp), false),
+            Some(TassadarLabPaneAction::PreviousUpdate)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::ArrowDown), false),
+            Some(TassadarLabPaneAction::NextUpdate)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::PageUp), false),
+            Some(TassadarLabPaneAction::PreviousReadableLogLine)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::PageDown), false),
+            Some(TassadarLabPaneAction::NextReadableLogLine)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("[".to_string()), false),
+            Some(TassadarLabPaneAction::PreviousFactLine)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("]".to_string()), false),
+            Some(TassadarLabPaneAction::NextFactLine)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("?".to_string()), false),
+            Some(TassadarLabPaneAction::ToggleHelp)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::Escape), true),
+            Some(TassadarLabPaneAction::ToggleHelp)
         );
     }
 

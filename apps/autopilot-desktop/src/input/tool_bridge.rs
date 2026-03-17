@@ -1966,6 +1966,40 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     }),
                 );
             }
+            PaneKind::TassadarLab => {
+                map.insert(
+                    "tassadar_lab".to_string(),
+                    json!({
+                        "playback_state": state.tassadar_lab.playback_state.status_label(),
+                        "selected_view": state.tassadar_lab.selected_view.label(),
+                        "selected_replay": state.tassadar_lab.current_replay().map(|entry| entry.label.as_str()),
+                        "selected_update": state.tassadar_lab.selected_update,
+                        "selected_readable_log_line": state.tassadar_lab.selected_readable_log_line,
+                        "selected_token_chunk": state.tassadar_lab.selected_token_chunk,
+                        "selected_fact_line": state.tassadar_lab.selected_fact_line,
+                        "show_help": state.tassadar_lab.show_help,
+                        "source_badge": state.tassadar_lab.snapshot().source_badge,
+                        "source_kind": format!("{:?}", state.tassadar_lab.snapshot().source_kind),
+                        "subject_label": state.tassadar_lab.snapshot().subject_label,
+                        "status_label": state.tassadar_lab.snapshot().status_label,
+                        "detail_label": state.tassadar_lab.snapshot().detail_label,
+                        "program_id": state.tassadar_lab.snapshot().program_id,
+                        "wasm_profile_id": state.tassadar_lab.snapshot().wasm_profile_id,
+                        "requested_decode_mode": state.tassadar_lab.snapshot().requested_decode_mode.map(|mode| format!("{mode:?}")),
+                        "effective_decode_mode": state.tassadar_lab.snapshot().effective_decode_mode.map(|mode| format!("{mode:?}")),
+                        "artifact_ref": state.tassadar_lab.snapshot().artifact_ref,
+                        "final_outputs": state.tassadar_lab.snapshot().final_outputs,
+                        "metric_chips": state.tassadar_lab.snapshot().metric_chips.iter().map(|chip| json!({
+                            "label": chip.label,
+                            "value": chip.value,
+                            "tone": chip.tone,
+                        })).collect::<Vec<_>>(),
+                        "recent_events": state.tassadar_lab.snapshot().events.iter().rev().take(6).collect::<Vec<_>>(),
+                        "last_action": state.tassadar_lab.last_action,
+                        "last_error": state.tassadar_lab.last_error,
+                    }),
+                );
+            }
             PaneKind::AppleFmWorkbench => {
                 map.insert(
                     "apple_fm_workbench".to_string(),
@@ -2254,6 +2288,7 @@ fn pane_action_to_hit_action(
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
         PaneKind::AttnResLab => unsupported(),
+        PaneKind::TassadarLab => unsupported(),
         PaneKind::Presentation => unsupported(),
         PaneKind::FrameDebugger => unsupported(),
         PaneKind::AppleAdapterTraining => unsupported(),
@@ -6272,6 +6307,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",
         PaneKind::AttnResLab => "attnres_lab",
+        PaneKind::TassadarLab => "tassadar_lab",
         PaneKind::RivePreview => "rive_preview",
         PaneKind::Presentation => "presentation",
         PaneKind::FrameDebugger => "frame_debugger",
