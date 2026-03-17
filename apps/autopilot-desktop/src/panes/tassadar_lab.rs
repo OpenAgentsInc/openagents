@@ -11,10 +11,12 @@ use crate::pane_renderer::{
 };
 use crate::pane_system::{
     tassadar_lab_article_mode_button_bounds, tassadar_lab_evidence_button_bounds,
-    tassadar_lab_help_button_bounds, tassadar_lab_hybrid_mode_button_bounds,
-    tassadar_lab_next_replay_button_bounds, tassadar_lab_overview_button_bounds,
+    tassadar_lab_faster_button_bounds, tassadar_lab_help_button_bounds,
+    tassadar_lab_hybrid_mode_button_bounds, tassadar_lab_next_replay_button_bounds,
+    tassadar_lab_overview_button_bounds, tassadar_lab_play_button_bounds,
     tassadar_lab_previous_replay_button_bounds, tassadar_lab_program_button_bounds,
     tassadar_lab_refresh_button_bounds, tassadar_lab_replay_mode_button_bounds,
+    tassadar_lab_reset_button_bounds, tassadar_lab_slower_button_bounds,
     tassadar_lab_trace_button_bounds,
 };
 
@@ -101,10 +103,30 @@ pub fn paint(content_bounds: Bounds, pane_state: &TassadarLabPaneState, paint: &
         },
         paint,
     );
+    paint_action_button(
+        tassadar_lab_play_button_bounds(content_bounds),
+        pane_state.playback_button_label(),
+        paint,
+    );
+    paint_secondary_button(
+        tassadar_lab_reset_button_bounds(content_bounds),
+        "Reset",
+        paint,
+    );
+    paint_secondary_button(
+        tassadar_lab_slower_button_bounds(content_bounds),
+        "Slower",
+        paint,
+    );
+    paint_secondary_button(
+        tassadar_lab_faster_button_bounds(content_bounds),
+        "Faster",
+        paint,
+    );
 
     let hero_bounds = Bounds::new(
         content_bounds.origin.x + 12.0,
-        content_bounds.origin.y + 60.0,
+        content_bounds.origin.y + 96.0,
         content_bounds.size.width - 24.0,
         88.0,
     );
@@ -207,7 +229,7 @@ fn paint_hero(
     );
     let status = format!(
         "{}  //  {}  //  {} cases  //  {} updates",
-        pane_state.playback_state.status_label(),
+        pane_state.playback_status_label(),
         pane_state.snapshot().status_label,
         pane_state.source_case_count(),
         pane_state.updates().len()
@@ -239,9 +261,11 @@ fn paint_hero(
     ));
 
     let summary = format!(
-        "{}  //  {} view",
+        "{}  //  {} view  //  speed {}  //  window {}",
         pane_state.load_state.label(),
-        pane_state.selected_view.label()
+        pane_state.selected_view.label(),
+        pane_state.speed_multiplier,
+        pane_state.trace_chunk_size
     );
     let _ = paint_state_summary(
         paint,
@@ -362,6 +386,7 @@ fn paint_trace(
     paint_panel_texture(right_bounds, accent.with_alpha(0.9), phase * 0.8, paint);
 
     paint_section_title(left_bounds, "READABLE LOG", accent, paint);
+    let readable_log_lines = pane_state.current_readable_log_window(12);
     paint_text_block(
         Bounds::new(
             left_bounds.origin.x + 12.0,
@@ -369,12 +394,7 @@ fn paint_trace(
             left_bounds.size.width - 24.0,
             left_bounds.size.height - 42.0,
         ),
-        pane_state
-            .snapshot()
-            .readable_log
-            .as_ref()
-            .map(|excerpt| excerpt.lines.as_slice())
-            .unwrap_or(&[]),
+        readable_log_lines.as_slice(),
         paint,
     );
 
@@ -383,6 +403,15 @@ fn paint_trace(
     if lines.is_empty() {
         lines.push(String::from("no token-trace chunk for this replay"));
     }
+    lines.insert(
+        0,
+        format!(
+            "window={}  chunk={}/{}",
+            pane_state.trace_chunk_size,
+            pane_state.selected_token_chunk + 1,
+            pane_state.token_trace_chunk_count().max(1)
+        ),
+    );
     lines.push(format!("outputs={:?}", pane_state.snapshot().final_outputs));
     paint_text_block_owned(
         Bounds::new(
@@ -895,7 +924,8 @@ fn paint_help_overlay(content_bounds: Bounds, paint: &mut PaintContext) {
         "- Prev case / Next case step within the active source mode",
         "- Refresh reloads the current live or replay source from Psionic",
         "",
-        "Persistence, CLI control, and wider run-family browsing land later.",
+        "Playback, persistence, and CLI control are desktop-owned.",
+        "Wider run-family browsing lands later.",
     ];
     let mut y = overlay.origin.y + 18.0;
     for line in lines {

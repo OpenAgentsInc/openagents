@@ -9004,6 +9004,24 @@ pub(super) fn run_tassadar_lab_action(
         TassadarLabPaneAction::CycleView => {
             crate::tassadar_lab_control::cycle_view(&mut state.tassadar_lab);
         }
+        TassadarLabPaneAction::TogglePlayback => {
+            crate::tassadar_lab_control::toggle_playback(&mut state.tassadar_lab);
+        }
+        TassadarLabPaneAction::ResetPlayback => {
+            crate::tassadar_lab_control::reset_playback(&mut state.tassadar_lab);
+        }
+        TassadarLabPaneAction::DecreaseSpeed => {
+            crate::tassadar_lab_control::adjust_speed(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::IncreaseSpeed => {
+            crate::tassadar_lab_control::adjust_speed(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::DecreaseTraceWindow => {
+            crate::tassadar_lab_control::adjust_trace_chunk_size(&mut state.tassadar_lab, -1);
+        }
+        TassadarLabPaneAction::IncreaseTraceWindow => {
+            crate::tassadar_lab_control::adjust_trace_chunk_size(&mut state.tassadar_lab, 1);
+        }
         TassadarLabPaneAction::PreviousReplay => {
             crate::tassadar_lab_control::move_selected_replay(&mut state.tassadar_lab, -1);
         }
