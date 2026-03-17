@@ -134,6 +134,43 @@ impl Linear {
         &self.module
     }
 
+    #[must_use]
+    pub const fn in_features(&self) -> usize {
+        self.in_features
+    }
+
+    #[must_use]
+    pub const fn out_features(&self) -> usize {
+        self.out_features
+    }
+
+    #[must_use]
+    pub const fn uses_bias(&self) -> bool {
+        self.use_bias
+    }
+
+    pub fn weight_f32(&self) -> Result<&[f32], LayerError> {
+        parameter_f32(
+            &self.module,
+            "linear",
+            "weight",
+            &[self.out_features, self.in_features],
+        )
+    }
+
+    pub fn bias_f32(&self) -> Result<Option<&[f32]>, LayerError> {
+        if self.use_bias {
+            Ok(Some(parameter_f32(
+                &self.module,
+                "linear",
+                "bias",
+                &[self.out_features],
+            )?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn forward(&self, input: &NnTensor) -> Result<NnTensor, LayerError> {
         let values = input.as_f32_slice()?;
         let dims = input.dims();

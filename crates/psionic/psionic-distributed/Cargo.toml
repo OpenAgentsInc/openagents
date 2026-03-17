@@ -18,6 +18,7 @@ hex = { workspace = true }
 psionic-array = { path = "../psionic-array" }
 psionic-cluster = { path = "../psionic-cluster" }
 psionic-core = { path = "../psionic-core" }
+psionic-nn = { path = "../psionic-nn" }
 psionic-runtime = { path = "../psionic-runtime" }
 psionic-sandbox = { path = "../psionic-sandbox" }
 serde = { workspace = true }
