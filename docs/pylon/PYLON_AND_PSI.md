@@ -25,7 +25,7 @@ You run Pylon so your machine joins the market. When a job comes in, Pylon asks 
 | Component | Role |
 |-----------|------|
 | **Pylon** | Standalone provider binary. Runs on a laptop, desktop, workstation, or server. Detects local backends, publishes inventory to the network, accepts jobs, executes them using those backends, emits delivery evidence and receipts, tracks payouts. **Connector** — turns a machine into network-visible supply. |
-| **Psionic** | In-repo Rust runtime in `crates/psionic/*`. Loads GGUF (and compatible) models, runs inference and embeddings on CPU/Metal/NVIDIA/AMD. **Engine** — does the actual tensor work when a job runs. |
+| **Psionic** | Standalone Rust runtime in `OpenAgentsInc/psionic`. Loads GGUF (and compatible) models, runs inference and embeddings on CPU/Metal/NVIDIA/AMD. **Engine** — does the actual tensor work when a job runs. |
 | **Compute market** | Buyers request inference/embeddings (and later sandbox execution); Nexus is the authority; providers (Pylon or Autopilot embedding the same substrate) offer supply and execute jobs locally. |
 
 ## “Run on any computer and give access to certain resources”
@@ -37,7 +37,7 @@ You run Pylon so your machine joins the market. When a job comes in, Pylon asks 
 ## “The compute market will use Psionic”
 
 - Today, launch backends are **Ollama** (inference + embeddings) and **Apple Foundation Models** (inference). So today the market “uses” whatever backends the provider has — typically Ollama on the provider machine.
-- **Psionic** is the planned replacement for the desktop’s (and eventually the provider’s) **Ollama dependency**. The Psionic roadmap (`crates/psionic/docs/ROADMAP.md`) is to:
+- **Psionic** is the planned replacement for the desktop’s (and eventually the provider’s) **Ollama dependency**. The Psionic roadmap (`https://github.com/OpenAgentsInc/psionic/blob/main/docs/ROADMAP.md`) is to:
   - Replace Ollama with an in-process Rust runtime (Psionic) that can load GGUF, serve inference and embeddings, and report truthful capability and evidence.
   - Make Psionic the **reusable execution substrate** for the compute market: same engine can back both the Autopilot desktop and a headless Pylon node.
 - So “the compute market will use Psionic” means: once Psionic is ready and cut over, the **same** provider substrate (used by Pylon and by Autopilot) will call **Psionic** instead of (or in addition to) Ollama to execute inference and embeddings jobs. Product names may shift from `ollama.text_generation` / `ollama.embeddings` to backend-neutral or `psionic.*`; the important part is that the **engine** doing the work is Psionic, with truthful capability envelopes, delivery proofs, and settlement linkage (PSI-171 through PSI-175 in the Psionic roadmap).
@@ -71,5 +71,5 @@ So: **Pylon = connector that runs anywhere and gives the market access to this m
 ## References
 
 - **Pylon**: `docs/pylon/PYLON_PLAN.md`, `docs/pylon/README.md`
-- **Psionic**: `crates/psionic/docs/ROADMAP.md` (objective, Epic F compute-market substrate, definition of done for “Replace Ollama” and “Psionic as compute-market substrate”)
+- **Psionic**: `https://github.com/OpenAgentsInc/psionic/blob/main/docs/ROADMAP.md` (objective, Epic F compute-market substrate, definition of done for “Replace Ollama” and “Psionic as compute-market substrate”)
 - **Compute market program**: issue `#3116`, launch products and capability envelope in PYLON_PLAN.md

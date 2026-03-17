@@ -11,7 +11,7 @@
 OpenAgents now has three different compute truths in active use:
 
 1. the product truth in `apps/autopilot-desktop`
-2. the reusable execution truth in `crates/psionic/*` and
+2. the reusable execution truth in `OpenAgentsInc/psionic` and
    `crates/openagents-provider-substrate`
 3. the economic truth in `openagents-kernel-*` plus `apps/nexus-control`
 
@@ -25,7 +25,7 @@ That split is already visible in the retained tree:
   provide an app-owned compute control plane
 - `crates/openagents-provider-substrate` already owns provider health, product
   derivation, inventory controls, and sandbox profile summaries
-- `crates/psionic/*` already own reusable execution substrate, clustered
+- `OpenAgentsInc/psionic` already own reusable execution substrate, clustered
   execution evidence, and provider-facing proof/export shapes
 - `crates/openagents-kernel-core/src/compute.rs` and `apps/nexus-control` already
   own canonical compute-market objects, receipts, snapshots, and authority
@@ -96,9 +96,9 @@ Short-term exception:
   sandbox runtime is being extracted, but the long-term owner of executable
   sandbox runtime is Psionic rather than provider-substrate
 
-### 3) `crates/psionic/*` own reusable compute execution substrate
+### 3) `OpenAgentsInc/psionic` own reusable compute execution substrate
 
-`crates/psionic/*` own:
+`OpenAgentsInc/psionic` own:
 
 - local inference and embeddings execution
 - clustered transport, ordered execution state, and topology planning
@@ -108,7 +108,7 @@ Short-term exception:
 - clustered delivery evidence and settlement linkage inputs
 - later training-class execution substrate
 
-`crates/psionic/*` must not own:
+`OpenAgentsInc/psionic` must not own:
 
 - pane UX
 - wallet or payout UX

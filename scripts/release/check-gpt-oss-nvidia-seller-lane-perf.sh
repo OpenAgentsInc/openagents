@@ -5,13 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 HOST_HOME="${HOME:-$ROOT_DIR}"
+PSIONIC_REPO="${OPENAGENTS_PSIONIC_REPO:-$ROOT_DIR/../psionic}"
+PSIONIC_MANIFEST="${OPENAGENTS_PSIONIC_MANIFEST:-$PSIONIC_REPO/Cargo.toml}"
 RUN_DIR="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_RUN_DIR:-$ROOT_DIR/target/gpt-oss-nvidia-seller-lane-perf}"
 APP_HOME="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_APP_HOME:-$RUN_DIR/app-home}"
 APP_LOG_DIR="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_APP_LOG_DIR:-$RUN_DIR/app-logs}"
 APP_EXECUTABLE="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_APP_BIN:-$ROOT_DIR/target/release/autopilot-desktop}"
 AUTOPILOTCTL_BIN="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_AUTOPILOTCTL_BIN:-$ROOT_DIR/target/release/autopilotctl}"
-PSIONIC_SERVER_BIN="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_PSIONIC_BIN:-$ROOT_DIR/target/release/psionic-gpt-oss-server}"
-BENCHMARK_SCRIPT="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_BENCHMARK_SCRIPT:-$ROOT_DIR/crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh}"
+PSIONIC_SERVER_BIN="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_PSIONIC_BIN:-$PSIONIC_REPO/target/release/psionic-gpt-oss-server}"
+BENCHMARK_SCRIPT="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_BENCHMARK_SCRIPT:-$PSIONIC_REPO/scripts/benchmark-gpt-oss-vs-llama.sh}"
 ARTIFACT_PATH="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_ARTIFACT:-$RUN_DIR/seller-lane-perf.json}"
 SUMMARY_PATH="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_SUMMARY:-$RUN_DIR/summary.txt}"
 APP_START_TIMEOUT_SECONDS="${OPENAGENTS_GPT_OSS_NVIDIA_PERF_APP_START_TIMEOUT_SECONDS:-90}"
@@ -143,15 +145,16 @@ require_graphical_session
 
 [[ "$GPT_OSS_BACKEND" == "cuda" ]] || die "OPENAGENTS_GPT_OSS_BACKEND must be cuda for this perf harness"
 [[ -f "$GPT_OSS_MODEL_PATH" ]] || die "Missing GPT-OSS GGUF at ${GPT_OSS_MODEL_PATH}"
+[[ -f "$PSIONIC_MANIFEST" ]] || die "Missing standalone Psionic checkout at ${PSIONIC_MANIFEST}; set OPENAGENTS_PSIONIC_REPO or OPENAGENTS_PSIONIC_MANIFEST"
 [[ -f "$BENCHMARK_SCRIPT" ]] || die "Missing benchmark script at ${BENCHMARK_SCRIPT}"
 if [[ -n "$BASELINE_ARTIFACT" && ! -f "$BASELINE_ARTIFACT" ]]; then
   die "Missing baseline artifact at ${BASELINE_ARTIFACT}"
 fi
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
-  log "Building release desktop and Psionic benchmark binaries"
+  log "Building release desktop and standalone Psionic benchmark binaries"
   cargo build -p autopilot-desktop --release --bin autopilot-desktop --bin autopilotctl
-  cargo build -p psionic-serve --release --bin psionic-gpt-oss-server
+  cargo build --manifest-path "$PSIONIC_MANIFEST" -p psionic-serve --release --bin psionic-gpt-oss-server
 fi
 
 [[ -x "$APP_EXECUTABLE" ]] || die "Missing desktop app executable at ${APP_EXECUTABLE}"

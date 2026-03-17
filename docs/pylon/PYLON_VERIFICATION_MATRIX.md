@@ -62,8 +62,8 @@ scripts/pylon/verify_standalone.sh
 Sandbox-specific evidence that should remain green:
 
 ```bash
-cargo test -p psionic-sandbox execution::tests::policy_rejection_is_receipted -- --nocapture
-cargo test -p psionic-sandbox execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --nocapture
+cargo --manifest-path ../psionic/Cargo.toml test -p psionic-sandbox execution::tests::policy_rejection_is_receipted -- --nocapture
+cargo --manifest-path ../psionic/Cargo.toml test -p psionic-sandbox execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --nocapture
 cargo test -p pylon sandbox_reports_surface_profiles_status_and_failures -- --nocapture
 cargo test -p autopilot-desktop snapshot_signature_changes_when_sandbox_truth_changes -- --nocapture
 ```

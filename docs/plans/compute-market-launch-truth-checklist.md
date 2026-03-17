@@ -47,6 +47,8 @@ That distinction matters operationally as much as editorially. A provider, buyer
 
 ## Operator Pre-Launch Checks
 
+- Confirm a local standalone Psionic checkout exists at `../psionic` or set
+  `OPENAGENTS_PSIONIC_REPO` before running the cross-stack launch program.
 - Run `scripts/release/check-compute-launch-program.sh` and inspect
   `SUMMARY.md` plus `summary.json`.
 - Add `--soak-iterations 3` and the relevant optional platform legs before

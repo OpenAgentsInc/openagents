@@ -23,7 +23,7 @@ Kernel and Nexus own the authority-facing record of:
 
 The owner split is:
 
-- `crates/psionic/*`
+- `OpenAgentsInc/psionic`
   - runtime, sandbox, datastream, eval, and train execution truth
 - `crates/openagents-kernel-core`
   - typed object model, validation rules, generated proto contracts, typed Rust

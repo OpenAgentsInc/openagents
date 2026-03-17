@@ -61,9 +61,9 @@ That keeps `docs/kernel/` root for:
   synthetic-data lifecycle
 - [../compute-benchmark-adapters.md](../compute-benchmark-adapters.md):
   benchmark-to-eval import layer
-- [../../../crates/psionic/docs/ARCHITECTURE.md](../../../crates/psionic/docs/ARCHITECTURE.md):
+- [OpenAgentsInc/psionic `docs/ARCHITECTURE.md`](https://github.com/OpenAgentsInc/psionic/blob/main/docs/ARCHITECTURE.md):
   Psionic execution-substrate ownership and current state
-- [../../../crates/psionic/docs/TRAIN_SYSTEM.md](../../../crates/psionic/docs/TRAIN_SYSTEM.md):
+- [OpenAgentsInc/psionic `docs/TRAIN_SYSTEM.md`](https://github.com/OpenAgentsInc/psionic/blob/main/docs/TRAIN_SYSTEM.md):
   Psionic train/eval/runtime state and remaining boundaries
 - [../prediction-markets.md](../prediction-markets.md): deeper risk-market
   background on prediction, coverage, and underwriting semantics

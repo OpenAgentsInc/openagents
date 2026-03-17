@@ -12,8 +12,8 @@ workspace = true
 
 [dependencies]
 arc-core = { path = "../core" }
-psionic-data = { path = "../../psionic/psionic-data" }
-psionic-datastream = { path = "../../psionic/psionic-datastream" }
+psionic-data = { workspace = true }
+psionic-datastream = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

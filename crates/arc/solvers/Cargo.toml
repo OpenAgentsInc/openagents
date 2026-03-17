@@ -14,9 +14,9 @@ workspace = true
 arc-benchmark = { path = "../benchmark" }
 arc-client = { path = "../client" }
 arc-core = { path = "../core" }
-psionic-eval = { path = "../../psionic/psionic-eval" }
-psionic-environments = { path = "../../psionic/psionic-environments" }
-psionic-serve = { path = "../../psionic/psionic-serve" }
+psionic-eval = { workspace = true, features = ["full"] }
+psionic-environments = { workspace = true }
+psionic-serve = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

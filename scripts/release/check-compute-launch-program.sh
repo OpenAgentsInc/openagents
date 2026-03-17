@@ -11,6 +11,8 @@ INCLUDE_NVIDIA="${OPENAGENTS_COMPUTE_VALIDATION_INCLUDE_NVIDIA:-0}"
 INCLUDE_CLUSTER_BENCH="${OPENAGENTS_COMPUTE_VALIDATION_INCLUDE_CLUSTER_BENCH:-0}"
 MANIFEST_PATH="${OPENAGENTS_COMPUTE_VALIDATION_MANIFEST:-}"
 AUTOPILOTCTL_BIN="${OPENAGENTS_COMPUTE_VALIDATION_AUTOPILOTCTL_BIN:-$ROOT_DIR/target/release/autopilotctl}"
+PSIONIC_REPO="${OPENAGENTS_PSIONIC_REPO:-$ROOT_DIR/../psionic}"
+PSIONIC_MANIFEST="${OPENAGENTS_PSIONIC_MANIFEST:-$PSIONIC_REPO/Cargo.toml}"
 
 usage() {
   cat <<'USAGE'
@@ -43,6 +45,8 @@ Environment:
   OPENAGENTS_COMPUTE_VALIDATION_INCLUDE_CLUSTER_BENCH=1
   OPENAGENTS_COMPUTE_VALIDATION_MANIFEST=/path/to/desktop-control.json
   OPENAGENTS_COMPUTE_VALIDATION_AUTOPILOTCTL_BIN=/path/to/autopilotctl
+  OPENAGENTS_PSIONIC_REPO=/path/to/psionic
+  OPENAGENTS_PSIONIC_MANIFEST=/path/to/psionic/Cargo.toml
 USAGE
 }
 
@@ -98,6 +102,11 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 if ! command -v python3 >/dev/null 2>&1; then
   echo "missing required command: python3" >&2
+  exit 2
+fi
+if [[ ! -f "$PSIONIC_MANIFEST" ]]; then
+  echo "missing standalone Psionic manifest: $PSIONIC_MANIFEST" >&2
+  echo "set OPENAGENTS_PSIONIC_REPO or OPENAGENTS_PSIONIC_MANIFEST" >&2
   exit 2
 fi
 if ! [[ "$SOAK_ITERATIONS" =~ ^[0-9]+$ ]]; then
@@ -209,19 +218,19 @@ run_step \
   "psionic_sandbox_jobs" \
   "Sandbox execution, receipts, background jobs, uploads, waits, and artifacts" \
   "true" \
-  "cargo test -p psionic-sandbox execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --exact --nocapture && cargo test -p psionic-sandbox execution::tests::policy_rejection_is_receipted -- --exact --nocapture && cargo test -p psionic-sandbox jobs::tests::background_job_lifecycle_supports_upload_poll_wait_and_artifact_download -- --exact --nocapture"
+  "cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-sandbox execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-sandbox execution::tests::policy_rejection_is_receipted -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-sandbox jobs::tests::background_job_lifecycle_supports_upload_poll_wait_and_artifact_download -- --exact --nocapture"
 
 run_step \
   "psionic_cluster_matrix" \
   "Cluster transport, discovery, admission, sharding, recovery, and fault matrix" \
   "true" \
-  "cargo test -p psionic-cluster --test local_cluster_transport -- --nocapture && cargo test -p psionic-cluster --test cluster_validation_matrix -- --nocapture"
+  "cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-cluster --test local_cluster_transport -- --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-cluster --test cluster_validation_matrix -- --nocapture"
 
 run_step \
   "psionic_evidence_and_receipts" \
   "Cluster evidence bundles, delivered execution context, and provider receipts" \
   "true" \
-  "cargo test -p psionic-runtime tests::delivered_execution_context_can_carry_cluster_evidence -- --exact --nocapture && cargo test -p psionic-runtime tests::signed_cluster_evidence_bundle_round_trips_and_verifies -- --exact --nocapture && cargo test -p psionic-provider tests::capability_envelope_can_surface_cluster_execution_context -- --exact --nocapture && cargo test -p psionic-provider tests::text_generation_receipt_surfaces_pipeline_sharded_cluster_execution_truth -- --exact --nocapture && cargo test -p psionic-provider tests::text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth -- --exact --nocapture && cargo test -p psionic-provider tests::text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth -- --exact --nocapture && cargo test -p psionic-provider tests::sandbox_execution_receipt_can_surface_accelerator_deliverability -- --exact --nocapture"
+  "cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-runtime tests::delivered_execution_context_can_carry_cluster_evidence -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-runtime tests::signed_cluster_evidence_bundle_round_trips_and_verifies -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-provider tests::capability_envelope_can_surface_cluster_execution_context -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-provider tests::text_generation_receipt_surfaces_pipeline_sharded_cluster_execution_truth -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-provider tests::text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-provider tests::text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-provider tests::sandbox_execution_receipt_can_surface_accelerator_deliverability -- --exact --nocapture"
 
 run_step \
   "validator_service" \
@@ -254,7 +263,7 @@ if [[ "$INCLUDE_CLUSTER_BENCH" == "1" ]]; then
     "psionic_cluster_benchmarks" \
     "Ignored cluster benchmark gates with JSON benchmark receipts" \
     "false" \
-    "mkdir -p '$OUTPUT_DIR/cluster-bench' && PSIONIC_CLUSTER_BENCH_JSON_OUT='$OUTPUT_DIR/cluster-bench' cargo test -p psionic-cluster --test cluster_benchmark_gates -- --ignored --nocapture"
+    "mkdir -p '$OUTPUT_DIR/cluster-bench' && PSIONIC_CLUSTER_BENCH_JSON_OUT='$OUTPUT_DIR/cluster-bench' cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-cluster --test cluster_benchmark_gates -- --ignored --nocapture"
 else
   skip_step \
     "psionic_cluster_benchmarks" \
@@ -316,7 +325,7 @@ if (( SOAK_ITERATIONS > 0 )); then
       "soak_cluster_matrix_${iteration}" \
       "Soak iteration ${iteration}: cluster discovery, failover, and recovery matrix" \
       "false" \
-      "cargo test -p psionic-cluster --test cluster_validation_matrix discovery_validation_covers_intake_refusal_expiry_and_reconciliation -- --exact --nocapture && cargo test -p psionic-cluster --test cluster_validation_matrix coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rotation -- --exact --nocapture"
+      "cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-cluster --test cluster_validation_matrix discovery_validation_covers_intake_refusal_expiry_and_reconciliation -- --exact --nocapture && cargo --manifest-path '$PSIONIC_MANIFEST' test -p psionic-cluster --test cluster_validation_matrix coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rotation -- --exact --nocapture"
     run_step \
       "soak_kernel_validator_${iteration}" \
       "Soak iteration ${iteration}: kernel challenge routing and settlement projection" \

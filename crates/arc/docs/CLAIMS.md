@@ -2,7 +2,7 @@
 Status: canonical claim vocabulary for the ARC subtree
 Date: 2026-03-15
 Audience: coding agents and human maintainers working in `crates/arc/*`,
-`crates/psionic/*`, and `docs/*`.
+`OpenAgentsInc/psionic`, and `docs/*`.
 
 ## Purpose
 

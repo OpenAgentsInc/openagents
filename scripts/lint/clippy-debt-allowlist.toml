@@ -90,10 +90,3 @@ crates/wgpui/src/text_system/line_wrapper.rs | owner:wgpui | added:2026-02-26 | 
 crates/wgpui/src/theme/color.rs | owner:wgpui | added:2026-02-26 | reason: pre-existing pedantic warnings | review_cadence:monthly
 crates/wgpui/src/theme/dynamic.rs | owner:wgpui | added:2026-02-26 | reason: pre-existing pedantic warnings | review_cadence:monthly
 crates/wgpui/src/tools.rs | owner:wgpui | added:2026-02-26 | reason: pre-existing pedantic warnings | review_cadence:monthly
-crates/psionic/psionic-runtime/src/lib.rs | owner:psionic | added:2026-03-07 | reason: phase-2 touched-file large_err warnings | review_cadence:weekly | expires_on:2026-04-30
-crates/psionic/psionic-backend-cpu/src/lib.rs | owner:psionic | added:2026-03-07 | reason: phase-2 touched-file large_err warnings | review_cadence:weekly | expires_on:2026-04-30
-crates/psionic/psionic-serve/src/lib.rs | owner:psionic | added:2026-03-07 | reason: phase-2 touched-file large_err warnings | review_cadence:weekly | expires_on:2026-04-30
-crates/psionic/psionic-serve/src/gpt_oss.rs | owner:psionic | added:2026-03-10 | reason: pre-existing gpt_oss pedantic warnings in touched serving lane | review_cadence:weekly | expires_on:2026-04-30
-crates/psionic/psionic-cluster/src/layer_sharded.rs | owner:psionic | added:2026-03-10 | reason: pre-existing cluster planner pedantic warnings surfaced by auth fixture touch | review_cadence:weekly | expires_on:2026-04-30
-crates/psionic/psionic-cluster/src/serving_policy.rs | owner:psionic | added:2026-03-10 | reason: pre-existing cluster planner pedantic warnings surfaced by auth fixture touch | review_cadence:weekly | expires_on:2026-04-30
-crates/psionic/psionic-cluster/src/tensor_sharded.rs | owner:psionic | added:2026-03-10 | reason: pre-existing cluster planner pedantic warnings surfaced by auth fixture touch | review_cadence:weekly | expires_on:2026-04-30

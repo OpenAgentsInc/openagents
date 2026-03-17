@@ -2,7 +2,7 @@
 Status: draft for coding agents
 Date: 2026-03-15
 Audience: coding agents and human maintainers working in `crates/arc/*`,
-`crates/psionic/*`, and `docs/*`.
+`OpenAgentsInc/psionic`, and `docs/*`.
 
 ## 0. Why this exists
 
@@ -102,7 +102,7 @@ The ARC subtree owns:
 - ARC benchmark logic, scoring, checkpoints, and run manifests
 - ARC-specific model definitions, evaluator glue, and metrics
 
-### 1.2 `crates/psionic/*` owns reusable substrate
+### 1.2 `OpenAgentsInc/psionic` owns reusable substrate
 
 Psionic owns only the reusable pieces that should serve more than ARC:
 

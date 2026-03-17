@@ -2,7 +2,7 @@
 
 > Status: written 2026-03-15 after reviewing `docs/MVP.md`,
 > `docs/OWNERSHIP.md`, `crates/arc/spec.md`,
-> `crates/psionic/docs/ROADMAP.md`, and
+> `https://github.com/OpenAgentsInc/psionic/blob/main/docs/ROADMAP.md`, and
 > `docs/audits/2026-03-15-arcprize-rust-port-and-psionic-integration-audit.md`.
 >
 > This is now the canonical roadmap for `crates/arc/*`.
@@ -57,7 +57,7 @@ This is a library, benchmark, and research-program roadmap.
 Per [docs/OWNERSHIP.md](/Users/christopherdavid/code/openagents/docs/OWNERSHIP.md):
 
 - `crates/arc/*` owns ARC-specific domain logic
-- `crates/psionic/*` owns reusable execution substrate
+- `OpenAgentsInc/psionic` owns reusable execution substrate
 - `apps/*` own product behavior and UX
 - kernel and Nexus own authority truth, not ARC cognitive inner loops
 
@@ -68,7 +68,7 @@ ARC crates.
 ## Relationship To Psionic
 
 The Psionic roadmap in
-[crates/psionic/docs/ROADMAP.md](/Users/christopherdavid/code/openagents/crates/psionic/docs/ROADMAP.md)
+[https://github.com/OpenAgentsInc/psionic/blob/main/docs/ROADMAP.md](https://github.com/OpenAgentsInc/psionic/blob/main/docs/ROADMAP.md)
 is the canonical roadmap for reusable substrate.
 
 The ARC roadmap is the canonical roadmap for ARC-specific semantics,
