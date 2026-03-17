@@ -15,6 +15,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use psionic_backend_cuda::CudaBackend;
 use psionic_backend_metal::MetalBackend;
 use psionic_compiler::{
     CompileTransformConfig, CompileTransformDebugMode, CompileTransformError,
@@ -58,6 +59,7 @@ const DEFAULT_KERNEL_CACHE_BYTES: u64 = 256 * 1024;
 const DEFAULT_DEBUG_LOG_HISTORY_LIMIT: usize = 32;
 const DEFAULT_DEBUG_CAPTURE_HISTORY_LIMIT: usize = 8;
 const PUBLIC_METAL_EVAL_SUPPORTED_OPS: &[&str] = &["constant", "add", "matmul"];
+const PUBLIC_CUDA_EVAL_SUPPORTED_OPS: &[&str] = &["constant", "add", "matmul"];
 
 #[derive(Debug)]
 struct ArrayContextInner {
@@ -2002,6 +2004,16 @@ impl ArrayContext {
         Self::with_selected_metal_device_and_determinism(RuntimeDeterminismContract::seeded(seed))
     }
 
+    /// Creates a CUDA-backed context from the currently selected runtime device.
+    pub fn cuda() -> Result<Self, ArrayError> {
+        Self::with_selected_cuda_device_and_determinism(RuntimeDeterminismContract::best_effort())
+    }
+
+    /// Creates a CUDA-backed context with one seeded replay contract.
+    pub fn cuda_seeded(seed: u64) -> Result<Self, ArrayError> {
+        Self::with_selected_cuda_device_and_determinism(RuntimeDeterminismContract::seeded(seed))
+    }
+
     fn with_selected_metal_device_and_determinism(
         determinism: RuntimeDeterminismContract,
     ) -> Result<Self, ArrayError> {
@@ -2010,6 +2022,20 @@ impl ArrayContext {
             let health = backend.health();
             return Err(ArrayError::BackendUnavailable {
                 backend: String::from("metal"),
+                detail: health.message,
+            });
+        };
+        Self::from_device_descriptor_with_determinism(descriptor, determinism)
+    }
+
+    fn with_selected_cuda_device_and_determinism(
+        determinism: RuntimeDeterminismContract,
+    ) -> Result<Self, ArrayError> {
+        let backend = CudaBackend::new();
+        let Some(descriptor) = backend.selected_device().cloned() else {
+            let health = backend.health();
+            return Err(ArrayError::BackendUnavailable {
+                backend: String::from("cuda"),
                 detail: health.message,
             });
         };
@@ -3830,6 +3856,9 @@ fn evaluate_graph_snapshot(
     if stream.device().backend() == "metal" {
         return evaluate_graph_snapshot_via_metal(graph, requested_outputs, trigger, stream);
     }
+    if stream.device().backend() == "cuda" {
+        return evaluate_graph_snapshot_via_cuda(graph, requested_outputs, trigger, stream);
+    }
     evaluate_graph_snapshot_reference(graph, requested_outputs, trigger, stream)
 }
 
@@ -3926,53 +3955,9 @@ fn evaluate_graph_snapshot_via_metal(
     trigger: MaterializationTrigger,
     stream: &ArrayStream,
 ) -> Result<Vec<EvaluatedArray>, ArrayError> {
-    for node in graph.nodes() {
-        match node.op() {
-            OpKind::Input { name } => {
-                return Err(ArrayError::UnboundInput {
-                    tensor: node.tensor().id(),
-                    name: name.clone(),
-                });
-            }
-            OpKind::Constant { data } => {
-                if matches!(data, TensorData::QuantizedBlocks(_)) {
-                    return Err(ArrayError::MaterializationRefusal {
-                        tensor: node.tensor().id(),
-                        op: String::from("constant"),
-                        detail: String::from(
-                            "bounded Metal eval currently materializes only dense f32 constant payloads on the public array surface",
-                        ),
-                    });
-                }
-            }
-            OpKind::Add | OpKind::Matmul => {}
-            other => {
-                return Err(ArrayError::MaterializationRefusal {
-                    tensor: node.tensor().id(),
-                    op: other.label().to_string(),
-                    detail: format!(
-                        "bounded Metal eval currently materializes only {} graphs on the public array surface",
-                        PUBLIC_METAL_EVAL_SUPPORTED_OPS.join(", ")
-                    ),
-                });
-            }
-        }
-    }
-
-    let first_output = requested_outputs
-        .first()
-        .map(Array::tensor_id)
-        .or_else(|| graph.outputs().first().copied())
-        .or_else(|| graph.nodes().first().map(|node| node.tensor().id()))
-        .ok_or_else(|| ArrayError::MaterializationRefusal {
-            tensor: graph
-                .nodes()
-                .first()
-                .map(|node| node.tensor().id())
-                .unwrap_or(TensorId(0)),
-            op: String::from("metal_eval"),
-            detail: String::from("metal eval requires at least one requested output"),
-        })?;
+    validate_bounded_accelerator_eval_graph(graph, "Metal", PUBLIC_METAL_EVAL_SUPPORTED_OPS)?;
+    let first_output =
+        bounded_accelerator_eval_output(graph, requested_outputs, "metal_eval", "metal eval")?;
 
     let mut backend = MetalBackend::new();
     let Some(selected_device) = backend.selected_device().cloned() else {
@@ -4003,14 +3988,7 @@ fn evaluate_graph_snapshot_via_metal(
             detail: format!("Metal backend refused bounded public eval: {error}"),
         })?;
 
-    let receipt = EvalReceipt {
-        graph_digest: graph.stable_digest(),
-        outputs: requested_outputs.iter().map(Array::tensor_id).collect(),
-        trigger,
-        replay_boundary: ReplayBoundary::GraphSnapshot,
-        device_id: stream.device().stable_id().to_string(),
-        stream_id: stream.stream_id(),
-    };
+    let receipt = graph_snapshot_eval_receipt(graph, requested_outputs, trigger, stream);
 
     requested_outputs
         .iter()
@@ -4040,6 +4018,155 @@ fn evaluate_graph_snapshot_via_metal(
             })
         })
         .collect()
+}
+
+fn evaluate_graph_snapshot_via_cuda(
+    graph: &Graph,
+    requested_outputs: &[Array],
+    trigger: MaterializationTrigger,
+    stream: &ArrayStream,
+) -> Result<Vec<EvaluatedArray>, ArrayError> {
+    validate_bounded_accelerator_eval_graph(graph, "CUDA", PUBLIC_CUDA_EVAL_SUPPORTED_OPS)?;
+    let first_output =
+        bounded_accelerator_eval_output(graph, requested_outputs, "cuda_eval", "cuda eval")?;
+
+    let mut backend = CudaBackend::new();
+    let Some(selected_device) = backend.selected_device().cloned() else {
+        let health = backend.health();
+        return Err(ArrayError::BackendUnavailable {
+            backend: String::from("cuda"),
+            detail: health.message,
+        });
+    };
+    let selected_handle = ArrayDevice::from_descriptor(selected_device.clone());
+    if selected_handle.stable_id() != stream.device().stable_id() {
+        return Err(ArrayError::MaterializationRefusal {
+            tensor: first_output,
+            op: String::from("cuda_eval"),
+            detail: format!(
+                "cuda eval requires the selected runtime device `{}`; current context is pinned to `{}`",
+                selected_handle.stable_id(),
+                stream.device().stable_id()
+            ),
+        });
+    }
+
+    let result = backend
+        .compile_and_execute(graph, &BTreeMap::new())
+        .map_err(|error| ArrayError::MaterializationRefusal {
+            tensor: first_output,
+            op: String::from("cuda_eval"),
+            detail: format!("CUDA backend refused bounded public eval: {error}"),
+        })?;
+
+    let receipt = graph_snapshot_eval_receipt(graph, requested_outputs, trigger, stream);
+
+    requested_outputs
+        .iter()
+        .map(|array| {
+            let output =
+                result
+                    .outputs
+                    .get(&array.tensor_id())
+                    .ok_or(ArrayError::MissingDependency {
+                        tensor: array.tensor_id(),
+                        input: array.tensor_id(),
+                    })?;
+            let values = output
+                .read_f32()
+                .map_err(|error| ArrayError::MaterializationRefusal {
+                    tensor: array.tensor_id(),
+                    op: String::from("cuda_eval"),
+                    detail: format!(
+                        "failed to read CUDA output back into dense host data: {error}"
+                    ),
+                })?;
+            Ok(EvaluatedArray {
+                tensor: array.tensor.clone(),
+                data: TensorData::F32(values),
+                receipt: receipt.clone(),
+                boundary: array.materialization_boundary(),
+            })
+        })
+        .collect()
+}
+
+fn validate_bounded_accelerator_eval_graph(
+    graph: &Graph,
+    backend_label: &str,
+    supported_ops: &[&str],
+) -> Result<(), ArrayError> {
+    for node in graph.nodes() {
+        match node.op() {
+            OpKind::Input { name } => {
+                return Err(ArrayError::UnboundInput {
+                    tensor: node.tensor().id(),
+                    name: name.clone(),
+                });
+            }
+            OpKind::Constant { data } => {
+                if matches!(data, TensorData::QuantizedBlocks(_)) {
+                    return Err(ArrayError::MaterializationRefusal {
+                        tensor: node.tensor().id(),
+                        op: String::from("constant"),
+                        detail: format!(
+                            "bounded {backend_label} eval currently materializes only dense f32 constant payloads on the public array surface",
+                        ),
+                    });
+                }
+            }
+            OpKind::Add | OpKind::Matmul => {}
+            other => {
+                return Err(ArrayError::MaterializationRefusal {
+                    tensor: node.tensor().id(),
+                    op: other.label().to_string(),
+                    detail: format!(
+                        "bounded {backend_label} eval currently materializes only {} graphs on the public array surface",
+                        supported_ops.join(", ")
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn bounded_accelerator_eval_output(
+    graph: &Graph,
+    requested_outputs: &[Array],
+    op: &str,
+    op_label: &str,
+) -> Result<TensorId, ArrayError> {
+    requested_outputs
+        .first()
+        .map(Array::tensor_id)
+        .or_else(|| graph.outputs().first().copied())
+        .or_else(|| graph.nodes().first().map(|node| node.tensor().id()))
+        .ok_or_else(|| ArrayError::MaterializationRefusal {
+            tensor: graph
+                .nodes()
+                .first()
+                .map(|node| node.tensor().id())
+                .unwrap_or(TensorId(0)),
+            op: op.to_string(),
+            detail: format!("{op_label} requires at least one requested output"),
+        })
+}
+
+fn graph_snapshot_eval_receipt(
+    graph: &Graph,
+    requested_outputs: &[Array],
+    trigger: MaterializationTrigger,
+    stream: &ArrayStream,
+) -> EvalReceipt {
+    EvalReceipt {
+        graph_digest: graph.stable_digest(),
+        outputs: requested_outputs.iter().map(Array::tensor_id).collect(),
+        trigger,
+        replay_boundary: ReplayBoundary::GraphSnapshot,
+        device_id: stream.device().stable_id().to_string(),
+        stream_id: stream.stream_id(),
+    }
 }
 
 fn host_array_data_from_evaluated(
@@ -4991,6 +5118,23 @@ mod tests {
     }
 
     #[test]
+    fn public_lazy_array_cuda_constructor_reports_runtime_availability() {
+        match ArrayContext::cuda() {
+            Ok(context) => {
+                assert_eq!(context.device().kind(), DeviceKind::Cuda);
+                assert_eq!(context.device_handle().backend(), "cuda");
+                assert_eq!(context.stream().kind(), StreamKind::Default);
+                assert_eq!(context.stream().stream_id(), 0);
+            }
+            Err(ArrayError::BackendUnavailable { backend, detail }) => {
+                assert_eq!(backend, "cuda");
+                assert!(!detail.is_empty());
+            }
+            Err(other) => panic!("unexpected cuda constructor result: {other}"),
+        }
+    }
+
+    #[test]
     fn public_lazy_array_streams_report_dependency_policy_honestly() -> Result<(), ArrayError> {
         let context = ArrayContext::cpu();
         let default_stream = context.stream().clone();
@@ -5081,6 +5225,59 @@ mod tests {
             ArrayError::MaterializationRefusal { tensor: _, op, detail }
                 if op == "reshape"
                     && detail.contains("bounded Metal eval currently materializes only constant, add, matmul graphs")
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_cuda_eval_executes_bounded_dense_surface_when_hardware_available()
+    -> Result<(), ArrayError> {
+        let context = match ArrayContext::cuda() {
+            Ok(context) => context,
+            Err(ArrayError::BackendUnavailable { .. }) => return Ok(()),
+            Err(other) => return Err(other),
+        };
+        let stream_context = context.with_stream(context.new_stream())?;
+        let input = stream_context.constant_f32(Shape::new(vec![1, 2]), vec![1.0, 0.0])?;
+        let weights =
+            stream_context.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+        let bias = stream_context.constant_f32(Shape::new(vec![1, 2]), vec![0.5, 0.5])?;
+        let projected = input.matmul(&weights)?;
+        let shifted = projected.add(&bias)?;
+        let evaluated = shifted.eval()?;
+
+        assert_eq!(evaluated.data.as_f32_slice(), Some(&[1.5, 2.5][..]));
+        assert_eq!(
+            evaluated.receipt().stream_id,
+            stream_context.stream().stream_id()
+        );
+        assert_eq!(
+            evaluated.receipt().device_id,
+            stream_context.device_handle().stable_id()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn public_lazy_array_cuda_eval_refuses_ops_outside_bounded_surface_when_hardware_available()
+    -> Result<(), ArrayError> {
+        let context = match ArrayContext::cuda() {
+            Ok(context) => context,
+            Err(ArrayError::BackendUnavailable { .. }) => return Ok(()),
+            Err(other) => return Err(other),
+        };
+        let matrix = context.ones_f32(Shape::new(vec![2, 2]))?;
+        let flattened = matrix.flatten()?;
+        let error = flattened
+            .eval()
+            .expect_err("cuda eval should refuse reshape-backed flatten today");
+        assert!(matches!(
+            error,
+            ArrayError::MaterializationRefusal { tensor: _, op, detail }
+                if op == "reshape"
+                    && detail.contains("bounded CUDA eval currently materializes only constant, add, matmul graphs")
         ));
 
         Ok(())
