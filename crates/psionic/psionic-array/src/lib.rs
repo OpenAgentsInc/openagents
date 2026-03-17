@@ -20,8 +20,8 @@ use psionic_compiler::{
     CompileTransformResult, CompileTransformTraceMode, compile_transform,
 };
 use psionic_core::{
-    DType, Device, DeviceKind, LazyOp, PsionicRefusal, Shape, Tensor, TensorData, TensorId,
-    TensorSpec,
+    DType, Device, DeviceKind, LazyOp, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope,
+    Shape, Tensor, TensorData, TensorId, TensorSpec,
 };
 use psionic_ir::{
     BackendPluginExtensionContract, CustomKernelExtensionContract, CustomOpExtensionContract,
@@ -42,6 +42,7 @@ use psionic_runtime::{
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -380,6 +381,36 @@ impl Default for ArrayCacheLimitControl {
     }
 }
 
+fn invalid_expand_axis_refusal(shape: &Shape, axis: usize) -> PsionicRefusal {
+    PsionicRefusal::new(
+        PsionicRefusalCode::UnsupportedLayout,
+        PsionicRefusalScope::Graph,
+        format!("expand_dims axis={axis} is out of range for shape {shape}"),
+    )
+    .with_subject("expand_dims")
+}
+
+fn non_singleton_squeeze_axis_refusal(shape: &Shape, axis: usize, dim: usize) -> PsionicRefusal {
+    PsionicRefusal::new(
+        PsionicRefusalCode::UnsupportedLayout,
+        PsionicRefusalScope::Graph,
+        format!("squeeze axis={axis} requires dimension 1 for shape {shape}; found {dim}"),
+    )
+    .with_subject("squeeze")
+}
+
+fn unsupported_capture_format_refusal(
+    backend: &str,
+    format: ArrayBackendCaptureFormat,
+) -> PsionicRefusal {
+    PsionicRefusal::new(
+        PsionicRefusalCode::UnsupportedBackendCapability,
+        PsionicRefusalScope::Runtime,
+        format!("backend debug format {format:?} is unsupported for backend `{backend}`"),
+    )
+    .with_subject("backend_debug_capture_format")
+}
+
 /// Public runtime-resource report for the bounded array surface.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ArrayRuntimeResourceReport {
@@ -471,6 +502,32 @@ pub enum ArrayError {
     /// One linspace request used a zero sample count.
     #[error("linspace requires count > 0")]
     InvalidLinspaceCount,
+    /// One `expand_dims` request used an axis outside the legal insertion range.
+    #[error("expand_dims axis={axis} is out of range for shape {shape}")]
+    InvalidExpandAxis {
+        /// Input shape.
+        shape: Shape,
+        /// Requested insertion axis.
+        axis: usize,
+    },
+    /// One `squeeze` request used an axis outside the current rank.
+    #[error("squeeze axis={axis} is out of range for shape {shape}")]
+    InvalidSqueezeAxis {
+        /// Input shape.
+        shape: Shape,
+        /// Requested squeeze axis.
+        axis: usize,
+    },
+    /// One `squeeze` request targeted a non-singleton dimension.
+    #[error("squeeze axis={axis} requires dimension 1 for shape {shape}; found {dim}")]
+    NonSingletonSqueezeAxis {
+        /// Input shape.
+        shape: Shape,
+        /// Requested squeeze axis.
+        axis: usize,
+        /// Actual dimension found at the requested axis.
+        dim: usize,
+    },
     /// One host-interop request could not convert the bounded reference payload.
     #[error("cannot export tensor {tensor} with dtype {dtype:?} to host data: {detail}")]
     HostInteropRefusal {
@@ -560,6 +617,14 @@ pub enum ArrayError {
         /// Artifact path that failed.
         path: PathBuf,
         /// Plain-language write failure detail.
+        detail: String,
+    },
+    /// One seeded MLX CPU-reference coverage case could not be built honestly.
+    #[error("cannot build MLX CPU reference coverage case `{case_id}`: {detail}")]
+    CoverageReportInvariant {
+        /// Seeded case identifier that failed.
+        case_id: String,
+        /// Plain-language invariant failure.
         detail: String,
     },
 }
@@ -2780,6 +2845,66 @@ impl Array {
         self.permute(axes)
     }
 
+    /// Flattens the full array into one rank-1 view.
+    pub fn flatten(&self) -> Result<Self, ArrayError> {
+        self.reshape(Shape::new(vec![self.shape().element_count()]))
+    }
+
+    /// Inserts one singleton axis into the logical view.
+    pub fn expand_dims(&self, axis: usize) -> Result<Self, ArrayError> {
+        if axis > self.shape().rank() {
+            return Err(ArrayError::InvalidExpandAxis {
+                shape: self.shape().clone(),
+                axis,
+            });
+        }
+        let mut dims = self.shape().dims().to_vec();
+        dims.insert(axis, 1);
+        self.reshape(Shape::new(dims))
+    }
+
+    /// Removes all singleton axes from the logical view.
+    pub fn squeeze(&self) -> Result<Self, ArrayError> {
+        let dims = self
+            .shape()
+            .dims()
+            .iter()
+            .copied()
+            .filter(|dim| *dim != 1)
+            .collect::<Vec<_>>();
+        let shape = if dims.is_empty() {
+            Shape::scalar()
+        } else {
+            Shape::new(dims)
+        };
+        self.reshape(shape)
+    }
+
+    /// Removes one explicit singleton axis from the logical view.
+    pub fn squeeze_axis(&self, axis: usize) -> Result<Self, ArrayError> {
+        let Some(dim) = self.shape().dim(axis) else {
+            return Err(ArrayError::InvalidSqueezeAxis {
+                shape: self.shape().clone(),
+                axis,
+            });
+        };
+        if dim != 1 {
+            return Err(ArrayError::NonSingletonSqueezeAxis {
+                shape: self.shape().clone(),
+                axis,
+                dim,
+            });
+        }
+        let mut dims = self.shape().dims().to_vec();
+        dims.remove(axis);
+        let shape = if dims.is_empty() {
+            Shape::scalar()
+        } else {
+            Shape::new(dims)
+        };
+        self.reshape(shape)
+    }
+
     /// Returns a narrowed slice along one axis.
     pub fn slice(&self, axis: usize, start: usize, end: usize) -> Result<Self, ArrayError> {
         let tensor = self
@@ -2883,6 +3008,20 @@ impl Array {
         let tensor = self.context.builder.borrow_mut().reduce_sum(&self.tensor);
         Self::from_tensor(self.context.clone(), self.stream.clone(), tensor)
     }
+
+    /// Reduces the array along one explicit axis.
+    pub fn sum_axis(&self, axis: usize) -> Result<Self, ArrayError> {
+        let tensor = self
+            .context
+            .builder
+            .borrow_mut()
+            .reduce_sum_axis(&self.tensor, axis)?;
+        Ok(Self::from_tensor(
+            self.context.clone(),
+            self.stream.clone(),
+            tensor,
+        ))
+    }
 }
 
 impl Tree<Array> {
@@ -2912,6 +3051,740 @@ impl Tree<EvaluatedArray> {
     pub fn item(&self) -> Result<ScalarTree, ArrayError> {
         self.map_leaves(&mut EvaluatedArray::item)
     }
+}
+
+/// Stable outcome for one seeded MLX CPU-reference coverage case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MlxCpuReferenceCoverageStatus {
+    /// The seeded CPU-reference case is implemented on the bounded public surface.
+    Supported,
+    /// The seeded CPU-reference case refuses explicitly on the bounded public surface.
+    Refused,
+}
+
+/// One machine-readable seeded CPU-reference coverage case anchored to an
+/// imported MLX parity family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct MlxCpuReferenceCoverageCase {
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Imported MLX parity family this case belongs to.
+    pub family_id: String,
+    /// Upstream MLX source files that motivated the seeded case.
+    pub upstream_sources: Vec<String>,
+    /// Stable surface label under the bounded public array API.
+    pub surface_label: String,
+    /// Stable capability profile for the bounded CPU oracle.
+    pub capability_profile: String,
+    /// Input tensor specs used by the seeded case.
+    pub input_specs: Vec<TensorSpec>,
+    /// Expected output spec when the seeded case is implemented.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_output: Option<TensorSpec>,
+    /// Actual output spec surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_output: Option<TensorSpec>,
+    /// Expected refusal when the seeded case is intentionally unsupported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_refusal: Option<PsionicRefusal>,
+    /// Actual refusal surfaced by the implementation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_refusal: Option<PsionicRefusal>,
+    /// Stable seeded outcome.
+    pub status: MlxCpuReferenceCoverageStatus,
+    /// Plain-language bounded scope for the seeded case.
+    pub bounded_scope: String,
+}
+
+/// Aggregate machine-readable CPU-reference coverage report for the imported
+/// MLX basic parity families.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct MlxCpuReferenceCoverageReport {
+    /// Stable schema version.
+    pub schema_version: u32,
+    /// Stable schema path.
+    pub schema_path: String,
+    /// Canonical repo runner for the report.
+    pub runner: String,
+    /// Frozen MLX oracle window carried by the report.
+    pub oracle_window: String,
+    /// Stable current-scope window for the bounded CPU oracle.
+    pub current_scope_window: String,
+    /// Seeded CPU-reference cases.
+    pub cases: Vec<MlxCpuReferenceCoverageCase>,
+    /// Stable digest over the report contents.
+    pub report_digest: String,
+    /// Explicit selected families when the report is filtered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_families: Vec<String>,
+}
+
+impl MlxCpuReferenceCoverageReport {
+    fn new(
+        schema_path: impl Into<String>,
+        runner: impl Into<String>,
+        oracle_window: impl Into<String>,
+        current_scope_window: impl Into<String>,
+        cases: Vec<MlxCpuReferenceCoverageCase>,
+    ) -> Self {
+        let schema_path = schema_path.into();
+        let runner = runner.into();
+        let oracle_window = oracle_window.into();
+        let current_scope_window = current_scope_window.into();
+        let report_digest = stable_mlx_cpu_reference_coverage_digest(
+            schema_path.as_str(),
+            runner.as_str(),
+            oracle_window.as_str(),
+            current_scope_window.as_str(),
+            cases.as_slice(),
+            &[],
+        );
+        Self {
+            schema_version: 1,
+            schema_path,
+            runner,
+            oracle_window,
+            current_scope_window,
+            cases,
+            report_digest,
+            selected_families: Vec::new(),
+        }
+    }
+
+    /// Returns stable signature lines suitable for fixtures or audits.
+    #[must_use]
+    pub fn stable_signature_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!("schema_version={}", self.schema_version),
+            format!("schema_path={}", self.schema_path),
+            format!("runner={}", self.runner),
+            format!("oracle_window={}", self.oracle_window),
+            format!("current_scope_window={}", self.current_scope_window),
+            format!("report_digest={}", self.report_digest),
+        ];
+        if !self.selected_families.is_empty() {
+            lines.push(format!(
+                "selected_families={}",
+                self.selected_families.join(",")
+            ));
+        }
+        for case in &self.cases {
+            lines.push(format!(
+                "{}|{}|{}|{:?}",
+                case.case_id, case.family_id, case.surface_label, case.status
+            ));
+        }
+        lines
+    }
+
+    /// Filters the report to one or more imported MLX parity families.
+    pub fn filter_to_families(
+        &self,
+        families: &[String],
+    ) -> Result<Self, MlxCpuReferenceCoverageError> {
+        if families.is_empty() {
+            return Ok(self.clone());
+        }
+        for family in families {
+            if !self.cases.iter().any(|case| &case.family_id == family) {
+                return Err(MlxCpuReferenceCoverageError::UnknownFamily {
+                    family: family.clone(),
+                });
+            }
+        }
+        let cases = self
+            .cases
+            .iter()
+            .filter(|case| families.iter().any(|family| family == &case.family_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        let selected_families = families.to_vec();
+        let report_digest = stable_mlx_cpu_reference_coverage_digest(
+            self.schema_path.as_str(),
+            self.runner.as_str(),
+            self.oracle_window.as_str(),
+            self.current_scope_window.as_str(),
+            cases.as_slice(),
+            selected_families.as_slice(),
+        );
+        Ok(Self {
+            schema_version: self.schema_version,
+            schema_path: self.schema_path.clone(),
+            runner: self.runner.clone(),
+            oracle_window: self.oracle_window.clone(),
+            current_scope_window: self.current_scope_window.clone(),
+            cases,
+            report_digest,
+            selected_families,
+        })
+    }
+}
+
+/// Failure returned while filtering the MLX CPU-reference coverage report.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum MlxCpuReferenceCoverageError {
+    /// One requested family is not tracked by the report.
+    #[error("unknown MLX CPU reference coverage family: {family}")]
+    UnknownFamily {
+        /// Requested family identifier.
+        family: String,
+    },
+}
+
+struct MlxCpuReferenceCaseSeed<'a> {
+    case_id: &'a str,
+    family_id: &'a str,
+    upstream_sources: &'a [&'a str],
+    surface_label: &'a str,
+    input_specs: Vec<TensorSpec>,
+    bounded_scope: &'a str,
+}
+
+fn coverage_invariant(case_id: &str, detail: impl Into<String>) -> ArrayError {
+    ArrayError::CoverageReportInvariant {
+        case_id: case_id.to_string(),
+        detail: detail.into(),
+    }
+}
+
+/// Builds the canonical bounded MLX CPU-reference coverage report for the
+/// imported basic parity families.
+pub fn builtin_mlx_cpu_reference_coverage_report()
+-> Result<MlxCpuReferenceCoverageReport, ArrayError> {
+    let schema_path = "crates/psionic/docs/mlx_cpu_reference_coverage_report.schema.json";
+    let runner = "scripts/release/check-psionic-mlx-cpu-reference-coverage.sh";
+    let oracle_window = "ml-explore/mlx:v0.31.0..v0.31.1:cpu_reference_seed_v1";
+    let current_scope_window = "psionic_mlx_cpu_reference_v1";
+
+    let mut cases = Vec::new();
+
+    let view_context = ArrayContext::cpu();
+    let view_seed = view_context
+        .arange_f32(0.0, 6.0, 1.0)?
+        .reshape(Shape::new(vec![1, 2, 3]))?;
+    let expanded = view_seed.expand_dims(2)?;
+    let squeezed = expanded.squeeze_axis(2)?.squeeze_axis(0)?;
+    let flattened = squeezed.flatten()?;
+    let flattened_eval = flattened.eval()?;
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "array_core.flatten_expand_dims_squeeze",
+            family_id: "array_core",
+            upstream_sources: &[
+                "tests/ops_tests.cpp",
+                "python/tests/test_array.py",
+                "python/tests/test_ops.py",
+            ],
+            surface_label: "flatten_expand_dims_squeeze",
+            input_specs: vec![view_seed.spec().clone()],
+            bounded_scope: "Current CPU oracle covers flatten, singleton-axis insertion, and singleton-axis removal as logical view operations above the graph-backed array surface.",
+        },
+        TensorSpec::new(Shape::new(vec![6]), DType::F32, Device::cpu()),
+        flattened_eval.spec().clone(),
+    ));
+
+    let view_context = ArrayContext::cpu();
+    let zeros = view_context.zeros_f32(Shape::new(vec![2, 2]))?;
+    let ones = view_context.ones_f32(Shape::new(vec![2, 2]))?;
+    let full = view_context.full_f32(Shape::new(vec![2, 2]), 3.0)?;
+    let base = Array::concat(&[zeros, ones, full], 0)?;
+    let sliced = base.slice(0, 1, 5)?;
+    let selected = sliced.select(0, 2)?;
+    let transposed = selected.transpose()?;
+    let selected_eval = transposed.eval()?;
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "array_core.slice_select_concat_transpose",
+            family_id: "array_core",
+            upstream_sources: &[
+                "tests/ops_tests.cpp",
+                "python/tests/test_array.py",
+                "python/tests/test_ops.py",
+            ],
+            surface_label: "slice_select_concat_transpose",
+            input_specs: vec![base.spec().clone()],
+            bounded_scope: "Current CPU oracle covers concat, bounded slice/select views, and transpose over dense public arrays.",
+        },
+        TensorSpec::new(Shape::new(vec![2]), DType::F32, Device::cpu()),
+        selected_eval.spec().clone(),
+    ));
+
+    let squeeze_input = ArrayContext::cpu().ones_f32(Shape::new(vec![2, 1]))?;
+    let squeeze_shape = squeeze_input.shape().clone();
+    let squeeze_actual = match squeeze_input.squeeze_axis(0) {
+        Err(ArrayError::NonSingletonSqueezeAxis { shape, axis, dim }) => {
+            non_singleton_squeeze_axis_refusal(&shape, axis, dim)
+        }
+        Err(other) => {
+            return Err(coverage_invariant(
+                "array_core.squeeze_non_singleton_axis",
+                format!("expected non-singleton squeeze refusal, got `{other}`"),
+            ));
+        }
+        Ok(_) => {
+            return Err(coverage_invariant(
+                "array_core.squeeze_non_singleton_axis",
+                "expected squeeze_axis(0) to refuse on shape [2, 1]",
+            ));
+        }
+    };
+    let squeeze_expected = non_singleton_squeeze_axis_refusal(&squeeze_shape, 0, 2);
+    cases.push(refused_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "array_core.squeeze_non_singleton_axis",
+            family_id: "array_core",
+            upstream_sources: &[
+                "tests/ops_tests.cpp",
+                "python/tests/test_array.py",
+                "python/tests/test_ops.py",
+            ],
+            surface_label: "squeeze_non_singleton_axis",
+            input_specs: vec![squeeze_input.spec().clone()],
+            bounded_scope: "Current CPU oracle refuses squeeze on non-singleton axes explicitly instead of silently changing layout semantics.",
+        },
+        squeeze_expected,
+        squeeze_actual,
+    ));
+
+    let expand_input = ArrayContext::cpu().ones_f32(Shape::new(vec![2, 2]))?;
+    let expand_shape = expand_input.shape().clone();
+    let expand_actual = match expand_input.expand_dims(3) {
+        Err(ArrayError::InvalidExpandAxis { shape, axis }) => {
+            invalid_expand_axis_refusal(&shape, axis)
+        }
+        Err(other) => {
+            return Err(coverage_invariant(
+                "array_core.expand_dims_out_of_range",
+                format!("expected out-of-range expand_dims refusal, got `{other}`"),
+            ));
+        }
+        Ok(_) => {
+            return Err(coverage_invariant(
+                "array_core.expand_dims_out_of_range",
+                "expected expand_dims(3) to refuse on shape [2, 2]",
+            ));
+        }
+    };
+    let expand_expected = invalid_expand_axis_refusal(&expand_shape, 3);
+    cases.push(refused_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "array_core.expand_dims_out_of_range",
+            family_id: "array_core",
+            upstream_sources: &[
+                "tests/ops_tests.cpp",
+                "python/tests/test_array.py",
+                "python/tests/test_ops.py",
+            ],
+            surface_label: "expand_dims_out_of_range",
+            input_specs: vec![expand_input.spec().clone()],
+            bounded_scope: "Current CPU oracle refuses singleton-axis insertion requests that exceed the legal insertion window for the current rank.",
+        },
+        expand_expected,
+        expand_actual,
+    ));
+
+    let numeric_context = ArrayContext::cpu();
+    let left = numeric_context.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+    let right = numeric_context.full_f32(Shape::new(vec![2, 2]), 2.0)?;
+    let reduced = left.add(&right)?.mul(&right)?.sum_axis(1)?;
+    let reduced_eval = reduced.eval()?;
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "ops_numeric.elementwise_add_mul_sum_axis",
+            family_id: "ops_numeric",
+            upstream_sources: &[
+                "tests/ops_tests.cpp",
+                "tests/creations_tests.cpp",
+                "python/tests/test_ops.py",
+                "python/tests/test_reduce.py",
+            ],
+            surface_label: "elementwise_add_mul_sum_axis",
+            input_specs: vec![left.spec().clone(), right.spec().clone()],
+            bounded_scope: "Current CPU oracle covers graph-backed add, mul, and axis-aware sum reduction over dense public arrays.",
+        },
+        TensorSpec::new(Shape::new(vec![2]), DType::F32, Device::cpu()),
+        reduced_eval.spec().clone(),
+    ));
+
+    let matmul_context = ArrayContext::cpu();
+    let lhs =
+        matmul_context.constant_f32(Shape::new(vec![2, 3]), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+    let rhs = matmul_context.ones_f32(Shape::new(vec![3, 2]))?;
+    let matmul = lhs.matmul(&rhs)?;
+    let matmul_eval = matmul.eval()?;
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "ops_numeric.matmul_dense",
+            family_id: "ops_numeric",
+            upstream_sources: &["tests/ops_tests.cpp", "python/tests/test_ops.py"],
+            surface_label: "matmul_dense",
+            input_specs: vec![lhs.spec().clone(), rhs.spec().clone()],
+            bounded_scope: "Current CPU oracle covers bounded dense rank-2 matmul over the public graph-backed array surface.",
+        },
+        TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu()),
+        matmul_eval.spec().clone(),
+    ));
+
+    let helper_context = ArrayContext::cpu_seeded(7)?;
+    let random_cast = helper_context
+        .random_uniform_f32(Shape::new(vec![2, 2]), -1.0, 1.0)?
+        .cast(DType::I8)?;
+    let random_cast_eval = random_cast.eval()?;
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "ops_numeric.seeded_random_uniform_cast",
+            family_id: "ops_numeric",
+            upstream_sources: &[
+                "tests/random_tests.cpp",
+                "tests/creations_tests.cpp",
+                "python/tests/test_random.py",
+                "python/tests/test_ops.py",
+            ],
+            surface_label: "seeded_random_uniform_cast",
+            input_specs: vec![],
+            bounded_scope: "Current CPU oracle covers deterministic seeded random-uniform creation plus bounded logical dtype casts on the public array surface.",
+        },
+        TensorSpec::new(Shape::new(vec![2, 2]), DType::I8, Device::cpu()),
+        random_cast_eval.spec().clone(),
+    ));
+
+    let helper_context = ArrayContext::cpu();
+    let _ = helper_context.arange_f32(0.0, 4.0, 1.0)?.eval()?;
+    let _ = helper_context.linspace_f32(-1.0, 1.0, 5)?.eval()?;
+    let eye = helper_context.eye_f32(3, 4)?;
+    let eye_eval = eye.eval()?;
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "ops_numeric.arange_linspace_eye_helpers",
+            family_id: "ops_numeric",
+            upstream_sources: &[
+                "tests/creations_tests.cpp",
+                "python/tests/test_ops.py",
+                "python/tests/test_reduce.py",
+            ],
+            surface_label: "arange_linspace_eye_helpers",
+            input_specs: vec![],
+            bounded_scope: "Current CPU oracle covers bounded arange, linspace, and eye helper families on the public array surface.",
+        },
+        TensorSpec::new(Shape::new(vec![3, 4]), DType::F32, Device::cpu()),
+        eye_eval.spec().clone(),
+    ));
+
+    let mismatch_context = ArrayContext::cpu();
+    let mismatch_left = mismatch_context.ones_f32(Shape::new(vec![2, 2]))?;
+    let mismatch_right = mismatch_context.ones_f32(Shape::new(vec![3, 2]))?;
+    let mismatch_actual = match mismatch_left.matmul(&mismatch_right) {
+        Err(ArrayError::Graph(error)) => error.refusal().ok_or_else(|| {
+            coverage_invariant(
+                "ops_numeric.matmul_shape_mismatch",
+                "graph refusal unexpectedly did not map to a typed Psionic refusal",
+            )
+        })?,
+        Err(other) => {
+            return Err(coverage_invariant(
+                "ops_numeric.matmul_shape_mismatch",
+                format!("expected graph refusal for incompatible matmul shapes, got `{other}`"),
+            ));
+        }
+        Ok(_) => {
+            return Err(coverage_invariant(
+                "ops_numeric.matmul_shape_mismatch",
+                "expected incompatible dense matmul to refuse",
+            ));
+        }
+    };
+    let mismatch_expected = PsionicRefusal::new(
+        PsionicRefusalCode::UnsupportedLayout,
+        PsionicRefusalScope::Graph,
+        format!(
+            "invalid matmul shapes: left={} right={}",
+            mismatch_left.shape(),
+            mismatch_right.shape()
+        ),
+    );
+    cases.push(refused_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "ops_numeric.matmul_shape_mismatch",
+            family_id: "ops_numeric",
+            upstream_sources: &["tests/ops_tests.cpp", "python/tests/test_ops.py"],
+            surface_label: "matmul_shape_mismatch",
+            input_specs: vec![mismatch_left.spec().clone(), mismatch_right.spec().clone()],
+            bounded_scope: "Current CPU oracle refuses incompatible dense matmul shapes through the same typed layout-refusal path used by the lower graph builder.",
+        },
+        mismatch_expected,
+        mismatch_actual,
+    ));
+
+    let eval_context = ArrayContext::cpu();
+    let eval_left = eval_context.ones_f32(Shape::new(vec![2, 2]))?;
+    let eval_right = eval_context.full_f32(Shape::new(vec![2, 2]), 4.0)?;
+    let eval_output = eval_left.add(&eval_right)?;
+    let _ = eval_context.eval(std::slice::from_ref(&eval_output))?;
+    let pending = eval_output.async_eval()?;
+    let waited = pending.wait()?;
+    let Some(waited_output) = waited.first().map(|array| array.spec().clone()) else {
+        return Err(coverage_invariant(
+            "device_eval_memory.explicit_eval_async_wait",
+            "async eval wait returned no outputs",
+        ));
+    };
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "device_eval_memory.explicit_eval_async_wait",
+            family_id: "device_eval_memory",
+            upstream_sources: &[
+                "tests/device_tests.cpp",
+                "tests/eval_tests.cpp",
+                "python/tests/test_device.py",
+                "python/tests/test_eval.py",
+            ],
+            surface_label: "explicit_eval_async_wait",
+            input_specs: vec![eval_output.spec().clone()],
+            bounded_scope: "Current CPU oracle covers explicit eval and deferred async-eval wait semantics over replay-stable graph snapshots.",
+        },
+        TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu()),
+        waited_output,
+    ));
+
+    let debug_context = ArrayContext::cpu();
+    let debug_left = debug_context.ones_f32(Shape::new(vec![2, 2]))?;
+    let debug_right = debug_context.full_f32(Shape::new(vec![2, 2]), 3.0)?;
+    let debug_output = debug_left.add(&debug_right)?.sum();
+    let capture = debug_context.capture_backend_debug(
+        std::slice::from_ref(&debug_output),
+        ArrayBackendCaptureConfig::default(),
+    )?;
+    let resources = debug_context.runtime_resource_report();
+    if resources.memory.cached_bytes == 0 {
+        return Err(coverage_invariant(
+            "device_eval_memory.cache_and_debug_capture",
+            "debug capture did not populate bounded cache counters",
+        ));
+    }
+    let Some(debug_output_spec) = capture
+        .eval_receipts
+        .first()
+        .map(|_| debug_output.spec().clone())
+    else {
+        return Err(coverage_invariant(
+            "device_eval_memory.cache_and_debug_capture",
+            "debug capture did not materialize any eval receipts",
+        ));
+    };
+    cases.push(supported_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "device_eval_memory.cache_and_debug_capture",
+            family_id: "device_eval_memory",
+            upstream_sources: &[
+                "tests/allocator_tests.cpp",
+                "tests/eval_tests.cpp",
+                "tests/scheduler_tests.cpp",
+                "python/tests/test_memory.py",
+            ],
+            surface_label: "cache_and_debug_capture",
+            input_specs: vec![debug_output.spec().clone()],
+            bounded_scope: "Current CPU oracle covers bounded runtime cache counters, backend-debug capture receipts, and explicit cache activity above the reference eval path.",
+        },
+        TensorSpec::new(Shape::scalar(), DType::F32, Device::cpu()),
+        debug_output_spec,
+    ));
+
+    let capture_context = ArrayContext::cpu();
+    let capture_left = capture_context.ones_f32(Shape::new(vec![1]))?;
+    let capture_actual = match capture_context.capture_backend_debug(
+        std::slice::from_ref(&capture_left),
+        ArrayBackendCaptureConfig {
+            artifact: Some(ArrayBackendCaptureArtifactRequest {
+                path: std::env::temp_dir().join("psionic-array-unsupported-capture-format.json"),
+                format: Some(ArrayBackendCaptureFormat::CudaDebugJson),
+            }),
+            ..ArrayBackendCaptureConfig::default()
+        },
+    ) {
+        Err(ArrayError::UnsupportedBackendDebugFormat { backend, format }) => {
+            unsupported_capture_format_refusal(&backend, format)
+        }
+        Err(other) => {
+            return Err(coverage_invariant(
+                "device_eval_memory.unsupported_capture_format",
+                format!("expected unsupported backend debug format refusal, got `{other}`"),
+            ));
+        }
+        Ok(_) => {
+            return Err(coverage_invariant(
+                "device_eval_memory.unsupported_capture_format",
+                "expected cpu backend debug capture to refuse a cuda-only format",
+            ));
+        }
+    };
+    let capture_expected = unsupported_capture_format_refusal(
+        capture_context.device_handle().backend(),
+        ArrayBackendCaptureFormat::CudaDebugJson,
+    );
+    cases.push(refused_mlx_cpu_reference_case(
+        MlxCpuReferenceCaseSeed {
+            case_id: "device_eval_memory.unsupported_capture_format",
+            family_id: "device_eval_memory",
+            upstream_sources: &[
+                "tests/device_tests.cpp",
+                "tests/allocator_tests.cpp",
+                "python/tests/test_device.py",
+                "python/tests/test_memory.py",
+            ],
+            surface_label: "unsupported_capture_format",
+            input_specs: vec![capture_left.spec().clone()],
+            bounded_scope: "Current CPU oracle refuses backend-debug capture formats that belong to unsupported accelerator lanes instead of pretending vendor-native capture exists.",
+        },
+        capture_expected,
+        capture_actual,
+    ));
+
+    Ok(MlxCpuReferenceCoverageReport::new(
+        schema_path,
+        runner,
+        oracle_window,
+        current_scope_window,
+        cases,
+    ))
+}
+
+fn supported_mlx_cpu_reference_case(
+    seed: MlxCpuReferenceCaseSeed<'_>,
+    expected_output: TensorSpec,
+    actual_output: TensorSpec,
+) -> MlxCpuReferenceCoverageCase {
+    MlxCpuReferenceCoverageCase {
+        case_id: String::from(seed.case_id),
+        family_id: String::from(seed.family_id),
+        upstream_sources: seed
+            .upstream_sources
+            .iter()
+            .map(|source| String::from(*source))
+            .collect(),
+        surface_label: String::from(seed.surface_label),
+        capability_profile: String::from("cpu_reference_dense_public_array_v1"),
+        input_specs: seed.input_specs,
+        expected_output: Some(expected_output),
+        actual_output: Some(actual_output),
+        expected_refusal: None,
+        actual_refusal: None,
+        status: MlxCpuReferenceCoverageStatus::Supported,
+        bounded_scope: String::from(seed.bounded_scope),
+    }
+}
+
+fn refused_mlx_cpu_reference_case(
+    seed: MlxCpuReferenceCaseSeed<'_>,
+    expected_refusal: PsionicRefusal,
+    actual_refusal: PsionicRefusal,
+) -> MlxCpuReferenceCoverageCase {
+    MlxCpuReferenceCoverageCase {
+        case_id: String::from(seed.case_id),
+        family_id: String::from(seed.family_id),
+        upstream_sources: seed
+            .upstream_sources
+            .iter()
+            .map(|source| String::from(*source))
+            .collect(),
+        surface_label: String::from(seed.surface_label),
+        capability_profile: String::from("cpu_reference_dense_public_array_v1"),
+        input_specs: seed.input_specs,
+        expected_output: None,
+        actual_output: None,
+        expected_refusal: Some(expected_refusal),
+        actual_refusal: Some(actual_refusal),
+        status: MlxCpuReferenceCoverageStatus::Refused,
+        bounded_scope: String::from(seed.bounded_scope),
+    }
+}
+
+fn stable_mlx_cpu_reference_coverage_digest(
+    schema_path: &str,
+    runner: &str,
+    oracle_window: &str,
+    current_scope_window: &str,
+    cases: &[MlxCpuReferenceCoverageCase],
+    selected_families: &[String],
+) -> String {
+    let mut lines = vec![
+        format!("schema_path={schema_path}"),
+        format!("runner={runner}"),
+        format!("oracle_window={oracle_window}"),
+        format!("current_scope_window={current_scope_window}"),
+    ];
+    for family in selected_families {
+        lines.push(format!("selected_family={family}"));
+    }
+    for case in cases {
+        lines.push(format!("case_id={}", case.case_id));
+        lines.push(format!("family_id={}", case.family_id));
+        lines.push(format!("surface_label={}", case.surface_label));
+        lines.push(format!("status={:?}", case.status));
+        lines.push(format!("capability_profile={}", case.capability_profile));
+        for input in &case.input_specs {
+            lines.push(format!(
+                "input={}:{:?}:{:?}:{}",
+                input.device(),
+                input.dtype(),
+                input.shape().dims(),
+                input.shape().element_count()
+            ));
+        }
+        if let Some(expected_output) = &case.expected_output {
+            lines.push(format!(
+                "expected_output={}:{:?}:{:?}",
+                expected_output.device(),
+                expected_output.dtype(),
+                expected_output.shape().dims()
+            ));
+        }
+        if let Some(actual_output) = &case.actual_output {
+            lines.push(format!(
+                "actual_output={}:{:?}:{:?}",
+                actual_output.device(),
+                actual_output.dtype(),
+                actual_output.shape().dims()
+            ));
+        }
+        if let Some(expected_refusal) = &case.expected_refusal {
+            lines.push(format!("expected_refusal_code={:?}", expected_refusal.code));
+            lines.push(format!(
+                "expected_refusal_scope={:?}",
+                expected_refusal.scope
+            ));
+            lines.push(format!(
+                "expected_refusal_detail={}",
+                expected_refusal.detail
+            ));
+            if let Some(subject) = &expected_refusal.subject {
+                lines.push(format!("expected_refusal_subject={subject}"));
+            }
+        }
+        if let Some(actual_refusal) = &case.actual_refusal {
+            lines.push(format!("actual_refusal_code={:?}", actual_refusal.code));
+            lines.push(format!("actual_refusal_scope={:?}", actual_refusal.scope));
+            lines.push(format!("actual_refusal_detail={}", actual_refusal.detail));
+            if let Some(subject) = &actual_refusal.subject {
+                lines.push(format!("actual_refusal_subject={subject}"));
+            }
+        }
+        lines.push(format!("bounded_scope={}", case.bounded_scope));
+        for source in &case.upstream_sources {
+            lines.push(format!("upstream_source={source}"));
+        }
+    }
+    lines.sort();
+    digest_lines(lines)
+}
+
+fn digest_lines(lines: Vec<String>) -> String {
+    let mut hasher = Sha256::new();
+    for line in lines {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    format!("{:x}", hasher.finalize())
 }
 
 fn evaluate_graph_snapshot(
@@ -3560,13 +4433,16 @@ fn ravel_index(indices: &[usize], dims: &[usize]) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::panic_in_result_fn)]
+
     use super::{
         Array, ArrayBackendCaptureArtifact, ArrayBackendCaptureArtifactRequest,
         ArrayBackendCaptureConfig, ArrayBackendCaptureFormat, ArrayBackendDebugLane,
         ArrayBackendLogKind, ArrayCacheLimitControl, ArrayCacheResetScope, ArrayContext,
         ArrayError, ArrayScalar, AsyncEvalStatus, ImplicitMaterializationPolicy,
-        MaterializationTrigger, ReplayBoundary, StreamDependencyPolicy, StreamKind, Tree,
-        TreeError, TreeSpec, UnifiedMemoryCapability, current_time_millis,
+        MaterializationTrigger, MlxCpuReferenceCoverageStatus, ReplayBoundary,
+        StreamDependencyPolicy, StreamKind, Tree, TreeError, TreeSpec, UnifiedMemoryCapability,
+        builtin_mlx_cpu_reference_coverage_report, current_time_millis,
     };
     use psionic_compiler::{
         CompileTransformConfig, CompileTransformDebugMode, CompileTransformTraceMode,
@@ -3985,7 +4861,11 @@ mod tests {
         let selected = permuted.select(1, 1)?;
         let transposed = selected.transpose()?;
         let broadcast = transposed.broadcast_to(Shape::new(vec![2, 2, 2]))?;
+        let expanded = transposed.expand_dims(1)?;
+        let squeezed = expanded.squeeze_axis(1)?.squeeze()?;
+        let flattened = broadcast.flatten()?;
         let evaluated = broadcast.eval()?;
+        let flattened_eval = flattened.eval()?;
         let scalar_evaluated = scalar_broadcast.eval()?;
 
         assert_eq!(base.shape(), &Shape::new(vec![6, 2]));
@@ -3995,10 +4875,17 @@ mod tests {
         assert_eq!(reshaped.shape(), &Shape::new(vec![2, 2, 2]));
         assert_eq!(selected.shape(), &Shape::new(vec![2, 2]));
         assert_eq!(transposed.shape(), &Shape::new(vec![2, 2]));
+        assert_eq!(expanded.shape(), &Shape::new(vec![2, 1, 2]));
+        assert_eq!(squeezed.shape(), &Shape::new(vec![2, 2]));
         assert_eq!(broadcast.shape(), &Shape::new(vec![2, 2, 2]));
+        assert_eq!(flattened.shape(), &Shape::new(vec![8]));
         assert_eq!(scalar_evaluated.data.as_f32_slice(), Some(&[2.0, 2.0][..]));
         assert_eq!(
             evaluated.data.as_f32_slice(),
+            Some(&[1.0, 3.0, 1.0, 3.0, 1.0, 3.0, 1.0, 3.0][..])
+        );
+        assert_eq!(
+            flattened_eval.data.as_f32_slice(),
             Some(&[1.0, 3.0, 1.0, 3.0, 1.0, 3.0, 1.0, 3.0][..])
         );
 
@@ -4132,6 +5019,55 @@ mod tests {
             linspace.expect_err("zero-count linspace should refuse"),
             ArrayError::InvalidLinspaceCount
         );
+    }
+
+    #[test]
+    fn public_lazy_array_axis_reduction_and_view_refusals_stay_typed() -> Result<(), ArrayError> {
+        let context = ArrayContext::cpu();
+        let matrix =
+            context.constant_f32(Shape::new(vec![2, 3]), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+        let reduced = matrix.sum_axis(1)?;
+        let reduced_eval = reduced.eval()?;
+        assert_eq!(reduced.shape(), &Shape::new(vec![2]));
+        assert_eq!(reduced_eval.data.as_f32_slice(), Some(&[6.0, 15.0][..]));
+
+        let scalar = context.scalar_f32(7.0)?;
+        let flattened = scalar.flatten()?;
+        assert_eq!(flattened.shape(), &Shape::new(vec![1]));
+        assert_eq!(flattened.eval()?.data.as_f32_slice(), Some(&[7.0][..]));
+
+        let invalid_expand = matrix
+            .expand_dims(4)
+            .expect_err("invalid expand axis should refuse");
+        assert_eq!(
+            invalid_expand,
+            ArrayError::InvalidExpandAxis {
+                shape: Shape::new(vec![2, 3]),
+                axis: 4,
+            }
+        );
+
+        let invalid_squeeze = matrix
+            .squeeze_axis(0)
+            .expect_err("non-singleton squeeze axis should refuse");
+        assert_eq!(
+            invalid_squeeze,
+            ArrayError::NonSingletonSqueezeAxis {
+                shape: Shape::new(vec![2, 3]),
+                axis: 0,
+                dim: 2,
+            }
+        );
+
+        let invalid_reduce = matrix
+            .sum_axis(4)
+            .expect_err("invalid reduce axis should refuse");
+        assert!(matches!(
+            invalid_reduce,
+            ArrayError::Graph(psionic_ir::GraphError::InvalidReduceAxis { .. })
+        ));
+
+        Ok(())
     }
 
     #[test]
@@ -4591,6 +5527,133 @@ mod tests {
                 expected: 2,
                 actual: 1,
             }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn mlx_cpu_reference_coverage_report_tracks_seeded_supported_and_refused_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = builtin_mlx_cpu_reference_coverage_report()?;
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(
+            report.schema_path,
+            "crates/psionic/docs/mlx_cpu_reference_coverage_report.schema.json"
+        );
+        assert_eq!(
+            report.runner,
+            "scripts/release/check-psionic-mlx-cpu-reference-coverage.sh"
+        );
+        assert_eq!(
+            report.oracle_window,
+            "ml-explore/mlx:v0.31.0..v0.31.1:cpu_reference_seed_v1"
+        );
+        assert_eq!(report.current_scope_window, "psionic_mlx_cpu_reference_v1");
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
+
+        let array_supported = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "array_core.flatten_expand_dims_squeeze")
+            .expect("missing array_core supported case");
+        assert_eq!(
+            array_supported.status,
+            MlxCpuReferenceCoverageStatus::Supported
+        );
+        assert_eq!(
+            array_supported.expected_output,
+            array_supported.actual_output
+        );
+
+        let array_refused = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "array_core.squeeze_non_singleton_axis")
+            .expect("missing array_core refusal case");
+        assert_eq!(array_refused.status, MlxCpuReferenceCoverageStatus::Refused);
+        assert_eq!(array_refused.expected_refusal, array_refused.actual_refusal);
+
+        let numeric_supported = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "ops_numeric.matmul_dense")
+            .expect("missing ops_numeric supported case");
+        assert_eq!(
+            numeric_supported.status,
+            MlxCpuReferenceCoverageStatus::Supported
+        );
+        assert_eq!(
+            numeric_supported.expected_output,
+            numeric_supported.actual_output
+        );
+
+        let numeric_refused = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "ops_numeric.matmul_shape_mismatch")
+            .expect("missing ops_numeric refusal case");
+        assert_eq!(
+            numeric_refused.status,
+            MlxCpuReferenceCoverageStatus::Refused
+        );
+        assert_eq!(
+            numeric_refused.expected_refusal,
+            numeric_refused.actual_refusal
+        );
+
+        let device_supported = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "device_eval_memory.explicit_eval_async_wait")
+            .expect("missing device/eval supported case");
+        assert_eq!(
+            device_supported.status,
+            MlxCpuReferenceCoverageStatus::Supported
+        );
+        assert_eq!(
+            device_supported.expected_output,
+            device_supported.actual_output
+        );
+
+        let device_refused = report
+            .cases
+            .iter()
+            .find(|case| case.case_id == "device_eval_memory.unsupported_capture_format")
+            .expect("missing device/eval refusal case");
+        assert_eq!(
+            device_refused.status,
+            MlxCpuReferenceCoverageStatus::Refused
+        );
+        assert_eq!(
+            device_refused.expected_refusal,
+            device_refused.actual_refusal
+        );
+
+        let filtered = report
+            .filter_to_families(&[String::from("array_core"), String::from("ops_numeric")])?;
+        assert_eq!(
+            filtered.selected_families,
+            vec![String::from("array_core"), String::from("ops_numeric")]
+        );
+        assert!(
+            filtered
+                .cases
+                .iter()
+                .all(|case| case.family_id == "array_core" || case.family_id == "ops_numeric")
+        );
+
+        let error = report
+            .filter_to_families(&[String::from("not-a-real-family")])
+            .expect_err("unknown family should refuse");
+        assert_eq!(
+            error.to_string(),
+            "unknown MLX CPU reference coverage family: not-a-real-family"
         );
 
         Ok(())

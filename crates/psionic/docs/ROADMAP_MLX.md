@@ -7,7 +7,8 @@
 > `PMLX-402` / `#3854`, plus `PMLX-501` / `#3859`,
 > `PMLX-502` / `#3860`, `PMLX-503` / `#3861`,
 > `PMLX-504` / `#3862`, `PMLX-505` / `#3863`, and
-> `PMLX-506` / `#3864`, and `PMLX-507` / `#3865`,
+> `PMLX-506` / `#3864`, `PMLX-507` / `#3865`, and
+> `PMLX-601` / `#3866`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -548,7 +549,7 @@ MLX claims honest.
 
 | ID | Status | Proposed GitHub issue title | Description |
 | --- | --- | --- | --- |
-| `PMLX-601` | planned | `Psionic MLX: close CPU reference operator coverage against imported MLX parity categories` | Use the CPU lane as the canonical semantic oracle for array, transform, compile, `nn`, and serialization behavior. |
+| `PMLX-601` / [#3866](https://github.com/OpenAgentsInc/openagents/issues/3866) | done (2026-03-16) | `Psionic MLX: close CPU reference operator coverage against imported MLX parity categories` | `psionic-array` now exposes a bounded CPU-reference coverage contract over imported MLX `array_core`, `ops_numeric`, and `device_eval_memory` families via `MlxCpuReferenceCoverageReport`, `MLX_CPU_REFERENCE_COVERAGE.md`, `mlx_cpu_reference_coverage_report.schema.json`, and `scripts/release/check-psionic-mlx-cpu-reference-coverage.sh`, plus the public array surface now includes `flatten`, `expand_dims`, `squeeze`, and axis-aware `sum` to make that CPU oracle honest. |
 | `PMLX-602` | planned | `Psionic MLX: close Metal backend coverage for the declared MLX-class surface` | Widen the Metal backend only through explicit capability contracts, stream semantics, and parity evidence rather than by inference from one serving lane. |
 | `PMLX-603` | planned | `Psionic MLX: close CUDA backend coverage for the declared MLX-class surface` | Widen the CUDA backend with the same honesty rules, including explicit distributed capability and numerics behavior. |
 | `PMLX-604` | planned | `Psionic MLX: add advanced operator-family closure for linalg, fft, fast kernels, and attention helpers` | Land the operator families that MLX users expect beyond basic dense tensor math, keeping unsupported surfaces explicit until real coverage exists. |
@@ -656,7 +657,7 @@ track in parallel.
 
 ### Phase 7: close backend breadth and parity evidence
 
-- `PMLX-601`
+- `PMLX-601` done 2026-03-16
 - `PMLX-602`
 - `PMLX-603`
 - `PMLX-604`

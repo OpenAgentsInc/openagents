@@ -1235,72 +1235,72 @@ pub fn builtin_autocast_policy_matrix_report() -> AutocastPolicyMatrixReport {
     AutocastPolicyMatrixReport::new(
         String::from("psionic_autocast_v1"),
         vec![
-            supported_autocast_case(
-                "current_runtime_backends.bf16.matmul.f32",
-                AutocastPrecisionPolicy::new(
+            supported_autocast_case(SupportedAutocastCaseSeed {
+                case_id: "current_runtime_backends.bf16.matmul.f32",
+                policy: AutocastPrecisionPolicy::new(
                     DTypeBackendFamily::CurrentRuntimeBackends,
                     ExtendedDType::BF16,
                 ),
-                AutocastOperationFamily::Matmul,
-                ExtendedDType::F32,
-                AutocastPolicyStatus::Applied,
-                ExtendedDType::BF16,
-                ExtendedDType::F32,
-                ExtendedDType::BF16,
-                vec![
+                operation: AutocastOperationFamily::Matmul,
+                input_dtype: ExtendedDType::F32,
+                status: AutocastPolicyStatus::Applied,
+                compute_dtype: ExtendedDType::BF16,
+                accumulator_dtype: ExtendedDType::F32,
+                output_dtype: ExtendedDType::BF16,
+                diagnostics: vec![
                     AutocastNumericsDiagnostic::ReducedMantissa,
                     AutocastNumericsDiagnostic::Fp32Accumulator,
                 ],
-                "Current runtime backends may lower `f32` matmul inputs into `bf16` compute while keeping an `f32` accumulator.",
-            ),
-            supported_autocast_case(
-                "current_runtime_backends.f16.pointwise.f32",
-                AutocastPrecisionPolicy::new(
+                bounded_scope: "Current runtime backends may lower `f32` matmul inputs into `bf16` compute while keeping an `f32` accumulator.",
+            }),
+            supported_autocast_case(SupportedAutocastCaseSeed {
+                case_id: "current_runtime_backends.f16.pointwise.f32",
+                policy: AutocastPrecisionPolicy::new(
                     DTypeBackendFamily::CurrentRuntimeBackends,
                     ExtendedDType::F16,
                 ),
-                AutocastOperationFamily::Pointwise,
-                ExtendedDType::F32,
-                AutocastPolicyStatus::Applied,
-                ExtendedDType::F16,
-                ExtendedDType::F16,
-                ExtendedDType::F16,
-                vec![AutocastNumericsDiagnostic::ReducedMantissa],
-                "Current runtime backends may lower seeded pointwise `f32` work into `f16` when the bounded policy explicitly prefers it.",
-            ),
-            supported_autocast_case(
-                "current_runtime_backends.f16.reduction.f32",
-                AutocastPrecisionPolicy::new(
+                operation: AutocastOperationFamily::Pointwise,
+                input_dtype: ExtendedDType::F32,
+                status: AutocastPolicyStatus::Applied,
+                compute_dtype: ExtendedDType::F16,
+                accumulator_dtype: ExtendedDType::F16,
+                output_dtype: ExtendedDType::F16,
+                diagnostics: vec![AutocastNumericsDiagnostic::ReducedMantissa],
+                bounded_scope: "Current runtime backends may lower seeded pointwise `f32` work into `f16` when the bounded policy explicitly prefers it.",
+            }),
+            supported_autocast_case(SupportedAutocastCaseSeed {
+                case_id: "current_runtime_backends.f16.reduction.f32",
+                policy: AutocastPrecisionPolicy::new(
                     DTypeBackendFamily::CurrentRuntimeBackends,
                     ExtendedDType::F16,
                 ),
-                AutocastOperationFamily::Reduction,
-                ExtendedDType::F32,
-                AutocastPolicyStatus::Preserved,
-                ExtendedDType::F32,
-                ExtendedDType::F32,
-                ExtendedDType::F32,
-                vec![AutocastNumericsDiagnostic::PreservedForStability],
-                "Reductions stay at `f32` in the current bounded policy instead of silently downcasting numerically sensitive accumulations.",
-            ),
-            supported_autocast_case(
-                "meta_execution.f8_e4m3fn.matmul.f32",
-                AutocastPrecisionPolicy::new(
+                operation: AutocastOperationFamily::Reduction,
+                input_dtype: ExtendedDType::F32,
+                status: AutocastPolicyStatus::Preserved,
+                compute_dtype: ExtendedDType::F32,
+                accumulator_dtype: ExtendedDType::F32,
+                output_dtype: ExtendedDType::F32,
+                diagnostics: vec![AutocastNumericsDiagnostic::PreservedForStability],
+                bounded_scope: "Reductions stay at `f32` in the current bounded policy instead of silently downcasting numerically sensitive accumulations.",
+            }),
+            supported_autocast_case(SupportedAutocastCaseSeed {
+                case_id: "meta_execution.f8_e4m3fn.matmul.f32",
+                policy: AutocastPrecisionPolicy::new(
                     DTypeBackendFamily::MetaExecution,
                     ExtendedDType::F8E4M3Fn,
                 ),
-                AutocastOperationFamily::Matmul,
-                ExtendedDType::F32,
-                AutocastPolicyStatus::Applied,
-                ExtendedDType::F8E4M3Fn,
-                ExtendedDType::F16,
-                ExtendedDType::F16,
-                vec![
+                operation: AutocastOperationFamily::Matmul,
+                input_dtype: ExtendedDType::F32,
+                status: AutocastPolicyStatus::Applied,
+                compute_dtype: ExtendedDType::F8E4M3Fn,
+                accumulator_dtype: ExtendedDType::F16,
+                output_dtype: ExtendedDType::F16,
+                diagnostics: vec![
                     AutocastNumericsDiagnostic::ExperimentalLowPrecision,
                     AutocastNumericsDiagnostic::ReducedDynamicRange,
                 ],
-                "Meta execution may carry an experimental float8 autocast rule even though current runtime backends do not materialize that path yet.",
-            ),
+                bounded_scope: "Meta execution may carry an experimental float8 autocast rule even though current runtime backends do not materialize that path yet.",
+            }),
             refused_autocast_case(
                 "current_runtime_backends.bf16.pointwise.complex64",
                 AutocastPrecisionPolicy::new(
@@ -1337,8 +1337,8 @@ pub fn builtin_autocast_policy_matrix_report() -> AutocastPolicyMatrixReport {
     )
 }
 
-fn supported_autocast_case(
-    case_id: &str,
+struct SupportedAutocastCaseSeed<'a> {
+    case_id: &'a str,
     policy: AutocastPrecisionPolicy,
     operation: AutocastOperationFamily,
     input_dtype: ExtendedDType,
@@ -1347,19 +1347,21 @@ fn supported_autocast_case(
     accumulator_dtype: ExtendedDType,
     output_dtype: ExtendedDType,
     diagnostics: Vec<AutocastNumericsDiagnostic>,
-    bounded_scope: &str,
-) -> AutocastPolicyResolution {
+    bounded_scope: &'a str,
+}
+
+fn supported_autocast_case(seed: SupportedAutocastCaseSeed<'_>) -> AutocastPolicyResolution {
     AutocastPolicyResolution {
-        case_id: String::from(case_id),
-        policy,
-        operation,
-        input_dtype,
-        status,
-        compute_dtype: Some(compute_dtype),
-        accumulator_dtype: Some(accumulator_dtype),
-        output_dtype: Some(output_dtype),
-        diagnostics,
-        bounded_scope: String::from(bounded_scope),
+        case_id: String::from(seed.case_id),
+        policy: seed.policy,
+        operation: seed.operation,
+        input_dtype: seed.input_dtype,
+        status: seed.status,
+        compute_dtype: Some(seed.compute_dtype),
+        accumulator_dtype: Some(seed.accumulator_dtype),
+        output_dtype: Some(seed.output_dtype),
+        diagnostics: seed.diagnostics,
+        bounded_scope: String::from(seed.bounded_scope),
         refusal: None,
     }
 }
@@ -2720,14 +2722,16 @@ fn is_permutation(order: &[usize]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{
-        builtin_advanced_dtype_semantics_report, builtin_autocast_policy_matrix_report,
-        builtin_quantization_capability_semantics_report, AutocastNumericsDiagnostic,
-        AutocastOperationFamily, AutocastPolicyStatus, AutocastPrecisionPolicy, DType,
-        DTypeBackendFamily, DTypeCastKind, DTypeClass, Device, DeviceKind, ExtendedDType,
-        ExtendedDTypeClass, Layout, PsionicRefusal, PsionicRefusalCode, PsionicRefusalScope,
-        QuantizationCalibrationMode, QuantizationCapabilityStage, QuantizationConfig,
-        QuantizationGranularity, QuantizationMode, Shape, TensorSpec, ViewSemantics,
+        AutocastNumericsDiagnostic, AutocastOperationFamily, AutocastPolicyStatus,
+        AutocastPrecisionPolicy, DType, DTypeBackendFamily, DTypeCastKind, DTypeClass, Device,
+        DeviceKind, ExtendedDType, ExtendedDTypeClass, Layout, PsionicRefusal, PsionicRefusalCode,
+        PsionicRefusalScope, QuantizationCalibrationMode, QuantizationCapabilityStage,
+        QuantizationConfig, QuantizationGranularity, QuantizationMode, Shape, TensorSpec,
+        ViewSemantics, builtin_advanced_dtype_semantics_report,
+        builtin_autocast_policy_matrix_report, builtin_quantization_capability_semantics_report,
     };
 
     #[test]
@@ -2909,10 +2913,12 @@ mod tests {
         let report = builtin_advanced_dtype_semantics_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.current_scope_window, "psionic_advanced_dtype_v1");
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         assert_eq!(ExtendedDType::Bool.class(), ExtendedDTypeClass::Boolean);
         assert_eq!(
@@ -2994,10 +3000,12 @@ mod tests {
         let report = builtin_autocast_policy_matrix_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.current_scope_window, "psionic_autocast_v1");
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let bf16_matmul = AutocastPrecisionPolicy::new(
             DTypeBackendFamily::CurrentRuntimeBackends,
@@ -3008,9 +3016,11 @@ mod tests {
         assert_eq!(bf16_matmul.status, AutocastPolicyStatus::Applied);
         assert_eq!(bf16_matmul.compute_dtype, Some(ExtendedDType::BF16));
         assert_eq!(bf16_matmul.accumulator_dtype, Some(ExtendedDType::F32));
-        assert!(bf16_matmul
-            .diagnostics
-            .contains(&AutocastNumericsDiagnostic::Fp32Accumulator));
+        assert!(
+            bf16_matmul
+                .diagnostics
+                .contains(&AutocastNumericsDiagnostic::Fp32Accumulator)
+        );
 
         let preserved_reduction = AutocastPrecisionPolicy::new(
             DTypeBackendFamily::CurrentRuntimeBackends,
@@ -3020,9 +3030,11 @@ mod tests {
         .expect("missing seeded preserved reduction rule");
         assert_eq!(preserved_reduction.status, AutocastPolicyStatus::Preserved);
         assert_eq!(preserved_reduction.compute_dtype, Some(ExtendedDType::F32));
-        assert!(preserved_reduction
-            .diagnostics
-            .contains(&AutocastNumericsDiagnostic::PreservedForStability));
+        assert!(
+            preserved_reduction
+                .diagnostics
+                .contains(&AutocastNumericsDiagnostic::PreservedForStability)
+        );
 
         let experimental_float8 = AutocastPrecisionPolicy::new(
             DTypeBackendFamily::MetaExecution,
@@ -3031,9 +3043,11 @@ mod tests {
         .resolve(AutocastOperationFamily::Matmul, ExtendedDType::F32)
         .expect("missing seeded meta float8 rule");
         assert_eq!(experimental_float8.status, AutocastPolicyStatus::Applied);
-        assert!(experimental_float8
-            .diagnostics
-            .contains(&AutocastNumericsDiagnostic::ExperimentalLowPrecision));
+        assert!(
+            experimental_float8
+                .diagnostics
+                .contains(&AutocastNumericsDiagnostic::ExperimentalLowPrecision)
+        );
 
         let complex_refusal = AutocastPrecisionPolicy::new(
             DTypeBackendFamily::CurrentRuntimeBackends,
@@ -3062,10 +3076,12 @@ mod tests {
         let report = builtin_quantization_capability_semantics_report();
         assert_eq!(report.schema_version, 1);
         assert_eq!(report.current_scope_window, "psionic_quantization_v1");
-        assert!(report
-            .stable_signature_lines()
-            .iter()
-            .any(|line| line.starts_with("report_digest=")));
+        assert!(
+            report
+                .stable_signature_lines()
+                .iter()
+                .any(|line| line.starts_with("report_digest="))
+        );
 
         let ptq_config = QuantizationConfig::new(
             QuantizationMode::Int8Symmetric,
@@ -3074,13 +3090,15 @@ mod tests {
             QuantizationCalibrationMode::MinMax,
             false,
         );
-        assert!(report
-            .validate_support(
-                QuantizationCapabilityStage::Ptq,
-                DTypeBackendFamily::CurrentRuntimeBackends,
-                &ptq_config
-            )
-            .is_ok());
+        assert!(
+            report
+                .validate_support(
+                    QuantizationCapabilityStage::Ptq,
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    &ptq_config
+                )
+                .is_ok()
+        );
 
         let runtime_config = QuantizationConfig::new(
             QuantizationMode::GgmlQ4_0,
@@ -3089,13 +3107,15 @@ mod tests {
             QuantizationCalibrationMode::None,
             false,
         );
-        assert!(report
-            .validate_support(
-                QuantizationCapabilityStage::RuntimeExecution,
-                DTypeBackendFamily::CurrentRuntimeBackends,
-                &runtime_config
-            )
-            .is_ok());
+        assert!(
+            report
+                .validate_support(
+                    QuantizationCapabilityStage::RuntimeExecution,
+                    DTypeBackendFamily::CurrentRuntimeBackends,
+                    &runtime_config
+                )
+                .is_ok()
+        );
 
         let export_config = QuantizationConfig::new(
             QuantizationMode::Int8Symmetric,
@@ -3104,13 +3124,15 @@ mod tests {
             QuantizationCalibrationMode::MinMax,
             false,
         );
-        assert!(report
-            .validate_support(
-                QuantizationCapabilityStage::ExportAware,
-                DTypeBackendFamily::MetaExecution,
-                &export_config
-            )
-            .is_ok());
+        assert!(
+            report
+                .validate_support(
+                    QuantizationCapabilityStage::ExportAware,
+                    DTypeBackendFamily::MetaExecution,
+                    &export_config
+                )
+                .is_ok()
+        );
 
         let refused_qat = report
             .validate_support(

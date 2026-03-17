@@ -1057,7 +1057,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "A public lazy array type exists with explicit eval and async_eval posture, public device and stream handles, creation and view families, deterministic random and cast behavior, and safe host materialization boundaries.",
             ),
             current_repo_truth: String::from(
-                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, scalar and filled-array creation helpers, reshape/permute/transpose/slice/select/concat/broadcast_to view families, explicit seeded or best-effort random-uniform and random-normal creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, and a bounded runtime resource report with explicit active/peak/cache counters plus cache-limit and reset controls above the reference eval substrate.",
+                "Psionic now publishes a first user-facing lazy-array facade in psionic-array with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, scalar and filled-array creation helpers, reshape/permute/transpose/flatten/expand_dims/squeeze/slice/select/concat/broadcast_to view families, explicit seeded or best-effort random-uniform and random-normal creation, logical dtype casts, arange/linspace/eye helpers, axis-aware sum reduction, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, and a bounded runtime resource report with explicit active/peak/cache counters plus cache-limit and reset controls above the reference eval substrate.",
             ),
             boundary_note: String::from(
                 "Treat this as supported early array/runtime closure only; it does not imply transform, nn, export, or distributed MLX closure.",
@@ -1171,7 +1171,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "CPU reference, Metal, and CUDA backends honestly cover the declared MLX surface, the parity harness carries the upstream MLX test families, and any compatibility or binding shells stay explicitly bounded.",
             ),
             current_repo_truth: String::from(
-                "Psionic has real backend-specific substrate and the first MLX version window contract, but it does not yet have MLX-class backend closure, parity-harness evidence, or compatibility-shell boundaries above that substrate.",
+                "Psionic has real backend-specific substrate, the first MLX version window contract, and now one machine-readable CPU-reference coverage report in psionic-array over imported array_core, ops_numeric, and device_eval_memory families, but it still does not have MLX-class Metal/CUDA closure, parity-harness evidence, or compatibility-shell boundaries above that substrate.",
             ),
             boundary_note: String::from(
                 "Do not claim bounded MLX backend or compatibility closure from one backend lane, one demo, or one local checkout until the declared categories have parity evidence and explicit shell boundaries.",
@@ -1214,10 +1214,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 ),
             ],
             summary: String::from(
-                "The upstream array-core family is still tracked as unsupported, but psionic-array now provides the first public lazy-array entrypoint plus standard creation, deterministic random, cast, host-interop, item, and tree families for later parity work.",
+                "The upstream array-core family is still tracked as unsupported for parity-harness purposes, but psionic-array now also publishes a bounded CPU-reference coverage report over flatten, expand_dims, squeeze, slice, select, concat, and transpose cases plus explicit typed refusal for invalid view requests.",
             ),
             boundary_note: String::from(
-                "A first public array facade with host/item/tree coverage exists, but that is still not enough to call the upstream array-core family ported.",
+                "A bounded CPU-reference coverage contract now exists for representative array-core view cases, but that is still not the same thing as a full upstream MLX array-core parity port.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1250,10 +1250,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 ),
             ],
             summary: String::from(
-                "The numeric-op and creation families remain tracked but unsupported even though psionic-array now exposes graph-backed arithmetic plus common creation, deterministic random, logical dtype-cast coverage, and explicit host or singleton export boundaries.",
+                "The numeric-op and creation families remain tracked but unsupported for parity-harness purposes even though psionic-array now also publishes a bounded CPU-reference coverage report over dense add/mul/matmul, axis-aware sum, seeded random-plus-cast, helper creation families, and typed refusal for incompatible dense matmul shapes.",
             ),
             boundary_note: String::from(
-                "The first public numeric ops plus host/item coverage are still not the same thing as a seeded upstream MLX numeric parity family.",
+                "A bounded CPU-reference numeric contract now exists, but that is still not the same thing as a seeded upstream MLX numeric parity family.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1291,10 +1291,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 ),
             ],
             summary: String::from(
-                "Device, eval, scheduler, and memory families remain named and unsupported even though psionic-array now exposes public device and stream handles with honest unified-memory and dependency-policy truth plus bounded runtime memory reports, cache-limit/reset controls, and backend-debug capture hooks above the reference eval path.",
+                "Device, eval, scheduler, and memory families remain named and unsupported for parity-harness purposes even though psionic-array now also publishes a bounded CPU-reference coverage report over explicit eval, async-eval wait, cache counters, backend-debug capture receipts, and typed refusal for unsupported capture formats above the reference eval path.",
             ),
             boundary_note: String::from(
-                "Public device and stream handles plus bounded reference-memory counters, cache controls, and backend-debug capture hooks are still not the same thing as MLX-class allocator, scheduler, vendor-native profiler capture, or runtime-memory parity.",
+                "A bounded CPU-reference eval/memory contract now exists, but that is still not the same thing as MLX-class allocator, scheduler, vendor-native profiler capture, or runtime-memory parity.",
             ),
         },
         MlxParityHarnessFamily {
@@ -1658,7 +1658,7 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
             surface_id: String::from("public_mlx_array_api"),
             matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, a bounded runtime resource report with active/peak/cache counters plus explicit cache-limit and reset controls, a bounded backend-debug layer with lane-specific cpu/metal/cuda support matrices, retained runtime log events, bounded observability snapshots, compiler-backed debug capture receipts, optional lane-labeled JSON bundles, and a bounded extension-authoring layer with custom-op, custom-kernel, backend-plugin, and quantizer-plugin registration plus dispatch-resolution and declared-output validation, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
+                "psionic-array now exposes a first public lazy-array facade with runtime-backed device handles, honest unified-memory flags, explicit stream-dependency policy, graph-backed arithmetic, explicit eval and deferred async_eval, replay-stable eval receipts, explicit-only materialization boundaries, scalar and filled-array creation helpers, bounded reshape/permute/transpose/flatten/expand_dims/squeeze/slice/select/concat/broadcast_to families, explicit seeded or best-effort random creation, logical dtype casts, arange/linspace/eye helpers, axis-aware sum reduction, explicit host-owned typed buffer export, singleton item extraction, deterministic tree flatten/map/unflatten utilities, a bounded runtime resource report with active/peak/cache counters plus explicit cache-limit and reset controls, a bounded backend-debug layer with lane-specific cpu/metal/cuda support matrices, retained runtime log events, bounded observability snapshots, compiler-backed debug capture receipts, optional lane-labeled JSON bundles, a machine-readable MLX CPU-reference coverage report over imported array_core/ops_numeric/device_eval_memory families, and a bounded extension-authoring layer with custom-op, custom-kernel, backend-plugin, and quantizer-plugin registration plus dispatch-resolution and declared-output validation, while the companion psionic-array-io crate now adds stable npy, npz, safetensors, and bounded dense GGUF save/load with explicit receipt inventory and GGUF quantization-to-dense import disclosure.",
             ),
             evidence_refs: vec![
                 String::from("ArrayDevice"),
@@ -2084,7 +2084,7 @@ fn stable_mlx_compatibility_matrix_report_digest(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used)]
+    #![allow(clippy::expect_used, clippy::panic_in_result_fn)]
 
     use super::{
         MlxAcceptanceCategoryStatus, MlxAcceptanceMatrixPosture, MlxCompatibilityMatrixStatus,
