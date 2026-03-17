@@ -318,17 +318,23 @@ The current scope is:
   newer transition-adapter follow-on now lives at
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, the
   later joint-adapter fine-tune now lives at
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, the
+  later trace-schema and per-position saturation runs now live at
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v8`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9`, and
   the current same-corpus comparison now lives at
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v8`;
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v11`;
   those artifacts keep improving the first executor-attention boundary surface
   over the lookup baseline, and the latest bounded pair now records
   `10000` bps first-target, `8750` bps first-8, and `7188` bps first-32
   versus lookup `10000` / `6250` / `6563`, but the learned gate is still not
   green because exact validation traces remain `0/2` and the sharper remaining
   blocker is still token `6`: the model predicts `<byte_00>` where the
-  reference requires `<pc>`, and the later joint transition+projection
-  fine-tune reproduces that ceiling rather than beating it
+  reference requires `<pc>`; the later joint transition+projection fine-tune
+  reproduces that ceiling rather than beating it, and the later trace-schema /
+  per-position saturation set proves the current bounded adapter family is
+  saturated rather than merely under-tuned
 - landed trained-executor Phase 17 follow-on bar: `psionic-models` now carries
   a bounded typed `TassadarCompiledProgramExecutor` surface with persisted
   compile-evidence bundles, `psionic-eval` now emits exactness and

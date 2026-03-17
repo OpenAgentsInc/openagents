@@ -151,6 +151,54 @@ pub struct TassadarExecutorAttentionWeightBundle {
     relative_target_output_bias: Vec<f32>,
     relative_target_output_projection: Vec<f32>,
     relative_target_transition_output_bias: Vec<f32>,
+    relative_target_trace_schema_output_bias: Vec<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TassadarEarlyTraceSchemaPhase {
+    ExpectStep,
+    ExpectStepIndex,
+    ExpectStepIndexByte0,
+    ExpectStepIndexByte1,
+    ExpectStepIndexByte2,
+    ExpectStepIndexByte3,
+    ExpectPc,
+    ExpectPcByte0,
+    ExpectPcByte1,
+    ExpectPcByte2,
+    ExpectPcByte3,
+    ExpectNextPc,
+    ExpectNextPcByte0,
+    ExpectNextPcByte1,
+    ExpectNextPcByte2,
+    ExpectNextPcByte3,
+    ExpectInstruction,
+}
+
+impl TassadarEarlyTraceSchemaPhase {
+    const COUNT: usize = 17;
+
+    const fn index(self) -> usize {
+        match self {
+            Self::ExpectStep => 0,
+            Self::ExpectStepIndex => 1,
+            Self::ExpectStepIndexByte0 => 2,
+            Self::ExpectStepIndexByte1 => 3,
+            Self::ExpectStepIndexByte2 => 4,
+            Self::ExpectStepIndexByte3 => 5,
+            Self::ExpectPc => 6,
+            Self::ExpectPcByte0 => 7,
+            Self::ExpectPcByte1 => 8,
+            Self::ExpectPcByte2 => 9,
+            Self::ExpectPcByte3 => 10,
+            Self::ExpectNextPc => 11,
+            Self::ExpectNextPcByte0 => 12,
+            Self::ExpectNextPcByte1 => 13,
+            Self::ExpectNextPcByte2 => 14,
+            Self::ExpectNextPcByte3 => 15,
+            Self::ExpectInstruction => 16,
+        }
+    }
 }
 
 impl TassadarExecutorAttentionWeightBundle {
@@ -238,6 +286,8 @@ impl TassadarExecutorAttentionWeightBundle {
                 0.0;
                 config.relative_target_bias_token_cap * config.vocab_size * config.vocab_size
             ];
+        let relative_target_trace_schema_output_bias =
+            vec![0.0; TassadarEarlyTraceSchemaPhase::COUNT * config.vocab_size];
 
         let mut entries = vec![
             (
@@ -308,6 +358,17 @@ impl TassadarExecutorAttentionWeightBundle {
                     DType::F32,
                 ),
                 relative_target_transition_output_bias.as_slice(),
+            ));
+            entries.push((
+                WeightTensorMetadata::new(
+                    "relative_target_trace_schema_output_bias",
+                    Shape::new(vec![
+                        TassadarEarlyTraceSchemaPhase::COUNT,
+                        config.vocab_size,
+                    ]),
+                    DType::F32,
+                ),
+                relative_target_trace_schema_output_bias.as_slice(),
             ));
         }
         for layer in 0..config.layer_count {
@@ -387,6 +448,7 @@ impl TassadarExecutorAttentionWeightBundle {
             relative_target_output_bias,
             relative_target_output_projection,
             relative_target_transition_output_bias,
+            relative_target_trace_schema_output_bias,
         }
     }
 
@@ -454,6 +516,19 @@ impl TassadarExecutorAttentionWeightBundle {
     /// adapter weights for bounded research training.
     pub fn relative_target_transition_output_bias_mut(&mut self) -> &mut [f32] {
         &mut self.relative_target_transition_output_bias
+    }
+
+    /// Returns the flattened trace-schema-conditioned relative-target output
+    /// bias adapter tensor.
+    #[must_use]
+    pub fn relative_target_trace_schema_output_bias(&self) -> &[f32] {
+        &self.relative_target_trace_schema_output_bias
+    }
+
+    /// Returns mutable trace-schema-conditioned relative-target output bias
+    /// adapter weights for bounded research training.
+    pub fn relative_target_trace_schema_output_bias_mut(&mut self) -> &mut [f32] {
+        &mut self.relative_target_trace_schema_output_bias
     }
 
     fn refresh_metadata(&mut self, config: &TassadarExecutorAttentionConfig) {
@@ -526,6 +601,17 @@ impl TassadarExecutorAttentionWeightBundle {
                     DType::F32,
                 ),
                 self.relative_target_transition_output_bias.as_slice(),
+            ));
+            entries.push((
+                WeightTensorMetadata::new(
+                    "relative_target_trace_schema_output_bias",
+                    Shape::new(vec![
+                        TassadarEarlyTraceSchemaPhase::COUNT,
+                        config.vocab_size,
+                    ]),
+                    DType::F32,
+                ),
+                self.relative_target_trace_schema_output_bias.as_slice(),
             ));
         }
         for layer in 0..config.layer_count {
@@ -917,10 +1003,15 @@ impl TassadarExecutorAttentionTransformer {
         }
         let relative_target_index = state.prefix.len().saturating_sub(state.initial_prompt_len);
         let previous_token = state.prefix.as_slice().last().copied();
+        let trace_schema_phase = self.relative_target_trace_schema_phase_index(
+            state.prefix.as_slice(),
+            state.initial_prompt_len,
+        );
         self.project_logits_for_relative_target_step(
             self.top_hidden_state(state)?,
             previous_token,
             relative_target_index,
+            trace_schema_phase,
         )
     }
 
@@ -1147,7 +1238,7 @@ impl TassadarExecutorAttentionTransformer {
     }
 
     fn project_logits(&self, hidden: &[f32]) -> Result<Vec<f32>, TassadarExecutorAttentionError> {
-        self.project_logits_for_relative_target_step(hidden, None, usize::MAX)
+        self.project_logits_for_relative_target_step(hidden, None, usize::MAX, None)
     }
 
     fn project_logits_for_relative_target_step(
@@ -1155,6 +1246,7 @@ impl TassadarExecutorAttentionTransformer {
         hidden: &[f32],
         previous_token: Option<TokenId>,
         relative_target_index: usize,
+        trace_schema_phase: Option<usize>,
     ) -> Result<Vec<f32>, TassadarExecutorAttentionError> {
         let logits = matvec(
             &self.weights.output_projection,
@@ -1180,6 +1272,10 @@ impl TassadarExecutorAttentionTransformer {
             logits.as_mut_slice(),
             previous_token,
             relative_target_index,
+        );
+        self.apply_relative_target_trace_schema_output_bias_in_place(
+            logits.as_mut_slice(),
+            trace_schema_phase,
         );
         Ok(logits)
     }
@@ -1259,6 +1355,29 @@ impl TassadarExecutorAttentionTransformer {
         }
     }
 
+    /// Applies the bounded trace-schema-conditioned relative-target output
+    /// bias adapter to one logit slice in place.
+    pub fn apply_relative_target_trace_schema_output_bias_in_place(
+        &self,
+        logits: &mut [f32],
+        trace_schema_phase: Option<usize>,
+    ) {
+        let Some(trace_schema_phase) = trace_schema_phase else {
+            return;
+        };
+        let vocab_size = self.descriptor.config.vocab_size;
+        if logits.len() != vocab_size || trace_schema_phase >= TassadarEarlyTraceSchemaPhase::COUNT
+        {
+            return;
+        }
+        let row_start = trace_schema_phase * vocab_size;
+        let row = &self.weights.relative_target_trace_schema_output_bias
+            [row_start..row_start + vocab_size];
+        for (logit, bias) in logits.iter_mut().zip(row.iter()) {
+            *logit += *bias;
+        }
+    }
+
     /// Returns whether the bounded relative-target output-bias adapter has any
     /// non-zero trained signal.
     #[must_use]
@@ -1287,6 +1406,185 @@ impl TassadarExecutorAttentionTransformer {
             .relative_target_transition_output_bias
             .iter()
             .any(|value| value.abs() > 1e-6)
+    }
+
+    /// Returns whether the bounded trace-schema-conditioned relative-target
+    /// output-bias adapter has any non-zero trained signal.
+    #[must_use]
+    pub fn has_relative_target_trace_schema_output_bias_signal(&self) -> bool {
+        self.weights
+            .relative_target_trace_schema_output_bias
+            .iter()
+            .any(|value| value.abs() > 1e-6)
+    }
+
+    /// Returns the bounded early trace-schema phase index for the current
+    /// decoded prefix when one is recognized.
+    #[must_use]
+    pub fn relative_target_trace_schema_phase_index(
+        &self,
+        prefix: &[TokenId],
+        initial_prompt_len: usize,
+    ) -> Option<usize> {
+        self.relative_target_trace_schema_phase(prefix, initial_prompt_len)
+            .map(TassadarEarlyTraceSchemaPhase::index)
+    }
+
+    fn relative_target_trace_schema_phase(
+        &self,
+        prefix: &[TokenId],
+        initial_prompt_len: usize,
+    ) -> Option<TassadarEarlyTraceSchemaPhase> {
+        if prefix.len() < initial_prompt_len || initial_prompt_len == 0 {
+            return None;
+        }
+        let target_prefix = &prefix[initial_prompt_len..];
+        let trace_token = self.token_id("<trace>");
+        if target_prefix.is_empty() {
+            return (prefix.last().copied() == Some(trace_token))
+                .then_some(TassadarEarlyTraceSchemaPhase::ExpectStep);
+        }
+
+        let step_token = self.token_id("<step>");
+        let step_index_token = self.token_id("<step_index>");
+        let pc_token = self.token_id("<pc>");
+        let next_pc_token = self.token_id("<next_pc>");
+        let (byte_token_start, byte_token_end) = self.byte_token_bounds();
+        let is_byte = |token: TokenId| {
+            let raw = token.as_u32();
+            raw >= byte_token_start && raw <= byte_token_end
+        };
+        let all_bytes = |tokens: &[TokenId]| tokens.iter().copied().all(is_byte);
+
+        match target_prefix.len() {
+            1 if target_prefix[0] == step_token => Some(TassadarEarlyTraceSchemaPhase::ExpectStepIndex),
+            2 if target_prefix[0] == step_token && target_prefix[1] == step_index_token => {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectStepIndexByte0)
+            }
+            3 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..3]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectStepIndexByte1)
+            }
+            4 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..4]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectStepIndexByte2)
+            }
+            5 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..5]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectStepIndexByte3)
+            }
+            6 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectPc)
+            }
+            7 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectPcByte0)
+            }
+            8 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..8]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectPcByte1)
+            }
+            9 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..9]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectPcByte2)
+            }
+            10 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..10]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectPcByte3)
+            }
+            11 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..11]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectNextPc)
+            }
+            12 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..11])
+                && target_prefix[11] == next_pc_token =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectNextPcByte0)
+            }
+            13 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..11])
+                && target_prefix[11] == next_pc_token
+                && all_bytes(&target_prefix[12..13]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectNextPcByte1)
+            }
+            14 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..11])
+                && target_prefix[11] == next_pc_token
+                && all_bytes(&target_prefix[12..14]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectNextPcByte2)
+            }
+            15 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..11])
+                && target_prefix[11] == next_pc_token
+                && all_bytes(&target_prefix[12..15]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectNextPcByte3)
+            }
+            16 if target_prefix[0] == step_token
+                && target_prefix[1] == step_index_token
+                && all_bytes(&target_prefix[2..6])
+                && target_prefix[6] == pc_token
+                && all_bytes(&target_prefix[7..11])
+                && target_prefix[11] == next_pc_token
+                && all_bytes(&target_prefix[12..16]) =>
+            {
+                Some(TassadarEarlyTraceSchemaPhase::ExpectInstruction)
+            }
+            _ => None,
+        }
+    }
+
+    fn token_id(&self, token: &str) -> TokenId {
+        self.tokenizer.encode(token).as_slice()[0]
+    }
+
+    fn byte_token_bounds(&self) -> (u32, u32) {
+        let start = self.tokenizer.encode("<byte_00>").as_slice()[0].as_u32();
+        let end = self.tokenizer.encode("<byte_ff>").as_slice()[0].as_u32();
+        (start, end)
     }
 }
 
@@ -1454,8 +1752,8 @@ mod tests {
     use crate::{TassadarTraceTokenizer, TokenSequence, TokenizerBoundary};
 
     use super::{
-        TassadarExecutorAttentionClaimBoundary, TassadarExecutorAttentionHullPosture,
-        TassadarExecutorAttentionTransformer,
+        TassadarEarlyTraceSchemaPhase, TassadarExecutorAttentionClaimBoundary,
+        TassadarExecutorAttentionHullPosture, TassadarExecutorAttentionTransformer,
     };
 
     #[test]
@@ -1563,5 +1861,40 @@ mod tests {
 
         assert_eq!(logits[target_token.as_u32() as usize], 3.5);
         assert!(model.has_relative_target_transition_output_bias_signal());
+    }
+
+    #[test]
+    fn executor_attention_trace_schema_phase_recognizes_pc_boundary() {
+        let tokenizer = TassadarTraceTokenizer::new();
+        let model = TassadarExecutorAttentionTransformer::sudoku_v0();
+        let prefix = tokenizer.encode(
+            "<bos> <program> <locals> <byte_00> <byte_00> <byte_00> <byte_00> <memory_slots> <byte_00> <byte_00> <byte_00> <byte_00> <initial_memory> <byte_00> <byte_00> <byte_00> <byte_00> <trace> <step> <step_index> <byte_00> <byte_00> <byte_00> <byte_00>",
+        );
+        let initial_prompt_len = prefix.len() - 6;
+        let phase = model.relative_target_trace_schema_phase_index(prefix.as_slice(), initial_prompt_len);
+
+        assert_eq!(phase, Some(TassadarEarlyTraceSchemaPhase::ExpectPc.index()));
+    }
+
+    #[test]
+    fn executor_attention_trace_schema_bias_targets_structural_boundary() {
+        let tokenizer = TassadarTraceTokenizer::new();
+        let mut model = TassadarExecutorAttentionTransformer::sudoku_v0();
+        let target_token = tokenizer.encode("<pc>").as_slice()[0];
+        let schema_phase = TassadarEarlyTraceSchemaPhase::ExpectPc.index();
+        let vocab_size = model.descriptor().config.vocab_size;
+        let offset = schema_phase * vocab_size + target_token.as_u32() as usize;
+        model
+            .weights_mut()
+            .relative_target_trace_schema_output_bias_mut()[offset] = 4.0;
+
+        let mut logits = vec![0.0; vocab_size];
+        model.apply_relative_target_trace_schema_output_bias_in_place(
+            logits.as_mut_slice(),
+            Some(schema_phase),
+        );
+
+        assert_eq!(logits[target_token.as_u32() as usize], 4.0);
+        assert!(model.has_relative_target_trace_schema_output_bias_signal());
     }
 }

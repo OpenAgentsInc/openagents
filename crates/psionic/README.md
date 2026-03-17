@@ -231,18 +231,22 @@ Current posture:
   learned-lane promotion result
 - the post-Phase-15 boundary-adapter follow-on now also exists in
   `psionic-models`, `psionic-eval`, `psionic-research`, `docs/audits/`, and
-  five preserved bounded artifact roots at
+  nine preserved bounded artifact roots at
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v1`,
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3`,
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`,
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`,
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, and
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v8`:
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v8`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v11`:
   the executor-attention family now carries both a bounded relative-target
   output-bias adapter, a bounded hidden-state-conditioned relative-target
-  output projection adapter, and now a bounded previous-token-conditioned
-  transition adapter; the preserved `boundary_v1` artifact records the
+  output projection adapter, a bounded previous-token-conditioned transition
+  adapter, and a bounded trace-schema-conditioned adapter; the preserved
+  `boundary_v1` artifact records the
   destructive output-head-only attempt (`10000` bps first-target but only
   `313` bps first-32), the accepted `boundary_v2` artifact shows the first
   honest attention-family boundary improvement that keeps the suffix mostly
@@ -252,11 +256,15 @@ Current posture:
   gate flat, the newer `boundary_v5` / `v7` pair proves the
   previous-token-conditioned transition surface moves the learned blocker
   deeper into the trace (`10000` bps first-target, `8750` bps first-8,
-  `7188` bps first-32), and the later `boundary_v6` / `v8` joint fine-tune
-  preserves but does not beat that ceiling; the promotion gate therefore stays
-  red: exact validation traces remain `0/2`, and the first divergence is still
-  token `6` where the reference requires `<pc>` and the model predicts
-  `<byte_00>`
+  `7188` bps first-32), the later `boundary_v6` / `v8` joint fine-tune
+  preserves but does not beat that ceiling, and the later `boundary_v7` /
+  `boundary_v8` / `boundary_v9` saturation set plus
+  `architecture_comparison_v11` prove that adding trace-schema bias, then
+  per-position bias, then aggressive per-position gain still leaves all
+  `32/32` checkpoints on the exact same validation signature; the promotion
+  gate therefore stays red: exact validation traces remain `0/2`, and the
+  first divergence is still token `6` where the reference requires `<pc>` and
+  the model predicts `<byte_00>`
 - the separate post-audit Phase 17 bar now also exists in `psionic-models`,
   `psionic-eval`, `psionic-research`, `docs/audits/`, and a canonical bounded
   compiled-lane bundle at
