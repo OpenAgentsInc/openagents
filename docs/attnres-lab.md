@@ -31,6 +31,18 @@ all model, routing, parity, and training truth.
 - `Inference`: decode summary, two-phase parity, merge split, block cache, and
   selected-sublayer inference detail.
 
+## Visual Language
+
+- The pane now uses the retained `Psionic Mesh` pane as its visual reference
+  rather than the flatter first-pass cards.
+- The top hero now exposes run state, selected-sublayer routing focus, and a
+  live ribbon of the active route field.
+- Training telemetry now uses ring gauges, signal triplets, and ribbon-history
+  rails for loss, EMA, and selectivity instead of text-only summaries.
+- Pipeline and inference views now use sweep bars, route-field ribbons, block
+  transition timelines, and stronger textured panel shells so the desktop port
+  feels closer to a purpose-built WGPUI lab than a literal TUI screenshot.
+
 ## Controls
 
 - `Space`: start, pause, resume, or restart after completion.
