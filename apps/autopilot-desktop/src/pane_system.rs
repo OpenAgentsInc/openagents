@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use wgpui::components::hud::{PaneFrame, PaneHeaderAction, ResizablePane, ResizeEdge};
-use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
+use wgpui::{Bounds, Button, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
 use crate::app_state::{
@@ -107,6 +107,8 @@ const CREDENTIALS_ROW_GAP: f32 = 6.0;
 const CREDENTIALS_MAX_ROWS: usize = 10;
 const CAD_CONTEXT_MENU_ROW_HEIGHT: f32 = 24.0;
 static PANE_Z_SORT_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
+const PANE_BUTTON_HORIZONTAL_PADDING: f32 = 14.0;
+const PANE_BUTTON_VERTICAL_PADDING: f32 = 6.0;
 
 mod helpers;
 use helpers::*;
@@ -3267,7 +3269,7 @@ pub fn attnres_lab_overview_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
-        108.0,
+        attnres_button_width("Overview", 92.0),
         JOB_INBOX_BUTTON_HEIGHT,
     )
 }
@@ -3277,7 +3279,7 @@ pub fn attnres_lab_pipeline_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         overview.max_x() + JOB_INBOX_BUTTON_GAP,
         overview.origin.y,
-        108.0,
+        attnres_button_width("Pipeline", 92.0),
         overview.size.height,
     )
 }
@@ -3287,7 +3289,7 @@ pub fn attnres_lab_inference_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         pipeline.max_x() + JOB_INBOX_BUTTON_GAP,
         pipeline.origin.y,
-        108.0,
+        attnres_button_width("Inference", 92.0),
         pipeline.size.height,
     )
 }
@@ -3297,7 +3299,7 @@ pub fn attnres_lab_loss_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         inference.max_x() + JOB_INBOX_BUTTON_GAP,
         inference.origin.y,
-        92.0,
+        attnres_button_width("Loss", 74.0),
         inference.size.height,
     )
 }
@@ -3307,7 +3309,7 @@ pub fn attnres_lab_toggle_playback_button_bounds(content_bounds: Bounds) -> Boun
     Bounds::new(
         loss.max_x() + JOB_INBOX_BUTTON_GAP,
         loss.origin.y,
-        102.0,
+        attnres_playback_button_width(),
         loss.size.height,
     )
 }
@@ -3317,7 +3319,7 @@ pub fn attnres_lab_reset_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         playback.max_x() + JOB_INBOX_BUTTON_GAP,
         playback.origin.y,
-        96.0,
+        attnres_button_width("Reset", 84.0),
         playback.size.height,
     )
 }
@@ -3327,7 +3329,7 @@ pub fn attnres_lab_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         overview.origin.x,
         overview.max_y() + JOB_INBOX_BUTTON_GAP,
-        118.0,
+        attnres_button_width("Refresh live", 110.0),
         overview.size.height,
     )
 }
@@ -3337,7 +3339,7 @@ pub fn attnres_lab_slower_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         refresh.max_x() + JOB_INBOX_BUTTON_GAP,
         refresh.origin.y,
-        92.0,
+        attnres_button_width("Slower", 84.0),
         refresh.size.height,
     )
 }
@@ -3347,7 +3349,7 @@ pub fn attnres_lab_faster_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         slower.max_x() + JOB_INBOX_BUTTON_GAP,
         slower.origin.y,
-        92.0,
+        attnres_button_width("Faster", 84.0),
         slower.size.height,
     )
 }
@@ -3357,16 +3359,18 @@ pub fn attnres_lab_help_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         faster.max_x() + JOB_INBOX_BUTTON_GAP,
         faster.origin.y,
-        88.0,
+        attnres_button_width("Help", 74.0),
         faster.size.height,
     )
 }
 
 pub fn attnres_lab_previous_sublayer_button_bounds(content_bounds: Bounds) -> Bounds {
+    let previous_width = attnres_button_width("Prev sublayer", 110.0);
+    let next_width = attnres_button_width("Next sublayer", 110.0);
     Bounds::new(
-        content_bounds.max_x() - CHAT_PAD - 212.0,
+        content_bounds.max_x() - CHAT_PAD - previous_width - JOB_INBOX_BUTTON_GAP - next_width,
         attnres_lab_refresh_button_bounds(content_bounds).origin.y,
-        100.0,
+        previous_width,
         JOB_INBOX_BUTTON_HEIGHT,
     )
 }
@@ -3376,9 +3380,28 @@ pub fn attnres_lab_next_sublayer_button_bounds(content_bounds: Bounds) -> Bounds
     Bounds::new(
         previous.max_x() + JOB_INBOX_BUTTON_GAP,
         previous.origin.y,
-        100.0,
+        attnres_button_width("Next sublayer", 110.0),
         previous.size.height,
     )
+}
+
+fn attnres_button_width(label: &str, min_width: f32) -> f32 {
+    Button::intrinsic_size_for_label(
+        label,
+        theme::font_size::SM,
+        PANE_BUTTON_HORIZONTAL_PADDING,
+        PANE_BUTTON_VERTICAL_PADDING,
+    )
+    .width
+    .ceil()
+    .max(min_width)
+}
+
+fn attnres_playback_button_width() -> f32 {
+    ["Start", "Pause", "Resume", "Restart"]
+        .into_iter()
+        .map(|label| attnres_button_width(label, 84.0))
+        .fold(84.0, f32::max)
 }
 
 pub fn rive_preview_reload_button_bounds(content_bounds: Bounds) -> Bounds {

@@ -30,6 +30,8 @@ const MESH_COLS: usize = 20;
 const RIBBON_SEGMENTS: usize = 32;
 const PANEL_LINE_HEIGHT: f32 = 18.0;
 const PANEL_TEXT_RIGHT_PAD: f32 = 12.0;
+const PANEL_TITLE_BAR_HEIGHT: f32 = 20.0;
+const PANEL_TITLE_FONT_SIZE: f32 = 10.0;
 
 const ALGO_STEPS: [(&str, &str); 5] = [
     (
@@ -704,11 +706,11 @@ fn paint_loss_focus(
         bottom_bounds.size.height,
     );
 
-    paint_panel_shell(chart_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
+    paint_panel_shell(chart_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
     paint_panel_title(
         chart_bounds,
         "Training Loss Curve",
-        Hsla::from_hex(ACCENT_CORAL),
+        Hsla::from_hex(ACCENT_CYAN),
         paint,
     );
     paint_loss_curve_panel(chart_bounds, snapshot, phase, paint);
@@ -1106,7 +1108,7 @@ fn paint_runtime_panel(
     phase: f32,
     paint: &mut PaintContext,
 ) {
-    let accent = Hsla::from_hex(ACCENT_CORAL);
+    let accent = Hsla::from_hex(ACCENT_CYAN);
     paint_panel_texture(bounds, accent, phase, paint);
 
     let mut y = bounds.origin.y + 34.0;
@@ -2794,7 +2796,7 @@ fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
             bounds.origin.x + 1.0,
             bounds.origin.y + 1.0,
             bounds.size.width - 2.0,
-            20.0,
+            PANEL_TITLE_BAR_HEIGHT,
         ))
         .with_background(accent.with_alpha(0.06))
         .with_corner_radius(PANEL_RADIUS - 1.0),
@@ -2811,10 +2813,11 @@ fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
 }
 
 fn paint_panel_title(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
+    let title_y = bounds.origin.y + 1.0 + (PANEL_TITLE_BAR_HEIGHT - PANEL_TITLE_FONT_SIZE) * 0.5;
     paint.scene.draw_text(paint.text.layout_mono(
         title,
-        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 11.0),
-        10.0,
+        Point::new(bounds.origin.x + 10.0, title_y),
+        PANEL_TITLE_FONT_SIZE,
         accent.with_alpha(0.9),
     ));
 }

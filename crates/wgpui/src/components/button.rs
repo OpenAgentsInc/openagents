@@ -133,6 +133,28 @@ impl Button {
         self.disabled
     }
 
+    pub fn intrinsic_size_for_label(
+        label: &str,
+        font_size: f32,
+        horizontal_padding: f32,
+        vertical_padding: f32,
+    ) -> Size {
+        let width = label.chars().count() as f32 * font_size * 0.6 + horizontal_padding * 2.0;
+        let height = font_size * 1.4 + vertical_padding * 2.0;
+        Size::new(width, height)
+    }
+
+    pub fn intrinsic_size(&self) -> Size {
+        let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let mut size =
+            Self::intrinsic_size_for_label(&self.label, font_size, self.padding.0, self.padding.1);
+        if self.icon.is_some() {
+            size.width += font_size + theme::spacing::SM;
+            size.height = size.height.max(font_size + self.padding.1 * 2.0);
+        }
+        size
+    }
+
     fn colors(&self) -> (Hsla, Hsla, Hsla) {
         let mut bg = self.style.background.unwrap_or_else(|| match self.variant {
             ButtonVariant::Primary => theme::bg::HOVER,
@@ -372,10 +394,8 @@ impl Component for Button {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let font_size = self.style.font_size.unwrap_or(self.font_size);
-        let width = self.label.chars().count() as f32 * font_size * 0.6 + self.padding.0 * 2.0;
-        let height = font_size * 1.4 + self.padding.1 * 2.0;
-        (Some(width), Some(height))
+        let size = self.intrinsic_size();
+        (Some(size.width), Some(size.height))
     }
 }
 
@@ -452,6 +472,15 @@ mod tests {
 
         assert!(height.is_some());
         assert!(height.unwrap() > 16.0);
+    }
+
+    #[test]
+    fn test_intrinsic_size_for_label_respects_padding() {
+        let compact = Button::intrinsic_size_for_label("Next sublayer", 12.0, 8.0, 4.0);
+        let roomy = Button::intrinsic_size_for_label("Next sublayer", 12.0, 16.0, 4.0);
+
+        assert!(roomy.width > compact.width);
+        assert_eq!(roomy.height, compact.height);
     }
 
     #[test]

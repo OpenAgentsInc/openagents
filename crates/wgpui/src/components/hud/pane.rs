@@ -262,13 +262,20 @@ impl Component for PaneFrame {
 
         let title_font_size = theme::font_size::SM + 2.0;
         let title_text_x = title_bounds.origin.x + self.padding;
-        let title_text_y =
-            title_bounds.origin.y + (title_bounds.size.height - title_font_size) * 0.5 - 2.0;
-        let title_run = cx.text.layout_mono(
+        let mut title_run = cx.text.layout_mono(
             &self.title,
-            Point::new(title_text_x, title_text_y),
+            Point::ZERO,
             title_font_size,
             theme::text::PRIMARY,
+        );
+        let title_run_bounds = title_run.bounds();
+        let title_visual_nudge_y = -2.0;
+        title_run.origin = Point::new(
+            title_text_x - title_run_bounds.origin.x,
+            title_bounds.origin.y
+                + ((title_bounds.size.height - title_run_bounds.size.height).max(0.0) * 0.5)
+                - title_run_bounds.origin.y
+                + title_visual_nudge_y,
         );
         cx.scene.draw_text(title_run);
 
