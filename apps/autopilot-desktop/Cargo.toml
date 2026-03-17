@@ -54,6 +54,7 @@ codex-client = { path = "../../crates/codex-client" }
 psionic-data = { workspace = true }
 psionic-environments = { workspace = true }
 psionic-eval = { workspace = true, features = ["full"] }
+psionic-models = { workspace = true }
 psionic-adapters = { workspace = true }
 psionic-apple-fm = { workspace = true }
 psionic-research = { workspace = true }

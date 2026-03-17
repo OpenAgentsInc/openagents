@@ -648,6 +648,7 @@ dependencies = [
  "psionic-data",
  "psionic-environments",
  "psionic-eval",
+ "psionic-models",
  "psionic-research",
  "psionic-runtime",
  "psionic-sandbox",

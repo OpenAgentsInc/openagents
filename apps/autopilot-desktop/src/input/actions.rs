@@ -8962,6 +8962,9 @@ pub(super) fn run_attnres_lab_action(
                 .attnres_lab
                 .pane_set_ready(format!("Selected {} view", view.label()));
         }
+        AttnResLabPaneAction::RefreshSnapshot => {
+            crate::attnres_lab_control::refresh_live_snapshot(&mut state.attnres_lab);
+        }
         AttnResLabPaneAction::PreviousSublayer => {
             state.attnres_lab.selected_sublayer =
                 state.attnres_lab.selected_sublayer.saturating_sub(1);
