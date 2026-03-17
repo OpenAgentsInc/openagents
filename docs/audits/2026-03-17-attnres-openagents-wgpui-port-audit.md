@@ -32,6 +32,9 @@ follow-on, not current earn-loop MVP scope, unless explicitly scheduled.
   runner-backed interactive closure: live start/pause/resume/reset/speed,
   TUI-faithful keyboard controls, persisted lab state, WGPUI help overlay, and
   controller/input coverage.
+- 2026-03-17: a mesh-style visual uplift landed in `openagents` so the retained
+  AttnRes pane now borrows the stronger hero, ribbon, sweep, and textured panel
+  language from `Psionic Mesh` instead of the flatter initial port pass.
 - 2026-03-17: epic `openagents#3906` is satisfied and can close; the retained
   desktop now meets the pane/view/training/parity/test/doc criteria that the
   epic defined.
@@ -254,7 +257,7 @@ The retained repo now contains the full desktop AttnRes lab closure:
 
 The remaining non-blocking work is optional:
 
-- UX polish or visual refinement inside the pane
+- any further visual polish beyond the current mesh-style treatment
 - broader product surfacing outside the current command/pane shell
 - generic WGPUI extraction only if another pane proves the same abstraction
 

@@ -1,8 +1,11 @@
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use wgpui::components::hud::{DotShape, DotsGrid, Heatmap, RingGauge, Scanlines, SignalMeter};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
-    AttnResLabPaneState, AttnResLabPlaybackState, AttnResLabSublayerSnapshot, AttnResLabViewMode,
+    AttnResLabMetricPoint, AttnResLabPaneState, AttnResLabPlaybackState,
+    AttnResLabSublayerSnapshot, AttnResLabViewMode,
 };
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_secondary_button,
@@ -22,6 +25,9 @@ const ACCENT_CYAN: u32 = 0x67E8F9;
 const ACCENT_MINT: u32 = 0x86EFAC;
 const ACCENT_GOLD: u32 = 0xFDE68A;
 const ACCENT_CORAL: u32 = 0xFDA4AF;
+const MESH_ROWS: usize = 8;
+const MESH_COLS: usize = 20;
+const RIBBON_SEGMENTS: usize = 32;
 
 const ALGO_STEPS: [(&str, &str); 5] = [
     (
@@ -46,12 +52,21 @@ const ALGO_STEPS: [(&str, &str); 5] = [
     ),
 ];
 
+#[derive(Clone, Copy)]
+enum MetricHistoryKind {
+    Loss,
+    Ema,
+    Selectivity,
+}
+
 pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &mut PaintContext) {
     paint_source_badge(
         content_bounds,
         pane_state.snapshot.source_badge.as_str(),
         paint,
     );
+    let phase = animation_phase(pane_state);
+    let hero_accent = mesh_accent(pane_state);
 
     let overview_bounds = attnres_lab_overview_button_bounds(content_bounds);
     let pipeline_bounds = attnres_lab_pipeline_button_bounds(content_bounds);
@@ -104,50 +119,26 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
     paint_action_button(previous_bounds, "Prev sublayer", paint);
     paint_action_button(next_bounds, "Next sublayer", paint);
 
-    let title_x = reset_bounds.max_x() + 18.0;
-    paint.scene.draw_text(paint.text.layout(
-        "AttnRes Lab",
-        Point::new(title_x, content_bounds.origin.y + 18.0),
-        18.0,
-        theme::text::PRIMARY,
-    ));
-    let subtitle = if pane_state.snapshot.source_badge.starts_with("psionic.") {
-        "Psionic-backed live tiny-training replay with routing diagnostics, inference, and parity."
-    } else {
-        "Replay-first WGPUI port of the original Burn/TUI information architecture."
-    };
-    paint.scene.draw_text(paint.text.layout(
-        subtitle,
-        Point::new(title_x, refresh_bounds.origin.y + 18.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-
-    let summary = format!(
-        "{} // step {}/{} // {}x",
-        pane_state.snapshot.run_status,
-        pane_state.snapshot.step,
-        pane_state.snapshot.max_steps,
-        pane_state.snapshot.speed_multiplier
-    );
     let controls_bottom = refresh_bounds.max_y().max(previous_bounds.max_y());
-    let summary_bottom = paint_state_summary(
-        paint,
+    let hero_bounds = Bounds::new(
         content_bounds.origin.x + 12.0,
         controls_bottom + 12.0,
-        pane_state.load_state,
-        summary.as_str(),
-        pane_state.last_action.as_deref(),
-        pane_state.last_error.as_deref(),
+        content_bounds.size.width - 24.0,
+        76.0,
     );
+    let hero_bottom = paint_title_block(hero_bounds, pane_state, phase, hero_accent, paint);
 
-    let dashboard_top = summary_bottom + 12.0;
+    let dashboard_top = hero_bottom + 12.0;
+    let available_height = (content_bounds.max_y() - dashboard_top - 12.0).max(320.0);
+    let min_top_height = 240.0;
+    let max_top_height = (available_height - 156.0).max(min_top_height);
+    let top_height = (available_height * 0.56).clamp(min_top_height, max_top_height);
     let left_width = (content_bounds.size.width * 0.56).max(420.0);
     let left_bounds = Bounds::new(
         content_bounds.origin.x + 12.0,
         dashboard_top,
         (left_width - 18.0).min(content_bounds.size.width - 24.0),
-        (content_bounds.size.height * 0.52).max(260.0),
+        top_height,
     );
     let right_bounds = Bounds::new(
         left_bounds.max_x() + 12.0,
@@ -159,18 +150,39 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         content_bounds.origin.x + 12.0,
         left_bounds.max_y() + 12.0,
         content_bounds.size.width - 24.0,
-        (content_bounds.max_y() - left_bounds.max_y() - 24.0).max(160.0),
+        (available_height - top_height - 12.0).max(144.0),
     );
 
     match pane_state.selected_view {
         AttnResLabViewMode::Overview => {
-            paint_overview(left_bounds, right_bounds, bottom_bounds, pane_state, paint);
+            paint_overview(
+                left_bounds,
+                right_bounds,
+                bottom_bounds,
+                pane_state,
+                phase,
+                paint,
+            );
         }
         AttnResLabViewMode::Pipeline => {
-            paint_pipeline(left_bounds, right_bounds, bottom_bounds, pane_state, paint);
+            paint_pipeline(
+                left_bounds,
+                right_bounds,
+                bottom_bounds,
+                pane_state,
+                phase,
+                paint,
+            );
         }
         AttnResLabViewMode::Inference => {
-            paint_inference(left_bounds, right_bounds, bottom_bounds, pane_state, paint);
+            paint_inference(
+                left_bounds,
+                right_bounds,
+                bottom_bounds,
+                pane_state,
+                phase,
+                paint,
+            );
         }
     }
 
@@ -179,11 +191,117 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
     }
 }
 
+fn paint_title_block(
+    bounds: Bounds,
+    pane_state: &AttnResLabPaneState,
+    phase: f32,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) -> f32 {
+    paint_panel_shell(bounds, accent, paint);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let title = match pane_state.playback_state {
+        AttnResLabPlaybackState::Armed => "ATTNRES LAB  //  SEEDED CHECKPOINT",
+        AttnResLabPlaybackState::Running => "ATTNRES LAB  //  LIVE ROUTING FIELD",
+        AttnResLabPlaybackState::Paused => "ATTNRES LAB  //  PAUSED INSPECTION",
+        AttnResLabPlaybackState::Completed => "ATTNRES LAB  //  COMPLETED RUN",
+    };
+    let subtitle = format!(
+        "{}  //  {}",
+        pane_state.snapshot.model_label, pane_state.snapshot.architecture_label
+    );
+    let selection_line = pane_state
+        .current_sublayer()
+        .map(|selected| {
+            format!(
+                "{} view  //  {}  //  {} {:.0}%  //  cache {:.0}% partial {:.0}%",
+                pane_state.selected_view.label(),
+                selected.label,
+                selected.dominant_source_label,
+                selected.dominant_weight * 100.0,
+                selected.cache_mass * 100.0,
+                selected.partial_mass * 100.0
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "{} view  //  no sublayer selected",
+                pane_state.selected_view.label()
+            )
+        });
+    let summary = format!(
+        "{} // step {}/{} // {}x",
+        pane_state.playback_state.status_label(),
+        pane_state.snapshot.step,
+        pane_state.snapshot.max_steps,
+        pane_state.snapshot.speed_multiplier
+    );
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        title,
+        Point::new(bounds.origin.x + 14.0, bounds.origin.y + 18.0),
+        12.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        subtitle.as_str(),
+        Point::new(bounds.origin.x + 14.0, bounds.origin.y + 36.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        selection_line.as_str(),
+        Point::new(bounds.origin.x + 14.0, bounds.origin.y + 54.0),
+        10.0,
+        accent.with_alpha(0.9),
+    ));
+
+    let summary_bottom = paint_state_summary(
+        paint,
+        bounds.max_x() - 266.0,
+        bounds.origin.y + 10.0,
+        pane_state.load_state,
+        summary.as_str(),
+        pane_state.last_action.as_deref(),
+        pane_state.last_error.as_deref(),
+    );
+
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 14.0,
+            bounds.origin.y + 23.0,
+            138.0,
+            2.0,
+        ))
+        .with_background(accent.with_alpha(0.68)),
+    );
+
+    let selected = pane_state.current_sublayer();
+    let mut ribbon = AttnResRibbon::new(
+        selected
+            .map(|sublayer| build_selected_route_ribbon(sublayer, phase))
+            .unwrap_or_else(|| build_ribbon_values(0.18, phase, 0.9)),
+        accent,
+        selected
+            .map(|sublayer| sublayer.dominant_weight.clamp(0.0, 1.0))
+            .unwrap_or(0.18),
+        phase,
+    );
+    ribbon.paint(
+        Bounds::new(bounds.max_x() - 228.0, bounds.max_y() - 20.0, 212.0, 12.0),
+        paint,
+    );
+
+    summary_bottom.max(bounds.max_y())
+}
+
 fn paint_overview(
     left_bounds: Bounds,
     right_bounds: Bounds,
     bottom_bounds: Bounds,
     pane_state: &AttnResLabPaneState,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     let snapshot = &pane_state.snapshot;
@@ -194,7 +312,7 @@ fn paint_overview(
     paint_panel_title(left_bounds, "Depth Routing Heatmap", accent, paint);
     paint_heatmap_panel(left_bounds, pane_state, accent, paint);
 
-    let metrics_height = right_bounds.size.height * 0.48;
+    let metrics_height = right_bounds.size.height * 0.5;
     let metrics_bounds = Bounds::new(
         right_bounds.origin.x,
         right_bounds.origin.y,
@@ -215,7 +333,7 @@ fn paint_overview(
         Hsla::from_hex(ACCENT_MINT),
         paint,
     );
-    paint_metrics_panel(metrics_bounds, snapshot, paint);
+    paint_metrics_panel(metrics_bounds, snapshot, selected, phase, paint);
 
     paint_panel_shell(detail_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
     paint_panel_title(
@@ -224,7 +342,7 @@ fn paint_overview(
         Hsla::from_hex(ACCENT_GOLD),
         paint,
     );
-    paint_selected_sublayer(detail_bounds, selected, paint);
+    paint_selected_sublayer(detail_bounds, selected, phase, paint);
 
     paint_panel_shell(bottom_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
     paint_panel_title(
@@ -233,7 +351,7 @@ fn paint_overview(
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
-    paint_event_feed(bottom_bounds, snapshot.events.as_slice(), paint);
+    paint_event_feed(bottom_bounds, snapshot.events.as_slice(), phase, paint);
 }
 
 fn paint_pipeline(
@@ -241,6 +359,7 @@ fn paint_pipeline(
     right_bounds: Bounds,
     bottom_bounds: Bounds,
     pane_state: &AttnResLabPaneState,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     let selected = pane_state.current_sublayer();
@@ -248,15 +367,15 @@ fn paint_pipeline(
 
     let block_bounds = Bounds::new(
         left_bounds.origin.x,
-        left_bounds.max_y() - 126.0,
+        left_bounds.max_y() - 136.0,
         left_bounds.size.width,
-        126.0,
+        136.0,
     );
     let algo_bounds = Bounds::new(
         left_bounds.origin.x,
         left_bounds.origin.y,
         left_bounds.size.width,
-        (block_bounds.origin.y - left_bounds.origin.y - 12.0).max(120.0),
+        (block_bounds.origin.y - left_bounds.origin.y - 12.0).max(128.0),
     );
     let bars_height = right_bounds.size.height * 0.54;
     let bars_bounds = Bounds::new(
@@ -274,7 +393,7 @@ fn paint_pipeline(
 
     paint_panel_shell(algo_bounds, accent, paint);
     paint_panel_title(algo_bounds, "Algorithm Filmstrip", accent, paint);
-    paint_algorithm_steps(algo_bounds, pane_state, paint);
+    paint_algorithm_steps(algo_bounds, pane_state, phase, paint);
 
     paint_panel_shell(block_bounds, Hsla::from_hex(ACCENT_MINT), paint);
     paint_panel_title(
@@ -283,7 +402,7 @@ fn paint_pipeline(
         Hsla::from_hex(ACCENT_MINT),
         paint,
     );
-    paint_block_schedule(block_bounds, pane_state, paint);
+    paint_block_schedule(block_bounds, pane_state, phase, paint);
 
     paint_panel_shell(bars_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
     paint_panel_title(
@@ -292,7 +411,7 @@ fn paint_pipeline(
         Hsla::from_hex(ACCENT_CYAN),
         paint,
     );
-    paint_selected_route_bars(bars_bounds, selected, paint);
+    paint_selected_route_bars(bars_bounds, selected, phase, paint);
 
     paint_panel_shell(story_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
     paint_panel_title(
@@ -301,7 +420,7 @@ fn paint_pipeline(
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
-    paint_route_story(story_bounds, selected, paint);
+    paint_route_story(story_bounds, selected, phase, paint);
 
     paint_panel_shell(bottom_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
     paint_panel_title(
@@ -310,7 +429,12 @@ fn paint_pipeline(
         Hsla::from_hex(ACCENT_CYAN),
         paint,
     );
-    paint_event_feed(bottom_bounds, pane_state.snapshot.events.as_slice(), paint);
+    paint_event_feed(
+        bottom_bounds,
+        pane_state.snapshot.events.as_slice(),
+        phase,
+        paint,
+    );
 }
 
 fn paint_inference(
@@ -318,6 +442,7 @@ fn paint_inference(
     right_bounds: Bounds,
     bottom_bounds: Bounds,
     pane_state: &AttnResLabPaneState,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     let snapshot = &pane_state.snapshot;
@@ -326,7 +451,7 @@ fn paint_inference(
         left_bounds.origin.x,
         left_bounds.origin.y,
         left_bounds.size.width,
-        (left_bounds.size.height * 0.46).max(150.0),
+        (left_bounds.size.height * 0.48).max(158.0),
     );
     let merge_bounds = Bounds::new(
         left_bounds.origin.x,
@@ -348,7 +473,7 @@ fn paint_inference(
         Hsla::from_hex(ACCENT_CYAN),
         paint,
     );
-    paint_inference_parity(parity_bounds, snapshot, paint);
+    paint_inference_parity(parity_bounds, snapshot, phase, paint);
 
     paint_panel_shell(merge_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
     paint_panel_title(
@@ -357,7 +482,7 @@ fn paint_inference(
         Hsla::from_hex(ACCENT_GOLD),
         paint,
     );
-    paint_merge_and_cache(merge_bounds, snapshot, paint);
+    paint_merge_and_cache(merge_bounds, snapshot, phase, paint);
 
     paint_panel_shell(detail_bounds, Hsla::from_hex(ACCENT_MINT), paint);
     paint_panel_title(
@@ -366,7 +491,7 @@ fn paint_inference(
         Hsla::from_hex(ACCENT_MINT),
         paint,
     );
-    paint_selected_sublayer(detail_bounds, selected, paint);
+    paint_selected_sublayer(detail_bounds, selected, phase, paint);
 
     paint_panel_shell(bottom_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
     paint_panel_title(
@@ -375,7 +500,8 @@ fn paint_inference(
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
-    let mut y = bottom_bounds.origin.y + 30.0;
+    paint_panel_texture(bottom_bounds, Hsla::from_hex(ACCENT_CORAL), phase, paint);
+    let mut y = bottom_bounds.origin.y + 32.0;
     y = paint_multiline_phrase(
         paint,
         bottom_bounds.origin.x + 12.0,
@@ -445,11 +571,33 @@ fn paint_heatmap_panel(
         .opacity(0.92);
     scanlines.paint(matrix_bounds, paint);
 
+    let rows = snapshot.sublayers.len().max(1);
+    let row_height = ((matrix_bounds.size.height - (rows.saturating_sub(1) as f32 * 2.0))
+        / rows as f32)
+        .max(8.0);
+    let highlight_y =
+        matrix_bounds.origin.y + pane_state.selected_sublayer as f32 * (row_height + 2.0);
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            matrix_bounds.origin.x,
+            highlight_y,
+            matrix_bounds.size.width,
+            row_height,
+        ))
+        .with_background(accent.with_alpha(0.08))
+        .with_border(accent.with_alpha(0.32), 1.0)
+        .with_corner_radius(4.0),
+    );
+
     let legend = format!(
-        "{} sublayers  //  {} max sources  //  active block {}",
+        "{} sublayers  //  {} max sources  //  active block {}  //  selected {}",
         snapshot.sublayers.len(),
         snapshot.max_sources(),
-        snapshot.active_block
+        snapshot.active_block,
+        pane_state
+            .current_sublayer()
+            .map(|selected| selected.label.as_str())
+            .unwrap_or("-")
     );
     paint.scene.draw_text(paint.text.layout_mono(
         legend.as_str(),
@@ -462,97 +610,179 @@ fn paint_heatmap_panel(
 fn paint_metrics_panel(
     bounds: Bounds,
     snapshot: &crate::app_state::AttnResLabSnapshot,
+    selected: Option<&AttnResLabSublayerSnapshot>,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
-    let left_x = bounds.origin.x + 12.0;
-    let gauge_y = bounds.origin.y + 40.0;
+    paint_panel_texture(bounds, Hsla::from_hex(ACCENT_MINT), phase, paint);
+
     let progress = if snapshot.max_steps == 0 {
         0.0
     } else {
         snapshot.step as f32 / snapshot.max_steps as f32
     };
+    let progress_bounds = Bounds::new(bounds.origin.x + 14.0, bounds.origin.y + 38.0, 76.0, 76.0);
     let mut progress_ring = RingGauge::new()
         .level(progress.clamp(0.0, 1.0))
         .segments(42)
-        .dot_size(5.0)
+        .dot_size(4.0)
         .active_color(Hsla::from_hex(ACCENT_CYAN).with_alpha(0.88))
-        .inactive_color(theme::bg::APP);
-    progress_ring.paint(Bounds::new(left_x, gauge_y, 84.0, 84.0), paint);
+        .inactive_color(theme::bg::APP)
+        .head_color(theme::text::PRIMARY);
+    progress_ring.paint(progress_bounds, paint);
 
-    let mut selectivity_meter = SignalMeter::new()
-        .bars(7)
-        .gap(3.0)
+    let selectivity_bounds =
+        Bounds::new(bounds.origin.x + 102.0, bounds.origin.y + 38.0, 76.0, 76.0);
+    let mut selectivity_ring = RingGauge::new()
         .level(snapshot.avg_selectivity.clamp(0.0, 1.0))
-        .min_bar_height(0.16)
-        .active_color(Hsla::from_hex(ACCENT_MINT).with_alpha(0.94))
-        .inactive_color(theme::bg::APP.with_alpha(0.84));
-    selectivity_meter.paint(
-        Bounds::new(left_x + 102.0, gauge_y + 6.0, 34.0, 72.0),
-        paint,
-    );
+        .segments(42)
+        .dot_size(4.0)
+        .active_color(Hsla::from_hex(ACCENT_MINT).with_alpha(0.92))
+        .inactive_color(theme::bg::APP)
+        .head_color(theme::text::PRIMARY);
+    selectivity_ring.paint(selectivity_bounds, paint);
 
-    let mut y = bounds.origin.y + 42.0;
-    let label_x = bounds.origin.x + 164.0;
-    y = paint_label_line(paint, label_x, y, "Model", snapshot.model_label.as_str());
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("{:>3.0}%", progress * 100.0),
+        Point::new(
+            progress_bounds.origin.x + 18.0,
+            progress_bounds.max_y() - 10.0,
+        ),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("{:>3.0}%", snapshot.avg_selectivity * 100.0),
+        Point::new(
+            selectivity_bounds.origin.x + 18.0,
+            selectivity_bounds.max_y() - 10.0,
+        ),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+
+    let meta_x = (bounds.origin.x + 196.0).min(bounds.max_x() - 146.0);
+    let mut y = bounds.origin.y + 40.0;
+    y = paint_label_line(paint, meta_x, y, "Run", snapshot.run_label.as_str());
     y = paint_label_line(
         paint,
-        label_x,
-        y,
-        "Topology",
-        snapshot.architecture_label.as_str(),
-    );
-    y = paint_label_line(paint, label_x, y, "Run", snapshot.run_label.as_str());
-    y = paint_label_line(
-        paint,
-        label_x,
+        meta_x,
         y,
         "Loss",
         format!("{:.3}", snapshot.training_loss).as_str(),
     );
     y = paint_label_line(
         paint,
-        label_x,
+        meta_x,
         y,
         "EMA",
         format!("{:.3}", snapshot.ema_loss).as_str(),
     );
     y = paint_label_line(
         paint,
-        label_x,
+        meta_x,
         y,
-        "Selectivity",
-        format!("{:.0}%", snapshot.avg_selectivity * 100.0).as_str(),
-    );
-    y = paint_label_line(
-        paint,
-        label_x,
-        y,
-        "Blocks",
+        "Block",
         format!(
-            "{} complete // fill {}",
-            snapshot.completed_blocks, snapshot.current_block_fill
+            "{} active // {} complete // fill {}",
+            snapshot.active_block, snapshot.completed_blocks, snapshot.current_block_fill
         )
         .as_str(),
     );
+    let query_norm = selected
+        .map(|sublayer| sublayer.query_norm)
+        .unwrap_or_else(|| mean_query_norm(snapshot));
+    let _ = paint_label_line(
+        paint,
+        meta_x,
+        y,
+        "Selected q",
+        format!("{query_norm:.2}").as_str(),
+    );
 
-    let latest = snapshot
-        .metrics
-        .last()
-        .map(|point| {
-            format!(
-                "last tracked point: step {} // loss {:.3} // selectivity {:.0}%",
-                point.global_step,
-                point.training_loss,
-                point.selectivity * 100.0
-            )
-        })
-        .unwrap_or_else(|| "no tracked points loaded".to_string());
-    let _ = paint_multiline_phrase(paint, left_x, y + 10.0, "history", latest.as_str());
+    paint_signal_triplet(
+        bounds.origin.x + 20.0,
+        bounds.origin.y + 126.0,
+        [
+            (
+                "LS",
+                descent_level(
+                    snapshot.metrics.first().map(|point| point.training_loss),
+                    snapshot.training_loss,
+                ),
+                Hsla::from_hex(ACCENT_CORAL),
+            ),
+            (
+                "EM",
+                descent_level(
+                    snapshot.metrics.first().map(|point| point.ema_loss),
+                    snapshot.ema_loss,
+                ),
+                Hsla::from_hex(ACCENT_GOLD),
+            ),
+            (
+                "QN",
+                normalize_signal(query_norm, 1.15),
+                Hsla::from_hex(ACCENT_MINT),
+            ),
+        ],
+        Hsla::from_hex(ACCENT_MINT),
+        paint,
+    );
+
+    let ribbon_top = (bounds.origin.y + 122.0).max(y + 12.0);
+    let ribbon_gap = 8.0;
+    let ribbon_height = ((bounds.max_y() - ribbon_top - 12.0 - ribbon_gap * 2.0) / 3.0).max(10.0);
+    let labels_x = bounds.origin.x + 16.0;
+    let ribbon_x = bounds.origin.x + 88.0;
+    let ribbon_width = (bounds.size.width - 102.0).max(64.0);
+    let ribbons = [
+        (
+            "LOSS",
+            Hsla::from_hex(ACCENT_CORAL),
+            build_metric_history_ribbon(
+                snapshot.metrics.as_slice(),
+                MetricHistoryKind::Loss,
+                phase,
+            ),
+        ),
+        (
+            "EMA",
+            Hsla::from_hex(ACCENT_GOLD),
+            build_metric_history_ribbon(
+                snapshot.metrics.as_slice(),
+                MetricHistoryKind::Ema,
+                phase + 0.13,
+            ),
+        ),
+        (
+            "SEL",
+            Hsla::from_hex(ACCENT_MINT),
+            build_metric_history_ribbon(
+                snapshot.metrics.as_slice(),
+                MetricHistoryKind::Selectivity,
+                phase + 0.27,
+            ),
+        ),
+    ];
+
+    for (index, (label, color, (values, level))) in ribbons.into_iter().enumerate() {
+        let y = ribbon_top + index as f32 * (ribbon_height + ribbon_gap);
+        paint.scene.draw_text(paint.text.layout_mono(
+            label,
+            Point::new(labels_x, y + 9.0),
+            10.0,
+            color.with_alpha(0.92),
+        ));
+        let mut ribbon = AttnResRibbon::new(values, color, level, phase + index as f32 * 0.11);
+        ribbon.paint(Bounds::new(ribbon_x, y, ribbon_width, ribbon_height), paint);
+    }
 }
 
 fn paint_selected_sublayer(
     bounds: Bounds,
     selected: Option<&AttnResLabSublayerSnapshot>,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     let Some(selected) = selected else {
@@ -564,6 +794,44 @@ fn paint_selected_sublayer(
         ));
         return;
     };
+
+    let accent = if selected.kind_label.eq_ignore_ascii_case("attention") {
+        Hsla::from_hex(ACCENT_CYAN)
+    } else {
+        Hsla::from_hex(ACCENT_GOLD)
+    };
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let cache_bounds = Bounds::new(bounds.max_x() - 90.0, bounds.origin.y + 38.0, 22.0, 64.0);
+    let partial_bounds = Bounds::new(bounds.max_x() - 56.0, bounds.origin.y + 38.0, 22.0, 64.0);
+    let mut cache_meter = SignalMeter::new()
+        .bars(6)
+        .gap(2.0)
+        .level(selected.cache_mass.clamp(0.0, 1.0))
+        .min_bar_height(0.16)
+        .active_color(Hsla::from_hex(ACCENT_CYAN).with_alpha(0.92))
+        .inactive_color(accent.with_alpha(0.08));
+    cache_meter.paint(cache_bounds, paint);
+    let mut partial_meter = SignalMeter::new()
+        .bars(6)
+        .gap(2.0)
+        .level(selected.partial_mass.clamp(0.0, 1.0))
+        .min_bar_height(0.16)
+        .active_color(Hsla::from_hex(ACCENT_GOLD).with_alpha(0.92))
+        .inactive_color(accent.with_alpha(0.08));
+    partial_meter.paint(partial_bounds, paint);
+    paint.scene.draw_text(paint.text.layout_mono(
+        "CA",
+        Point::new(cache_bounds.origin.x - 2.0, cache_bounds.max_y() + 12.0),
+        9.0,
+        Hsla::from_hex(ACCENT_CYAN).with_alpha(0.86),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        "PT",
+        Point::new(partial_bounds.origin.x - 2.0, partial_bounds.max_y() + 12.0),
+        9.0,
+        Hsla::from_hex(ACCENT_GOLD).with_alpha(0.86),
+    ));
 
     let mut y = bounds.origin.y + 36.0;
     y = paint_label_line(
@@ -625,105 +893,357 @@ fn paint_selected_sublayer(
         )
         .as_str(),
     );
-    let _ = paint_multiline_phrase(
+    y = paint_multiline_phrase(
         paint,
         bounds.origin.x + 12.0,
         y + 8.0,
         "route",
         selected.route_note.as_str(),
     );
+
+    let ribbon_top = (y + 8.0).min(bounds.max_y() - 28.0);
+    if ribbon_top + 12.0 <= bounds.max_y() - 10.0 {
+        paint.scene.draw_text(paint.text.layout_mono(
+            "ROUTE FIELD",
+            Point::new(bounds.origin.x + 12.0, ribbon_top + 9.0),
+            10.0,
+            accent.with_alpha(0.88),
+        ));
+        let mut ribbon = AttnResRibbon::new(
+            build_selected_route_ribbon(selected, phase),
+            accent,
+            selected.dominant_weight.clamp(0.0, 1.0),
+            phase,
+        );
+        ribbon.paint(
+            Bounds::new(
+                bounds.origin.x + 102.0,
+                ribbon_top,
+                bounds.size.width - 116.0,
+                12.0,
+            ),
+            paint,
+        );
+    }
 }
 
-fn paint_event_feed(bounds: Bounds, events: &[String], paint: &mut PaintContext) {
-    let mut y = bounds.origin.y + 36.0;
-    for event in events.iter().take(6) {
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(bounds.origin.x + 12.0, y - 2.0, 6.0, 6.0))
-                .with_background(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.82))
-                .with_corner_radius(3.0),
-        );
+fn paint_event_feed(bounds: Bounds, events: &[String], phase: f32, paint: &mut PaintContext) {
+    paint_panel_texture(bounds, Hsla::from_hex(ACCENT_CORAL), phase, paint);
+    if events.is_empty() {
         paint.scene.draw_text(paint.text.layout(
-            event.as_str(),
-            Point::new(bounds.origin.x + 24.0, y),
+            "No AttnRes events recorded yet.",
+            Point::new(bounds.origin.x + 14.0, bounds.origin.y + 36.0),
             11.0,
-            theme::text::PRIMARY,
+            theme::text::MUTED,
         ));
-        y += 20.0;
+        return;
+    }
+
+    let rail_x = bounds.origin.x + 20.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            rail_x,
+            bounds.origin.y + 36.0,
+            1.0,
+            (bounds.size.height - 56.0).max(24.0),
+        ))
+        .with_background(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.16)),
+    );
+
+    let mut y = bounds.origin.y + 38.0;
+    for (index, event) in events.iter().take(5).enumerate() {
+        let pulse = if index == 0 { 0.12 + phase * 0.12 } else { 0.0 };
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(rail_x - 4.0, y + 3.0, 9.0, 9.0))
+                .with_background(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.74 + pulse))
+                .with_corner_radius(4.5),
+        );
+        y = paint_multiline_phrase(
+            paint,
+            bounds.origin.x + 34.0,
+            y,
+            format!("E{:02}", index + 1).as_str(),
+            event.as_str(),
+        );
+        y += 8.0;
     }
 }
 
 fn paint_algorithm_steps(
     bounds: Bounds,
     pane_state: &AttnResLabPaneState,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
+    let accent = Hsla::from_hex(ACCENT_GOLD);
+    paint_panel_texture(bounds, accent, phase, paint);
+
     let active = pane_state.selected_sublayer % ALGO_STEPS.len();
-    let mut y = bounds.origin.y + 36.0;
+    let sweep_height = 28.0;
+    let sweep_bounds = Bounds::new(
+        bounds.origin.x + 14.0,
+        bounds.max_y() - sweep_height - 12.0,
+        bounds.size.width - 28.0,
+        sweep_height,
+    );
+    let top = bounds.origin.y + 34.0;
+    let gap = 8.0;
+    let row_height =
+        ((sweep_bounds.origin.y - top - gap * 4.0) / ALGO_STEPS.len() as f32).max(32.0);
+
     for (index, (title, detail)) in ALGO_STEPS.iter().enumerate() {
-        let accent = if index == active {
-            Hsla::from_hex(ACCENT_GOLD)
+        let y = top + index as f32 * (row_height + gap);
+        let row_bounds = Bounds::new(
+            bounds.origin.x + 12.0,
+            y,
+            bounds.size.width - 24.0,
+            row_height,
+        );
+        let row_accent = if index == active {
+            accent.with_alpha(0.24)
         } else {
-            theme::text::MUTED
+            accent.with_alpha(0.06)
         };
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(row_accent)
+                .with_border(
+                    if index == active {
+                        accent.with_alpha(0.42)
+                    } else {
+                        accent.with_alpha(0.12)
+                    },
+                    1.0,
+                )
+                .with_corner_radius(7.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                row_bounds.origin.x + 8.0,
+                row_bounds.origin.y + 7.0,
+                20.0,
+                18.0,
+            ))
+            .with_background(if index == active {
+                accent.with_alpha(0.32)
+            } else {
+                theme::bg::APP.with_alpha(0.72)
+            })
+            .with_corner_radius(4.0),
+        );
         paint.scene.draw_text(paint.text.layout_mono(
             &format!("{:02}", index + 1),
-            Point::new(bounds.origin.x + 12.0, y),
+            Point::new(row_bounds.origin.x + 12.0, row_bounds.origin.y + 19.0),
             10.0,
-            accent,
+            if index == active {
+                theme::text::PRIMARY
+            } else {
+                accent.with_alpha(0.82)
+            },
         ));
         paint.scene.draw_text(paint.text.layout(
             title,
-            Point::new(bounds.origin.x + 42.0, y),
+            Point::new(row_bounds.origin.x + 40.0, row_bounds.origin.y + 12.0),
             11.0,
             theme::text::PRIMARY,
         ));
         paint.scene.draw_text(paint.text.layout(
             detail,
-            Point::new(bounds.origin.x + 42.0, y + 14.0),
+            Point::new(row_bounds.origin.x + 40.0, row_bounds.origin.y + 26.0),
             10.0,
             theme::text::MUTED,
         ));
-        y += 40.0;
     }
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        "SUBLAYER SWEEP",
+        Point::new(sweep_bounds.origin.x, sweep_bounds.origin.y - 4.0),
+        10.0,
+        accent.with_alpha(0.88),
+    ));
+    let mut sweep = AttnResLayerSweep::new(
+        build_sublayer_levels(&pane_state.snapshot, phase),
+        phase,
+        accent,
+        pane_state.playback_state.is_running(),
+    );
+    sweep.paint(sweep_bounds, paint);
 }
 
 fn paint_block_schedule(
     bounds: Bounds,
     pane_state: &AttnResLabPaneState,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
-    let mut y = bounds.origin.y + 36.0;
-    for block in &pane_state.snapshot.block_summaries {
-        y = paint_label_line(
-            paint,
+    let accent = Hsla::from_hex(ACCENT_MINT);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    if pane_state.snapshot.block_summaries.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No block summaries loaded.",
+            Point::new(bounds.origin.x + 14.0, bounds.origin.y + 36.0),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    let top = bounds.origin.y + 36.0;
+    let gap = 8.0;
+    let row_height = ((bounds.size.height - 52.0 - gap * 2.0)
+        / pane_state.snapshot.block_summaries.len().max(1) as f32)
+        .max(28.0);
+    let max_block = pane_state.snapshot.block_summaries.len().saturating_sub(1);
+    let levels = build_block_levels(&pane_state.snapshot, phase);
+
+    for (index, block) in pane_state.snapshot.block_summaries.iter().enumerate() {
+        let y = top + index as f32 * (row_height + gap);
+        let row_bounds = Bounds::new(
             bounds.origin.x + 12.0,
             y,
-            format!("Block {}", block.block_index).as_str(),
-            format!(
-                "{:.0}% selective // q {:.2} // {} sublayers",
-                block.avg_selectivity * 100.0,
-                block.avg_query_norm,
-                block.sublayers
-            )
-            .as_str(),
+            bounds.size.width - 24.0,
+            row_height,
         );
+        let is_active = block.block_index == pane_state.snapshot.active_block.min(max_block);
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if is_active {
+                    accent.with_alpha(0.18)
+                } else {
+                    Hsla::from_hex(0x071019).with_alpha(0.88)
+                })
+                .with_border(
+                    if is_active {
+                        accent.with_alpha(0.38)
+                    } else {
+                        accent.with_alpha(0.10)
+                    },
+                    1.0,
+                )
+                .with_corner_radius(6.0),
+        );
+
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("B{}", block.block_index),
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 18.0),
+            10.0,
+            if is_active {
+                theme::text::PRIMARY
+            } else {
+                accent.with_alpha(0.88)
+            },
+        ));
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("{} layers", block.sublayers),
+            Point::new(row_bounds.origin.x + 42.0, row_bounds.origin.y + 18.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+
+        let select_track = Bounds::new(
+            row_bounds.origin.x + 112.0,
+            row_bounds.origin.y + 8.0,
+            (row_bounds.size.width - 210.0).max(56.0),
+            8.0,
+        );
+        let query_track = Bounds::new(
+            select_track.origin.x,
+            row_bounds.origin.y + row_height - 14.0,
+            select_track.size.width,
+            6.0,
+        );
+        paint.scene.draw_quad(
+            Quad::new(select_track)
+                .with_background(theme::bg::APP.with_alpha(0.88))
+                .with_corner_radius(4.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                select_track.origin.x,
+                select_track.origin.y,
+                select_track.size.width * block.avg_selectivity.clamp(0.0, 1.0),
+                select_track.size.height,
+            ))
+            .with_background(accent.with_alpha(0.82))
+            .with_corner_radius(4.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(query_track)
+                .with_background(theme::bg::APP.with_alpha(0.78))
+                .with_corner_radius(3.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                query_track.origin.x,
+                query_track.origin.y,
+                query_track.size.width * normalize_signal(block.avg_query_norm, 1.1),
+                query_track.size.height,
+            ))
+            .with_background(Hsla::from_hex(ACCENT_GOLD).with_alpha(0.78))
+            .with_corner_radius(3.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("{:>3.0}%", block.avg_selectivity * 100.0),
+            Point::new(row_bounds.max_x() - 86.0, row_bounds.origin.y + 12.0),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("q {:.2}", block.avg_query_norm),
+            Point::new(
+                row_bounds.max_x() - 82.0,
+                row_bounds.origin.y + row_height - 6.0,
+            ),
+            9.0,
+            theme::text::MUTED,
+        ));
+
+        if let Some(level) = levels.get(index).copied() {
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    row_bounds.origin.x + 92.0,
+                    row_bounds.origin.y + 7.0,
+                    4.0,
+                    row_bounds.size.height - 14.0,
+                ))
+                .with_background(accent.with_alpha(0.16 + level * 0.4))
+                .with_corner_radius(2.0),
+            );
+        }
     }
 }
 
 fn paint_selected_route_bars(
     bounds: Bounds,
     selected: Option<&AttnResLabSublayerSnapshot>,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     let Some(selected) = selected else {
         return;
     };
 
+    paint_panel_texture(bounds, Hsla::from_hex(ACCENT_CYAN), phase, paint);
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Dominant route {} at {:.0}%. Logits keep sign; softmax mass is shown separately.",
+                selected.dominant_source_label,
+                selected.dominant_weight * 100.0
+            )
+            .as_str(),
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 30.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
+
     let left = Bounds::new(
         bounds.origin.x + 12.0,
-        bounds.origin.y + 36.0,
+        bounds.origin.y + 54.0,
         (bounds.size.width * 0.48).max(120.0),
-        bounds.size.height - 48.0,
+        bounds.size.height - 64.0,
     );
     let right = Bounds::new(
         left.max_x() + 12.0,
@@ -737,6 +1257,7 @@ fn paint_selected_route_bars(
         selected.source_labels.as_slice(),
         selected.source_logits.as_slice(),
         Hsla::from_hex(ACCENT_GOLD),
+        phase,
         paint,
     );
     paint_bar_series(
@@ -745,6 +1266,7 @@ fn paint_selected_route_bars(
         selected.source_labels.as_slice(),
         selected.routing_weights.as_slice(),
         Hsla::from_hex(ACCENT_CYAN),
+        phase + 0.18,
         paint,
     );
 }
@@ -752,13 +1274,17 @@ fn paint_selected_route_bars(
 fn paint_route_story(
     bounds: Bounds,
     selected: Option<&AttnResLabSublayerSnapshot>,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     let Some(selected) = selected else {
         return;
     };
 
-    let mut y = bounds.origin.y + 36.0;
+    let accent = Hsla::from_hex(ACCENT_CORAL);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let mut y = bounds.origin.y + 34.0;
     y = paint_multiline_phrase(
         paint,
         bounds.origin.x + 12.0,
@@ -773,52 +1299,118 @@ fn paint_route_story(
         "story",
         selected.route_note.as_str(),
     );
-    let _ = paint_label_line(
+
+    let timeline_top = (y + 8.0).min(bounds.max_y() - 48.0);
+    paint_route_boundary_row(
+        Bounds::new(
+            bounds.origin.x + 12.0,
+            timeline_top,
+            bounds.size.width - 24.0,
+            20.0,
+        ),
+        "before",
+        selected.completed_blocks_before,
+        selected.partial_block_present_before,
+        selected.target_block,
+        Hsla::from_hex(ACCENT_CYAN),
         paint,
-        bounds.origin.x + 12.0,
-        y + 6.0,
-        "boundaries",
-        format!(
-            "start={} complete {}->{} partial {}->{}",
-            selected.starts_new_block_before,
-            selected.completed_blocks_before,
-            selected.completed_blocks_after,
-            selected.partial_block_present_before,
-            selected.partial_block_present_after
-        )
-        .as_str(),
     );
+    paint_route_boundary_row(
+        Bounds::new(
+            bounds.origin.x + 12.0,
+            timeline_top + 26.0,
+            bounds.size.width - 24.0,
+            20.0,
+        ),
+        "after",
+        selected.completed_blocks_after,
+        selected.partial_block_present_after,
+        selected.target_block,
+        Hsla::from_hex(ACCENT_MINT),
+        paint,
+    );
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        if selected.starts_new_block_before {
+            "Boundary opened before this sublayer"
+        } else {
+            "Boundary remained inside the active block"
+        },
+        Point::new(
+            bounds.origin.x + 12.0,
+            (timeline_top + 58.0).min(bounds.max_y() - 10.0),
+        ),
+        10.0,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_inference_parity(
     bounds: Bounds,
     snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
+    let accent = Hsla::from_hex(ACCENT_CYAN);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let hidden_level = parity_level(snapshot.inference.hidden_max_abs_diff, 1.0e-5, 6.0e-5);
+    let logit_level = parity_level(snapshot.inference.logit_max_abs_diff, 1.0e-5, 6.0e-5);
     let mut hidden_ring = RingGauge::new()
-        .level(0.98)
+        .level(hidden_level)
         .segments(42)
-        .dot_size(5.0)
-        .active_color(Hsla::from_hex(ACCENT_CYAN).with_alpha(0.88))
-        .inactive_color(theme::bg::APP);
+        .dot_size(4.0)
+        .active_color(accent.with_alpha(0.88))
+        .inactive_color(theme::bg::APP)
+        .head_color(theme::text::PRIMARY);
     hidden_ring.paint(
-        Bounds::new(bounds.origin.x + 12.0, bounds.origin.y + 42.0, 78.0, 78.0),
+        Bounds::new(bounds.origin.x + 14.0, bounds.origin.y + 42.0, 74.0, 74.0),
         paint,
     );
 
     let mut logit_ring = RingGauge::new()
-        .level(0.97)
+        .level(logit_level)
         .segments(42)
-        .dot_size(5.0)
+        .dot_size(4.0)
         .active_color(Hsla::from_hex(ACCENT_MINT).with_alpha(0.88))
-        .inactive_color(theme::bg::APP);
+        .inactive_color(theme::bg::APP)
+        .head_color(theme::text::PRIMARY);
     logit_ring.paint(
-        Bounds::new(bounds.origin.x + 104.0, bounds.origin.y + 42.0, 78.0, 78.0),
+        Bounds::new(bounds.origin.x + 102.0, bounds.origin.y + 42.0, 74.0, 74.0),
+        paint,
+    );
+
+    paint.scene.draw_text(paint.text.layout_mono(
+        "HIDDEN",
+        Point::new(bounds.origin.x + 18.0, bounds.origin.y + 126.0),
+        10.0,
+        accent.with_alpha(0.9),
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        "LOGITS",
+        Point::new(bounds.origin.x + 108.0, bounds.origin.y + 126.0),
+        10.0,
+        Hsla::from_hex(ACCENT_MINT).with_alpha(0.9),
+    ));
+
+    paint_signal_triplet(
+        bounds.origin.x + 20.0,
+        bounds.origin.y + 140.0,
+        [
+            ("HD", hidden_level, accent),
+            ("LG", logit_level, Hsla::from_hex(ACCENT_MINT)),
+            (
+                "CF",
+                snapshot.inference.block_cache_fill_share.clamp(0.0, 1.0),
+                Hsla::from_hex(ACCENT_GOLD),
+            ),
+        ],
+        accent,
         paint,
     );
 
     let mut y = bounds.origin.y + 42.0;
-    let x = bounds.origin.x + 200.0;
+    let x = bounds.origin.x + 194.0;
     y = paint_label_line(
         paint,
         x,
@@ -852,29 +1444,49 @@ fn paint_inference_parity(
 fn paint_merge_and_cache(
     bounds: Bounds,
     snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
-    paint_merge_meter(
-        Bounds::new(bounds.origin.x + 12.0, bounds.origin.y + 42.0, 110.0, 88.0),
-        "partial",
-        snapshot.inference.partial_merge_share,
-        Hsla::from_hex(ACCENT_GOLD),
-        paint,
-    );
-    paint_merge_meter(
-        Bounds::new(bounds.origin.x + 132.0, bounds.origin.y + 42.0, 110.0, 88.0),
-        "cache",
-        snapshot.inference.cache_merge_share,
-        Hsla::from_hex(ACCENT_CYAN),
-        paint,
-    );
-    paint_merge_meter(
-        Bounds::new(bounds.origin.x + 252.0, bounds.origin.y + 42.0, 110.0, 88.0),
-        "fill",
-        snapshot.inference.block_cache_fill_share,
-        Hsla::from_hex(ACCENT_MINT),
-        paint,
-    );
+    paint_panel_texture(bounds, Hsla::from_hex(ACCENT_GOLD), phase, paint);
+
+    let rows = [
+        (
+            "partial",
+            snapshot.inference.partial_merge_share,
+            Hsla::from_hex(ACCENT_GOLD),
+            phase,
+        ),
+        (
+            "cache",
+            snapshot.inference.cache_merge_share,
+            Hsla::from_hex(ACCENT_CYAN),
+            phase + 0.17,
+        ),
+        (
+            "fill",
+            snapshot.inference.block_cache_fill_share,
+            Hsla::from_hex(ACCENT_MINT),
+            phase + 0.31,
+        ),
+    ];
+    let gap = 10.0;
+    let row_height = ((bounds.size.height - 52.0 - gap * 2.0) / 3.0).max(24.0);
+    for (index, (label, level, color, row_phase)) in rows.into_iter().enumerate() {
+        let y = bounds.origin.y + 36.0 + index as f32 * (row_height + gap);
+        paint_merge_meter(
+            Bounds::new(
+                bounds.origin.x + 12.0,
+                y,
+                bounds.size.width - 24.0,
+                row_height,
+            ),
+            label,
+            level,
+            color,
+            row_phase,
+            paint,
+        );
+    }
 }
 
 fn paint_merge_meter(
@@ -882,31 +1494,67 @@ fn paint_merge_meter(
     label: &str,
     level: f32,
     accent: Hsla,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
-    let mut meter = SignalMeter::new()
-        .bars(6)
-        .gap(3.0)
-        .level(level.clamp(0.0, 1.0))
-        .min_bar_height(0.12)
-        .active_color(accent.with_alpha(0.94))
-        .inactive_color(theme::bg::APP.with_alpha(0.82));
-    meter.paint(
-        Bounds::new(bounds.origin.x + 16.0, bounds.origin.y, 32.0, 64.0),
-        paint,
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(Hsla::from_hex(0x071019).with_alpha(0.82))
+            .with_border(accent.with_alpha(0.12), 1.0)
+            .with_corner_radius(6.0),
     );
     paint.scene.draw_text(paint.text.layout_mono(
         label,
-        Point::new(bounds.origin.x + 2.0, bounds.max_y() - 10.0),
+        Point::new(
+            bounds.origin.x + 10.0,
+            bounds.origin.y + bounds.size.height * 0.54,
+        ),
         10.0,
-        accent.with_alpha(0.9),
+        accent.with_alpha(0.92),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("{:>3.0}%", level * 100.0),
-        Point::new(bounds.origin.x + 52.0, bounds.origin.y + 20.0),
-        11.0,
+        Point::new(
+            bounds.origin.x + 62.0,
+            bounds.origin.y + bounds.size.height * 0.54,
+        ),
+        10.0,
         theme::text::PRIMARY,
     ));
+
+    let meter_height = (bounds.size.height - 10.0).max(12.0);
+    let mut meter = SignalMeter::new()
+        .bars(6)
+        .gap(2.0)
+        .level(level.clamp(0.0, 1.0))
+        .min_bar_height(0.16)
+        .active_color(accent.with_alpha(0.94))
+        .inactive_color(theme::bg::APP.with_alpha(0.8));
+    meter.paint(
+        Bounds::new(
+            bounds.origin.x + 108.0,
+            bounds.origin.y + 5.0,
+            20.0,
+            meter_height,
+        ),
+        paint,
+    );
+
+    let mut ribbon = AttnResRibbon::new(
+        build_ribbon_values(level.max(0.08), phase, 0.82),
+        accent,
+        level.clamp(0.0, 1.0),
+        phase,
+    );
+    ribbon.paint(
+        Bounds::new(
+            bounds.origin.x + 140.0,
+            bounds.origin.y + 7.0,
+            (bounds.size.width - 152.0).max(44.0),
+            (bounds.size.height - 14.0).max(10.0),
+        ),
+        paint,
+    );
 }
 
 fn paint_bar_series(
@@ -915,6 +1563,7 @@ fn paint_bar_series(
     labels: &[String],
     values: &[f32],
     accent: Hsla,
+    phase: f32,
     paint: &mut PaintContext,
 ) {
     paint.scene.draw_text(paint.text.layout_mono(
@@ -924,38 +1573,111 @@ fn paint_bar_series(
         accent.with_alpha(0.88),
     ));
     let top = bounds.origin.y + 12.0;
-    let bar_height = 12.0;
+    let bar_height = 10.0;
     let gap = 14.0;
+    let has_negative = values.iter().any(|value| *value < 0.0);
+    let track_bounds = Bounds::new(
+        bounds.origin.x + 66.0,
+        top,
+        bounds.size.width - 88.0,
+        bounds.size.height - 20.0,
+    );
+    let dominant_index = values
+        .iter()
+        .enumerate()
+        .max_by(|(_, left), (_, right)| {
+            left.abs()
+                .partial_cmp(&right.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(index, _)| index)
+        .unwrap_or_default();
     let max_value = values
         .iter()
         .copied()
         .map(f32::abs)
         .fold(0.0_f32, f32::max)
         .max(1.0);
+    let drawable_width = if has_negative {
+        (track_bounds.size.width * 0.5 - 4.0).max(10.0)
+    } else {
+        track_bounds.size.width.max(10.0)
+    };
+    let axis_x = if has_negative {
+        track_bounds.origin.x + track_bounds.size.width * 0.5
+    } else {
+        track_bounds.origin.x
+    };
+    if has_negative {
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                axis_x,
+                top - 4.0,
+                1.0,
+                track_bounds.size.height,
+            ))
+            .with_background(accent.with_alpha(0.22)),
+        );
+    }
 
     for (index, value) in values.iter().enumerate() {
         let y = top + index as f32 * (bar_height + gap);
-        let normalized = value.abs() / max_value;
-        let width = (bounds.size.width - 78.0) * normalized.clamp(0.0, 1.0);
         paint.scene.draw_text(paint.text.layout_mono(
             labels.get(index).map(String::as_str).unwrap_or("source"),
             Point::new(bounds.origin.x, y + 2.0),
             9.0,
             theme::text::MUTED,
         ));
-        paint.scene.draw_quad(
-            Quad::new(Bounds::new(
-                bounds.origin.x + 64.0,
-                y,
-                width.max(2.0),
-                bar_height,
-            ))
-            .with_background(accent.with_alpha(0.72))
-            .with_corner_radius(2.0),
+        let row_track = Bounds::new(
+            track_bounds.origin.x,
+            y,
+            track_bounds.size.width,
+            bar_height,
         );
+        paint.scene.draw_quad(
+            Quad::new(row_track)
+                .with_background(theme::bg::APP.with_alpha(0.78))
+                .with_corner_radius(3.0),
+        );
+
+        let normalized = (value.abs() / max_value).clamp(0.0, 1.0);
+        let width = (drawable_width * normalized).max(2.0);
+        let (bar_x, bar_width, bar_color) = if has_negative && *value < 0.0 {
+            (
+                (axis_x - width).max(row_track.origin.x),
+                width.min(drawable_width),
+                Hsla::from_hex(ACCENT_CORAL).with_alpha(0.72),
+            )
+        } else {
+            (
+                if has_negative {
+                    axis_x
+                } else {
+                    row_track.origin.x
+                },
+                width.min(drawable_width),
+                accent.with_alpha(0.72),
+            )
+        };
+        let emphasis = if index == dominant_index {
+            0.18 + phase * 0.10
+        } else {
+            0.0
+        };
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(bar_x, y, bar_width, bar_height))
+                .with_background(bar_color.with_alpha((0.72 + emphasis).clamp(0.0, 1.0)))
+                .with_corner_radius(3.0),
+        );
+        if index == dominant_index {
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(bar_x, y, bar_width, 1.0))
+                    .with_background(theme::text::PRIMARY.with_alpha(0.24 + emphasis)),
+            );
+        }
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("{:.2}", value),
-            Point::new(bounds.origin.x + 64.0 + width + 6.0, y + 2.0),
+            &format!("{value:.2}"),
+            Point::new(bounds.max_x() - 38.0, y + 2.0),
             9.0,
             theme::text::PRIMARY,
         ));
@@ -986,7 +1708,7 @@ fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(Hsla::from_hex(0x071019).with_alpha(0.96))
-            .with_border(accent.with_alpha(0.26), 1.0)
+            .with_border(accent.with_alpha(0.28), 1.0)
             .with_corner_radius(PANEL_RADIUS),
     );
     paint.scene.draw_quad(
@@ -999,6 +1721,15 @@ fn paint_panel_shell(bounds: Bounds, accent: Hsla, paint: &mut PaintContext) {
         .with_background(accent.with_alpha(0.06))
         .with_corner_radius(PANEL_RADIUS - 1.0),
     );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 10.0,
+            bounds.max_y() - 3.0,
+            bounds.size.width - 20.0,
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.12)),
+    );
 }
 
 fn paint_panel_title(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
@@ -1008,6 +1739,474 @@ fn paint_panel_title(bounds: Bounds, title: &str, accent: Hsla, paint: &mut Pain
         10.0,
         accent.with_alpha(0.9),
     ));
+}
+
+fn paint_panel_texture(bounds: Bounds, accent: Hsla, phase: f32, paint: &mut PaintContext) {
+    let inner = Bounds::new(
+        bounds.origin.x + 12.0,
+        bounds.origin.y + 28.0,
+        bounds.size.width - 24.0,
+        (bounds.size.height - 40.0).max(18.0),
+    );
+    let mut dots = DotsGrid::new()
+        .shape(DotShape::Cross)
+        .distance(24.0)
+        .size(0.8)
+        .color(accent.with_alpha(0.08))
+        .animation_progress(1.0);
+    dots.paint(inner, paint);
+
+    let mut scanlines = Scanlines::new()
+        .spacing(16.0)
+        .line_color(accent.with_alpha(0.03))
+        .scan_color(accent.with_alpha(0.07))
+        .scan_width(18.0)
+        .scan_progress(phase)
+        .opacity(0.56);
+    scanlines.paint(inner, paint);
+}
+
+fn paint_signal_triplet(
+    origin_x: f32,
+    origin_y: f32,
+    specs: [(&str, f32, Hsla); 3],
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    for (index, (label, level, color)) in specs.into_iter().enumerate() {
+        let x = origin_x + index as f32 * 42.0;
+        let mut meter = SignalMeter::new()
+            .bars(6)
+            .gap(2.0)
+            .level(level.clamp(0.0, 1.0))
+            .min_bar_height(0.16)
+            .active_color(color.with_alpha(0.94))
+            .inactive_color(accent.with_alpha(0.08));
+        meter.paint(Bounds::new(x, origin_y, 24.0, 54.0), paint);
+        paint.scene.draw_text(paint.text.layout_mono(
+            label,
+            Point::new(x - 1.0, origin_y + 66.0),
+            10.0,
+            color.with_alpha(0.9),
+        ));
+    }
+}
+
+fn paint_route_boundary_row(
+    bounds: Bounds,
+    label: &str,
+    completed_blocks: usize,
+    partial_present: bool,
+    target_block: usize,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(bounds.origin.x, bounds.origin.y + 14.0),
+        10.0,
+        accent.with_alpha(0.86),
+    ));
+
+    let slot_count = (target_block + 2)
+        .max(completed_blocks + usize::from(partial_present))
+        .max(3)
+        .min(6);
+    let lane_x = bounds.origin.x + 66.0;
+    let gap = 6.0;
+    let block_width = ((bounds.size.width - 98.0 - gap * slot_count as f32)
+        / (slot_count as f32 + 1.0))
+        .max(16.0);
+
+    for index in 0..slot_count {
+        let x = lane_x + index as f32 * (block_width + gap);
+        let is_complete = index < completed_blocks;
+        let is_target = index == target_block;
+        let color = if is_complete {
+            accent.with_alpha(0.66)
+        } else {
+            theme::bg::APP.with_alpha(0.88)
+        };
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                x,
+                bounds.origin.y,
+                block_width,
+                bounds.size.height,
+            ))
+            .with_background(color)
+            .with_border(
+                if is_target {
+                    Hsla::from_hex(ACCENT_GOLD).with_alpha(0.42)
+                } else {
+                    accent.with_alpha(0.12)
+                },
+                1.0,
+            )
+            .with_corner_radius(4.0),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("B{index}"),
+            Point::new(x + 4.0, bounds.origin.y + 13.0),
+            9.0,
+            if is_complete {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        ));
+    }
+
+    let partial_x = lane_x + slot_count as f32 * (block_width + gap);
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            partial_x,
+            bounds.origin.y,
+            block_width,
+            bounds.size.height,
+        ))
+        .with_background(if partial_present {
+            Hsla::from_hex(ACCENT_CORAL).with_alpha(0.62)
+        } else {
+            theme::bg::APP.with_alpha(0.78)
+        })
+        .with_border(Hsla::from_hex(ACCENT_CORAL).with_alpha(0.18), 1.0)
+        .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        "P",
+        Point::new(partial_x + 6.0, bounds.origin.y + 13.0),
+        9.0,
+        if partial_present {
+            theme::text::PRIMARY
+        } else {
+            theme::text::MUTED
+        },
+    ));
+}
+
+fn build_metric_history_ribbon(
+    metrics: &[AttnResLabMetricPoint],
+    kind: MetricHistoryKind,
+    phase: f32,
+) -> (Vec<f32>, f32) {
+    if metrics.is_empty() {
+        return (build_ribbon_values(0.18, phase, 0.9), 0.18);
+    }
+
+    let raw: Vec<f32> = metrics
+        .iter()
+        .map(|point| match kind {
+            MetricHistoryKind::Loss => point.training_loss,
+            MetricHistoryKind::Ema => point.ema_loss,
+            MetricHistoryKind::Selectivity => point.selectivity,
+        })
+        .collect();
+    let invert = matches!(kind, MetricHistoryKind::Loss | MetricHistoryKind::Ema);
+    let min = raw.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = raw.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let span = (max - min).max(0.0001);
+    let mut values = Vec::with_capacity(RIBBON_SEGMENTS);
+    let steps = raw.len().saturating_sub(1);
+
+    for index in 0..RIBBON_SEGMENTS {
+        let pos = index as f32 / (RIBBON_SEGMENTS.saturating_sub(1)) as f32;
+        let sample_pos = pos * steps as f32;
+        let low = sample_pos.floor() as usize;
+        let high = sample_pos.ceil() as usize;
+        let blend = sample_pos - low as f32;
+        let sample = if steps == 0 {
+            raw[0]
+        } else {
+            raw[low] + (raw[high] - raw[low]) * blend
+        };
+        let mut normalized = ((sample - min) / span).clamp(0.0, 1.0);
+        if invert {
+            normalized = 1.0 - normalized;
+        }
+        let envelope = 1.0 - ((pos - phase).abs() * 1.8).clamp(0.0, 1.0);
+        values.push((0.08 + normalized * 0.68 + envelope * 0.12).clamp(0.0, 1.0));
+    }
+
+    let current = *raw.last().unwrap_or(&0.0);
+    let mut current_level = ((current - min) / span).clamp(0.0, 1.0);
+    if invert {
+        current_level = 1.0 - current_level;
+    }
+    (values, current_level.clamp(0.0, 1.0))
+}
+
+fn build_selected_route_ribbon(selected: &AttnResLabSublayerSnapshot, phase: f32) -> Vec<f32> {
+    if selected.routing_weights.is_empty() {
+        return build_ribbon_values(0.18, phase, 0.94);
+    }
+
+    let steps = selected.routing_weights.len().saturating_sub(1);
+    let mut values = Vec::with_capacity(RIBBON_SEGMENTS);
+    for index in 0..RIBBON_SEGMENTS {
+        let pos = index as f32 / (RIBBON_SEGMENTS.saturating_sub(1)) as f32;
+        let sample_pos = pos * steps as f32;
+        let low = sample_pos.floor() as usize;
+        let high = sample_pos.ceil() as usize;
+        let blend = sample_pos - low as f32;
+        let base = if steps == 0 {
+            selected.routing_weights[0]
+        } else {
+            selected.routing_weights[low]
+                + (selected.routing_weights[high] - selected.routing_weights[low]) * blend
+        };
+        let wave = (((pos * 7.0) + phase * 5.0).sin() + 1.0) * 0.08;
+        values.push((0.12 + base * 0.74 + wave).clamp(0.0, 1.0));
+    }
+    values
+}
+
+fn build_sublayer_levels(snapshot: &crate::app_state::AttnResLabSnapshot, phase: f32) -> Vec<f32> {
+    snapshot
+        .sublayers
+        .iter()
+        .enumerate()
+        .map(|(index, sublayer)| {
+            let pos = index as f32 / snapshot.sublayers.len().max(1) as f32;
+            let wave = (((pos * 9.0) + phase * 6.0).sin() + 1.0) * 0.04;
+            (0.14
+                + sublayer.selectivity * 0.58
+                + normalize_signal(sublayer.query_norm, 1.1) * 0.18
+                + sublayer.dominant_weight * 0.10
+                + wave)
+                .clamp(0.0, 1.0)
+        })
+        .collect()
+}
+
+fn build_block_levels(snapshot: &crate::app_state::AttnResLabSnapshot, phase: f32) -> Vec<f32> {
+    snapshot
+        .block_summaries
+        .iter()
+        .enumerate()
+        .map(|(index, block)| {
+            let pos = index as f32 / snapshot.block_summaries.len().max(1) as f32;
+            let wave = (((pos * 6.0) + phase * 4.0).sin() + 1.0) * 0.04;
+            (0.18
+                + block.avg_selectivity * 0.56
+                + normalize_signal(block.avg_query_norm, 1.1) * 0.18
+                + wave)
+                .clamp(0.0, 1.0)
+        })
+        .collect()
+}
+
+fn build_ribbon_values(level: f32, phase: f32, frequency: f32) -> Vec<f32> {
+    (0..RIBBON_SEGMENTS)
+        .map(|index| {
+            let pos = index as f32 / (RIBBON_SEGMENTS.saturating_sub(1)) as f32;
+            let wave = (((pos * frequency * 10.0) + phase * 6.0).sin() + 1.0) * 0.5;
+            let envelope = 1.0 - ((pos - phase).abs() * 1.8).clamp(0.0, 1.0);
+            (0.08 + level * 0.62 + wave * 0.2 + envelope * 0.16).clamp(0.0, 1.0)
+        })
+        .collect()
+}
+
+fn descent_level(start: Option<f32>, current: f32) -> f32 {
+    let Some(start) = start else {
+        return 0.0;
+    };
+    if start <= current {
+        return 0.0;
+    }
+    normalize_signal(start - current, (start * 0.35).max(0.1))
+}
+
+fn mean_query_norm(snapshot: &crate::app_state::AttnResLabSnapshot) -> f32 {
+    if snapshot.sublayers.is_empty() {
+        return 0.0;
+    }
+    snapshot
+        .sublayers
+        .iter()
+        .map(|sublayer| sublayer.query_norm)
+        .sum::<f32>()
+        / snapshot.sublayers.len() as f32
+}
+
+fn parity_level(value: f32, good_budget: f32, hard_budget: f32) -> f32 {
+    if value <= good_budget {
+        return 1.0;
+    }
+    if value >= hard_budget {
+        return 0.0;
+    }
+    let normalized = ((value - good_budget) / (hard_budget - good_budget)).clamp(0.0, 1.0);
+    (1.0 - normalized.sqrt()).clamp(0.0, 1.0)
+}
+
+fn normalize_signal(value: f32, reference: f32) -> f32 {
+    if value <= 0.0 || reference <= 0.0 {
+        return 0.0;
+    }
+    (value / reference).sqrt().clamp(0.0, 1.0)
+}
+
+fn animation_phase(pane_state: &AttnResLabPaneState) -> f32 {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as f32;
+    let seed = seed_from_text(
+        format!(
+            "{}:{}:{}:{}",
+            pane_state.snapshot.run_label,
+            pane_state.snapshot.step,
+            pane_state.selected_sublayer,
+            pane_state.selected_view.label()
+        )
+        .as_str(),
+    );
+    let speed_bias = pane_state.snapshot.speed_multiplier as f32 * 140.0;
+    ((millis / (2800.0 - speed_bias.min(960.0))) + seed / 97.0).fract()
+}
+
+fn seed_from_text(value: &str) -> f32 {
+    let mut sum = 0u64;
+    for (index, byte) in value.bytes().enumerate() {
+        sum = sum.saturating_add((index as u64 + 1) * u64::from(byte));
+    }
+    (sum % 4096) as f32
+}
+
+fn mesh_accent(pane_state: &AttnResLabPaneState) -> Hsla {
+    if pane_state.last_error.is_some() {
+        Hsla::from_hex(ACCENT_CORAL)
+    } else {
+        match pane_state.playback_state {
+            AttnResLabPlaybackState::Armed => Hsla::from_hex(ACCENT_GOLD),
+            AttnResLabPlaybackState::Running => Hsla::from_hex(ACCENT_CYAN),
+            AttnResLabPlaybackState::Paused => Hsla::from_hex(ACCENT_GOLD),
+            AttnResLabPlaybackState::Completed => Hsla::from_hex(ACCENT_MINT),
+        }
+    }
+}
+
+struct AttnResLayerSweep {
+    levels: Vec<f32>,
+    phase: f32,
+    accent: Hsla,
+    active: bool,
+}
+
+impl AttnResLayerSweep {
+    fn new(levels: Vec<f32>, phase: f32, accent: Hsla, active: bool) -> Self {
+        Self {
+            levels,
+            phase,
+            accent,
+            active,
+        }
+    }
+}
+
+impl Component for AttnResLayerSweep {
+    fn paint(&mut self, bounds: Bounds, paint: &mut PaintContext) {
+        if self.levels.is_empty() {
+            return;
+        }
+
+        let count = self.levels.len();
+        let gap = 3.0;
+        let bar_width =
+            ((bounds.size.width - gap * (count.saturating_sub(1) as f32)) / count as f32).max(1.0);
+        let head_index = ((self.phase * count as f32).floor() as usize).min(count - 1);
+
+        for (index, level) in self.levels.iter().copied().enumerate() {
+            let height =
+                (bounds.size.height * (0.16 + level * 0.84)).clamp(8.0, bounds.size.height);
+            let x = bounds.origin.x + index as f32 * (bar_width + gap);
+            let y = bounds.max_y() - height;
+            let emphasis = if index == head_index {
+                0.34
+            } else if self.active && (index as isize - head_index as isize).abs() <= 1 {
+                0.18
+            } else {
+                0.0
+            };
+            let color = self
+                .accent
+                .with_alpha((0.28 + level * 0.42 + emphasis).clamp(0.12, 0.96));
+
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(x, y, bar_width, height))
+                    .with_background(color)
+                    .with_corner_radius(2.0),
+            );
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(x, y, bar_width, 2.0))
+                    .with_background(theme::text::PRIMARY.with_alpha(0.22 + emphasis)),
+            );
+        }
+    }
+}
+
+struct AttnResRibbon {
+    values: Vec<f32>,
+    color: Hsla,
+    level: f32,
+    phase: f32,
+}
+
+impl AttnResRibbon {
+    fn new(values: Vec<f32>, color: Hsla, level: f32, phase: f32) -> Self {
+        Self {
+            values,
+            color,
+            level,
+            phase,
+        }
+    }
+}
+
+impl Component for AttnResRibbon {
+    fn paint(&mut self, bounds: Bounds, paint: &mut PaintContext) {
+        if self.values.is_empty() {
+            return;
+        }
+
+        paint.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(Hsla::from_hex(0x041018).with_alpha(0.9))
+                .with_corner_radius(7.0),
+        );
+
+        let count = self.values.len();
+        let gap = 2.0;
+        let cell_width =
+            ((bounds.size.width - gap * (count.saturating_sub(1) as f32)) / count as f32).max(1.0);
+        let head_index = ((self.phase * count as f32).floor() as usize).min(count - 1);
+
+        for (index, value) in self.values.iter().copied().enumerate() {
+            let active_height =
+                (bounds.size.height * (0.18 + value * 0.76)).clamp(3.0, bounds.size.height);
+            let x = bounds.origin.x + index as f32 * (cell_width + gap);
+            let y = bounds.max_y() - active_height;
+            let emphasis = if index == head_index { 0.26 } else { 0.0 };
+            paint.scene.draw_quad(
+                Quad::new(Bounds::new(x, y, cell_width, active_height))
+                    .with_background(self.color.with_alpha(
+                        (0.16 + value * 0.56 + emphasis + self.level * 0.1).clamp(0.08, 0.96),
+                    ))
+                    .with_corner_radius(2.0),
+            );
+        }
+
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y + bounds.size.height * (1.0 - self.level.clamp(0.0, 1.0)),
+                bounds.size.width,
+                1.0,
+            ))
+            .with_background(theme::text::PRIMARY.with_alpha(0.18)),
+        );
+    }
 }
 
 fn paint_help_overlay(
@@ -1029,6 +2228,7 @@ fn paint_help_overlay(
     let accent = Hsla::from_hex(ACCENT_GOLD);
     paint_panel_shell(overlay, accent, paint);
     paint_panel_title(overlay, "Controls", accent, paint);
+    paint_panel_texture(overlay, accent, 0.32, paint);
 
     let mut y = overlay.origin.y + 38.0;
     y = paint_multiline_phrase(
@@ -1085,4 +2285,59 @@ fn paint_help_overlay(
         "Mouse",
         "Use the top-row controls for playback, speed, help, refresh, and sublayer inspection",
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn heatmap_data_matches_snapshot_shape() {
+        let state = crate::app_state::AttnResLabPaneState::default();
+        let data = build_heatmap_data(&state.snapshot);
+        assert_eq!(
+            data.len(),
+            state.snapshot.sublayers.len() * state.snapshot.max_sources()
+        );
+        assert!(data.iter().all(|value| (0.0..=1.0).contains(value)));
+    }
+
+    #[test]
+    fn metric_history_ribbon_is_bounded() {
+        let state = crate::app_state::AttnResLabPaneState::default();
+        let (values, level) = build_metric_history_ribbon(
+            state.snapshot.metrics.as_slice(),
+            MetricHistoryKind::Selectivity,
+            0.42,
+        );
+        assert_eq!(values.len(), RIBBON_SEGMENTS);
+        assert!(values.iter().all(|value| (0.0..=1.0).contains(value)));
+        assert!((0.0..=1.0).contains(&level));
+    }
+
+    #[test]
+    fn selected_route_ribbon_is_bounded() {
+        let state = crate::app_state::AttnResLabPaneState::default();
+        let values = build_selected_route_ribbon(
+            state
+                .current_sublayer()
+                .expect("default pane should select a sublayer"),
+            0.58,
+        );
+        assert_eq!(values.len(), RIBBON_SEGMENTS);
+        assert!(values.iter().all(|value| (0.0..=1.0).contains(value)));
+    }
+
+    #[test]
+    fn parity_level_rewards_lower_error() {
+        assert!(parity_level(1.0e-6, 1.0e-5, 6.0e-5) > parity_level(2.0e-5, 1.0e-5, 6.0e-5));
+        assert_eq!(parity_level(8.0e-5, 1.0e-5, 6.0e-5), 0.0);
+    }
+
+    #[test]
+    fn normalize_signal_is_bounded() {
+        assert_eq!(normalize_signal(0.0, 48.0), 0.0);
+        assert!((0.0..=1.0).contains(&normalize_signal(24.0, 48.0)));
+        assert_eq!(normalize_signal(9_999.0, 48.0), 1.0);
+    }
 }
