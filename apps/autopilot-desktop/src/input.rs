@@ -3415,6 +3415,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
+        PaneHitAction::AttnResLab(action) => run_attnres_lab_action(state, action),
         PaneHitAction::RivePreview(action) => run_rive_preview_action(state, action),
         PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::AppleAdapterTraining(action) => {

@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 57] = [
+const PANE_SPECS: [PaneSpec; 58] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -313,6 +313,21 @@ const PANE_SPECS: [PaneSpec; 57] = [
             id: "pane.psionic_viz",
             label: "Psionic Mesh",
             description: "Open a derived GPT-OSS decode field built from Psionic runtime metrics",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::AttnResLab,
+        title: "AttnRes Lab",
+        default_width: 1120.0,
+        default_height: 720.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.attnres_lab",
+            label: "AttnRes Lab",
+            description: "Open the replay-first AttnRes desktop lab pane",
             keybinding: None,
         }),
         hotbar: None,
@@ -1085,6 +1100,18 @@ mod tests {
         assert!(
             !spec.startup,
             "psionic mesh pane should stay opt-in instead of opening at startup"
+        );
+    }
+
+    #[test]
+    fn attnres_lab_command_maps_to_singleton_non_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.attnres_lab")
+            .expect("attnres lab command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::AttnResLab);
+        assert!(spec.singleton, "attnres lab pane must be singleton");
+        assert!(
+            !spec.startup,
+            "attnres lab pane should remain opt-in instead of opening at startup"
         );
     }
 
