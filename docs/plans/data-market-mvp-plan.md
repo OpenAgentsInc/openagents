@@ -243,13 +243,22 @@ Because the docs do not yet define a dedicated checked-in OpenAgents data proto 
 
 The MVP should stay inside the NIP-90 DVM range.
 
+The local NIP docs make two constraints explicit:
+
+* `5000-5999`, `6000-6999`, and `7000` are reserved for NIP-90 DVM use
+* concrete job request kinds are defined separately from NIP-90 itself
+
 Recommendation:
 
 * if there is an acceptable existing DVM job kind for the exact launch behavior, reuse it
-* otherwise define one narrow OpenAgents data-vending request kind in the `5000-5999` range for this MVP and document it explicitly
+* if not, do **not** treat this plan as authority to mint a permanent numeric kind on its own
+* before launch, check the current DVM job-kind registry and either:
+  * upstream a new kind, or
+  * choose an explicitly temporary OpenAgents-local kind only after confirming it does not collide with the current registry and documenting the migration path
 * the corresponding result kind should remain `request_kind + 1000`
 
-The point is to keep the MVP on the NIP-90 rail, not to wait for a perfect long-term kind taxonomy.
+This plan deliberately does not assign a specific numeric request kind.
+The point is to keep the MVP on the NIP-90 rail without creating avoidable kind conflicts.
 
 ### Request shape
 
@@ -281,7 +290,7 @@ Providers should advertise their supported data-vending profile through the same
 
 For MVP this can stay narrow:
 
-* advertise support for the chosen data-vending request kind
+* advertise support for the checked data-vending request kind through NIP-89 `k` tags
 * advertise coarse asset families
 * avoid publishing sensitive asset details in public announcements
 
