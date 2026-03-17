@@ -35,11 +35,17 @@ follow-on, not current earn-loop MVP scope, unless explicitly scheduled.
 - 2026-03-17: a mesh-style visual uplift landed in `openagents` so the retained
   AttnRes pane now borrows the stronger hero, ribbon, sweep, and textured panel
   language from `Psionic Mesh` instead of the flatter initial port pass.
+- 2026-03-17: a panel-parity follow-up landed after re-auditing
+  `~/code/attnres/examples/demo_tui.rs`, restoring explicit overview
+  topology/runtime/loss cards, pipeline inspector plus split score/mass panels,
+  and inference schedule/merge/cache-health panels in the desktop WGPUI port.
 - 2026-03-17: epic `openagents#3906` is satisfied and can close; the retained
   desktop now meets the pane/view/training/parity/test/doc criteria that the
   epic defined.
 - The original Burn/TUI desktop lab is now functionally closed in the retained
-  OpenAgents desktop app as an app-owned WGPUI pane backed by Psionic truth.
+  OpenAgents desktop app as an app-owned WGPUI pane backed by Psionic truth,
+  and the retained pane now matches the original panel inventory while using a
+  denser mesh-style desktop visual language.
 - Remaining follow-ons are optional hardening or productization work, not port
   blockers.
 

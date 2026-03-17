@@ -24,12 +24,12 @@ all model, routing, parity, and training truth.
 
 ## Views
 
-- `Overview`: run telemetry, routing heatmap, selected sublayer detail, event
-  feed.
-- `Pipeline`: algorithm filmstrip, block schedule, routing logits and weights,
-  route story.
-- `Inference`: decode summary, two-phase parity, merge split, block cache, and
-  selected-sublayer inference detail.
+- `Overview`: training telemetry, loss stream, block topology, runtime,
+  routing heatmap, selected sublayer detail, and event feed.
+- `Pipeline`: algorithm filmstrip, inspector, pre-softmax depth scores,
+  softmax routing mass, route story, block schedule, and event feed.
+- `Inference`: two-phase parity, two-phase schedule, online merge, block cache
+  health, selected detail, and event feed.
 
 ## Visual Language
 
@@ -37,11 +37,17 @@ all model, routing, parity, and training truth.
   rather than the flatter first-pass cards.
 - The top hero now exposes run state, selected-sublayer routing focus, and a
   live ribbon of the active route field.
-- Training telemetry now uses ring gauges, signal triplets, and ribbon-history
-  rails for loss, EMA, and selectivity instead of text-only summaries.
-- Pipeline and inference views now use sweep bars, route-field ribbons, block
-  transition timelines, and stronger textured panel shells so the desktop port
-  feels closer to a purpose-built WGPUI lab than a literal TUI screenshot.
+- Overview now restores the original TUI panel inventory explicitly: loss
+  history, topology, and runtime all have dedicated cards instead of being
+  collapsed into one summary block.
+- Pipeline now splits the original inspector, pre-softmax score view, and
+  routing-mass view into dedicated WGPUI panels rather than one combined chart.
+- Inference now restores the original schedule, merge, and cache-health panel
+  split and keeps the TUI's `Merge Split` / `Block Cache` vocabulary visible in
+  parity detail.
+- Training telemetry uses ring gauges, signal triplets, and ribbon-history
+  rails for loss, EMA, and selectivity instead of text-only summaries, so the
+  desktop port is strictly denser and more legible than the terminal original.
 
 ## Controls
 

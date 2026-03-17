@@ -312,46 +312,102 @@ fn paint_overview(
     paint_panel_title(left_bounds, "Depth Routing Heatmap", accent, paint);
     paint_heatmap_panel(left_bounds, pane_state, accent, paint);
 
-    let metrics_height = right_bounds.size.height * 0.5;
+    let metrics_height = (right_bounds.size.height * 0.34).clamp(108.0, 156.0);
     let metrics_bounds = Bounds::new(
         right_bounds.origin.x,
         right_bounds.origin.y,
         right_bounds.size.width,
         metrics_height - 6.0,
     );
-    let detail_bounds = Bounds::new(
+    let topology_height =
+        ((right_bounds.size.height - metrics_height - 18.0) * 0.46).clamp(84.0, 132.0);
+    let topology_bounds = Bounds::new(
         right_bounds.origin.x,
         metrics_bounds.max_y() + 12.0,
         right_bounds.size.width,
-        (right_bounds.max_y() - metrics_bounds.max_y() - 12.0).max(120.0),
+        topology_height,
+    );
+    let runtime_bounds = Bounds::new(
+        right_bounds.origin.x,
+        topology_bounds.max_y() + 12.0,
+        right_bounds.size.width,
+        (right_bounds.max_y() - topology_bounds.max_y() - 12.0).max(88.0),
     );
 
     paint_panel_shell(metrics_bounds, Hsla::from_hex(ACCENT_MINT), paint);
     paint_panel_title(
         metrics_bounds,
-        "Run Telemetry",
+        "Training Telemetry",
         Hsla::from_hex(ACCENT_MINT),
         paint,
     );
     paint_metrics_panel(metrics_bounds, snapshot, selected, phase, paint);
 
-    paint_panel_shell(detail_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
+    paint_panel_shell(topology_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
     paint_panel_title(
-        detail_bounds,
+        topology_bounds,
+        "Block Topology",
+        Hsla::from_hex(ACCENT_GOLD),
+        paint,
+    );
+    paint_topology_panel(topology_bounds, snapshot, phase, paint);
+
+    paint_panel_shell(runtime_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
+    paint_panel_title(
+        runtime_bounds,
+        "Runtime",
+        Hsla::from_hex(ACCENT_CORAL),
+        paint,
+    );
+    paint_runtime_panel(runtime_bounds, snapshot, selected, phase, paint);
+
+    let selected_width = (bottom_bounds.size.width * 0.40).max(268.0);
+    let loss_width = (bottom_bounds.size.width * 0.24).clamp(180.0, 260.0);
+    let selected_bounds = Bounds::new(
+        bottom_bounds.origin.x,
+        bottom_bounds.origin.y,
+        selected_width.min(bottom_bounds.size.width - 24.0),
+        bottom_bounds.size.height,
+    );
+    let loss_bounds = Bounds::new(
+        selected_bounds.max_x() + 12.0,
+        bottom_bounds.origin.y,
+        loss_width.min((bottom_bounds.max_x() - selected_bounds.max_x() - 24.0).max(160.0)),
+        bottom_bounds.size.height,
+    );
+    let events_bounds = Bounds::new(
+        loss_bounds.max_x() + 12.0,
+        bottom_bounds.origin.y,
+        (bottom_bounds.max_x() - loss_bounds.max_x() - 12.0).max(180.0),
+        bottom_bounds.size.height,
+    );
+
+    paint_panel_shell(selected_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
+    paint_panel_title(
+        selected_bounds,
         "Selected Sublayer",
         Hsla::from_hex(ACCENT_GOLD),
         paint,
     );
-    paint_selected_sublayer(detail_bounds, selected, phase, paint);
+    paint_selected_sublayer(selected_bounds, selected, phase, paint);
 
-    paint_panel_shell(bottom_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
+    paint_panel_shell(loss_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
     paint_panel_title(
-        bottom_bounds,
+        loss_bounds,
+        "Loss Stream",
+        Hsla::from_hex(ACCENT_CYAN),
+        paint,
+    );
+    paint_loss_stream(loss_bounds, snapshot, phase, paint);
+
+    paint_panel_shell(events_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
+    paint_panel_title(
+        events_bounds,
         "Event Feed",
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
-    paint_event_feed(bottom_bounds, snapshot.events.as_slice(), phase, paint);
+    paint_event_feed(events_bounds, snapshot.events.as_slice(), phase, paint);
 }
 
 fn paint_pipeline(
@@ -377,18 +433,33 @@ fn paint_pipeline(
         left_bounds.size.width,
         (block_bounds.origin.y - left_bounds.origin.y - 12.0).max(128.0),
     );
-    let bars_height = right_bounds.size.height * 0.54;
-    let bars_bounds = Bounds::new(
+    let inspector_height = (right_bounds.size.height * 0.22).clamp(52.0, 96.0);
+    let inspector_bounds = Bounds::new(
         right_bounds.origin.x,
         right_bounds.origin.y,
         right_bounds.size.width,
-        bars_height - 6.0,
+        inspector_height,
     );
+    let story_height = (right_bounds.size.height * 0.24).clamp(56.0, 110.0);
     let story_bounds = Bounds::new(
         right_bounds.origin.x,
-        bars_bounds.max_y() + 12.0,
+        right_bounds.max_y() - story_height,
         right_bounds.size.width,
-        (right_bounds.max_y() - bars_bounds.max_y() - 12.0).max(120.0),
+        story_height,
+    );
+    let bars_total_height = (story_bounds.origin.y - inspector_bounds.max_y() - 24.0).max(88.0);
+    let score_height = ((bars_total_height - 12.0) * 0.5).max(34.0);
+    let logits_bounds = Bounds::new(
+        right_bounds.origin.x,
+        inspector_bounds.max_y() + 12.0,
+        right_bounds.size.width,
+        score_height,
+    );
+    let weights_bounds = Bounds::new(
+        right_bounds.origin.x,
+        logits_bounds.max_y() + 12.0,
+        right_bounds.size.width,
+        (story_bounds.origin.y - logits_bounds.max_y() - 12.0).max(34.0),
     );
 
     paint_panel_shell(algo_bounds, accent, paint);
@@ -404,19 +475,50 @@ fn paint_pipeline(
     );
     paint_block_schedule(block_bounds, pane_state, phase, paint);
 
-    paint_panel_shell(bars_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
+    paint_panel_shell(inspector_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
     paint_panel_title(
-        bars_bounds,
-        "Routing Logits And Mass",
+        inspector_bounds,
+        "Inspector",
+        Hsla::from_hex(ACCENT_CORAL),
+        paint,
+    );
+    paint_pipeline_inspector(
+        inspector_bounds,
+        selected,
+        snapshot_route_regime(&pane_state.snapshot),
+        phase,
+        paint,
+    );
+
+    paint_panel_shell(logits_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
+    paint_panel_title(
+        logits_bounds,
+        "Pre-Softmax Depth Scores",
+        Hsla::from_hex(ACCENT_GOLD),
+        paint,
+    );
+    paint_route_metric_panel(logits_bounds, selected, "logits", true, phase, paint);
+
+    paint_panel_shell(weights_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
+    paint_panel_title(
+        weights_bounds,
+        "Softmax Routing Mass",
         Hsla::from_hex(ACCENT_CYAN),
         paint,
     );
-    paint_selected_route_bars(bars_bounds, selected, phase, paint);
+    paint_route_metric_panel(
+        weights_bounds,
+        selected,
+        "weights",
+        false,
+        phase + 0.18,
+        paint,
+    );
 
     paint_panel_shell(story_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
     paint_panel_title(
         story_bounds,
-        "Route Story",
+        "What Happened Here",
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
@@ -451,19 +553,31 @@ fn paint_inference(
         left_bounds.origin.x,
         left_bounds.origin.y,
         left_bounds.size.width,
-        (left_bounds.size.height * 0.48).max(158.0),
+        (left_bounds.size.height * 0.36).max(96.0),
     );
-    let merge_bounds = Bounds::new(
+    let schedule_bounds = Bounds::new(
         left_bounds.origin.x,
         parity_bounds.max_y() + 12.0,
         left_bounds.size.width,
-        (left_bounds.max_y() - parity_bounds.max_y() - 12.0).max(120.0),
+        ((left_bounds.size.height - parity_bounds.size.height - 24.0) * 0.42).max(72.0),
+    );
+    let merge_bounds = Bounds::new(
+        left_bounds.origin.x,
+        schedule_bounds.max_y() + 12.0,
+        left_bounds.size.width,
+        (left_bounds.max_y() - schedule_bounds.max_y() - 12.0).max(68.0),
+    );
+    let cache_bounds = Bounds::new(
+        right_bounds.origin.x,
+        right_bounds.max_y() - (right_bounds.size.height * 0.34).max(88.0),
+        right_bounds.size.width,
+        (right_bounds.size.height * 0.34).max(88.0),
     );
     let detail_bounds = Bounds::new(
         right_bounds.origin.x,
         right_bounds.origin.y,
         right_bounds.size.width,
-        right_bounds.size.height,
+        (cache_bounds.origin.y - right_bounds.origin.y - 12.0).max(108.0),
     );
 
     paint_panel_shell(parity_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
@@ -475,14 +589,23 @@ fn paint_inference(
     );
     paint_inference_parity(parity_bounds, snapshot, phase, paint);
 
+    paint_panel_shell(schedule_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
+    paint_panel_title(
+        schedule_bounds,
+        "Two-Phase Schedule",
+        Hsla::from_hex(ACCENT_CORAL),
+        paint,
+    );
+    paint_two_phase_schedule(schedule_bounds, snapshot, phase, paint);
+
     paint_panel_shell(merge_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
     paint_panel_title(
         merge_bounds,
-        "Merge And Cache",
+        "Online Merge",
         Hsla::from_hex(ACCENT_GOLD),
         paint,
     );
-    paint_merge_and_cache(merge_bounds, snapshot, phase, paint);
+    paint_online_merge(merge_bounds, snapshot, selected, phase, paint);
 
     paint_panel_shell(detail_bounds, Hsla::from_hex(ACCENT_MINT), paint);
     paint_panel_title(
@@ -493,36 +616,23 @@ fn paint_inference(
     );
     paint_selected_sublayer(detail_bounds, selected, phase, paint);
 
+    paint_panel_shell(cache_bounds, Hsla::from_hex(ACCENT_MINT), paint);
+    paint_panel_title(
+        cache_bounds,
+        "Block Cache Health",
+        Hsla::from_hex(ACCENT_MINT),
+        paint,
+    );
+    paint_cache_health(cache_bounds, snapshot, phase, paint);
+
     paint_panel_shell(bottom_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
     paint_panel_title(
         bottom_bounds,
-        "Inference Notes",
+        "Event Feed",
         Hsla::from_hex(ACCENT_CORAL),
         paint,
     );
-    paint_panel_texture(bottom_bounds, Hsla::from_hex(ACCENT_CORAL), phase, paint);
-    let mut y = bottom_bounds.origin.y + 32.0;
-    y = paint_multiline_phrase(
-        paint,
-        bottom_bounds.origin.x + 12.0,
-        y,
-        "schedule",
-        snapshot.inference.schedule_note.as_str(),
-    );
-    y = paint_multiline_phrase(
-        paint,
-        bottom_bounds.origin.x + 12.0,
-        y + 6.0,
-        "merge",
-        snapshot.inference.merge_note.as_str(),
-    );
-    let _ = paint_multiline_phrase(
-        paint,
-        bottom_bounds.origin.x + 12.0,
-        y + 6.0,
-        "cache",
-        snapshot.inference.cache_note.as_str(),
-    );
+    paint_event_feed(bottom_bounds, snapshot.events.as_slice(), phase, paint);
 }
 
 fn paint_heatmap_panel(
@@ -779,6 +889,336 @@ fn paint_metrics_panel(
     }
 }
 
+fn paint_topology_panel(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_GOLD);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let mut y = bounds.origin.y + 34.0;
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Layers",
+        format!(
+            "{} transformer // {} sublayers",
+            snapshot.num_transformer_layers,
+            snapshot.sublayers.len()
+        )
+        .as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Blocks",
+        format!(
+            "{} total // block size {}",
+            snapshot.num_residual_blocks, snapshot.block_size
+        )
+        .as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Heads",
+        format!("{}", snapshot.num_heads).as_str(),
+    );
+    let _ = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Boundaries",
+        join_labels(snapshot.inference.boundary_layers.as_slice()).as_str(),
+    );
+
+    let rail_top = (bounds.max_y() - 34.0).max(bounds.origin.y + 88.0);
+    let gap = 8.0;
+    let block_count = snapshot.block_summaries.len().max(1);
+    let chip_width = ((bounds.size.width - 24.0 - gap * (block_count as f32 - 1.0))
+        / block_count as f32)
+        .max(36.0);
+    for (index, block) in snapshot.block_summaries.iter().enumerate() {
+        let x = bounds.origin.x + 12.0 + index as f32 * (chip_width + gap);
+        let chip_bounds = Bounds::new(x, rail_top, chip_width, 22.0);
+        let is_active = block.block_index + 1 == snapshot.active_block;
+        paint.scene.draw_quad(
+            Quad::new(chip_bounds)
+                .with_background(if is_active {
+                    accent.with_alpha(0.24)
+                } else {
+                    theme::bg::APP.with_alpha(0.78)
+                })
+                .with_border(
+                    if is_active {
+                        accent.with_alpha(0.42)
+                    } else {
+                        accent.with_alpha(0.12)
+                    },
+                    1.0,
+                )
+                .with_corner_radius(5.0),
+        );
+        paint.scene.draw_text(
+            paint.text.layout_mono(
+                format!(
+                    "B{}  {:>2.0}%",
+                    block.block_index,
+                    block.avg_selectivity * 100.0
+                )
+                .as_str(),
+                Point::new(chip_bounds.origin.x + 6.0, chip_bounds.origin.y + 14.0),
+                9.0,
+                if is_active {
+                    theme::text::PRIMARY
+                } else {
+                    accent.with_alpha(0.88)
+                },
+            ),
+        );
+    }
+}
+
+fn paint_runtime_panel(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    selected: Option<&AttnResLabSublayerSnapshot>,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_CORAL);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let mut y = bounds.origin.y + 34.0;
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Tensor",
+        format!(
+            "{} batch // {} seq // {} hidden",
+            snapshot.batch_size, snapshot.sequence_length, snapshot.hidden_size
+        )
+        .as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Query",
+        format!(
+            "{:.2} avg // {:.2} max",
+            snapshot.mean_query_norm, snapshot.max_query_norm
+        )
+        .as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Regime",
+        snapshot_route_regime(snapshot),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Playback",
+        format!("{} // {}x", snapshot.run_status, snapshot.speed_multiplier).as_str(),
+    );
+    let _ = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Selected",
+        selected
+            .map(|sublayer| sublayer.route_mode_label())
+            .unwrap_or("no selection"),
+    );
+
+    let signals_y = (bounds.max_y() - 74.0).max(bounds.origin.y + 54.0);
+    paint_signal_triplet(
+        bounds.max_x() - 148.0,
+        signals_y,
+        [
+            (
+                "QN",
+                normalize_signal(snapshot.mean_query_norm, 1.0),
+                Hsla::from_hex(ACCENT_GOLD),
+            ),
+            (
+                "CF",
+                snapshot.inference.block_cache_fill_share.clamp(0.0, 1.0),
+                Hsla::from_hex(ACCENT_MINT),
+            ),
+            (
+                "PR",
+                if snapshot.final_partial_block_present {
+                    1.0
+                } else {
+                    0.0
+                },
+                accent,
+            ),
+        ],
+        accent,
+        paint,
+    );
+}
+
+fn paint_loss_stream(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_CYAN);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let mut y = bounds.origin.y + 34.0;
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Window",
+        format!("{} points", snapshot.metrics.len()).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Loss",
+        format!("{:.3}", snapshot.training_loss).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "EMA",
+        format!("{:.3}", snapshot.ema_loss).as_str(),
+    );
+    let _ = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Selectivity",
+        format!("{:.0}%", snapshot.avg_selectivity * 100.0).as_str(),
+    );
+
+    let ribbon_top = (bounds.origin.y + 106.0).max(bounds.origin.y + 30.0);
+    let ribbon_gap = 8.0;
+    let ribbon_height = ((bounds.max_y() - ribbon_top - 12.0 - ribbon_gap * 2.0) / 3.0).max(10.0);
+    let labels_x = bounds.origin.x + 14.0;
+    let ribbon_x = bounds.origin.x + 72.0;
+    let ribbon_width = (bounds.size.width - 86.0).max(72.0);
+    let ribbons = [
+        (
+            "LOSS",
+            Hsla::from_hex(ACCENT_CORAL),
+            build_metric_history_ribbon(
+                snapshot.metrics.as_slice(),
+                MetricHistoryKind::Loss,
+                phase,
+            ),
+        ),
+        (
+            "EMA",
+            Hsla::from_hex(ACCENT_GOLD),
+            build_metric_history_ribbon(
+                snapshot.metrics.as_slice(),
+                MetricHistoryKind::Ema,
+                phase + 0.13,
+            ),
+        ),
+        (
+            "SEL",
+            Hsla::from_hex(ACCENT_MINT),
+            build_metric_history_ribbon(
+                snapshot.metrics.as_slice(),
+                MetricHistoryKind::Selectivity,
+                phase + 0.27,
+            ),
+        ),
+    ];
+
+    for (index, (label, color, (values, level))) in ribbons.into_iter().enumerate() {
+        let row_y = ribbon_top + index as f32 * (ribbon_height + ribbon_gap);
+        paint.scene.draw_text(paint.text.layout_mono(
+            label,
+            Point::new(labels_x, row_y + 9.0),
+            10.0,
+            color.with_alpha(0.92),
+        ));
+        let mut ribbon = AttnResRibbon::new(values, color, level, phase + index as f32 * 0.09);
+        ribbon.paint(
+            Bounds::new(ribbon_x, row_y, ribbon_width, ribbon_height),
+            paint,
+        );
+    }
+}
+
+fn paint_pipeline_inspector(
+    bounds: Bounds,
+    selected: Option<&AttnResLabSublayerSnapshot>,
+    regime: &str,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_CORAL);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let Some(selected) = selected else {
+        paint.scene.draw_text(paint.text.layout(
+            "No sublayer selected.",
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 34.0),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    };
+
+    let mut y = bounds.origin.y + 34.0;
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Label",
+        selected.label.as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Layer / slot",
+        format!(
+            "T{} // slot {}",
+            selected.transformer_layer_index,
+            selected.slot_in_block + 1
+        )
+        .as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Mode",
+        selected.route_mode_label(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Entropy",
+        format!("{:.2}", selected.entropy).as_str(),
+    );
+    let _ = paint_label_line(paint, bounds.origin.x + 12.0, y, "Regime", regime);
+}
+
 fn paint_selected_sublayer(
     bounds: Bounds,
     selected: Option<&AttnResLabSublayerSnapshot>,
@@ -845,15 +1285,20 @@ fn paint_selected_sublayer(
         paint,
         bounds.origin.x + 12.0,
         y,
-        "Kind",
-        selected.kind_label.as_str(),
+        "Layer / slot",
+        format!(
+            "T{} // slot {}",
+            selected.transformer_layer_index,
+            selected.slot_in_block + 1
+        )
+        .as_str(),
     );
     y = paint_label_line(
         paint,
         bounds.origin.x + 12.0,
         y,
-        "Target block",
-        format!("{}", selected.target_block).as_str(),
+        "Mode",
+        selected.route_mode_label(),
     );
     y = paint_label_line(
         paint,
@@ -871,15 +1316,15 @@ fn paint_selected_sublayer(
         paint,
         bounds.origin.x + 12.0,
         y,
-        "Query norm",
-        format!("{:.2}", selected.query_norm).as_str(),
+        "Kind / block",
+        format!("{} // B{}", selected.kind_label, selected.target_block).as_str(),
     );
     y = paint_label_line(
         paint,
         bounds.origin.x + 12.0,
         y,
-        "Selectivity",
-        format!("{:.0}%", selected.selectivity * 100.0).as_str(),
+        "Query / entropy",
+        format!("{:.2} // {:.2}", selected.query_norm, selected.entropy).as_str(),
     );
     y = paint_label_line(
         paint,
@@ -892,6 +1337,24 @@ fn paint_selected_sublayer(
             selected.partial_mass * 100.0
         )
         .as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Sources",
+        format!("{}", selected.source_count()).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Boundary",
+        if selected.starts_new_block_before {
+            "opened before sublayer"
+        } else {
+            "stayed inside block"
+        },
     );
     y = paint_multiline_phrase(
         paint,
@@ -1214,21 +1677,40 @@ fn paint_block_schedule(
     }
 }
 
-fn paint_selected_route_bars(
+fn paint_route_metric_panel(
     bounds: Bounds,
     selected: Option<&AttnResLabSublayerSnapshot>,
+    title: &str,
+    use_logits: bool,
     phase: f32,
     paint: &mut PaintContext,
 ) {
     let Some(selected) = selected else {
+        paint_panel_texture(bounds, Hsla::from_hex(ACCENT_CYAN), phase, paint);
+        paint.scene.draw_text(paint.text.layout(
+            "No sublayer selected.",
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 34.0),
+            11.0,
+            theme::text::MUTED,
+        ));
         return;
     };
 
-    paint_panel_texture(bounds, Hsla::from_hex(ACCENT_CYAN), phase, paint);
+    let accent = if use_logits {
+        Hsla::from_hex(ACCENT_GOLD)
+    } else {
+        Hsla::from_hex(ACCENT_CYAN)
+    };
+    paint_panel_texture(bounds, accent, phase, paint);
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Dominant route {} at {:.0}%. Logits keep sign; softmax mass is shown separately.",
+                "{} {} at {:.0}%.",
+                if use_logits {
+                    "Score field favors"
+                } else {
+                    "Routing mass favors"
+                },
                 selected.dominant_source_label,
                 selected.dominant_weight * 100.0
             )
@@ -1238,34 +1720,21 @@ fn paint_selected_route_bars(
             theme::text::MUTED,
         ),
     );
-
-    let left = Bounds::new(
-        bounds.origin.x + 12.0,
-        bounds.origin.y + 54.0,
-        (bounds.size.width * 0.48).max(120.0),
-        bounds.size.height - 64.0,
-    );
-    let right = Bounds::new(
-        left.max_x() + 12.0,
-        left.origin.y,
-        (bounds.max_x() - left.max_x() - 24.0).max(120.0),
-        left.size.height,
-    );
     paint_bar_series(
-        left,
-        "logits",
+        Bounds::new(
+            bounds.origin.x + 12.0,
+            bounds.origin.y + 44.0,
+            bounds.size.width - 24.0,
+            bounds.size.height - 54.0,
+        ),
+        title,
         selected.source_labels.as_slice(),
-        selected.source_logits.as_slice(),
-        Hsla::from_hex(ACCENT_GOLD),
-        phase,
-        paint,
-    );
-    paint_bar_series(
-        right,
-        "weights",
-        selected.source_labels.as_slice(),
-        selected.routing_weights.as_slice(),
-        Hsla::from_hex(ACCENT_CYAN),
+        if use_logits {
+            selected.source_logits.as_slice()
+        } else {
+            selected.routing_weights.as_slice()
+        },
+        accent,
         phase + 0.18,
         paint,
     );
@@ -1432,18 +1901,90 @@ fn paint_inference_parity(
         "Logits",
         snapshot.inference.logit_parity_label.as_str(),
     );
-    let _ = paint_label_line(
+    y = paint_label_line(
         paint,
         x,
         y,
         "Logit max abs",
         format!("{:.2e}", snapshot.inference.logit_max_abs_diff).as_str(),
     );
+    y = paint_label_line(
+        paint,
+        x,
+        y,
+        "Merge Split",
+        format!(
+            "{:.0}% partial / {:.0}% cache",
+            snapshot.inference.partial_merge_share * 100.0,
+            snapshot.inference.cache_merge_share * 100.0
+        )
+        .as_str(),
+    );
+    let _ = paint_label_line(
+        paint,
+        x,
+        y,
+        "Block Cache",
+        format!(
+            "{} cached // {:.0}% full",
+            snapshot.inference.cached_blocks,
+            snapshot.inference.block_cache_fill_share * 100.0
+        )
+        .as_str(),
+    );
 }
 
-fn paint_merge_and_cache(
+fn paint_two_phase_schedule(
     bounds: Bounds,
     snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_CORAL);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let mut y = bounds.origin.y + 34.0;
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Prompt",
+        format!("{} tokens", snapshot.inference.prompt_token_count).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Generated",
+        format!("{} tokens", snapshot.inference.generated_token_count).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Sequence",
+        format!("{} total", snapshot.inference.decoded_token_count).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Boundaries",
+        join_labels(snapshot.inference.boundary_layers.as_slice()).as_str(),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        bounds.origin.x + 12.0,
+        y + 8.0,
+        "schedule",
+        snapshot.inference.schedule_note.as_str(),
+    );
+}
+
+fn paint_online_merge(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    selected: Option<&AttnResLabSublayerSnapshot>,
     phase: f32,
     paint: &mut PaintContext,
 ) {
@@ -1462,15 +2003,9 @@ fn paint_merge_and_cache(
             Hsla::from_hex(ACCENT_CYAN),
             phase + 0.17,
         ),
-        (
-            "fill",
-            snapshot.inference.block_cache_fill_share,
-            Hsla::from_hex(ACCENT_MINT),
-            phase + 0.31,
-        ),
     ];
-    let gap = 10.0;
-    let row_height = ((bounds.size.height - 52.0 - gap * 2.0) / 3.0).max(24.0);
+    let gap = 8.0;
+    let row_height = ((bounds.size.height - 86.0 - gap) / 2.0).max(24.0);
     for (index, (label, level, color, row_phase)) in rows.into_iter().enumerate() {
         let y = bounds.origin.y + 36.0 + index as f32 * (row_height + gap);
         paint_merge_meter(
@@ -1487,6 +2022,97 @@ fn paint_merge_and_cache(
             paint,
         );
     }
+
+    let merge_summary = selected
+        .map(|sublayer| {
+            format!(
+                "{} stayed {} while cache carried {:.0}% of merge mass.",
+                sublayer.label,
+                sublayer.route_mode_label(),
+                snapshot.inference.cache_merge_share * 100.0
+            )
+        })
+        .unwrap_or_else(|| snapshot.inference.merge_note.clone());
+    let _ = paint_multiline_phrase(
+        paint,
+        bounds.origin.x + 12.0,
+        bounds.max_y() - 34.0,
+        "merge",
+        merge_summary.as_str(),
+    );
+}
+
+fn paint_cache_health(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_MINT);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let mut y = bounds.origin.y + 34.0;
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Cached blocks",
+        format!("{}", snapshot.inference.cached_blocks).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Active block",
+        format!("{}", snapshot.active_block).as_str(),
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Partial block",
+        if snapshot.inference.partial_block_present {
+            "present"
+        } else {
+            "closed"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        bounds.origin.x + 12.0,
+        y,
+        "Fill",
+        format!("{:.0}%", snapshot.inference.block_cache_fill_share * 100.0).as_str(),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        bounds.origin.x + 12.0,
+        y + 8.0,
+        "cache",
+        snapshot.inference.cache_note.as_str(),
+    );
+
+    let track_bounds = Bounds::new(
+        bounds.origin.x + 12.0,
+        bounds.max_y() - 26.0,
+        bounds.size.width - 24.0,
+        12.0,
+    );
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.88))
+            .with_corner_radius(5.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            track_bounds.origin.x,
+            track_bounds.origin.y,
+            track_bounds.size.width * snapshot.inference.block_cache_fill_share.clamp(0.0, 1.0),
+            track_bounds.size.height,
+        ))
+        .with_background(accent.with_alpha(0.84))
+        .with_corner_radius(5.0),
+    );
 }
 
 fn paint_merge_meter(
@@ -2007,6 +2633,22 @@ fn build_ribbon_values(level: f32, phase: f32, frequency: f32) -> Vec<f32> {
         .collect()
 }
 
+fn join_labels(values: &[String]) -> String {
+    if values.is_empty() {
+        String::from("-")
+    } else {
+        values.join(", ")
+    }
+}
+
+fn snapshot_route_regime(snapshot: &crate::app_state::AttnResLabSnapshot) -> &'static str {
+    match snapshot.avg_selectivity {
+        value if value < 0.18 => "uniform averaging",
+        value if value < 0.36 => "forming preferences",
+        _ => "selective routing",
+    }
+}
+
 fn descent_level(start: Option<f32>, current: f32) -> f32 {
     let Some(start) = start else {
         return 0.0;
@@ -2018,15 +2660,18 @@ fn descent_level(start: Option<f32>, current: f32) -> f32 {
 }
 
 fn mean_query_norm(snapshot: &crate::app_state::AttnResLabSnapshot) -> f32 {
-    if snapshot.sublayers.is_empty() {
-        return 0.0;
+    if snapshot.mean_query_norm > 0.0 {
+        snapshot.mean_query_norm
+    } else if snapshot.sublayers.is_empty() {
+        0.0
+    } else {
+        snapshot
+            .sublayers
+            .iter()
+            .map(|sublayer| sublayer.query_norm)
+            .sum::<f32>()
+            / snapshot.sublayers.len() as f32
     }
-    snapshot
-        .sublayers
-        .iter()
-        .map(|sublayer| sublayer.query_norm)
-        .sum::<f32>()
-        / snapshot.sublayers.len() as f32
 }
 
 fn parity_level(value: f32, good_budget: f32, hard_budget: f32) -> f32 {
