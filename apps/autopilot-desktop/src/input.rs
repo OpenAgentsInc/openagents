@@ -4199,6 +4199,9 @@ fn attnres_lab_keyboard_action(key: Key, help_visible: bool) -> Option<AttnResLa
         Key::Character(value) if value == "3" => Some(AttnResLabPaneAction::SetView(
             crate::app_state::AttnResLabViewMode::Inference,
         )),
+        Key::Character(value) if value == "4" => Some(AttnResLabPaneAction::SetView(
+            crate::app_state::AttnResLabViewMode::Loss,
+        )),
         Key::Character(value) if value == "?" => Some(AttnResLabPaneAction::ToggleHelp),
         Key::Character(value) if value.eq_ignore_ascii_case("r") => {
             Some(AttnResLabPaneAction::ResetTraining)

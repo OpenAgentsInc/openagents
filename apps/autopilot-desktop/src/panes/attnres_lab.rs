@@ -13,11 +13,11 @@ use crate::pane_renderer::{
 };
 use crate::pane_system::{
     attnres_lab_faster_button_bounds, attnres_lab_help_button_bounds,
-    attnres_lab_inference_button_bounds, attnres_lab_next_sublayer_button_bounds,
-    attnres_lab_overview_button_bounds, attnres_lab_pipeline_button_bounds,
-    attnres_lab_previous_sublayer_button_bounds, attnres_lab_refresh_button_bounds,
-    attnres_lab_reset_button_bounds, attnres_lab_slower_button_bounds,
-    attnres_lab_toggle_playback_button_bounds,
+    attnres_lab_inference_button_bounds, attnres_lab_loss_button_bounds,
+    attnres_lab_next_sublayer_button_bounds, attnres_lab_overview_button_bounds,
+    attnres_lab_pipeline_button_bounds, attnres_lab_previous_sublayer_button_bounds,
+    attnres_lab_refresh_button_bounds, attnres_lab_reset_button_bounds,
+    attnres_lab_slower_button_bounds, attnres_lab_toggle_playback_button_bounds,
 };
 
 const PANEL_RADIUS: f32 = 10.0;
@@ -73,6 +73,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
     let overview_bounds = attnres_lab_overview_button_bounds(content_bounds);
     let pipeline_bounds = attnres_lab_pipeline_button_bounds(content_bounds);
     let inference_bounds = attnres_lab_inference_button_bounds(content_bounds);
+    let loss_bounds = attnres_lab_loss_button_bounds(content_bounds);
     let playback_bounds = attnres_lab_toggle_playback_button_bounds(content_bounds);
     let reset_bounds = attnres_lab_reset_button_bounds(content_bounds);
     let refresh_bounds = attnres_lab_refresh_button_bounds(content_bounds);
@@ -98,6 +99,12 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         inference_bounds,
         "Inference",
         pane_state.selected_view == AttnResLabViewMode::Inference,
+        paint,
+    );
+    paint_filter_like_button(
+        loss_bounds,
+        "Loss",
+        pane_state.selected_view == AttnResLabViewMode::Loss,
         paint,
     );
     paint_action_button(
@@ -178,6 +185,16 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         }
         AttnResLabViewMode::Inference => {
             paint_inference(
+                left_bounds,
+                right_bounds,
+                bottom_bounds,
+                pane_state,
+                phase,
+                paint,
+            );
+        }
+        AttnResLabViewMode::Loss => {
+            paint_loss_focus(
                 left_bounds,
                 right_bounds,
                 bottom_bounds,
@@ -649,6 +666,79 @@ fn paint_inference(
         paint,
     );
     paint_event_feed(bottom_bounds, snapshot.events.as_slice(), phase, paint);
+}
+
+fn paint_loss_focus(
+    left_bounds: Bounds,
+    right_bounds: Bounds,
+    bottom_bounds: Bounds,
+    pane_state: &AttnResLabPaneState,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let snapshot = &pane_state.snapshot;
+    let chart_bounds = Bounds::new(
+        left_bounds.origin.x,
+        left_bounds.origin.y,
+        right_bounds.max_x() - left_bounds.origin.x,
+        left_bounds.size.height,
+    );
+    let summary_width = (bottom_bounds.size.width * 0.28).clamp(236.0, 320.0);
+    let rails_width = (bottom_bounds.size.width * 0.26).clamp(220.0, 308.0);
+    let summary_bounds = Bounds::new(
+        bottom_bounds.origin.x,
+        bottom_bounds.origin.y,
+        summary_width.min(bottom_bounds.size.width - 24.0),
+        bottom_bounds.size.height,
+    );
+    let rails_bounds = Bounds::new(
+        summary_bounds.max_x() + 12.0,
+        bottom_bounds.origin.y,
+        rails_width.min((bottom_bounds.max_x() - summary_bounds.max_x() - 24.0).max(180.0)),
+        bottom_bounds.size.height,
+    );
+    let events_bounds = Bounds::new(
+        rails_bounds.max_x() + 12.0,
+        bottom_bounds.origin.y,
+        (bottom_bounds.max_x() - rails_bounds.max_x() - 12.0).max(180.0),
+        bottom_bounds.size.height,
+    );
+
+    paint_panel_shell(chart_bounds, Hsla::from_hex(ACCENT_CORAL), paint);
+    paint_panel_title(
+        chart_bounds,
+        "Training Loss Curve",
+        Hsla::from_hex(ACCENT_CORAL),
+        paint,
+    );
+    paint_loss_curve_panel(chart_bounds, snapshot, phase, paint);
+
+    paint_panel_shell(summary_bounds, Hsla::from_hex(ACCENT_MINT), paint);
+    paint_panel_title(
+        summary_bounds,
+        "Loss Summary",
+        Hsla::from_hex(ACCENT_MINT),
+        paint,
+    );
+    paint_loss_summary_panel(summary_bounds, snapshot, phase, paint);
+
+    paint_panel_shell(rails_bounds, Hsla::from_hex(ACCENT_CYAN), paint);
+    paint_panel_title(
+        rails_bounds,
+        "Loss Rails",
+        Hsla::from_hex(ACCENT_CYAN),
+        paint,
+    );
+    paint_loss_stream(rails_bounds, snapshot, phase, paint);
+
+    paint_panel_shell(events_bounds, Hsla::from_hex(ACCENT_GOLD), paint);
+    paint_panel_title(
+        events_bounds,
+        "Loss Events",
+        Hsla::from_hex(ACCENT_GOLD),
+        paint,
+    );
+    paint_event_feed(events_bounds, snapshot.events.as_slice(), phase, paint);
 }
 
 fn paint_heatmap_panel(
@@ -1210,6 +1300,260 @@ fn paint_loss_stream(
             paint,
         );
     }
+}
+
+fn paint_loss_curve_panel(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_CORAL);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let loss_raw = metric_history_raw_values(snapshot.metrics.as_slice(), MetricHistoryKind::Loss);
+    let ema_raw = metric_history_raw_values(snapshot.metrics.as_slice(), MetricHistoryKind::Ema);
+    let start_loss = loss_raw.first().copied().unwrap_or(snapshot.training_loss);
+    let best_loss = loss_raw
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min)
+        .min(snapshot.training_loss);
+    let min = loss_raw
+        .iter()
+        .copied()
+        .chain(ema_raw.iter().copied())
+        .fold(f32::INFINITY, f32::min);
+    let max = loss_raw
+        .iter()
+        .copied()
+        .chain(ema_raw.iter().copied())
+        .fold(f32::NEG_INFINITY, f32::max);
+    let min = if min.is_finite() { min } else { 0.0 };
+    let max = if max.is_finite() { max } else { 1.0 };
+    let span = (max - min).max(0.0001);
+    let chart_bounds = Bounds::new(
+        bounds.origin.x + 16.0,
+        bounds.origin.y + 52.0,
+        bounds.size.width - 32.0,
+        (bounds.size.height - 96.0).max(120.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(chart_bounds)
+            .with_background(Hsla::from_hex(0x041018).with_alpha(0.92))
+            .with_border(accent.with_alpha(0.16), 1.0)
+            .with_corner_radius(8.0),
+    );
+
+    for band in 0..=4 {
+        let y = chart_bounds.origin.y + band as f32 * (chart_bounds.size.height / 4.0);
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                chart_bounds.origin.x,
+                y,
+                chart_bounds.size.width,
+                1.0,
+            ))
+            .with_background(theme::text::PRIMARY.with_alpha(0.08)),
+        );
+        let guide_value = max - span * (band as f32 / 4.0);
+        paint.scene.draw_text(paint.text.layout_mono(
+            format!("{guide_value:.2}").as_str(),
+            Point::new(chart_bounds.origin.x + 8.0, y - 2.0),
+            9.0,
+            theme::text::MUTED,
+        ));
+    }
+
+    let sample_count = ((chart_bounds.size.width / 4.0).floor() as usize).clamp(24, 160);
+    let loss_samples = sample_metric_series(loss_raw.as_slice(), sample_count);
+    let ema_samples = sample_metric_series(ema_raw.as_slice(), sample_count);
+    let column_gap = 1.5;
+    let column_width = ((chart_bounds.size.width
+        - column_gap * sample_count.saturating_sub(1) as f32)
+        / sample_count as f32)
+        .max(1.0);
+
+    for index in 0..sample_count {
+        let x = chart_bounds.origin.x + index as f32 * (column_width + column_gap);
+        let loss = loss_samples
+            .get(index)
+            .copied()
+            .unwrap_or(snapshot.training_loss);
+        let ema = ema_samples.get(index).copied().unwrap_or(snapshot.ema_loss);
+        let loss_level = 1.0 - ((loss - min) / span).clamp(0.0, 1.0);
+        let ema_level = 1.0 - ((ema - min) / span).clamp(0.0, 1.0);
+        let loss_y = chart_bounds.origin.y + loss_level * chart_bounds.size.height;
+        let ema_y = chart_bounds.origin.y + ema_level * chart_bounds.size.height;
+        let emphasis = if index + 1 == sample_count { 0.22 } else { 0.0 };
+
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                x,
+                loss_y.min(chart_bounds.max_y() - 2.0),
+                column_width,
+                (chart_bounds.max_y() - loss_y).max(2.0),
+            ))
+            .with_background(accent.with_alpha(0.11 + emphasis))
+            .with_corner_radius(2.0),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                x,
+                loss_y.clamp(chart_bounds.origin.y, chart_bounds.max_y() - 2.0),
+                column_width,
+                2.0,
+            ))
+            .with_background(accent.with_alpha(0.82 + emphasis)),
+        );
+        paint.scene.draw_quad(
+            Quad::new(Bounds::new(
+                x,
+                ema_y.clamp(chart_bounds.origin.y, chart_bounds.max_y() - 2.0),
+                column_width,
+                2.0,
+            ))
+            .with_background(Hsla::from_hex(ACCENT_GOLD).with_alpha(0.88)),
+        );
+    }
+
+    let live_step = snapshot
+        .metrics
+        .last()
+        .map(|point| point.global_step)
+        .unwrap_or(0);
+    let header = format!(
+        "start {:.3}  //  best {:.3}  //  live {:.3}  //  ema {:.3}",
+        start_loss, best_loss, snapshot.training_loss, snapshot.ema_loss
+    );
+    let fitted_header =
+        truncate_mono_text_to_width(paint, header.as_str(), bounds.size.width - 32.0, 10.0);
+    paint.scene.draw_text(paint.text.layout_mono(
+        fitted_header.as_str(),
+        Point::new(bounds.origin.x + 16.0, bounds.origin.y + 34.0),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+
+    let footer = format!(
+        "step {} / {}  //  samples {}  //  improvement {:.1}%",
+        live_step,
+        snapshot.max_steps,
+        snapshot.metrics.len(),
+        ((start_loss - snapshot.training_loss) / start_loss.max(0.0001) * 100.0).max(0.0)
+    );
+    let fitted_footer =
+        truncate_mono_text_to_width(paint, footer.as_str(), bounds.size.width - 32.0, 10.0);
+    paint.scene.draw_text(paint.text.layout_mono(
+        fitted_footer.as_str(),
+        Point::new(bounds.origin.x + 16.0, bounds.max_y() - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+}
+
+fn paint_loss_summary_panel(
+    bounds: Bounds,
+    snapshot: &crate::app_state::AttnResLabSnapshot,
+    phase: f32,
+    paint: &mut PaintContext,
+) {
+    let accent = Hsla::from_hex(ACCENT_MINT);
+    paint_panel_texture(bounds, accent, phase, paint);
+
+    let loss_raw = metric_history_raw_values(snapshot.metrics.as_slice(), MetricHistoryKind::Loss);
+    let start_loss = loss_raw.first().copied().unwrap_or(snapshot.training_loss);
+    let best_loss = loss_raw
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min)
+        .min(snapshot.training_loss);
+    let loss_gap = (snapshot.ema_loss - snapshot.training_loss).abs();
+    let stability = (1.0 - normalize_signal(loss_gap, start_loss.max(0.1) * 0.08)).clamp(0.0, 1.0);
+    let cadence = normalize_signal(snapshot.steps_per_second as f32, 50.0);
+    let descent = descent_level(Some(start_loss), snapshot.training_loss);
+
+    paint_signal_triplet(
+        bounds.origin.x + 16.0,
+        bounds.origin.y + 38.0,
+        [
+            ("DS", descent, Hsla::from_hex(ACCENT_CORAL)),
+            ("ST", stability, Hsla::from_hex(ACCENT_GOLD)),
+            ("SP", cadence, Hsla::from_hex(ACCENT_CYAN)),
+        ],
+        accent,
+        paint,
+    );
+
+    let mut y = bounds.origin.y + 118.0;
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Step",
+        format!("{}/{}", snapshot.step, snapshot.max_steps).as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Loss",
+        format!("{:.4}", snapshot.training_loss).as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "EMA",
+        format!("{:.4}", snapshot.ema_loss).as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Start",
+        format!("{:.4}", start_loss).as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Best",
+        format!("{:.4}", best_loss).as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Gap",
+        format!("{:.4}", loss_gap).as_str(),
+    );
+    y = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Gain",
+        format!(
+            "{:.1}%",
+            ((start_loss - snapshot.training_loss) / start_loss.max(0.0001) * 100.0).max(0.0)
+        )
+        .as_str(),
+    );
+    let _ = paint_panel_label_line(
+        paint,
+        bounds,
+        bounds.origin.x + 12.0,
+        y,
+        "Selectivity",
+        format!("{:.0}%", snapshot.avg_selectivity * 100.0).as_str(),
+    );
 }
 
 fn paint_pipeline_inspector(
@@ -2628,14 +2972,7 @@ fn build_metric_history_ribbon(
         return (build_ribbon_values(0.18, phase, 0.9), 0.18);
     }
 
-    let raw: Vec<f32> = metrics
-        .iter()
-        .map(|point| match kind {
-            MetricHistoryKind::Loss => point.training_loss,
-            MetricHistoryKind::Ema => point.ema_loss,
-            MetricHistoryKind::Selectivity => point.selectivity,
-        })
-        .collect();
+    let raw = metric_history_raw_values(metrics, kind);
     let invert = matches!(kind, MetricHistoryKind::Loss | MetricHistoryKind::Ema);
     let min = raw.iter().copied().fold(f32::INFINITY, f32::min);
     let max = raw.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -2668,6 +3005,42 @@ fn build_metric_history_ribbon(
         current_level = 1.0 - current_level;
     }
     (values, current_level.clamp(0.0, 1.0))
+}
+
+fn metric_history_raw_values(
+    metrics: &[AttnResLabMetricPoint],
+    kind: MetricHistoryKind,
+) -> Vec<f32> {
+    match kind {
+        MetricHistoryKind::Loss => metrics.iter().map(|point| point.training_loss).collect(),
+        MetricHistoryKind::Ema => metrics.iter().map(|point| point.ema_loss).collect(),
+        MetricHistoryKind::Selectivity => metrics.iter().map(|point| point.selectivity).collect(),
+    }
+}
+
+fn sample_metric_series(raw: &[f32], sample_count: usize) -> Vec<f32> {
+    if raw.is_empty() || sample_count == 0 {
+        return Vec::new();
+    }
+    if sample_count == 1 {
+        return vec![*raw.last().unwrap_or(&0.0)];
+    }
+
+    let steps = raw.len().saturating_sub(1);
+    (0..sample_count)
+        .map(|index| {
+            let pos = index as f32 / (sample_count.saturating_sub(1)) as f32;
+            let sample_pos = pos * steps as f32;
+            let low = sample_pos.floor() as usize;
+            let high = sample_pos.ceil() as usize;
+            let blend = sample_pos - low as f32;
+            if steps == 0 {
+                raw[0]
+            } else {
+                raw[low] + (raw[high] - raw[low]) * blend
+            }
+        })
+        .collect()
 }
 
 fn build_selected_route_ribbon(selected: &AttnResLabSublayerSnapshot, phase: f32) -> Vec<f32> {
@@ -3207,8 +3580,8 @@ fn paint_help_overlay(
         overlay,
         overlay.origin.x + 16.0,
         y + 10.0,
-        "Tab or 1/2/3",
-        "Cycle views or jump directly to Overview, Pipeline, or Inference",
+        "Tab or 1/2/3/4",
+        "Cycle views or jump directly to Overview, Pipeline, Inference, or Loss",
         2,
     );
     y = paint_panel_multiline_phrase(

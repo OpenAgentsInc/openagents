@@ -509,6 +509,7 @@ impl AttnResViewArg {
             Self::Overview => DesktopControlAttnResView::Overview,
             Self::Pipeline => DesktopControlAttnResView::Pipeline,
             Self::Inference => DesktopControlAttnResView::Inference,
+            Self::Loss => DesktopControlAttnResView::Loss,
         }
     }
 }
@@ -852,6 +853,7 @@ enum AttnResViewArg {
     Overview,
     Pipeline,
     Inference,
+    Loss,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]

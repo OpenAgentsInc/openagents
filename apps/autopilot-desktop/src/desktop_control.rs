@@ -203,6 +203,7 @@ pub enum DesktopControlAttnResView {
     Overview,
     Pipeline,
     Inference,
+    Loss,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -2745,6 +2746,7 @@ fn attnres_view_mode(view: DesktopControlAttnResView) -> AttnResLabViewMode {
         DesktopControlAttnResView::Overview => AttnResLabViewMode::Overview,
         DesktopControlAttnResView::Pipeline => AttnResLabViewMode::Pipeline,
         DesktopControlAttnResView::Inference => AttnResLabViewMode::Inference,
+        DesktopControlAttnResView::Loss => AttnResLabViewMode::Loss,
     }
 }
 
