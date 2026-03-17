@@ -1052,6 +1052,11 @@ fn pump_background_every_loop(
     }) {
         changed = true;
     }
+    if record_runtime_changed_op(state, "every_loop", "tassadar_lab::tick", |state| {
+        crate::tassadar_lab_control::background_tick(&mut state.tassadar_lab)
+    }) {
+        changed = true;
+    }
     if record_runtime_changed_op(state, "every_loop", "goals::restart_recovery", |state| {
         run_goal_restart_recovery(state)
     }) {
@@ -4238,6 +4243,7 @@ fn attnres_lab_keyboard_action(key: Key, help_visible: bool) -> Option<AttnResLa
 fn tassadar_lab_keyboard_action(key: Key, help_visible: bool) -> Option<TassadarLabPaneAction> {
     match key {
         Key::Named(NamedKey::Escape) if help_visible => Some(TassadarLabPaneAction::ToggleHelp),
+        Key::Named(NamedKey::Space) => Some(TassadarLabPaneAction::TogglePlayback),
         Key::Named(NamedKey::Tab) => Some(TassadarLabPaneAction::CycleView),
         Key::Named(NamedKey::ArrowLeft) => Some(TassadarLabPaneAction::PreviousReplay),
         Key::Named(NamedKey::ArrowRight) => Some(TassadarLabPaneAction::NextReplay),
@@ -4271,8 +4277,21 @@ fn tassadar_lab_keyboard_action(key: Key, help_visible: bool) -> Option<Tassadar
         Key::Character(value) if value == "?" => Some(TassadarLabPaneAction::ToggleHelp),
         Key::Character(value) if value == "[" => Some(TassadarLabPaneAction::PreviousFactLine),
         Key::Character(value) if value == "]" => Some(TassadarLabPaneAction::NextFactLine),
-        Key::Character(value) if value.eq_ignore_ascii_case("r") => {
+        Key::Character(value) if value.eq_ignore_ascii_case("f") => {
             Some(TassadarLabPaneAction::RefreshSnapshot)
+        }
+        Key::Character(value) if value.eq_ignore_ascii_case("r") => {
+            Some(TassadarLabPaneAction::ResetPlayback)
+        }
+        Key::Character(value) if value == "-" => Some(TassadarLabPaneAction::DecreaseSpeed),
+        Key::Character(value) if value == "=" || value == "+" => {
+            Some(TassadarLabPaneAction::IncreaseSpeed)
+        }
+        Key::Character(value) if value == "," || value == "<" => {
+            Some(TassadarLabPaneAction::DecreaseTraceWindow)
+        }
+        Key::Character(value) if value == "." || value == ">" => {
+            Some(TassadarLabPaneAction::IncreaseTraceWindow)
         }
         _ => None,
     }
@@ -4663,6 +4682,10 @@ mod tests {
     #[test]
     fn tassadar_keyboard_mapping_tracks_live_and_replay_controls() {
         assert_eq!(
+            tassadar_lab_keyboard_action(Key::Named(NamedKey::Space), false),
+            Some(TassadarLabPaneAction::TogglePlayback)
+        );
+        assert_eq!(
             tassadar_lab_keyboard_action(Key::Named(NamedKey::Tab), false),
             Some(TassadarLabPaneAction::CycleView)
         );
@@ -4718,7 +4741,27 @@ mod tests {
         );
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Character("r".to_string()), false),
+            Some(TassadarLabPaneAction::ResetPlayback)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("f".to_string()), false),
             Some(TassadarLabPaneAction::RefreshSnapshot)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("-".to_string()), false),
+            Some(TassadarLabPaneAction::DecreaseSpeed)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character("=".to_string()), false),
+            Some(TassadarLabPaneAction::IncreaseSpeed)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character(",".to_string()), false),
+            Some(TassadarLabPaneAction::DecreaseTraceWindow)
+        );
+        assert_eq!(
+            tassadar_lab_keyboard_action(Key::Character(".".to_string()), false),
+            Some(TassadarLabPaneAction::IncreaseTraceWindow)
         );
         assert_eq!(
             tassadar_lab_keyboard_action(Key::Character("?".to_string()), false),

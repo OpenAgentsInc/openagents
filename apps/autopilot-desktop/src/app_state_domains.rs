@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::*;
 use psionic_apple_fm::{AppleFmAdapterInventoryEntry, AppleFmAdapterSelection};
 use psionic_runtime::TassadarExecutorDecodeMode;
@@ -12,8 +14,9 @@ use wgpui::RiveFitMode;
 
 const FRAME_DEBUGGER_SAMPLE_CAPACITY: usize = 180;
 const FRAME_DEBUGGER_TIMING_SAMPLE_CAPACITY: usize = 1_024;
-const TASSADAR_LAB_TRACE_CHUNK_SIZE: usize = 32;
+const DEFAULT_TASSADAR_LAB_TRACE_CHUNK_SIZE: usize = 32;
 const TASSADAR_LAB_LOCAL_EVENT_LIMIT: usize = 12;
+const DEFAULT_TASSADAR_LAB_SPEED_MULTIPLIER: usize = 3;
 
 pub struct LocalInferencePaneState {
     pub load_state: PaneLoadState,
@@ -743,6 +746,7 @@ pub struct TassadarLabPaneState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub playback_state: TassadarLabPlaybackState,
+    pub playback_running: bool,
     pub selected_source_mode: TassadarLabSourceMode,
     pub show_help: bool,
     pub selected_view: TassadarLabViewMode,
@@ -753,11 +757,15 @@ pub struct TassadarLabPaneState {
     pub selected_readable_log_line: usize,
     pub selected_token_chunk: usize,
     pub selected_fact_line: usize,
+    pub speed_multiplier: usize,
+    pub trace_chunk_size: usize,
     pub replay_catalog: Vec<TassadarLabReplayCatalogEntry>,
     pub article_session_catalog: Vec<TassadarLabLiveCaseEntry>,
     pub hybrid_workflow_catalog: Vec<TassadarLabLiveCaseEntry>,
     pub local_events: Vec<String>,
     pub prepared_view: TassadarLabPreparedView,
+    pub persistence_loaded: bool,
+    pub last_playback_tick_at: Option<Instant>,
 }
 
 impl Default for TassadarLabPaneState {
@@ -783,6 +791,7 @@ impl Default for TassadarLabPaneState {
                         .map_or("Tassadar Lab", |entry| entry.label.as_str())
                 )),
                 playback_state: TassadarLabPlaybackState::Replay,
+                playback_running: false,
                 selected_source_mode: TassadarLabSourceMode::Replay,
                 show_help: false,
                 selected_view: TassadarLabViewMode::Overview,
@@ -793,6 +802,8 @@ impl Default for TassadarLabPaneState {
                 selected_readable_log_line: 0,
                 selected_token_chunk: 0,
                 selected_fact_line: 0,
+                speed_multiplier: DEFAULT_TASSADAR_LAB_SPEED_MULTIPLIER,
+                trace_chunk_size: DEFAULT_TASSADAR_LAB_TRACE_CHUNK_SIZE,
                 replay_catalog,
                 article_session_catalog,
                 hybrid_workflow_catalog,
@@ -800,12 +811,15 @@ impl Default for TassadarLabPaneState {
                     "Loaded replay artifact // Direct memory-heavy article session",
                 )],
                 prepared_view,
+                persistence_loaded: false,
+                last_playback_tick_at: None,
             },
             Err(error) => Self {
                 load_state: PaneLoadState::Error,
                 last_error: Some(error.clone()),
                 last_action: Some(String::from("Failed to load replay Tassadar lab snapshot")),
                 playback_state: TassadarLabPlaybackState::Paused,
+                playback_running: false,
                 selected_source_mode: TassadarLabSourceMode::Replay,
                 show_help: false,
                 selected_view: TassadarLabViewMode::Overview,
@@ -816,11 +830,15 @@ impl Default for TassadarLabPaneState {
                 selected_readable_log_line: 0,
                 selected_token_chunk: 0,
                 selected_fact_line: 0,
+                speed_multiplier: DEFAULT_TASSADAR_LAB_SPEED_MULTIPLIER,
+                trace_chunk_size: DEFAULT_TASSADAR_LAB_TRACE_CHUNK_SIZE,
                 replay_catalog,
                 article_session_catalog,
                 hybrid_workflow_catalog,
                 local_events: vec![format!("Load error // {error}")],
                 prepared_view: fallback_tassadar_lab_prepared_view(error.as_str()),
+                persistence_loaded: false,
+                last_playback_tick_at: None,
             },
         }
     }
@@ -948,21 +966,35 @@ impl TassadarLabPaneState {
             .map(String::as_str)
     }
 
+    pub fn current_readable_log_window(&self, window_size: usize) -> Vec<String> {
+        let Some(excerpt) = self.snapshot().readable_log.as_ref() else {
+            return Vec::new();
+        };
+        if excerpt.lines.is_empty() {
+            return Vec::new();
+        }
+        let start = self
+            .selected_readable_log_line
+            .min(excerpt.lines.len().saturating_sub(1));
+        excerpt.lines[start..(start + window_size).min(excerpt.lines.len())]
+            .iter()
+            .enumerate()
+            .map(|(offset, line)| format!("{:04}: {}", start + offset, line))
+            .collect()
+    }
+
     pub fn token_trace_chunk_count(&self) -> usize {
         self.snapshot().token_trace.as_ref().map_or(0, |excerpt| {
-            excerpt.tokens.len().div_ceil(TASSADAR_LAB_TRACE_CHUNK_SIZE)
+            excerpt.tokens.len().div_ceil(self.trace_chunk_size.max(1))
         })
     }
 
     pub fn current_token_trace_chunk(&self) -> Option<Vec<String>> {
         self.snapshot().token_trace.as_ref().and_then(|excerpt| {
-            let start = self
-                .selected_token_chunk
-                .saturating_mul(TASSADAR_LAB_TRACE_CHUNK_SIZE);
+            let chunk_size = self.trace_chunk_size.max(1);
+            let start = self.selected_token_chunk.saturating_mul(chunk_size);
             (start < excerpt.tokens.len()).then(|| {
-                excerpt.tokens
-                    [start..(start + TASSADAR_LAB_TRACE_CHUNK_SIZE).min(excerpt.tokens.len())]
-                    .to_vec()
+                excerpt.tokens[start..(start + chunk_size).min(excerpt.tokens.len())].to_vec()
             })
         })
     }
@@ -982,6 +1014,76 @@ impl TassadarLabPaneState {
         }
     }
 
+    pub fn playback_status_label(&self) -> &'static str {
+        if self.playback_running {
+            "timeline playing"
+        } else {
+            self.playback_state.status_label()
+        }
+    }
+
+    pub fn playback_button_label(&self) -> &'static str {
+        if self.playback_running {
+            "Pause"
+        } else if self.is_playback_complete() {
+            "Replay"
+        } else if self.selected_update > 0 {
+            "Resume"
+        } else {
+            "Play"
+        }
+    }
+
+    pub fn is_playback_complete(&self) -> bool {
+        self.updates().is_empty() || self.selected_update >= self.updates().len().saturating_sub(1)
+    }
+
+    pub fn idle_playback_state(&self) -> TassadarLabPlaybackState {
+        match self.selected_source_mode {
+            TassadarLabSourceMode::Replay => TassadarLabPlaybackState::Replay,
+            TassadarLabSourceMode::LiveArticleSession
+            | TassadarLabSourceMode::LiveArticleHybridWorkflow => TassadarLabPlaybackState::Live,
+        }
+    }
+
+    pub fn reset_focus(&mut self) {
+        self.selected_update = 0;
+        self.selected_readable_log_line = 0;
+        self.selected_token_chunk = 0;
+        self.selected_fact_line = 0;
+        self.playback_running = false;
+        self.playback_state = self.idle_playback_state();
+        self.last_playback_tick_at = None;
+    }
+
+    pub fn pause_playback(&mut self) {
+        self.playback_running = false;
+        self.playback_state = TassadarLabPlaybackState::Paused;
+        self.last_playback_tick_at = None;
+    }
+
+    pub fn focus_current_update(&mut self) {
+        let Some(update) = self.current_update().cloned() else {
+            return;
+        };
+        match update {
+            TassadarLabUpdate::ReadableLogLine { readable_log_line } => {
+                self.selected_readable_log_line = readable_log_line.line_index.min(
+                    self.snapshot()
+                        .readable_log
+                        .as_ref()
+                        .map_or(0, |excerpt| excerpt.lines.len().saturating_sub(1)),
+                );
+            }
+            TassadarLabUpdate::TokenTraceChunk { token_trace_chunk } => {
+                self.selected_token_chunk = token_trace_chunk
+                    .chunk_index
+                    .min(self.token_trace_chunk_count().saturating_sub(1));
+            }
+            _ => {}
+        }
+    }
+
     pub fn apply_prepared_view(
         &mut self,
         prepared_view: TassadarLabPreparedView,
@@ -995,6 +1097,8 @@ impl TassadarLabPaneState {
         self.selected_token_chunk = 0;
         self.selected_fact_line = 0;
         self.playback_state = playback_state;
+        self.playback_running = false;
+        self.last_playback_tick_at = None;
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(action.clone());
@@ -1036,7 +1140,8 @@ impl TassadarLabPaneState {
             self.selected_update,
             delta,
         );
-        self.playback_state = TassadarLabPlaybackState::Paused;
+        self.focus_current_update();
+        self.pause_playback();
     }
 
     pub fn move_selected_readable_log_line(&mut self, delta: isize) {
@@ -1047,7 +1152,7 @@ impl TassadarLabPaneState {
             .map_or(0, |excerpt| excerpt.lines.len());
         self.selected_readable_log_line =
             move_wrapped_index(count, self.selected_readable_log_line, delta);
-        self.playback_state = TassadarLabPlaybackState::Paused;
+        self.pause_playback();
     }
 
     pub fn move_selected_token_chunk(&mut self, delta: isize) {
@@ -1056,7 +1161,7 @@ impl TassadarLabPaneState {
             self.selected_token_chunk,
             delta,
         );
-        self.playback_state = TassadarLabPlaybackState::Paused;
+        self.pause_playback();
     }
 
     pub fn move_selected_fact_line(&mut self, delta: isize) {
@@ -1065,7 +1170,7 @@ impl TassadarLabPaneState {
             self.selected_fact_line,
             delta,
         );
-        self.playback_state = TassadarLabPlaybackState::Paused;
+        self.pause_playback();
     }
 }
 

@@ -13,7 +13,9 @@ use autopilot_desktop::desktop_control::{
     DesktopControlAppleAdapterOperatorRunStatus, DesktopControlAttnResStatus,
     DesktopControlAttnResView, DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus,
     DesktopControlEventBatch, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
-    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot, control_manifest_path,
+    DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+    DesktopControlTassadarSourceMode, DesktopControlTassadarStatus, DesktopControlTassadarView,
+    control_manifest_path,
 };
 use autopilot_desktop::{
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
@@ -60,6 +62,11 @@ enum Command {
     AttnRes {
         #[command(subcommand)]
         command: AttnResCommand,
+    },
+    #[command(name = "tassadar")]
+    Tassadar {
+        #[command(subcommand)]
+        command: TassadarCommand,
     },
     Cluster {
         #[command(subcommand)]
@@ -195,6 +202,70 @@ enum AttnResCommand {
         #[command(subcommand)]
         command: AttnResSpeedCommand,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum TassadarCommand {
+    Status,
+    Play,
+    Pause,
+    Reset,
+    Refresh,
+    View {
+        #[arg(value_enum)]
+        view: TassadarViewArg,
+    },
+    Source {
+        #[arg(value_enum)]
+        source: TassadarSourceArg,
+    },
+    Case {
+        #[command(subcommand)]
+        command: TassadarNavigationCommand,
+    },
+    Update {
+        #[command(subcommand)]
+        command: TassadarNavigationCommand,
+    },
+    ReadableLog {
+        #[command(subcommand)]
+        command: TassadarNavigationCommand,
+    },
+    Token {
+        #[command(subcommand)]
+        command: TassadarNavigationCommand,
+    },
+    Fact {
+        #[command(subcommand)]
+        command: TassadarNavigationCommand,
+    },
+    Speed {
+        #[command(subcommand)]
+        command: TassadarSpeedCommand,
+    },
+    Window {
+        #[command(subcommand)]
+        command: TassadarWindowCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum TassadarNavigationCommand {
+    Next,
+    Prev,
+}
+
+#[derive(Subcommand, Debug)]
+enum TassadarSpeedCommand {
+    Set { speed_multiplier: usize },
+    Increase,
+    Decrease,
+}
+
+#[derive(Subcommand, Debug)]
+enum TassadarWindowCommand {
+    Increase,
+    Decrease,
 }
 
 #[derive(Subcommand, Debug)]
@@ -547,6 +618,102 @@ impl AttnResCommand {
     }
 }
 
+impl TassadarViewArg {
+    const fn into_request_view(self) -> DesktopControlTassadarView {
+        match self {
+            Self::Overview => DesktopControlTassadarView::Overview,
+            Self::Trace => DesktopControlTassadarView::Trace,
+            Self::Program => DesktopControlTassadarView::Program,
+            Self::Evidence => DesktopControlTassadarView::Evidence,
+        }
+    }
+}
+
+impl TassadarSourceArg {
+    const fn into_request_source(self) -> DesktopControlTassadarSourceMode {
+        match self {
+            Self::Replay => DesktopControlTassadarSourceMode::Replay,
+            Self::ArticleSession => DesktopControlTassadarSourceMode::ArticleSession,
+            Self::HybridWorkflow => DesktopControlTassadarSourceMode::HybridWorkflow,
+        }
+    }
+}
+
+impl TassadarCommand {
+    fn action_request(&self) -> DesktopControlActionRequest {
+        match self {
+            Self::Status => DesktopControlActionRequest::GetTassadarStatus,
+            Self::Play => DesktopControlActionRequest::ToggleTassadarPlayback,
+            Self::Pause => DesktopControlActionRequest::PauseTassadarPlayback,
+            Self::Reset => DesktopControlActionRequest::ResetTassadarPlayback,
+            Self::Refresh => DesktopControlActionRequest::RefreshTassadar,
+            Self::View { view } => DesktopControlActionRequest::SetTassadarView {
+                view: view.into_request_view(),
+            },
+            Self::Source { source } => DesktopControlActionRequest::SetTassadarSourceMode {
+                source_mode: source.into_request_source(),
+            },
+            Self::Case { command } => match command {
+                TassadarNavigationCommand::Next => DesktopControlActionRequest::NextTassadarCase,
+                TassadarNavigationCommand::Prev => {
+                    DesktopControlActionRequest::PreviousTassadarCase
+                }
+            },
+            Self::Update { command } => match command {
+                TassadarNavigationCommand::Next => DesktopControlActionRequest::NextTassadarUpdate,
+                TassadarNavigationCommand::Prev => {
+                    DesktopControlActionRequest::PreviousTassadarUpdate
+                }
+            },
+            Self::ReadableLog { command } => match command {
+                TassadarNavigationCommand::Next => {
+                    DesktopControlActionRequest::NextTassadarReadableLogLine
+                }
+                TassadarNavigationCommand::Prev => {
+                    DesktopControlActionRequest::PreviousTassadarReadableLogLine
+                }
+            },
+            Self::Token { command } => match command {
+                TassadarNavigationCommand::Next => {
+                    DesktopControlActionRequest::NextTassadarTokenChunk
+                }
+                TassadarNavigationCommand::Prev => {
+                    DesktopControlActionRequest::PreviousTassadarTokenChunk
+                }
+            },
+            Self::Fact { command } => match command {
+                TassadarNavigationCommand::Next => {
+                    DesktopControlActionRequest::NextTassadarFactLine
+                }
+                TassadarNavigationCommand::Prev => {
+                    DesktopControlActionRequest::PreviousTassadarFactLine
+                }
+            },
+            Self::Speed { command } => match command {
+                TassadarSpeedCommand::Set { speed_multiplier } => {
+                    DesktopControlActionRequest::SetTassadarSpeed {
+                        speed_multiplier: *speed_multiplier,
+                    }
+                }
+                TassadarSpeedCommand::Increase => {
+                    DesktopControlActionRequest::IncreaseTassadarSpeed
+                }
+                TassadarSpeedCommand::Decrease => {
+                    DesktopControlActionRequest::DecreaseTassadarSpeed
+                }
+            },
+            Self::Window { command } => match command {
+                TassadarWindowCommand::Increase => {
+                    DesktopControlActionRequest::IncreaseTassadarTraceWindow
+                }
+                TassadarWindowCommand::Decrease => {
+                    DesktopControlActionRequest::DecreaseTassadarTraceWindow
+                }
+            },
+        }
+    }
+}
+
 impl SandboxEntrypointTypeArg {
     const fn into_request_type(self) -> ProviderSandboxEntrypointType {
         match self {
@@ -857,6 +1024,23 @@ enum AttnResViewArg {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum TassadarViewArg {
+    Overview,
+    Trace,
+    Program,
+    Evidence,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum TassadarSourceArg {
+    Replay,
+    #[value(name = "article-session")]
+    ArticleSession,
+    #[value(name = "hybrid-workflow")]
+    HybridWorkflow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum WaitConditionArg {
     ProviderOnline,
     ProviderOffline,
@@ -1002,6 +1186,19 @@ fn main() -> Result<()> {
                     println!("{}", response.message);
                 }
                 print_attnres_text(&status);
+            }
+        }
+        Command::Tassadar { command } => {
+            let response = client.action(&command.action_request())?;
+            ensure_action_success(&response)?;
+            let status = parse_tassadar_status(response.payload.as_ref())?;
+            if json_output {
+                print_json(&status)?;
+            } else {
+                if !matches!(command, TassadarCommand::Status) {
+                    println!("{}", response.message);
+                }
+                print_tassadar_text(&status);
             }
         }
         Command::Cluster { command } => {
@@ -1991,6 +2188,12 @@ fn parse_attnres_status(payload: Option<&Value>) -> Result<DesktopControlAttnRes
         .context("decode AttnRes status payload")
 }
 
+fn parse_tassadar_status(payload: Option<&Value>) -> Result<DesktopControlTassadarStatus> {
+    let payload = payload.ok_or_else(|| anyhow!("missing Tassadar status payload"))?;
+    serde_json::from_value::<DesktopControlTassadarStatus>(payload.clone())
+        .context("decode Tassadar status payload")
+}
+
 fn parse_local_daily_window(date: &str) -> Result<(u64, u64)> {
     let date = NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d")
         .with_context(|| format!("parse daily report date '{}'", date.trim()))?;
@@ -2247,6 +2450,71 @@ fn print_attnres_text(status: &DesktopControlAttnResStatus) {
     }
     for event in status.recent_events.iter().rev().take(6) {
         println!("event: {event}");
+    }
+}
+
+fn print_tassadar_text(status: &DesktopControlTassadarStatus) {
+    println!(
+        "tassadar: playback={} running={} source={} case={} view={} update={} speed={} window={} open_instances={} active={}",
+        status.summary.playback_state,
+        status.summary.running,
+        status.summary.selected_source_mode,
+        status.summary.selected_source_label,
+        status.summary.selected_view,
+        status.summary.selected_update,
+        status.summary.speed_multiplier,
+        status.summary.trace_chunk_size,
+        status.summary.open_instances,
+        status.summary.active
+    );
+    println!(
+        "surface: badge={} kind={} family={} subject={} status={}",
+        status.source_badge,
+        status.source_kind,
+        status.family_label,
+        status.subject_label,
+        status.status_label
+    );
+    println!(
+        "route: state={} requested_decode={} effective_decode={} detail={}",
+        status.route_state_label.as_deref().unwrap_or("-"),
+        status.requested_decode_mode.as_deref().unwrap_or("-"),
+        status.effective_decode_mode.as_deref().unwrap_or("-"),
+        status
+            .route_detail
+            .as_deref()
+            .unwrap_or(status.detail_label.as_str())
+    );
+    println!(
+        "program: program_id={} wasm_profile_id={} artifact_ref={}",
+        status.program_id.as_deref().unwrap_or("-"),
+        status.wasm_profile_id.as_deref().unwrap_or("-"),
+        status.artifact_ref.as_deref().unwrap_or("-")
+    );
+    println!("outputs: {:?}", status.final_outputs);
+    if !status.metric_chips.is_empty() {
+        println!("metric chips:");
+        for chip in &status.metric_chips {
+            println!("  {}={} ({})", chip.label, chip.value, chip.tone);
+        }
+    }
+    if !status.fact_lines.is_empty() {
+        println!("fact lines:");
+        for fact in &status.fact_lines {
+            println!("  {}: {}", fact.label, fact.value);
+        }
+    }
+    if !status.local_events.is_empty() {
+        println!("local events:");
+        for line in status.local_events.iter().rev().take(6) {
+            println!("  {line}");
+        }
+    }
+    if !status.recent_events.is_empty() {
+        println!("snapshot events:");
+        for line in status.recent_events.iter().rev().take(6) {
+            println!("  {line}");
+        }
     }
 }
 
@@ -5263,17 +5531,19 @@ mod tests {
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
         GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand,
-        SandboxCommand, SandboxEntrypointTypeArg, TrainingCommand, WaitCondition, WaitConditionArg,
-        WalletCommand, buy_mode_has_failed_request, buy_mode_has_paid_request,
-        buyer_procurement_status_lines, ensure_buy_mode_budget_ack, inventory_status_lines,
-        nip90_sent_payments_report_lines, parse_local_daily_window,
-        parse_nip90_sent_payments_report, parse_report_boundary, request_has_failed,
-        request_has_paid, request_has_payment_required, training_status_lines,
+        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarNavigationCommand,
+        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
+        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
+        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
+        request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlAttnResView, DesktopControlBuyModeRequestStatus,
         DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus,
         DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -6018,6 +6288,108 @@ mod tests {
         assert_eq!(ChatCommand::Groups.action_request(), None);
         assert_eq!(ChatCommand::Channels.action_request(), None);
         assert_eq!(ChatCommand::Tail { limit: 5 }.action_request(), None);
+    }
+
+    #[test]
+    fn tassadar_commands_map_to_control_requests() {
+        assert_eq!(
+            TassadarCommand::Status.action_request(),
+            DesktopControlActionRequest::GetTassadarStatus
+        );
+        assert_eq!(
+            TassadarCommand::Play.action_request(),
+            DesktopControlActionRequest::ToggleTassadarPlayback
+        );
+        assert_eq!(
+            TassadarCommand::Pause.action_request(),
+            DesktopControlActionRequest::PauseTassadarPlayback
+        );
+        assert_eq!(
+            TassadarCommand::Reset.action_request(),
+            DesktopControlActionRequest::ResetTassadarPlayback
+        );
+        assert_eq!(
+            TassadarCommand::Refresh.action_request(),
+            DesktopControlActionRequest::RefreshTassadar
+        );
+        assert_eq!(
+            TassadarCommand::View {
+                view: TassadarViewArg::Program,
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetTassadarView {
+                view: DesktopControlTassadarView::Program,
+            }
+        );
+        assert_eq!(
+            TassadarCommand::Source {
+                source: TassadarSourceArg::HybridWorkflow,
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetTassadarSourceMode {
+                source_mode: DesktopControlTassadarSourceMode::HybridWorkflow,
+            }
+        );
+        assert_eq!(
+            TassadarCommand::Case {
+                command: TassadarNavigationCommand::Next,
+            }
+            .action_request(),
+            DesktopControlActionRequest::NextTassadarCase
+        );
+        assert_eq!(
+            TassadarCommand::Update {
+                command: TassadarNavigationCommand::Prev,
+            }
+            .action_request(),
+            DesktopControlActionRequest::PreviousTassadarUpdate
+        );
+        assert_eq!(
+            TassadarCommand::ReadableLog {
+                command: TassadarNavigationCommand::Next,
+            }
+            .action_request(),
+            DesktopControlActionRequest::NextTassadarReadableLogLine
+        );
+        assert_eq!(
+            TassadarCommand::Token {
+                command: TassadarNavigationCommand::Prev,
+            }
+            .action_request(),
+            DesktopControlActionRequest::PreviousTassadarTokenChunk
+        );
+        assert_eq!(
+            TassadarCommand::Fact {
+                command: TassadarNavigationCommand::Next,
+            }
+            .action_request(),
+            DesktopControlActionRequest::NextTassadarFactLine
+        );
+        assert_eq!(
+            TassadarCommand::Speed {
+                command: TassadarSpeedCommand::Set {
+                    speed_multiplier: 4,
+                },
+            }
+            .action_request(),
+            DesktopControlActionRequest::SetTassadarSpeed {
+                speed_multiplier: 4,
+            }
+        );
+        assert_eq!(
+            TassadarCommand::Speed {
+                command: TassadarSpeedCommand::Increase,
+            }
+            .action_request(),
+            DesktopControlActionRequest::IncreaseTassadarSpeed
+        );
+        assert_eq!(
+            TassadarCommand::Window {
+                command: TassadarWindowCommand::Decrease,
+            }
+            .action_request(),
+            DesktopControlActionRequest::DecreaseTassadarTraceWindow
+        );
     }
 
     #[test]

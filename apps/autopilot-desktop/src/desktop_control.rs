@@ -54,8 +54,8 @@ use crate::app_state::{
     AttnResLabViewMode, DefaultNip28ChannelConfig, MISSION_CONTROL_BUY_MODE_BUDGET_SATS,
     MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS, MissionControlLocalRuntimeAction,
     MissionControlLocalRuntimeLane, MissionControlLocalRuntimePolicy, RenderState,
-    SnapshotTimingSample, mission_control_buy_mode_interval_label,
-    mission_control_local_runtime_view_model,
+    SnapshotTimingSample, TassadarLabSourceMode, TassadarLabViewMode,
+    mission_control_buy_mode_interval_label, mission_control_local_runtime_view_model,
 };
 use crate::apple_adapter_training_control::{
     AppleAdapterOperatorLaunchRequest, AppleAdapterOperatorStageState,
@@ -283,6 +283,81 @@ pub struct DesktopControlAttnResStatus {
     pub inference: DesktopControlAttnResInferenceStatus,
     pub selected_sublayer: Option<DesktopControlAttnResSelectedSublayerStatus>,
     pub recent_events: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTassadarSummary {
+    pub available: bool,
+    pub open_instances: usize,
+    pub top_pane_id: Option<u64>,
+    pub active: bool,
+    pub playback_state: String,
+    pub running: bool,
+    pub selected_source_mode: String,
+    pub selected_source_label: String,
+    pub selected_view: String,
+    pub selected_update: usize,
+    pub selected_readable_log_line: usize,
+    pub selected_token_chunk: usize,
+    pub selected_fact_line: usize,
+    pub speed_multiplier: usize,
+    pub trace_chunk_size: usize,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopControlTassadarView {
+    Overview,
+    Trace,
+    Program,
+    Evidence,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopControlTassadarSourceMode {
+    Replay,
+    ArticleSession,
+    HybridWorkflow,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTassadarMetricChipStatus {
+    pub label: String,
+    pub value: String,
+    pub tone: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTassadarFactLineStatus {
+    pub label: String,
+    pub value: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DesktopControlTassadarStatus {
+    pub summary: DesktopControlTassadarSummary,
+    pub show_help: bool,
+    pub source_badge: String,
+    pub source_kind: String,
+    pub family_label: String,
+    pub subject_label: String,
+    pub status_label: String,
+    pub detail_label: String,
+    pub program_id: Option<String>,
+    pub wasm_profile_id: Option<String>,
+    pub requested_decode_mode: Option<String>,
+    pub effective_decode_mode: Option<String>,
+    pub artifact_ref: Option<String>,
+    pub route_state_label: Option<String>,
+    pub route_detail: Option<String>,
+    pub final_outputs: Vec<i32>,
+    pub metric_chips: Vec<DesktopControlTassadarMetricChipStatus>,
+    pub fact_lines: Vec<DesktopControlTassadarFactLineStatus>,
+    pub recent_events: Vec<String>,
+    pub local_events: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1172,6 +1247,34 @@ pub enum DesktopControlActionRequest {
     },
     IncreaseAttnResSpeed,
     DecreaseAttnResSpeed,
+    GetTassadarStatus,
+    ToggleTassadarPlayback,
+    PauseTassadarPlayback,
+    ResetTassadarPlayback,
+    RefreshTassadar,
+    SetTassadarView {
+        view: DesktopControlTassadarView,
+    },
+    SetTassadarSourceMode {
+        source_mode: DesktopControlTassadarSourceMode,
+    },
+    NextTassadarCase,
+    PreviousTassadarCase,
+    NextTassadarUpdate,
+    PreviousTassadarUpdate,
+    NextTassadarReadableLogLine,
+    PreviousTassadarReadableLogLine,
+    NextTassadarTokenChunk,
+    PreviousTassadarTokenChunk,
+    NextTassadarFactLine,
+    PreviousTassadarFactLine,
+    SetTassadarSpeed {
+        speed_multiplier: usize,
+    },
+    IncreaseTassadarSpeed,
+    DecreaseTassadarSpeed,
+    IncreaseTassadarTraceWindow,
+    DecreaseTassadarTraceWindow,
     SetProviderMode {
         online: bool,
     },
@@ -1265,6 +1368,28 @@ impl DesktopControlActionRequest {
             Self::SetAttnResSpeed { .. } => "attnres-speed-set",
             Self::IncreaseAttnResSpeed => "attnres-speed-increase",
             Self::DecreaseAttnResSpeed => "attnres-speed-decrease",
+            Self::GetTassadarStatus => "tassadar-status",
+            Self::ToggleTassadarPlayback => "tassadar-playback-toggle",
+            Self::PauseTassadarPlayback => "tassadar-playback-pause",
+            Self::ResetTassadarPlayback => "tassadar-playback-reset",
+            Self::RefreshTassadar => "tassadar-refresh",
+            Self::SetTassadarView { .. } => "tassadar-view",
+            Self::SetTassadarSourceMode { .. } => "tassadar-source",
+            Self::NextTassadarCase => "tassadar-case-next",
+            Self::PreviousTassadarCase => "tassadar-case-prev",
+            Self::NextTassadarUpdate => "tassadar-update-next",
+            Self::PreviousTassadarUpdate => "tassadar-update-prev",
+            Self::NextTassadarReadableLogLine => "tassadar-readable-log-next",
+            Self::PreviousTassadarReadableLogLine => "tassadar-readable-log-prev",
+            Self::NextTassadarTokenChunk => "tassadar-token-next",
+            Self::PreviousTassadarTokenChunk => "tassadar-token-prev",
+            Self::NextTassadarFactLine => "tassadar-fact-next",
+            Self::PreviousTassadarFactLine => "tassadar-fact-prev",
+            Self::SetTassadarSpeed { .. } => "tassadar-speed-set",
+            Self::IncreaseTassadarSpeed => "tassadar-speed-increase",
+            Self::DecreaseTassadarSpeed => "tassadar-speed-decrease",
+            Self::IncreaseTassadarTraceWindow => "tassadar-window-increase",
+            Self::DecreaseTassadarTraceWindow => "tassadar-window-decrease",
             Self::SetProviderMode { online: true } => "provider-online",
             Self::SetProviderMode { online: false } => "provider-offline",
             Self::RefreshLocalRuntime => "local-runtime-refresh",
@@ -2108,6 +2233,39 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             "index": index,
         }),
         DesktopControlActionRequest::SetAttnResSpeed { speed_multiplier } => json!({
+            "command_label": action.label(),
+            "speed_multiplier": speed_multiplier,
+        }),
+        DesktopControlActionRequest::GetTassadarStatus
+        | DesktopControlActionRequest::ToggleTassadarPlayback
+        | DesktopControlActionRequest::PauseTassadarPlayback
+        | DesktopControlActionRequest::ResetTassadarPlayback
+        | DesktopControlActionRequest::RefreshTassadar
+        | DesktopControlActionRequest::NextTassadarCase
+        | DesktopControlActionRequest::PreviousTassadarCase
+        | DesktopControlActionRequest::NextTassadarUpdate
+        | DesktopControlActionRequest::PreviousTassadarUpdate
+        | DesktopControlActionRequest::NextTassadarReadableLogLine
+        | DesktopControlActionRequest::PreviousTassadarReadableLogLine
+        | DesktopControlActionRequest::NextTassadarTokenChunk
+        | DesktopControlActionRequest::PreviousTassadarTokenChunk
+        | DesktopControlActionRequest::NextTassadarFactLine
+        | DesktopControlActionRequest::PreviousTassadarFactLine
+        | DesktopControlActionRequest::IncreaseTassadarSpeed
+        | DesktopControlActionRequest::DecreaseTassadarSpeed
+        | DesktopControlActionRequest::IncreaseTassadarTraceWindow
+        | DesktopControlActionRequest::DecreaseTassadarTraceWindow => {
+            json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::SetTassadarView { view } => json!({
+            "command_label": action.label(),
+            "view": view,
+        }),
+        DesktopControlActionRequest::SetTassadarSourceMode { source_mode } => json!({
+            "command_label": action.label(),
+            "source_mode": source_mode,
+        }),
+        DesktopControlActionRequest::SetTassadarSpeed { speed_multiplier } => json!({
             "command_label": action.label(),
             "speed_multiplier": speed_multiplier,
         }),
@@ -3174,6 +3332,66 @@ fn apply_action_request(
         DesktopControlActionRequest::DecreaseAttnResSpeed => {
             adjust_attnres_speed_action(state, -1).into()
         }
+        DesktopControlActionRequest::GetTassadarStatus => tassadar_status_payload_response(state),
+        DesktopControlActionRequest::ToggleTassadarPlayback => {
+            toggle_tassadar_playback_action(state).into()
+        }
+        DesktopControlActionRequest::PauseTassadarPlayback => {
+            pause_tassadar_playback_action(state).into()
+        }
+        DesktopControlActionRequest::ResetTassadarPlayback => {
+            reset_tassadar_playback_action(state).into()
+        }
+        DesktopControlActionRequest::RefreshTassadar => refresh_tassadar_action(state).into(),
+        DesktopControlActionRequest::SetTassadarView { view } => {
+            set_tassadar_view_action(state, *view).into()
+        }
+        DesktopControlActionRequest::SetTassadarSourceMode { source_mode } => {
+            set_tassadar_source_mode_action(state, *source_mode).into()
+        }
+        DesktopControlActionRequest::NextTassadarCase => move_tassadar_case_action(state, 1).into(),
+        DesktopControlActionRequest::PreviousTassadarCase => {
+            move_tassadar_case_action(state, -1).into()
+        }
+        DesktopControlActionRequest::NextTassadarUpdate => {
+            move_tassadar_update_action(state, 1).into()
+        }
+        DesktopControlActionRequest::PreviousTassadarUpdate => {
+            move_tassadar_update_action(state, -1).into()
+        }
+        DesktopControlActionRequest::NextTassadarReadableLogLine => {
+            move_tassadar_readable_log_action(state, 1).into()
+        }
+        DesktopControlActionRequest::PreviousTassadarReadableLogLine => {
+            move_tassadar_readable_log_action(state, -1).into()
+        }
+        DesktopControlActionRequest::NextTassadarTokenChunk => {
+            move_tassadar_token_chunk_action(state, 1).into()
+        }
+        DesktopControlActionRequest::PreviousTassadarTokenChunk => {
+            move_tassadar_token_chunk_action(state, -1).into()
+        }
+        DesktopControlActionRequest::NextTassadarFactLine => {
+            move_tassadar_fact_line_action(state, 1).into()
+        }
+        DesktopControlActionRequest::PreviousTassadarFactLine => {
+            move_tassadar_fact_line_action(state, -1).into()
+        }
+        DesktopControlActionRequest::SetTassadarSpeed { speed_multiplier } => {
+            set_tassadar_speed_action(state, *speed_multiplier).into()
+        }
+        DesktopControlActionRequest::IncreaseTassadarSpeed => {
+            adjust_tassadar_speed_action(state, 1).into()
+        }
+        DesktopControlActionRequest::DecreaseTassadarSpeed => {
+            adjust_tassadar_speed_action(state, -1).into()
+        }
+        DesktopControlActionRequest::IncreaseTassadarTraceWindow => {
+            adjust_tassadar_trace_window_action(state, 1).into()
+        }
+        DesktopControlActionRequest::DecreaseTassadarTraceWindow => {
+            adjust_tassadar_trace_window_action(state, -1).into()
+        }
         DesktopControlActionRequest::RefreshLocalRuntime => {
             refresh_local_runtime_action(state).into()
         }
@@ -4234,6 +4452,259 @@ fn adjust_attnres_speed_action(
         )
         .into(),
     }
+}
+
+fn tassadar_view_mode(view: DesktopControlTassadarView) -> TassadarLabViewMode {
+    match view {
+        DesktopControlTassadarView::Overview => TassadarLabViewMode::Overview,
+        DesktopControlTassadarView::Trace => TassadarLabViewMode::Trace,
+        DesktopControlTassadarView::Program => TassadarLabViewMode::Program,
+        DesktopControlTassadarView::Evidence => TassadarLabViewMode::Evidence,
+    }
+}
+
+fn tassadar_source_mode(source_mode: DesktopControlTassadarSourceMode) -> TassadarLabSourceMode {
+    match source_mode {
+        DesktopControlTassadarSourceMode::Replay => TassadarLabSourceMode::Replay,
+        DesktopControlTassadarSourceMode::ArticleSession => {
+            TassadarLabSourceMode::LiveArticleSession
+        }
+        DesktopControlTassadarSourceMode::HybridWorkflow => {
+            TassadarLabSourceMode::LiveArticleHybridWorkflow
+        }
+    }
+}
+
+fn desktop_control_tassadar_summary(state: &RenderState) -> DesktopControlTassadarSummary {
+    let open_instances = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == crate::app_state::PaneKind::TassadarLab)
+        .collect::<Vec<_>>();
+    let top = open_instances.iter().max_by_key(|pane| pane.z_index);
+    let active_pane_id = PaneController::active(state);
+    let pane_state = &state.tassadar_lab;
+    DesktopControlTassadarSummary {
+        available: true,
+        open_instances: open_instances.len(),
+        top_pane_id: top.map(|pane| pane.id),
+        active: state
+            .panes
+            .iter()
+            .find(|pane| Some(pane.id) == active_pane_id)
+            .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::TassadarLab),
+        playback_state: pane_state.playback_status_label().to_string(),
+        running: pane_state.playback_running,
+        selected_source_mode: pane_state.selected_source_mode.label().to_string(),
+        selected_source_label: pane_state.current_source_label().to_string(),
+        selected_view: pane_state.selected_view.label().to_string(),
+        selected_update: pane_state.selected_update,
+        selected_readable_log_line: pane_state.selected_readable_log_line,
+        selected_token_chunk: pane_state.selected_token_chunk,
+        selected_fact_line: pane_state.selected_fact_line,
+        speed_multiplier: pane_state.speed_multiplier,
+        trace_chunk_size: pane_state.trace_chunk_size,
+        last_action: pane_state.last_action.clone(),
+        last_error: pane_state.last_error.clone(),
+    }
+}
+
+fn desktop_control_tassadar_status(state: &RenderState) -> DesktopControlTassadarStatus {
+    let pane_state = &state.tassadar_lab;
+    let snapshot = pane_state.snapshot();
+    DesktopControlTassadarStatus {
+        summary: desktop_control_tassadar_summary(state),
+        show_help: pane_state.show_help,
+        source_badge: snapshot.source_badge.clone(),
+        source_kind: format!("{:?}", snapshot.source_kind),
+        family_label: snapshot.family_label.clone(),
+        subject_label: snapshot.subject_label.clone(),
+        status_label: snapshot.status_label.clone(),
+        detail_label: snapshot.detail_label.clone(),
+        program_id: snapshot.program_id.clone(),
+        wasm_profile_id: snapshot.wasm_profile_id.clone(),
+        requested_decode_mode: snapshot
+            .requested_decode_mode
+            .map(|mode| format!("{mode:?}").to_ascii_lowercase()),
+        effective_decode_mode: snapshot
+            .effective_decode_mode
+            .map(|mode| format!("{mode:?}").to_ascii_lowercase()),
+        artifact_ref: snapshot.artifact_ref.clone(),
+        route_state_label: snapshot.route_state_label.clone(),
+        route_detail: snapshot.route_detail.clone(),
+        final_outputs: snapshot.final_outputs.clone(),
+        metric_chips: snapshot
+            .metric_chips
+            .iter()
+            .map(|chip| DesktopControlTassadarMetricChipStatus {
+                label: chip.label.clone(),
+                value: chip.value.clone(),
+                tone: chip.tone.clone(),
+            })
+            .collect(),
+        fact_lines: snapshot
+            .fact_lines
+            .iter()
+            .map(|fact| DesktopControlTassadarFactLineStatus {
+                label: fact.label.clone(),
+                value: fact.value.clone(),
+            })
+            .collect(),
+        recent_events: snapshot.events.clone(),
+        local_events: pane_state.local_events.clone(),
+    }
+}
+
+fn tassadar_status_response(
+    state: &RenderState,
+    message: impl Into<String>,
+) -> DesktopControlActionResponse {
+    let payload = serde_json::to_value(desktop_control_tassadar_status(state))
+        .unwrap_or_else(|_| Value::Null);
+    DesktopControlActionResponse::ok_with_payload(message, payload)
+}
+
+fn tassadar_last_error(state: &RenderState) -> Option<String> {
+    state.tassadar_lab.last_error.clone()
+}
+
+fn tassadar_status_payload_response(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    match tassadar_last_error(state) {
+        Some(error) => DesktopControlActionResponse::error(error).into(),
+        None => tassadar_status_response(state, "Captured Tassadar lab state").into(),
+    }
+}
+
+fn tassadar_action_outcome(
+    state: &RenderState,
+    fallback_message: impl Into<String>,
+) -> DesktopControlActionOutcome {
+    match tassadar_last_error(state) {
+        Some(error) => DesktopControlActionResponse::error(error).into(),
+        None => tassadar_status_response(
+            state,
+            state
+                .tassadar_lab
+                .last_action
+                .clone()
+                .unwrap_or_else(|| fallback_message.into()),
+        )
+        .into(),
+    }
+}
+
+fn toggle_tassadar_playback_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::toggle_playback(&mut state.tassadar_lab);
+    tassadar_action_outcome(state, "Toggled Tassadar playback")
+}
+
+fn pause_tassadar_playback_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::pause_playback(&mut state.tassadar_lab);
+    tassadar_action_outcome(state, "Paused Tassadar playback")
+}
+
+fn reset_tassadar_playback_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::reset_playback(&mut state.tassadar_lab);
+    tassadar_action_outcome(state, "Reset Tassadar playback")
+}
+
+fn refresh_tassadar_action(state: &mut RenderState) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::refresh_current_source(&mut state.tassadar_lab);
+    tassadar_action_outcome(state, "Refreshed Tassadar source")
+}
+
+fn set_tassadar_view_action(
+    state: &mut RenderState,
+    view: DesktopControlTassadarView,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::select_view(&mut state.tassadar_lab, tassadar_view_mode(view));
+    tassadar_action_outcome(state, "Selected Tassadar view")
+}
+
+fn set_tassadar_source_mode_action(
+    state: &mut RenderState,
+    source_mode: DesktopControlTassadarSourceMode,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::select_source_mode(
+        &mut state.tassadar_lab,
+        tassadar_source_mode(source_mode),
+    );
+    tassadar_action_outcome(state, "Selected Tassadar source mode")
+}
+
+fn move_tassadar_case_action(state: &mut RenderState, delta: isize) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::move_selected_replay(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Moved Tassadar case selection")
+}
+
+fn move_tassadar_update_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::move_selected_update(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Moved Tassadar update focus")
+}
+
+fn move_tassadar_readable_log_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::move_selected_readable_log_line(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Moved Tassadar readable-log focus")
+}
+
+fn move_tassadar_token_chunk_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::move_selected_token_chunk(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Moved Tassadar token-trace focus")
+}
+
+fn move_tassadar_fact_line_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::move_selected_fact_line(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Moved Tassadar fact focus")
+}
+
+fn set_tassadar_speed_action(
+    state: &mut RenderState,
+    speed_multiplier: usize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::set_speed_multiplier(&mut state.tassadar_lab, speed_multiplier);
+    tassadar_action_outcome(state, format!("Set Tassadar speed to {}", speed_multiplier))
+}
+
+fn adjust_tassadar_speed_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::adjust_speed(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Adjusted Tassadar speed")
+}
+
+fn adjust_tassadar_trace_window_action(
+    state: &mut RenderState,
+    delta: isize,
+) -> DesktopControlActionOutcome {
+    crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
+    crate::tassadar_lab_control::adjust_trace_chunk_size(&mut state.tassadar_lab, delta);
+    tassadar_action_outcome(state, "Adjusted Tassadar token window")
 }
 
 fn start_buy_mode_action(state: &mut RenderState) -> DesktopControlActionResponse {

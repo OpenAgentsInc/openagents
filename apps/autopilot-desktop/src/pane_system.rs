@@ -484,6 +484,12 @@ pub enum TassadarLabPaneAction {
     SetView(crate::app_state::TassadarLabViewMode),
     SetSourceMode(crate::app_state::TassadarLabSourceMode),
     CycleView,
+    TogglePlayback,
+    ResetPlayback,
+    DecreaseSpeed,
+    IncreaseSpeed,
+    DecreaseTraceWindow,
+    IncreaseTraceWindow,
     PreviousReplay,
     NextReplay,
     RefreshSnapshot,
@@ -1263,6 +1269,8 @@ impl PaneController {
             focus_local_inference_prompt_for_pane_open(state);
         } else if kind == PaneKind::AttnResLab {
             crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
+        } else if kind == PaneKind::TassadarLab {
+            crate::tassadar_lab_control::ensure_loaded(&mut state.tassadar_lab);
         } else if kind == PaneKind::AppleFmWorkbench {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
@@ -3531,6 +3539,45 @@ pub fn tassadar_lab_help_button_bounds(content_bounds: Bounds) -> Bounds {
         refresh.origin.y,
         88.0,
         refresh.size.height,
+    )
+}
+
+pub fn tassadar_lab_play_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + JOB_INBOX_BUTTON_GAP,
+        92.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn tassadar_lab_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let play = tassadar_lab_play_button_bounds(content_bounds);
+    Bounds::new(
+        play.max_x() + JOB_INBOX_BUTTON_GAP,
+        play.origin.y,
+        88.0,
+        play.size.height,
+    )
+}
+
+pub fn tassadar_lab_slower_button_bounds(content_bounds: Bounds) -> Bounds {
+    let reset = tassadar_lab_reset_button_bounds(content_bounds);
+    Bounds::new(
+        reset.max_x() + JOB_INBOX_BUTTON_GAP,
+        reset.origin.y,
+        84.0,
+        reset.size.height,
+    )
+}
+
+pub fn tassadar_lab_faster_button_bounds(content_bounds: Bounds) -> Bounds {
+    let slower = tassadar_lab_slower_button_bounds(content_bounds);
+    Bounds::new(
+        slower.max_x() + JOB_INBOX_BUTTON_GAP,
+        slower.origin.y,
+        84.0,
+        slower.size.height,
     )
 }
 
@@ -7552,6 +7599,22 @@ fn pane_hit_action_for_pane(
             } else if tassadar_lab_refresh_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::TassadarLab(
                     TassadarLabPaneAction::RefreshSnapshot,
+                ))
+            } else if tassadar_lab_play_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::TogglePlayback,
+                ))
+            } else if tassadar_lab_reset_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::ResetPlayback,
+                ))
+            } else if tassadar_lab_slower_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::DecreaseSpeed,
+                ))
+            } else if tassadar_lab_faster_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::IncreaseSpeed,
                 ))
             } else if tassadar_lab_help_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::TassadarLab(

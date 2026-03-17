@@ -1970,7 +1970,8 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                 map.insert(
                     "tassadar_lab".to_string(),
                     json!({
-                        "playback_state": state.tassadar_lab.playback_state.status_label(),
+                        "playback_state": state.tassadar_lab.playback_status_label(),
+                        "playback_running": state.tassadar_lab.playback_running,
                         "selected_source_mode": state.tassadar_lab.selected_source_mode.label(),
                         "selected_source_label": state.tassadar_lab.current_source_label(),
                         "selected_view": state.tassadar_lab.selected_view.label(),
@@ -1980,6 +1981,8 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "selected_token_chunk": state.tassadar_lab.selected_token_chunk,
                         "selected_fact_line": state.tassadar_lab.selected_fact_line,
                         "show_help": state.tassadar_lab.show_help,
+                        "speed_multiplier": state.tassadar_lab.speed_multiplier,
+                        "trace_chunk_size": state.tassadar_lab.trace_chunk_size,
                         "source_badge": state.tassadar_lab.snapshot().source_badge,
                         "source_kind": format!("{:?}", state.tassadar_lab.snapshot().source_kind),
                         "subject_label": state.tassadar_lab.snapshot().subject_label,
