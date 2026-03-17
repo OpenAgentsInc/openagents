@@ -305,16 +305,18 @@ Current posture:
   `psionic-ir`, including context-owned graph construction, public device and
   stream handles with honest unified-memory flags and dependency-policy truth,
   graph-backed arithmetic, scalar and filled-array creation helpers,
-  reshape/permute/transpose/slice/select/concat/broadcast view families,
-  seeded or best-effort random uniform/normal creation, dtype casts,
-  `arange`/`linspace`/`eye` helpers, explicit `eval` / `async_eval`
-  boundaries, explicit host-owned typed buffer export, singleton `item()`
-  extraction, deterministic tree flatten/map/unflatten utilities, bounded
-  runtime resource reporting with active/peak/cache counters plus cache-limit
-  and reset controls, bounded backend debug snapshots/captures above
-  `psionic-compiler` and `psionic-runtime`, bounded extension authoring and
-  dispatch-resolution above `psionic-ir`'s extensible operator registry, and
-  snapshot graph export for the current output set.
+  reshape/permute/transpose/flatten/expand_dims/squeeze/slice/select/concat/
+  broadcast view families, seeded or best-effort random uniform/normal
+  creation, dtype casts, `arange`/`linspace`/`eye` helpers, axis-aware sum
+  reduction, explicit `eval` / `async_eval` boundaries, explicit host-owned
+  typed buffer export, singleton `item()` extraction, deterministic tree
+  flatten/map/unflatten utilities, bounded runtime resource reporting with
+  active/peak/cache counters plus cache-limit and reset controls, bounded
+  backend debug snapshots/captures above `psionic-compiler` and
+  `psionic-runtime`, a machine-readable MLX CPU-reference coverage report over
+  imported `array_core`/`ops_numeric`/`device_eval_memory` families, bounded
+  extension authoring and dispatch-resolution above `psionic-ir`'s extensible
+  operator registry, and snapshot graph export for the current output set.
 - `psionic-array-io`: public array artifact import/export companion above
   `psionic-array`, with stable receipts, explicit dtype and quantization truth,
   single-array `npy`, multi-array `npz`, multi-array `safetensors`, and a
@@ -784,6 +786,9 @@ For canonical current-state detail, use `docs/ARCHITECTURE.md` and
 - **[docs/MLX_COMPATIBILITY_SCOPE.md](docs/MLX_COMPATIBILITY_SCOPE.md)** —
   canonical bounded upstream MLX version window and claim-language contract
   for the Psionic MLX roadmap.
+- **[docs/MLX_CPU_REFERENCE_COVERAGE.md](docs/MLX_CPU_REFERENCE_COVERAGE.md)** —
+  canonical bounded CPU-reference oracle for imported MLX `array_core`,
+  `ops_numeric`, and `device_eval_memory` families.
 - **[docs/MLX_ACCEPTANCE_MATRIX.md](docs/MLX_ACCEPTANCE_MATRIX.md)** —
   canonical MLX-lane acceptance categories and machine-readable report
   contract.

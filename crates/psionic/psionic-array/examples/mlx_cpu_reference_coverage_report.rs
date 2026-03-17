@@ -4,7 +4,7 @@ use std::{
     process,
 };
 
-use psionic_compat::builtin_mlx_compatibility_matrix_report;
+use psionic_array::builtin_mlx_cpu_reference_coverage_report;
 
 fn write_stderr_line(message: &str) {
     let _ = writeln!(io::stderr(), "{message}");
@@ -12,24 +12,24 @@ fn write_stderr_line(message: &str) {
 
 fn usage() {
     write_stderr_line(
-        "Usage: cargo run -p psionic-compat --example mlx_compatibility_matrix_report -- [--only <surface>] [--report <path>]",
+        "Usage: cargo run -p psionic-array --example mlx_cpu_reference_coverage_report -- [--only <family>] [--report <path>]",
     );
 }
 
 fn main() {
-    let mut selected_surfaces = Vec::new();
+    let mut selected_families = Vec::new();
     let mut report_path = None;
     let mut args = env::args().skip(1);
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--only" => {
-                let Some(surface_id) = args.next() else {
-                    write_stderr_line("missing surface id after --only");
+                let Some(family_id) = args.next() else {
+                    write_stderr_line("missing family id after --only");
                     usage();
                     process::exit(1);
                 };
-                selected_surfaces.push(surface_id);
+                selected_families.push(family_id);
             }
             "--report" => {
                 let Some(path) = args.next() else {
@@ -51,8 +51,16 @@ fn main() {
         }
     }
 
-    let report = builtin_mlx_compatibility_matrix_report();
-    let report = match report.filter_to_surfaces(&selected_surfaces) {
+    let report = match builtin_mlx_cpu_reference_coverage_report() {
+        Ok(report) => report,
+        Err(error) => {
+            write_stderr_line(&format!(
+                "failed to build MLX CPU reference coverage report: {error}"
+            ));
+            process::exit(1);
+        }
+    };
+    let report = match report.filter_to_families(&selected_families) {
         Ok(report) => report,
         Err(error) => {
             write_stderr_line(&error.to_string());
@@ -64,7 +72,7 @@ fn main() {
         Ok(json) => format!("{json}\n"),
         Err(error) => {
             write_stderr_line(&format!(
-                "failed to serialize MLX compatibility matrix report: {error}"
+                "failed to serialize MLX CPU reference coverage report: {error}"
             ));
             process::exit(1);
         }
