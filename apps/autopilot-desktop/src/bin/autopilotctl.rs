@@ -1848,9 +1848,16 @@ impl WaitCondition {
             Self::BuyModeFailed => buy_mode_has_failed_request(&snapshot.buy_mode),
             Self::AttnResRunning => snapshot.attnres_lab.running,
             Self::AttnResPaused => {
-                !snapshot.attnres_lab.running && snapshot.attnres_lab.playback_state == "paused"
+                !snapshot.attnres_lab.running
+                    && matches!(
+                        snapshot.attnres_lab.playback_state.as_str(),
+                        "paused" | "training paused"
+                    )
             }
-            Self::AttnResCompleted => snapshot.attnres_lab.playback_state == "completed",
+            Self::AttnResCompleted => matches!(
+                snapshot.attnres_lab.playback_state.as_str(),
+                "completed" | "run complete"
+            ),
             Self::ActiveJobPresent => snapshot.active_job.is_some(),
             Self::ActiveJobRunning => snapshot
                 .active_job
@@ -6502,7 +6509,13 @@ mod tests {
         assert!(WaitCondition::AttnResPaused.matches(&snapshot));
         assert!(!WaitCondition::AttnResCompleted.matches(&snapshot));
 
+        snapshot.attnres_lab.playback_state = "training paused".to_string();
+        assert!(WaitCondition::AttnResPaused.matches(&snapshot));
+
         snapshot.attnres_lab.playback_state = "completed".to_string();
+        assert!(WaitCondition::AttnResCompleted.matches(&snapshot));
+
+        snapshot.attnres_lab.playback_state = "run complete".to_string();
         assert!(WaitCondition::AttnResCompleted.matches(&snapshot));
 
         snapshot.gpt_oss.ready = false;
