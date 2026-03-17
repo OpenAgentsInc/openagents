@@ -1,8 +1,10 @@
 # Distributed Optimizer Reference
 
-> Status: canonical `PSI-281` / `#3586` reference record, updated 2026-03-14
+> Status: canonical `PSI-281` / `#3586` reference record, updated 2026-03-16
 > after landing the typed distributed-optimizer layer in
-> `crates/psionic/psionic-train/src/distributed_optimizer.rs`.
+> `crates/psionic/psionic-train/src/distributed_optimizer.rs` and the bounded
+> public `fsdp_apply_gradients` helper in
+> `crates/psionic/psionic-distributed/src/lib.rs`.
 
 This document records the first explicit distributed-optimizer contract for the
 Psionic train stack.
@@ -31,6 +33,19 @@ The new typed surfaces include:
 - `DistributedMicrobatchReceipt`
 - `DistributedOptimizerStepReceipt`
 - `DistributedOptimizerRun`
+
+`psionic-distributed` now also reuses that contract through a bounded public
+`fsdp_apply_gradients(...)` helper above the framework-distributed layer. That
+helper stays explicit about what is and is not real today:
+
+- it only admits `zero_stage3`
+- it only truthfully supports replicated groups plus fully sharded groups with
+  equal contiguous shard ranges
+- multi-rank execution still depends on explicit remote-rank group-state and
+  gradient-batch maps on the current reference path
+- it does expose real typed global-norm clipping, shard-local optimizer
+  updates, residency transitions, gathered full-parameter reconstruction, and
+  stable apply receipts above the train contract
 
 ## Contract Scope
 

@@ -1225,6 +1225,11 @@ Today Psionic can honestly claim all of the following:
   `psionic-ir` rather than trainer-private code
 - reusable SGD, Adam, AdamW, LARS, and LAMB primitives plus distributed-
   optimizer contracts now live in `psionic-train`
+- `psionic-distributed` now exposes a bounded public `fsdp_apply_gradients`
+  helper above those distributed-optimizer contracts, with typed `zero_stage3`
+  admission, mixed replicated/full-shard group handling, optional global-norm
+  clipping, reference-emulated reduce-scatter/all-gather, and stable apply
+  receipts
 - rollout artifacts, trainer-batch assembly, policy revisions, and
   validator-aware verification are first-class typed contracts
 - environment ABI and held-out eval runtime now exist in reusable Psionic
