@@ -29,6 +29,13 @@
 ## Psionic Specs
 
 - Psionic now lives in the standalone `OpenAgentsInc/psionic` repo.
+- Normal `openagents` Cargo builds fetch Psionic from pinned git dependencies,
+  so a separate local Psionic clone is not required just to run
+  `cargo autopilot`, `cargo check`, or `cargo test` here.
+- If you need cross-repo dev or retained validation scripts, clone Psionic as a
+  sibling checkout:
+  `git clone https://github.com/OpenAgentsInc/openagents.git && git clone https://github.com/OpenAgentsInc/psionic.git`
+  so `openagents` sees `../psionic` by default.
 - When working on Psionic from this repo, use that repo’s `docs/ARCHITECTURE.md`
   as the canonical Psionic-wide system spec for runtime, cluster, datastream,
   sandbox, serving, artifact, receipt, failure, and security boundaries.
@@ -38,6 +45,9 @@
   surfaces, failure semantics, and issue-program direction.
 - Cross-repo validation scripts in `openagents` assume a local Psionic checkout
   at `../psionic` unless `OPENAGENTS_PSIONIC_REPO` is set.
+- Repo-local Cargo builds use the vendored `PROTOC` wrapper in
+  `.cargo/config.toml`, so transitive protobuf builds should not require a
+  machine-local `protoc` install.
 
 ## Programmatic Control And Test Docs
 
