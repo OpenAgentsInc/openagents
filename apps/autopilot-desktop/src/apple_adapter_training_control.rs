@@ -3648,7 +3648,11 @@ fn build_environment_tools(
     train_dataset: &AppleAdapterDatasetContract,
 ) -> Result<Vec<EnvironmentToolContract>> {
     let mut tools = BTreeMap::<String, EnvironmentToolContract>::new();
-    for tool in train_dataset.samples.iter().flat_map(|sample| sample.tools.iter()) {
+    for tool in train_dataset
+        .samples
+        .iter()
+        .flat_map(|sample| sample.tools.iter())
+    {
         let contract = EnvironmentToolContract {
             tool_name: tool.function.name.clone(),
             interface: EnvironmentToolInterface::NativeFunction,
@@ -5038,11 +5042,9 @@ mod tests {
         AppleAdapterOperatorPolicyValueSource, AppleAdapterOperatorProgressEvent,
         AppleAdapterOperatorProgressEventKind, AppleAdapterOperatorProgressPhase,
         AppleAdapterOperatorProgressUpdate, AppleAdapterPrecisionPolicy,
-        AppleAdapterTrainingController, build_environment_bundle,
-        build_psionic_execution_config, current_epoch_ms,
-        output_projection_trainable_targets, q_projection_trainable_targets,
-        resolve_apple_training_policy,
-        symbolic_target_families_for_execution_config,
+        AppleAdapterTrainingController, build_environment_bundle, build_psionic_execution_config,
+        current_epoch_ms, output_projection_trainable_targets, q_projection_trainable_targets,
+        resolve_apple_training_policy, symbolic_target_families_for_execution_config,
         validate_manifest_against_live_exportable_lane,
     };
     use psionic_data::{
@@ -5050,8 +5052,8 @@ mod tests {
         DatasetPackingMode, DatasetPackingPolicy,
     };
     use psionic_train::{
-        APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_FEATURE_WIDTH,
-        APPLE_LIVE_REFERENCE_LORA_RANK, APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE,
+        APPLE_ADAPTER_EXPERIMENT_MANIFEST_ABI_VERSION, APPLE_LIVE_REFERENCE_BASE_MODEL_SIGNATURE,
+        APPLE_LIVE_REFERENCE_FEATURE_WIDTH, APPLE_LIVE_REFERENCE_LORA_RANK,
         AppleAdapterExecutionConfig, AppleAdapterExperimentManifest,
         AppleAdapterExperimentTrainingPolicy, AppleAdapterOptimizerOverrides,
         AppleAdapterPackingPolicyOverrides, AppleAdapterReferenceModel,
@@ -5178,9 +5180,8 @@ mod tests {
             runtime_profile.dataset_metadata(),
         )
         .expect("held out dataset");
-        let bundle =
-            build_environment_bundle("duplicate-tools", &train_dataset, &held_out_dataset)
-                .expect("bundle should build");
+        let bundle = build_environment_bundle("duplicate-tools", &train_dataset, &held_out_dataset)
+            .expect("bundle should build");
         assert_eq!(bundle.core_package.tools.len(), 1);
         assert_eq!(bundle.core_package.tools[0].tool_name, "lookup_doc");
     }

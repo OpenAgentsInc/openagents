@@ -9,11 +9,11 @@ use arc_client::{
 };
 use arc_core::{ArcAction, ArcScorePolicyId, ArcTaskId};
 use arc_solvers::{
-    compare_interactive_run_artifacts, ArcInteractiveAgent, ArcInteractiveAgentError,
-    ArcInteractiveGameStep, ArcInteractiveRunArtifacts, ArcInteractiveRunner,
-    ArcInteractiveRunnerConfig, ArcInteractiveRunnerExpectedDifference,
-    ArcInteractiveRunnerExpectedDifferenceField, ArcInteractiveRunnerParityOutcome,
-    ArcInteractiveSessionContext,
+    ArcInteractiveAgent, ArcInteractiveAgentError, ArcInteractiveGameStep,
+    ArcInteractiveRunArtifacts, ArcInteractiveRunner, ArcInteractiveRunnerConfig,
+    ArcInteractiveRunnerExpectedDifference, ArcInteractiveRunnerExpectedDifferenceField,
+    ArcInteractiveRunnerParityOutcome, ArcInteractiveSessionContext,
+    compare_interactive_run_artifacts,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -191,18 +191,24 @@ fn interactive_runner_parity_manifest_covers_one_shot_and_resume_flows() {
 
     assert_eq!(manifest.schema_version, 1);
     assert!(manifest.bounded_scope.contains("checkpoint resume"));
-    assert!(!manifest
-        .documented_expected_differences
-        .iter()
-        .any(|difference| {
-            difference.field == ArcInteractiveRunnerExpectedDifferenceField::CompetitionModeCoverage
-        }));
-    assert!(manifest
-        .extra_expected_differences
-        .iter()
-        .any(|difference| {
-            difference.field == ArcInteractiveRunnerExpectedDifferenceField::CompetitionModeCoverage
-        }));
+    assert!(
+        !manifest
+            .documented_expected_differences
+            .iter()
+            .any(|difference| {
+                difference.field
+                    == ArcInteractiveRunnerExpectedDifferenceField::CompetitionModeCoverage
+            })
+    );
+    assert!(
+        manifest
+            .extra_expected_differences
+            .iter()
+            .any(|difference| {
+                difference.field
+                    == ArcInteractiveRunnerExpectedDifferenceField::CompetitionModeCoverage
+            })
+    );
 
     let documented_reasons = manifest
         .documented_expected_differences

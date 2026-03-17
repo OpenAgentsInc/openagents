@@ -7,15 +7,14 @@ use thiserror::Error;
 
 use crate::{
     ArcDigest, ArcDigestError, BudgetCounterDelta, BudgetLedger, BudgetLedgerError,
-    CandidateDeduplicationStatus, CandidateDeduplicator, CandidateIdentity,
-    CandidateIdentityError, Hypothesis, HypothesisError, HypothesisId, HypothesisKind,
-    LaneBatchStatus, LaneProposalBatch, ProposalPhase, RefusalEnvelope, SolverLaneId, SolverPhase,
-    SolverRefusalCode, TaskBudget, TracedLaneProposal,
+    CandidateDeduplicationStatus, CandidateDeduplicator, CandidateIdentity, CandidateIdentityError,
+    Hypothesis, HypothesisError, HypothesisId, HypothesisKind, LaneBatchStatus, LaneProposalBatch,
+    ProposalPhase, RefusalEnvelope, SolverLaneId, SolverPhase, SolverRefusalCode, TaskBudget,
+    TracedLaneProposal,
 };
 
 /// Ownership summary for the MDL/compression lane.
-pub const MDL_LANE_BOUNDARY_SUMMARY: &str =
-    "arc-solvers owns the task-local MDL/compression lane, representation scoring, and simplicity-aware ranking signal";
+pub const MDL_LANE_BOUNDARY_SUMMARY: &str = "arc-solvers owns the task-local MDL/compression lane, representation scoring, and simplicity-aware ranking signal";
 
 pub const MDL_LANE_ID: &str = "mdl_compression";
 
@@ -183,7 +182,10 @@ impl ArcMdlLane {
         let mut proposals = Vec::new();
         let mut reports = Vec::new();
         let mut budget_exhausted = false;
-        let max_candidates = self.config.max_candidates.min(budget.max_candidates as usize);
+        let max_candidates = self
+            .config
+            .max_candidates
+            .min(budget.max_candidates as usize);
         let representations = generate_representations(task);
 
         for (index, representation) in representations.into_iter().enumerate() {
@@ -200,11 +202,8 @@ impl ArcMdlLane {
                 break;
             }
 
-            let candidate = evaluate_representation(
-                task,
-                self.config.initialization_mode,
-                &representation,
-            )?;
+            let candidate =
+                evaluate_representation(task, self.config.initialization_mode, &representation)?;
             let local_score =
                 0.6 * candidate.scoring.simplicity_score + 0.4 * candidate.scoring.train_fit_ratio;
             let hypothesis = Hypothesis::new(
@@ -385,11 +384,8 @@ fn evaluate_representation(
         exact_train_fit &= comparison.exact_match;
     }
 
-    let predicted_test_output = render_representation(
-        task,
-        representation,
-        &task.normalized_test_inputs[0].grid,
-    )?;
+    let predicted_test_output =
+        render_representation(task, representation, &task.normalized_test_inputs[0].grid)?;
     let model_bits = model_bits(initialization_mode, representation, task);
     let solution_bits = predicted_test_output.cells().len() as u32 * 2;
     let total_description_length_bits = model_bits
@@ -459,10 +455,14 @@ fn model_bits(
     };
 
     match (initialization_mode, representation) {
-        (ArcMdlInitializationMode::WarmStartedPriors, ArcMdlRepresentation::FillFromInputShape { .. })
-        | (ArcMdlInitializationMode::WarmStartedPriors, ArcMdlRepresentation::FillFixedShape { .. }) => {
-            base_bits.saturating_sub(2)
-        }
+        (
+            ArcMdlInitializationMode::WarmStartedPriors,
+            ArcMdlRepresentation::FillFromInputShape { .. },
+        )
+        | (
+            ArcMdlInitializationMode::WarmStartedPriors,
+            ArcMdlRepresentation::FillFixedShape { .. },
+        ) => base_bits.saturating_sub(2),
         _ => base_bits,
     }
 }
@@ -477,8 +477,7 @@ struct GridComparison {
 fn compare_grids(predicted: &ArcGrid, expected: &ArcGrid) -> GridComparison {
     let total_cells = expected.cells().len() as u32;
     if predicted.width() != expected.width() || predicted.height() != expected.height() {
-        let area_difference =
-            predicted.cells().len().abs_diff(expected.cells().len()) as u32;
+        let area_difference = predicted.cells().len().abs_diff(expected.cells().len()) as u32;
         return GridComparison {
             residual_bits: 32 + area_difference * 4,
             matched_cells: 0,
@@ -513,24 +512,26 @@ fn sort_candidates(
         .drain(..)
         .zip(reports.drain(..))
         .collect::<Vec<_>>();
-    combined.sort_by(|(left_proposal, left_report), (right_proposal, right_report)| {
-        left_report
-            .total_description_length_bits
-            .cmp(&right_report.total_description_length_bits)
-            .then_with(|| {
-                right_report
-                    .train_fit_ratio
-                    .partial_cmp(&left_report.train_fit_ratio)
-                    .unwrap_or(Ordering::Equal)
-            })
-            .then_with(|| {
-                right_proposal
-                    .hypothesis
-                    .local_score
-                    .partial_cmp(&left_proposal.hypothesis.local_score)
-                    .unwrap_or(Ordering::Equal)
-            })
-    });
+    combined.sort_by(
+        |(left_proposal, left_report), (right_proposal, right_report)| {
+            left_report
+                .total_description_length_bits
+                .cmp(&right_report.total_description_length_bits)
+                .then_with(|| {
+                    right_report
+                        .train_fit_ratio
+                        .partial_cmp(&left_report.train_fit_ratio)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    right_proposal
+                        .hypothesis
+                        .local_score
+                        .partial_cmp(&left_proposal.hypothesis.local_score)
+                        .unwrap_or(Ordering::Equal)
+                })
+        },
+    );
 
     for (proposal, report) in combined {
         proposals.push(proposal);

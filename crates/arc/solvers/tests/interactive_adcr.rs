@@ -8,9 +8,10 @@ use arc_client::{
 };
 use arc_core::{ArcAction, ArcGameState, ArcScorePolicyId, ArcTaskId};
 use arc_solvers::{
-    compare_interactive_run_artifacts, ArcAdcrBaselineAgent, ArcAdcrConfig, ArcAdcrHumanAction,
-    ArcAdcrReplayProgram, ArcInteractivePromptPolicy, ArcInteractivePromptSection,
-    ArcInteractiveRunner, ArcInteractiveRunnerConfig, ArcInteractiveRunnerParityOutcome,
+    ArcAdcrBaselineAgent, ArcAdcrConfig, ArcAdcrHumanAction, ArcAdcrReplayProgram,
+    ArcInteractivePromptPolicy, ArcInteractivePromptSection, ArcInteractiveRunner,
+    ArcInteractiveRunnerConfig, ArcInteractiveRunnerParityOutcome,
+    compare_interactive_run_artifacts,
 };
 use serde_json::json;
 use tokio::sync::oneshot;
@@ -218,10 +219,12 @@ fn adcr_baseline_replay_program_wins_locally_and_remotely() {
         &[],
     );
     assert_eq!(parity.outcome, ArcInteractiveRunnerParityOutcome::Match);
-    assert!(remote_artifacts
-        .scorecard_summary
-        .as_ref()
-        .is_some_and(|summary| summary.published_at.is_some()));
+    assert!(
+        remote_artifacts
+            .scorecard_summary
+            .as_ref()
+            .is_some_and(|summary| summary.published_at.is_some())
+    );
 }
 
 #[test]

@@ -9,9 +9,9 @@ use arc_client::{
 };
 use arc_core::{ArcAction, ArcScorePolicyId, ArcTaskId};
 use arc_solvers::{
-    compare_interactive_run_artifacts, ArcInteractiveRunner, ArcInteractiveRunnerConfig,
-    ArcRandomBaselineAgent, ArcRandomBaselineConfig, ArcScriptedBaselineAgent,
-    ArcScriptedBaselineProgram,
+    ArcInteractiveRunner, ArcInteractiveRunnerConfig, ArcRandomBaselineAgent,
+    ArcRandomBaselineConfig, ArcScriptedBaselineAgent, ArcScriptedBaselineProgram,
+    compare_interactive_run_artifacts,
 };
 use serde_json::json;
 use tokio::sync::oneshot;

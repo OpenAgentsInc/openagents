@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arc_benchmark::{
-    score_interactive_recording, ArcBenchmarkError, ArcBenchmarkUsageTotals,
-    ArcInteractiveCheckpointBundle, ArcInteractiveRunReport,
+    ArcBenchmarkError, ArcBenchmarkUsageTotals, ArcInteractiveCheckpointBundle,
+    ArcInteractiveRunReport, score_interactive_recording,
 };
 use arc_client::{
     ArcClientError, ArcEnvironmentInfo, ArcScorecardSummary, ArcSessionFrame, LocalArcEnvironment,
@@ -22,11 +22,11 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::interactive_context::{
-    append_history_frame, append_memory_entry, build_progress_state, build_prompt_plan,
     ArcInteractiveContextCheckpointState, ArcInteractiveContextFrame,
     ArcInteractiveContextRetentionPolicy, ArcInteractiveMemoryEntry, ArcInteractiveProgressState,
     ArcInteractivePromptPlan, ArcInteractivePromptPolicy, ArcInteractivePromptResumeSummary,
-    ArcInteractiveSessionMemory,
+    ArcInteractiveSessionMemory, append_history_frame, append_memory_entry, build_progress_state,
+    build_prompt_plan,
 };
 
 /// Shared role summary for the interactive ARC-AGI-3 agent runtime.

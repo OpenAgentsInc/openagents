@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use arc_core::{ArcAction, ArcScorecardMetadata, ArcTaskId};
-use arc_engine::{load_game_package, ArcEngine};
+use arc_engine::{ArcEngine, load_game_package};
 use arc_ml::{
-    estimate_pass_at_k, evaluate_interactive_practice_suite, ArcInteractivePracticeAttempt,
-    ArcInteractivePracticeCase, ArcInteractivePracticeSuite, ArcMlDataProvenance, ArcMlEvalError,
+    ArcInteractivePracticeAttempt, ArcInteractivePracticeCase, ArcInteractivePracticeSuite,
+    ArcMlDataProvenance, ArcMlEvalError, estimate_pass_at_k, evaluate_interactive_practice_suite,
 };
 use psionic_eval::BenchmarkPackageKey;
 use serde::Deserialize;
@@ -67,9 +67,11 @@ fn interactive_practice_suite_scores_synthetic_attempts_and_aggregates_pass_at_k
     .expect("practice manifest should deserialize");
 
     assert_eq!(manifest.schema_version, 1);
-    assert!(manifest
-        .bounded_scope
-        .contains("synthetic ARC-AGI-3-style attempts"));
+    assert!(
+        manifest
+            .bounded_scope
+            .contains("synthetic ARC-AGI-3-style attempts")
+    );
 
     let suite = build_suite(&manifest);
     let report = evaluate_interactive_practice_suite(&suite).expect("practice suite should score");

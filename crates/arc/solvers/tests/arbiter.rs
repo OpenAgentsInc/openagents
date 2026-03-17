@@ -1,8 +1,8 @@
 use arc_core::{ArcGrid, ArcTaskId, TraceLocator};
 use arc_solvers::{
-    ArcDigest, BudgetCounterDelta, CandidateIdentity, Hypothesis, HypothesisKind,
-    LaneBatchStatus, LaneProposalBatch, PortfolioArbiter, PortfolioArbiterConfig,
-    ProposalPhase, SolverLaneId, TracedLaneProposal, VerificationReport,
+    ArcDigest, BudgetCounterDelta, CandidateIdentity, Hypothesis, HypothesisKind, LaneBatchStatus,
+    LaneProposalBatch, PortfolioArbiter, PortfolioArbiterConfig, ProposalPhase, SolverLaneId,
+    TracedLaneProposal, VerificationReport,
 };
 
 fn grid(width: u8, height: u8, rows: &[&[u8]]) -> ArcGrid {
@@ -19,8 +19,14 @@ fn hypothesis(lane: &str, label: &str, answer: ArcGrid, local_score: f32) -> Hyp
         HypothesisKind::StaticAnswer,
         lane_id,
         0,
-        CandidateIdentity::new(HypothesisKind::StaticAnswer, None, Some(&answer), None, None)
-            .expect("candidate identity"),
+        CandidateIdentity::new(
+            HypothesisKind::StaticAnswer,
+            None,
+            Some(&answer),
+            None,
+            None,
+        )
+        .expect("candidate identity"),
         None,
         Some(answer),
         None,
@@ -146,7 +152,12 @@ fn portfolio_arbiter_allows_second_attempt_only_for_materially_distinct_candidat
         .decide(task_id, 0, &batches, &reports)
         .expect("arbiter should run");
     assert!(run.second_attempt_policy.allowed);
-    assert_eq!(run.second_attempt_policy.materially_distinct_candidates.len(), 1);
+    assert_eq!(
+        run.second_attempt_policy
+            .materially_distinct_candidates
+            .len(),
+        1
+    );
     assert_eq!(
         run.second_attempt_policy.materially_distinct_candidates[0].hypothesis_id,
         recursive.id

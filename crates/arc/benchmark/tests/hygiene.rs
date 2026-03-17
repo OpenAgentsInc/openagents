@@ -1,7 +1,7 @@
 use arc_benchmark::{
     ArcBenchmarkHygieneError, ArcConceptSliceSummary, ArcEvaluationVisibility,
-    ArcPublicEvalArtifactManifest, ArcStaticHygieneSuite, ArcVisibilitySummary,
-    ArcStaticTaskSubmission, run_static_hygiene_suite, validate_public_eval_artifact_manifest,
+    ArcPublicEvalArtifactManifest, ArcStaticHygieneSuite, ArcStaticTaskSubmission,
+    ArcVisibilitySummary, run_static_hygiene_suite, validate_public_eval_artifact_manifest,
 };
 use arc_core::ArcTaskId;
 use serde::Deserialize;
@@ -59,7 +59,10 @@ fn static_hygiene_fixture_reports_holdout_synthetic_and_concept_slices() {
     )
     .expect("hygiene suite should run");
 
-    assert_eq!(report.overall_summary.total_tasks, manifest.expected.total_tasks);
+    assert_eq!(
+        report.overall_summary.total_tasks,
+        manifest.expected.total_tasks
+    );
     assert_eq!(
         report.overall_summary.exact_match_tasks,
         manifest.expected.exact_match_tasks
@@ -74,19 +77,26 @@ fn static_hygiene_fixture_reports_holdout_synthetic_and_concept_slices() {
     );
     assert!((report.overall_summary.mean_task_score - (2.0 / 3.0)).abs() < 1e-6);
 
-    let internal = visibility_summary(&report.visibility_summaries, ArcEvaluationVisibility::InternalHoldout);
+    let internal = visibility_summary(
+        &report.visibility_summaries,
+        ArcEvaluationVisibility::InternalHoldout,
+    );
     assert_eq!(
         internal.exact_match_tasks,
         manifest.expected.internal_holdout_exact_match_tasks
     );
-    let synthetic =
-        visibility_summary(&report.visibility_summaries, ArcEvaluationVisibility::SyntheticRegression);
+    let synthetic = visibility_summary(
+        &report.visibility_summaries,
+        ArcEvaluationVisibility::SyntheticRegression,
+    );
     assert_eq!(
         synthetic.exact_match_tasks,
         manifest.expected.synthetic_regression_exact_match_tasks
     );
-    let public_eval =
-        visibility_summary(&report.visibility_summaries, ArcEvaluationVisibility::PublicEval);
+    let public_eval = visibility_summary(
+        &report.visibility_summaries,
+        ArcEvaluationVisibility::PublicEval,
+    );
     assert_eq!(
         public_eval.exact_match_tasks,
         manifest.expected.public_eval_exact_match_tasks
@@ -104,7 +114,12 @@ fn static_hygiene_fixture_reports_holdout_synthetic_and_concept_slices() {
         concept_summary(&report.concept_slice_summaries, "template_reuse").exact_match_tasks,
         manifest.expected.template_reuse_exact_match_tasks
     );
-    assert!(report.public_eval_validations.iter().all(|validation| validation.valid));
+    assert!(
+        report
+            .public_eval_validations
+            .iter()
+            .all(|validation| validation.valid)
+    );
 }
 
 #[test]
@@ -166,7 +181,8 @@ fn hygiene_suite_refuses_public_eval_leakage_into_synthetic_regression() {
     }
 
     suite.cases[0].visibility = ArcEvaluationVisibility::InternalHoldout;
-    suite.cases[0].synthetic_derivation = arc_benchmark::ArcSyntheticDerivation::FromInternalHoldout;
+    suite.cases[0].synthetic_derivation =
+        arc_benchmark::ArcSyntheticDerivation::FromInternalHoldout;
     let error = run_static_hygiene_suite(&suite, &[], &[]).expect_err("suite should refuse");
     match error {
         ArcBenchmarkHygieneError::HiddenHoldoutMustBeRaw { .. } => {}
@@ -185,10 +201,7 @@ fn visibility_summary(
         .expect("visibility summary should exist")
 }
 
-fn concept_summary(
-    summaries: &[ArcConceptSliceSummary],
-    concept: &str,
-) -> ArcConceptSliceSummary {
+fn concept_summary(summaries: &[ArcConceptSliceSummary], concept: &str) -> ArcConceptSliceSummary {
     summaries
         .iter()
         .find(|summary| summary.concept_slice == concept)

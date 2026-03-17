@@ -12,8 +12,7 @@ use crate::{
 };
 
 /// Ownership summary for portfolio arbitration and attempt policy.
-pub const PORTFOLIO_ARBITER_BOUNDARY_SUMMARY: &str =
-    "arc-solvers owns verifier-first portfolio ranking, cross-lane agreement scoring, and second-attempt gating";
+pub const PORTFOLIO_ARBITER_BOUNDARY_SUMMARY: &str = "arc-solvers owns verifier-first portfolio ranking, cross-lane agreement scoring, and second-attempt gating";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PortfolioArbiterConfig {
@@ -125,10 +124,7 @@ impl PortfolioArbiter {
         let mut hypotheses = BTreeMap::new();
         for batch in lane_batches {
             for proposal in &batch.proposals {
-                hypotheses.insert(
-                    proposal.hypothesis.id.clone(),
-                    proposal.hypothesis.clone(),
-                );
+                hypotheses.insert(proposal.hypothesis.id.clone(), proposal.hypothesis.clone());
             }
         }
 
@@ -199,14 +195,17 @@ impl PortfolioArbiter {
             .expect("candidate score should refer to a hypothesis");
         let second_attempt_policy =
             build_second_attempt_policy(selected, &candidate_scores, &hypotheses);
-        let decision_reason = if candidate_scores[0].verifier_pass && candidate_scores[0].exact_fit {
+        let decision_reason = if candidate_scores[0].verifier_pass && candidate_scores[0].exact_fit
+        {
             String::from("selected the highest-ranked verifier-passing exact-fit hypothesis")
         } else if second_attempt_policy.allowed {
             String::from(
                 "selected the current best hypothesis while preserving materially distinct candidates for a second attempt",
             )
         } else {
-            String::from("selected the highest-ranked hypothesis after verifier-first portfolio scoring")
+            String::from(
+                "selected the highest-ranked hypothesis after verifier-first portfolio scoring",
+            )
         };
         let decision = ArbiterDecision::new(
             task_id,
@@ -348,9 +347,13 @@ fn build_second_attempt_policy(
     let detail = if allowed {
         String::from("a materially distinct verified alternative is available for a second attempt")
     } else if selected_candidate.verifier_pass && selected_candidate.exact_fit {
-        String::from("second attempt not allowed because the top-ranked hypothesis already passes verification exactly")
+        String::from(
+            "second attempt not allowed because the top-ranked hypothesis already passes verification exactly",
+        )
     } else {
-        String::from("second attempt not allowed because no materially distinct verified alternative remained")
+        String::from(
+            "second attempt not allowed because no materially distinct verified alternative remained",
+        )
     };
 
     SecondAttemptPolicyOutcome {

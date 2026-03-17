@@ -13,8 +13,7 @@ use crate::{
 };
 
 /// Ownership summary for the recursive tiny-model lane.
-pub const RECURSIVE_TINY_MODEL_BOUNDARY_SUMMARY: &str =
-    "arc-solvers owns the recursive tiny-model lane interface, bounded step tracing, and ARC-specific answer-state policy";
+pub const RECURSIVE_TINY_MODEL_BOUNDARY_SUMMARY: &str = "arc-solvers owns the recursive tiny-model lane interface, bounded step tracing, and ARC-specific answer-state policy";
 
 pub const RECURSIVE_TINY_MODEL_LANE_ID: &str = "recursive_tiny_model";
 
@@ -348,8 +347,7 @@ where
                 step_delta,
             )?);
 
-            let local_score =
-                0.65 * step.halt_score + 0.35 * shape_score(task, &state.answer_grid);
+            let local_score = 0.65 * step.halt_score + 0.35 * shape_score(task, &state.answer_grid);
             let candidate_delta = BudgetCounterDelta {
                 candidates_generated: 1,
                 ..BudgetCounterDelta::default()
@@ -371,7 +369,8 @@ where
                         budget_exhausted = true;
                         break;
                     }
-                    candidate.budget_delta = delta_between(ledger.used(), proposal_batch.budget_delta);
+                    candidate.budget_delta =
+                        delta_between(ledger.used(), proposal_batch.budget_delta);
                     refined_candidates.push(TracedLaneProposal {
                         rationale_digest: ArcDigest::from_serializable(
                             step_traces.last().expect("step trace exists"),
@@ -441,7 +440,9 @@ pub enum ArcRecursiveTinyModelLaneError {
     Trace(#[from] crate::TraceBundleError),
     #[error("recursive tiny-model runner failed: {0}")]
     Runner(String),
-    #[error("recursive tiny-model score must be finite and between 0 and 1, got {score} for {label}")]
+    #[error(
+        "recursive tiny-model score must be finite and between 0 and 1, got {score} for {label}"
+    )]
     InvalidScore { label: &'static str, score: f32 },
 }
 
@@ -558,10 +559,7 @@ fn shape_score(task: &CanonicalTask, candidate: &ArcGrid) -> f32 {
     0.2 + (matching_shapes / train_outputs.len().max(1) as f32) * 0.8
 }
 
-fn delta_between(
-    newer: BudgetCounterSummary,
-    older: BudgetCounterDelta,
-) -> BudgetCounterDelta {
+fn delta_between(newer: BudgetCounterSummary, older: BudgetCounterDelta) -> BudgetCounterDelta {
     BudgetCounterDelta {
         wall_ms: newer.wall_ms.saturating_sub(older.wall_ms),
         candidates_generated: newer
@@ -594,7 +592,13 @@ fn sort_candidates(candidates: &mut [TracedLaneProposal]) {
                     .candidate_identity
                     .canonical_signature
                     .as_str()
-                    .cmp(right.hypothesis.candidate_identity.canonical_signature.as_str())
+                    .cmp(
+                        right
+                            .hypothesis
+                            .candidate_identity
+                            .canonical_signature
+                            .as_str(),
+                    )
             })
     });
 }
