@@ -236,8 +236,9 @@ Current posture:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v2`, and
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3`,
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`,
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, and
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7`:
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v8`:
   the executor-attention family now carries both a bounded relative-target
   output-bias adapter, a bounded hidden-state-conditioned relative-target
   output projection adapter, and now a bounded previous-token-conditioned
@@ -248,12 +249,14 @@ Current posture:
   intact (`10000` bps first-target, `7500` bps first-8, `6875` bps first-32),
   the follow-on `boundary_v3` / `boundary_v4` artifacts show that merely
   adding and scaling the hidden-state-conditioned adapter leaves the learned
-  gate flat, and the newer `boundary_v5` / `v7` pair proves the
+  gate flat, the newer `boundary_v5` / `v7` pair proves the
   previous-token-conditioned transition surface moves the learned blocker
   deeper into the trace (`10000` bps first-target, `8750` bps first-8,
-  `7188` bps first-32) while still leaving the promotion gate red: exact
-  validation traces remain `0/2`, and the first divergence is now token `6`
-  where the reference requires `<pc>` and the model predicts `<byte_00>`
+  `7188` bps first-32), and the later `boundary_v6` / `v8` joint fine-tune
+  preserves but does not beat that ceiling; the promotion gate therefore stays
+  red: exact validation traces remain `0/2`, and the first divergence is still
+  token `6` where the reference requires `<pc>` and the model predicts
+  `<byte_00>`
 - the separate post-audit Phase 17 bar now also exists in `psionic-models`,
   `psionic-eval`, `psionic-research`, `docs/audits/`, and a canonical bounded
   compiled-lane bundle at

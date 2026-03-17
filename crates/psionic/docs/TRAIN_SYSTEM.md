@@ -364,19 +364,22 @@ That now includes one intentionally narrow executor-training answer:
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v3` and
   `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v4`, the
   newer previous-token-conditioned transition-adapter follow-on under
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v5`, the
+  later joint transition+projection fine-tune under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v6`, and
   the current same-corpus comparison under
-  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v7`;
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v8`;
   the accepted `boundary_v2` run keeps the token-0 fix without destroying the
   bounded suffix (`10000` bps first-target, `7500` bps first-8, `6875` bps
   first-32), the later `boundary_v3` / `boundary_v4` follow-ons prove the
   remaining blocker is structural rather than vague, and the newer
   `boundary_v5` / `v7` pair proves the structural-transition surface can move
   that blocker deeper into the trace (`10000` bps first-target, `8750` bps
-  first-8, `7188` bps first-32); the promotion gate is still red, though,
-  because exact validation traces remain `0/2` and the learned lane now first
-  diverges at token `6` by predicting `<byte_00>` where the reference requires
-  `<pc>`
+  first-8, `7188` bps first-32), while the later `boundary_v6` / `v8`
+  joint-adapter fine-tune reproduces but does not beat that ceiling; the
+  promotion gate is still red, though, because exact validation traces remain
+  `0/2` and the learned lane still first diverges at token `6` by predicting
+  `<byte_00>` where the reference requires `<pc>`
 - the separate Phase 17 compiled lane now also exists beside that learned
   stack: `psionic-models` now exposes a bounded typed
   `TassadarCompiledProgramExecutor` with compile-evidence bundles,
