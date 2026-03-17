@@ -344,9 +344,11 @@ Current posture:
   multi-rank reconstruction, and a bounded MLX-style
   `fsdp_apply_gradients` helper above distributed optimizer contracts with
   typed `zero_stage3` admission, mixed replicated/full-shard handling,
-  optional global-norm clipping, shard-local optimizer updates, and gathered
-  full-parameter reconstruction while backend transport and backend-family
-  mapping remain later work.
+  optional global-norm clipping, shard-local optimizer updates, gathered
+  full-parameter reconstruction, and explicit backend-family capability
+  mapping for `ring`, `mpi`, and `nccl`-class requests plus typed `jaccl`
+  refusal over current topology profiles, while multi-rank backend transport
+  execution remains later work.
 - `psionic-compat`: machine-readable compatibility claim vocabulary, current
   PyTorch-facing semantics posture aggregation, the bounded MLX version-window
   or claim-language contract, the MLX acceptance-matrix report contract, and

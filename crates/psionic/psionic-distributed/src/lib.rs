@@ -8,8 +8,9 @@
 //! FSDP-style framework helpers, and a bounded launch/config planning shell
 //! that maps explicit hostfile-like input onto Psionic cluster, sandbox, and
 //! mesh truth.
-//! Backend-family transport mapping and broader helper families still land
-//! later.
+//! Explicit backend-family mapping for ring, mpi, nccl, and jaccl-class
+//! requests now also exists above that substrate, while transport-backed
+//! collective execution and broader helper families still land later.
 
 #![cfg_attr(
     test,
@@ -110,6 +111,123 @@ impl fmt::Display for DistributedBackend {
     }
 }
 
+/// High-level collective topology profile currently exposed by the public
+/// distributed surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributedCollectiveTopologyProfile {
+    /// No peer process is involved; collective calls collapse to singleton behavior.
+    SingletonLocal,
+    /// Peer ranks communicate through loopback transport on one host.
+    LoopbackMesh,
+    /// Peer ranks communicate through trusted-LAN datagram transport.
+    TrustedLanDatagramMesh,
+    /// Peer ranks communicate through trusted-LAN stream transport.
+    TrustedLanStreamMesh,
+    /// Peer ranks communicate through wider-network authenticated streams.
+    WiderNetworkStreamMesh,
+    /// Peer ranks span multiple transport classes at once.
+    MixedMesh,
+}
+
+impl DistributedCollectiveTopologyProfile {
+    /// Returns the stable string label for this topology profile.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SingletonLocal => "singleton_local",
+            Self::LoopbackMesh => "loopback_mesh",
+            Self::TrustedLanDatagramMesh => "trusted_lan_datagram_mesh",
+            Self::TrustedLanStreamMesh => "trusted_lan_stream_mesh",
+            Self::WiderNetworkStreamMesh => "wider_network_stream_mesh",
+            Self::MixedMesh => "mixed_mesh",
+        }
+    }
+}
+
+impl fmt::Display for DistributedCollectiveTopologyProfile {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Machine-readable backend-family capability for the current public distributed
+/// topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DistributedBackendCapability {
+    /// Backend family originally requested by the caller.
+    pub requested_backend: DistributedBackend,
+    /// Backend family actually resolved for the current public topology.
+    pub resolved_backend: DistributedBackend,
+    /// Effective runtime backend carried by the underlying mesh.
+    pub effective_backend: String,
+    /// Communication class carried by the underlying mesh.
+    pub communication_class: ClusterCommunicationClass,
+    /// Transport class carried by the underlying mesh or launch plan.
+    pub transport: ClusterTransportClass,
+    /// High-level public topology profile derived from the current world.
+    pub topology_profile: DistributedCollectiveTopologyProfile,
+    /// Whether vendor transport-backed collectives are exposed publicly today.
+    pub backend_transport_available: bool,
+    /// Boundary note that keeps current mapping claims honest.
+    pub detail: String,
+}
+
+/// Typed refusal returned when a named backend family does not match current
+/// Psionic topology truth.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum DistributedBackendMappingError {
+    /// The requested backend family only maps onto tensor-collective meshes.
+    #[error(
+        "distributed backend `{backend}` requires communication class `tensor_collective_mesh`, but current topology uses `{actual_class:?}`"
+    )]
+    CommunicationClassMismatch {
+        /// Requested backend family.
+        backend: DistributedBackend,
+        /// Actual communication class surfaced by the mesh.
+        actual_class: ClusterCommunicationClass,
+    },
+    /// The requested backend family does not match the currently declared public
+    /// transport profile.
+    #[error(
+        "distributed backend `{backend}` is incompatible with topology profile `{topology_profile}` over transport `{transport:?}`: {detail}"
+    )]
+    TopologyProfileMismatch {
+        /// Requested backend family.
+        backend: DistributedBackend,
+        /// Topology profile derived from current mesh truth.
+        topology_profile: DistributedCollectiveTopologyProfile,
+        /// Transport class carried by the topology.
+        transport: ClusterTransportClass,
+        /// Human-readable mismatch detail.
+        detail: String,
+    },
+    /// The requested backend family requires a different effective runtime
+    /// backend.
+    #[error(
+        "distributed backend `{backend}` requires effective backend `{required_backend}`, but current topology uses `{effective_backend}`"
+    )]
+    EffectiveBackendMismatch {
+        /// Requested backend family.
+        backend: DistributedBackend,
+        /// Required effective runtime backend label.
+        required_backend: String,
+        /// Current effective runtime backend label.
+        effective_backend: String,
+    },
+    /// The requested backend family depends on a transport profile Psionic does
+    /// not yet expose publicly.
+    #[error(
+        "distributed backend `{backend}` requires a Psionic topology profile that is not public yet: {detail}"
+    )]
+    TopologyProfileUnavailable {
+        /// Requested backend family.
+        backend: DistributedBackend,
+        /// Missing public topology-profile detail.
+        detail: String,
+    },
+}
+
 /// One explicit member in a public distributed group.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DistributedGroupMember {
@@ -146,6 +264,9 @@ impl DistributedGroupMember {
 pub struct DistributedGroupBootstrap {
     /// Runtime-visible mesh posture that constrains the group.
     pub mesh: TrainingDeviceMeshContext,
+    /// Runtime-visible transport class attributed to the current mesh.
+    #[serde(default = "default_distributed_bootstrap_transport")]
+    pub transport: ClusterTransportClass,
     /// Stable local node identifier inside the bootstrapped mesh.
     pub local_node_id: String,
     /// Ordered member ledger with explicit rank facts.
@@ -162,9 +283,17 @@ impl DistributedGroupBootstrap {
     ) -> Self {
         Self {
             mesh,
+            transport: default_distributed_bootstrap_transport(),
             local_node_id: local_node_id.into(),
             members,
         }
+    }
+
+    /// Overrides the transport class attributed to the bootstrapped mesh.
+    #[must_use]
+    pub const fn with_transport(mut self, transport: ClusterTransportClass) -> Self {
+        self.transport = transport;
+        self
     }
 }
 
@@ -290,6 +419,10 @@ pub struct DistributedGroupSnapshot {
     pub effective_backend: String,
     /// Communication class carried by the underlying mesh.
     pub communication_class: ClusterCommunicationClass,
+    /// Transport class carried by the underlying mesh.
+    pub transport: ClusterTransportClass,
+    /// Backend-family capability mapped onto current topology truth.
+    pub backend_capability: DistributedBackendCapability,
     /// Stable mesh identifier carried by the underlying runtime context.
     pub mesh_id: String,
     /// Monotonic mesh revision carried by the underlying runtime context.
@@ -368,6 +501,12 @@ pub struct DistributedCollectiveSupport {
     pub requested_backend: DistributedBackend,
     /// Effective backend carried by the underlying mesh.
     pub effective_backend: String,
+    /// Communication class carried by the underlying mesh.
+    pub communication_class: ClusterCommunicationClass,
+    /// Transport class carried by the underlying mesh.
+    pub transport: ClusterTransportClass,
+    /// Backend-family capability mapped onto current topology truth.
+    pub backend_capability: DistributedBackendCapability,
     /// Whether vendor transport-backed collectives are available on the current public surface.
     pub backend_transport_available: bool,
     /// Current posture of `all_sum`.
@@ -2215,6 +2354,8 @@ pub struct DistributedLaunchPlan {
     pub requested_backend: DistributedBackend,
     /// Effective Psionic runtime backend for the launch.
     pub effective_backend: String,
+    /// Backend-family capability mapped onto the planned topology.
+    pub backend_capability: DistributedBackendCapability,
     /// Total number of planned ranks.
     pub world_size: usize,
     /// Original hostfile-like entries in rank order.
@@ -2244,14 +2385,9 @@ pub enum DistributedInitError {
         /// Requested backend family.
         backend: DistributedBackend,
     },
-    /// Named backend-family mapping work remains open.
-    #[error(
-        "public distributed group init cannot bootstrap backend `{backend}` yet; backend-family mapping remains later work"
-    )]
-    BackendFamilyMappingPending {
-        /// Requested backend family.
-        backend: DistributedBackend,
-    },
+    /// Requested backend family does not match current topology truth.
+    #[error(transparent)]
+    BackendFamilyMapping(#[from] DistributedBackendMappingError),
     /// Bootstrapping requires at least one explicit group member.
     #[error("public distributed group bootstrap requires at least one member")]
     BootstrapMembersEmpty,
@@ -2506,14 +2642,9 @@ pub enum DistributedLaunchError {
     /// Launch planning reuses the public distributed-group bootstrap validation.
     #[error(transparent)]
     GroupInit(#[from] DistributedInitError),
-    /// The current issue still keeps named MLX backend families out of the public plan.
-    #[error(
-        "public distributed launch/config cannot map backend family `{backend}` yet; backend-family mapping remains later work"
-    )]
-    BackendFamilyMappingPending {
-        /// Requested distributed backend family.
-        backend: DistributedBackend,
-    },
+    /// Requested backend family does not match current topology truth.
+    #[error(transparent)]
+    BackendFamilyMapping(DistributedBackendMappingError),
     /// One hostfile-like input produced no usable entries.
     #[error("public distributed hostfile must contain at least one entry")]
     HostfileEmpty,
@@ -2772,6 +2903,7 @@ struct DistributedGroupState {
     kind: DistributedGroupKind,
     requested_backend: DistributedBackend,
     mesh: TrainingDeviceMeshContext,
+    transport: ClusterTransportClass,
     local_node_id: String,
     members: Vec<DistributedGroupMember>,
     local_rank: usize,
@@ -2845,12 +2977,14 @@ impl DistributedGroup {
                 DistributedGroupKind::SingletonFallback,
                 requested_backend,
                 &mesh,
+                ClusterTransportClass::LocalOnly,
                 &members,
                 None,
             ),
             kind: DistributedGroupKind::SingletonFallback,
             requested_backend,
             mesh,
+            transport: ClusterTransportClass::LocalOnly,
             local_node_id: String::from("singleton"),
             members,
             local_rank: 0,
@@ -2928,12 +3062,15 @@ impl DistributedGroup {
     /// Returns the machine-readable snapshot for this group.
     #[must_use]
     pub fn snapshot(&self) -> DistributedGroupSnapshot {
+        let backend_capability = self.backend_capability();
         DistributedGroupSnapshot {
             group_id: self.state.group_id.clone(),
             kind: self.state.kind,
             requested_backend: self.state.requested_backend,
             effective_backend: self.state.mesh.effective_backend.clone(),
             communication_class: self.state.mesh.communication_class,
+            transport: self.state.transport,
+            backend_capability,
             mesh_id: self.state.mesh.mesh_id.clone(),
             mesh_revision: self.state.mesh.mesh_revision,
             local_node_id: self.state.local_node_id.clone(),
@@ -2944,9 +3081,23 @@ impl DistributedGroup {
         }
     }
 
+    /// Returns the backend-family capability mapped onto current topology truth.
+    #[must_use]
+    pub fn backend_capability(&self) -> DistributedBackendCapability {
+        resolve_distributed_backend_capability(
+            self.state.kind,
+            self.state.requested_backend,
+            self.state.mesh.effective_backend.as_str(),
+            self.state.mesh.communication_class,
+            self.state.transport,
+            self.state.members.len(),
+        )
+    }
+
     /// Returns the current capability snapshot for public collective helpers on this group.
     #[must_use]
     pub fn collective_support(&self) -> DistributedCollectiveSupport {
+        let backend_capability = self.backend_capability();
         let (all_sum, all_gather, reduce_scatter, send, recv, boundary_note) = if self
             .is_singleton()
         {
@@ -2957,7 +3108,7 @@ impl DistributedGroup {
                 DistributedCollectiveSupportStatus::TypedRefusal,
                 DistributedCollectiveSupportStatus::TypedRefusal,
                 String::from(
-                    "Singleton passthrough for all_sum, all_gather, and reduce_scatter is real today; send and recv still refuse because there is no peer process in the group.",
+                    "Singleton passthrough for all_sum, all_gather, and reduce_scatter is real today; send and recv still refuse because there is no peer process in the group. Backend-family requests collapse to a singleton fallback until an explicit distributed mesh is bootstrapped.",
                 ),
             )
         } else {
@@ -2967,8 +3118,12 @@ impl DistributedGroup {
                 DistributedCollectiveSupportStatus::ReferenceEmulation,
                 DistributedCollectiveSupportStatus::ValidationOnly,
                 DistributedCollectiveSupportStatus::ReferenceEmulation,
-                String::from(
-                    "Multi-rank collective helpers are currently bounded to explicit host-owned reference payloads above the group surface; backend transport execution and backend-family mapping remain later work.",
+                format!(
+                    "Multi-rank collective helpers are currently bounded to explicit host-owned reference payloads above the group surface; backend family `{}` maps onto current Psionic topology as `{}` with communication class `{:?}`, but backend transport execution still remains later work. {}",
+                    backend_capability.resolved_backend,
+                    backend_capability.topology_profile,
+                    backend_capability.communication_class,
+                    backend_capability.detail,
                 ),
             )
         };
@@ -2977,7 +3132,10 @@ impl DistributedGroup {
             group_kind: self.state.kind,
             requested_backend: self.state.requested_backend,
             effective_backend: self.state.mesh.effective_backend.clone(),
-            backend_transport_available: false,
+            communication_class: self.state.mesh.communication_class,
+            transport: self.state.transport,
+            backend_capability: backend_capability.clone(),
+            backend_transport_available: backend_capability.backend_transport_available,
             all_sum,
             all_gather,
             reduce_scatter,
@@ -3068,12 +3226,14 @@ impl DistributedGroup {
                 DistributedGroupKind::SplitSubgroup,
                 self.state.requested_backend,
                 &subgroup_mesh,
+                self.state.transport,
                 &subgroup_members,
                 Some(self.state.group_id.as_str()),
             ),
             kind: DistributedGroupKind::SplitSubgroup,
             requested_backend: self.state.requested_backend,
             mesh: subgroup_mesh,
+            transport: self.state.transport,
             local_node_id: self.state.local_node_id.clone(),
             members: std::mem::take(&mut subgroup_members),
             local_rank,
@@ -3106,15 +3266,8 @@ pub fn global_group(backend: DistributedBackend) -> Option<DistributedGroup> {
 /// Initializes or reuses one public distributed group.
 pub fn init(options: DistributedInitOptions) -> Result<DistributedGroup, DistributedInitError> {
     if let Some(bootstrap) = options.bootstrap {
-        if options.backend != DistributedBackend::Any {
-            return Err(DistributedInitError::BackendFamilyMappingPending {
-                backend: options.backend,
-            });
-        }
         let state = Arc::new(build_bootstrapped_state(options.backend, bootstrap)?);
-        lock_global_groups()
-            .groups
-            .insert(options.backend, Arc::clone(&state));
+        register_global_group(Arc::clone(&state));
         return Ok(DistributedGroup::from_state(state));
     }
 
@@ -3442,11 +3595,6 @@ pub fn plan_launch(
     sandbox_profile: &ProviderSandboxProfile,
     config: DistributedLaunchConfig,
 ) -> Result<DistributedLaunchPlan, DistributedLaunchError> {
-    if config.requested_backend != DistributedBackend::Any {
-        return Err(DistributedLaunchError::BackendFamilyMappingPending {
-            backend: config.requested_backend,
-        });
-    }
     if config.hostfile_entries.is_empty() {
         return Err(DistributedLaunchError::HostfileEmpty);
     }
@@ -3487,6 +3635,15 @@ pub fn plan_launch(
         active_node_ids,
     )
     .with_axes(axes);
+    let backend_capability = validate_requested_backend_mapping(
+        DistributedGroupKind::BootstrappedMesh,
+        config.requested_backend,
+        config.effective_backend.as_str(),
+        device_mesh.communication_class,
+        config.transport,
+        world_size,
+    )
+    .map_err(DistributedLaunchError::BackendFamilyMapping)?;
 
     let members = config
         .hostfile_entries
@@ -3508,7 +3665,8 @@ pub fn plan_launch(
             device_mesh.clone(),
             config.hostfile_entries[0].node_id.clone(),
             members.clone(),
-        ),
+        )
+        .with_transport(config.transport),
     )
     .map_err(DistributedLaunchError::from)?;
     let group_id = representative_state.group_id;
@@ -3525,9 +3683,12 @@ pub fn plan_launch(
         ClusterCommunicationClass::TensorCollectiveMesh,
     )
     .with_supported_classes(vec![ClusterCommunicationClass::TensorCollectiveMesh])
-    .with_detail(
-        "framework distributed launch plan requires tensor_collective_mesh across selected nodes",
-    );
+    .with_detail(format!(
+        "framework distributed launch plan maps requested backend `{}` onto resolved backend `{}` over topology profile `{}`",
+        config.requested_backend,
+        backend_capability.resolved_backend,
+        backend_capability.topology_profile,
+    ));
     let single_node = config.hostfile_entries.len() == 1;
     let disposition = if single_node {
         if config.hostfile_entries[0].node_id == config.scheduler_node_id {
@@ -3549,8 +3710,9 @@ pub fn plan_launch(
     .with_communication_eligibility(communication_eligibility)
     .with_selected_nodes(selected_nodes)
     .with_placement_diagnostic(format!(
-        "planned from explicit distributed hostfile with {} entries",
-        config.hostfile_entries.len()
+        "planned from explicit distributed hostfile with {} entries; {}",
+        config.hostfile_entries.len(),
+        backend_capability.detail
     ));
     if let Some(commit_authority) = cluster_commit_authority_evidence(cluster_state) {
         cluster_execution = cluster_execution.with_commit_authority(commit_authority);
@@ -3571,7 +3733,8 @@ pub fn plan_launch(
                 device_mesh.clone(),
                 entry.node_id.clone(),
                 members.clone(),
-            );
+            )
+            .with_transport(config.transport);
             let environment = launch_environment(
                 config.environment.as_slice(),
                 &DistributedLaunchEnvironmentFacts {
@@ -3638,6 +3801,7 @@ pub fn plan_launch(
         plan_digest,
         requested_backend: config.requested_backend,
         effective_backend: config.effective_backend,
+        backend_capability,
         world_size,
         hostfile_entries: config.hostfile_entries,
         elastic_membership,
@@ -5759,18 +5923,28 @@ fn build_bootstrapped_state(
     requested_backend: DistributedBackend,
     bootstrap: DistributedGroupBootstrap,
 ) -> Result<DistributedGroupState, DistributedInitError> {
-    let (mesh, members, local_rank, local_node_id) = validate_bootstrap(bootstrap)?;
+    let (mesh, transport, members, local_rank, local_node_id) = validate_bootstrap(bootstrap)?;
+    validate_requested_backend_mapping(
+        DistributedGroupKind::BootstrappedMesh,
+        requested_backend,
+        mesh.effective_backend.as_str(),
+        mesh.communication_class,
+        transport,
+        members.len(),
+    )?;
     Ok(DistributedGroupState {
         group_id: stable_group_id(
             DistributedGroupKind::BootstrappedMesh,
             requested_backend,
             &mesh,
+            transport,
             &members,
             None,
         ),
         kind: DistributedGroupKind::BootstrappedMesh,
         requested_backend,
         mesh,
+        transport,
         local_node_id,
         members,
         local_rank,
@@ -5783,6 +5957,7 @@ fn validate_bootstrap(
 ) -> Result<
     (
         TrainingDeviceMeshContext,
+        ClusterTransportClass,
         Vec<DistributedGroupMember>,
         usize,
         String,
@@ -5838,7 +6013,13 @@ fn validate_bootstrap(
         .ok_or_else(|| DistributedInitError::LocalNodeMissing {
             local_node_id: bootstrap.local_node_id.clone(),
         })?;
-    Ok((bootstrap.mesh, members, local_rank, bootstrap.local_node_id))
+    Ok((
+        bootstrap.mesh,
+        bootstrap.transport,
+        members,
+        local_rank,
+        bootstrap.local_node_id,
+    ))
 }
 
 fn split_assignment_map<'a>(
@@ -5910,6 +6091,7 @@ fn stable_group_id(
     kind: DistributedGroupKind,
     requested_backend: DistributedBackend,
     mesh: &TrainingDeviceMeshContext,
+    transport: ClusterTransportClass,
     members: &[DistributedGroupMember],
     parent_group_id: Option<&str>,
 ) -> String {
@@ -5936,6 +6118,8 @@ fn stable_group_id(
         ClusterCommunicationClass::LayerShardHandoff => b"layer_shard_handoff".as_slice(),
         ClusterCommunicationClass::TensorCollectiveMesh => b"tensor_collective_mesh".as_slice(),
     });
+    hasher.update(b"|transport|");
+    hasher.update(cluster_transport_label(transport));
     if let Some(parent_group_id) = parent_group_id {
         hasher.update(b"|parent|");
         hasher.update(parent_group_id.as_bytes());
@@ -5953,6 +6137,367 @@ fn stable_group_id(
     hex::encode(hasher.finalize())
 }
 
+const fn default_distributed_bootstrap_transport() -> ClusterTransportClass {
+    ClusterTransportClass::TrustedLanStream
+}
+
+const fn cluster_transport_label(transport: ClusterTransportClass) -> &'static [u8] {
+    match transport {
+        ClusterTransportClass::LocalOnly => b"local_only",
+        ClusterTransportClass::Loopback => b"loopback",
+        ClusterTransportClass::TrustedLanDatagram => b"trusted_lan_datagram",
+        ClusterTransportClass::TrustedLanStream => b"trusted_lan_stream",
+        ClusterTransportClass::WiderNetworkStream => b"wider_network_stream",
+        ClusterTransportClass::Mixed => b"mixed",
+    }
+}
+
+const fn collective_topology_profile(
+    transport: ClusterTransportClass,
+    world_size: usize,
+) -> DistributedCollectiveTopologyProfile {
+    if world_size <= 1 {
+        return DistributedCollectiveTopologyProfile::SingletonLocal;
+    }
+    match transport {
+        ClusterTransportClass::LocalOnly => DistributedCollectiveTopologyProfile::SingletonLocal,
+        ClusterTransportClass::Loopback => DistributedCollectiveTopologyProfile::LoopbackMesh,
+        ClusterTransportClass::TrustedLanDatagram => {
+            DistributedCollectiveTopologyProfile::TrustedLanDatagramMesh
+        }
+        ClusterTransportClass::TrustedLanStream => {
+            DistributedCollectiveTopologyProfile::TrustedLanStreamMesh
+        }
+        ClusterTransportClass::WiderNetworkStream => {
+            DistributedCollectiveTopologyProfile::WiderNetworkStreamMesh
+        }
+        ClusterTransportClass::Mixed => DistributedCollectiveTopologyProfile::MixedMesh,
+    }
+}
+
+fn mapped_backend_capability(
+    requested_backend: DistributedBackend,
+    resolved_backend: DistributedBackend,
+    effective_backend: &str,
+    communication_class: ClusterCommunicationClass,
+    transport: ClusterTransportClass,
+    topology_profile: DistributedCollectiveTopologyProfile,
+    detail: impl Into<String>,
+) -> DistributedBackendCapability {
+    DistributedBackendCapability {
+        requested_backend,
+        resolved_backend,
+        effective_backend: effective_backend.to_string(),
+        communication_class,
+        transport,
+        topology_profile,
+        backend_transport_available: false,
+        detail: detail.into(),
+    }
+}
+
+fn singleton_fallback_backend_capability(
+    requested_backend: DistributedBackend,
+    effective_backend: &str,
+    communication_class: ClusterCommunicationClass,
+    transport: ClusterTransportClass,
+) -> DistributedBackendCapability {
+    mapped_backend_capability(
+        requested_backend,
+        DistributedBackend::Any,
+        effective_backend,
+        communication_class,
+        transport,
+        DistributedCollectiveTopologyProfile::SingletonLocal,
+        "Strict=false init fell back to one singleton local group, so no named distributed backend family is active on the public surface.",
+    )
+}
+
+fn resolve_named_backend_capability(
+    requested_backend: DistributedBackend,
+    effective_backend: &str,
+    communication_class: ClusterCommunicationClass,
+    transport: ClusterTransportClass,
+    world_size: usize,
+) -> Result<DistributedBackendCapability, DistributedBackendMappingError> {
+    let topology_profile = collective_topology_profile(transport, world_size);
+    match requested_backend {
+        DistributedBackend::Any => {
+            unreachable!("named backend resolver requires one concrete family")
+        }
+        DistributedBackend::Ring => {
+            if world_size <= 1 {
+                return Ok(mapped_backend_capability(
+                    requested_backend,
+                    DistributedBackend::Ring,
+                    effective_backend,
+                    communication_class,
+                    transport,
+                    topology_profile,
+                    "MLX ring semantics collapse honestly to singleton local execution when no peer rank is active.",
+                ));
+            }
+            if communication_class != ClusterCommunicationClass::TensorCollectiveMesh {
+                return Err(DistributedBackendMappingError::CommunicationClassMismatch {
+                    backend: requested_backend,
+                    actual_class: communication_class,
+                });
+            }
+            if !matches!(
+                topology_profile,
+                DistributedCollectiveTopologyProfile::LoopbackMesh
+                    | DistributedCollectiveTopologyProfile::TrustedLanStreamMesh
+                    | DistributedCollectiveTopologyProfile::WiderNetworkStreamMesh
+                    | DistributedCollectiveTopologyProfile::MixedMesh
+            ) {
+                return Err(DistributedBackendMappingError::TopologyProfileMismatch {
+                    backend: requested_backend,
+                    topology_profile,
+                    transport,
+                    detail: String::from(
+                        "MLX ring uses TCP-socket style peer transport, so the public Psionic mapping only admits stream-capable or loopback tensor-collective meshes.",
+                    ),
+                });
+            }
+            Ok(mapped_backend_capability(
+                requested_backend,
+                DistributedBackend::Ring,
+                effective_backend,
+                communication_class,
+                transport,
+                topology_profile,
+                "MLX ring maps onto a Psionic tensor-collective mesh with stream-capable peer transport; collectives remain reference-emulated on the current public surface.",
+            ))
+        }
+        DistributedBackend::Mpi => {
+            if world_size <= 1 {
+                return Ok(mapped_backend_capability(
+                    requested_backend,
+                    DistributedBackend::Mpi,
+                    effective_backend,
+                    communication_class,
+                    transport,
+                    topology_profile,
+                    "MLX MPI semantics collapse honestly to singleton local execution when no peer rank is active.",
+                ));
+            }
+            if communication_class != ClusterCommunicationClass::TensorCollectiveMesh {
+                return Err(DistributedBackendMappingError::CommunicationClassMismatch {
+                    backend: requested_backend,
+                    actual_class: communication_class,
+                });
+            }
+            if matches!(transport, ClusterTransportClass::LocalOnly) {
+                return Err(DistributedBackendMappingError::TopologyProfileMismatch {
+                    backend: requested_backend,
+                    topology_profile,
+                    transport,
+                    detail: String::from(
+                        "MLX MPI requires a peer-capable process mesh; the current Psionic topology is marked local_only.",
+                    ),
+                });
+            }
+            Ok(mapped_backend_capability(
+                requested_backend,
+                DistributedBackend::Mpi,
+                effective_backend,
+                communication_class,
+                transport,
+                topology_profile,
+                "MLX MPI maps onto a Psionic tensor-collective mesh with peer-capable loopback or network transport; collectives remain reference-emulated on the current public surface.",
+            ))
+        }
+        DistributedBackend::Nccl => {
+            if !effective_backend.eq_ignore_ascii_case("cuda") {
+                return Err(DistributedBackendMappingError::EffectiveBackendMismatch {
+                    backend: requested_backend,
+                    required_backend: String::from("cuda"),
+                    effective_backend: effective_backend.to_string(),
+                });
+            }
+            if world_size <= 1 {
+                return Ok(mapped_backend_capability(
+                    requested_backend,
+                    DistributedBackend::Nccl,
+                    effective_backend,
+                    communication_class,
+                    transport,
+                    topology_profile,
+                    "MLX NCCL maps onto a CUDA-backed singleton local group, but no peer transport is active until a multi-rank mesh is bootstrapped.",
+                ));
+            }
+            if communication_class != ClusterCommunicationClass::TensorCollectiveMesh {
+                return Err(DistributedBackendMappingError::CommunicationClassMismatch {
+                    backend: requested_backend,
+                    actual_class: communication_class,
+                });
+            }
+            if !matches!(
+                topology_profile,
+                DistributedCollectiveTopologyProfile::LoopbackMesh
+                    | DistributedCollectiveTopologyProfile::TrustedLanStreamMesh
+                    | DistributedCollectiveTopologyProfile::WiderNetworkStreamMesh
+                    | DistributedCollectiveTopologyProfile::MixedMesh
+            ) {
+                return Err(DistributedBackendMappingError::TopologyProfileMismatch {
+                    backend: requested_backend,
+                    topology_profile,
+                    transport,
+                    detail: String::from(
+                        "MLX NCCL is mapped only onto CUDA tensor-collective meshes with loopback or stream-capable peer transport on the current Psionic surface.",
+                    ),
+                });
+            }
+            Ok(mapped_backend_capability(
+                requested_backend,
+                DistributedBackend::Nccl,
+                effective_backend,
+                communication_class,
+                transport,
+                topology_profile,
+                "MLX NCCL maps onto a CUDA tensor-collective mesh with loopback or stream-capable peer transport; collectives remain reference-emulated on the current public surface.",
+            ))
+        }
+        DistributedBackend::Jaccl => {
+            Err(DistributedBackendMappingError::TopologyProfileUnavailable {
+                backend: requested_backend,
+                detail: String::from(
+                    "MLX JACCL expects a low-latency RDMA-over-Thunderbolt style topology profile, and Psionic does not expose that transport family publicly yet.",
+                ),
+            })
+        }
+    }
+}
+
+fn resolve_any_backend_capability(
+    effective_backend: &str,
+    communication_class: ClusterCommunicationClass,
+    transport: ClusterTransportClass,
+    world_size: usize,
+) -> DistributedBackendCapability {
+    let topology_profile = collective_topology_profile(transport, world_size);
+    if world_size <= 1 {
+        return singleton_fallback_backend_capability(
+            DistributedBackend::Any,
+            effective_backend,
+            communication_class,
+            transport,
+        );
+    }
+
+    let candidate_backends = if effective_backend.eq_ignore_ascii_case("cuda") {
+        vec![
+            DistributedBackend::Nccl,
+            DistributedBackend::Ring,
+            DistributedBackend::Mpi,
+        ]
+    } else {
+        vec![DistributedBackend::Ring, DistributedBackend::Mpi]
+    };
+    for candidate in candidate_backends {
+        if let Ok(mut capability) = resolve_named_backend_capability(
+            candidate,
+            effective_backend,
+            communication_class,
+            transport,
+            world_size,
+        ) {
+            capability.requested_backend = DistributedBackend::Any;
+            return capability;
+        }
+    }
+
+    if communication_class != ClusterCommunicationClass::TensorCollectiveMesh {
+        return mapped_backend_capability(
+            DistributedBackend::Any,
+            DistributedBackend::Any,
+            effective_backend,
+            communication_class,
+            transport,
+            topology_profile,
+            format!(
+                "Current Psionic topology uses communication class `{:?}` instead of `tensor_collective_mesh`, so no named MLX distributed collective backend is active; the generic public group surface remains available.",
+                communication_class
+            ),
+        );
+    }
+
+    mapped_backend_capability(
+        DistributedBackend::Any,
+        DistributedBackend::Any,
+        effective_backend,
+        communication_class,
+        transport,
+        topology_profile,
+        format!(
+            "Current Psionic topology profile `{}` does not map cleanly onto the public `ring`, `mpi`, `nccl`, or `jaccl` families, so the generic public group surface remains active without a named MLX backend family.",
+            topology_profile
+        ),
+    )
+}
+
+fn validate_requested_backend_mapping(
+    kind: DistributedGroupKind,
+    requested_backend: DistributedBackend,
+    effective_backend: &str,
+    communication_class: ClusterCommunicationClass,
+    transport: ClusterTransportClass,
+    world_size: usize,
+) -> Result<DistributedBackendCapability, DistributedBackendMappingError> {
+    if kind == DistributedGroupKind::SingletonFallback {
+        return Ok(singleton_fallback_backend_capability(
+            requested_backend,
+            effective_backend,
+            communication_class,
+            transport,
+        ));
+    }
+    match requested_backend {
+        DistributedBackend::Any => Ok(resolve_any_backend_capability(
+            effective_backend,
+            communication_class,
+            transport,
+            world_size,
+        )),
+        concrete => resolve_named_backend_capability(
+            concrete,
+            effective_backend,
+            communication_class,
+            transport,
+            world_size,
+        ),
+    }
+}
+
+fn resolve_distributed_backend_capability(
+    kind: DistributedGroupKind,
+    requested_backend: DistributedBackend,
+    effective_backend: &str,
+    communication_class: ClusterCommunicationClass,
+    transport: ClusterTransportClass,
+    world_size: usize,
+) -> DistributedBackendCapability {
+    validate_requested_backend_mapping(
+        kind,
+        requested_backend,
+        effective_backend,
+        communication_class,
+        transport,
+        world_size,
+    )
+    .unwrap_or_else(|error| {
+        mapped_backend_capability(
+            requested_backend,
+            DistributedBackend::Any,
+            effective_backend,
+            communication_class,
+            transport,
+            collective_topology_profile(transport, world_size),
+            error.to_string(),
+        )
+    })
+}
+
 fn sorted_distinct_strings(mut values: Vec<String>) -> Vec<String> {
     values.sort();
     values.dedup();
@@ -5962,6 +6507,27 @@ fn sorted_distinct_strings(mut values: Vec<String>) -> Vec<String> {
 fn global_groups() -> &'static Mutex<GlobalDistributedGroups> {
     static GLOBAL_GROUPS: OnceLock<Mutex<GlobalDistributedGroups>> = OnceLock::new();
     GLOBAL_GROUPS.get_or_init(|| Mutex::new(GlobalDistributedGroups::default()))
+}
+
+fn register_global_group(state: Arc<DistributedGroupState>) {
+    let capability = resolve_distributed_backend_capability(
+        state.kind,
+        state.requested_backend,
+        state.mesh.effective_backend.as_str(),
+        state.mesh.communication_class,
+        state.transport,
+        state.members.len(),
+    );
+    let mut groups = lock_global_groups();
+    groups
+        .groups
+        .insert(state.requested_backend, Arc::clone(&state));
+    groups
+        .groups
+        .insert(DistributedBackend::Any, Arc::clone(&state));
+    if capability.resolved_backend != DistributedBackend::Any {
+        groups.groups.insert(capability.resolved_backend, state);
+    }
 }
 
 fn lock_global_groups() -> MutexGuard<'static, GlobalDistributedGroups> {
@@ -6034,16 +6600,34 @@ mod tests {
     }
 
     fn sample_bootstrap(local_node_id: &str) -> DistributedGroupBootstrap {
+        sample_bootstrap_with_topology(
+            local_node_id,
+            "cuda",
+            ClusterCommunicationClass::TensorCollectiveMesh,
+            ClusterTransportClass::TrustedLanStream,
+        )
+    }
+
+    fn sample_bootstrap_with_topology(
+        local_node_id: &str,
+        effective_backend: &str,
+        communication_class: ClusterCommunicationClass,
+        transport: ClusterTransportClass,
+    ) -> DistributedGroupBootstrap {
+        let mut mesh = sample_mesh();
+        mesh.effective_backend = effective_backend.to_string();
+        mesh.communication_class = communication_class;
         DistributedGroupBootstrap::new(
-            sample_mesh(),
+            mesh,
             local_node_id,
             vec![
-                DistributedGroupMember::new("node-a", 0, 0, "cuda:0"),
-                DistributedGroupMember::new("node-b", 1, 1, "cuda:1"),
-                DistributedGroupMember::new("node-c", 2, 2, "cuda:2"),
-                DistributedGroupMember::new("node-d", 3, 3, "cuda:3"),
+                DistributedGroupMember::new("node-a", 0, 0, format!("{effective_backend}:0")),
+                DistributedGroupMember::new("node-b", 1, 1, format!("{effective_backend}:1")),
+                DistributedGroupMember::new("node-c", 2, 2, format!("{effective_backend}:2")),
+                DistributedGroupMember::new("node-d", 3, 3, format!("{effective_backend}:3")),
             ],
         )
+        .with_transport(transport)
     }
 
     fn sample_two_rank_membership() -> TrainingElasticMembershipContext {
@@ -6075,6 +6659,7 @@ mod tests {
                 DistributedGroupMember::new("node-b", 1, 1, "cuda:1"),
             ],
         )
+        .with_transport(ClusterTransportClass::TrustedLanStream)
     }
 
     fn sample_cluster_id() -> ClusterId {
@@ -6447,23 +7032,142 @@ mod tests {
     }
 
     #[test]
-    fn named_backend_families_stay_unavailable_until_mapping_work_lands() {
+    fn named_backend_families_map_onto_current_topology_profiles() {
         let _test_guard = lock_distributed_test();
         clear_global_groups();
 
-        let error = init(
+        let ring = init(
             DistributedInitOptions::new()
                 .with_backend(DistributedBackend::Ring)
                 .with_bootstrap(sample_bootstrap("node-a")),
         )
-        .expect_err("named backend families should still refuse during the bounded group issue");
-
+        .expect("ring should map onto the default stream-capable tensor mesh");
         assert_eq!(
-            error,
-            DistributedInitError::BackendFamilyMappingPending {
-                backend: DistributedBackend::Ring
-            }
+            ring.backend_capability().resolved_backend,
+            DistributedBackend::Ring
         );
+        assert_eq!(
+            ring.backend_capability().topology_profile,
+            DistributedCollectiveTopologyProfile::TrustedLanStreamMesh
+        );
+        assert_eq!(
+            global_group(DistributedBackend::Any)
+                .expect("named backend init should alias the reusable any group")
+                .group_id(),
+            ring.group_id()
+        );
+
+        clear_global_groups();
+        let mpi = init(
+            DistributedInitOptions::new()
+                .with_backend(DistributedBackend::Mpi)
+                .with_bootstrap(sample_bootstrap_with_topology(
+                    "node-b",
+                    "cpu",
+                    ClusterCommunicationClass::TensorCollectiveMesh,
+                    ClusterTransportClass::TrustedLanDatagram,
+                )),
+        )
+        .expect("mpi should map onto the peer-capable datagram tensor mesh");
+        assert_eq!(
+            mpi.backend_capability().resolved_backend,
+            DistributedBackend::Mpi
+        );
+        assert_eq!(mpi.effective_backend(), "cpu");
+        assert_eq!(
+            mpi.backend_capability().topology_profile,
+            DistributedCollectiveTopologyProfile::TrustedLanDatagramMesh
+        );
+
+        clear_global_groups();
+        let nccl = init(
+            DistributedInitOptions::new()
+                .with_backend(DistributedBackend::Nccl)
+                .with_bootstrap(sample_bootstrap("node-c")),
+        )
+        .expect("nccl should map onto the default CUDA tensor mesh");
+        assert_eq!(
+            nccl.backend_capability().resolved_backend,
+            DistributedBackend::Nccl
+        );
+        assert_eq!(nccl.effective_backend(), "cuda");
+
+        clear_global_groups();
+        let any = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-d")))
+            .expect("backend=any should resolve the first truthful family for the mesh");
+        assert_eq!(
+            any.backend_capability().requested_backend,
+            DistributedBackend::Any
+        );
+        assert_eq!(
+            any.backend_capability().resolved_backend,
+            DistributedBackend::Nccl
+        );
+    }
+
+    #[test]
+    fn named_backend_families_refuse_incompatible_topologies() {
+        let _test_guard = lock_distributed_test();
+        clear_global_groups();
+
+        let ring_error = init(
+            DistributedInitOptions::new()
+                .with_backend(DistributedBackend::Ring)
+                .with_bootstrap(sample_bootstrap_with_topology(
+                    "node-a",
+                    "cuda",
+                    ClusterCommunicationClass::TensorCollectiveMesh,
+                    ClusterTransportClass::TrustedLanDatagram,
+                )),
+        )
+        .expect_err("ring should refuse datagram-only transport on the public surface");
+        assert!(matches!(
+            ring_error,
+            DistributedInitError::BackendFamilyMapping(
+                DistributedBackendMappingError::TopologyProfileMismatch {
+                    backend: DistributedBackend::Ring,
+                    topology_profile: DistributedCollectiveTopologyProfile::TrustedLanDatagramMesh,
+                    ..
+                }
+            )
+        ));
+
+        let nccl_error = init(
+            DistributedInitOptions::new()
+                .with_backend(DistributedBackend::Nccl)
+                .with_bootstrap(sample_bootstrap_with_topology(
+                    "node-a",
+                    "cpu",
+                    ClusterCommunicationClass::TensorCollectiveMesh,
+                    ClusterTransportClass::TrustedLanStream,
+                )),
+        )
+        .expect_err("nccl should refuse non-cuda effective backends");
+        assert!(matches!(
+            nccl_error,
+            DistributedInitError::BackendFamilyMapping(
+                DistributedBackendMappingError::EffectiveBackendMismatch {
+                    backend: DistributedBackend::Nccl,
+                    ..
+                }
+            )
+        ));
+
+        let jaccl_error = init(
+            DistributedInitOptions::new()
+                .with_backend(DistributedBackend::Jaccl)
+                .with_bootstrap(sample_bootstrap("node-a")),
+        )
+        .expect_err("jaccl should refuse until Psionic exposes a real RDMA topology profile");
+        assert!(matches!(
+            jaccl_error,
+            DistributedInitError::BackendFamilyMapping(
+                DistributedBackendMappingError::TopologyProfileUnavailable {
+                    backend: DistributedBackend::Jaccl,
+                    ..
+                }
+            )
+        ));
     }
 
     #[test]
@@ -6554,6 +7258,10 @@ mod tests {
             .expect("non-strict init should return the singleton fallback");
         let singleton_support = singleton.collective_support();
         assert_eq!(
+            singleton_support.backend_capability.resolved_backend,
+            DistributedBackend::Any
+        );
+        assert_eq!(
             singleton_support.all_sum,
             DistributedCollectiveSupportStatus::SingletonPassthrough
         );
@@ -6566,6 +7274,14 @@ mod tests {
         let group = init(DistributedInitOptions::new().with_bootstrap(sample_bootstrap("node-b")))
             .expect("bootstrapped mesh should initialize one public group");
         let support = group.collective_support();
+        assert_eq!(
+            support.backend_capability.resolved_backend,
+            DistributedBackend::Nccl
+        );
+        assert_eq!(
+            support.backend_capability.topology_profile,
+            DistributedCollectiveTopologyProfile::TrustedLanStreamMesh
+        );
         assert_eq!(
             support.all_gather,
             DistributedCollectiveSupportStatus::ReferenceEmulation
@@ -7176,6 +7892,69 @@ mod tests {
             plan.assignments[0].sandbox_job.compute_product_id,
             ProviderSandboxExecutionClass::PosixExec.product_id()
         );
+        assert_eq!(
+            plan.backend_capability.requested_backend,
+            DistributedBackend::Any
+        );
+        assert_eq!(
+            plan.backend_capability.resolved_backend,
+            DistributedBackend::Nccl
+        );
+        assert_eq!(
+            plan.backend_capability.topology_profile,
+            DistributedCollectiveTopologyProfile::TrustedLanStreamMesh
+        );
+    }
+
+    #[test]
+    fn plan_launch_maps_named_backend_families_and_refuses_missing_profiles() {
+        let cluster_state = sample_cluster_state();
+        let sandbox_profile = sample_sandbox_profile();
+        let hostfile = vec![
+            DistributedHostfileEntry::new("worker-a").with_advertised_addr("127.0.0.1:4101"),
+            DistributedHostfileEntry::new("worker-b").with_advertised_addr("127.0.0.1:4102"),
+        ];
+
+        let nccl_plan = plan_launch(
+            &cluster_state,
+            &sandbox_profile,
+            sample_launch_config(hostfile.clone()).with_requested_backend(DistributedBackend::Nccl),
+        )
+        .expect("nccl launch should map onto the default CUDA tensor mesh");
+        assert_eq!(
+            nccl_plan.backend_capability.resolved_backend,
+            DistributedBackend::Nccl
+        );
+
+        let mut mpi_config =
+            sample_launch_config(hostfile.clone()).with_requested_backend(DistributedBackend::Mpi);
+        mpi_config.transport = ClusterTransportClass::TrustedLanDatagram;
+        let mpi_plan = plan_launch(&cluster_state, &sandbox_profile, mpi_config)
+            .expect("mpi launch should map onto the datagram tensor mesh");
+        assert_eq!(
+            mpi_plan.backend_capability.resolved_backend,
+            DistributedBackend::Mpi
+        );
+        assert_eq!(
+            mpi_plan.backend_capability.topology_profile,
+            DistributedCollectiveTopologyProfile::TrustedLanDatagramMesh
+        );
+
+        let jaccl_error = plan_launch(
+            &cluster_state,
+            &sandbox_profile,
+            sample_launch_config(hostfile).with_requested_backend(DistributedBackend::Jaccl),
+        )
+        .expect_err("jaccl launch should refuse without an RDMA topology profile");
+        assert!(matches!(
+            jaccl_error,
+            DistributedLaunchError::BackendFamilyMapping(
+                DistributedBackendMappingError::TopologyProfileUnavailable {
+                    backend: DistributedBackend::Jaccl,
+                    ..
+                }
+            )
+        ));
     }
 
     #[test]

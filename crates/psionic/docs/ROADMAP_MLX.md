@@ -7,7 +7,7 @@
 > `PMLX-402` / `#3854`, plus `PMLX-501` / `#3859`,
 > `PMLX-502` / `#3860`, `PMLX-503` / `#3861`,
 > `PMLX-504` / `#3862`, `PMLX-505` / `#3863`, and
-> `PMLX-506` / `#3864`,
+> `PMLX-506` / `#3864`, and `PMLX-507` / `#3865`,
 > after reviewing `ROADMAP.md`, `ARCHITECTURE.md`,
 > `FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`, `TRAIN_SYSTEM.md`,
 > `MLX_COMPATIBILITY_SCOPE.md`, `MLX_ACCEPTANCE_MATRIX.md`,
@@ -528,7 +528,7 @@ collectives, cluster, and train substrate.
 | `PMLX-504` / [#3862](https://github.com/OpenAgentsInc/openagents/issues/3862) | done (2026-03-16) | `Psionic MLX: add average_gradients and grouped all-reduce helpers` | `psionic-distributed` now exposes bounded tree-aware data-parallel gradient reduction helpers above the public collective layer, including `grouped_all_sum` / `grouped_all_reduce` for packed small-leaf all-reduce and `average_gradients` for floating-point divide-by-world-size reduction over deterministic tree structure while leaving tensor-parallel, FSDP-style update, backend-family mapping, and transport-backed execution to `PMLX-505` through `PMLX-507`. |
 | `PMLX-505` / [#3863](https://github.com/OpenAgentsInc/openagents/issues/3863) | done (2026-03-16) | `Psionic MLX: add tensor-parallel sharded linear helpers and module wrappers` | `psionic-distributed` now exposes bounded MLX-style `AllToShardedLinear` and `ShardedToAllLinear` wrappers above the public distributed layer, including deterministic row/column sharding from bounded `psionic-nn::Linear`, explicit shard-layout inspection, local bias-slice versus bias-owner semantics, local shard-input splitting, and reference-emulated multi-rank `ShardedToAllLinear` reconstruction that requires explicit rank wrappers and shard inputs while leaving FSDP-style update helpers, backend-family mapping, and transport-backed execution to `PMLX-506` and `PMLX-507`. |
 | `PMLX-506` / [#3864](https://github.com/OpenAgentsInc/openagents/issues/3864) | done (2026-03-16) | `Psionic MLX: add an fsdp_apply_gradients-style helper on top of distributed optimizer contracts` | `psionic-distributed` now exposes a bounded MLX-style `fsdp_apply_gradients` helper above the public distributed and train-contract layer, including typed `zero_stage3` admission, mixed full-shard plus replicated group handling, explicit remote-rank parameter-state and gradient-batch maps for reference emulation, optional global-norm clipping, shard-local optimizer updates with residency transitions, gathered full-parameter reconstruction, and stable apply receipts while leaving backend-family mapping and transport-backed multi-rank execution to `PMLX-507`. |
-| `PMLX-507` | planned | `Psionic MLX: map ring, mpi, jaccl, and nccl capability families onto Psionic collectives and topology profiles` | Make backend-specific distributed capability explicit without treating MLX's backend names as global truth divorced from Psionic cluster semantics. |
+| `PMLX-507` / [#3865](https://github.com/OpenAgentsInc/openagents/issues/3865) | done (2026-03-16) | `Psionic MLX: map ring, mpi, jaccl, and nccl capability families onto Psionic collectives and topology profiles` | `psionic-distributed` now exposes explicit backend-family capability mapping above the public distributed layer, including typed topology profiles, backend-capability snapshots on groups, collectives, and launch plans, truthful `backend=any` resolution from current CUDA-versus-non-CUDA topology truth, stream-versus-datagram validation for `ring` / `mpi` / `nccl`-class requests, and typed `jaccl` refusal until Psionic exposes a real RDMA-style transport profile, while still keeping multi-rank collective execution reference-emulated on the current public surface. |
 
 ## Epic 6: Backend Closure And Compatibility Shell
 
@@ -651,8 +651,8 @@ track in parallel.
 - `PMLX-503` done 2026-03-16
 - `PMLX-504` done 2026-03-16
 - `PMLX-505` done 2026-03-16
-- `PMLX-506`
-- `PMLX-507`
+- `PMLX-506` done 2026-03-16
+- `PMLX-507` done 2026-03-16
 
 ### Phase 7: close backend breadth and parity evidence
 
