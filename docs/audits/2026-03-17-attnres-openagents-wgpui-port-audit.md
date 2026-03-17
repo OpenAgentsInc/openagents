@@ -32,6 +32,9 @@ follow-on, not current earn-loop MVP scope, unless explicitly scheduled.
   runner-backed interactive closure: live start/pause/resume/reset/speed,
   TUI-faithful keyboard controls, persisted lab state, WGPUI help overlay, and
   controller/input coverage.
+- 2026-03-17: epic `openagents#3906` is satisfied and can close; the retained
+  desktop now meets the pane/view/training/parity/test/doc criteria that the
+  epic defined.
 - The original Burn/TUI desktop lab is now functionally closed in the retained
   OpenAgents desktop app as an app-owned WGPUI pane backed by Psionic truth.
 - Remaining follow-ons are optional hardening or productization work, not port
