@@ -24,8 +24,12 @@ follow-on, not current earn-loop MVP scope, unless explicitly scheduled.
 - 2026-03-17: phase 1 landed in `openagents` as a replay-first `AttnRes Lab`
   pane with app-owned state, pane registration, renderer wiring, WGPUI view
   mapping, and basic state/registry coverage.
-- Remaining follow-ons are still the live inference/parity wiring, the Psionic
-  stepwise training runner, and the final interactive control closure.
+- 2026-03-17: phase 2 landed in `openagents` as a Psionic-backed AttnRes lab
+  controller with real tiny-training summaries, live inference refresh,
+  routing-diagnostics adaptation, two-phase parity wiring, and controller
+  coverage.
+- Remaining follow-ons are still the Psionic stepwise training runner and the
+  final interactive control closure.
 
 ## Scope
 

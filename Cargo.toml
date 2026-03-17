@@ -208,6 +208,7 @@ psionic-data = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43
 psionic-datastream = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941" }
 psionic-environments = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941" }
 psionic-eval = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941", default-features = false }
+psionic-models = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941" }
 psionic-research = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941" }
 psionic-runtime = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941" }
 psionic-sandbox = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "43992eceeb5297ed9eb6219e559a44a3de8a0941" }

@@ -466,6 +466,7 @@ pub enum LocalInferencePaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AttnResLabPaneAction {
     SetView(crate::app_state::AttnResLabViewMode),
+    RefreshSnapshot,
     PreviousSublayer,
     NextSublayer,
 }
@@ -1232,6 +1233,8 @@ impl PaneController {
             focus_chat_composer_for_pane_open(state);
         } else if kind == PaneKind::LocalInference {
             focus_local_inference_prompt_for_pane_open(state);
+        } else if kind == PaneKind::AttnResLab {
+            crate::attnres_lab_control::ensure_live_snapshot_loaded(&mut state.attnres_lab);
         } else if kind == PaneKind::AppleFmWorkbench {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
@@ -3280,6 +3283,16 @@ pub fn attnres_lab_inference_button_bounds(content_bounds: Bounds) -> Bounds {
         pipeline.origin.y,
         108.0,
         pipeline.size.height,
+    )
+}
+
+pub fn attnres_lab_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let inference = attnres_lab_inference_button_bounds(content_bounds);
+    Bounds::new(
+        inference.max_x() + JOB_INBOX_BUTTON_GAP,
+        inference.origin.y,
+        118.0,
+        inference.size.height,
     )
 }
 
@@ -7236,6 +7249,10 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
                     crate::app_state::AttnResLabViewMode::Inference,
                 )))
+            } else if attnres_lab_refresh_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::RefreshSnapshot,
+                ))
             } else if attnres_lab_previous_sublayer_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::AttnResLab(
                     AttnResLabPaneAction::PreviousSublayer,

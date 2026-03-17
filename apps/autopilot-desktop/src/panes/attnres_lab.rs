@@ -9,7 +9,7 @@ use crate::pane_renderer::{
 use crate::pane_system::{
     attnres_lab_inference_button_bounds, attnres_lab_next_sublayer_button_bounds,
     attnres_lab_overview_button_bounds, attnres_lab_pipeline_button_bounds,
-    attnres_lab_previous_sublayer_button_bounds,
+    attnres_lab_previous_sublayer_button_bounds, attnres_lab_refresh_button_bounds,
 };
 
 const PANEL_RADIUS: f32 = 10.0;
@@ -51,6 +51,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
     let overview_bounds = attnres_lab_overview_button_bounds(content_bounds);
     let pipeline_bounds = attnres_lab_pipeline_button_bounds(content_bounds);
     let inference_bounds = attnres_lab_inference_button_bounds(content_bounds);
+    let refresh_bounds = attnres_lab_refresh_button_bounds(content_bounds);
     let previous_bounds = attnres_lab_previous_sublayer_button_bounds(content_bounds);
     let next_bounds = attnres_lab_next_sublayer_button_bounds(content_bounds);
 
@@ -72,18 +73,24 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         pane_state.selected_view == AttnResLabViewMode::Inference,
         paint,
     );
+    paint_action_button(refresh_bounds, "Refresh live", paint);
     paint_action_button(previous_bounds, "Prev sublayer", paint);
     paint_action_button(next_bounds, "Next sublayer", paint);
 
-    let title_x = next_bounds.max_x() + 18.0;
+    let title_x = refresh_bounds.max_x() + 18.0;
     paint.scene.draw_text(paint.text.layout(
         "AttnRes Lab",
         Point::new(title_x, content_bounds.origin.y + 18.0),
         18.0,
         theme::text::PRIMARY,
     ));
+    let subtitle = if pane_state.snapshot.source_badge.starts_with("psionic.") {
+        "Psionic-backed routing diagnostics, live inference, and two-phase parity."
+    } else {
+        "Replay-first WGPUI port of the original Burn/TUI information architecture."
+    };
     paint.scene.draw_text(paint.text.layout(
-        "Replay-first WGPUI port of the original Burn/TUI information architecture.",
+        subtitle,
         Point::new(title_x, content_bounds.origin.y + 36.0),
         11.0,
         theme::text::MUTED,
@@ -501,13 +508,13 @@ fn paint_metrics_panel(
         .last()
         .map(|point| {
             format!(
-                "last replay point: step {} // loss {:.3} // selectivity {:.0}%",
+                "last tracked point: step {} // loss {:.3} // selectivity {:.0}%",
                 point.global_step,
                 point.training_loss,
                 point.selectivity * 100.0
             )
         })
-        .unwrap_or_else(|| "no replay points loaded".to_string());
+        .unwrap_or_else(|| "no tracked points loaded".to_string());
     let _ = paint_multiline_phrase(paint, left_x, y + 10.0, "history", latest.as_str());
 }
 
