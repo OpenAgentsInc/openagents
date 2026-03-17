@@ -1967,36 +1967,47 @@ fn build_mission_control_log_lines(
     let unsupported_sell_platform_offline = provider_runtime.mode
         == crate::state::provider_runtime::ProviderMode::Offline
         && !runtime_view.supports_sell_compute;
-    type LogEntry = (u64, TerminalStream, String, String);
+    let ingress_policy_provider_line = provider_runtime
+        .ingress_policy_filters
+        .provider_status_line();
+    let ingress_policy_inbox_line = provider_runtime.ingress_policy_filters.inbox_status_line();
+    type LogEntry = (u64, TerminalStream, String, Option<String>, String);
     let mut entries: Vec<LogEntry> = Vec::new();
     let mut seen = HashSet::<String>::new();
     let mut push_entry = |stream: TerminalStream,
                           text: String,
                           at_epoch: Option<u64>,
-                          dedupe_key: Option<String>| {
+                          line_key: Option<String>,
+                          content_key: Option<String>| {
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return;
         }
-        let key = dedupe_key.unwrap_or_else(|| {
-            format!(
-                "mission_control:live:{}:{}",
-                match stream {
-                    TerminalStream::Stdout => "stdout",
-                    TerminalStream::Stderr => "stderr",
-                },
-                trimmed
-            )
+        let content_signature = content_key.unwrap_or_else(|| {
+            line_key.clone().unwrap_or_else(|| {
+                format!(
+                    "mission_control:live:{}:{}",
+                    match &stream {
+                        TerminalStream::Stdout => "stdout",
+                        TerminalStream::Stderr => "stderr",
+                    },
+                    trimmed
+                )
+            })
         });
-        if seen.insert(key.clone()) {
+        if seen.insert(content_signature.clone()) {
             entries.push((
                 at_epoch.unwrap_or(now_epoch),
                 stream,
                 trimmed.to_string(),
-                key,
+                line_key,
+                content_signature,
             ));
         }
     };
+    let provider_policy_filter_log_key =
+        "mission_control:provider_policy_filter_summary".to_string();
+    let inbox_policy_filter_log_key = "mission_control:inbox_policy_filter_summary".to_string();
     let compute_flow_snapshot = crate::nip90_compute_flow::build_nip90_compute_flow_snapshot(
         network_requests,
         spark_wallet,
@@ -2027,13 +2038,14 @@ fn build_mission_control_log_lines(
             "Provider degraded. Review blockers and wallet or relay health.".to_string()
         }
     };
-    push_entry(TerminalStream::Stdout, mode_line, None, None);
+    push_entry(TerminalStream::Stdout, mode_line, None, None, None);
 
     if !unsupported_sell_platform_offline {
         if provider_blockers.is_empty() {
             push_entry(
                 TerminalStream::Stdout,
                 "Preflight clear.".to_string(),
+                None,
                 None,
                 None,
             );
@@ -2048,6 +2060,7 @@ fn build_mission_control_log_lines(
                     ),
                     None,
                     None,
+                    None,
                 );
             }
         }
@@ -2058,13 +2071,20 @@ fn build_mission_control_log_lines(
         runtime_view.status_line.clone(),
         None,
         None,
+        None,
     );
     for (stream, text) in runtime_view.detail_lines.iter() {
-        push_entry(stream.clone(), text.clone(), None, None);
+        push_entry(stream.clone(), text.clone(), None, None, None);
     }
 
     if let Some(action) = mission_action {
-        push_entry(TerminalStream::Stdout, format!("UI: {action}"), None, None);
+        push_entry(
+            TerminalStream::Stdout,
+            format!("UI: {action}"),
+            None,
+            None,
+            None,
+        );
     }
     if let Some(error) = mission_error {
         push_entry(
@@ -2072,13 +2092,27 @@ fn build_mission_control_log_lines(
             format!("UI error: {error}"),
             None,
             None,
+            None,
+        );
+    }
+    if let Some(summary) = ingress_policy_provider_line.as_deref()
+        && !unsupported_sell_platform_offline
+    {
+        push_entry(
+            TerminalStream::Stdout,
+            format!("Provider: {summary}"),
+            None,
+            Some(provider_policy_filter_log_key.clone()),
+            Some(format!("{provider_policy_filter_log_key}:{summary}")),
         );
     }
     if let Some(result) = provider_runtime.last_result.as_deref() {
-        if unsupported_sell_platform_offline && result.starts_with("Relay preview active") {
+        if ingress_policy_provider_line.as_deref() == Some(result) {
+        } else if unsupported_sell_platform_offline && result.starts_with("Relay preview active") {
             push_entry(
                 TerminalStream::Stdout,
                 result.replacen("Relay preview", "Buyer relays", 1),
+                None,
                 None,
                 None,
             );
@@ -2086,11 +2120,12 @@ fn build_mission_control_log_lines(
             && (result.starts_with("Buyer relay transport")
                 || result.starts_with("Buyer response relay tracking"))
         {
-            push_entry(TerminalStream::Stdout, result.to_string(), None, None);
+            push_entry(TerminalStream::Stdout, result.to_string(), None, None, None);
         } else if !unsupported_sell_platform_offline {
             push_entry(
                 TerminalStream::Stdout,
                 format!("Provider: {result}"),
+                None,
                 None,
                 None,
             );
@@ -2102,6 +2137,7 @@ fn build_mission_control_log_lines(
             format!("Provider error: {error}"),
             None,
             None,
+            None,
         );
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
@@ -2110,12 +2146,14 @@ fn build_mission_control_log_lines(
             format!("Inventory: {action}"),
             None,
             None,
+            None,
         );
     }
     if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Inventory error: {error}"),
+            None,
             None,
             None,
         );
@@ -2127,12 +2165,14 @@ fn build_mission_control_log_lines(
             format!("Wallet: {action}"),
             None,
             None,
+            None,
         );
     }
     if let Some(error) = spark_wallet.last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Wallet error: {error}"),
+            None,
             None,
             None,
         );
@@ -2142,6 +2182,7 @@ fn build_mission_control_log_lines(
         push_entry(
             mission_control_log_stream_for_request_status(request.status),
             request.mission_control_log_line(),
+            None,
             None,
             None,
         );
@@ -2159,6 +2200,7 @@ fn build_mission_control_log_lines(
                 },
                 None,
                 None,
+                None,
             );
         } else {
             let request_count = job_inbox.requests.len();
@@ -2171,16 +2213,31 @@ fn build_mission_control_log_lines(
                 },
                 None,
                 None,
+                None,
             );
         }
     }
-    if !unsupported_sell_platform_offline && let Some(action) = job_inbox.last_action.as_deref() {
+    if let Some(summary) = ingress_policy_inbox_line.as_deref()
+        && !unsupported_sell_platform_offline
+    {
         push_entry(
             TerminalStream::Stdout,
-            format!("Inbox: {action}"),
+            format!("Inbox: {summary}"),
             None,
-            None,
+            Some(inbox_policy_filter_log_key.clone()),
+            Some(format!("{inbox_policy_filter_log_key}:{summary}")),
         );
+    }
+    if !unsupported_sell_platform_offline && let Some(action) = job_inbox.last_action.as_deref() {
+        if ingress_policy_inbox_line.as_deref() != Some(action) {
+            push_entry(
+                TerminalStream::Stdout,
+                format!("Inbox: {action}"),
+                None,
+                None,
+                None,
+            );
+        }
     }
 
     if let Some(job) = compute_flow_snapshot.active_job.as_ref() {
@@ -2211,6 +2268,7 @@ fn build_mission_control_log_lines(
             line,
             None,
             None,
+            None,
         );
     }
     if let Some(action) = active_job.last_action.as_deref() {
@@ -2219,12 +2277,14 @@ fn build_mission_control_log_lines(
             format!("Active job: {action}"),
             None,
             None,
+            None,
         );
     }
     if let Some(error) = active_job.last_error.as_deref() {
         push_entry(
             TerminalStream::Stderr,
             format!("Active job error: {error}"),
+            None,
             None,
             None,
         );
@@ -2259,16 +2319,25 @@ fn build_mission_control_log_lines(
                 "mission_control:projection_replay:{}",
                 row.event_id
             )),
+            None,
         );
     }
 
     entries.sort_by_key(|e| e.0);
-    let content: Vec<String> = entries.iter().map(|(_, _, _, key)| key.clone()).collect();
+    let content: Vec<String> = entries
+        .iter()
+        .map(|(_, _, _, _, content_key)| content_key.clone())
+        .collect();
     let lines: Vec<TerminalLine> = entries
         .into_iter()
-        .map(|(epoch, stream, text, key)| {
+        .map(|(epoch, stream, text, line_key, _)| {
             let timestamp = mission_control_log_timestamp(epoch);
-            TerminalLine::new(stream, format!("{timestamp}  {text}")).with_key(key)
+            let line = TerminalLine::new(stream, format!("{timestamp}  {text}"));
+            if let Some(key) = line_key {
+                line.with_key(key)
+            } else {
+                line
+            }
         })
         .collect();
 
@@ -18214,6 +18283,87 @@ mod tests {
                 .recent_lines(32)
                 .iter()
                 .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
+    }
+
+    #[test]
+    fn mission_control_sync_log_stream_upserts_policy_filter_summaries_without_rejected_wording() {
+        let mut provider = ProviderRuntimeState::default();
+        provider.mode = crate::state::provider_runtime::ProviderMode::Online;
+        provider
+            .ingress_policy_filters
+            .record_reason("unsupported request kind 5001");
+        provider.last_result = provider.ingress_policy_filters.provider_status_line();
+
+        let mut inbox = JobInboxState::default();
+        inbox.last_action = provider.ingress_policy_filters.inbox_status_line();
+
+        let mut log = LogStreamPaneState::default();
+        log.sync_log_stream(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &inbox,
+            &ActiveJobState::default(),
+        );
+
+        provider.ingress_policy_filters.record_reason(
+            "request target policy mismatch (targets=[npub1other], local=[npub1local])",
+        );
+        provider.last_result = provider.ingress_policy_filters.provider_status_line();
+        inbox.last_action = provider.ingress_policy_filters.inbox_status_line();
+        log.sync_log_stream(
+            None,
+            None,
+            crate::desktop_shell::DesktopShellMode::Production,
+            &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
+            &[],
+            &EarnJobLifecycleProjectionState::default(),
+            &SparkPaneState::default(),
+            &NetworkRequestsState::default(),
+            &inbox,
+            &ActiveJobState::default(),
+        );
+
+        let provider_lines = log
+            .terminal
+            .recent_lines(64)
+            .iter()
+            .filter(|line| {
+                line.key.as_deref() == Some("mission_control:provider_policy_filter_summary")
+            })
+            .collect::<Vec<_>>();
+        let inbox_lines = log
+            .terminal
+            .recent_lines(64)
+            .iter()
+            .filter(|line| {
+                line.key.as_deref() == Some("mission_control:inbox_policy_filter_summary")
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(provider_lines.len(), 1);
+        assert_eq!(inbox_lines.len(), 1);
+        assert!(provider_lines[0].text.contains("unsupported_kind=1"));
+        assert!(provider_lines[0].text.contains("target_mismatch=1"));
+        assert!(
+            !provider_lines[0]
+                .text
+                .to_ascii_lowercase()
+                .contains("rejected")
+        );
+        assert!(
+            !inbox_lines[0]
+                .text
+                .to_ascii_lowercase()
+                .contains("rejected")
         );
     }
 

@@ -1,6 +1,7 @@
 use crate::app_state::{
-    EarnFailureClass, JobHistoryStatus, JobInboxDecision, JobInboxRequest, JobInboxValidation,
-    JobLifecycleStage, PaneKind, PaneLoadState, ProviderMode, RenderState,
+    ActivityEventDomain, ActivityEventRow, EarnFailureClass, JobHistoryStatus, JobInboxDecision,
+    JobInboxRequest, JobInboxValidation, JobLifecycleStage, PaneKind, PaneLoadState, ProviderMode,
+    RenderState,
 };
 use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmBridgeUpdate, AppleFmExecutionCompleted, AppleFmExecutionFailed,
@@ -2605,13 +2606,19 @@ fn reject_request_by_id(
         .decide_request(request_id, false, decision_reason)?;
     state.job_inbox.last_error = None;
     state.job_inbox.load_state = PaneLoadState::Ready;
-    state.provider_runtime.last_result = Some(format!("runtime rejected request {request_id}"));
     let rejected_request = state
         .job_inbox
         .requests
         .iter()
         .find(|request| request.request_id == request_id)
         .cloned();
+    if apply_policy_filtered_request_summary(state, decision_reason) {
+        if let Some(request) = rejected_request.as_ref() {
+            record_policy_filtered_request_activity(state, request, decision_reason);
+        }
+    } else {
+        state.provider_runtime.last_result = Some(format!("runtime rejected request {request_id}"));
+    }
     if let Some(request) = rejected_request.as_ref() {
         state.earn_kernel_receipts.record_preflight_rejection(
             request,
@@ -2919,6 +2926,58 @@ fn apple_fm_request_accept_block_reason(
     None
 }
 
+fn apply_policy_filtered_request_summary(state: &mut RenderState, reason: &str) -> bool {
+    if state
+        .provider_runtime
+        .ingress_policy_filters
+        .record_reason(reason)
+        .is_none()
+    {
+        return false;
+    }
+
+    state.provider_runtime.last_result = state
+        .provider_runtime
+        .ingress_policy_filters
+        .provider_status_line();
+    state.provider_runtime.last_authoritative_status = Some("filtered".to_string());
+    state.provider_runtime.last_authoritative_event_id = None;
+    state.job_inbox.last_action = state
+        .provider_runtime
+        .ingress_policy_filters
+        .inbox_status_line();
+    true
+}
+
+fn record_policy_filtered_request_activity(
+    state: &mut RenderState,
+    request: &JobInboxRequest,
+    reason: &str,
+) {
+    let now_epoch_seconds = current_epoch_seconds();
+    state.activity_feed.upsert_event(ActivityEventRow {
+        event_id: format!("nip90:req:policy_filtered:{}", request.request_id),
+        domain: ActivityEventDomain::Network,
+        source_tag: "nip90.policy".to_string(),
+        summary: "Policy filtered live NIP-90 request".to_string(),
+        detail: format!(
+            "request={} requester={} capability={} kind={} targets={} reason={}",
+            request.request_id,
+            request.requester,
+            request.capability,
+            request.request_kind,
+            if request.target_provider_pubkeys.is_empty() {
+                "none".to_string()
+            } else {
+                request.target_provider_pubkeys.join(",")
+            },
+            reason,
+        ),
+        occurred_at_epoch_seconds: now_epoch_seconds,
+    });
+    state.activity_feed.load_state = PaneLoadState::Ready;
+}
+
 fn next_invalid_request_rejection_for(requests: &[JobInboxRequest]) -> Option<(String, String)> {
     requests.iter().find_map(|request| {
         if !matches!(request.decision, JobInboxDecision::Pending) {
@@ -2927,7 +2986,7 @@ fn next_invalid_request_rejection_for(requests: &[JobInboxRequest]) -> Option<(S
         match &request.validation {
             JobInboxValidation::Invalid(reason) => Some((
                 request.request_id.clone(),
-                format!("auto policy rejected invalid request: {reason}"),
+                format!("auto policy filtered invalid request: {reason}"),
             )),
             JobInboxValidation::Pending | JobInboxValidation::Valid => None,
         }
@@ -3404,7 +3463,7 @@ mod tests {
             next_invalid_request_rejection_for(requests.as_slice()),
             Some((
                 "req-invalid".to_string(),
-                "auto policy rejected invalid request: decrypt failed".to_string()
+                "auto policy filtered invalid request: decrypt failed".to_string()
             ))
         );
     }
