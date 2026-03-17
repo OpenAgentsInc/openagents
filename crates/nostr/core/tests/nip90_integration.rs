@@ -9,9 +9,12 @@
 //! Integration tests for NIP-90 DVM job types and workflows
 
 use nostr::nip90::{
-    InputType, JobFeedback, JobInput, JobParam, JobRequest, JobResult, JobStatus,
-    KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
+    DataVendingDeliveryMode, DataVendingFeedback, DataVendingPreviewPosture, DataVendingRequest,
+    DataVendingResult, InputType, JobFeedback, JobInput, JobParam, JobRequest, JobResult,
+    JobStatus, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
     KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
+    create_data_vending_feedback_event, create_data_vending_request_event,
+    create_data_vending_result_event,
 };
 use std::str::FromStr;
 
@@ -707,4 +710,104 @@ fn test_error_feedback_workflow() {
     let tags = feedback.to_tags();
 
     assert!(tags.iter().any(|t| t[0] == "status" && t[1] == "error"));
+}
+
+#[test]
+fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
+    let request = DataVendingRequest::new(5960, "asset://repo-alpha", "read.context")
+        .unwrap()
+        .add_scope("derive.summary")
+        .with_delivery_mode(DataVendingDeliveryMode::EncryptedPointer)
+        .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
+        .add_input(JobInput::text("Need private repository context"))
+        .add_service_provider("provider-pubkey")
+        .add_relay("wss://relay.openagents.com");
+    let request_template = create_data_vending_request_event(&request).unwrap();
+    let request_event = nostr::Event {
+        id: "request-event".to_string(),
+        pubkey: "buyer-pubkey".to_string(),
+        created_at: request_template.created_at,
+        kind: request_template.kind,
+        tags: request_template.tags,
+        content: request_template.content,
+        sig: "44".repeat(64),
+    };
+    let parsed_request = DataVendingRequest::from_event(&request_event).unwrap();
+    assert_eq!(parsed_request.asset_ref, "asset://repo-alpha");
+    assert_eq!(
+        parsed_request.permission_scopes,
+        vec!["read.context".to_string(), "derive.summary".to_string()]
+    );
+    assert_eq!(
+        parsed_request.service_providers,
+        vec!["provider-pubkey".to_string()]
+    );
+
+    let result = DataVendingResult::new(
+        5960,
+        request_event.id.clone(),
+        "buyer-pubkey",
+        "asset://repo-alpha",
+        "bundle://repo-alpha.001",
+        "{\"bundle\":\"ready\"}",
+    )
+    .unwrap()
+    .with_grant_id("grant://repo-alpha.001")
+    .with_delivery_mode(DataVendingDeliveryMode::DeliveryBundleRef)
+    .with_preview_posture(DataVendingPreviewPosture::InlinePreview)
+    .with_delivery_ref("oa://deliveries/repo-alpha/001");
+    let result_template = create_data_vending_result_event(&result).unwrap();
+    let result_event = nostr::Event {
+        id: "result-event".to_string(),
+        pubkey: "provider-pubkey".to_string(),
+        created_at: result_template.created_at,
+        kind: result_template.kind,
+        tags: result_template.tags,
+        content: result_template.content,
+        sig: "55".repeat(64),
+    };
+    let parsed_result = DataVendingResult::from_event(&result_event).unwrap();
+    assert_eq!(parsed_result.delivery_bundle_id, "bundle://repo-alpha.001");
+    assert_eq!(
+        parsed_result.delivery_mode,
+        DataVendingDeliveryMode::DeliveryBundleRef
+    );
+    assert_eq!(
+        parsed_result.preview_posture,
+        DataVendingPreviewPosture::InlinePreview
+    );
+    assert_eq!(
+        parsed_result.delivery_ref.as_deref(),
+        Some("oa://deliveries/repo-alpha/001")
+    );
+
+    let feedback = DataVendingFeedback::new(
+        JobStatus::Error,
+        request_event.id.clone(),
+        "buyer-pubkey",
+        "asset://repo-alpha",
+    )
+    .with_grant_id("grant://repo-alpha.001")
+    .with_reason_code("asset_policy_denied")
+    .with_status_extra("provider refused export");
+    let feedback_template = create_data_vending_feedback_event(&feedback).unwrap();
+    let feedback_event = nostr::Event {
+        id: "feedback-event".to_string(),
+        pubkey: "provider-pubkey".to_string(),
+        created_at: feedback_template.created_at,
+        kind: feedback_template.kind,
+        tags: feedback_template.tags,
+        content: feedback_template.content,
+        sig: "66".repeat(64),
+    };
+    let parsed_feedback = DataVendingFeedback::from_event(&feedback_event).unwrap();
+    assert_eq!(parsed_feedback.status, JobStatus::Error);
+    assert_eq!(
+        parsed_feedback.reason_code.as_deref(),
+        Some("asset_policy_denied")
+    );
+    assert_eq!(
+        parsed_feedback.status_extra.as_deref(),
+        Some("provider refused export")
+    );
 }

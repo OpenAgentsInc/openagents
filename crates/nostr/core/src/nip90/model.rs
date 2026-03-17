@@ -1,4 +1,4 @@
-use super::kinds::{is_job_request_kind, is_job_result_kind};
+use super::kinds::{KIND_JOB_FEEDBACK, is_job_request_kind, is_job_result_kind};
 use crate::nip01::Event;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -859,5 +859,75 @@ impl JobFeedback {
         }
 
         tags
+    }
+
+    /// Parse a JobFeedback from an event.
+    pub fn from_event(event: &Event) -> Result<Self, Nip90Error> {
+        if event.kind != KIND_JOB_FEEDBACK {
+            return Err(Nip90Error::InvalidKind(
+                event.kind,
+                KIND_JOB_FEEDBACK.to_string(),
+            ));
+        }
+
+        let mut status = None;
+        let mut status_extra = None;
+        let mut request_id = String::new();
+        let mut request_relay = None;
+        let mut customer_pubkey = String::new();
+        let mut amount = None;
+        let mut bolt11 = None;
+
+        for tag in &event.tags {
+            if tag.is_empty() {
+                continue;
+            }
+            match tag[0].as_str() {
+                "status" if tag.len() >= 2 => {
+                    status = Some(JobStatus::from_str(&tag[1])?);
+                    if tag.len() >= 3 {
+                        status_extra = Some(tag[2].clone());
+                    }
+                }
+                "e" if tag.len() >= 2 => {
+                    request_id.clone_from(&tag[1]);
+                    if tag.len() >= 3 {
+                        request_relay = Some(tag[2].clone());
+                    }
+                }
+                "p" if tag.len() >= 2 => {
+                    customer_pubkey.clone_from(&tag[1]);
+                }
+                "amount" if tag.len() >= 2 => {
+                    amount = tag[1].parse().ok();
+                    if tag.len() >= 3 {
+                        bolt11 = Some(tag[2].clone());
+                    }
+                }
+                "bolt11" if tag.len() >= 2 => {
+                    bolt11 = Some(tag[1].clone());
+                }
+                _ => {}
+            }
+        }
+
+        let status = status.ok_or_else(|| Nip90Error::MissingTag("status".to_string()))?;
+        if request_id.is_empty() {
+            return Err(Nip90Error::MissingTag("e (request event id)".to_string()));
+        }
+        if customer_pubkey.is_empty() {
+            return Err(Nip90Error::MissingTag("p (customer pubkey)".to_string()));
+        }
+
+        Ok(Self {
+            status,
+            status_extra,
+            request_id,
+            request_relay,
+            customer_pubkey,
+            content: event.content.clone(),
+            amount,
+            bolt11,
+        })
     }
 }

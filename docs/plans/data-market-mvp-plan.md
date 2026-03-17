@@ -260,6 +260,26 @@ Recommendation:
 This plan deliberately does not assign a specific numeric request kind.
 The point is to keep the MVP on the NIP-90 rail without creating avoidable kind conflicts.
 
+### In-repo helper profile
+
+The in-repo helper surface should stay explicit about what is local policy versus public protocol.
+
+For the MVP, the Nostr crate can expose a narrow OpenAgents helper profile that:
+
+* requires the caller to choose the request kind rather than hard-coding a permanent public number
+* keeps the transport on generic NIP-90 request/result/feedback events
+* carries the OpenAgents-specific request fields through namespaced profile params or tags such as:
+  * `oa_profile`
+  * `oa_asset_ref`
+  * `oa_scope`
+  * `oa_delivery_mode`
+  * `oa_preview_posture`
+  * `oa_grant_id`
+  * `oa_delivery_bundle_id`
+* makes result and feedback linkage to kernel objects parseable without inventing a second transport
+
+That gives the codebase a truthful in-repo profile now while leaving the public kind decision open.
+
 ### Request shape
 
 The request should carry enough information to ask for data access without requiring a new transport:
@@ -291,6 +311,7 @@ Providers should advertise their supported data-vending profile through the same
 For MVP this can stay narrow:
 
 * advertise support for the checked data-vending request kind through NIP-89 `k` tags
+* advertise the OpenAgents data-vending profile version in handler metadata or custom tags
 * advertise coarse asset families
 * avoid publishing sensitive asset details in public announcements
 
