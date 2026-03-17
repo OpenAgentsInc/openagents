@@ -48,6 +48,7 @@ mod nip90_compute_semantics;
 mod nip_sa_wallet_bridge;
 #[cfg(test)]
 mod ollama_execution;
+mod onboarding;
 mod openagents_dynamic_tools;
 mod pane_registry;
 mod pane_renderer;

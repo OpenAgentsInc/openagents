@@ -2702,7 +2702,7 @@ fn paint_go_online_pane(
     log_stream.terminal.paint(log_body_bounds, paint);
 }
 
-fn paint_mission_control_section_panel(
+pub(crate) fn paint_mission_control_section_panel(
     bounds: Bounds,
     title: &str,
     accent: Hsla,
@@ -3394,7 +3394,7 @@ fn mission_control_section_content_y(bounds: Bounds) -> f32 {
     bounds.origin.y + MISSION_CONTROL_SECTION_CONTENT_TOP
 }
 
-fn mission_control_panel_color() -> Hsla {
+pub(crate) fn mission_control_panel_color() -> Hsla {
     Hsla::from_hex(0x0D121A)
 }
 
@@ -3402,11 +3402,11 @@ fn mission_control_panel_header_color() -> Hsla {
     Hsla::from_hex(0x121924)
 }
 
-fn mission_control_panel_border_color() -> Hsla {
+pub(crate) fn mission_control_panel_border_color() -> Hsla {
     Hsla::from_hex(0x263245)
 }
 
-fn mission_control_text_color() -> Hsla {
+pub(crate) fn mission_control_text_color() -> Hsla {
     Hsla::from_hex(0xD8DFF0)
 }
 
@@ -3422,11 +3422,11 @@ fn mission_control_amber_color() -> Hsla {
     Hsla::from_hex(0xF9B84D)
 }
 
-fn mission_control_green_color() -> Hsla {
+pub(crate) fn mission_control_green_color() -> Hsla {
     Hsla::from_hex(0x52E06D)
 }
 
-fn mission_control_cyan_color() -> Hsla {
+pub(crate) fn mission_control_cyan_color() -> Hsla {
     Hsla::from_hex(0x2FB7F2)
 }
 
@@ -7331,7 +7331,7 @@ fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut Pa
     paint_tertiary_button(bounds, label, paint);
 }
 
-fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+pub(crate) fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
     paint_button(bounds, label, ButtonStyle::Disabled, paint);
 }
 
