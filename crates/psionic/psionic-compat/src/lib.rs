@@ -1132,7 +1132,7 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
         },
         MlxAcceptanceCategory {
             category_id: String::from("distributed-semantics"),
-            matrix_status: MlxAcceptanceCategoryStatus::Partial,
+            matrix_status: MlxAcceptanceCategoryStatus::ImplementedEarly,
             epic_id: String::from("PMLX-E5"),
             issue_refs: vec![
                 String::from("PMLX-501 (#3859)"),
@@ -1147,10 +1147,10 @@ pub fn builtin_mlx_acceptance_matrix_report() -> MlxAcceptanceMatrixReport {
                 "The MLX lane publishes distributed group, collective, gradient-reduction, tensor-parallel, FSDP-style update, and launch/topology helpers above Psionic collectives and cluster truth.",
             ),
             current_repo_truth: String::from(
-                "Psionic now exposes a bounded public distributed surface in psionic-distributed above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, explicit-plan subgroup split semantics, MLX-style singleton passthrough for all_sum/all_gather/reduce_scatter, explicit host-owned per-rank reference emulation for multi-rank collectives and recv, validation-only send, typed collective-support snapshots, a bounded launch/config planning shell with hostfile parsing, honest single-rank-per-node validation, cluster membership/address/backend readiness checks, sandbox contract preflight, per-rank bootstrap payloads and sandbox job plans, distributed reserved-environment synthesis, cluster execution evidence, stable plan digests, tree-aware gradient reduction through grouped_all_sum/grouped_all_reduce and floating-point average_gradients over deterministic tree structure, bounded AllToShardedLinear and ShardedToAllLinear wrappers with deterministic row/column sharding, inspectable shard layouts, local shard-input splitting, and explicit reference-emulated multi-rank reconstruction, plus a bounded fsdp_apply_gradients helper above distributed optimizer contracts with typed zero_stage3 admission, mixed replicated/full-shard group handling, explicit remote-rank state and batch maps, optional global-norm clipping, shard-local optimizer updates, gathered parameter reconstruction, and stable apply receipts, while backend-family mapping and real backend transport remain open.",
+                "Psionic now exposes a bounded public distributed surface in psionic-distributed above current runtime mesh truth, including explicit mesh bootstrap, reusable global-group init, honest singleton fallback, ordered member/rank snapshots, explicit-plan subgroup split semantics, MLX-style singleton passthrough for all_sum/all_gather/reduce_scatter, explicit host-owned per-rank reference emulation for multi-rank collectives and recv, validation-only send, typed collective-support snapshots, a bounded launch/config planning shell with hostfile parsing, honest single-rank-per-node validation, cluster membership/address/backend readiness checks, sandbox contract preflight, per-rank bootstrap payloads and sandbox job plans, distributed reserved-environment synthesis, cluster execution evidence, stable plan digests, tree-aware gradient reduction through grouped_all_sum/grouped_all_reduce and floating-point average_gradients over deterministic tree structure, bounded AllToShardedLinear and ShardedToAllLinear wrappers with deterministic row/column sharding, inspectable shard layouts, local shard-input splitting, and explicit reference-emulated multi-rank reconstruction, plus a bounded fsdp_apply_gradients helper above distributed optimizer contracts with typed zero_stage3 admission, mixed replicated/full-shard group handling, explicit remote-rank state and batch maps, optional global-norm clipping, shard-local optimizer updates, gathered parameter reconstruction, and stable apply receipts; the surface now also publishes explicit backend-family capability mapping and launch/topology validation for ring, mpi, nccl, and jaccl-class requests, with backend=any resolving honestly from current CUDA-versus-non-CUDA topology truth and jaccl refusing until a real RDMA-style topology profile exists.",
             ),
             boundary_note: String::from(
-                "Do not infer MLX distributed closure from the new group, collective, launch/config, gradient-helper, tensor-parallel, and FSDP-helper layer alone; backend-family mapping and transport-backed execution are still incomplete.",
+                "Do not infer transport-backed multi-rank execution or full upstream distributed parity from this category alone; backend-family mapping is now explicit, but collectives remain reference-emulated on the current public Psionic surface.",
             ),
         },
         MlxAcceptanceCategory {
@@ -1495,6 +1495,12 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                     "cargo test -p psionic-distributed tests::init_bootstraps_one_group_and_reuses_it_as_the_global_group -- --exact --nocapture",
                 ),
                 String::from(
+                    "cargo test -p psionic-distributed tests::named_backend_families_map_onto_current_topology_profiles -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::named_backend_families_refuse_incompatible_topologies -- --exact --nocapture",
+                ),
+                String::from(
                     "cargo test -p psionic-distributed tests::split_uses_one_explicit_plan_and_reassigns_rank_by_key -- --exact --nocapture",
                 ),
                 String::from(
@@ -1514,6 +1520,9 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 ),
                 String::from(
                     "cargo test -p psionic-distributed tests::plan_launch_emits_cluster_evidence_rank_assignments_and_reserved_environment -- --exact --nocapture",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed tests::plan_launch_maps_named_backend_families_and_refuses_missing_profiles -- --exact --nocapture",
                 ),
                 String::from(
                     "cargo test -p psionic-distributed tests::plan_launch_refuses_configs_that_would_fail_the_sandbox_contract -- --exact --nocapture",
@@ -1544,10 +1553,10 @@ pub fn builtin_mlx_parity_harness_report() -> MlxParityHarnessReport {
                 ),
             ],
             summary: String::from(
-                "psionic-distributed now exposes a bounded public group, collective-helper, launch/config planning, tree-aware gradient-reduction, tensor-parallel linear-wrapper, and FSDP-style update-helper surface with singleton passthrough, reference-emulated multi-rank collectives, typed send/recv validation, hostfile parsing, cluster/sandbox-backed per-rank job plans, grouped small-leaf all-reduce, floating-point average_gradients, bounded AllToShardedLinear/ShardedToAllLinear, and bounded fsdp_apply_gradients receipts and refusals, but the seeded upstream distributed family still lacks backend-family mapping and transport-backed multi-rank execution needed for a parity pass.",
+                "psionic-distributed now exposes a bounded public group, collective-helper, launch/config planning, tree-aware gradient-reduction, tensor-parallel linear-wrapper, and FSDP-style update-helper surface with singleton passthrough, reference-emulated multi-rank collectives, typed send/recv validation, hostfile parsing, cluster/sandbox-backed per-rank job plans, grouped small-leaf all-reduce, floating-point average_gradients, bounded AllToShardedLinear/ShardedToAllLinear, bounded fsdp_apply_gradients receipts and refusals, and explicit backend-family capability mapping plus refusal coverage for ring, mpi, nccl, and jaccl-class requests, but the seeded upstream distributed family still lacks transport-backed multi-rank execution needed for a parity pass.",
             ),
             boundary_note: String::from(
-                "Current group plus collective plus launch/config plus gradient-helper plus tensor-parallel plus FSDP-helper semantics are necessary but not sufficient; seeded upstream distributed parity still requires backend-family mapping and transport-backed execution.",
+                "Current group plus collective plus launch/config plus gradient-helper plus tensor-parallel plus FSDP-helper semantics plus backend-family mapping are necessary but not sufficient; seeded upstream distributed parity still requires transport-backed multi-rank execution.",
             ),
         },
     ])
@@ -1796,20 +1805,22 @@ pub fn builtin_mlx_compatibility_matrix_report() -> MlxCompatibilityMatrixReport
         },
         MlxCompatibilityMatrixEntry {
             surface_id: String::from("public_mlx_distributed_api"),
-            matrix_status: MlxCompatibilityMatrixStatus::Unsupported,
+            matrix_status: MlxCompatibilityMatrixStatus::Supported,
             summary: String::from(
-                "psionic-distributed now exposes a bounded public distributed-group, collective-helper, launch/config, tree-aware gradient-reduction, tensor-parallel linear-wrapper, and FSDP-style update-helper API, but the broader MLX distributed helper surface remains unsupported.",
+                "psionic-distributed now exposes a bounded supported public distributed-group, collective-helper, launch/config, tree-aware gradient-reduction, tensor-parallel linear-wrapper, and FSDP-style update-helper API with explicit backend-family capability mapping and typed refusal for unsupported topology profiles.",
             ),
             evidence_refs: vec![
-                String::from("MlxAcceptanceMatrixReport::distributed-semantics = partial"),
                 String::from(
-                    "cargo test -p psionic-distributed group plus collective plus launch/config plus gradient-helper plus tensor-parallel plus fsdp_apply_gradients coverage now exists",
+                    "MlxAcceptanceMatrixReport::distributed-semantics = implemented_early",
+                ),
+                String::from(
+                    "cargo test -p psionic-distributed group plus collective plus launch/config plus gradient-helper plus tensor-parallel plus fsdp_apply_gradients plus backend-family mapping coverage now exists",
                 ),
                 String::from("MLX parity family `distributed` = unsupported"),
             ],
-            blocking_issue_refs: vec![String::from("PMLX-507 (#3865)")],
+            blocking_issue_refs: Vec::new(),
             boundary_note: String::from(
-                "Current collectives and cluster internals are not themselves a full supported MLX public distributed surface, and the new group plus collective plus launch/config plus gradient-helper plus tensor-parallel plus FSDP-helper layer is still not enough to claim backend-family mapping or transport-backed execution.",
+                "This is a bounded supported early public distributed surface with explicit ring/mpi/nccl/jaccl-class mapping and refusal posture, not a claim of vendor transport-backed collective execution or full upstream MLX distributed parity.",
             ),
         },
         MlxCompatibilityMatrixEntry {
@@ -2210,7 +2221,7 @@ mod tests {
                 "transform-compile" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "nn-optimizer" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 "export-serialization-tooling" => MlxAcceptanceCategoryStatus::ImplementedEarly,
-                "distributed-semantics" => MlxAcceptanceCategoryStatus::Partial,
+                "distributed-semantics" => MlxAcceptanceCategoryStatus::ImplementedEarly,
                 _ => MlxAcceptanceCategoryStatus::Planned,
             };
             assert_eq!(category.matrix_status, expected_status);
@@ -2463,6 +2474,17 @@ mod tests {
                 .iter()
                 .all(|issue| !issue.contains("PMLX-306"))
         );
+
+        let distributed = report
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "public_mlx_distributed_api")
+            .expect("missing public distributed row");
+        assert_eq!(
+            distributed.matrix_status,
+            MlxCompatibilityMatrixStatus::Supported
+        );
+        assert!(distributed.blocking_issue_refs.is_empty());
 
         let filtered = report.filter_to_surfaces(&[
             String::from("governance_contracts"),

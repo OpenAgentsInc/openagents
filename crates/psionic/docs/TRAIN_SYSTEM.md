@@ -141,7 +141,9 @@ It already has real substrate for:
   identity, ordered member snapshots, explicit-plan subgroup split semantics,
   hostfile parsing, honest single-rank-per-node launch validation, per-rank
   bootstrap payloads and sandbox job plans, distributed reserved-environment
-  synthesis, and cluster execution evidence in the framework-facing layer
+  synthesis, cluster execution evidence, and explicit `ring` / `mpi` / `nccl`
+  backend-family capability mapping plus typed `jaccl` refusal over current
+  topology profiles in the framework-facing layer
 - bounded reusable tree-aware gradient reduction helpers in
   `psionic-distributed` that reuse the public collective layer while keeping
   deterministic tree structure, grouped small-leaf all-reduce, and
