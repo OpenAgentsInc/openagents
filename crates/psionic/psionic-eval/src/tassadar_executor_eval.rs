@@ -100,6 +100,34 @@ pub struct TassadarExecutorEvalReport {
     pub case_reports: Vec<TassadarExecutorEvalCaseReport>,
 }
 
+/// Per-case progress facts emitted while a held-out eval is still running.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TassadarExecutorEvalCaseProgress {
+    /// Split currently being evaluated.
+    pub split: TassadarSequenceSplit,
+    /// One-based case ordinal inside the evaluated split.
+    pub case_index: u32,
+    /// Total case count inside the evaluated split.
+    pub case_count: u32,
+    /// Stable sequence identifier.
+    pub sequence_id: String,
+    /// Stable corpus case identifier.
+    pub case_id: String,
+    /// Number of target tokens evaluated for the case.
+    pub evaluated_target_token_count: u32,
+    /// Number of exact target tokens before the first divergence.
+    pub matched_target_token_count: u32,
+    /// First target-token index where divergence appeared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_divergence_index: Option<u32>,
+    /// Whether the full predicted suffix matched exactly.
+    pub exact_trace_match: bool,
+    /// Whether final output values matched exactly.
+    pub final_output_match: bool,
+    /// Whether the terminal halt marker matched exactly.
+    pub halt_match: bool,
+}
+
 /// Per-case boundary summary emitted as a standalone report artifact.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TassadarExecutorBoundaryExactnessCaseReport {
@@ -226,11 +254,35 @@ pub fn evaluate_tassadar_executor_transformer_with_target_cap(
     split: TassadarSequenceSplit,
     target_token_cap: Option<usize>,
 ) -> Result<TassadarExecutorEvalReport, TassadarExecutorEvalError> {
+    evaluate_tassadar_executor_transformer_with_target_cap_and_progress(
+        model,
+        dataset,
+        split,
+        target_token_cap,
+        |_| {},
+    )
+}
+
+/// Greedily evaluates one trained executor model against the frozen CPU-reference dataset split,
+/// optionally capping the evaluated suffix length for bounded smoke tests, while emitting
+/// per-case progress facts.
+pub fn evaluate_tassadar_executor_transformer_with_target_cap_and_progress<F>(
+    model: &TassadarExecutorTransformer,
+    dataset: &TassadarSequenceDatasetContract,
+    split: TassadarSequenceSplit,
+    target_token_cap: Option<usize>,
+    mut on_case_complete: F,
+) -> Result<TassadarExecutorEvalReport, TassadarExecutorEvalError>
+where
+    F: FnMut(&TassadarExecutorEvalCaseProgress),
+{
     dataset.validate()?;
     let tokenizer = model.tokenizer();
     let mut case_reports = Vec::new();
+    let split_examples = dataset.split_examples(split);
+    let case_count = split_examples.len() as u32;
 
-    for example in dataset.split_examples(split) {
+    for (case_index, example) in split_examples.into_iter().enumerate() {
         let prompt_len = example.metadata.prompt_token_count as usize;
         let prompt = TokenSequence::new(
             example.token_ids[..prompt_len]
@@ -313,7 +365,7 @@ pub fn evaluate_tassadar_executor_transformer_with_target_cap(
         if !halt_match {
             failures.push(TassadarExecutorEvalFailure::HaltMismatch);
         }
-        case_reports.push(TassadarExecutorEvalCaseReport {
+        let case_report = TassadarExecutorEvalCaseReport {
             sequence_id: example.sequence_id.clone(),
             case_id: example.metadata.case_id.clone(),
             target_token_exactness_bps,
@@ -340,7 +392,21 @@ pub fn evaluate_tassadar_executor_transformer_with_target_cap(
                     .collect::<Vec<_>>(),
             ),
             failures,
+        };
+        on_case_complete(&TassadarExecutorEvalCaseProgress {
+            split,
+            case_index: case_index as u32 + 1,
+            case_count,
+            sequence_id: case_report.sequence_id.clone(),
+            case_id: case_report.case_id.clone(),
+            evaluated_target_token_count: evaluated_target_len as u32,
+            matched_target_token_count: case_report.matched_target_token_count,
+            first_divergence_index: case_report.first_divergence_index,
+            exact_trace_match: case_report.exact_trace_match,
+            final_output_match: case_report.final_output_match,
+            halt_match: case_report.halt_match,
         });
+        case_reports.push(case_report);
     }
 
     let case_count = case_reports.len().max(1) as u32;

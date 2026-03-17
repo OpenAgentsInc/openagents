@@ -4,8 +4,8 @@ use psionic_data::{
     TassadarSequenceDatasetContract, TassadarSequenceDatasetError, TassadarSequenceSplit,
 };
 use psionic_models::{
-    TassadarExecutorAttentionDecodeRefusal, TassadarExecutorAttentionTransformer,
-    TassadarExecutorAttentionError, TassadarExecutorTransformer,
+    TassadarExecutorAttentionDecodeRefusal, TassadarExecutorAttentionError,
+    TassadarExecutorAttentionTransformer, TassadarExecutorTransformer,
     TassadarExecutorTransformerDecodeRefusal, TassadarExecutorTransformerError, TokenId,
     TokenSequence, TokenizerBoundary,
 };
@@ -111,6 +111,12 @@ pub struct TassadarExecutorArchitectureCaseReport {
     /// First target-token index where divergence appeared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_divergence_index: Option<u32>,
+    /// Reference token at the first divergence when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_divergence_token: Option<String>,
+    /// Predicted token at the first divergence when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predicted_divergence_token: Option<String>,
     /// Whether the bounded predicted suffix matched exactly.
     pub exact_trace_match: bool,
 }
@@ -191,15 +197,13 @@ impl TassadarExecutorArchitectureComparisonReport {
         lookup_baseline: TassadarExecutorArchitectureFamilyReport,
         executor_attention_candidate: TassadarExecutorArchitectureFamilyReport,
     ) -> Self {
-        let candidate_more_exact =
-            correctness_rank(&executor_attention_candidate.correctness)
-                > correctness_rank(&lookup_baseline.correctness);
+        let candidate_more_exact = correctness_rank(&executor_attention_candidate.correctness)
+            > correctness_rank(&lookup_baseline.correctness);
         let candidate_faster_reference_linear =
             executor_attention_candidate.speed.neural_tokens_per_second
                 > lookup_baseline.speed.neural_tokens_per_second;
-        let candidate_closer_to_article_fidelity =
-            executor_attention_candidate.family_kind
-                == TassadarExecutorArchitectureFamilyKind::ExecutorAttentionCandidate;
+        let candidate_closer_to_article_fidelity = executor_attention_candidate.family_kind
+            == TassadarExecutorArchitectureFamilyKind::ExecutorAttentionCandidate;
         let mut report = Self {
             dataset_storage_key,
             dataset_digest,
@@ -213,8 +217,10 @@ impl TassadarExecutorArchitectureComparisonReport {
             candidate_closer_to_article_fidelity,
             report_digest: String::new(),
         };
-        report.report_digest =
-            stable_digest(b"psionic_tassadar_executor_architecture_comparison_report|", &report);
+        report.report_digest = stable_digest(
+            b"psionic_tassadar_executor_architecture_comparison_report|",
+            &report,
+        );
         report
     }
 }
@@ -249,8 +255,7 @@ pub fn evaluate_lookup_family_for_architecture_comparison(
     split: TassadarSequenceSplit,
     prompt_window_token_cap: usize,
     target_token_cap: usize,
-) -> Result<TassadarExecutorArchitectureFamilyReport, TassadarExecutorArchitectureComparisonError>
-{
+) -> Result<TassadarExecutorArchitectureFamilyReport, TassadarExecutorArchitectureComparisonError> {
     dataset.validate()?;
     let runtime_programs = runtime_programs();
     let mut case_reports = Vec::new();
@@ -259,19 +264,33 @@ pub fn evaluate_lookup_family_for_architecture_comparison(
     let mut total_cpu_elapsed_ms = 0_u64;
 
     for example in dataset.split_examples(split) {
-        let window = bounded_case_window(example.token_ids.as_slice(), example.metadata.prompt_token_count as usize, prompt_window_token_cap, target_token_cap);
-        let predicted_target = timed_lookup_decode(model, window.prompt.clone(), window.reference_target.len(), &mut total_neural_elapsed_ms)?;
-        let cpu_elapsed_ms = timed_cpu_reference(runtime_programs.as_slice(), example.metadata.case_id.as_str())?;
+        let window = bounded_case_window(
+            example.token_ids.as_slice(),
+            example.metadata.prompt_token_count as usize,
+            prompt_window_token_cap,
+            target_token_cap,
+        );
+        let predicted_target = timed_lookup_decode(
+            model,
+            window.prompt.clone(),
+            window.reference_target.len(),
+            &mut total_neural_elapsed_ms,
+        )?;
+        let cpu_elapsed_ms = timed_cpu_reference(
+            runtime_programs.as_slice(),
+            example.metadata.case_id.as_str(),
+        )?;
         total_cpu_elapsed_ms = total_cpu_elapsed_ms.saturating_add(cpu_elapsed_ms.max(1));
-        total_target_tokens = total_target_tokens.saturating_add(window.reference_target.len() as u64);
+        total_target_tokens =
+            total_target_tokens.saturating_add(window.reference_target.len() as u64);
         case_reports.push(build_case_report(
+            model.tokenizer(),
             example.sequence_id.clone(),
             example.metadata.case_id.clone(),
             window.reference_target.as_slice(),
             predicted_target.as_slice(),
         ));
     }
-
     Ok(build_family_report(
         dataset,
         split,
@@ -286,7 +305,9 @@ pub fn evaluate_lookup_family_for_architecture_comparison(
         1,
         model.descriptor().config.context_offsets.len() as u32,
         model.descriptor().config.constrained_lookup_head_dim as u32,
-        String::from("fixed relative-offset lookup heads plus optional learned mixer; not a layered causal-attention stack"),
+        String::from(
+            "fixed relative-offset lookup heads plus optional learned mixer; not a layered causal-attention stack",
+        ),
         build_lookup_decode_selection(model),
         total_target_tokens,
         total_neural_elapsed_ms,
@@ -302,8 +323,7 @@ pub fn evaluate_attention_family_for_architecture_comparison(
     split: TassadarSequenceSplit,
     prompt_window_token_cap: usize,
     target_token_cap: usize,
-) -> Result<TassadarExecutorArchitectureFamilyReport, TassadarExecutorArchitectureComparisonError>
-{
+) -> Result<TassadarExecutorArchitectureFamilyReport, TassadarExecutorArchitectureComparisonError> {
     dataset.validate()?;
     let runtime_programs = runtime_programs();
     let mut case_reports = Vec::new();
@@ -312,18 +332,67 @@ pub fn evaluate_attention_family_for_architecture_comparison(
     let mut total_cpu_elapsed_ms = 0_u64;
 
     for example in dataset.split_examples(split) {
-        let window = bounded_case_window(example.token_ids.as_slice(), example.metadata.prompt_token_count as usize, prompt_window_token_cap, target_token_cap);
-        let predicted_target = timed_attention_decode(model, window.prompt.clone(), window.reference_target.len(), &mut total_neural_elapsed_ms)?;
-        let cpu_elapsed_ms = timed_cpu_reference(runtime_programs.as_slice(), example.metadata.case_id.as_str())?;
+        let window = bounded_case_window(
+            example.token_ids.as_slice(),
+            example.metadata.prompt_token_count as usize,
+            prompt_window_token_cap,
+            target_token_cap,
+        );
+        let predicted_target = timed_attention_decode(
+            model,
+            window.prompt.clone(),
+            window.reference_target.len(),
+            &mut total_neural_elapsed_ms,
+        )?;
+        let cpu_elapsed_ms = timed_cpu_reference(
+            runtime_programs.as_slice(),
+            example.metadata.case_id.as_str(),
+        )?;
         total_cpu_elapsed_ms = total_cpu_elapsed_ms.saturating_add(cpu_elapsed_ms.max(1));
-        total_target_tokens = total_target_tokens.saturating_add(window.reference_target.len() as u64);
+        total_target_tokens =
+            total_target_tokens.saturating_add(window.reference_target.len() as u64);
         case_reports.push(build_case_report(
+            model.tokenizer(),
             example.sequence_id.clone(),
             example.metadata.case_id.clone(),
             window.reference_target.as_slice(),
             predicted_target.as_slice(),
         ));
     }
+    let article_fidelity_summary = if model.has_relative_target_output_projection_signal()
+        && model.has_relative_target_transition_output_bias_signal()
+        && model.has_relative_target_trace_schema_output_bias_signal()
+    {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_output_projection_signal()
+        && model.has_relative_target_transition_output_bias_signal()
+    {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned and previous-token-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_trace_schema_output_bias_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded trace-schema-conditioned relative-target logit adapter, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_transition_output_bias_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded previous-token-conditioned relative-target logit adapter, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_output_projection_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded relative-target hidden-state-conditioned logit adapter, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_output_bias_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded relative-target logit-bias adapter, still only as a research windowed lane with hull fallback",
+        )
+    } else {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention, but only as a bounded windowed research lane with hull fallback",
+        )
+    };
 
     Ok(build_family_report(
         dataset,
@@ -339,7 +408,7 @@ pub fn evaluate_attention_family_for_architecture_comparison(
         model.descriptor().config.layer_count as u32,
         model.descriptor().config.head_count as u32,
         model.descriptor().config.head_dim as u32,
-        String::from("layered full-prefix causal 2D-head hard-max attention, but only as a bounded windowed research lane with hull fallback"),
+        article_fidelity_summary,
         build_attention_decode_selection(model),
         total_target_tokens,
         total_neural_elapsed_ms,
@@ -361,10 +430,12 @@ pub fn build_tassadar_executor_architecture_comparison_report(
     if lookup_baseline.model_id == executor_attention_candidate.model_id
         && lookup_baseline.family_kind != executor_attention_candidate.family_kind
     {
-        return Err(TassadarExecutorArchitectureComparisonError::DatasetMismatch {
-            expected: dataset.storage_key(),
-            actual: dataset.storage_key(),
-        });
+        return Err(
+            TassadarExecutorArchitectureComparisonError::DatasetMismatch {
+                expected: dataset.storage_key(),
+                actual: dataset.storage_key(),
+            },
+        );
     }
     Ok(TassadarExecutorArchitectureComparisonReport::new(
         dataset.storage_key(),
@@ -415,8 +486,7 @@ fn timed_lookup_decode(
 ) -> Result<Vec<TokenId>, TassadarExecutorArchitectureComparisonError> {
     let started = Instant::now();
     let predicted = greedy_decode_lookup(model, prompt, target_token_count)?;
-    *total_elapsed_ms =
-        total_elapsed_ms.saturating_add(started.elapsed().as_millis() as u64);
+    *total_elapsed_ms = total_elapsed_ms.saturating_add(started.elapsed().as_millis() as u64);
     Ok(predicted)
 }
 
@@ -428,8 +498,7 @@ fn timed_attention_decode(
 ) -> Result<Vec<TokenId>, TassadarExecutorArchitectureComparisonError> {
     let started = Instant::now();
     let predicted = greedy_decode_attention(model, prompt, target_token_count)?;
-    *total_elapsed_ms =
-        total_elapsed_ms.saturating_add(started.elapsed().as_millis() as u64);
+    *total_elapsed_ms = total_elapsed_ms.saturating_add(started.elapsed().as_millis() as u64);
     Ok(predicted)
 }
 
@@ -441,9 +510,11 @@ fn timed_cpu_reference(
         .iter()
         .find(|(candidate_case_id, _)| candidate_case_id == case_id)
     else {
-        return Err(TassadarExecutorArchitectureComparisonError::MissingRuntimeCase {
-            case_id: case_id.to_string(),
-        });
+        return Err(
+            TassadarExecutorArchitectureComparisonError::MissingRuntimeCase {
+                case_id: case_id.to_string(),
+            },
+        );
     };
     let started = Instant::now();
     let _execution = TassadarCpuReferenceRunner::for_program(program)?.execute(program)?;
@@ -487,14 +558,26 @@ fn greedy_decode_attention(
 }
 
 fn build_case_report(
+    tokenizer: &impl TokenizerBoundary,
     sequence_id: String,
     case_id: String,
     reference_target: &[TokenId],
     predicted_target: &[TokenId],
 ) -> TassadarExecutorArchitectureCaseReport {
-    let matched_target_token_count =
-        matched_target_token_count(reference_target, predicted_target);
+    let matched_target_token_count = matched_target_token_count(reference_target, predicted_target);
     let first_divergence_index = first_divergence_index(reference_target, predicted_target);
+    let reference_divergence_token = first_divergence_index.and_then(|index| {
+        reference_target
+            .get(index as usize)
+            .and_then(|token| tokenizer.vocabulary().token(*token))
+            .map(str::to_string)
+    });
+    let predicted_divergence_token = first_divergence_index.and_then(|index| {
+        predicted_target
+            .get(index as usize)
+            .and_then(|token| tokenizer.vocabulary().token(*token))
+            .map(str::to_string)
+    });
     TassadarExecutorArchitectureCaseReport {
         sequence_id,
         case_id,
@@ -505,6 +588,8 @@ fn build_case_report(
         first_32_token_exactness_bps: prefix_exactness_bps(reference_target, predicted_target, 32),
         matched_target_token_count,
         first_divergence_index,
+        reference_divergence_token,
+        predicted_divergence_token,
         exact_trace_match: predicted_target == reference_target,
     }
 }
@@ -563,7 +648,10 @@ fn build_family_report(
     };
     let speed = TassadarExecutorArchitectureSpeedSummary {
         decode_mode: TassadarExecutorDecodeMode::ReferenceLinear,
-        neural_tokens_per_second: tokens_per_second(total_target_tokens as u32, total_neural_elapsed_ms),
+        neural_tokens_per_second: tokens_per_second(
+            total_target_tokens as u32,
+            total_neural_elapsed_ms,
+        ),
         cpu_tokens_per_second: tokens_per_second(total_target_tokens as u32, total_cpu_elapsed_ms),
     };
     let mut report = TassadarExecutorArchitectureFamilyReport {
@@ -585,13 +673,15 @@ fn build_family_report(
         case_reports,
         report_digest: String::new(),
     };
-    report.report_digest =
-        stable_digest(b"psionic_tassadar_executor_architecture_family_report|", &(
+    report.report_digest = stable_digest(
+        b"psionic_tassadar_executor_architecture_family_report|",
+        &(
             dataset.storage_key(),
             dataset.stable_digest(),
             split,
             &report,
-        ));
+        ),
+    );
     report
 }
 
@@ -671,7 +761,10 @@ fn matched_target_token_count(reference_target: &[TokenId], predicted_target: &[
         .count() as u32
 }
 
-fn first_divergence_index(reference_target: &[TokenId], predicted_target: &[TokenId]) -> Option<u32> {
+fn first_divergence_index(
+    reference_target: &[TokenId],
+    predicted_target: &[TokenId],
+) -> Option<u32> {
     reference_target
         .iter()
         .zip(predicted_target.iter())
@@ -695,7 +788,11 @@ fn suffix_exactness_bps(reference_target: &[TokenId], predicted_target: &[TokenI
     ((exact as f64 / reference_target.len() as f64) * 10_000.0).round() as u32
 }
 
-fn prefix_exactness_bps(reference_target: &[TokenId], predicted_target: &[TokenId], prefix_len: usize) -> u32 {
+fn prefix_exactness_bps(
+    reference_target: &[TokenId],
+    predicted_target: &[TokenId],
+    prefix_len: usize,
+) -> u32 {
     if reference_target.is_empty() {
         return 10_000;
     }
@@ -719,7 +816,9 @@ fn average_bps(values: Vec<u32>) -> u32 {
     (values.iter().map(|value| u64::from(*value)).sum::<u64>() / values.len() as u64) as u32
 }
 
-fn correctness_rank(summary: &TassadarExecutorArchitectureCorrectnessSummary) -> (u32, u32, u32, u32, u32) {
+fn correctness_rank(
+    summary: &TassadarExecutorArchitectureCorrectnessSummary,
+) -> (u32, u32, u32, u32, u32) {
     (
         summary.first_target_exactness_bps,
         summary.first_32_token_exactness_bps,
@@ -757,8 +856,8 @@ mod tests {
     };
 
     use crate::{
-        build_tassadar_sudoku_v0_sequence_dataset,
         build_tassadar_executor_architecture_comparison_report,
+        build_tassadar_sudoku_v0_sequence_dataset,
         evaluate_attention_family_for_architecture_comparison,
         evaluate_lookup_family_for_architecture_comparison,
     };
@@ -797,7 +896,10 @@ mod tests {
         assert_eq!(comparison.prompt_window_token_cap, 256);
         assert_eq!(comparison.target_token_cap, 32);
         assert_eq!(
-            comparison.lookup_baseline.requested_hull_decode.hull_decode_posture,
+            comparison
+                .lookup_baseline
+                .requested_hull_decode
+                .hull_decode_posture,
             super::TassadarExecutorArchitectureHullDecodePosture::Direct
         );
         assert_eq!(
