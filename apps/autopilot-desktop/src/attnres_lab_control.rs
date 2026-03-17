@@ -1144,7 +1144,11 @@ fn dominant_source(labels: &[String], weights: &[f32]) -> (String, f32) {
 }
 
 fn selectivity_from_weights(weights: &[f32]) -> f32 {
-    1.0 - entropy_from_weights(weights)
+    if weights.len() <= 1 {
+        0.0
+    } else {
+        1.0 - entropy_from_weights(weights)
+    }
 }
 
 fn entropy_from_weights(weights: &[f32]) -> f32 {
@@ -1404,11 +1408,12 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let path = temp.path().join("attnres-state.json");
         let mut controller = DesktopAttnResLabController::load(path);
+        let last_index = controller.snapshot.sublayers.len().saturating_sub(1);
 
         controller
-            .set_selected_sublayer(4)
+            .set_selected_sublayer(last_index)
             .expect("set sublayer should succeed");
-        assert_eq!(controller.state.selected_sublayer, 4);
+        assert_eq!(controller.state.selected_sublayer, last_index);
 
         controller
             .set_speed_multiplier(5)
