@@ -1,9 +1,15 @@
 # 2026-03-16 Tassadar Step-Index Blocker Audit
 
-This note records the next two bounded executor-attention follow-ons after the
-first accepted boundary-adapter result.
+This note records the bounded executor-attention follow-ons that first
+identified the token-1 structural blocker after the accepted boundary-adapter
+result.
 
 It is still not a promotion note.
+
+It is now a historical blocker note rather than the latest state. The later
+transition-adapter follow-on that moves the first divergence deeper into the
+trace is recorded separately in
+`docs/audits/2026-03-16-tassadar-transition-adapter-audit.md`.
 
 ## Why This Note Exists
 
