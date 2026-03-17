@@ -361,9 +361,20 @@ pub fn evaluate_attention_family_for_architecture_comparison(
     }
     let article_fidelity_summary = if model.has_relative_target_output_projection_signal()
         && model.has_relative_target_transition_output_bias_signal()
+        && model.has_relative_target_trace_schema_output_bias_signal()
+    {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_output_projection_signal()
+        && model.has_relative_target_transition_output_bias_signal()
     {
         String::from(
             "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned and previous-token-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        )
+    } else if model.has_relative_target_trace_schema_output_bias_signal() {
+        String::from(
+            "layered full-prefix causal 2D-head hard-max attention plus a bounded trace-schema-conditioned relative-target logit adapter, still only as a research windowed lane with hull fallback",
         )
     } else if model.has_relative_target_transition_output_bias_signal() {
         String::from(

@@ -1,0 +1,10 @@
+{
+  "run_id": "tassadar-executor-attention-sudoku-v0-boundary-v9",
+  "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+  "output_dir": "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9",
+  "training_report_file": "training_report.json",
+  "family_report_file": "family_report.json",
+  "checkpoint_state_file": "checkpoint_state.json",
+  "model_descriptor_file": "model_descriptor.json",
+  "bundle_digest": "6017795cf1909d70b4c6ef784d9917f408b9b26e724a70fad6ca15ecc0aac741"
+}

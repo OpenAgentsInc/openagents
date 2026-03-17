@@ -1,0 +1,2575 @@
+{
+  "config": {
+    "run_id": "tassadar-executor-attention-sudoku-v0-boundary-v8",
+    "dataset_version": "train-v0",
+    "epochs": 32,
+    "learning_rate": 0.01,
+    "prompt_window_token_cap": 256,
+    "target_token_cap": 32,
+    "stages": [
+      {
+        "stage_id": "prompt_to_first_token",
+        "target_token_cap": 1,
+        "epoch_count": 8,
+        "learning_rate_scale": 1.0,
+        "first_target_loss_scale": 8.0,
+        "early_token_prefix_len": 1,
+        "early_token_loss_scale": 8.0
+      },
+      {
+        "stage_id": "prompt_to_first_2_tokens",
+        "target_token_cap": 2,
+        "epoch_count": 4,
+        "learning_rate_scale": 1.0,
+        "first_target_loss_scale": 6.0,
+        "early_token_prefix_len": 2,
+        "early_token_loss_scale": 4.0
+      },
+      {
+        "stage_id": "prompt_to_first_4_tokens",
+        "target_token_cap": 4,
+        "epoch_count": 4,
+        "learning_rate_scale": 1.0,
+        "first_target_loss_scale": 4.0,
+        "early_token_prefix_len": 4,
+        "early_token_loss_scale": 3.0
+      },
+      {
+        "stage_id": "prompt_to_first_8_tokens",
+        "target_token_cap": 8,
+        "epoch_count": 4,
+        "learning_rate_scale": 1.0,
+        "first_target_loss_scale": 3.0,
+        "early_token_prefix_len": 8,
+        "early_token_loss_scale": 2.0
+      },
+      {
+        "stage_id": "prompt_to_first_16_tokens",
+        "target_token_cap": 16,
+        "epoch_count": 4,
+        "learning_rate_scale": 1.0,
+        "first_target_loss_scale": 2.0,
+        "early_token_prefix_len": 8,
+        "early_token_loss_scale": 1.75
+      },
+      {
+        "stage_id": "prompt_to_first_32_tokens",
+        "target_token_cap": 32,
+        "epoch_count": 8,
+        "learning_rate_scale": 1.0,
+        "first_target_loss_scale": 1.5,
+        "early_token_prefix_len": 8,
+        "early_token_loss_scale": 1.25
+      }
+    ],
+    "initial_checkpoint_state_ref": "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7/checkpoint_state.json",
+    "initial_run_bundle_ref": "crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7/run_bundle.json",
+    "train_output_head": false,
+    "train_relative_target_output_bias": true,
+    "train_relative_target_output_projection": true,
+    "train_relative_target_transition_output_bias": true,
+    "train_relative_target_trace_schema_output_bias": true,
+    "relative_target_output_projection_learning_rate_scale": 2.0,
+    "relative_target_transition_output_bias_learning_rate_scale": 4.0,
+    "relative_target_trace_schema_output_bias_learning_rate_scale": 8.0
+  },
+  "best_checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0007",
+  "epoch_reports": [
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0000",
+      "epoch_index": 0,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 0,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.39404872,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "12032fe93579379184de499914ca8e94a79f0ab7dac0691b7454d4e9dd7e4a6b",
+        "trained_weight_digest": "7168c21fa9a1b76e05e0c0b53eaff29319f34969073ff4fea59cd1aa4705a2f6",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "dd28668b48740600b18bf7c2738acd6f91edd74aa1c0c381ff4783268eb2f366"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0001",
+      "epoch_index": 1,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 1,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.37468985,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "ffb0b80a7a692340a5587cb61c9e6dd6efdf00035f1520e496f8debd6d64c772",
+        "trained_weight_digest": "d99c24bd67023871efac0a3a3aa3f2ce4e8a7852d46e18f7be87b54d09ca40d0",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "0a60f092f978bdd1cc3fb8187d3d2e171fa768df276c82541271bacf4f330023"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0002",
+      "epoch_index": 2,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 2,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.35711417,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "94c2b2c197e88ba8ecfd2b4aa754a9390b41f672a15846a770f8deb1359a5bdb",
+        "trained_weight_digest": "74a5355e92aadd1760799346cc939b8906faa5f6233b1a65936f9f4d9cd3211b",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "5134d1513aa81e45594c32ae5791019b56115a1bc3b36251a7f931782f73a765"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0003",
+      "epoch_index": 3,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 3,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.34110454,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "09a680e03ca915a62cb3af7ec3add924a181ed14f71f5239bc94b1cab54c2bae",
+        "trained_weight_digest": "00ccfb6c05665538d4442b92f789dd8319a2f594e1e184397931243f7ff7c935",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "50958461fa057ab762b1012a424e77d3b6dde4a38485eeaae4199690d51316e9"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0004",
+      "epoch_index": 4,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 4,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.3264445,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "39e0213f30faa9dd8a3211b7fdf56fb96623f9ce04d706cfcba83ad322a665ad",
+        "trained_weight_digest": "9a7eb438291fb0e216deb6f523a87b34a9aa7235fc47b65af838fd6cbd1c174c",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "20a6eb8f5eae723efa871938347390eda6b6bd9a5f9dccb0127570ae3d1c2d19"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0005",
+      "epoch_index": 5,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 5,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.31299978,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "42cd3921eb4bfaf19a0d1b5ce8128281baf1494d962421797bbbdeefa11f514b",
+        "trained_weight_digest": "97709cb42ab89fa57a99085c43a24515dece08bb69acb62d41c3b0192b37fb26",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "fd39644dab0b3754213878e54fb6adb3fb090910cf7503b689f15969c58409d0"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0006",
+      "epoch_index": 6,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 6,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.30059844,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "6618a22a6e780565f00cce0b5912d940d9f96154a36d3f1d4a194648d23bdf8e",
+        "trained_weight_digest": "54d85d6ab8f3206703324e33c11638228aa537cf0b3d930be711caf2abbacbc3",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "336c7f28e58f00951c09a43270ea4704e7f5a561f031fe343cf7e0181d55dc28"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0007",
+      "epoch_index": 7,
+      "stage_id": "prompt_to_first_token",
+      "stage_epoch_index": 7,
+      "stage_target_token_cap": 1,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 8.0,
+      "early_token_prefix_len": 1,
+      "early_token_loss_scale": 8.0,
+      "mean_loss": 0.28913483,
+      "target_token_count": 4,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "29d1c7dd902961da9b4f91fdf73e28b1b3ef650acaf7db36d0e894a15c3d2cfe",
+        "trained_weight_digest": "2e60f175b8e013f15bc6e24747c958c074ed7fee51bc290f4a1803c5b1d18789",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "47e2b60f7a7e8f64f0fd8f3dcb05f6b302a4a4e74c705daf7397ef6674303506"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0008",
+      "epoch_index": 8,
+      "stage_id": "prompt_to_first_2_tokens",
+      "stage_epoch_index": 0,
+      "stage_target_token_cap": 2,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 6.0,
+      "early_token_prefix_len": 2,
+      "early_token_loss_scale": 4.0,
+      "mean_loss": 6.5605426,
+      "target_token_count": 8,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "561b08857eb77b85a77ac6c8e646c833575073a32e2900685c81736801cafd89",
+        "trained_weight_digest": "bf9778860a0b702f02d69e73a3a72d1ec9724858c610d15eb5c69ff970a2a127",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "813d15f9d8abdc8e42232ab8e86abe93d69963dfe405e9d4598a9e3486188e82"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0009",
+      "epoch_index": 9,
+      "stage_id": "prompt_to_first_2_tokens",
+      "stage_epoch_index": 1,
+      "stage_target_token_cap": 2,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 6.0,
+      "early_token_prefix_len": 2,
+      "early_token_loss_scale": 4.0,
+      "mean_loss": 6.069181,
+      "target_token_count": 8,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "e5f134e0af7f6ca420c5e14641d4b9147a9453a74a3070f0aa73dc6f1d44d49b",
+        "trained_weight_digest": "3cbb35aac4e0d70a215213b418988210e934a2070286e91a1c0c064d32daaa49",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "df5957dd8666ebfb73b6e62d590749c7c4e4a12424d6a276baef9feeeddfad1f"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0010",
+      "epoch_index": 10,
+      "stage_id": "prompt_to_first_2_tokens",
+      "stage_epoch_index": 2,
+      "stage_target_token_cap": 2,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 6.0,
+      "early_token_prefix_len": 2,
+      "early_token_loss_scale": 4.0,
+      "mean_loss": 5.5897083,
+      "target_token_count": 8,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "9a7a995aead8297ba92902082fb60c8567c071550f5d1e06b563dd1b0b6703b7",
+        "trained_weight_digest": "8d38b03c6a5fa1ecb24dc0bc7a0e819d606eecbdd27207690b5cdb1a861d70e2",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "50908d25eba256c94e82e6ad85fc5c33101d0c15c4529362e664a0a1ea2f114a"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0011",
+      "epoch_index": 11,
+      "stage_id": "prompt_to_first_2_tokens",
+      "stage_epoch_index": 3,
+      "stage_target_token_cap": 2,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 6.0,
+      "early_token_prefix_len": 2,
+      "early_token_loss_scale": 4.0,
+      "mean_loss": 5.1247497,
+      "target_token_count": 8,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "3b4a6645a2073ae7f97b31316ef1a82fa7394a1fd940600a2b62e0b52248cf81",
+        "trained_weight_digest": "a19dc0f0f164499579d0b99fad84c08ee5d21b0844885be7cf8c5a22f56e60dc",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1208,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "5a8c10958a8cfc3228d7a2fe5071b33265eba6f5b4f8331be973f739337a0eda"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0012",
+      "epoch_index": 12,
+      "stage_id": "prompt_to_first_4_tokens",
+      "stage_epoch_index": 0,
+      "stage_target_token_cap": 4,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 4.0,
+      "early_token_prefix_len": 4,
+      "early_token_loss_scale": 3.0,
+      "mean_loss": 5.924906,
+      "target_token_count": 16,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "444433a51948fe57a304240c3b240ab5a682ae21033c4f939e73930512108d2a",
+        "trained_weight_digest": "1abaf1cd9e231d819f13efc0415b41dd3bcb7306561b739d56004d2caa52a87a",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "a212a982bf6dc651852a9f83c5bb16fa8244623ae761a19d104e25872e9b44ba"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0013",
+      "epoch_index": 13,
+      "stage_id": "prompt_to_first_4_tokens",
+      "stage_epoch_index": 1,
+      "stage_target_token_cap": 4,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 4.0,
+      "early_token_prefix_len": 4,
+      "early_token_loss_scale": 3.0,
+      "mean_loss": 5.732959,
+      "target_token_count": 16,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "ec7b2f4d5d4513db4fd64df85a0466bb263b3dd9373fde905f1ab11addf3cff2",
+        "trained_weight_digest": "3d65a45afbf40c7ecbe016604d7422619ee952f44bf3c21b3dccfd4495b10ce9",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "933049ba2c8cae0fbd4fe8420d113c515f4e6497ef02809a4fb1940ff4e6cb51"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0014",
+      "epoch_index": 14,
+      "stage_id": "prompt_to_first_4_tokens",
+      "stage_epoch_index": 2,
+      "stage_target_token_cap": 4,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 4.0,
+      "early_token_prefix_len": 4,
+      "early_token_loss_scale": 3.0,
+      "mean_loss": 5.5437856,
+      "target_token_count": 16,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "8d04e4a0e9abee44110f81341e3d48831408f9be1f6dccbb0ffe689e1c0edab2",
+        "trained_weight_digest": "af9057452df59d43a1f710d38dfc28b1f550d31bf27e98a549667f7c4c25e429",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "96ddb0eb356d0ee971e4416a2e17525e115a29c279cefad2983cc3b7159caa42"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0015",
+      "epoch_index": 15,
+      "stage_id": "prompt_to_first_4_tokens",
+      "stage_epoch_index": 3,
+      "stage_target_token_cap": 4,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 4.0,
+      "early_token_prefix_len": 4,
+      "early_token_loss_scale": 3.0,
+      "mean_loss": 5.3575573,
+      "target_token_count": 16,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "caf434d32754dc7252cf196d3eba69245d0c05940fe42318cb8374990fc2b61c",
+        "trained_weight_digest": "b9785455d2cc0a72f15a3fc232ac0c0082198e6e1ec642631745f765d8808a51",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "2222ffa20700d0dc086677d3aebd2bc828e1236036736f94db4ee10b590360d8"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0016",
+      "epoch_index": 16,
+      "stage_id": "prompt_to_first_8_tokens",
+      "stage_epoch_index": 0,
+      "stage_target_token_cap": 8,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 3.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 2.0,
+      "mean_loss": 5.5197234,
+      "target_token_count": 32,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "538334c2c9ec12a97102fd83f4b6013135ab92c304c869d036a3c90c63bb7728",
+        "trained_weight_digest": "a2ddd5fedbb3efd4e6169568869038f3f5fdb00b887e803d9094f5251302f0a1",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "fdba3e2ff678e8f8506565a9ae7182f446ada593df7e8f8173ffa4eab67bc5cc"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0017",
+      "epoch_index": 17,
+      "stage_id": "prompt_to_first_8_tokens",
+      "stage_epoch_index": 1,
+      "stage_target_token_cap": 8,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 3.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 2.0,
+      "mean_loss": 5.46811,
+      "target_token_count": 32,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "6b6a13188a5333ab22a70a90b1f261a7bc9124f34af85ee619d5e24c24ba3d27",
+        "trained_weight_digest": "6b7521f761bdb3c81dc72bfd6b447cc5bcf78dc52cec9f60cc7526a9352c4d96",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "fcea3f3570d5376f5c136a782213866dba39b691c8d4d128af559c764d55ab54"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0018",
+      "epoch_index": 18,
+      "stage_id": "prompt_to_first_8_tokens",
+      "stage_epoch_index": 2,
+      "stage_target_token_cap": 8,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 3.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 2.0,
+      "mean_loss": 5.4166822,
+      "target_token_count": 32,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "ea3cde7b264b5d7dc38eac90d6f239f57ab1c3e445fba88944e628bc4d45fe24",
+        "trained_weight_digest": "9fb5790c0e89a304c2b0fce6ac14a08cf3452220771931728886bd89b78bc7f6",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "d6abde0c0880546e99db661cba821183fadd27e48a1e661524afa09e1a36b07f"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0019",
+      "epoch_index": 19,
+      "stage_id": "prompt_to_first_8_tokens",
+      "stage_epoch_index": 3,
+      "stage_target_token_cap": 8,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 3.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 2.0,
+      "mean_loss": 5.3654423,
+      "target_token_count": 32,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "f8996edf7c4e2d89b7777ba37326a8c676fd4c11f4f017651218546334cfd0f5",
+        "trained_weight_digest": "74610d50cb97683fd71d4d57f2a1b5184785f46eff1d6fc2baf3165928ae2772",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "fb5752b7c2d94c9424238081b985feda5d37a10819a37074743e2c476bfc69aa"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0020",
+      "epoch_index": 20,
+      "stage_id": "prompt_to_first_16_tokens",
+      "stage_epoch_index": 0,
+      "stage_target_token_cap": 16,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 2.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.75,
+      "mean_loss": 4.321087,
+      "target_token_count": 64,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "724ecc0be9621f4f554050d0557d98d7e26d554c7e22f86717aeac3b63e4fe58",
+        "trained_weight_digest": "9c2a8ac67c3fa634ac6ffdd5ad05be9686d807d815b8031aab36be3108162ab4",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "7b520837b94b150e5539bb6a719450f5b03922f8214895db03a95c5e5a15a5c7"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0021",
+      "epoch_index": 21,
+      "stage_id": "prompt_to_first_16_tokens",
+      "stage_epoch_index": 1,
+      "stage_target_token_cap": 16,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 2.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.75,
+      "mean_loss": 4.307354,
+      "target_token_count": 64,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "d134fcfa715762d2c5b83e09ceed1361ae6e277f8753d668b33ce213676680ad",
+        "trained_weight_digest": "47b3c66f39b1f8abb65a5a78a49fa19569adeabc7fd4f13979b892094668842a",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "46b1f6851d79e4d651f3453bb1518112b31fa7d600cedc1f16e2bd967f1091c3"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0022",
+      "epoch_index": 22,
+      "stage_id": "prompt_to_first_16_tokens",
+      "stage_epoch_index": 2,
+      "stage_target_token_cap": 16,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 2.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.75,
+      "mean_loss": 4.293639,
+      "target_token_count": 64,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "8d0caf9ff389aa2d5393508c89436b2ceb029d2d995090a2b5f78b9723d6e21f",
+        "trained_weight_digest": "b4b20c5fe207c3e0c8f30ff19784989e2036561b199081a7699db22f9230a7e7",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "f5b5323ae8e31227c929640a3a4a02ae83a9a7749c7ff539a8c9576b9f115d88"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0023",
+      "epoch_index": 23,
+      "stage_id": "prompt_to_first_16_tokens",
+      "stage_epoch_index": 3,
+      "stage_target_token_cap": 16,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 2.0,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.75,
+      "mean_loss": 4.2799425,
+      "target_token_count": 64,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "02f72de5c11e53a38d9a80f765adac3e2af74ac257401ba2b65a362f0bdd669e",
+        "trained_weight_digest": "9a8761b6aeb1d765312ed0e6e14d114483c4a3784ebd40620c55b71a8b2fbb89",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "490e2ee91b5d82f793d1d43d9a85347ec5a4eb13b745cb617676764f5663e0ed"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0024",
+      "epoch_index": 24,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 0,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9850764,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "6a3e755891c15769a74ef1c9531230ada4824a4490e7f68053d0a48044e45fa8",
+        "trained_weight_digest": "d4c6eb1d7e3d2c93351909f6ae9757aceaa4d8008455e5b8c8025a855f314c45",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "a025aa7d615dc6e02fa8dcce1ae048cd8a708a030a3a06b88660b6c37304a2c6"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0025",
+      "epoch_index": 25,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 1,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9820018,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "4857f4dd88ad7af2e08691be40a6d249df4c9314af63c9d3782e2d5ec08c55f1",
+        "trained_weight_digest": "ae3253d0ffd20b830fb64cac384751739b4671199bccdb6373de17708ccc0369",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "94a53c889afe60bc4cb58c5d8253d48156f985f28f0e6d9e27ca5aec59ff4599"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0026",
+      "epoch_index": 26,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 2,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.978929,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "4c2461569982770e693b419d5025ab490895bd34e21ac4573fc94d4c18f7e4e5",
+        "trained_weight_digest": "a2a352a1791ab603b17b0665852d6f5b68252a47d031967e22d17a30e07a8a7e",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "1ac3bc7561f2031c5d0ce98152dd0cd93f49bb7cfeef4e6ab72e6c1c0e7cd488"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0027",
+      "epoch_index": 27,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 3,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9758573,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "08137c2db6da1ab8d737292adeebd4fb2975b78a49059f51fd649dd428dfa23b",
+        "trained_weight_digest": "b8078edfbe1bdb903ee8ca0a83df377fb91599478e9c9f5f10b387a4966e9aa7",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "54dbc900faec0f270ffa00fa8c8c730f17e8a67e5eb0b8c646e25b5e534b4846"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0028",
+      "epoch_index": 28,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 4,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9727855,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "bddb1ba652c94a53907f05053be8fde51beab90afd0a2f6cefcff1063d81f25a",
+        "trained_weight_digest": "c70af11358dc050e318c9141bb5a8c3a7057ce495bf06552762dfb56c06a304b",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "827b51e2113eaffb152e79dad2c036b45c18182c275f4bb8ab9b22f76bfb37ef"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0029",
+      "epoch_index": 29,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 5,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9697158,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "e7b2c59156bb9a36be74663f1c380e920e3b722491a23fd82d93d30e0da85201",
+        "trained_weight_digest": "c7fa07f69441494d442423c45e5bab24f743a7c5fbad490b4b448e4b0d580dc2",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1306,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "901e984bcf4cbded1ca7da64b677336953765e3eb095f6b4e1bd858b2a48b495"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0030",
+      "epoch_index": 30,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 6,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9666462,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "6a10fb3e738084af215916c8b5749b5304acf6e1a9a70174534c2aa76056d7e0",
+        "trained_weight_digest": "8e1f0a6d12e47e081260c3eee6508413d708674f0e44ed35e7bc1629bd2a3267",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "0902637d6d056e49b6482d4a153b36b194355e44ba0a9ddda45742aa5a1627fc"
+      }
+    },
+    {
+      "checkpoint_id": "tassadar-executor-attention-sudoku-v0-boundary-v8.checkpoint.epoch_0031",
+      "epoch_index": 31,
+      "stage_id": "prompt_to_first_32_tokens",
+      "stage_epoch_index": 7,
+      "stage_target_token_cap": 32,
+      "learning_rate_scale": 1.0,
+      "first_target_loss_scale": 1.5,
+      "early_token_prefix_len": 8,
+      "early_token_loss_scale": 1.25,
+      "mean_loss": 3.9635787,
+      "target_token_count": 128,
+      "validation": {
+        "family_kind": "executor_attention_candidate",
+        "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+        "model_descriptor_digest": "19e268e6bbe76bf51adf88913c809dddab606af093a42dc663e9585e96d77239",
+        "trained_weight_digest": "ce64966e89dbac848c8a665a19cdb1476878f3814c19a92fdd13c497f9db70bc",
+        "claim_boundary": "research_windowed_decode_only",
+        "attention_mode": "layered_causal_hard_max_lookup",
+        "layer_count": 7,
+        "head_count": 18,
+        "head_dim": 2,
+        "prompt_window_token_cap": 256,
+        "target_token_cap": 32,
+        "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+        "correctness": {
+          "aggregate_target_token_exactness_bps": 7188,
+          "first_target_exactness_bps": 10000,
+          "first_8_token_exactness_bps": 8750,
+          "first_32_token_exactness_bps": 7188,
+          "exact_trace_case_count": 0
+        },
+        "speed": {
+          "decode_mode": "reference_linear",
+          "neural_tokens_per_second": 1333,
+          "cpu_tokens_per_second": 32000
+        },
+        "requested_hull_decode": {
+          "requested_decode_mode": "hull_cache",
+          "effective_decode_mode": "reference_linear",
+          "fallback_decode_mode": "reference_linear",
+          "hull_decode_posture": "fallback_to_reference_linear"
+        },
+        "case_reports": [
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+            "case_id": "sudoku_v0_validation_a",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          },
+          {
+            "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+            "case_id": "sudoku_v0_validation_b",
+            "target_token_count": 32,
+            "target_token_exactness_bps": 7188,
+            "first_target_exactness_bps": 10000,
+            "first_8_token_exactness_bps": 8750,
+            "first_32_token_exactness_bps": 7188,
+            "matched_target_token_count": 6,
+            "first_divergence_index": 6,
+            "reference_divergence_token": "<pc>",
+            "predicted_divergence_token": "<byte_00>",
+            "exact_trace_match": false
+          }
+        ],
+        "report_digest": "d47cf06ab23d56a9f60040ec6d5a9a8627b789bbb7cd206df0e4a182b4dd63f0"
+      }
+    }
+  ],
+  "validation": {
+    "family_kind": "executor_attention_candidate",
+    "model_id": "tassadar-executor-attention-transformer-sudoku-v0-v0",
+    "model_descriptor_digest": "29d1c7dd902961da9b4f91fdf73e28b1b3ef650acaf7db36d0e894a15c3d2cfe",
+    "trained_weight_digest": "2e60f175b8e013f15bc6e24747c958c074ed7fee51bc290f4a1803c5b1d18789",
+    "claim_boundary": "research_windowed_decode_only",
+    "attention_mode": "layered_causal_hard_max_lookup",
+    "layer_count": 7,
+    "head_count": 18,
+    "head_dim": 2,
+    "prompt_window_token_cap": 256,
+    "target_token_cap": 32,
+    "article_fidelity_summary": "layered full-prefix causal 2D-head hard-max attention plus bounded relative-target hidden-state-conditioned, previous-token-conditioned, and trace-schema-conditioned logit adapters, still only as a research windowed lane with hull fallback",
+    "correctness": {
+      "aggregate_target_token_exactness_bps": 7188,
+      "first_target_exactness_bps": 10000,
+      "first_8_token_exactness_bps": 8750,
+      "first_32_token_exactness_bps": 7188,
+      "exact_trace_case_count": 0
+    },
+    "speed": {
+      "decode_mode": "reference_linear",
+      "neural_tokens_per_second": 1333,
+      "cpu_tokens_per_second": 32000
+    },
+    "requested_hull_decode": {
+      "requested_decode_mode": "hull_cache",
+      "effective_decode_mode": "reference_linear",
+      "fallback_decode_mode": "reference_linear",
+      "hull_decode_posture": "fallback_to_reference_linear"
+    },
+    "case_reports": [
+      {
+        "sequence_id": "tassadar.sequence.sudoku_v0_validation_a",
+        "case_id": "sudoku_v0_validation_a",
+        "target_token_count": 32,
+        "target_token_exactness_bps": 7188,
+        "first_target_exactness_bps": 10000,
+        "first_8_token_exactness_bps": 8750,
+        "first_32_token_exactness_bps": 7188,
+        "matched_target_token_count": 6,
+        "first_divergence_index": 6,
+        "reference_divergence_token": "<pc>",
+        "predicted_divergence_token": "<byte_00>",
+        "exact_trace_match": false
+      },
+      {
+        "sequence_id": "tassadar.sequence.sudoku_v0_validation_b",
+        "case_id": "sudoku_v0_validation_b",
+        "target_token_count": 32,
+        "target_token_exactness_bps": 7188,
+        "first_target_exactness_bps": 10000,
+        "first_8_token_exactness_bps": 8750,
+        "first_32_token_exactness_bps": 7188,
+        "matched_target_token_count": 6,
+        "first_divergence_index": 6,
+        "reference_divergence_token": "<pc>",
+        "predicted_divergence_token": "<byte_00>",
+        "exact_trace_match": false
+      }
+    ],
+    "report_digest": "47e2b60f7a7e8f64f0fd8f3dcb05f6b302a4a4e74c705daf7397ef6674303506"
+  },
+  "report_digest": "e9314254b8c1724ca99b3c10cf4bb249e88ea581e26bc5f7d115756d1cfca165"
+}

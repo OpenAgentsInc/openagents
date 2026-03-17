@@ -214,6 +214,17 @@ The next honest dependency is stronger work on the post-Phase-15 path:
   `<byte_00>` where the reference requires `<pc>`, and the later joint
   transition+projection fine-tune reproduces that ceiling rather than beating
   it
+- keep the later structural-adapter saturation evidence under
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v7`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v8`,
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_attention_boundary_v9`, and
+  `crates/psionic/fixtures/tassadar/runs/sudoku_v0_architecture_comparison_v11`;
+  those artifacts show that adding a trace-schema-conditioned adapter, then a
+  per-position adapter, then a high-gain per-position adapter still leaves all
+  `32/32` checkpoints on the exact same validation signature (`token 6`,
+  reference `<pc>`, predicted `<byte_00>`, `7188` bps first-32, `0/2` exact
+  traces), so the current bounded adapter family is saturated rather than
+  merely under-tuned
 - do not widen claims until one family actually clears the Phase 14 gate
 - do not promote 9x9 or Hungarian off this result
 
