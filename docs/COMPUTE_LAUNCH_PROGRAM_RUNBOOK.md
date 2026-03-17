@@ -20,6 +20,10 @@ The entrypoint is:
 scripts/release/check-compute-launch-program.sh
 ```
 
+The Psionic-owned legs run from the standalone `OpenAgentsInc/psionic` repo.
+By default the script expects a sibling checkout at `../psionic`; override that
+with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` if needed.
+
 That script writes:
 
 - `SUMMARY.md`

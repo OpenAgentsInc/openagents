@@ -497,7 +497,7 @@ Sandbox deliverables:
 
 - Productize `remote_sandbox` as an explicit provisioning kind and compute
   family rather than hiding it behind app-local execution semantics.
-- Move the long-term runtime engine into `crates/psionic/*` while keeping
+- Move the long-term runtime engine into `OpenAgentsInc/psionic` while keeping
   provider-substrate as the reusable descriptor layer.
 - Support background jobs, file transfer, artifact retrieval, attach or expose
   semantics, and bounded profile digests through a canonical compute contract.
@@ -704,7 +704,7 @@ The plan above is intentionally market-shaped. To execute it in this repo withou
 
 `crates/openagents-kernel-core` should become the place where the reusable compute-market language is made precise. That includes the domain structs that already exist, the validation helpers that should prevent malformed product or lot definitions, the authority client methods that should hide service transport details from the desktop, and the receipt-linking helpers that should let tests and operators reason about a compute trade from creation through settlement. This crate is where the implementation should centralize lifecycle invariants such as which transitions are legal for a spot instrument, what fields are required for a forward delivery window, and how delivery variance is represented consistently across clients.
 
-`crates/psionic/*` should explicitly own the reusable execution substrate the
+`OpenAgentsInc/psionic` should explicitly own the reusable execution substrate the
 Prime audit calls out: transport, cluster membership, collectives, clustered
 serve paths, bounded sandbox execution, proof bundle assembly, and later
 training-class compute. The compute market plan is incomplete if it treats
@@ -732,7 +732,7 @@ continues to own canonical economic outcomes and settlement truth.
 Concrete work packages by owner:
 
 - `apps/autopilot-desktop`: inventory panes, provider pricing controls, buyer RFQ flows, compute history, delivery-proof visibility, index visibility, advanced market panes, compatibility-preserving Mission Control updates, the initial-release backend adapters for `Ollama` and `Apple Foundation Models`, and supervision of the local Apple FM bridge lifecycle if that backend is revived as a sidecar.
-- `crates/psionic/*`: transport and relay-fallback sessions, cluster membership,
+- `OpenAgentsInc/psionic`: transport and relay-fallback sessions, cluster membership,
   collectives, clustered serving, sandbox execution engines, proof bundle
   assembly, and later training-class execution substrate.
 - `crates/openagents-provider-substrate`: reusable provider descriptors, health,
@@ -817,7 +817,7 @@ If execution starts now, the first sequence should be:
 1. Canonicalize the current earn loop into explicit compute-market truth and widen the compute taxonomy for provisioning, topology, proof posture, and environment binding.
 2. Add durable compute authority persistence and read models.
 3. Expand the compute proto surface and generated types.
-4. Widen `crates/psionic/*` for transport, cluster membership, collectives, and clustered-serving truth.
+4. Widen `OpenAgentsInc/psionic` for transport, cluster membership, collectives, and clustered-serving truth.
 5. Productize bounded sandbox execution as a first-class compute family alongside the local lane.
 6. Add proof bundles, validator or challenge services, and challenge-linked settlement hooks for proof-sensitive products.
 7. Bind environments, evals, synthetic-data, benchmark adapters, and streamed data-plane flows into canonical compute-market objects.

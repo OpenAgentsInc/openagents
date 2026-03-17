@@ -114,7 +114,7 @@ Must not own:
 - App-to-kernel control flow that depends on `apps/autopilot-desktop`.
 - Long-term sandbox runtime engines, clustered transport, or validator logic.
 
-## `crates/psionic/*`
+## `OpenAgentsInc/psionic`
 
 Own:
 
@@ -133,6 +133,9 @@ Must not own:
 - Wallet, payout, or buyer/provider product orchestration.
 - Canonical compute-market settlement, procurement, or index authority.
 - Final collateral, claim, or adjudication authority.
+
+`openagents` consumes these crates through pinned git dependencies rather than
+through an in-repo subtree.
 
 ## `crates/openagents-kernel-core` and `crates/openagents-kernel-proto`
 

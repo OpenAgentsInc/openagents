@@ -1,0 +1,436 @@
+{
+  "schema_version": 1,
+  "generated_at_epoch_ms": 1773637473119,
+  "experiment_manifest_path": "fixtures/apple_adapter/experiments/psionic_architecture_explainer_first_real_run_v1.json",
+  "experiment_manifest_digest": "a1a1a6376849025e080c5a517e4e43652a73e3a7d051b4f95d98ff8f7f5969ce",
+  "benchmark_corpus_manifest_path": "fixtures/apple_adapter/datasets/psionic_architecture_explainer/corpus_manifest.json",
+  "launch_request": {
+    "train_dataset_path": "fixtures/apple_adapter/datasets/psionic_architecture_explainer/train.jsonl",
+    "held_out_dataset_path": "fixtures/apple_adapter/datasets/psionic_architecture_explainer/held_out.jsonl",
+    "package_name": "psionic-architecture-explainer-first-real-run",
+    "author": "OpenAgents",
+    "description": "First real Apple adapter operator run for Psionic architecture explainer",
+    "license": "Apache-2.0",
+    "apple_fm_base_url": "http://127.0.0.1:11435",
+    "expected_base_model_signature": "9799725ff8e851184037110b422d891ad3b92ec1"
+  },
+  "operator_run": {
+    "run_id": "psionic-architecture-explainer-first-real-run-1773636619824",
+    "created_at_epoch_ms": 1773636619824,
+    "updated_at_epoch_ms": 1773637454032,
+    "train_dataset_path": "fixtures/apple_adapter/datasets/psionic_architecture_explainer/train.jsonl",
+    "held_out_dataset_path": "fixtures/apple_adapter/datasets/psionic_architecture_explainer/held_out.jsonl",
+    "apple_fm_base_url": "http://127.0.0.1:11435",
+    "package_name": "psionic-architecture-explainer-first-real-run",
+    "author": "OpenAgents",
+    "description": "First real Apple adapter operator run for Psionic architecture explainer",
+    "license": "Apache-2.0",
+    "launch_state": "failed",
+    "export_state": "completed",
+    "evaluation_state": "failed",
+    "acceptance_state": "pending",
+    "run_directory": "/Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824",
+    "staged_package_path": "/Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824/staged/psionic_architecture_explainer_first_real_run.fmadapter",
+    "exported_package_path": "/tmp/openagents_apple_architecture_explainer_first_real_run_5.fmadapter",
+    "toolkit_checkpoint_path": "/Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824/toolkit/checkpoints/adapter-final.pt",
+    "toolkit_export_package_path": "/Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824/toolkit/export/psionic_architecture_explainer_first_real_run.fmadapter",
+    "launched_at_epoch_ms": 1773636619824,
+    "evaluated_at_epoch_ms": null,
+    "exported_at_epoch_ms": 1773637454032,
+    "accepted_at_epoch_ms": null,
+    "local_summary": null,
+    "authority_refs": {
+      "core_environment_ref": null,
+      "benchmark_environment_ref": null,
+      "benchmark_package_ref": null,
+      "validator_policy_ref": null,
+      "training_policy_ref": null,
+      "training_run_id": null,
+      "held_out_eval_run_id": null,
+      "runtime_validation_eval_run_id": null,
+      "accepted_outcome_id": null
+    },
+    "held_out_eval": null,
+    "runtime_smoke_receipt": null,
+    "last_action": "Exported Apple adapter package",
+    "last_error": null,
+    "log_lines": [
+      "1773636619824 launch: created operator run psionic-architecture-explainer-first-real-run-1773636619824",
+      "1773636619825 launch: reading train and held-out datasets",
+      "1773636619832 launch: derived Apple runtime lineage model=apple-foundation-model use_case=general guardrails=default base_signature=9799725ff8e851184037110b422d891ad3b92ec1",
+      "1773636619832 launch: pinned Apple compatibility signature 9799725ff8e851184037110b422d891ad3b92ec1 from operator contract",
+      "1773636619832 launch: imported 9 train samples and 6 held-out samples",
+      "1773636619833 launch: derived packing window=272 tokens batch_budget=544 tokens from frozen corpus",
+      "1773636619833 launch: executing Apple toolkit training via /Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824/toolkit/checkpoints",
+      "1773637442261 launch: Apple toolkit checkpoint /Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824/toolkit/checkpoints/adapter-final.pt (266799379 bytes, 822355 ms)",
+      "1773637444863 launch: Apple toolkit exported /Users/christopherdavid/.openagents/logs/autopilot/apple-adapter-training/psionic-architecture-explainer-first-real-run-1773636619824/toolkit/export/psionic_architecture_explainer_first_real_run.fmadapter (asset sha256=bc23b24615efba7f2b72de592eb1af9a11e609a04c640f135f4e5853d6bac814, 2216 ms)",
+      "1773637445337 evaluation: running held-out eval and runtime smoke",
+      "1773637454029 error: Apple adapter runtime smoke failed: Apple adapter runtime expected tokenizer digest `2e0575bd61810e1dc9c266d5a92799ce920814806dd039e7363482ecbf2485db` but observed ``",
+      "1773637454032 export: wrote /tmp/openagents_apple_architecture_explainer_first_real_run_5.fmadapter"
+    ]
+  },
+  "benchmark_report": {
+    "benchmark_key": {
+      "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+      "version": "2026.03.15.2"
+    },
+    "benchmark_package": {
+      "abi_version": "psionic.benchmark.v1",
+      "key": {
+        "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+        "version": "2026.03.15.2"
+      },
+      "display_name": "Apple Adapter Operator psionic-architecture-explainer-first-real-run-1773636619824 Benchmark Apple Adapter Benchmark",
+      "environment": {
+        "environment_ref": "env.openagents.apple_adapter.operator.psionic-architecture-explainer-first-real-run-1773636619824.benchmark",
+        "version": "2026.03.15"
+      },
+      "dataset": {
+        "dataset_ref": "dataset://openagents/apple_adapter/held-out/held_out",
+        "version": "2026.03.15"
+      },
+      "split": "held_out",
+      "repeat_count": 1,
+      "aggregation": "mean_score",
+      "verification_policy": {
+        "require_timer_integrity": true,
+        "require_token_accounting": false,
+        "require_final_state_capture": false,
+        "require_execution_strategy": true
+      },
+      "cases": [
+        {
+          "case_id": "sample-000001",
+          "ordinal": 0,
+          "input_ref": "apple_adapter_input://sample-000001",
+          "expected_output_ref": "6baf7cc319368c3375fc9f95ef05b183c6746664a76d74fc88b661f977da08c2",
+          "metadata": {
+            "sample_kind": "supervised_fine_tune",
+            "structured": false,
+            "tool_count": 0,
+            "task_family": "implemented_vs_planned_truthfulness",
+            "expected_behavior": "direct_answer",
+            "source_ids": [
+              "train_system"
+            ]
+          }
+        },
+        {
+          "case_id": "sample-000002",
+          "ordinal": 1,
+          "input_ref": "apple_adapter_input://sample-000002",
+          "expected_output_ref": "befbb9e76926c625e97997eb5b1522a92bb1b54117ba7dc85c8e4464d7f61346",
+          "metadata": {
+            "sample_kind": "supervised_fine_tune",
+            "structured": false,
+            "tool_count": 0,
+            "task_family": "operator_workflow_explanation",
+            "expected_behavior": "direct_answer",
+            "source_ids": [
+              "compute_training_authority",
+              "apple_training_control"
+            ]
+          }
+        },
+        {
+          "case_id": "sample-000003",
+          "ordinal": 2,
+          "input_ref": "apple_adapter_input://sample-000003",
+          "expected_output_ref": "1d39fcebf36201a7e1170d10ba4ce373536ddc025400d417f1bff8c5b67a9438",
+          "metadata": {
+            "sample_kind": "guided_generation_with_schema",
+            "structured": true,
+            "tool_count": 0,
+            "task_family": "structured_summary_conformance",
+            "expected_behavior": "structured_answer",
+            "source_ids": [
+              "train_system"
+            ]
+          }
+        },
+        {
+          "case_id": "sample-000004",
+          "ordinal": 3,
+          "input_ref": "apple_adapter_input://sample-000004",
+          "expected_output_ref": "c3affb670df116d1ef9bb9e6f0e0dd277b47f1a4ae20e69961f4f1c4b0395fea",
+          "metadata": {
+            "sample_kind": "tool_calling",
+            "structured": false,
+            "tool_count": 2,
+            "task_family": "tool_calling_lookup_routing",
+            "expected_behavior": "tool_lookup_routing",
+            "source_ids": [
+              "ownership",
+              "apple_training_control"
+            ]
+          }
+        },
+        {
+          "case_id": "sample-000005",
+          "ordinal": 4,
+          "input_ref": "apple_adapter_input://sample-000005",
+          "expected_output_ref": "6d8b2164fab1a9a8c8a1cc02d51fbf87a7c6c50448584b0786160b96c5aa4683",
+          "metadata": {
+            "sample_kind": "supervised_fine_tune",
+            "structured": false,
+            "tool_count": 0,
+            "task_family": "negative_refusal_correction",
+            "expected_behavior": "correction",
+            "source_ids": [
+              "train_system"
+            ]
+          }
+        },
+        {
+          "case_id": "sample-000006",
+          "ordinal": 5,
+          "input_ref": "apple_adapter_input://sample-000006",
+          "expected_output_ref": "58e9436e9eaa5c0c6fdb64ef49c40c047c2f6ca90d654cca4c671438105116eb",
+          "metadata": {
+            "sample_kind": "supervised_fine_tune",
+            "structured": false,
+            "tool_count": 0,
+            "task_family": "negative_refusal_correction",
+            "expected_behavior": "correction",
+            "source_ids": [
+              "train_system",
+              "headless_compute"
+            ]
+          }
+        },
+        {
+          "case_id": "sample-000007",
+          "ordinal": 6,
+          "input_ref": "apple_adapter_input://sample-000007",
+          "expected_output_ref": "80770083c27430db2923538569f251d45c04d77f3b59f5eaf4a416d979ae3d3d",
+          "metadata": {
+            "sample_kind": "supervised_fine_tune",
+            "structured": false,
+            "tool_count": 0,
+            "task_family": "negative_refusal_correction",
+            "expected_behavior": "refusal",
+            "source_ids": [
+              "headless_compute",
+              "prereq_audit"
+            ]
+          }
+        }
+      ],
+      "metadata": {
+        "apple_adapter.core_environment_ref": "env.openagents.apple_adapter.operator.psionic-architecture-explainer-first-real-run-1773636619824.core@2026.03.15",
+        "apple_adapter.dataset_scope": "Teach stable Psionic architecture, ownership boundaries, truthful implemented-vs-planned answers, and operator workflow explanations. Use retrieval for volatile repo state instead of weight memorization.",
+        "apple_adapter.environment_group_ref": "group.apple_adapter.operator.psionic-architecture-explainer-first-real-run-1773636619824",
+        "apple_adapter.target_id": "apple_adapter.psionic_architecture_explainer",
+        "apple_adapter.target_title": "Psionic architecture explainer"
+      }
+    },
+    "base_summary": {
+      "package_key": {
+        "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+        "version": "2026.03.15.2"
+      },
+      "execution_mode": "operator_simulation",
+      "aggregation": "mean_score",
+      "round_count": 1,
+      "aggregate_score_bps": 0,
+      "aggregate_pass_rate_bps": 0,
+      "per_round_scores_bps": [
+        0
+      ],
+      "per_round_pass_rates_bps": [
+        0
+      ],
+      "summary_digest": "4e32caa7a354861c057643986e54ec9e8ef43ef819942683c008d331a9127b1f"
+    },
+    "adapted_summary": {
+      "package_key": {
+        "benchmark_ref": "benchmark://openagents/apple_adapter/psionic_architecture_explainer/base_vs_adapter",
+        "version": "2026.03.15.2"
+      },
+      "execution_mode": "operator_simulation",
+      "aggregation": "mean_score",
+      "round_count": 1,
+      "aggregate_score_bps": 0,
+      "aggregate_pass_rate_bps": 0,
+      "per_round_scores_bps": [
+        0
+      ],
+      "per_round_pass_rates_bps": [
+        0
+      ],
+      "summary_digest": "dcd4795c7db4d6a0c96f6396b228f9a7358239c3e3222bb949d90d1099c85b0f"
+    },
+    "case_deltas": [
+      {
+        "case_id": "sample-000001",
+        "task_family": "implemented_vs_planned_truthfulness",
+        "expected_behavior": "direct_answer",
+        "source_ids": [
+          "train_system"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      },
+      {
+        "case_id": "sample-000002",
+        "task_family": "operator_workflow_explanation",
+        "expected_behavior": "direct_answer",
+        "source_ids": [
+          "compute_training_authority",
+          "apple_training_control"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      },
+      {
+        "case_id": "sample-000003",
+        "task_family": "structured_summary_conformance",
+        "expected_behavior": "structured_answer",
+        "source_ids": [
+          "train_system"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      },
+      {
+        "case_id": "sample-000004",
+        "task_family": "tool_calling_lookup_routing",
+        "expected_behavior": "tool_lookup_routing",
+        "source_ids": [
+          "ownership",
+          "apple_training_control"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      },
+      {
+        "case_id": "sample-000005",
+        "task_family": "negative_refusal_correction",
+        "expected_behavior": "correction",
+        "source_ids": [
+          "train_system"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      },
+      {
+        "case_id": "sample-000006",
+        "task_family": "negative_refusal_correction",
+        "expected_behavior": "correction",
+        "source_ids": [
+          "train_system",
+          "headless_compute"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      },
+      {
+        "case_id": "sample-000007",
+        "task_family": "negative_refusal_correction",
+        "expected_behavior": "refusal",
+        "source_ids": [
+          "headless_compute",
+          "prereq_audit"
+        ],
+        "base_status": "failed",
+        "adapted_status": "failed",
+        "base_score_bps": 0,
+        "adapted_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved": false
+      }
+    ],
+    "task_family_deltas": [
+      {
+        "task_family": "implemented_vs_planned_truthfulness",
+        "case_count": 1,
+        "base_average_score_bps": 0,
+        "adapted_average_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved_case_count": 0
+      },
+      {
+        "task_family": "operator_workflow_explanation",
+        "case_count": 1,
+        "base_average_score_bps": 0,
+        "adapted_average_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved_case_count": 0
+      },
+      {
+        "task_family": "structured_summary_conformance",
+        "case_count": 1,
+        "base_average_score_bps": 0,
+        "adapted_average_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved_case_count": 0
+      },
+      {
+        "task_family": "tool_calling_lookup_routing",
+        "case_count": 1,
+        "base_average_score_bps": 0,
+        "adapted_average_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved_case_count": 0
+      },
+      {
+        "task_family": "negative_refusal_correction",
+        "case_count": 3,
+        "base_average_score_bps": 0,
+        "adapted_average_score_bps": 0,
+        "score_delta_bps": 0,
+        "improved_case_count": 0
+      }
+    ],
+    "acceptance": {
+      "accepted": false,
+      "aggregate_score_delta_bps": 0,
+      "aggregate_pass_rate_delta_bps": 0,
+      "improved_case_count": 0,
+      "reason_codes": [
+        "adapter_score_below_minimum",
+        "adapter_pass_rate_below_minimum",
+        "score_delta_below_minimum",
+        "pass_rate_delta_below_minimum",
+        "improved_case_count_below_minimum"
+      ]
+    }
+  },
+  "weak_case_ids": [
+    "sample-000001",
+    "sample-000002",
+    "sample-000003",
+    "sample-000004",
+    "sample-000005",
+    "sample-000006",
+    "sample-000007"
+  ],
+  "disposition": "RejectedBenchmark",
+  "launch_error": "Apple adapter runtime smoke failed: Apple adapter runtime expected tokenizer digest `2e0575bd61810e1dc9c266d5a92799ce920814806dd039e7363482ecbf2485db` but observed ``",
+  "acceptance_error": null,
+  "authority_base_url": null
+}

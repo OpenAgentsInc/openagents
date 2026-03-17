@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
+PSIONIC_REPO="${OPENAGENTS_PSIONIC_REPO:-$ROOT_DIR/../psionic}"
+PSIONIC_TRAIN_SYSTEM_DOC="${OPENAGENTS_PSIONIC_TRAIN_SYSTEM_DOC:-$PSIONIC_REPO/docs/TRAIN_SYSTEM.md}"
 
 log() {
   echo "[check-psionic-apple-rust-only-gate] $*"
@@ -24,14 +26,12 @@ scan_forbidden_ref() {
   local matches
   matches="$(
     rg -n \
-      --glob '!target/**' \
-      --glob '!docs/**' \
-      --glob '!crates/psionic/fixtures/**' \
-      --glob '!crates/psionic/psionic-train/src/apple_toolkit.rs' \
+      --glob '!psionic-train/src/apple_toolkit.rs' \
       "$pattern" \
       apps/autopilot-desktop \
-      crates/psionic \
       scripts/release \
+      "$PSIONIC_REPO/crates" \
+      "$PSIONIC_REPO/scripts" \
       || true
   )"
   if [[ -n "$matches" ]]; then
@@ -42,6 +42,7 @@ scan_forbidden_ref() {
 
 require_command cargo
 require_command rg
+[[ -f "$PSIONIC_TRAIN_SYSTEM_DOC" ]] || die "Missing standalone Psionic train-system doc at ${PSIONIC_TRAIN_SYSTEM_DOC}; set OPENAGENTS_PSIONIC_REPO or OPENAGENTS_PSIONIC_TRAIN_SYSTEM_DOC"
 
 log "Checking shipped Apple lane for toolkit/Python regressions"
 scan_forbidden_ref \
@@ -74,7 +75,7 @@ rg -n 'Rust-native Psionic' docs/headless-compute.md >/dev/null 2>&1 \
   || die "docs/headless-compute.md must describe the shipped Apple lane as Rust-native"
 rg -n 'check-psionic-apple-rust-only-gate\.sh' \
   docs/headless-compute.md \
-  crates/psionic/docs/TRAIN_SYSTEM.md \
+  "$PSIONIC_TRAIN_SYSTEM_DOC" \
   >/dev/null 2>&1 \
   || die "Rust-only gate script must be documented in the canonical Apple training docs"
 

@@ -367,6 +367,10 @@ Canonical seller-lane perf harness:
 scripts/release/check-gpt-oss-nvidia-seller-lane-perf.sh
 ```
 
+That harness expects a local standalone Psionic checkout at `../psionic` by
+default. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`
+if your checkout lives elsewhere.
+
 That harness launches the desktop app with the configured CUDA GGUF, captures
 the cold app-owned local-runtime preflight snapshot, runs the canonical
 Psionic-only CUDA benchmark pass, warms the seller lane through `autopilotctl`,
@@ -386,6 +390,10 @@ Cross-stack launch validation:
 ```bash
 scripts/release/check-compute-launch-program.sh
 ```
+
+The launch-program harness shells into the standalone Psionic repo for
+Psionic-owned test legs. By default it expects that checkout at `../psionic`;
+override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`.
 
 That launch-program harness writes a summary plus per-step logs for the desktop
 control plane, Psionic sandbox and cluster lanes, validator service, kernel

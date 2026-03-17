@@ -58,7 +58,7 @@ The bridge is intended to be supervised by the desktop app as a localhost
 sidecar for Apple Foundation Models inference plus adapter load/attach testing.
 For full detail (architecture, discovery, shipping, user requirements, agent
 workflow), see
-**[crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md](../../crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md)**.
+**[OpenAgentsInc/psionic docs/FM_BRIDGE_CONSIDERATIONS.md](https://github.com/OpenAgentsInc/psionic/blob/main/docs/FM_BRIDGE_CONSIDERATIONS.md)**.
 
 ## Shipping the app (no build on user machines)
 

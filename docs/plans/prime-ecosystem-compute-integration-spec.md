@@ -37,7 +37,7 @@ the first truthful slice of a much broader compute stack with five major layers:
 1. `apps/autopilot-desktop` stays the operator and product surface.
 2. `openagents-provider-substrate` stays a narrow provider descriptor and
    inventory-control layer.
-3. `crates/psionic/*` becomes the reusable compute substrate for local,
+3. `OpenAgentsInc/psionic` becomes the reusable compute substrate for local,
    clustered, remote, sandboxed, and eventually training-class execution.
 4. `openagents-kernel-core`, `openagents-kernel-proto`, and
    `apps/nexus-control` become the economic truth layer for pricing, inventory,
@@ -77,7 +77,7 @@ ever becomes a large user-facing surface.
   Control, and desktop control
 - `crates/openagents-provider-substrate` owns narrow reusable provider health,
   product derivation, inventory controls, and lifecycle helpers
-- `crates/psionic/*` owns reusable execution substrate
+- `OpenAgentsInc/psionic` owns reusable execution substrate
 - `openagents-kernel-*` plus `apps/nexus-control` own authoritative economic
   state and receipts
 
@@ -118,7 +118,7 @@ Relevant files:
 - `crates/openagents-provider-substrate/src/lib.rs`
 - `crates/openagents-provider-substrate/src/sandbox.rs`
 - `crates/openagents-provider-substrate/src/sandbox_execution.rs`
-- `crates/psionic/psionic-sandbox/src/lib.rs`
+- `OpenAgentsInc/psionic/crates/psionic-sandbox/src/lib.rs`
 
 Important current truths:
 
@@ -139,15 +139,15 @@ Psionic-owned crates while provider-substrate remains the descriptor layer.
 
 Relevant files:
 
-- `crates/psionic/psionic-cluster/src/lib.rs`
-- `crates/psionic/psionic-cluster/src/ordered_state.rs`
-- `crates/psionic/psionic-cluster/src/scheduler.rs`
-- `crates/psionic/psionic-cluster/src/replicated_serving.rs`
-- `crates/psionic/psionic-cluster/src/layer_sharded.rs`
-- `crates/psionic/psionic-cluster/src/tensor_sharded.rs`
-- `crates/psionic/psionic-provider/src/lib.rs`
-- `crates/psionic/psionic-serve/src/lib.rs`
-- `crates/psionic/psionic-runtime/src/lib.rs`
+- `OpenAgentsInc/psionic/crates/psionic-cluster/src/lib.rs`
+- `OpenAgentsInc/psionic/crates/psionic-cluster/src/ordered_state.rs`
+- `OpenAgentsInc/psionic/crates/psionic-cluster/src/scheduler.rs`
+- `OpenAgentsInc/psionic/crates/psionic-cluster/src/replicated_serving.rs`
+- `OpenAgentsInc/psionic/crates/psionic-cluster/src/layer_sharded.rs`
+- `OpenAgentsInc/psionic/crates/psionic-cluster/src/tensor_sharded.rs`
+- `OpenAgentsInc/psionic/crates/psionic-provider/src/lib.rs`
+- `OpenAgentsInc/psionic/crates/psionic-serve/src/lib.rs`
+- `OpenAgentsInc/psionic/crates/psionic-runtime/src/lib.rs`
 
 Important current truths:
 
@@ -491,7 +491,7 @@ Prime's sandbox stack is valuable because it makes remote execution feel like a
 product, not a shell script.
 
 OpenAgents already has a strong local start, now extracted into
-`crates/psionic/psionic-sandbox` with `openagents-provider-substrate` kept as
+`OpenAgentsInc/psionic/crates/psionic-sandbox` with `openagents-provider-substrate` kept as
 the provider-facing descriptor layer. The right next step is to make it a
 first-class compute family.
 

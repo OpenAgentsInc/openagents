@@ -113,24 +113,24 @@ impl ArchitectureExplainerFirstRunConfig {
             .to_path_buf();
         Self {
             train_dataset_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/train.jsonl",
+                "fixtures/apple_adapter/datasets/psionic_architecture_explainer/train.jsonl",
             ),
             held_out_dataset_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/held_out.jsonl",
+                "fixtures/apple_adapter/datasets/psionic_architecture_explainer/held_out.jsonl",
             ),
             benchmark_dataset_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/benchmark.jsonl",
+                "fixtures/apple_adapter/datasets/psionic_architecture_explainer/benchmark.jsonl",
             ),
             corpus_manifest_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/datasets/psionic_architecture_explainer/corpus_manifest.json",
+                "fixtures/apple_adapter/datasets/psionic_architecture_explainer/corpus_manifest.json",
             ),
             experiment_manifest_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/experiments/psionic_architecture_explainer_acceptance_reference_v2.json",
+                "fixtures/apple_adapter/experiments/psionic_architecture_explainer_acceptance_reference_v2.json",
             ),
             export_path: std::env::temp_dir()
                 .join("openagents_apple_architecture_explainer_first_real_run.fmadapter"),
             json_report_path: repo_root.join(
-                "crates/psionic/fixtures/apple_adapter/runs/psionic_architecture_explainer_first_real_run_report.json",
+                "fixtures/apple_adapter/runs/psionic_architecture_explainer_first_real_run_report.json",
             ),
             markdown_report_path: repo_root.join(
                 "docs/audits/2026-03-15-psionic-architecture-explainer-first-real-run.md",

@@ -12,8 +12,8 @@ workspace = true
 
 [dependencies]
 arc-core = { path = "../core" }
-psionic-eval = { path = "../../psionic/psionic-eval", default-features = false }
-psionic-research = { path = "../../psionic/psionic-research" }
+psionic-eval = { workspace = true, default-features = false }
+psionic-research = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

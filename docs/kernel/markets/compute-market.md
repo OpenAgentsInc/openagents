@@ -1014,7 +1014,7 @@ benchmark truth.
 
 ### 5. Psionic execution substrate that already exists
 
-Real code already exists in `crates/psionic/*` for more than single-node
+Real code already exists in `OpenAgentsInc/psionic` for more than single-node
 inference, and the March 14 `#3602`/`#3603` closures made that substrate
 meaningfully stronger:
 
@@ -1214,7 +1214,7 @@ Code:
 - `crates/openagents-kernel-core/src/authority.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 - `crates/openagents-provider-substrate/src/admin.rs`
-- `crates/psionic/*`
+- `OpenAgentsInc/psionic`
 - `proto/openagents/compute/v1/*`
 - `crates/openagents-kernel-proto`
 
@@ -1228,9 +1228,9 @@ Primary supporting docs:
 - [../../plans/compute-market-full-implementation-plan.md](../../plans/compute-market-full-implementation-plan.md)
 - [../../plans/prime-ecosystem-compute-integration-spec.md](../../plans/prime-ecosystem-compute-integration-spec.md)
 - [../../audits/2026-03-13-prime-relation-and-psionic-adaptation-audit.md](../../audits/2026-03-13-prime-relation-and-psionic-adaptation-audit.md)
-- [../../../crates/psionic/docs/ARCHITECTURE.md](../../../crates/psionic/docs/ARCHITECTURE.md)
-- [../../../crates/psionic/docs/TRAIN_SYSTEM.md](../../../crates/psionic/docs/TRAIN_SYSTEM.md)
-- [../../../crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md](../../../crates/psionic/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md)
+- [OpenAgentsInc/psionic `docs/ARCHITECTURE.md`](https://github.com/OpenAgentsInc/psionic/blob/main/docs/ARCHITECTURE.md)
+- [OpenAgentsInc/psionic `docs/TRAIN_SYSTEM.md`](https://github.com/OpenAgentsInc/psionic/blob/main/docs/TRAIN_SYSTEM.md)
+- [OpenAgentsInc/psionic `docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md`](https://github.com/OpenAgentsInc/psionic/blob/main/docs/FRAMEWORK_CORE_ACCEPTANCE_MATRIX.md)
 
 ## Bottom Line
 
