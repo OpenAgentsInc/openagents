@@ -8998,6 +8998,9 @@ pub(super) fn run_tassadar_lab_action(
         TassadarLabPaneAction::SetView(view) => {
             crate::tassadar_lab_control::select_view(&mut state.tassadar_lab, view);
         }
+        TassadarLabPaneAction::SetSourceMode(source_mode) => {
+            crate::tassadar_lab_control::select_source_mode(&mut state.tassadar_lab, source_mode);
+        }
         TassadarLabPaneAction::CycleView => {
             crate::tassadar_lab_control::cycle_view(&mut state.tassadar_lab);
         }
@@ -9006,6 +9009,9 @@ pub(super) fn run_tassadar_lab_action(
         }
         TassadarLabPaneAction::NextReplay => {
             crate::tassadar_lab_control::move_selected_replay(&mut state.tassadar_lab, 1);
+        }
+        TassadarLabPaneAction::RefreshSnapshot => {
+            crate::tassadar_lab_control::refresh_current_source(&mut state.tassadar_lab);
         }
         TassadarLabPaneAction::PreviousUpdate => {
             crate::tassadar_lab_control::move_selected_update(&mut state.tassadar_lab, -1);

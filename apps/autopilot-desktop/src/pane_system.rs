@@ -482,9 +482,11 @@ pub enum AttnResLabPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TassadarLabPaneAction {
     SetView(crate::app_state::TassadarLabViewMode),
+    SetSourceMode(crate::app_state::TassadarLabSourceMode),
     CycleView,
     PreviousReplay,
     NextReplay,
+    RefreshSnapshot,
     PreviousUpdate,
     NextUpdate,
     PreviousReadableLogLine,
@@ -3467,7 +3469,7 @@ pub fn tassadar_lab_previous_replay_button_bounds(content_bounds: Bounds) -> Bou
     Bounds::new(
         evidence.max_x() + JOB_INBOX_BUTTON_GAP,
         evidence.origin.y,
-        112.0,
+        84.0,
         evidence.size.height,
     )
 }
@@ -3477,18 +3479,58 @@ pub fn tassadar_lab_next_replay_button_bounds(content_bounds: Bounds) -> Bounds 
     Bounds::new(
         previous.max_x() + JOB_INBOX_BUTTON_GAP,
         previous.origin.y,
-        112.0,
+        84.0,
         previous.size.height,
     )
 }
 
-pub fn tassadar_lab_help_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn tassadar_lab_replay_mode_button_bounds(content_bounds: Bounds) -> Bounds {
     let next = tassadar_lab_next_replay_button_bounds(content_bounds);
     Bounds::new(
         next.max_x() + JOB_INBOX_BUTTON_GAP,
         next.origin.y,
         88.0,
         next.size.height,
+    )
+}
+
+pub fn tassadar_lab_article_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let replay = tassadar_lab_replay_mode_button_bounds(content_bounds);
+    Bounds::new(
+        replay.max_x() + JOB_INBOX_BUTTON_GAP,
+        replay.origin.y,
+        92.0,
+        replay.size.height,
+    )
+}
+
+pub fn tassadar_lab_hybrid_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    let article = tassadar_lab_article_mode_button_bounds(content_bounds);
+    Bounds::new(
+        article.max_x() + JOB_INBOX_BUTTON_GAP,
+        article.origin.y,
+        92.0,
+        article.size.height,
+    )
+}
+
+pub fn tassadar_lab_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    let hybrid = tassadar_lab_hybrid_mode_button_bounds(content_bounds);
+    Bounds::new(
+        hybrid.max_x() + JOB_INBOX_BUTTON_GAP,
+        hybrid.origin.y,
+        92.0,
+        hybrid.size.height,
+    )
+}
+
+pub fn tassadar_lab_help_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = tassadar_lab_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        88.0,
+        refresh.size.height,
     )
 }
 
@@ -7488,6 +7530,28 @@ fn pane_hit_action_for_pane(
             } else if tassadar_lab_next_replay_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::TassadarLab(
                     TassadarLabPaneAction::NextReplay,
+                ))
+            } else if tassadar_lab_replay_mode_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::SetSourceMode(
+                        crate::app_state::TassadarLabSourceMode::Replay,
+                    ),
+                ))
+            } else if tassadar_lab_article_mode_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::SetSourceMode(
+                        crate::app_state::TassadarLabSourceMode::LiveArticleSession,
+                    ),
+                ))
+            } else if tassadar_lab_hybrid_mode_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::SetSourceMode(
+                        crate::app_state::TassadarLabSourceMode::LiveArticleHybridWorkflow,
+                    ),
+                ))
+            } else if tassadar_lab_refresh_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::TassadarLab(
+                    TassadarLabPaneAction::RefreshSnapshot,
                 ))
             } else if tassadar_lab_help_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::TassadarLab(

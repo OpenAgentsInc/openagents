@@ -1,16 +1,19 @@
 # Tassadar Lab
 
-`Tassadar Lab` is the retained desktop pane for inspecting committed Psionic
-Tassadar execution artifacts inside `apps/autopilot-desktop`.
+`Tassadar Lab` is the retained desktop pane for inspecting Psionic Tassadar
+execution truth inside `apps/autopilot-desktop`.
 
 ## Current Scope
 
-- This first lane is replay-first only.
-- The pane reads curated Psionic replay surfaces and does not start live
-  execution itself yet.
-- The curated shell currently exposes:
+- The pane now supports both curated replays and live local Psionic-prepared
+  article views.
+- The current replay shell exposes:
   - the direct article-session replay
   - the compiled article-closure replay
+- The current live shells expose:
+  - canonical article executor sessions for direct, fallback, and refusal cases
+  - canonical planner-owned hybrid workflows for delegated, fallback, and
+    refused routing cases
 
 ## Open The Pane
 
@@ -27,18 +30,23 @@ Tassadar execution artifacts inside `apps/autopilot-desktop`.
 
 ## Controls
 
-- `Left` / `Right`: previous or next replay.
+- `Left` / `Right`: previous or next case inside the active source mode.
 - `Up` / `Down`: previous or next replay update.
 - `PageUp` / `PageDown`: move readable-log focus.
 - `Home` / `End`: move token-trace chunk focus.
 - `[` / `]`: move focused fact line.
 - `Tab`: cycle views.
 - `1` / `2` / `3` / `4`: jump to `Overview`, `Trace`, `Program`, or `Evidence`.
+- `5` / `6` / `7`: switch between `Replay`, `Article Session`, and
+  `Hybrid Workflow` source modes.
+- `r`: refresh the current source from Psionic.
 - `?`: toggle the help overlay.
 - `Esc`: dismiss the help overlay if it is open.
 
 ## Ownership Boundary
 
-- Psionic remains the source of truth for replay artifacts, proof identity,
-  decode posture, runtime capability, and lineage details.
-- OpenAgents owns the retained desktop state and WGPUI presentation shell.
+- Psionic remains the source of truth for live executor sessions, live hybrid
+  workflows, replay artifacts, proof identity, decode posture, runtime
+  capability, and lineage details.
+- OpenAgents owns the retained desktop state, source selection, local event
+  feed, refresh semantics, and WGPUI presentation shell.
