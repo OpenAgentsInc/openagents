@@ -28,8 +28,14 @@ follow-on, not current earn-loop MVP scope, unless explicitly scheduled.
   controller with real tiny-training summaries, live inference refresh,
   routing-diagnostics adaptation, two-phase parity wiring, and controller
   coverage.
-- Remaining follow-ons are still the Psionic stepwise training runner and the
-  final interactive control closure.
+- 2026-03-17: phase 3 landed in `openagents` and `psionic` as the stepwise
+  runner-backed interactive closure: live start/pause/resume/reset/speed,
+  TUI-faithful keyboard controls, persisted lab state, WGPUI help overlay, and
+  controller/input coverage.
+- The original Burn/TUI desktop lab is now functionally closed in the retained
+  OpenAgents desktop app as an app-owned WGPUI pane backed by Psionic truth.
+- Remaining follow-ons are optional hardening or productization work, not port
+  blockers.
 
 ## Scope
 
@@ -78,27 +84,20 @@ Verification commands run against current `~/code/psionic`:
 
 The current answer is:
 
-- Psionic already implements a real AttnRes CPU-reference model family,
-  diagnostics snapshot types, two-phase parity helpers, a bounded tiny-training
-  lane, and a bounded served text-generation lane.
-- OpenAgents already has the pane system, app-owned state model, renderer
-  dispatch, input routing, and WGPUI HUD primitives needed to host an AttnRes
-  lab pane.
-- OpenAgents does not currently contain any AttnRes pane, AttnRes pane state,
-  AttnRes pane actions, AttnRes controller worker, or AttnRes render mapping.
-- The biggest missing technical contract for a true tweet-equivalent live lab is
-  not WGPUI. It is the lack of a stepwise live training observer or stream in
-  Psionic. Current `psionic-train::train_attnres_tiny_next_token(...)` returns a
-  completed outcome after the fixed-budget run, with per-step metrics but no
-  live UI callback surface.
-- The correct port plan is:
-  1. add an app-owned AttnRes pane and replay snapshot mapping in
-     `apps/autopilot-desktop`
-  2. wire live inference and diagnostics using current Psionic APIs
-  3. extend Psionic with a renderer-neutral step observer or stream for live
-     training
-  4. finish the pause/resume/speed/reset loop and only then claim parity with
-     the original TUI experience
+- Psionic now implements the full AttnRes substrate the desktop pane needs:
+  CPU-reference model family, routing diagnostics, two-phase parity helpers, a
+  bounded tiny-training lane, and the stepwise runner/update contract used by
+  the desktop.
+- OpenAgents now implements an app-owned `AttnRes Lab` pane with the three
+  original view families, real Psionic-backed live training, real inference and
+  parity inspection, persisted pane state, and TUI-faithful keyboard controls.
+- The retained desktop no longer needs any AttnRes-specific work inside
+  `crates/wgpui`; the port closure lives where it should, in
+  `apps/autopilot-desktop` plus upstream Psionic contracts.
+- Remaining work is discretionary:
+  1. optional polish or UX refinement inside the pane
+  2. optional future extraction of proven-generic WGPUI primitives
+  3. optional web/mobile/operator follow-ons outside current MVP scope
 
 The most important ownership rule is unchanged:
 
@@ -219,45 +218,42 @@ Good local patterns to copy:
 - `apps/autopilot-desktop/src/research_control.rs`
   for app-owned background-control and persisted program-state patterns
 
-### 3. The pinned OpenAgents Psionic revision already contains the basic AttnRes APIs
+### 3. The pinned OpenAgents Psionic revision now contains the full desktop-facing AttnRes APIs
 
 `openagents` is currently pinned to Psionic rev
-`43992eceeb5297ed9eb6219e559a44a3de8a0941`.
+`fde499a4de094e0b2c8281bd4fca2f839ac0ccb3`.
 
-That pinned rev already contains:
+That pinned rev contains:
 
 - `psionic-train::train_attnres_tiny_next_token(...)`
 - `AttnResTinyTrainingOutcome`
 - `AttnResTinyTrainingStepMetrics`
+- `AttnResTinyTrainingRunner`
+- `AttnResTinyTrainingUpdate`
 - `AttnResDiagnosticsSnapshot`
 - `AttnResTextGenerationStep`
 - `LocalAttnResTextGenerationStream`
 
-That means the first pane implementation does not require a Psionic pin bump
-just to start. A pin bump should only happen if the pane needs a newer helper or
-if we add the missing live observer/stream surface upstream.
+That is enough for the retained desktop to drive the live pane without
+recreating AttnRes training logic in UI code.
 
-## What Is Not Implemented In OpenAgents Today
+## What Remains Optional
 
-There is no current AttnRes pane in the retained repo.
+The retained repo now contains the full desktop AttnRes lab closure:
 
-Missing now:
+- `PaneKind::AttnResLab`
+- pane registry wiring and renderer dispatch
+- app-owned AttnRes pane state in `RenderState`
+- a persisted desktop controller consuming the Psionic stepwise runner
+- live inference, routing, and two-phase parity views
+- TUI-faithful keyboard routing and WGPUI control surfaces
+- user-facing operating docs in `docs/attnres-lab.md`
 
-- no `PaneKind::AttnResLab`
-- no pane registry entry for an AttnRes lab
-- no `apps/autopilot-desktop/src/panes/attnres_lab.rs`
-- no AttnRes pane state in `RenderState`
-- no AttnRes pane input or action model
-- no AttnRes controller worker
-- no renderer dispatch branch for AttnRes
-- no hit testing or keyboard routing for the TUI-equivalent controls
-- no snapshot persistence for selected view, selected sublayer, speed, or run
-  status
-- no OpenAgents docs that describe how to launch or use an AttnRes desktop lab
+The remaining non-blocking work is optional:
 
-There is also no current direct `psionic-models` dependency in `openagents`.
-That is not automatically a problem, but it matters if the app is expected to
-construct `AttnResConfig` and `AttnResNextTokenSample` values directly.
+- UX polish or visual refinement inside the pane
+- broader product surfacing outside the current command/pane shell
+- generic WGPUI extraction only if another pane proves the same abstraction
 
 ## The Real Gaps
 

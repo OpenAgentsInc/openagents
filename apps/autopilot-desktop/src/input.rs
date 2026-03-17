@@ -51,12 +51,12 @@ use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
-    ActivityFeedPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction, CastControlPaneAction,
-    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
-    CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
-    EarningsScoreboardPaneAction, MissionControlPaneAction, NetworkRequestsPaneAction,
-    Nip90SentPaymentsPaneAction, PaneController, PaneHitAction, PaneInput,
-    ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
+    ActivityFeedPaneAction, AlertsRecoveryPaneAction, AttnResLabPaneAction, CadDemoPaneAction,
+    CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
+    CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
+    CredentialsPaneAction, EarningsScoreboardPaneAction, MissionControlPaneAction,
+    NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
+    PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     clamp_all_panes_to_window, dispatch_active_job_scroll_event,
@@ -643,6 +643,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         state.autopilot_chat.has_pending_messages(),
         rive_needs_redraw,
         debug_probe_active,
+        state.attnres_lab.playback_state.is_running(),
     );
     let redraw_pressure = build_frame_redraw_pressure_snapshot(
         state,
@@ -844,8 +845,9 @@ fn background_poll_interval(
     chat_pending: bool,
     rive_needs_redraw: bool,
     debug_probe_active: bool,
+    attnres_live: bool,
 ) -> std::time::Duration {
-    if chat_pending || rive_needs_redraw || debug_probe_active {
+    if chat_pending || rive_needs_redraw || debug_probe_active || attnres_live {
         std::time::Duration::from_millis(16)
     } else {
         std::time::Duration::from_millis(50)
@@ -1042,6 +1044,11 @@ fn pump_background_every_loop(
     }
     if record_runtime_changed_op(state, "every_loop", "cad_demo::noop_tick", |state| {
         reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop)
+    }) {
+        changed = true;
+    }
+    if record_runtime_changed_op(state, "every_loop", "attnres_lab::tick", |state| {
+        crate::attnres_lab_control::background_tick(&mut state.attnres_lab)
     }) {
         changed = true;
     }
@@ -3286,6 +3293,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_settings_keyboard_input(state, logical_key)
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
+        || handle_attnres_lab_keyboard_input(state, logical_key)
         || handle_cad_timeline_keyboard_input(state, logical_key)
 }
 
@@ -4087,6 +4095,29 @@ fn handle_job_history_keyboard_input(
     )
 }
 
+fn handle_attnres_lab_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    let Some(key) = map_winit_key(logical_key) else {
+        return false;
+    };
+    let Some(active_pane_id) = PaneController::active(state) else {
+        return false;
+    };
+    let is_attnres_active = state
+        .panes
+        .iter()
+        .find(|pane| pane.id == active_pane_id)
+        .is_some_and(|pane| pane.kind == crate::app_state::PaneKind::AttnResLab);
+    if !is_attnres_active {
+        return false;
+    }
+
+    attnres_lab_keyboard_action(key, state.attnres_lab.show_help)
+        .is_some_and(|action| run_attnres_lab_action(state, action))
+}
+
 fn handle_cad_timeline_keyboard_input(
     state: &mut crate::app_state::RenderState,
     logical_key: &WinitLogicalKey,
@@ -4147,6 +4178,32 @@ fn handle_cad_timeline_keyboard_input(
             })
             .is_some_and(|action| reducers::run_cad_demo_action(state, action)),
         _ => false,
+    }
+}
+
+fn attnres_lab_keyboard_action(key: Key, help_visible: bool) -> Option<AttnResLabPaneAction> {
+    match key {
+        Key::Named(NamedKey::Escape) if help_visible => Some(AttnResLabPaneAction::ToggleHelp),
+        Key::Named(NamedKey::Space) => Some(AttnResLabPaneAction::TogglePlayback),
+        Key::Named(NamedKey::Tab) => Some(AttnResLabPaneAction::CycleView),
+        Key::Named(NamedKey::ArrowLeft) => Some(AttnResLabPaneAction::PreviousSublayer),
+        Key::Named(NamedKey::ArrowRight) => Some(AttnResLabPaneAction::NextSublayer),
+        Key::Named(NamedKey::ArrowUp) => Some(AttnResLabPaneAction::IncreaseSpeed),
+        Key::Named(NamedKey::ArrowDown) => Some(AttnResLabPaneAction::DecreaseSpeed),
+        Key::Character(value) if value == "1" => Some(AttnResLabPaneAction::SetView(
+            crate::app_state::AttnResLabViewMode::Overview,
+        )),
+        Key::Character(value) if value == "2" => Some(AttnResLabPaneAction::SetView(
+            crate::app_state::AttnResLabViewMode::Pipeline,
+        )),
+        Key::Character(value) if value == "3" => Some(AttnResLabPaneAction::SetView(
+            crate::app_state::AttnResLabViewMode::Inference,
+        )),
+        Key::Character(value) if value == "?" => Some(AttnResLabPaneAction::ToggleHelp),
+        Key::Character(value) if value.eq_ignore_ascii_case("r") => {
+            Some(AttnResLabPaneAction::ResetTraining)
+        }
+        _ => None,
     }
 }
 
@@ -4227,22 +4284,24 @@ where
 mod tests {
     use super::{
         ParsedChatTurnPrompt, TurnSkillAttachment, TurnSkillSource, assemble_chat_turn_input,
-        background_poll_interval, build_create_invoice_command, build_goal_attempt_audit_receipts,
-        build_goal_payout_evidence, build_pay_invoice_command, build_spark_command_for_action,
-        cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
-        cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
-        cad_turn_approval_policy, cadence_due, format_provider_blockers_for_display,
-        goal_labor_linkage_from_binding, is_chat_terminal_shortcut, is_command_palette_shortcut,
-        is_toggle_fullscreen_shortcut, parse_chat_turn_prompt, parse_positive_amount_str,
-        provider_blocker_detail, resolve_turn_skill_by_name, resolve_turn_skill_by_path,
-        rive_preview_cadence_active, should_mirror_provider_preflight_error,
-        should_open_command_palette, should_request_desktop_redraw, terminal_goal_labor_linkage,
+        attnres_lab_keyboard_action, background_poll_interval, build_create_invoice_command,
+        build_goal_attempt_audit_receipts, build_goal_payout_evidence, build_pay_invoice_command,
+        build_spark_command_for_action, cad_hit_action_blocks_camera_zoom,
+        cad_hotkey_action_matrix, cad_pick_kind_label, cad_pick_kind_to_selection_kind,
+        cad_policy_skill_candidates_for_turn, cad_turn_approval_policy, cadence_due,
+        format_provider_blockers_for_display, goal_labor_linkage_from_binding,
+        is_chat_terminal_shortcut, is_command_palette_shortcut, is_toggle_fullscreen_shortcut,
+        parse_chat_turn_prompt, parse_positive_amount_str, provider_blocker_detail,
+        resolve_turn_skill_by_name, resolve_turn_skill_by_path, rive_preview_cadence_active,
+        should_mirror_provider_preflight_error, should_open_command_palette,
+        should_request_desktop_redraw, terminal_goal_labor_linkage,
         validate_lightning_payment_request,
     };
     use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
         CodexRunTrigger, CodexTurnExecutionRequest, orchestrate_codex_turn,
     };
+    use crate::pane_system::AttnResLabPaneAction;
     use crate::pane_system::cad_palette_command_specs;
     use crate::spark_pane::{
         CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction, hit_action, layout,
@@ -4259,7 +4318,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
     use std::time::Duration;
-    use wgpui::{Bounds, Modifiers, Point};
+    use wgpui::{Bounds, Key, Modifiers, NamedKey, Point};
     use winit::keyboard::Key as WinitLogicalKey;
 
     fn parsed_prompt(text: &str) -> ParsedChatTurnPrompt {
@@ -4469,20 +4528,64 @@ mod tests {
     #[test]
     fn background_poll_interval_stays_fast_for_rive_activity() {
         assert_eq!(
-            background_poll_interval(false, true, false),
+            background_poll_interval(false, true, false, false),
             Duration::from_millis(16)
         );
         assert_eq!(
-            background_poll_interval(true, false, false),
+            background_poll_interval(true, false, false, false),
             Duration::from_millis(16)
         );
         assert_eq!(
-            background_poll_interval(false, false, true),
+            background_poll_interval(false, false, true, false),
             Duration::from_millis(16)
         );
         assert_eq!(
-            background_poll_interval(false, false, false),
+            background_poll_interval(false, false, false, true),
+            Duration::from_millis(16)
+        );
+        assert_eq!(
+            background_poll_interval(false, false, false, false),
             Duration::from_millis(50)
+        );
+    }
+
+    #[test]
+    fn attnres_keyboard_mapping_tracks_tui_controls() {
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::Space), false),
+            Some(AttnResLabPaneAction::TogglePlayback)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::Tab), false),
+            Some(AttnResLabPaneAction::CycleView)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::ArrowLeft), false),
+            Some(AttnResLabPaneAction::PreviousSublayer)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::ArrowRight), false),
+            Some(AttnResLabPaneAction::NextSublayer)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::ArrowUp), false),
+            Some(AttnResLabPaneAction::IncreaseSpeed)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::ArrowDown), false),
+            Some(AttnResLabPaneAction::DecreaseSpeed)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Character("?".to_string()), false),
+            Some(AttnResLabPaneAction::ToggleHelp)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Named(NamedKey::Escape), true),
+            Some(AttnResLabPaneAction::ToggleHelp)
+        );
+        assert_eq!(
+            attnres_lab_keyboard_action(Key::Character("r".to_string()), false),
+            Some(AttnResLabPaneAction::ResetTraining)
         );
     }
 

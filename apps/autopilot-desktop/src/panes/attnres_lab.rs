@@ -1,15 +1,20 @@
 use wgpui::components::hud::{DotShape, DotsGrid, Heatmap, RingGauge, Scanlines, SignalMeter};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{AttnResLabPaneState, AttnResLabSublayerSnapshot, AttnResLabViewMode};
+use crate::app_state::{
+    AttnResLabPaneState, AttnResLabPlaybackState, AttnResLabSublayerSnapshot, AttnResLabViewMode,
+};
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_secondary_button,
     paint_source_badge, paint_state_summary, paint_tertiary_button,
 };
 use crate::pane_system::{
+    attnres_lab_faster_button_bounds, attnres_lab_help_button_bounds,
     attnres_lab_inference_button_bounds, attnres_lab_next_sublayer_button_bounds,
     attnres_lab_overview_button_bounds, attnres_lab_pipeline_button_bounds,
     attnres_lab_previous_sublayer_button_bounds, attnres_lab_refresh_button_bounds,
+    attnres_lab_reset_button_bounds, attnres_lab_slower_button_bounds,
+    attnres_lab_toggle_playback_button_bounds,
 };
 
 const PANEL_RADIUS: f32 = 10.0;
@@ -51,7 +56,12 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
     let overview_bounds = attnres_lab_overview_button_bounds(content_bounds);
     let pipeline_bounds = attnres_lab_pipeline_button_bounds(content_bounds);
     let inference_bounds = attnres_lab_inference_button_bounds(content_bounds);
+    let playback_bounds = attnres_lab_toggle_playback_button_bounds(content_bounds);
+    let reset_bounds = attnres_lab_reset_button_bounds(content_bounds);
     let refresh_bounds = attnres_lab_refresh_button_bounds(content_bounds);
+    let slower_bounds = attnres_lab_slower_button_bounds(content_bounds);
+    let faster_bounds = attnres_lab_faster_button_bounds(content_bounds);
+    let help_bounds = attnres_lab_help_button_bounds(content_bounds);
     let previous_bounds = attnres_lab_previous_sublayer_button_bounds(content_bounds);
     let next_bounds = attnres_lab_next_sublayer_button_bounds(content_bounds);
 
@@ -73,11 +83,28 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         pane_state.selected_view == AttnResLabViewMode::Inference,
         paint,
     );
-    paint_action_button(refresh_bounds, "Refresh live", paint);
+    paint_action_button(
+        playback_bounds,
+        pane_state.playback_state.button_label(),
+        paint,
+    );
+    paint_secondary_button(reset_bounds, "Reset", paint);
+    paint_tertiary_button(refresh_bounds, "Refresh live", paint);
+    paint_secondary_button(slower_bounds, "Slower", paint);
+    paint_secondary_button(faster_bounds, "Faster", paint);
+    paint_secondary_button(
+        help_bounds,
+        if pane_state.show_help {
+            "Hide help"
+        } else {
+            "Help"
+        },
+        paint,
+    );
     paint_action_button(previous_bounds, "Prev sublayer", paint);
     paint_action_button(next_bounds, "Next sublayer", paint);
 
-    let title_x = refresh_bounds.max_x() + 18.0;
+    let title_x = reset_bounds.max_x() + 18.0;
     paint.scene.draw_text(paint.text.layout(
         "AttnRes Lab",
         Point::new(title_x, content_bounds.origin.y + 18.0),
@@ -85,13 +112,13 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         theme::text::PRIMARY,
     ));
     let subtitle = if pane_state.snapshot.source_badge.starts_with("psionic.") {
-        "Psionic-backed routing diagnostics, live inference, and two-phase parity."
+        "Psionic-backed live tiny-training replay with routing diagnostics, inference, and parity."
     } else {
         "Replay-first WGPUI port of the original Burn/TUI information architecture."
     };
     paint.scene.draw_text(paint.text.layout(
         subtitle,
-        Point::new(title_x, content_bounds.origin.y + 36.0),
+        Point::new(title_x, refresh_bounds.origin.y + 18.0),
         11.0,
         theme::text::MUTED,
     ));
@@ -103,10 +130,11 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         pane_state.snapshot.max_steps,
         pane_state.snapshot.speed_multiplier
     );
+    let controls_bottom = refresh_bounds.max_y().max(previous_bounds.max_y());
     let summary_bottom = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
-        overview_bounds.max_y() + 12.0,
+        controls_bottom + 12.0,
         pane_state.load_state,
         summary.as_str(),
         pane_state.last_action.as_deref(),
@@ -144,6 +172,10 @@ pub fn paint(content_bounds: Bounds, pane_state: &AttnResLabPaneState, paint: &m
         AttnResLabViewMode::Inference => {
             paint_inference(left_bounds, right_bounds, bottom_bounds, pane_state, paint);
         }
+    }
+
+    if pane_state.show_help {
+        paint_help_overlay(content_bounds, pane_state.playback_state, paint);
     }
 }
 
@@ -976,4 +1008,81 @@ fn paint_panel_title(bounds: Bounds, title: &str, accent: Hsla, paint: &mut Pain
         10.0,
         accent.with_alpha(0.9),
     ));
+}
+
+fn paint_help_overlay(
+    content_bounds: Bounds,
+    playback_state: AttnResLabPlaybackState,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(content_bounds)
+            .with_background(Hsla::from_hex(0x02060B).with_alpha(0.72))
+            .with_corner_radius(PANEL_RADIUS),
+    );
+    let overlay = Bounds::new(
+        content_bounds.origin.x + content_bounds.size.width * 0.18,
+        content_bounds.origin.y + content_bounds.size.height * 0.12,
+        content_bounds.size.width * 0.64,
+        content_bounds.size.height * 0.64,
+    );
+    let accent = Hsla::from_hex(ACCENT_GOLD);
+    paint_panel_shell(overlay, accent, paint);
+    paint_panel_title(overlay, "Controls", accent, paint);
+
+    let mut y = overlay.origin.y + 38.0;
+    y = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y,
+        "Space",
+        match playback_state {
+            AttnResLabPlaybackState::Armed => "Start live tiny-training",
+            AttnResLabPlaybackState::Running => "Pause the current run",
+            AttnResLabPlaybackState::Paused => "Resume the current run",
+            AttnResLabPlaybackState::Completed => "Restart from the seeded model",
+        },
+    );
+    y = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y + 10.0,
+        "Up / Down",
+        "Increase or decrease training speed (1x to 5x)",
+    );
+    y = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y + 10.0,
+        "Left / Right",
+        "Inspect the previous or next AttnRes sublayer",
+    );
+    y = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y + 10.0,
+        "Tab or 1/2/3",
+        "Cycle views or jump directly to Overview, Pipeline, or Inference",
+    );
+    y = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y + 10.0,
+        "r",
+        "Reset the pane to the seeded Psionic checkpoint",
+    );
+    y = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y + 10.0,
+        "? / Esc",
+        "Show or dismiss this overlay without closing the pane",
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        overlay.origin.x + 16.0,
+        y + 10.0,
+        "Mouse",
+        "Use the top-row controls for playback, speed, help, refresh, and sublayer inspection",
+    );
 }
