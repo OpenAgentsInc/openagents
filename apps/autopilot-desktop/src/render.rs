@@ -411,6 +411,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             pane_resizer: wgpui::components::hud::ResizablePane::new()
                 .min_size(PANE_MIN_WIDTH, PANE_MIN_HEIGHT),
             hotbar_flash_was_active: false,
+            onboarding: crate::onboarding::OnboardingState::load_or_default(),
             command_palette,
             command_palette_actions,
         };
@@ -750,6 +751,8 @@ fn open_startup_panes(state: &mut RenderState) {
 
 pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRenderReport> {
     let frame_start = Instant::now();
+    crate::onboarding::sync_progress(state);
+    let onboarding_view = crate::onboarding::build_view(state);
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let height = logical.height;
@@ -1299,6 +1302,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
                 .color(tooltip_text_color);
             label.paint(text_bounds, &mut paint);
         }
+
+        crate::onboarding::paint_overlay(
+            &mut state.onboarding,
+            &onboarding_view,
+            Bounds::new(0.0, 0.0, width, height),
+            &mut paint,
+        );
     }
 
     state

@@ -10571,6 +10571,7 @@ pub struct RenderState {
     pub cad_camera_drag_state: Option<CadCameraDragState>,
     pub pane_resizer: ResizablePane,
     pub hotbar_flash_was_active: bool,
+    pub onboarding: crate::onboarding::OnboardingState,
     pub command_palette: CommandPalette,
     pub command_palette_actions: Rc<RefCell<Vec<String>>>,
 }

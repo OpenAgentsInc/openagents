@@ -292,6 +292,11 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             app.cursor_position = Point::new(position.x as f32 / scale, position.y as f32 / scale);
             state.cursor_position = app.cursor_position;
 
+            if crate::onboarding::blocks_root_input(state) {
+                state.window.request_redraw();
+                return;
+            }
+
             if state.command_palette.is_open() {
                 let event = InputEvent::MouseMove {
                     x: app.cursor_position.x,
@@ -347,6 +352,19 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 },
             };
 
+            if crate::onboarding::blocks_root_input(state) {
+                let handled = match mouse_state {
+                    ElementState::Pressed => crate::onboarding::handle_mouse_down(state),
+                    ElementState::Released => {
+                        crate::onboarding::handle_mouse_up(state, app.cursor_position)
+                    }
+                };
+                if handled {
+                    state.window.request_redraw();
+                }
+                return;
+            }
+
             if state.command_palette.is_open() {
                 let mut handled = state
                     .command_palette
@@ -394,6 +412,10 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
             };
             let scroll_event = InputEvent::Scroll { dx, dy };
+            if crate::onboarding::blocks_root_input(state) {
+                state.window.request_redraw();
+                return;
+            }
             if state.command_palette.is_open() {
                 if state
                     .command_palette
@@ -417,6 +439,13 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 && is_toggle_fullscreen_shortcut(&event.logical_key, state.input_modifiers)
             {
                 toggle_window_fullscreen(state);
+                state.window.request_redraw();
+                return;
+            }
+
+            if event.state == ElementState::Pressed
+                && crate::onboarding::handle_keyboard(state, &event.logical_key)
+            {
                 state.window.request_redraw();
                 return;
             }
