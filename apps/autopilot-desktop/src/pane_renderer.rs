@@ -4,12 +4,12 @@ use crate::app_state::{
     ActiveJobRecord, ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
     AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
     AppleAdapterTrainingPaneInputs, AppleAdapterTrainingPaneState, AppleFmWorkbenchPaneInputs,
-    AppleFmWorkbenchPaneState, AutopilotChatState, BuyModePaymentsPaneState, CadDemoPaneState,
-    CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs, CodexAccountPaneState,
-    CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState,
-    CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs,
-    CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
-    EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
+    AppleFmWorkbenchPaneState, AttnResLabPaneState, AutopilotChatState, BuyModePaymentsPaneState,
+    CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState, ChatPaneInputs,
+    CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
+    CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
+    CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
+    DesktopPane, EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
     JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
     LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
@@ -73,16 +73,17 @@ use crate::pane_system::{
 };
 use crate::panes::{
     agent as agent_pane, apple_adapter_training as apple_adapter_training_pane,
-    apple_fm_workbench as apple_fm_workbench_pane, buy_mode as buy_mode_pane,
-    buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane, calculator as calculator_pane,
-    cast as cast_pane, chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    earnings_jobs as earnings_jobs_pane, frame_debugger as frame_debugger_pane,
-    key_ledger as key_ledger_pane, local_inference as local_inference_pane,
-    log_stream as log_stream_pane, nip90_sent_payments as nip90_sent_payments_pane,
-    presentation as presentation_pane, project_ops as project_ops_pane,
-    provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
-    relay_choreography as relay_choreography_pane, relay_connections as relay_connections_pane,
-    rive as rive_pane, seller_earnings_timeline as seller_earnings_timeline_pane,
+    apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
+    buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
+    calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
+    credit as credit_pane, earnings_jobs as earnings_jobs_pane,
+    frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
+    local_inference as local_inference_pane, log_stream as log_stream_pane,
+    nip90_sent_payments as nip90_sent_payments_pane, presentation as presentation_pane,
+    project_ops as project_ops_pane, provider_control as provider_control_pane,
+    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, wallet as wallet_pane,
 };
@@ -153,6 +154,7 @@ impl PaneRenderer {
         local_inference_runtime: &LocalInferenceExecutionSnapshot,
         apple_fm_execution: &AppleFmBridgeSnapshot,
         local_inference: &LocalInferencePaneState,
+        attnres_lab: &AttnResLabPaneState,
         rive_preview: &mut RivePreviewPaneState,
         rive_preview_runtime: &mut RivePreviewRuntimeState,
         presentation: &mut PresentationPaneState,
@@ -423,6 +425,9 @@ impl PaneRenderer {
                         local_inference_runtime,
                         paint,
                     );
+                }
+                PaneKind::AttnResLab => {
+                    attnres_lab_pane::paint(content_bounds, attnres_lab, paint);
                 }
                 PaneKind::RivePreview => {
                     rive_pane::paint(content_bounds, rive_preview, rive_preview_runtime, paint);

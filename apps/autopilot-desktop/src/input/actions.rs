@@ -1,4 +1,5 @@
 use super::*;
+use crate::app_state::PaneStatusAccess;
 use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmMissionControlSummaryCommand, AppleFmWorkbenchCommand,
     AppleFmWorkbenchOperation, AppleFmWorkbenchToolMode,
@@ -12,10 +13,10 @@ use crate::local_runtime_capabilities::{
 };
 use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
-    AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, BuyModePaymentsPaneAction,
-    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction, LogStreamPaneAction,
-    MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
-    RivePreviewPaneAction, SparkReplayPaneAction,
+    AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
+    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction,
+    LogStreamPaneAction, MissionControlPaneAction, Nip90SentPaymentsPaneAction,
+    ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -8948,6 +8949,49 @@ pub(super) fn run_local_inference_action(
             true
         }
     }
+}
+
+pub(super) fn run_attnres_lab_action(
+    state: &mut crate::app_state::RenderState,
+    action: AttnResLabPaneAction,
+) -> bool {
+    match action {
+        AttnResLabPaneAction::SetView(view) => {
+            state.attnres_lab.selected_view = view;
+            state
+                .attnres_lab
+                .pane_set_ready(format!("Selected {} view", view.label()));
+        }
+        AttnResLabPaneAction::PreviousSublayer => {
+            state.attnres_lab.selected_sublayer =
+                state.attnres_lab.selected_sublayer.saturating_sub(1);
+            state.attnres_lab.clamp_selected_sublayer();
+            let label = state
+                .attnres_lab
+                .current_sublayer()
+                .map(|sublayer| sublayer.label.as_str())
+                .unwrap_or("none");
+            state
+                .attnres_lab
+                .pane_set_ready(format!("Selected previous sublayer: {label}"));
+        }
+        AttnResLabPaneAction::NextSublayer => {
+            let max_index = state.attnres_lab.snapshot.sublayers.len().saturating_sub(1);
+            state.attnres_lab.selected_sublayer =
+                (state.attnres_lab.selected_sublayer + 1).min(max_index);
+            state.attnres_lab.clamp_selected_sublayer();
+            let label = state
+                .attnres_lab
+                .current_sublayer()
+                .map(|sublayer| sublayer.label.as_str())
+                .unwrap_or("none");
+            state
+                .attnres_lab
+                .pane_set_ready(format!("Selected next sublayer: {label}"));
+        }
+    }
+
+    true
 }
 
 fn local_runtime_workbench_action_error(

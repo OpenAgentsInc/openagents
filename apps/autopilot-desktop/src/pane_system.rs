@@ -464,6 +464,13 @@ pub enum LocalInferencePaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AttnResLabPaneAction {
+    SetView(crate::app_state::AttnResLabViewMode),
+    PreviousSublayer,
+    NextSublayer,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RivePreviewPaneAction {
     ReloadAsset,
     TogglePlayback,
@@ -996,6 +1003,7 @@ pub enum PaneHitAction {
     SyncHealth(SyncHealthPaneAction),
     ProviderStatus(ProviderStatusPaneAction),
     LocalInference(LocalInferencePaneAction),
+    AttnResLab(AttnResLabPaneAction),
     RivePreview(RivePreviewPaneAction),
     AppleFmWorkbench(AppleFmWorkbenchPaneAction),
     AppleAdapterTraining(AppleAdapterTrainingPaneAction),
@@ -1114,6 +1122,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
+        PaneKind::AttnResLab => pane_size_for_content(1080.0, 680.0),
         PaneKind::RivePreview => pane_size_for_content(1080.0, 700.0),
         PaneKind::Presentation => pane_size_for_content(640.0, 360.0),
         PaneKind::FrameDebugger => pane_size_for_content(1080.0, 600.0),
@@ -1691,6 +1700,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::ProviderStatus
             | PaneKind::EarningsScoreboard
             | PaneKind::PsionicViz
+            | PaneKind::AttnResLab
             | PaneKind::RivePreview
             | PaneKind::Presentation
             | PaneKind::FrameDebugger
@@ -3241,6 +3251,54 @@ pub fn local_inference_run_button_bounds(content_bounds: Bounds) -> Bounds {
         unload.origin.y,
         148.0,
         unload.size.height,
+    )
+}
+
+pub fn attnres_lab_overview_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        108.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn attnres_lab_pipeline_button_bounds(content_bounds: Bounds) -> Bounds {
+    let overview = attnres_lab_overview_button_bounds(content_bounds);
+    Bounds::new(
+        overview.max_x() + JOB_INBOX_BUTTON_GAP,
+        overview.origin.y,
+        108.0,
+        overview.size.height,
+    )
+}
+
+pub fn attnres_lab_inference_button_bounds(content_bounds: Bounds) -> Bounds {
+    let pipeline = attnres_lab_pipeline_button_bounds(content_bounds);
+    Bounds::new(
+        pipeline.max_x() + JOB_INBOX_BUTTON_GAP,
+        pipeline.origin.y,
+        108.0,
+        pipeline.size.height,
+    )
+}
+
+pub fn attnres_lab_previous_sublayer_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.max_x() - CHAT_PAD - 212.0,
+        content_bounds.origin.y + CHAT_PAD,
+        100.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn attnres_lab_next_sublayer_button_bounds(content_bounds: Bounds) -> Bounds {
+    let previous = attnres_lab_previous_sublayer_button_bounds(content_bounds);
+    Bounds::new(
+        previous.max_x() + JOB_INBOX_BUTTON_GAP,
+        previous.origin.y,
+        100.0,
+        previous.size.height,
     )
 }
 
@@ -7165,6 +7223,31 @@ fn pane_hit_action_for_pane(
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
         PaneKind::PsionicViz | PaneKind::Presentation | PaneKind::FrameDebugger => None,
+        PaneKind::AttnResLab => {
+            if attnres_lab_overview_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
+                    crate::app_state::AttnResLabViewMode::Overview,
+                )))
+            } else if attnres_lab_pipeline_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
+                    crate::app_state::AttnResLabViewMode::Pipeline,
+                )))
+            } else if attnres_lab_inference_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(AttnResLabPaneAction::SetView(
+                    crate::app_state::AttnResLabViewMode::Inference,
+                )))
+            } else if attnres_lab_previous_sublayer_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::PreviousSublayer,
+                ))
+            } else if attnres_lab_next_sublayer_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::AttnResLab(
+                    AttnResLabPaneAction::NextSublayer,
+                ))
+            } else {
+                None
+            }
+        }
         PaneKind::RivePreview => {
             if rive_preview_reload_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::RivePreview(

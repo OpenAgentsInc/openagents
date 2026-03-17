@@ -35,6 +35,450 @@ impl Default for LocalInferencePaneState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AttnResLabViewMode {
+    Overview,
+    Pipeline,
+    Inference,
+}
+
+impl AttnResLabViewMode {
+    pub const ALL: [Self; 3] = [Self::Overview, Self::Pipeline, Self::Inference];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::Pipeline => "Pipeline",
+            Self::Inference => "Inference",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttnResLabMetricPoint {
+    pub global_step: u64,
+    pub training_loss: f32,
+    pub ema_loss: f32,
+    pub selectivity: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttnResLabSublayerSnapshot {
+    pub sublayer_index: usize,
+    pub label: String,
+    pub kind_label: String,
+    pub target_block: usize,
+    pub dominant_source_label: String,
+    pub dominant_weight: f32,
+    pub selectivity: f32,
+    pub query_norm: f32,
+    pub partial_mass: f32,
+    pub cache_mass: f32,
+    pub source_labels: Vec<String>,
+    pub source_logits: Vec<f32>,
+    pub routing_weights: Vec<f32>,
+    pub route_note: String,
+    pub starts_new_block_before: bool,
+    pub completed_blocks_before: usize,
+    pub completed_blocks_after: usize,
+    pub partial_block_present_before: bool,
+    pub partial_block_present_after: bool,
+}
+
+impl AttnResLabSublayerSnapshot {
+    pub fn source_count(&self) -> usize {
+        self.routing_weights.len()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttnResLabBlockSummary {
+    pub block_index: usize,
+    pub avg_selectivity: f32,
+    pub avg_query_norm: f32,
+    pub sublayers: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttnResLabInferenceSummary {
+    pub hidden_parity_label: String,
+    pub logit_parity_label: String,
+    pub hidden_max_abs_diff: f32,
+    pub logit_max_abs_diff: f32,
+    pub partial_merge_share: f32,
+    pub cache_merge_share: f32,
+    pub block_cache_fill_share: f32,
+    pub schedule_note: String,
+    pub merge_note: String,
+    pub cache_note: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttnResLabSnapshot {
+    pub source_badge: String,
+    pub model_label: String,
+    pub architecture_label: String,
+    pub run_label: String,
+    pub run_status: String,
+    pub step: u64,
+    pub max_steps: u64,
+    pub speed_multiplier: usize,
+    pub training_loss: f32,
+    pub ema_loss: f32,
+    pub avg_selectivity: f32,
+    pub active_block: usize,
+    pub current_block_fill: usize,
+    pub completed_blocks: usize,
+    pub metrics: Vec<AttnResLabMetricPoint>,
+    pub sublayers: Vec<AttnResLabSublayerSnapshot>,
+    pub block_summaries: Vec<AttnResLabBlockSummary>,
+    pub inference: AttnResLabInferenceSummary,
+    pub events: Vec<String>,
+}
+
+impl AttnResLabSnapshot {
+    pub fn max_sources(&self) -> usize {
+        self.sublayers
+            .iter()
+            .map(AttnResLabSublayerSnapshot::source_count)
+            .max()
+            .unwrap_or(1)
+    }
+
+    pub fn sublayer(&self, index: usize) -> Option<&AttnResLabSublayerSnapshot> {
+        self.sublayers
+            .get(index.min(self.sublayers.len().saturating_sub(1)))
+    }
+}
+
+pub struct AttnResLabPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub selected_view: AttnResLabViewMode,
+    pub selected_sublayer: usize,
+    pub snapshot: AttnResLabSnapshot,
+}
+
+impl Default for AttnResLabPaneState {
+    fn default() -> Self {
+        let snapshot = replay_attnres_lab_snapshot();
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Loaded replay AttnRes lab snapshot".to_string()),
+            selected_view: AttnResLabViewMode::Overview,
+            selected_sublayer: 4.min(snapshot.sublayers.len().saturating_sub(1)),
+            snapshot,
+        }
+    }
+}
+
+impl AttnResLabPaneState {
+    pub fn current_sublayer(&self) -> Option<&AttnResLabSublayerSnapshot> {
+        self.snapshot.sublayer(self.selected_sublayer)
+    }
+
+    pub fn clamp_selected_sublayer(&mut self) {
+        self.selected_sublayer = self
+            .selected_sublayer
+            .min(self.snapshot.sublayers.len().saturating_sub(1));
+    }
+}
+
+pub fn replay_attnres_lab_snapshot() -> AttnResLabSnapshot {
+    AttnResLabSnapshot {
+        source_badge: "replay.attnres".to_string(),
+        model_label: "attnres-tiny // replay lane".to_string(),
+        architecture_label: "6 sublayers // 3 residual blocks // 8 heads".to_string(),
+        run_label: "tiny-next-token-demo".to_string(),
+        run_status: "replay loaded".to_string(),
+        step: 18,
+        max_steps: 24,
+        speed_multiplier: 3,
+        training_loss: 1.74,
+        ema_loss: 1.91,
+        avg_selectivity: 0.63,
+        active_block: 3,
+        current_block_fill: 1,
+        completed_blocks: 2,
+        metrics: vec![
+            AttnResLabMetricPoint {
+                global_step: 1,
+                training_loss: 2.48,
+                ema_loss: 2.48,
+                selectivity: 0.18,
+            },
+            AttnResLabMetricPoint {
+                global_step: 3,
+                training_loss: 2.31,
+                ema_loss: 2.40,
+                selectivity: 0.24,
+            },
+            AttnResLabMetricPoint {
+                global_step: 5,
+                training_loss: 2.14,
+                ema_loss: 2.31,
+                selectivity: 0.31,
+            },
+            AttnResLabMetricPoint {
+                global_step: 7,
+                training_loss: 2.02,
+                ema_loss: 2.19,
+                selectivity: 0.39,
+            },
+            AttnResLabMetricPoint {
+                global_step: 9,
+                training_loss: 1.95,
+                ema_loss: 2.10,
+                selectivity: 0.46,
+            },
+            AttnResLabMetricPoint {
+                global_step: 11,
+                training_loss: 1.89,
+                ema_loss: 2.03,
+                selectivity: 0.52,
+            },
+            AttnResLabMetricPoint {
+                global_step: 13,
+                training_loss: 1.83,
+                ema_loss: 1.98,
+                selectivity: 0.57,
+            },
+            AttnResLabMetricPoint {
+                global_step: 15,
+                training_loss: 1.79,
+                ema_loss: 1.94,
+                selectivity: 0.60,
+            },
+            AttnResLabMetricPoint {
+                global_step: 18,
+                training_loss: 1.74,
+                ema_loss: 1.91,
+                selectivity: 0.63,
+            },
+        ],
+        sublayers: vec![
+            AttnResLabSublayerSnapshot {
+                sublayer_index: 0,
+                label: "L0 Attention".to_string(),
+                kind_label: "attention".to_string(),
+                target_block: 0,
+                dominant_source_label: "seed".to_string(),
+                dominant_weight: 1.0,
+                selectivity: 0.0,
+                query_norm: 0.00,
+                partial_mass: 0.00,
+                cache_mass: 1.00,
+                source_labels: vec!["seed".to_string()],
+                source_logits: vec![0.0],
+                routing_weights: vec![1.0],
+                route_note: "Bootstrap attention only sees the first partial state, so routing stays uniform.".to_string(),
+                starts_new_block_before: true,
+                completed_blocks_before: 0,
+                completed_blocks_after: 0,
+                partial_block_present_before: false,
+                partial_block_present_after: true,
+            },
+            AttnResLabSublayerSnapshot {
+                sublayer_index: 1,
+                label: "L0 MLP".to_string(),
+                kind_label: "mlp".to_string(),
+                target_block: 0,
+                dominant_source_label: "partial".to_string(),
+                dominant_weight: 0.65,
+                selectivity: 0.22,
+                query_norm: 0.41,
+                partial_mass: 0.65,
+                cache_mass: 0.35,
+                source_labels: vec!["block-0".to_string(), "partial".to_string()],
+                source_logits: vec![0.12, 0.71],
+                routing_weights: vec![0.35, 0.65],
+                route_note: "The first MLP starts preferring the active partial block over the cached source.".to_string(),
+                starts_new_block_before: false,
+                completed_blocks_before: 0,
+                completed_blocks_after: 1,
+                partial_block_present_before: true,
+                partial_block_present_after: false,
+            },
+            AttnResLabSublayerSnapshot {
+                sublayer_index: 2,
+                label: "L1 Attention".to_string(),
+                kind_label: "attention".to_string(),
+                target_block: 1,
+                dominant_source_label: "block-0".to_string(),
+                dominant_weight: 0.51,
+                selectivity: 0.44,
+                query_norm: 0.63,
+                partial_mass: 0.21,
+                cache_mass: 0.79,
+                source_labels: vec![
+                    "block-0".to_string(),
+                    "block-1".to_string(),
+                    "partial".to_string(),
+                ],
+                source_logits: vec![0.83, 0.30, -0.18],
+                routing_weights: vec![0.51, 0.28, 0.21],
+                route_note: "Attention starts to retrieve from the first completed block while keeping a small partial contribution.".to_string(),
+                starts_new_block_before: true,
+                completed_blocks_before: 1,
+                completed_blocks_after: 1,
+                partial_block_present_before: false,
+                partial_block_present_after: true,
+            },
+            AttnResLabSublayerSnapshot {
+                sublayer_index: 3,
+                label: "L1 MLP".to_string(),
+                kind_label: "mlp".to_string(),
+                target_block: 1,
+                dominant_source_label: "partial".to_string(),
+                dominant_weight: 0.56,
+                selectivity: 0.58,
+                query_norm: 0.79,
+                partial_mass: 0.56,
+                cache_mass: 0.44,
+                source_labels: vec![
+                    "block-0".to_string(),
+                    "block-1".to_string(),
+                    "partial".to_string(),
+                ],
+                source_logits: vec![0.04, -0.27, 0.88],
+                routing_weights: vec![0.27, 0.17, 0.56],
+                route_note: "The MLP turns sharply back to the partial block and closes the second residual block.".to_string(),
+                starts_new_block_before: false,
+                completed_blocks_before: 1,
+                completed_blocks_after: 2,
+                partial_block_present_before: true,
+                partial_block_present_after: false,
+            },
+            AttnResLabSublayerSnapshot {
+                sublayer_index: 4,
+                label: "L2 Attention".to_string(),
+                kind_label: "attention".to_string(),
+                target_block: 2,
+                dominant_source_label: "block-1".to_string(),
+                dominant_weight: 0.49,
+                selectivity: 0.72,
+                query_norm: 0.93,
+                partial_mass: 0.15,
+                cache_mass: 0.85,
+                source_labels: vec![
+                    "block-0".to_string(),
+                    "block-1".to_string(),
+                    "block-2".to_string(),
+                    "partial".to_string(),
+                ],
+                source_logits: vec![-0.54, 1.12, 0.30, -0.06],
+                routing_weights: vec![0.09, 0.49, 0.27, 0.15],
+                route_note: "The final attention half is clearly depth-selective and centers the route on the second completed block.".to_string(),
+                starts_new_block_before: true,
+                completed_blocks_before: 2,
+                completed_blocks_after: 2,
+                partial_block_present_before: false,
+                partial_block_present_after: true,
+            },
+            AttnResLabSublayerSnapshot {
+                sublayer_index: 5,
+                label: "L2 MLP".to_string(),
+                kind_label: "mlp".to_string(),
+                target_block: 2,
+                dominant_source_label: "block-2".to_string(),
+                dominant_weight: 0.54,
+                selectivity: 0.79,
+                query_norm: 1.07,
+                partial_mass: 0.18,
+                cache_mass: 0.82,
+                source_labels: vec![
+                    "block-0".to_string(),
+                    "block-1".to_string(),
+                    "block-2".to_string(),
+                    "partial".to_string(),
+                ],
+                source_logits: vec![-0.63, 0.18, 1.25, -0.11],
+                routing_weights: vec![0.07, 0.16, 0.54, 0.23],
+                route_note: "The terminal MLP mostly commits to the freshest completed block while leaving a narrow partial merge lane.".to_string(),
+                starts_new_block_before: false,
+                completed_blocks_before: 2,
+                completed_blocks_after: 2,
+                partial_block_present_before: true,
+                partial_block_present_after: true,
+            },
+        ],
+        block_summaries: vec![
+            AttnResLabBlockSummary {
+                block_index: 0,
+                avg_selectivity: 0.11,
+                avg_query_norm: 0.21,
+                sublayers: 2,
+            },
+            AttnResLabBlockSummary {
+                block_index: 1,
+                avg_selectivity: 0.51,
+                avg_query_norm: 0.71,
+                sublayers: 2,
+            },
+            AttnResLabBlockSummary {
+                block_index: 2,
+                avg_selectivity: 0.76,
+                avg_query_norm: 1.00,
+                sublayers: 2,
+            },
+        ],
+        inference: AttnResLabInferenceSummary {
+            hidden_parity_label: "within budget".to_string(),
+            logit_parity_label: "within budget".to_string(),
+            hidden_max_abs_diff: 0.000006,
+            logit_max_abs_diff: 0.000009,
+            partial_merge_share: 0.23,
+            cache_merge_share: 0.77,
+            block_cache_fill_share: 0.67,
+            schedule_note: "Two-phase replay keeps the three completed blocks immutable and only replays the active partial block during merge.".to_string(),
+            merge_note: "The merge step still leans on cache mass, but the partial branch remains visible enough to explain the selected route.".to_string(),
+            cache_note: "Two completed blocks are cache-resident and the third is active. This is the point where two-phase work starts paying off.".to_string(),
+        },
+        events: vec![
+            "run seeded from the replay tiny-next-token corpus".to_string(),
+            "loss crossed below 1.90 at step 11".to_string(),
+            "block-1 became the dominant route at sublayer L2 Attention".to_string(),
+            "two-phase parity remained within budget at the current snapshot".to_string(),
+        ],
+    }
+}
+
+#[cfg(test)]
+mod attnres_lab_tests {
+    use super::{
+        AttnResLabPaneState, AttnResLabViewMode, PaneLoadState, replay_attnres_lab_snapshot,
+    };
+
+    #[test]
+    fn replay_snapshot_exposes_sublayers_and_events() {
+        let snapshot = replay_attnres_lab_snapshot();
+        assert!(snapshot.sublayers.len() >= 6);
+        assert!(snapshot.max_sources() >= 4);
+        assert!(!snapshot.events.is_empty());
+    }
+
+    #[test]
+    fn pane_state_defaults_to_ready_overview_with_valid_selection() {
+        let state = AttnResLabPaneState::default();
+        assert_eq!(state.load_state, PaneLoadState::Ready);
+        assert_eq!(state.selected_view, AttnResLabViewMode::Overview);
+        assert!(state.current_sublayer().is_some());
+    }
+
+    #[test]
+    fn pane_state_clamps_selected_sublayer_to_replay_bounds() {
+        let mut state = AttnResLabPaneState::default();
+        state.selected_sublayer = usize::MAX;
+        state.clamp_selected_sublayer();
+        assert_eq!(
+            state.selected_sublayer,
+            state.snapshot.sublayers.len().saturating_sub(1)
+        );
+    }
+}
+
 pub struct RivePreviewPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,

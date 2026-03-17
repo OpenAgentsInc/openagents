@@ -2205,6 +2205,7 @@ fn pane_action_to_hit_action(
     match kind {
         PaneKind::ProjectOps => unsupported(),
         PaneKind::PsionicViz => unsupported(),
+        PaneKind::AttnResLab => unsupported(),
         PaneKind::Presentation => unsupported(),
         PaneKind::FrameDebugger => unsupported(),
         PaneKind::AppleAdapterTraining => unsupported(),
@@ -6222,6 +6223,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::ProviderStatus => "provider_status",
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",
+        PaneKind::AttnResLab => "attnres_lab",
         PaneKind::RivePreview => "rive_preview",
         PaneKind::Presentation => "presentation",
         PaneKind::FrameDebugger => "frame_debugger",
