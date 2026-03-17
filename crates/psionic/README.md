@@ -314,9 +314,13 @@ Current posture:
   active/peak/cache counters plus cache-limit and reset controls, bounded
   backend debug snapshots/captures above `psionic-compiler` and
   `psionic-runtime`, a machine-readable MLX CPU-reference coverage report over
-  imported `array_core`/`ops_numeric`/`device_eval_memory` families, bounded
-  extension authoring and dispatch-resolution above `psionic-ir`'s extensible
-  operator registry, and snapshot graph export for the current output set.
+  imported `array_core`/`ops_numeric`/`device_eval_memory` families, fallible
+  `ArrayContext::metal()` / `metal_seeded()` constructors backed by the
+  selected runtime Metal device, bounded actual Metal execution for dense
+  `constant`/`add`/`matmul` graphs with explicit refusal outside that slice,
+  bounded extension authoring and dispatch-resolution above `psionic-ir`'s
+  extensible operator registry, and snapshot graph export for the current
+  output set.
 - `psionic-array-io`: public array artifact import/export companion above
   `psionic-array`, with stable receipts, explicit dtype and quantization truth,
   single-array `npy`, multi-array `npz`, multi-array `safetensors`, and a
