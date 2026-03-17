@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+registry_src="${cargo_home}/registry/src"
+
+uname_s="$(uname -s)"
+uname_m="$(uname -m)"
+
+case "${uname_s}:${uname_m}" in
+  Darwin:arm64|Darwin:aarch64)
+    platform="macos-aarch_64"
+    protoc_name="protoc"
+    ;;
+  Darwin:x86_64)
+    platform="macos-x86_64"
+    protoc_name="protoc"
+    ;;
+  Linux:x86_64)
+    platform="linux-x86_64"
+    protoc_name="protoc"
+    ;;
+  Linux:arm64|Linux:aarch64)
+    platform="linux-aarch_64"
+    protoc_name="protoc"
+    ;;
+  Linux:ppc64le)
+    platform="linux-ppcle_64"
+    protoc_name="protoc"
+    ;;
+  Linux:s390x)
+    platform="linux-s390_64"
+    protoc_name="protoc"
+    ;;
+  Linux:i386|Linux:i686)
+    platform="linux-x86_32"
+    protoc_name="protoc"
+    ;;
+  MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64|Windows_NT:*)
+    platform="win32"
+    protoc_name="protoc.exe"
+    ;;
+  *)
+    echo "Unsupported platform for vendored protoc: ${uname_s}:${uname_m}" >&2
+    exit 1
+    ;;
+esac
+
+if [[ ! -d "${registry_src}" ]]; then
+  echo "Cargo registry source directory not found: ${registry_src}" >&2
+  echo "Run a cargo command from this repo once to fetch dependencies, or set PROTOC manually." >&2
+  exit 1
+fi
+
+protoc_path=""
+while IFS= read -r -d '' candidate; do
+  protoc_path="${candidate}"
+  break
+done < <(
+  find "${registry_src}" \
+    -path "*protoc-bin-vendored-${platform}-*/bin/${protoc_name}" \
+    -print0 | sort -z
+)
+
+if [[ -z "${protoc_path}" ]]; then
+  echo "Vendored protoc for ${platform} not found under ${registry_src}" >&2
+  echo "Run a cargo command from this repo once to fetch dependencies, or set PROTOC manually." >&2
+  exit 1
+fi
+
+exec "${protoc_path}" "$@"

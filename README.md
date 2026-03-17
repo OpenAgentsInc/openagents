@@ -204,16 +204,15 @@ See AGENTS.md for the Apple bridge rule and [docs/headless-compute.md](docs/head
 
 ## Run Locally
 
-Requires the Rust toolchain (`cargo`/`rustc`) and `protoc` (Protocol Buffers compiler) to be installed.
+Requires the Rust toolchain (`cargo`/`rustc`).
 
-**Install protoc on macOS:**
-```bash
-brew install protobuf
-```
+Normal repo builds use a vendored `protoc` resolver through
+[.cargo/config.toml](.cargo/config.toml), so you do not need to install a
+machine-local Protocol Buffers compiler just to build `openagents`.
 
 **Install build prerequisites on Debian/Ubuntu:**
 ```bash
-sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
+sudo apt-get install -y pkg-config libssl-dev
 ```
 
 **Run:**
@@ -224,6 +223,27 @@ cargo autopilot
 ```
 
 `cargo autopilot` is defined in `.cargo/config.toml` as a local Cargo alias for `autopilot-desktop`.
+
+### Psionic Checkout For Cross-Repo Dev
+
+Normal `cargo autopilot` and `cargo check` flows fetch Psionic through pinned
+git dependencies automatically. You only need a local Psionic checkout when you
+are:
+
+- editing Psionic alongside `openagents`
+- running retained cross-repo release/validation scripts
+- invoking Psionic-owned tests or binaries directly
+
+The retained scripts assume a sibling checkout at `../psionic` by default:
+
+```bash
+git clone https://github.com/OpenAgentsInc/openagents.git
+git clone https://github.com/OpenAgentsInc/psionic.git
+cd openagents
+```
+
+If you keep Psionic somewhere else, set
+`OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`.
 
 **Run on Linux with GPT-OSS/CUDA:**
 ```bash

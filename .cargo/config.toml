@@ -1,3 +1,8 @@
 [alias]
 autopilot = "run -p autopilot-desktop --bin autopilot-desktop --"
 autopilot-release = "run -p autopilot-desktop --bin autopilot-desktop --release --"
+
+[env]
+# Use the repo's vendored protoc resolver so transitive gRPC build scripts do
+# not require a machine-local protobuf compiler installation.
+PROTOC = { value = "scripts/dev/protocw", relative = true }
