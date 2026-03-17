@@ -30,7 +30,7 @@ Supplementary coordination contracts that sit alongside the kernel docs:
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop plus starter authority flows for compute products, lots, instruments, delivery proofs, and indices. The supporting Psionic substrate now also includes early train/eval/runtime crates plus reusable autodiff and optimizer framework-core pieces, even though the retained productized market surface is still inference-led today. Broader commodity instruments remain planned. |
-| Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
+| Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority and authenticated read-model flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
 | Labor Market | `implemented`, `local prototype`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for work units, contracts, submissions, and verdicts. The desktop still carries broader local receipt/policy/snapshot modeling, and fuller claim/dispute productization remains planned. |
 | Liquidity Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter quote, route, envelope, settlement, and reserve-partition authority flows. Broader routing, FX, and solver-market productization remain planned. |
 | Risk Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose a starter authority slice for coverage offers, coverage bindings, prediction positions, claims, and risk signals. Broader underwriting accounts, market depth, and product UX remain planned. |
@@ -138,7 +138,7 @@ In many cases the valuable thing is not raw model capability, but access to a us
 
 Current status:
 
-- `implemented`: starter authority flows for asset registration, access grants, grant acceptance, delivery bundles, and revocation receipts
+- `implemented`: starter authority plus authenticated read-model flows for asset registration, access grants, grant acceptance, delivery bundles, and revocation receipts
 - `planned`: broader discovery, pricing, payout, and user-facing product integration
 
 ### 4. Labor Market

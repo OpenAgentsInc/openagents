@@ -65,8 +65,8 @@ use openagents_kernel_core::compute::{
     validate_compute_validator_policy, validate_delivery_proof, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
-    AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
-    PermissionPolicy, RevocationReceipt, RevocationStatus,
+    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
+    DeliveryBundleStatus, PermissionPolicy, RevocationReceipt, RevocationStatus,
 };
 use openagents_kernel_core::ids::{sha256_prefixed_bytes, sha256_prefixed_text};
 use openagents_kernel_core::labor::{
@@ -2118,6 +2118,136 @@ impl KernelState {
             .collect::<Vec<_>>();
         items.sort_by(|lhs, rhs| lhs.product_id.cmp(&rhs.product_id));
         items
+    }
+
+    pub fn list_data_assets(
+        &self,
+        provider_id: Option<&str>,
+        asset_kind: Option<&str>,
+        status: Option<DataAssetStatus>,
+    ) -> Vec<DataAsset> {
+        let mut items = self
+            .data_assets
+            .values()
+            .map(|record| record.asset.clone())
+            .filter(|asset| {
+                provider_id.is_none_or(|expected| asset.provider_id == expected)
+                    && asset_kind.is_none_or(|expected| asset.asset_kind == expected)
+                    && status.is_none_or(|expected| asset.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.asset_id.cmp(&rhs.asset_id))
+        });
+        items
+    }
+
+    pub fn get_data_asset(&self, asset_id: &str) -> Option<DataAsset> {
+        self.data_assets
+            .get(asset_id)
+            .map(|record| record.asset.clone())
+    }
+
+    pub fn list_access_grants(
+        &self,
+        asset_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<AccessGrantStatus>,
+    ) -> Vec<AccessGrant> {
+        let mut items = self
+            .access_grants
+            .values()
+            .map(|record| record.grant.clone())
+            .filter(|grant| {
+                asset_id.is_none_or(|expected| grant.asset_id == expected)
+                    && provider_id.is_none_or(|expected| grant.provider_id == expected)
+                    && consumer_id
+                        .is_none_or(|expected| grant.consumer_id.as_deref() == Some(expected))
+                    && status.is_none_or(|expected| grant.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.grant_id.cmp(&rhs.grant_id))
+        });
+        items
+    }
+
+    pub fn get_access_grant(&self, grant_id: &str) -> Option<AccessGrant> {
+        self.access_grants
+            .get(grant_id)
+            .map(|record| record.grant.clone())
+    }
+
+    pub fn list_delivery_bundles(
+        &self,
+        asset_id: Option<&str>,
+        grant_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<DeliveryBundleStatus>,
+    ) -> Vec<DeliveryBundle> {
+        let mut items = self
+            .delivery_bundles
+            .values()
+            .map(|record| record.delivery_bundle.clone())
+            .filter(|bundle| {
+                asset_id.is_none_or(|expected| bundle.asset_id == expected)
+                    && grant_id.is_none_or(|expected| bundle.grant_id == expected)
+                    && provider_id.is_none_or(|expected| bundle.provider_id == expected)
+                    && consumer_id.is_none_or(|expected| bundle.consumer_id == expected)
+                    && status.is_none_or(|expected| bundle.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.delivery_bundle_id.cmp(&rhs.delivery_bundle_id))
+        });
+        items
+    }
+
+    pub fn get_delivery_bundle(&self, delivery_bundle_id: &str) -> Option<DeliveryBundle> {
+        self.delivery_bundles
+            .get(delivery_bundle_id)
+            .map(|record| record.delivery_bundle.clone())
+    }
+
+    pub fn list_revocations(
+        &self,
+        asset_id: Option<&str>,
+        grant_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<RevocationStatus>,
+    ) -> Vec<RevocationReceipt> {
+        let mut items = self
+            .revocations
+            .values()
+            .filter(|revocation| {
+                asset_id.is_none_or(|expected| revocation.asset_id == expected)
+                    && grant_id.is_none_or(|expected| revocation.grant_id == expected)
+                    && provider_id.is_none_or(|expected| revocation.provider_id == expected)
+                    && consumer_id
+                        .is_none_or(|expected| revocation.consumer_id.as_deref() == Some(expected))
+                    && status.is_none_or(|expected| revocation.status == expected)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.created_at_ms
+                .cmp(&rhs.created_at_ms)
+                .then_with(|| lhs.revocation_id.cmp(&rhs.revocation_id))
+        });
+        items
+    }
+
+    pub fn get_revocation(&self, revocation_id: &str) -> Option<RevocationReceipt> {
+        self.revocations.get(revocation_id).cloned()
     }
 
     pub fn get_compute_product(&self, product_id: &str) -> Option<ComputeProduct> {

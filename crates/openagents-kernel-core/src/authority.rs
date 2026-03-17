@@ -13,7 +13,10 @@ use crate::compute::{
     StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
-use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
+use crate::data::{
+    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
+    DeliveryBundleStatus, RevocationReceipt, RevocationStatus,
+};
 use crate::labor::{ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit};
 use crate::liquidity::{Envelope, Quote, ReservePartition, RoutePlan, SettlementIntent};
 use crate::receipts::{EvidenceRef, PolicyContext, Receipt, ReceiptHints, TraceContext};
@@ -293,6 +296,39 @@ pub trait KernelAuthority: Send + Sync {
     ) -> Result<ComputeValidatorChallengeSnapshot>;
     async fn list_compute_indices(&self, product_id: Option<&str>) -> Result<Vec<ComputeIndex>>;
     async fn get_compute_index(&self, index_id: &str) -> Result<ComputeIndex>;
+    async fn list_data_assets(
+        &self,
+        provider_id: Option<&str>,
+        asset_kind: Option<&str>,
+        status: Option<DataAssetStatus>,
+    ) -> Result<Vec<DataAsset>>;
+    async fn get_data_asset(&self, asset_id: &str) -> Result<DataAsset>;
+    async fn list_access_grants(
+        &self,
+        asset_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<AccessGrantStatus>,
+    ) -> Result<Vec<AccessGrant>>;
+    async fn get_access_grant(&self, grant_id: &str) -> Result<AccessGrant>;
+    async fn list_delivery_bundles(
+        &self,
+        asset_id: Option<&str>,
+        grant_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<DeliveryBundleStatus>,
+    ) -> Result<Vec<DeliveryBundle>>;
+    async fn get_delivery_bundle(&self, delivery_bundle_id: &str) -> Result<DeliveryBundle>;
+    async fn list_revocations(
+        &self,
+        asset_id: Option<&str>,
+        grant_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<RevocationStatus>,
+    ) -> Result<Vec<RevocationReceipt>>;
+    async fn get_revocation(&self, revocation_id: &str) -> Result<RevocationReceipt>;
     async fn register_data_asset(
         &self,
         req: RegisterDataAssetRequest,
@@ -2288,6 +2324,104 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let path = format!("/v1/kernel/compute/indices/{index_id}");
         let response: proto_compute::GetComputeIndexResponse = self.get_json(path.as_str()).await?;
         compute_contracts::get_compute_index_response_from_proto(&response)
+    }
+
+    async fn list_data_assets(
+        &self,
+        provider_id: Option<&str>,
+        asset_kind: Option<&str>,
+        status: Option<DataAssetStatus>,
+    ) -> Result<Vec<DataAsset>> {
+        let path = join_query_pairs(
+            "/v1/kernel/data/assets",
+            &[
+                ("provider_id", provider_id.map(ToOwned::to_owned)),
+                ("asset_kind", asset_kind.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        self.get_json(path.as_str()).await
+    }
+
+    async fn get_data_asset(&self, asset_id: &str) -> Result<DataAsset> {
+        let path = format!("/v1/kernel/data/assets/{asset_id}");
+        self.get_json(path.as_str()).await
+    }
+
+    async fn list_access_grants(
+        &self,
+        asset_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<AccessGrantStatus>,
+    ) -> Result<Vec<AccessGrant>> {
+        let path = join_query_pairs(
+            "/v1/kernel/data/grants",
+            &[
+                ("asset_id", asset_id.map(ToOwned::to_owned)),
+                ("provider_id", provider_id.map(ToOwned::to_owned)),
+                ("consumer_id", consumer_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        self.get_json(path.as_str()).await
+    }
+
+    async fn get_access_grant(&self, grant_id: &str) -> Result<AccessGrant> {
+        let path = format!("/v1/kernel/data/grants/{grant_id}");
+        self.get_json(path.as_str()).await
+    }
+
+    async fn list_delivery_bundles(
+        &self,
+        asset_id: Option<&str>,
+        grant_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<DeliveryBundleStatus>,
+    ) -> Result<Vec<DeliveryBundle>> {
+        let path = join_query_pairs(
+            "/v1/kernel/data/deliveries",
+            &[
+                ("asset_id", asset_id.map(ToOwned::to_owned)),
+                ("grant_id", grant_id.map(ToOwned::to_owned)),
+                ("provider_id", provider_id.map(ToOwned::to_owned)),
+                ("consumer_id", consumer_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        self.get_json(path.as_str()).await
+    }
+
+    async fn get_delivery_bundle(&self, delivery_bundle_id: &str) -> Result<DeliveryBundle> {
+        let path = format!("/v1/kernel/data/deliveries/{delivery_bundle_id}");
+        self.get_json(path.as_str()).await
+    }
+
+    async fn list_revocations(
+        &self,
+        asset_id: Option<&str>,
+        grant_id: Option<&str>,
+        provider_id: Option<&str>,
+        consumer_id: Option<&str>,
+        status: Option<RevocationStatus>,
+    ) -> Result<Vec<RevocationReceipt>> {
+        let path = join_query_pairs(
+            "/v1/kernel/data/revocations",
+            &[
+                ("asset_id", asset_id.map(ToOwned::to_owned)),
+                ("grant_id", grant_id.map(ToOwned::to_owned)),
+                ("provider_id", provider_id.map(ToOwned::to_owned)),
+                ("consumer_id", consumer_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        self.get_json(path.as_str()).await
+    }
+
+    async fn get_revocation(&self, revocation_id: &str) -> Result<RevocationReceipt> {
+        let path = format!("/v1/kernel/data/revocations/{revocation_id}");
+        self.get_json(path.as_str()).await
     }
 
     async fn register_data_asset(

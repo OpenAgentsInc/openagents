@@ -54,6 +54,10 @@ use openagents_kernel_core::compute::{
     ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
+use openagents_kernel_core::data::{
+    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
+    DeliveryBundleStatus, RevocationReceipt, RevocationStatus,
+};
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
@@ -907,8 +911,22 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             "/v1/kernel/compute/indices/{index_id}/correct",
             post(correct_kernel_compute_index),
         )
-        .route("/v1/kernel/data/assets", post(register_kernel_data_asset))
-        .route("/v1/kernel/data/grants", post(create_kernel_access_grant))
+        .route(
+            "/v1/kernel/data/assets",
+            get(list_kernel_data_assets).post(register_kernel_data_asset),
+        )
+        .route(
+            "/v1/kernel/data/assets/{asset_id}",
+            get(get_kernel_data_asset),
+        )
+        .route(
+            "/v1/kernel/data/grants",
+            get(list_kernel_access_grants).post(create_kernel_access_grant),
+        )
+        .route(
+            "/v1/kernel/data/grants/{grant_id}",
+            get(get_kernel_access_grant),
+        )
         .route(
             "/v1/kernel/data/grants/{grant_id}/accept",
             post(accept_kernel_access_grant),
@@ -920,6 +938,19 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/data/grants/{grant_id}/revoke",
             post(revoke_kernel_access_grant),
+        )
+        .route(
+            "/v1/kernel/data/deliveries",
+            get(list_kernel_delivery_bundles),
+        )
+        .route(
+            "/v1/kernel/data/deliveries/{delivery_bundle_id}",
+            get(get_kernel_delivery_bundle),
+        )
+        .route("/v1/kernel/data/revocations", get(list_kernel_revocations))
+        .route(
+            "/v1/kernel/data/revocations/{revocation_id}",
+            get(get_kernel_revocation),
         )
         .route(
             "/v1/kernel/liquidity/quotes",
@@ -2028,6 +2059,39 @@ struct ValidatorChallengesQuery {
 #[derive(Debug, Deserialize)]
 struct ComputeIndicesQuery {
     product_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DataAssetsQuery {
+    provider_id: Option<String>,
+    asset_kind: Option<String>,
+    status: Option<DataAssetStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccessGrantsQuery {
+    asset_id: Option<String>,
+    provider_id: Option<String>,
+    consumer_id: Option<String>,
+    status: Option<AccessGrantStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeliveryBundlesQuery {
+    asset_id: Option<String>,
+    grant_id: Option<String>,
+    provider_id: Option<String>,
+    consumer_id: Option<String>,
+    status: Option<DeliveryBundleStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RevocationsQuery {
+    asset_id: Option<String>,
+    grant_id: Option<String>,
+    provider_id: Option<String>,
+    consumer_id: Option<String>,
+    status: Option<RevocationStatus>,
 }
 
 fn canonical_challenge_status(
@@ -4281,6 +4345,175 @@ async fn correct_kernel_compute_index(
     let response = compute_contracts::correct_compute_index_response_to_proto(&result.response)
         .map_err(kernel_contract_error)?;
     Ok(Json(response))
+}
+
+async fn list_kernel_data_assets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<DataAssetsQuery>,
+) -> Result<Json<Vec<DataAsset>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_data_assets(
+        query.provider_id.as_deref(),
+        query.asset_kind.as_deref(),
+        query.status,
+    )))
+}
+
+async fn get_kernel_data_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(asset_id): Path<String>,
+) -> Result<Json<DataAsset>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let asset_id = normalize_required_field(asset_id.as_str(), "asset_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(asset) = store.kernel.get_data_asset(asset_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_data_asset_not_found".to_string(),
+        });
+    };
+    Ok(Json(asset))
+}
+
+async fn list_kernel_access_grants(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AccessGrantsQuery>,
+) -> Result<Json<Vec<AccessGrant>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_access_grants(
+        query.asset_id.as_deref(),
+        query.provider_id.as_deref(),
+        query.consumer_id.as_deref(),
+        query.status,
+    )))
+}
+
+async fn get_kernel_access_grant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(grant_id): Path<String>,
+) -> Result<Json<AccessGrant>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(grant) = store.kernel.get_access_grant(grant_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_access_grant_not_found".to_string(),
+        });
+    };
+    Ok(Json(grant))
+}
+
+async fn list_kernel_delivery_bundles(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<DeliveryBundlesQuery>,
+) -> Result<Json<Vec<DeliveryBundle>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_delivery_bundles(
+        query.asset_id.as_deref(),
+        query.grant_id.as_deref(),
+        query.provider_id.as_deref(),
+        query.consumer_id.as_deref(),
+        query.status,
+    )))
+}
+
+async fn get_kernel_delivery_bundle(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(delivery_bundle_id): Path<String>,
+) -> Result<Json<DeliveryBundle>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let delivery_bundle_id =
+        normalize_required_field(delivery_bundle_id.as_str(), "delivery_bundle_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(bundle) = store
+        .kernel
+        .get_delivery_bundle(delivery_bundle_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_delivery_bundle_not_found".to_string(),
+        });
+    };
+    Ok(Json(bundle))
+}
+
+async fn list_kernel_revocations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<RevocationsQuery>,
+) -> Result<Json<Vec<RevocationReceipt>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_revocations(
+        query.asset_id.as_deref(),
+        query.grant_id.as_deref(),
+        query.provider_id.as_deref(),
+        query.consumer_id.as_deref(),
+        query.status,
+    )))
+}
+
+async fn get_kernel_revocation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(revocation_id): Path<String>,
+) -> Result<Json<RevocationReceipt>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let revocation_id = normalize_required_field(revocation_id.as_str(), "revocation_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(revocation) = store.kernel.get_revocation(revocation_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_revocation_not_found".to_string(),
+        });
+    };
+    Ok(Json(revocation))
 }
 
 async fn register_kernel_data_asset(
@@ -12225,6 +12458,137 @@ mod tests {
             1
         );
 
+        let listed_assets = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/assets?provider_id=provider.data.alpha&asset_kind=conversation_bundle&status=active")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(listed_assets.status(), StatusCode::OK);
+        let listed_assets_payload: Vec<DataAsset> = response_json(listed_assets).await?;
+        assert_eq!(listed_assets_payload.len(), 1);
+        assert_eq!(listed_assets_payload[0].asset_id, "asset.data.alpha");
+
+        let fetched_asset = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/assets/asset.data.alpha")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched_asset.status(), StatusCode::OK);
+        let fetched_asset_payload: DataAsset = response_json(fetched_asset).await?;
+        assert_eq!(fetched_asset_payload.asset_kind, "conversation_bundle");
+
+        let listed_grants = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/grants?asset_id=asset.data.alpha&consumer_id=consumer.data.alpha&status=refunded")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(listed_grants.status(), StatusCode::OK);
+        let listed_grants_payload: Vec<AccessGrant> = response_json(listed_grants).await?;
+        assert_eq!(listed_grants_payload.len(), 1);
+        assert_eq!(listed_grants_payload[0].grant_id, "grant.data.alpha");
+
+        let fetched_grant = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/grants/grant.data.alpha")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched_grant.status(), StatusCode::OK);
+        let fetched_grant_payload: AccessGrant = response_json(fetched_grant).await?;
+        assert_eq!(fetched_grant_payload.status, AccessGrantStatus::Refunded);
+
+        let listed_deliveries = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/deliveries?grant_id=grant.data.alpha&consumer_id=consumer.data.alpha&status=revoked")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(listed_deliveries.status(), StatusCode::OK);
+        let listed_deliveries_payload: Vec<DeliveryBundle> =
+            response_json(listed_deliveries).await?;
+        assert_eq!(listed_deliveries_payload.len(), 1);
+        assert_eq!(
+            listed_deliveries_payload[0].delivery_bundle_id,
+            "delivery.data.alpha"
+        );
+
+        let fetched_delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/deliveries/delivery.data.alpha")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched_delivery.status(), StatusCode::OK);
+        let fetched_delivery_payload: DeliveryBundle = response_json(fetched_delivery).await?;
+        assert_eq!(
+            fetched_delivery_payload.status,
+            DeliveryBundleStatus::Revoked
+        );
+
+        let listed_revocations = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/revocations?grant_id=grant.data.alpha&consumer_id=consumer.data.alpha&status=refunded")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(listed_revocations.status(), StatusCode::OK);
+        let listed_revocations_payload: Vec<RevocationReceipt> =
+            response_json(listed_revocations).await?;
+        assert_eq!(listed_revocations_payload.len(), 1);
+        assert_eq!(
+            listed_revocations_payload[0].revocation_id,
+            "revocation.data.alpha"
+        );
+
+        let fetched_revocation = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/revocations/revocation.data.alpha")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched_revocation.status(), StatusCode::OK);
+        let fetched_revocation_payload: RevocationReceipt =
+            response_json(fetched_revocation).await?;
+        assert_eq!(
+            fetched_revocation_payload.status,
+            RevocationStatus::Refunded
+        );
+
         let stats_response = app
             .clone()
             .oneshot(
@@ -12261,6 +12625,127 @@ mod tests {
                 .any(|receipt| { receipt.receipt_type == "kernel.data.revocation.recorded" })
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn data_http_client_roundtrips_authority_reads() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let local_addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve test app");
+        });
+
+        let client = HttpKernelAuthorityClient::new(
+            format!("http://{local_addr}"),
+            Some(session.access_token.clone()),
+        )?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(8_000);
+
+        client
+            .register_data_asset(data_asset_request(
+                "asset.data.client",
+                "idemp.data.client.asset",
+                created_at_ms,
+            ))
+            .await?;
+        client
+            .create_access_grant(access_grant_request(
+                "grant.data.client",
+                "asset.data.client",
+                "idemp.data.client.grant",
+                created_at_ms + 1_000,
+            ))
+            .await?;
+        client
+            .accept_access_grant(accept_access_grant_request(
+                "grant.data.client",
+                "consumer.data.client",
+                "idemp.data.client.accept",
+                created_at_ms + 2_000,
+            ))
+            .await?;
+        client
+            .issue_delivery_bundle(delivery_bundle_request(
+                "delivery.data.client",
+                "grant.data.client",
+                "idemp.data.client.delivery",
+                created_at_ms + 3_000,
+            ))
+            .await?;
+        client
+            .revoke_access_grant(revoke_access_grant_request(
+                "revocation.data.client",
+                "grant.data.client",
+                "idemp.data.client.revoke",
+                created_at_ms + 4_000,
+            ))
+            .await?;
+
+        let assets = client
+            .list_data_assets(
+                Some("provider.data.alpha"),
+                Some("conversation_bundle"),
+                Some(DataAssetStatus::Active),
+            )
+            .await?;
+        assert!(
+            assets
+                .iter()
+                .any(|asset| asset.asset_id == "asset.data.client")
+        );
+
+        let asset = client.get_data_asset("asset.data.client").await?;
+        assert_eq!(asset.provider_id, "provider.data.alpha");
+
+        let grants = client
+            .list_access_grants(
+                Some("asset.data.client"),
+                Some("provider.data.alpha"),
+                Some("consumer.data.client"),
+                Some(AccessGrantStatus::Refunded),
+            )
+            .await?;
+        assert_eq!(grants.len(), 1);
+        assert_eq!(grants[0].grant_id, "grant.data.client");
+
+        let grant = client.get_access_grant("grant.data.client").await?;
+        assert_eq!(grant.status, AccessGrantStatus::Refunded);
+
+        let deliveries = client
+            .list_delivery_bundles(
+                Some("asset.data.client"),
+                Some("grant.data.client"),
+                Some("provider.data.alpha"),
+                Some("consumer.data.client"),
+                Some(DeliveryBundleStatus::Revoked),
+            )
+            .await?;
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].delivery_bundle_id, "delivery.data.client");
+
+        let delivery = client.get_delivery_bundle("delivery.data.client").await?;
+        assert_eq!(delivery.status, DeliveryBundleStatus::Revoked);
+
+        let revocations = client
+            .list_revocations(
+                Some("asset.data.client"),
+                Some("grant.data.client"),
+                Some("provider.data.alpha"),
+                Some("consumer.data.client"),
+                Some(RevocationStatus::Refunded),
+            )
+            .await?;
+        assert_eq!(revocations.len(), 1);
+        assert_eq!(revocations[0].revocation_id, "revocation.data.client");
+
+        let revocation = client.get_revocation("revocation.data.client").await?;
+        assert_eq!(revocation.status, RevocationStatus::Refunded);
+
+        server.abort();
         Ok(())
     }
 
