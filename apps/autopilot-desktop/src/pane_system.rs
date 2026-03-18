@@ -7006,10 +7006,14 @@ fn pane_hit_action_for_pane(
                 ));
             }
             if voice_playground_speak_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::VoicePlayground(VoicePlaygroundPaneAction::Speak));
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::Speak,
+                ));
             }
             if voice_playground_replay_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::VoicePlayground(VoicePlaygroundPaneAction::Replay));
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::Replay,
+                ));
             }
             if voice_playground_stop_playback_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::VoicePlayground(
@@ -8469,10 +8473,7 @@ pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &I
     relay_connections_pane::dispatch_input_event(state, event)
 }
 
-pub fn dispatch_voice_playground_input_event(
-    state: &mut RenderState,
-    event: &InputEvent,
-) -> bool {
+pub fn dispatch_voice_playground_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     voice_playground_pane::dispatch_input_event(state, event)
 }
 

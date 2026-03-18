@@ -355,7 +355,8 @@ enum DesiredLaneState {
 
 impl ProviderNip90LaneState {
     fn next_ingress_subscription_id(&mut self) -> String {
-        self.ingress_subscription_generation = self.ingress_subscription_generation.saturating_add(1);
+        self.ingress_subscription_generation =
+            self.ingress_subscription_generation.saturating_add(1);
         let next = format!(
             "{SUBSCRIPTION_ID_PREFIX}-{}",
             self.ingress_subscription_generation
@@ -1409,7 +1410,9 @@ async fn replace_ingress_subscription(
     if filters.is_empty() {
         Ok(())
     } else {
-        connection.subscribe_filters(next_subscription_id, filters).await
+        connection
+            .subscribe_filters(next_subscription_id, filters)
+            .await
     }
 }
 
@@ -3753,7 +3756,8 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(4);
         let mut ingressed = false;
         while Instant::now() < deadline {
-            let outcome = runtime.block_on(poll_ingress(pool.clone(), &[], Some(local_pubkey.as_str())));
+            let outcome =
+                runtime.block_on(poll_ingress(pool.clone(), &[], Some(local_pubkey.as_str())));
             if outcome
                 .requests
                 .iter()
@@ -4902,8 +4906,7 @@ mod tests {
         (format!("ws://{}", addr), handle, published_rx)
     }
 
-    async fn spawn_mock_relay_requires_close_before_resubscribe()
-    -> (String, JoinHandle<()>) {
+    async fn spawn_mock_relay_requires_close_before_resubscribe() -> (String, JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind mock relay listener");
@@ -4944,10 +4947,7 @@ mod tests {
                                 kind: crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
                                 tags: vec![
                                     vec!["bid".to_string(), "1000".to_string()],
-                                    vec![
-                                        "p".to_string(),
-                                        fixture_auth_identity().public_key_hex,
-                                    ],
+                                    vec!["p".to_string(), fixture_auth_identity().public_key_hex],
                                     vec![
                                         "param".to_string(),
                                         "oa_asset_ref".to_string(),
@@ -4972,8 +4972,7 @@ mod tests {
                                 content: "deliver asset:test".to_string(),
                                 sig: "44".repeat(64),
                             };
-                            let payload =
-                                serde_json::json!(["EVENT", subscription_id, request]);
+                            let payload = serde_json::json!(["EVENT", subscription_id, request]);
                             ws.send(Message::Text(payload.to_string().into()))
                                 .await
                                 .expect("send request event after close");

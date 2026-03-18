@@ -252,13 +252,8 @@ pub enum VoicePlaygroundCommand {
     Refresh,
     StartRecording,
     CancelRecording,
-    StopRecordingAndTranscribe {
-        request_id: String,
-    },
-    SynthesizeAndPlay {
-        request_id: String,
-        text: String,
-    },
+    StopRecordingAndTranscribe { request_id: String },
+    SynthesizeAndPlay { request_id: String, text: String },
     ReplayLastSynthesis,
     StopPlayback,
 }
@@ -448,7 +443,8 @@ impl VoicePlaygroundController {
     }
 
     fn handle_tick(&mut self) -> Option<VoicePlaygroundUpdate> {
-        if self.snapshot.playback_state == VoicePlaybackState::Playing && !self.player.is_playing() {
+        if self.snapshot.playback_state == VoicePlaybackState::Playing && !self.player.is_playing()
+        {
             self.snapshot.playback_state = VoicePlaybackState::Completed;
             self.snapshot.last_action = Some("Voice playback completed".to_string());
             let request_id = self.playback_request_id.take();
@@ -461,7 +457,8 @@ impl VoicePlaygroundController {
     }
 
     fn refresh(&mut self) -> Vec<VoicePlaygroundUpdate> {
-        let (active_account, project_id) = self.environment.describe(self.config.project_id.clone());
+        let (active_account, project_id) =
+            self.environment.describe(self.config.project_id.clone());
         self.snapshot.active_account = active_account;
         self.snapshot.project_id = project_id;
         self.snapshot.last_error = None;
@@ -572,7 +569,11 @@ impl VoicePlaygroundController {
         updates
     }
 
-    fn synthesize_and_play(&mut self, request_id: String, text: String) -> Vec<VoicePlaygroundUpdate> {
+    fn synthesize_and_play(
+        &mut self,
+        request_id: String,
+        text: String,
+    ) -> Vec<VoicePlaygroundUpdate> {
         if text.trim().is_empty() {
             self.snapshot.synthesis_state = VoiceSynthesisState::Error;
             self.snapshot.playback_state = VoicePlaybackState::Error;
@@ -653,7 +654,8 @@ impl VoicePlaygroundController {
     fn replay_last_synthesis(&mut self) -> Vec<VoicePlaygroundUpdate> {
         let Some(audio) = self.last_synthesized_audio.as_ref() else {
             self.snapshot.playback_state = VoicePlaybackState::Error;
-            self.snapshot.last_error = Some("No synthesized clip is available to replay".to_string());
+            self.snapshot.last_error =
+                Some("No synthesized clip is available to replay".to_string());
             self.snapshot.last_action = Some("Voice replay blocked".to_string());
             return vec![VoicePlaygroundUpdate::PlaybackFailed {
                 request_id: self.snapshot.last_synthesis_request_id.clone(),
@@ -1040,9 +1042,11 @@ fn extend_u16_samples(target: &Arc<std::sync::Mutex<Vec<i16>>>, samples: &[u16])
 
 fn extend_f32_samples(target: &Arc<std::sync::Mutex<Vec<i16>>>, samples: &[f32]) {
     if let Ok(mut buffer) = target.lock() {
-        buffer.extend(samples.iter().map(|sample| {
-            (sample.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16
-        }));
+        buffer.extend(
+            samples
+                .iter()
+                .map(|sample| (sample.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16),
+        );
     }
 }
 
@@ -1158,8 +1162,8 @@ impl AudioPlayer for RodioAudioPlayer {
             .handle
             .as_ref()
             .ok_or_else(|| "Speaker output is unavailable".to_string())?;
-        let sink =
-            Sink::try_new(handle).map_err(|error| format!("Failed to create audio sink: {error}"))?;
+        let sink = Sink::try_new(handle)
+            .map_err(|error| format!("Failed to create audio sink: {error}"))?;
         let cursor = Cursor::new(wav_bytes.to_vec());
         let decoder = Decoder::new(BufReader::new(cursor))
             .map_err(|error| format!("Failed to decode synthesized audio: {error}"))?;
@@ -1215,7 +1219,12 @@ impl GcloudEnvironmentProbe {
     fn describe(&self, config_project_id: Option<String>) -> (Option<String>, Option<String>) {
         let active_account = self
             .cli
-            .run(&["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"])
+            .run(&[
+                "auth",
+                "list",
+                "--filter=status:ACTIVE",
+                "--format=value(account)",
+            ])
             .ok()
             .map(|value| value.to_string())
             .filter(|value| !value.trim().is_empty());
@@ -1302,7 +1311,10 @@ mod tests {
     }
 
     impl VoiceBackend for MockBackend {
-        fn transcribe(&self, request: &TranscriptionRequest) -> Result<TranscriptionResult, String> {
+        fn transcribe(
+            &self,
+            request: &TranscriptionRequest,
+        ) -> Result<TranscriptionResult, String> {
             let result = self
                 .transcript
                 .lock()
@@ -1458,7 +1470,12 @@ mod tests {
     impl GcloudCli for MockGcloudCli {
         fn run(&self, args: &[&str]) -> Result<String, String> {
             self.responses
-                .get(&args.iter().map(|value| value.to_string()).collect::<Vec<_>>())
+                .get(
+                    &args
+                        .iter()
+                        .map(|value| value.to_string())
+                        .collect::<Vec<_>>(),
+                )
                 .cloned()
                 .unwrap_or_else(|| Err(format!("missing mock response for {:?}", args)))
         }
@@ -1468,10 +1485,18 @@ mod tests {
     fn environment_probe_prefers_configured_project_and_reports_active_account() {
         let cli = Arc::new(MockGcloudCli::from_pairs(vec![
             (
-                vec!["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
+                vec![
+                    "auth",
+                    "list",
+                    "--filter=status:ACTIVE",
+                    "--format=value(account)",
+                ],
                 Ok("chris@openagents.com"),
             ),
-            (vec!["config", "get-value", "project"], Ok("openagentsgemini")),
+            (
+                vec!["config", "get-value", "project"],
+                Ok("openagentsgemini"),
+            ),
         ]));
         let probe = GcloudEnvironmentProbe::new(cli);
 
@@ -1508,19 +1533,27 @@ mod tests {
         let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![
             (
-                vec!["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
+                vec![
+                    "auth",
+                    "list",
+                    "--filter=status:ACTIVE",
+                    "--format=value(account)",
+                ],
                 Ok("chris@openagents.com"),
             ),
-            (vec!["config", "get-value", "project"], Ok("openagentsgemini")),
+            (
+                vec!["config", "get-value", "project"],
+                Ok("openagentsgemini"),
+            ),
         ])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+        let mut controller =
+            VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let started = controller.handle_command(VoicePlaygroundCommand::StartRecording);
-        let updates = controller.handle_command(
-            VoicePlaygroundCommand::StopRecordingAndTranscribe {
+        let updates =
+            controller.handle_command(VoicePlaygroundCommand::StopRecordingAndTranscribe {
                 request_id: "voice-req-1".to_string(),
-            },
-        );
+            });
 
         assert_eq!(
             started,
@@ -1554,7 +1587,10 @@ mod tests {
             }
             other => panic!("unexpected update: {:?}", other),
         }
-        assert_eq!(controller.snapshot.recording_state, VoiceRecordingState::Idle);
+        assert_eq!(
+            controller.snapshot.recording_state,
+            VoiceRecordingState::Idle
+        );
         assert_eq!(
             controller.snapshot.transcription_state,
             VoiceTranscriptionState::Ready
@@ -1584,13 +1620,17 @@ mod tests {
         let capture = Box::new(MockCapture::ready(400)) as Box<dyn AudioCapture>;
         let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+        let mut controller =
+            VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let _ = controller.handle_command(VoicePlaygroundCommand::StartRecording);
         let cancelled = controller.handle_command(VoicePlaygroundCommand::CancelRecording);
 
         assert_eq!(cancelled, vec![VoicePlaygroundUpdate::RecordingCancelled]);
-        assert_eq!(controller.snapshot.recording_state, VoiceRecordingState::Idle);
+        assert_eq!(
+            controller.snapshot.recording_state,
+            VoiceRecordingState::Idle
+        );
         assert_eq!(
             controller.snapshot.transcription_state,
             VoiceTranscriptionState::Idle
@@ -1619,7 +1659,8 @@ mod tests {
         let capture = Box::new(MockCapture::ready(100)) as Box<dyn AudioCapture + Send>;
         let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer + Send>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let worker = VoicePlaygroundWorker::with_components(config, backend, capture, player, probe);
+        let worker =
+            VoicePlaygroundWorker::with_components(config, backend, capture, player, probe);
 
         let mut updates = VecDeque::new();
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -1650,7 +1691,8 @@ mod tests {
         let capture = Box::new(MockCapture::ready(120)) as Box<dyn AudioCapture>;
         let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+        let mut controller =
+            VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let updates = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
             request_id: "voice-tts-1".to_string(),
@@ -1669,8 +1711,14 @@ mod tests {
             updates.get(2),
             Some(VoicePlaygroundUpdate::PlaybackStarted { .. })
         ));
-        assert_eq!(controller.snapshot.synthesis_state, VoiceSynthesisState::Ready);
-        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Playing);
+        assert_eq!(
+            controller.snapshot.synthesis_state,
+            VoiceSynthesisState::Ready
+        );
+        assert_eq!(
+            controller.snapshot.playback_state,
+            VoicePlaybackState::Playing
+        );
         assert_eq!(
             controller.snapshot.last_speech_text.as_deref(),
             Some("OpenAgents voice test")
@@ -1694,7 +1742,8 @@ mod tests {
         let (player, player_handle) = MockPlayer::with_handle();
         let player = Box::new(player) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+        let mut controller =
+            VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let _ = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
             request_id: "voice-tts-1".to_string(),
@@ -1705,7 +1754,10 @@ mod tests {
         let stopped = controller.handle_command(VoicePlaygroundCommand::StopPlayback);
         assert!(matches!(
             stopped.as_slice(),
-            [VoicePlaygroundUpdate::PlaybackStopped { reason: "stopped", .. }]
+            [VoicePlaygroundUpdate::PlaybackStopped {
+                reason: "stopped",
+                ..
+            }]
         ));
         assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Idle);
 
@@ -1715,7 +1767,10 @@ mod tests {
             [VoicePlaygroundUpdate::PlaybackStarted { .. }]
         ));
         assert_eq!(player_handle.plays(), 2);
-        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Playing);
+        assert_eq!(
+            controller.snapshot.playback_state,
+            VoicePlaybackState::Playing
+        );
     }
 
     #[test]
@@ -1735,7 +1790,8 @@ mod tests {
         let (player, player_handle) = MockPlayer::with_handle();
         let player = Box::new(player) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+        let mut controller =
+            VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let _ = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
             request_id: "voice-tts-1".to_string(),
@@ -1752,7 +1808,10 @@ mod tests {
                 ..
             })
         ));
-        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Completed);
+        assert_eq!(
+            controller.snapshot.playback_state,
+            VoicePlaybackState::Completed
+        );
     }
 
     #[test]
@@ -1772,7 +1831,8 @@ mod tests {
         let (player, player_handle) = MockPlayer::with_handle();
         let player = Box::new(player) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+        let mut controller =
+            VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let missing_clip = controller.handle_command(VoicePlaygroundCommand::ReplayLastSynthesis);
         assert!(matches!(
@@ -1795,6 +1855,9 @@ mod tests {
             [VoicePlaygroundUpdate::PlaybackFailed { error, .. }]
             if error.contains("speaker output unavailable")
         ));
-        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Error);
+        assert_eq!(
+            controller.snapshot.playback_state,
+            VoicePlaybackState::Error
+        );
     }
 }
