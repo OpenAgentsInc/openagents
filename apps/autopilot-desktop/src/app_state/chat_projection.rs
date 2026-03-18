@@ -848,6 +848,14 @@ fn rebuild_managed_chat_projection(
                     channel.room_mode = parsed.hints.room_mode;
                     channel.metadata = parsed.metadata;
                     channel.hints = parsed.hints;
+                } else if let Ok(metadata) = ChannelMetadata::from_json(&event.content) {
+                    // Standard NIP-28 kind-40: no OA group tag — use event.id as group_id
+                    groups.entry(event.id.clone()).or_default().deleted = false;
+                    let channel = channels.entry(event.id.clone()).or_default();
+                    channel.group_id = event.id.clone();
+                    channel.metadata = metadata;
+                } else {
+                    tracing::warn!(event_id = %event.id, "nip28: kind-40 parse failed, content not valid ChannelMetadata JSON");
                 }
             }
             41 => {
@@ -859,6 +867,19 @@ fn rebuild_managed_chat_projection(
                     channel.metadata = parsed.metadata;
                     channel.hints = parsed.hints;
                     channel.relay_url = Some(parsed.relay_url);
+                } else if let Ok(metadata) = ChannelMetadata::from_json(&event.content) {
+                    // Standard NIP-28 kind-41: apply metadata update via root "e" tag
+                    if let Some(channel_create_id) = event
+                        .tags
+                        .iter()
+                        .find(|t| t.first().map(|s| s == "e").unwrap_or(false))
+                        .and_then(|t| t.get(1))
+                    {
+                        let channel = channels.entry(channel_create_id.clone()).or_default();
+                        channel.metadata = metadata;
+                    }
+                } else {
+                    tracing::warn!(event_id = %event.id, "nip28: kind-41 parse failed, content not valid ChannelMetadata JSON");
                 }
             }
             42 => {
