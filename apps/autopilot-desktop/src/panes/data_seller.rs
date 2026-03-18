@@ -431,6 +431,25 @@ fn paint_publication_status_card(
         "read-back surface",
         "Data Market pane",
     );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "published asset",
+        &option_label(
+            pane_state
+                .last_published_asset
+                .as_ref()
+                .map(|asset| asset.asset_id.as_str()),
+        ),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "publish receipt",
+        &option_label(pane_state.last_publish_receipt_id.as_deref()),
+    );
 
     paint.scene.draw_text(paint.text.layout(
         &format!(

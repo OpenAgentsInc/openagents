@@ -40,6 +40,7 @@ smuggled through opaque prompt state.
 - expose typed `openagents.data_market.*` dynamic tools for seller status, draft, exact preview, blocked publish, and snapshot flows
 - send seller prompts from the dedicated pane into the dedicated Codex seller thread and render the resulting transcript back into the pane
 - require an explicit preview-confirm step before publication can be armed
+- publish a `DataAsset` from the seller pane through Nexus and immediately read the canonical asset back into seller state
 
 The starter authority slice is real in:
 
@@ -79,7 +80,7 @@ Authenticated HTTP read routes are live under:
 ## Not implemented yet
 
 - a transactional buyer-facing data market in Autopilot
-- truthful seller publication UX for data assets beyond the current conversational draft-normalization loop
+- fully integrated seller publication UX beyond the current seller-pane asset flow and read-back
 - discovery, listing, and pricing surfaces for data buyers
 - payout and provider-economics flows specific to data access
 - a dedicated checked-in `openagents.data.v1` proto package

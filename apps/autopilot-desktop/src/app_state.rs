@@ -1577,6 +1577,8 @@ pub struct DataSellerPaneState {
     pub active_draft: DataSellerDraft,
     pub asset_preview_confirmed: bool,
     pub last_confirmed_asset_payload: Option<Value>,
+    pub last_published_asset: Option<DataAsset>,
+    pub last_publish_receipt_id: Option<String>,
     pub codex_profile: DataSellerCodexProfile,
     pub codex_thread_id: Option<String>,
     pub codex_session_phase: DataSellerCodexSessionPhase,
@@ -1619,6 +1621,8 @@ impl Default for DataSellerPaneState {
             active_draft: draft,
             asset_preview_confirmed: false,
             last_confirmed_asset_payload: None,
+            last_published_asset: None,
+            last_publish_receipt_id: None,
             codex_profile: DataSellerCodexProfile::default(),
             codex_thread_id: None,
             codex_session_phase: DataSellerCodexSessionPhase::Detached,
@@ -1793,11 +1797,33 @@ impl DataSellerPaneState {
                     .to_string();
             return;
         }
-        self.last_error = Some(
-            "Publish gate is open, but the kernel authority write is not wired yet.".to_string(),
-        );
-        self.status_line = "Publish armed. Waiting for the kernel authority write implementation."
+        self.last_error = None;
+        self.status_line = "Publish armed. Submitting the exact asset payload to kernel authority."
             .to_string();
+    }
+
+    pub fn publish_is_armed(&self) -> bool {
+        self.active_draft.is_structurally_ready()
+            && self.active_draft.last_previewed_asset_payload.is_some()
+            && self.asset_preview_confirmed
+    }
+
+    pub fn note_asset_published(&mut self, asset: DataAsset, receipt_id: Option<String>) {
+        self.active_draft.last_published_asset_id = Some(asset.asset_id.clone());
+        self.last_published_asset = Some(asset.clone());
+        self.last_publish_receipt_id = receipt_id;
+        self.publish_enabled = false;
+        self.confirm_enabled = false;
+        self.asset_preview_confirmed = false;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Published DataAsset {} and read it back from kernel authority",
+            asset.asset_id
+        ));
+        self.status_line = format!(
+            "Published asset {} and confirmed kernel read-back.",
+            asset.asset_id
+        );
     }
 
     pub fn note_draft_mutation(&mut self, action: impl Into<String>) {
@@ -11942,6 +11968,8 @@ mod tests {
         SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use chrono::TimeZone;
+    use openagents_kernel_core::data::DataAsset;
+    use serde_json::{Value, json};
     use wgpui::components::sections::TerminalStream;
 
     #[test]
@@ -12020,7 +12048,25 @@ mod tests {
             DataSellerPreviewPosture::ExactPreviewReady
         );
         assert!(pane.active_draft.readiness_blockers.is_empty());
-        assert!(pane.active_draft.last_previewed_asset_payload.is_some());
+        let asset_preview = pane
+            .active_draft
+            .last_previewed_asset_payload
+            .as_ref()
+            .expect("asset preview should exist");
+        assert_eq!(
+            asset_preview
+                .get("policy")
+                .and_then(|value| value.get("policy_bundle_id"))
+                .and_then(Value::as_str),
+            Some("policy.data_market.asset_publish.mvp")
+        );
+        assert!(
+            asset_preview
+                .get("asset")
+                .and_then(|value| value.get("asset_id"))
+                .and_then(Value::as_str)
+                .is_some()
+        );
         assert!(pane.active_draft.last_previewed_grant_payload.is_some());
         assert!(pane.confirm_enabled);
         assert!(!pane.publish_enabled);
@@ -12043,6 +12089,39 @@ mod tests {
         assert!(pane.asset_preview_confirmed);
         assert!(pane.publish_enabled);
         assert!(pane.last_confirmed_asset_payload.is_some());
+    }
+
+    #[test]
+    fn data_seller_note_asset_published_records_kernel_readback() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                description: Some("Three cleaned support conversations".to_string()),
+                content_digest: Some("sha256:data-bundle".to_string()),
+                provenance_ref: Some("oa://bundle/support-1".to_string()),
+                default_policy: None,
+                price_hint: None,
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({}),
+            },
+            Some("receipt.data_asset.alpha".to_string()),
+        );
+
+        assert_eq!(
+            pane.active_draft.last_published_asset_id.as_deref(),
+            Some("data_asset.provider.alpha.bundle")
+        );
+        assert_eq!(
+            pane.last_publish_receipt_id.as_deref(),
+            Some("receipt.data_asset.alpha")
+        );
+        assert!(pane.last_published_asset.is_some());
+        assert!(!pane.publish_enabled);
     }
 
     #[test]
