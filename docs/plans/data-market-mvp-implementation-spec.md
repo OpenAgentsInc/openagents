@@ -117,12 +117,13 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 - show transcript-shell, draft-shell, and status-shell cards
 - keep a structured local draft with readiness blockers and preview posture
 - attach a dedicated Codex thread/session with seller-specific personality and collaboration defaults
+- submit seller prompts from the pane into that dedicated Codex thread
+- render the seller-thread transcript back into the pane
 - expose explicit preview/publish controls
 - keep publication blocked until the exact preview and typed tool slices land
 
 It cannot yet:
 
-- normalize conversational input into a truthful draft object
 - preview an exact authority payload
 - publish a kernel object
 

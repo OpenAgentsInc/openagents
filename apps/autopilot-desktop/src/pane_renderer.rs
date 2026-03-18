@@ -217,6 +217,7 @@ impl PaneRenderer {
         credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
+        data_seller_inputs: &mut crate::app_state::DataSellerPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
         mission_control: &mut MissionControlPaneState,
         provider_control: &mut ProviderControlPaneState,
@@ -592,7 +593,13 @@ impl PaneRenderer {
                     );
                 }
                 PaneKind::DataSeller => {
-                    data_seller_pane::paint(content_bounds, data_seller, paint);
+                    data_seller_pane::paint(
+                        content_bounds,
+                        data_seller,
+                        autopilot_chat,
+                        data_seller_inputs,
+                        paint,
+                    );
                 }
                 PaneKind::DataMarket => {
                     data_market_pane::paint(content_bounds, data_market, paint);

@@ -13,7 +13,7 @@ use crate::pane_registry::pane_spec;
 use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
-    chat as chat_pane, local_inference as local_inference_pane,
+    chat as chat_pane, data_seller as data_seller_pane, local_inference as local_inference_pane,
     relay_connections as relay_connections_pane, rive as rive_pane, wallet as wallet_pane,
 };
 use crate::render::{
@@ -44,6 +44,8 @@ const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 122.0;
 const CHAT_COMPOSER_MIN_HEIGHT: f32 = 30.0;
 const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 30.0;
+const DATA_SELLER_COMPOSER_HEIGHT: f32 = 30.0;
+const DATA_SELLER_SEND_WIDTH: f32 = 72.0;
 const CHAT_HEADER_BUTTON_HEIGHT: f32 = 24.0;
 const CHAT_HEADER_BUTTON_WIDTH: f32 = 104.0;
 const CHAT_HEADER_BUTTON_GAP: f32 = 8.0;
@@ -434,6 +436,7 @@ pub enum Nip90SentPaymentsPaneAction {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataSellerPaneAction {
+    SubmitPrompt,
     PreviewDraft,
     PublishDraft,
 }
@@ -2398,6 +2401,25 @@ pub fn data_seller_preview_button_bounds(content_bounds: Bounds) -> Bounds {
 pub fn data_seller_publish_button_bounds(content_bounds: Bounds) -> Bounds {
     let preview = data_seller_preview_button_bounds(content_bounds);
     Bounds::new(preview.max_x() + 8.0, preview.origin.y, 92.0, 22.0)
+}
+
+pub fn data_seller_send_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.max_x() - 12.0 - DATA_SELLER_SEND_WIDTH,
+        content_bounds.max_y() - 12.0 - DATA_SELLER_COMPOSER_HEIGHT,
+        DATA_SELLER_SEND_WIDTH,
+        DATA_SELLER_COMPOSER_HEIGHT,
+    )
+}
+
+pub fn data_seller_composer_input_bounds(content_bounds: Bounds) -> Bounds {
+    let send_bounds = data_seller_send_button_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        send_bounds.origin.y,
+        (send_bounds.origin.x - content_bounds.origin.x - 24.0).max(160.0),
+        DATA_SELLER_COMPOSER_HEIGHT,
+    )
 }
 
 pub fn spark_replay_prev_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -7807,7 +7829,11 @@ fn pane_hit_action_for_pane(
             }
         }
         PaneKind::DataSeller => {
-            if data_seller_preview_button_bounds(content_bounds).contains(point) {
+            if data_seller_send_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataSeller(
+                    DataSellerPaneAction::SubmitPrompt,
+                ))
+            } else if data_seller_preview_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::DataSeller(
                     DataSellerPaneAction::PreviewDraft,
                 ))
@@ -7886,6 +7912,10 @@ pub fn dispatch_mission_control_input_event(state: &mut RenderState, event: &Inp
 
 pub fn dispatch_chat_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     chat_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_data_seller_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    data_seller_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_calculator_input_event(state: &mut RenderState, event: &InputEvent) -> bool {

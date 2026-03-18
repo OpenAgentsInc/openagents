@@ -2218,6 +2218,7 @@ fn execute_pane_set_input(
 
     let applied = match kind {
         PaneKind::AutopilotChat => Ok(apply_chat_input(state, &field, &value)),
+        PaneKind::DataSeller => Ok(apply_data_seller_input(state, &field, &value)),
         PaneKind::RelayConnections => Ok(apply_relay_connections_input(state, &field, &value)),
         PaneKind::LocalInference => Ok(apply_local_inference_input(state, &field, &value)),
         PaneKind::RivePreview => Ok(false),
@@ -2709,6 +2710,7 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "preview_enabled": state.data_seller.preview_enabled,
                         "publish_enabled": state.data_seller.publish_enabled,
                         "shell_messages": state.data_seller.transcript_shell.len(),
+                        "composer_chars": state.data_seller_inputs.composer.get_value().chars().count(),
                         "status_line": state.data_seller.status_line,
                         "codex_session_phase": state.data_seller.codex_session_phase.label(),
                         "codex_thread_id": state.data_seller.codex_thread_id,
@@ -2817,6 +2819,9 @@ fn pane_action_to_hit_action(
         PaneKind::SettlementAtlas => unsupported(),
         PaneKind::RelayChoreography => unsupported(),
         PaneKind::DataSeller => match action {
+            "send" | "submit" | "submit_prompt" => Ok(PaneHitAction::DataSeller(
+                DataSellerPaneAction::SubmitPrompt,
+            )),
             "preview" | "preview_draft" => Ok(PaneHitAction::DataSeller(
                 DataSellerPaneAction::PreviewDraft,
             )),
@@ -3581,6 +3586,14 @@ fn pane_action_to_hit_action(
 fn apply_chat_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     if matches!(field, "composer" | "message" | "prompt") {
         state.chat_inputs.composer.set_value(value.to_string());
+        return true;
+    }
+    false
+}
+
+fn apply_data_seller_input(state: &mut RenderState, field: &str, value: &str) -> bool {
+    if matches!(field, "composer" | "prompt" | "seller_prompt") {
+        state.data_seller_inputs.composer.set_value(value.to_string());
         return true;
     }
     false
@@ -7348,6 +7361,11 @@ mod tests {
             pane_action_to_hit_action(PaneKind::RivePreview, "next_asset", None)
                 .expect("rive preview next asset"),
             PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::NextAsset)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataSeller, "send", None)
+                .expect("data seller send"),
+            PaneHitAction::DataSeller(DataSellerPaneAction::SubmitPrompt)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::DataSeller, "preview", None)

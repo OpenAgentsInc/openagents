@@ -649,6 +649,20 @@ impl Default for ChatPaneInputs {
     }
 }
 
+pub struct DataSellerPaneInputs {
+    pub composer: TextInput,
+}
+
+impl Default for DataSellerPaneInputs {
+    fn default() -> Self {
+        Self {
+            composer: TextInput::new()
+                .placeholder("Describe the data you want to sell, the intended buyer, and the price or permission posture...")
+                .border_color_focused(theme::border::FOCUS),
+        }
+    }
+}
+
 pub struct CalculatorPaneInputs {
     pub expression: TextInput,
 }
@@ -6723,6 +6737,49 @@ impl AutopilotChatState {
             .insert(thread_id.to_string(), cached_messages);
     }
 
+    pub fn cached_thread_messages(&self, thread_id: &str) -> Option<&[AutopilotMessage]> {
+        if self.is_active_thread(thread_id) {
+            return Some(self.messages.as_slice());
+        }
+        self.thread_transcript_cache
+            .get(thread_id)
+            .map(|messages| messages.as_slice())
+    }
+
+    pub fn append_cached_thread_message(
+        &mut self,
+        thread_id: &str,
+        role: AutopilotRole,
+        content: impl Into<String>,
+    ) {
+        let content = content.into();
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let mut messages = self
+            .thread_transcript_cache
+            .get(thread_id)
+            .cloned()
+            .unwrap_or_default();
+        let next_message_id = messages
+            .last()
+            .map(|message| message.id.saturating_add(1))
+            .unwrap_or(1);
+        messages.push(AutopilotMessage {
+            id: next_message_id,
+            role,
+            status: AutopilotMessageStatus::Done,
+            content: trimmed.to_string(),
+            structured: None,
+        });
+        self.thread_transcript_cache
+            .insert(thread_id.to_string(), messages.clone());
+        if self.is_active_thread(thread_id) {
+            self.apply_active_thread_messages(thread_id, messages);
+        }
+    }
+
     pub fn select_thread_by_index(&mut self, index: usize) -> Option<AutopilotThreadResumeTarget> {
         let thread_id = self.threads.get(index).cloned()?;
         self.cache_active_thread_transcript();
@@ -11207,6 +11264,7 @@ pub struct RenderState {
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
+    pub data_seller_inputs: DataSellerPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
     pub provider_control: ProviderControlPaneState,
     pub mission_control: MissionControlPaneState,
@@ -11783,6 +11841,24 @@ mod tests {
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
         assert!(chat.threads.iter().any(|thread| thread == "thread-passive"));
+    }
+
+    #[test]
+    fn append_cached_thread_message_updates_inactive_thread_cache() {
+        let mut chat = AutopilotChatState::default();
+        chat.remember_thread_inactive("thread-seller");
+
+        chat.append_cached_thread_message(
+            "thread-seller",
+            AutopilotRole::User,
+            "List my research bundle for 500 sats",
+        );
+
+        let cached = chat
+            .cached_thread_messages("thread-seller")
+            .expect("inactive thread cache should exist");
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].content, "List my research bundle for 500 sats");
     }
 
     fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {

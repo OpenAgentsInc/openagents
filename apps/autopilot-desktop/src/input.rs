@@ -64,7 +64,8 @@ use crate::pane_system::{
     dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_job_history_input_event,
+    dispatch_credentials_input_event, dispatch_data_seller_input_event,
+    dispatch_job_history_input_event,
     dispatch_local_inference_input_event, dispatch_log_stream_scroll_event,
     dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
@@ -3145,6 +3146,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
+    handled |= dispatch_data_seller_input_event(state, event);
     handled |= dispatch_calculator_input_event(state, event);
     handled |= dispatch_job_history_input_event(state, event);
     handled
@@ -3287,6 +3289,7 @@ fn dispatch_keyboard_submit_actions(
     logical_key: &WinitLogicalKey,
 ) -> bool {
     handle_chat_keyboard_input(state, logical_key)
+        || handle_data_seller_keyboard_input(state, logical_key)
         || handle_spark_wallet_keyboard_input(state, logical_key)
         || handle_mission_control_keyboard_input(state, logical_key)
         || handle_pay_invoice_keyboard_input(state, logical_key)
@@ -3794,6 +3797,22 @@ fn handle_chat_keyboard_input(
             }
             false
         },
+    )
+}
+
+fn handle_data_seller_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        |s| s.data_seller_inputs.composer.is_focused(),
+        dispatch_data_seller_input_event,
+        |s| actions::run_data_seller_action(
+            s,
+            crate::pane_system::DataSellerPaneAction::SubmitPrompt,
+        ),
     )
 }
 

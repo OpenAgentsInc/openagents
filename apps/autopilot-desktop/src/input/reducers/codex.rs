@@ -1540,6 +1540,20 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state
                         .autopilot_chat
                         .remember_thread_inactive(thread_id.clone());
+                    if status == "idle" {
+                        if let Err(error) =
+                            state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                                codex_client::ThreadReadParams {
+                                    thread_id: thread_id.clone(),
+                                    include_turns: true,
+                                },
+                            ))
+                        {
+                            state.data_seller.last_error = Some(format!(
+                                "Failed to refresh Data Seller transcript: {error}"
+                            ));
+                        }
+                    }
                 } else {
                     state.autopilot_chat.remember_thread(thread_id.clone());
                 }
