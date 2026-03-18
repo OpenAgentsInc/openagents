@@ -128,7 +128,7 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 It cannot yet:
 
 - expose broad buyer-facing discovery, pricing comparison, and post-request transaction UX
-- publish a dedicated checked-in `openagents.data.v1` wire package
+- expose a fuller public-market schema beyond the current checked-in `openagents.data.v1` slice
 
 The dedicated seller lane now also auto-provisions the first-party
 `autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
@@ -155,6 +155,9 @@ The read-only market pane now also carries a compact lifecycle activity view so
 the operator surface can answer which asset, grant, payment, delivery, or
 revocation event happened under which policy and with which receipt or event
 identifier during the current session.
+Nexus now also exposes a checked-in `openagents.data.v1` contract and a
+combined `/v1/kernel/data/snapshot` read model, and the desktop market refresh
+path now uses that snapshot instead of stitching together four bare list calls.
 There is now also a narrow `Data Buyer` pane in the desktop app. It can:
 
 - select an active visible asset from the current market snapshot
@@ -721,7 +724,7 @@ The MVP should not try to do any of the following:
 - rely on generic `Autopilot Chat` as the sole seller UX
 - auto-publish listings directly from free-form transcript interpretation
 - store large raw payloads inside kernel authority objects
-- block the whole seller wedge on a complete `openagents.data.v1` package
+- block the whole seller wedge on a fuller public-market schema beyond the current `openagents.data.v1` slice
 - overfit the data lane to the public race semantics of compute
 
 ## Important Design Rules
@@ -868,12 +871,12 @@ These titles are phrased so they can be opened directly as GitHub issues.
 
 ## Wave 5: later buyer and market widening
 
-20. **[DATA P5] Add buyer-side targeted request surface for data access**
+20. **[DATA P5 / shipped] Add buyer-side targeted request surface for data access**
    - Add the narrowest honest buyer surface for selecting a seller/asset and
      issuing a targeted NIP-90 request.
    - Do not turn this into broad public discovery yet.
 
-21. **[DATA P5] Add dedicated `openagents.data.v1` proto and richer read models**
+21. **[DATA P5 / shipped] Add dedicated `openagents.data.v1` proto and richer read models**
    - After the MVP loop exists, codify the fuller wire package and richer
      market read models.
    - This should follow reality instead of blocking reality.

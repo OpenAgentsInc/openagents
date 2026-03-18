@@ -1,0 +1,290 @@
+syntax = "proto3";
+
+package openagents.data.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+
+enum DataAssetStatus {
+  DATA_ASSET_STATUS_UNSPECIFIED = 0;
+  DATA_ASSET_STATUS_ACTIVE = 1;
+  DATA_ASSET_STATUS_DISABLED = 2;
+  DATA_ASSET_STATUS_RETIRED = 3;
+}
+
+enum AccessGrantStatus {
+  ACCESS_GRANT_STATUS_UNSPECIFIED = 0;
+  ACCESS_GRANT_STATUS_OFFERED = 1;
+  ACCESS_GRANT_STATUS_ACCEPTED = 2;
+  ACCESS_GRANT_STATUS_DELIVERED = 3;
+  ACCESS_GRANT_STATUS_REVOKED = 4;
+  ACCESS_GRANT_STATUS_REFUNDED = 5;
+  ACCESS_GRANT_STATUS_EXPIRED = 6;
+}
+
+enum DeliveryBundleStatus {
+  DELIVERY_BUNDLE_STATUS_UNSPECIFIED = 0;
+  DELIVERY_BUNDLE_STATUS_ISSUED = 1;
+  DELIVERY_BUNDLE_STATUS_ACCESSED = 2;
+  DELIVERY_BUNDLE_STATUS_REVOKED = 3;
+  DELIVERY_BUNDLE_STATUS_EXPIRED = 4;
+}
+
+enum RevocationStatus {
+  REVOCATION_STATUS_UNSPECIFIED = 0;
+  REVOCATION_STATUS_REVOKED = 1;
+  REVOCATION_STATUS_REFUNDED = 2;
+}
+
+message PermissionPolicy {
+  string policy_id = 1;
+  repeated string allowed_scopes = 2;
+  repeated string allowed_tool_tags = 3;
+  repeated string allowed_origins = 4;
+  bool export_allowed = 5;
+  bool derived_outputs_allowed = 6;
+  optional uint64 retention_seconds = 7;
+  optional uint64 max_bundle_size_bytes = 8;
+  string metadata_json = 9;
+}
+
+message DataAsset {
+  string asset_id = 1;
+  string provider_id = 2;
+  string asset_kind = 3;
+  string title = 4;
+  optional string description = 5;
+  optional string content_digest = 6;
+  optional string provenance_ref = 7;
+  optional PermissionPolicy default_policy = 8;
+  optional openagents.common.v1.Money price_hint = 9;
+  int64 created_at_ms = 10;
+  DataAssetStatus status = 11;
+  string metadata_json = 12;
+}
+
+message AccessGrant {
+  string grant_id = 1;
+  string asset_id = 2;
+  string provider_id = 3;
+  optional string consumer_id = 4;
+  PermissionPolicy permission_policy = 5;
+  optional openagents.common.v1.Money offer_price = 6;
+  optional uint64 warranty_window_ms = 7;
+  int64 created_at_ms = 8;
+  int64 expires_at_ms = 9;
+  optional int64 accepted_at_ms = 10;
+  AccessGrantStatus status = 11;
+  string metadata_json = 12;
+}
+
+message DeliveryBundle {
+  string delivery_bundle_id = 1;
+  string asset_id = 2;
+  string grant_id = 3;
+  string provider_id = 4;
+  string consumer_id = 5;
+  int64 created_at_ms = 6;
+  string delivery_ref = 7;
+  optional string delivery_digest = 8;
+  optional uint64 bundle_size_bytes = 9;
+  repeated string manifest_refs = 10;
+  optional int64 expires_at_ms = 11;
+  DeliveryBundleStatus status = 12;
+  string metadata_json = 13;
+}
+
+message RevocationReceipt {
+  string revocation_id = 1;
+  string asset_id = 2;
+  string grant_id = 3;
+  string provider_id = 4;
+  optional string consumer_id = 5;
+  int64 created_at_ms = 6;
+  string reason_code = 7;
+  optional openagents.common.v1.Money refund_amount = 8;
+  repeated string revoked_delivery_bundle_ids = 9;
+  optional string replacement_delivery_bundle_id = 10;
+  RevocationStatus status = 11;
+  string metadata_json = 12;
+}
+
+message DataMarketSummary {
+  uint32 total_assets = 1;
+  uint32 active_assets = 2;
+  uint32 total_grants = 3;
+  uint32 offered_grants = 4;
+  uint32 accepted_grants = 5;
+  uint32 delivered_grants = 6;
+  uint32 terminal_grants = 7;
+  uint32 total_deliveries = 8;
+  uint32 active_deliveries = 9;
+  uint32 total_revocations = 10;
+  optional int64 latest_activity_at_ms = 11;
+}
+
+message DataMarketSnapshot {
+  int64 refreshed_at_ms = 1;
+  DataMarketSummary summary = 2;
+  repeated DataAsset assets = 3;
+  repeated AccessGrant grants = 4;
+  repeated DeliveryBundle deliveries = 5;
+  repeated RevocationReceipt revocations = 6;
+}
+
+message RegisterDataAssetRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  DataAsset asset = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RegisterDataAssetResponse {
+  DataAsset asset = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message CreateAccessGrantRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  AccessGrant grant = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateAccessGrantResponse {
+  AccessGrant grant = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message AcceptAccessGrantRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string grant_id = 4;
+  string consumer_id = 5;
+  int64 accepted_at_ms = 6;
+  optional openagents.common.v1.Money settlement_price = 7;
+  string metadata_json = 8;
+  repeated openagents.common.v1.EvidenceRef evidence = 9;
+  openagents.economy.v1.ReceiptHints hints = 10;
+}
+
+message AcceptAccessGrantResponse {
+  AccessGrant grant = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message IssueDeliveryBundleRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  DeliveryBundle delivery_bundle = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message IssueDeliveryBundleResponse {
+  DeliveryBundle delivery_bundle = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message RevokeAccessGrantRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  RevocationReceipt revocation = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RevokeAccessGrantResponse {
+  RevocationReceipt revocation = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListDataAssetsRequest {
+  optional string provider_id = 1;
+  optional string asset_kind = 2;
+  DataAssetStatus status = 3;
+}
+
+message ListDataAssetsResponse {
+  repeated DataAsset assets = 1;
+}
+
+message GetDataAssetRequest {
+  string asset_id = 1;
+}
+
+message GetDataAssetResponse {
+  DataAsset asset = 1;
+}
+
+message ListAccessGrantsRequest {
+  optional string asset_id = 1;
+  optional string provider_id = 2;
+  optional string consumer_id = 3;
+  AccessGrantStatus status = 4;
+}
+
+message ListAccessGrantsResponse {
+  repeated AccessGrant grants = 1;
+}
+
+message GetAccessGrantRequest {
+  string grant_id = 1;
+}
+
+message GetAccessGrantResponse {
+  AccessGrant grant = 1;
+}
+
+message ListDeliveryBundlesRequest {
+  optional string asset_id = 1;
+  optional string grant_id = 2;
+  optional string provider_id = 3;
+  optional string consumer_id = 4;
+  DeliveryBundleStatus status = 5;
+}
+
+message ListDeliveryBundlesResponse {
+  repeated DeliveryBundle deliveries = 1;
+}
+
+message GetDeliveryBundleRequest {
+  string delivery_bundle_id = 1;
+}
+
+message GetDeliveryBundleResponse {
+  DeliveryBundle delivery_bundle = 1;
+}
+
+message ListRevocationsRequest {
+  optional string asset_id = 1;
+  optional string grant_id = 2;
+  optional string provider_id = 3;
+  optional string consumer_id = 4;
+  RevocationStatus status = 5;
+}
+
+message ListRevocationsResponse {
+  repeated RevocationReceipt revocations = 1;
+}
+
+message GetRevocationRequest {
+  string revocation_id = 1;
+}
+
+message GetRevocationResponse {
+  RevocationReceipt revocation = 1;
+}
+
+message GetDataMarketSnapshotRequest {}
+
+message GetDataMarketSnapshotResponse {
+  DataMarketSnapshot snapshot = 1;
+}

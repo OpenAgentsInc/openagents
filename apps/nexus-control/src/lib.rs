@@ -27,20 +27,17 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use openagents_kernel_core::authority::{
-    AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-    AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-    CreateAccessGrantRequest, CreateAccessGrantResponse, CreateContractRequest,
-    CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
-    CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
-    CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-    ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
-    FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+    AdjustReservePartitionRequest, AdjustReservePartitionResponse, BindCoverageRequest,
+    BindCoverageResponse, CreateContractRequest, CreateContractResponse,
+    CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+    CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
+    CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
+    ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
     IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
     PlaceCoverageOfferResponse, PublishRiskSignalRequest, PublishRiskSignalResponse,
-    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
-    RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
-    RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
-    SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+    RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
+    ResolveRiskClaimResponse, SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest,
+    SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcomeKind,
@@ -55,12 +52,13 @@ use openagents_kernel_core::compute::{
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
-    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
-    DeliveryBundleStatus, RevocationReceipt, RevocationStatus,
+    AccessGrantStatus, DataAssetStatus, DeliveryBundleStatus, RevocationStatus,
 };
+use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
+use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -951,6 +949,10 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/data/revocations/{revocation_id}",
             get(get_kernel_revocation),
+        )
+        .route(
+            "/v1/kernel/data/snapshot",
+            get(get_kernel_data_market_snapshot),
         )
         .route(
             "/v1/kernel/liquidity/quotes",
@@ -4351,25 +4353,28 @@ async fn list_kernel_data_assets(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<DataAssetsQuery>,
-) -> Result<Json<Vec<DataAsset>>, ApiError> {
+) -> Result<Json<proto_data::ListDataAssetsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_data_assets(
+    let assets = store.kernel.list_data_assets(
         query.provider_id.as_deref(),
         query.asset_kind.as_deref(),
         query.status,
-    )))
+    );
+    let response = data_contracts::list_data_assets_response_to_proto(&assets)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_data_asset(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_id): Path<String>,
-) -> Result<Json<DataAsset>, ApiError> {
+) -> Result<Json<proto_data::GetDataAssetResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let asset_id = normalize_required_field(asset_id.as_str(), "asset_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -4384,33 +4389,38 @@ async fn get_kernel_data_asset(
             reason: "kernel_data_asset_not_found".to_string(),
         });
     };
-    Ok(Json(asset))
+    let response =
+        data_contracts::get_data_asset_response_to_proto(&asset).map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_access_grants(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<AccessGrantsQuery>,
-) -> Result<Json<Vec<AccessGrant>>, ApiError> {
+) -> Result<Json<proto_data::ListAccessGrantsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_access_grants(
+    let grants = store.kernel.list_access_grants(
         query.asset_id.as_deref(),
         query.provider_id.as_deref(),
         query.consumer_id.as_deref(),
         query.status,
-    )))
+    );
+    let response = data_contracts::list_access_grants_response_to_proto(&grants)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_access_grant(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(grant_id): Path<String>,
-) -> Result<Json<AccessGrant>, ApiError> {
+) -> Result<Json<proto_data::GetAccessGrantResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -4425,34 +4435,39 @@ async fn get_kernel_access_grant(
             reason: "kernel_access_grant_not_found".to_string(),
         });
     };
-    Ok(Json(grant))
+    let response = data_contracts::get_access_grant_response_to_proto(&grant)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_delivery_bundles(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<DeliveryBundlesQuery>,
-) -> Result<Json<Vec<DeliveryBundle>>, ApiError> {
+) -> Result<Json<proto_data::ListDeliveryBundlesResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_delivery_bundles(
+    let deliveries = store.kernel.list_delivery_bundles(
         query.asset_id.as_deref(),
         query.grant_id.as_deref(),
         query.provider_id.as_deref(),
         query.consumer_id.as_deref(),
         query.status,
-    )))
+    );
+    let response = data_contracts::list_delivery_bundles_response_to_proto(&deliveries)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_delivery_bundle(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(delivery_bundle_id): Path<String>,
-) -> Result<Json<DeliveryBundle>, ApiError> {
+) -> Result<Json<proto_data::GetDeliveryBundleResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let delivery_bundle_id =
         normalize_required_field(delivery_bundle_id.as_str(), "delivery_bundle_id_missing")?;
@@ -4471,34 +4486,39 @@ async fn get_kernel_delivery_bundle(
             reason: "kernel_delivery_bundle_not_found".to_string(),
         });
     };
-    Ok(Json(bundle))
+    let response = data_contracts::get_delivery_bundle_response_to_proto(&bundle)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_revocations(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<RevocationsQuery>,
-) -> Result<Json<Vec<RevocationReceipt>>, ApiError> {
+) -> Result<Json<proto_data::ListRevocationsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_revocations(
+    let revocations = store.kernel.list_revocations(
         query.asset_id.as_deref(),
         query.grant_id.as_deref(),
         query.provider_id.as_deref(),
         query.consumer_id.as_deref(),
         query.status,
-    )))
+    );
+    let response = data_contracts::list_revocations_response_to_proto(&revocations)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_revocation(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(revocation_id): Path<String>,
-) -> Result<Json<RevocationReceipt>, ApiError> {
+) -> Result<Json<proto_data::GetRevocationResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let revocation_id = normalize_required_field(revocation_id.as_str(), "revocation_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -4513,15 +4533,36 @@ async fn get_kernel_revocation(
             reason: "kernel_revocation_not_found".to_string(),
         });
     };
-    Ok(Json(revocation))
+    let response = data_contracts::get_revocation_response_to_proto(&revocation)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_data_market_snapshot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<proto_data::GetDataMarketSnapshotResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms() as i64;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let snapshot = store.kernel.data_market_snapshot(now);
+    let response = data_contracts::get_data_market_snapshot_response_to_proto(&snapshot)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn register_kernel_data_asset(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<RegisterDataAssetRequest>,
-) -> Result<Json<RegisterDataAssetResponse>, ApiError> {
+    Json(request): Json<proto_data::RegisterDataAssetRequest>,
+) -> Result<Json<proto_data::RegisterDataAssetResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let request = data_contracts::register_data_asset_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -4542,15 +4583,19 @@ async fn register_kernel_data_asset(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = data_contracts::register_data_asset_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn create_kernel_access_grant(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<CreateAccessGrantRequest>,
-) -> Result<Json<CreateAccessGrantResponse>, ApiError> {
+    Json(request): Json<proto_data::CreateAccessGrantRequest>,
+) -> Result<Json<proto_data::CreateAccessGrantResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let request = data_contracts::create_access_grant_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -4571,16 +4616,20 @@ async fn create_kernel_access_grant(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = data_contracts::create_access_grant_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn accept_kernel_access_grant(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(grant_id): Path<String>,
-    Json(mut request): Json<AcceptAccessGrantRequest>,
-) -> Result<Json<AcceptAccessGrantResponse>, ApiError> {
+    Json(request): Json<proto_data::AcceptAccessGrantRequest>,
+) -> Result<Json<proto_data::AcceptAccessGrantResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let mut request = data_contracts::accept_access_grant_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
     if !request.grant_id.trim().is_empty() && request.grant_id != grant_id {
         return Err(ApiError {
@@ -4610,16 +4659,20 @@ async fn accept_kernel_access_grant(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = data_contracts::accept_access_grant_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn issue_kernel_delivery_bundle(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(grant_id): Path<String>,
-    Json(mut request): Json<IssueDeliveryBundleRequest>,
-) -> Result<Json<IssueDeliveryBundleResponse>, ApiError> {
+    Json(request): Json<proto_data::IssueDeliveryBundleRequest>,
+) -> Result<Json<proto_data::IssueDeliveryBundleResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let mut request = data_contracts::issue_delivery_bundle_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
     if !request.delivery_bundle.grant_id.trim().is_empty()
         && request.delivery_bundle.grant_id != grant_id
@@ -4651,16 +4704,20 @@ async fn issue_kernel_delivery_bundle(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = data_contracts::issue_delivery_bundle_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn revoke_kernel_access_grant(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(grant_id): Path<String>,
-    Json(mut request): Json<RevokeAccessGrantRequest>,
-) -> Result<Json<RevokeAccessGrantResponse>, ApiError> {
+    Json(request): Json<proto_data::RevokeAccessGrantRequest>,
+) -> Result<Json<proto_data::RevokeAccessGrantResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let mut request = data_contracts::revoke_access_grant_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
     if !request.revocation.grant_id.trim().is_empty() && request.revocation.grant_id != grant_id {
         return Err(ApiError {
@@ -4690,7 +4747,9 @@ async fn revoke_kernel_access_grant(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = data_contracts::revoke_access_grant_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn create_kernel_liquidity_quote(
@@ -6165,13 +6224,12 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use openagents_kernel_core::authority::{
-        AcceptAccessGrantRequest, AcceptAccessGrantResponse, AcceptComputeOutcomeRequest,
-        AdjustReservePartitionRequest, AdjustReservePartitionResponse,
-        AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
-        BindCoverageRequest, BindCoverageResponse, CashSettleCapacityInstrumentRequest,
-        CloseCapacityInstrumentRequest, CloseStructuredCapacityInstrumentRequest,
-        CorrectComputeIndexRequest, CreateAccessGrantRequest, CreateAccessGrantResponse,
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        AcceptAccessGrantRequest, AcceptComputeOutcomeRequest, AdjustReservePartitionRequest,
+        AdjustReservePartitionResponse, AppendComputeEvaluationSamplesRequest,
+        AppendComputeSyntheticDataSamplesRequest, BindCoverageRequest, BindCoverageResponse,
+        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
+        CreateAccessGrantRequest, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
         CreateComputeEvaluationRunRequest, CreateComputeProductRequest,
         CreateComputeSyntheticDataJobRequest, CreateComputeTrainingRunRequest,
         CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
@@ -6181,17 +6239,17 @@ mod tests {
         ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
         FinalizeComputeEvaluationRunRequest, FinalizeComputeSyntheticDataGenerationRequest,
         FinalizeComputeTrainingRunRequest, FinalizeVerdictRequest, FinalizeVerdictResponse,
-        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, KernelAuthority,
-        PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishComputeIndexRequest,
-        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordComputeAdapterWindowRequest,
+        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueLiquidityEnvelopeRequest,
+        IssueLiquidityEnvelopeResponse, KernelAuthority, PlaceCoverageOfferRequest,
+        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
+        PublishRiskSignalResponse, RecordComputeAdapterWindowRequest,
         RecordComputeSyntheticDataVerificationRequest, RecordDeliveryProofRequest,
         RegisterComputeBenchmarkPackageRequest, RegisterComputeCheckpointFamilyPolicyRequest,
         RegisterComputeEnvironmentPackageRequest, RegisterComputeTrainingPolicyRequest,
-        RegisterComputeValidatorPolicyRequest, RegisterDataAssetRequest, RegisterDataAssetResponse,
+        RegisterComputeValidatorPolicyRequest, RegisterDataAssetRequest,
         RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
-        ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
-        SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+        ResolveRiskClaimResponse, RevokeAccessGrantRequest, SelectRoutePlanRequest,
+        SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
@@ -6228,6 +6286,7 @@ mod tests {
         AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
         DeliveryBundleStatus, PermissionPolicy, RevocationReceipt, RevocationStatus,
     };
+    use openagents_kernel_core::data_contracts;
     use openagents_kernel_core::labor::{
         Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
         Verdict, VerdictOutcome, WorkUnit, WorkUnitStatus,
@@ -6247,6 +6306,7 @@ mod tests {
     };
     use openagents_kernel_core::time::floor_to_minute_utc;
     use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
+    use openagents_kernel_proto::openagents::data::v1 as proto_data;
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
         ValidatorChallengeResult, ValidatorChallengeStatus, ValidatorChallengeVerdict,
@@ -12356,15 +12416,21 @@ mod tests {
                     .uri("/v1/kernel/data/assets")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&data_asset_request(
-                        "asset.data.alpha",
-                        "idemp.data.asset.alpha",
-                        created_at_ms,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &data_contracts::register_data_asset_request_to_proto(
+                            &data_asset_request(
+                                "asset.data.alpha",
+                                "idemp.data.asset.alpha",
+                                created_at_ms,
+                            ),
+                        )?,
+                    )?))?,
             )
             .await?;
         assert_eq!(asset.status(), StatusCode::OK);
-        let asset_payload: RegisterDataAssetResponse = response_json(asset).await?;
+        let asset_payload = data_contracts::register_data_asset_response_from_proto(
+            &response_json::<proto_data::RegisterDataAssetResponse>(asset).await?,
+        )?;
         assert_eq!(
             asset_payload.receipt.receipt_type,
             "kernel.data.asset.register.v1"
@@ -12378,16 +12444,22 @@ mod tests {
                     .uri("/v1/kernel/data/grants")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&access_grant_request(
-                        "grant.data.alpha",
-                        "asset.data.alpha",
-                        "idemp.data.grant.alpha",
-                        created_at_ms + 1_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &data_contracts::create_access_grant_request_to_proto(
+                            &access_grant_request(
+                                "grant.data.alpha",
+                                "asset.data.alpha",
+                                "idemp.data.grant.alpha",
+                                created_at_ms + 1_000,
+                            ),
+                        )?,
+                    )?))?,
             )
             .await?;
         assert_eq!(grant.status(), StatusCode::OK);
-        let grant_payload: CreateAccessGrantResponse = response_json(grant).await?;
+        let grant_payload = data_contracts::create_access_grant_response_from_proto(
+            &response_json::<proto_data::CreateAccessGrantResponse>(grant).await?,
+        )?;
         assert_eq!(
             grant_payload.receipt.receipt_type,
             "kernel.data.grant.offer.v1"
@@ -12406,17 +12478,21 @@ mod tests {
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
-                        &accept_access_grant_request(
-                            "grant.data.alpha",
-                            "consumer.data.alpha",
-                            "idemp.data.accept.alpha",
-                            created_at_ms + 2_000,
-                        ),
+                        &data_contracts::accept_access_grant_request_to_proto(
+                            &accept_access_grant_request(
+                                "grant.data.alpha",
+                                "consumer.data.alpha",
+                                "idemp.data.accept.alpha",
+                                created_at_ms + 2_000,
+                            ),
+                        )?,
                     )?))?,
             )
             .await?;
         assert_eq!(accepted.status(), StatusCode::OK);
-        let accepted_payload: AcceptAccessGrantResponse = response_json(accepted).await?;
+        let accepted_payload = data_contracts::accept_access_grant_response_from_proto(
+            &response_json::<proto_data::AcceptAccessGrantResponse>(accepted).await?,
+        )?;
         assert_eq!(
             accepted_payload.receipt.receipt_type,
             "kernel.data.grant.accept.v1"
@@ -12434,16 +12510,22 @@ mod tests {
                     .uri("/v1/kernel/data/grants/grant.data.alpha/deliveries")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&delivery_bundle_request(
-                        "delivery.data.alpha",
-                        "grant.data.alpha",
-                        "idemp.data.delivery.alpha",
-                        created_at_ms + 3_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &data_contracts::issue_delivery_bundle_request_to_proto(
+                            &delivery_bundle_request(
+                                "delivery.data.alpha",
+                                "grant.data.alpha",
+                                "idemp.data.delivery.alpha",
+                                created_at_ms + 3_000,
+                            ),
+                        )?,
+                    )?))?,
             )
             .await?;
         assert_eq!(delivery.status(), StatusCode::OK);
-        let delivery_payload: IssueDeliveryBundleResponse = response_json(delivery).await?;
+        let delivery_payload = data_contracts::issue_delivery_bundle_response_from_proto(
+            &response_json::<proto_data::IssueDeliveryBundleResponse>(delivery).await?,
+        )?;
         assert_eq!(
             delivery_payload.receipt.receipt_type,
             "kernel.data.delivery.issue.v1"
@@ -12462,17 +12544,21 @@ mod tests {
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
-                        &revoke_access_grant_request(
-                            "revocation.data.alpha",
-                            "grant.data.alpha",
-                            "idemp.data.revoke.alpha",
-                            created_at_ms + 4_000,
-                        ),
+                        &data_contracts::revoke_access_grant_request_to_proto(
+                            &revoke_access_grant_request(
+                                "revocation.data.alpha",
+                                "grant.data.alpha",
+                                "idemp.data.revoke.alpha",
+                                created_at_ms + 4_000,
+                            ),
+                        )?,
                     )?))?,
             )
             .await?;
         assert_eq!(revocation.status(), StatusCode::OK);
-        let revocation_payload: RevokeAccessGrantResponse = response_json(revocation).await?;
+        let revocation_payload = data_contracts::revoke_access_grant_response_from_proto(
+            &response_json::<proto_data::RevokeAccessGrantResponse>(revocation).await?,
+        )?;
         assert_eq!(
             revocation_payload.receipt.receipt_type,
             "kernel.data.revocation.record.v1"
@@ -12500,7 +12586,9 @@ mod tests {
             )
             .await?;
         assert_eq!(listed_assets.status(), StatusCode::OK);
-        let listed_assets_payload: Vec<DataAsset> = response_json(listed_assets).await?;
+        let listed_assets_payload = data_contracts::list_data_assets_response_from_proto(
+            &response_json::<proto_data::ListDataAssetsResponse>(listed_assets).await?,
+        )?;
         assert_eq!(listed_assets_payload.len(), 1);
         assert_eq!(listed_assets_payload[0].asset_id, "asset.data.alpha");
 
@@ -12515,7 +12603,9 @@ mod tests {
             )
             .await?;
         assert_eq!(fetched_asset.status(), StatusCode::OK);
-        let fetched_asset_payload: DataAsset = response_json(fetched_asset).await?;
+        let fetched_asset_payload = data_contracts::get_data_asset_response_from_proto(
+            &response_json::<proto_data::GetDataAssetResponse>(fetched_asset).await?,
+        )?;
         assert_eq!(fetched_asset_payload.asset_kind, "conversation_bundle");
 
         let listed_grants = app
@@ -12529,7 +12619,9 @@ mod tests {
             )
             .await?;
         assert_eq!(listed_grants.status(), StatusCode::OK);
-        let listed_grants_payload: Vec<AccessGrant> = response_json(listed_grants).await?;
+        let listed_grants_payload = data_contracts::list_access_grants_response_from_proto(
+            &response_json::<proto_data::ListAccessGrantsResponse>(listed_grants).await?,
+        )?;
         assert_eq!(listed_grants_payload.len(), 1);
         assert_eq!(listed_grants_payload[0].grant_id, "grant.data.alpha");
 
@@ -12544,7 +12636,9 @@ mod tests {
             )
             .await?;
         assert_eq!(fetched_grant.status(), StatusCode::OK);
-        let fetched_grant_payload: AccessGrant = response_json(fetched_grant).await?;
+        let fetched_grant_payload = data_contracts::get_access_grant_response_from_proto(
+            &response_json::<proto_data::GetAccessGrantResponse>(fetched_grant).await?,
+        )?;
         assert_eq!(fetched_grant_payload.status, AccessGrantStatus::Refunded);
 
         let listed_deliveries = app
@@ -12558,8 +12652,9 @@ mod tests {
             )
             .await?;
         assert_eq!(listed_deliveries.status(), StatusCode::OK);
-        let listed_deliveries_payload: Vec<DeliveryBundle> =
-            response_json(listed_deliveries).await?;
+        let listed_deliveries_payload = data_contracts::list_delivery_bundles_response_from_proto(
+            &response_json::<proto_data::ListDeliveryBundlesResponse>(listed_deliveries).await?,
+        )?;
         assert_eq!(listed_deliveries_payload.len(), 1);
         assert_eq!(
             listed_deliveries_payload[0].delivery_bundle_id,
@@ -12577,7 +12672,9 @@ mod tests {
             )
             .await?;
         assert_eq!(fetched_delivery.status(), StatusCode::OK);
-        let fetched_delivery_payload: DeliveryBundle = response_json(fetched_delivery).await?;
+        let fetched_delivery_payload = data_contracts::get_delivery_bundle_response_from_proto(
+            &response_json::<proto_data::GetDeliveryBundleResponse>(fetched_delivery).await?,
+        )?;
         assert_eq!(
             fetched_delivery_payload.status,
             DeliveryBundleStatus::Revoked
@@ -12594,8 +12691,9 @@ mod tests {
             )
             .await?;
         assert_eq!(listed_revocations.status(), StatusCode::OK);
-        let listed_revocations_payload: Vec<RevocationReceipt> =
-            response_json(listed_revocations).await?;
+        let listed_revocations_payload = data_contracts::list_revocations_response_from_proto(
+            &response_json::<proto_data::ListRevocationsResponse>(listed_revocations).await?,
+        )?;
         assert_eq!(listed_revocations_payload.len(), 1);
         assert_eq!(
             listed_revocations_payload[0].revocation_id,
@@ -12613,12 +12711,32 @@ mod tests {
             )
             .await?;
         assert_eq!(fetched_revocation.status(), StatusCode::OK);
-        let fetched_revocation_payload: RevocationReceipt =
-            response_json(fetched_revocation).await?;
+        let fetched_revocation_payload = data_contracts::get_revocation_response_from_proto(
+            &response_json::<proto_data::GetRevocationResponse>(fetched_revocation).await?,
+        )?;
         assert_eq!(
             fetched_revocation_payload.status,
             RevocationStatus::Refunded
         );
+
+        let snapshot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/snapshot")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(snapshot_response.status(), StatusCode::OK);
+        let snapshot_payload = data_contracts::get_data_market_snapshot_response_from_proto(
+            &response_json::<proto_data::GetDataMarketSnapshotResponse>(snapshot_response).await?,
+        )?;
+        assert_eq!(snapshot_payload.summary.total_assets, 1);
+        assert_eq!(snapshot_payload.summary.total_grants, 1);
+        assert_eq!(snapshot_payload.summary.total_deliveries, 1);
+        assert_eq!(snapshot_payload.summary.total_revocations, 1);
 
         let stats_response = app
             .clone()
@@ -12673,11 +12791,15 @@ mod tests {
                     .uri("/v1/kernel/data/assets")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&data_asset_request(
-                        "asset.data.expiry",
-                        "idemp.data.asset.expiry",
-                        created_at_ms,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &data_contracts::register_data_asset_request_to_proto(
+                            &data_asset_request(
+                                "asset.data.expiry",
+                                "idemp.data.asset.expiry",
+                                created_at_ms,
+                            ),
+                        )?,
+                    )?))?,
             )
             .await?;
         assert_eq!(asset.status(), StatusCode::OK);
@@ -12690,12 +12812,16 @@ mod tests {
                     .uri("/v1/kernel/data/grants")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&access_grant_request(
-                        "grant.data.expiry",
-                        "asset.data.expiry",
-                        "idemp.data.grant.expiry",
-                        created_at_ms + 1_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &data_contracts::create_access_grant_request_to_proto(
+                            &access_grant_request(
+                                "grant.data.expiry",
+                                "asset.data.expiry",
+                                "idemp.data.grant.expiry",
+                                created_at_ms + 1_000,
+                            ),
+                        )?,
+                    )?))?,
             )
             .await?;
         assert_eq!(grant.status(), StatusCode::OK);
@@ -12709,12 +12835,14 @@ mod tests {
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
-                        &accept_access_grant_request(
-                            "grant.data.expiry",
-                            "consumer.data.expiry",
-                            "idemp.data.accept.expiry",
-                            created_at_ms + 2_000,
-                        ),
+                        &data_contracts::accept_access_grant_request_to_proto(
+                            &accept_access_grant_request(
+                                "grant.data.expiry",
+                                "consumer.data.expiry",
+                                "idemp.data.accept.expiry",
+                                created_at_ms + 2_000,
+                            ),
+                        )?,
                     )?))?,
             )
             .await?;
@@ -12728,12 +12856,16 @@ mod tests {
                     .uri("/v1/kernel/data/grants/grant.data.expiry/deliveries")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&delivery_bundle_request(
-                        "delivery.data.expiry",
-                        "grant.data.expiry",
-                        "idemp.data.delivery.expiry",
-                        created_at_ms + 3_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &data_contracts::issue_delivery_bundle_request_to_proto(
+                            &delivery_bundle_request(
+                                "delivery.data.expiry",
+                                "grant.data.expiry",
+                                "idemp.data.delivery.expiry",
+                                created_at_ms + 3_000,
+                            ),
+                        )?,
+                    )?))?,
             )
             .await?;
         assert_eq!(delivery.status(), StatusCode::OK);
@@ -12747,17 +12879,21 @@ mod tests {
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
-                        &expire_access_grant_request(
-                            "revocation.data.expiry",
-                            "grant.data.expiry",
-                            "idemp.data.expiry.alpha",
-                            created_at_ms + 4_000,
-                        ),
+                        &data_contracts::revoke_access_grant_request_to_proto(
+                            &expire_access_grant_request(
+                                "revocation.data.expiry",
+                                "grant.data.expiry",
+                                "idemp.data.expiry.alpha",
+                                created_at_ms + 4_000,
+                            ),
+                        )?,
                     )?))?,
             )
             .await?;
         assert_eq!(revocation.status(), StatusCode::OK);
-        let revocation_payload: RevokeAccessGrantResponse = response_json(revocation).await?;
+        let revocation_payload = data_contracts::revoke_access_grant_response_from_proto(
+            &response_json::<proto_data::RevokeAccessGrantResponse>(revocation).await?,
+        )?;
         assert_eq!(
             revocation_payload.revocation.status,
             RevocationStatus::Revoked
@@ -12774,7 +12910,9 @@ mod tests {
             )
             .await?;
         assert_eq!(fetched_grant.status(), StatusCode::OK);
-        let fetched_grant_payload: AccessGrant = response_json(fetched_grant).await?;
+        let fetched_grant_payload = data_contracts::get_access_grant_response_from_proto(
+            &response_json::<proto_data::GetAccessGrantResponse>(fetched_grant).await?,
+        )?;
         assert_eq!(fetched_grant_payload.status, AccessGrantStatus::Expired);
 
         let fetched_delivery = app
@@ -12788,7 +12926,9 @@ mod tests {
             )
             .await?;
         assert_eq!(fetched_delivery.status(), StatusCode::OK);
-        let fetched_delivery_payload: DeliveryBundle = response_json(fetched_delivery).await?;
+        let fetched_delivery_payload = data_contracts::get_delivery_bundle_response_from_proto(
+            &response_json::<proto_data::GetDeliveryBundleResponse>(fetched_delivery).await?,
+        )?;
         assert_eq!(
             fetched_delivery_payload.status,
             DeliveryBundleStatus::Expired
@@ -12913,6 +13053,13 @@ mod tests {
 
         let revocation = client.get_revocation("revocation.data.client").await?;
         assert_eq!(revocation.status, RevocationStatus::Refunded);
+
+        let snapshot = client.get_data_market_snapshot().await?;
+        assert_eq!(snapshot.summary.total_assets, 1);
+        assert_eq!(snapshot.summary.total_grants, 1);
+        assert_eq!(snapshot.summary.total_deliveries, 1);
+        assert_eq!(snapshot.summary.total_revocations, 1);
+        assert!(matches!(snapshot.summary.latest_activity_at_ms, Some(value) if value > 0));
 
         server.abort();
         Ok(())

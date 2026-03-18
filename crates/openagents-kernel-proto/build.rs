@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/openagents/compute/v1/compute_instruments.proto",
         "../../proto/openagents/compute/v1/compute_delivery.proto",
         "../../proto/openagents/compute/v1/compute_indices.proto",
+        "../../proto/openagents/data/v1/data.proto",
         "../../proto/openagents/labor/v1/work.proto",
     ];
 

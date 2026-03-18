@@ -141,7 +141,12 @@ That maps naturally to:
 
 ### 3. It avoids blocking on missing proto work
 
-The docs are explicit that there is not yet a dedicated checked-in `openagents.data.v1` package.
+At the time this plan was first written, there was not yet a dedicated checked-in
+`openagents.data.v1` package.
+
+That package now exists together with a starter combined data-market snapshot
+read model, but the MVP lesson remains the same: wire-package work should
+follow the real market loop rather than delaying it.
 
 For a near-term MVP, the system should **not** wait for:
 
@@ -264,7 +269,9 @@ The kernel is the authority lane.
 
 ## Proposed NIP-90 Data Market profile
 
-Because the docs do not yet define a dedicated checked-in OpenAgents data proto package or a canonical public data-market request kind, the MVP should define a narrow **OpenAgents data-vending profile** on top of NIP-90.
+Even with a dedicated checked-in OpenAgents data proto package now present, the
+MVP should still define a narrow **OpenAgents data-vending profile** on top of
+NIP-90 rather than treating the proto package as the transport itself.
 
 ### Request kind posture
 
@@ -580,7 +587,7 @@ Mitigation:
 Mitigation:
 
 * launch against the existing authority slice
-* defer dedicated `openagents.data.v1` until after the MVP loop exists
+* keep the checked-in `openagents.data.v1` slice narrow and reality-driven instead of waiting for a perfect public-market schema
 
 ### 4. Copying the compute race model too literally
 
@@ -594,7 +601,7 @@ Mitigation:
 The strongest near-term move is:
 
 * **do not invent a second transport**
-* **do not wait for a dedicated data proto package**
+* **do not wait for a full public-market schema beyond the current dedicated data proto package**
 * **do not make the first data MVP an open public search marketplace**
 
 Instead:
@@ -613,7 +620,7 @@ That gives OpenAgents a truthful Data Market MVP this week:
 
 After the MVP loop exists, the next steps should be:
 
-* dedicated `openagents.data.v1` proto work
+* extend `openagents.data.v1` beyond the current mutation/snapshot slice where reality requires it
 * richer data-asset read models and browsing surfaces
 * better provenance and packaging semantics
 * broader provider economics and payout visibility
