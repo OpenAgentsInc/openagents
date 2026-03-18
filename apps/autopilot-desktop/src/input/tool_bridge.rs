@@ -17,6 +17,10 @@ use crate::app_state::{
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
+    OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS, OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_LABOR_CLAIM_DENY,
     OPENAGENTS_TOOL_LABOR_CLAIM_OPEN, OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY,
     OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE, OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW,
@@ -64,6 +68,21 @@ const LEGACY_OPENAGENTS_TOOL_PANE_FOCUS: &str = "openagents.pane.focus";
 const LEGACY_OPENAGENTS_TOOL_PANE_CLOSE: &str = "openagents.pane.close";
 const LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents.pane.set_input";
 const LEGACY_OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents.pane.action";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS: &str =
+    "openagents.data_market.seller_status";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET: &str =
+    "openagents.data_market.draft_asset";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET: &str =
+    "openagents.data_market.preview_asset";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET: &str =
+    "openagents.data_market.publish_asset";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT: &str =
+    "openagents.data_market.draft_grant";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT: &str =
+    "openagents.data_market.preview_grant";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
+    "openagents.data_market.publish_grant";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents.data_market.snapshot";
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
 const LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents.swap.quote";
@@ -88,6 +107,14 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_CLOSE,
     LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT,
     LEGACY_OPENAGENTS_TOOL_PANE_ACTION,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
     LEGACY_OPENAGENTS_TOOL_SWAP_QUOTE,
@@ -110,6 +137,7 @@ pub(super) const OPENAGENTS_TOOL_PREFIXES: &[&str] = &["openagents_", "openagent
 pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = OPENAGENTS_DYNAMIC_TOOL_NAMES;
 const CAD_TOOL_RESPONSE_SCHEMA_VERSION: &str = "oa.cad.tool_response.v1";
 const CAD_CHECKPOINT_SCHEMA_VERSION: &str = "oa.cad.checkpoint.v1";
+const DATA_MARKET_TOOL_SCHEMA_VERSION: &str = "oa.data_market.tool.v1";
 const CAD_INTENT_PARSE_RETRY_LIMIT: u8 = 1;
 const CAD_INTENT_TOOL_ENABLED_ENV: &str = "OPENAGENTS_CAD_INTENT_TOOL_ENABLED";
 
@@ -262,6 +290,49 @@ struct PaneActionArgs {
     action: String,
     #[serde(default)]
     index: Option<usize>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketDraftAssetArgs {
+    #[serde(default)]
+    asset_kind: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    content_digest: Option<String>,
+    #[serde(default)]
+    provenance_ref: Option<String>,
+    #[serde(default)]
+    default_policy: Option<String>,
+    #[serde(default)]
+    price_hint_sats: Option<u64>,
+    #[serde(default)]
+    delivery_modes: Option<Vec<String>>,
+    #[serde(default)]
+    visibility_posture: Option<String>,
+    #[serde(default)]
+    sensitivity_posture: Option<String>,
+    #[serde(default)]
+    metadata: Option<Value>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketDraftGrantArgs {
+    #[serde(default)]
+    default_policy: Option<String>,
+    #[serde(default)]
+    price_hint_sats: Option<u64>,
+    #[serde(default)]
+    delivery_modes: Option<Vec<String>>,
+    #[serde(default)]
+    visibility_posture: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketPublishArgs {
+    confirm: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -624,6 +695,53 @@ pub(super) fn execute_openagents_tool_request(
     }
 
     match decoded.tool.as_str() {
+        OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS => {
+            execute_data_market_seller_status_tool(state)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET => {
+            let args = match decoded.decode_arguments::<DataMarketDraftAssetArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_draft_asset_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET => {
+            execute_data_market_preview_asset_tool(state)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET => {
+            let args = match decoded.decode_arguments::<DataMarketPublishArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_publish_asset_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT => {
+            let args = match decoded.decode_arguments::<DataMarketDraftGrantArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_draft_grant_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT => {
+            execute_data_market_preview_grant_tool(state)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT => {
+            let args = match decoded.decode_arguments::<DataMarketPublishArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_publish_grant_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT => {
+            execute_data_market_snapshot_tool(state)
+        }
         OPENAGENTS_TOOL_PANE_LIST | LEGACY_OPENAGENTS_TOOL_PANE_LIST => execute_pane_list(state),
         OPENAGENTS_TOOL_PANE_OPEN | LEGACY_OPENAGENTS_TOOL_PANE_OPEN => {
             let args = match decoded.decode_arguments::<PaneRefArgs>() {
@@ -738,6 +856,333 @@ pub(super) fn execute_openagents_tool_request(
             }),
         ),
     }
+}
+
+fn parse_data_seller_visibility_posture(
+    value: &str,
+) -> Result<crate::app_state::DataSellerVisibilityPosture, ToolBridgeResultEnvelope> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "targeted_only" => Ok(crate::app_state::DataSellerVisibilityPosture::TargetedOnly),
+        "operator_only" => Ok(crate::app_state::DataSellerVisibilityPosture::OperatorOnly),
+        "public_catalog" => Ok(crate::app_state::DataSellerVisibilityPosture::PublicCatalog),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-VISIBILITY-INVALID",
+            format!("Unsupported visibility_posture '{}'", value),
+            json!({
+                "expected": ["targeted_only", "operator_only", "public_catalog"],
+                "received": value,
+            }),
+        )),
+    }
+}
+
+fn parse_data_seller_sensitivity_posture(
+    value: &str,
+) -> Result<crate::app_state::DataSellerSensitivityPosture, ToolBridgeResultEnvelope> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "private" => Ok(crate::app_state::DataSellerSensitivityPosture::Private),
+        "restricted" => Ok(crate::app_state::DataSellerSensitivityPosture::Restricted),
+        "public" => Ok(crate::app_state::DataSellerSensitivityPosture::Public),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-SENSITIVITY-INVALID",
+            format!("Unsupported sensitivity_posture '{}'", value),
+            json!({
+                "expected": ["private", "restricted", "public"],
+                "received": value,
+            }),
+        )),
+    }
+}
+
+fn parse_string_map(
+    value: Value,
+    field_name: &str,
+) -> Result<std::collections::HashMap<String, String>, ToolBridgeResultEnvelope> {
+    let Value::Object(entries) = value else {
+        return Err(ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-METADATA-INVALID",
+            format!("{field_name} must be a JSON object of string values"),
+            json!({
+                "field": field_name,
+            }),
+        ));
+    };
+    let mut normalized = std::collections::HashMap::new();
+    for (key, value) in entries {
+        let Some(text) = value.as_str() else {
+            return Err(ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-METADATA-INVALID",
+                format!("{field_name} values must be strings"),
+                json!({
+                    "field": field_name,
+                    "key": key,
+                    "value": value,
+                }),
+            ));
+        };
+        normalized.insert(key, text.to_string());
+    }
+    Ok(normalized)
+}
+
+fn data_seller_tool_snapshot(state: &RenderState) -> Value {
+    json!({
+        "schema_version": DATA_MARKET_TOOL_SCHEMA_VERSION,
+        "seller": {
+            "load_state": state.data_seller.load_state.label(),
+            "preview_enabled": state.data_seller.preview_enabled,
+            "publish_enabled": state.data_seller.publish_enabled,
+            "status_line": state.data_seller.status_line,
+            "last_action": state.data_seller.last_action,
+            "last_error": state.data_seller.last_error,
+            "codex_session_phase": state.data_seller.codex_session_phase.label(),
+            "codex_thread_id": state.data_seller.codex_thread_id,
+            "required_skill_names": state.data_seller.codex_profile.required_skill_names,
+            "required_skill_count": state.data_seller.required_skill_count(),
+            "draft": {
+                "asset_kind": state.data_seller.active_draft.asset_kind,
+                "title": state.data_seller.active_draft.title,
+                "description": state.data_seller.active_draft.description,
+                "content_digest": state.data_seller.active_draft.content_digest,
+                "provenance_ref": state.data_seller.active_draft.provenance_ref,
+                "default_policy": state.data_seller.active_draft.default_policy,
+                "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
+                "delivery_modes": state.data_seller.active_draft.delivery_modes,
+                "visibility_posture": state.data_seller.active_draft.visibility_posture.label(),
+                "sensitivity_posture": state.data_seller.active_draft.sensitivity_posture.label(),
+                "preview_posture": state.data_seller.active_draft.preview_posture.label(),
+                "metadata": state.data_seller.active_draft.metadata,
+                "readiness_blockers": state
+                    .data_seller
+                    .active_draft
+                    .readiness_blockers
+                    .iter()
+                    .map(|blocker| json!({
+                        "code": blocker.code,
+                        "message": blocker.message,
+                    }))
+                    .collect::<Vec<_>>(),
+                "last_previewed_asset_payload": state.data_seller.active_draft.last_previewed_asset_payload,
+                "last_previewed_grant_payload": state.data_seller.active_draft.last_previewed_grant_payload,
+                "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
+                "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
+            }
+        }
+    })
+}
+
+fn execute_data_market_seller_status_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-SELLER-STATUS",
+        "Loaded Data Seller status snapshot.",
+        data_seller_tool_snapshot(state),
+    )
+}
+
+fn execute_data_market_draft_asset_tool(
+    state: &mut RenderState,
+    args: &DataMarketDraftAssetArgs,
+) -> ToolBridgeResultEnvelope {
+    if let Some(value) = args.asset_kind.as_ref() {
+        state.data_seller.active_draft.asset_kind = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.title.as_ref() {
+        state.data_seller.active_draft.title = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.description.as_ref() {
+        state.data_seller.active_draft.description = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.content_digest.as_ref() {
+        state.data_seller.active_draft.content_digest = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.provenance_ref.as_ref() {
+        state.data_seller.active_draft.provenance_ref = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.default_policy.as_ref() {
+        state.data_seller.active_draft.default_policy = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.price_hint_sats {
+        state.data_seller.active_draft.price_hint_sats = Some(value);
+    }
+    if let Some(value) = args.delivery_modes.as_ref() {
+        state.data_seller.active_draft.delivery_modes = value
+            .iter()
+            .map(|entry| entry.trim())
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| entry.to_string())
+            .collect();
+    }
+    if let Some(value) = args.visibility_posture.as_deref() {
+        state.data_seller.active_draft.visibility_posture =
+            match parse_data_seller_visibility_posture(value) {
+                Ok(parsed) => parsed,
+                Err(error) => return error,
+            };
+    }
+    if let Some(value) = args.sensitivity_posture.as_deref() {
+        state.data_seller.active_draft.sensitivity_posture =
+            match parse_data_seller_sensitivity_posture(value) {
+                Ok(parsed) => parsed,
+                Err(error) => return error,
+            };
+    }
+    if let Some(value) = args.metadata.clone() {
+        state.data_seller.active_draft.metadata = match parse_string_map(value, "metadata") {
+            Ok(parsed) => parsed,
+            Err(error) => return error,
+        };
+    }
+    state
+        .data_seller
+        .note_draft_mutation("Updated Data Seller asset draft fields via typed tool");
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-DRAFT-ASSET-UPDATED",
+        "Updated the local Data Seller asset draft.",
+        data_seller_tool_snapshot(state),
+    )
+}
+
+fn execute_data_market_preview_asset_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+    state.data_seller.request_preview();
+    let success = matches!(
+        state.data_seller.active_draft.preview_posture,
+        crate::app_state::DataSellerPreviewPosture::StructuralPreviewReady
+    );
+    if success {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-ASSET-PREVIEW-READY",
+            "Produced the current Data Seller asset preview payload.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-ASSET-PREVIEW-BLOCKED",
+            "Asset preview is blocked until the remaining readiness blockers are resolved.",
+            data_seller_tool_snapshot(state),
+        )
+    }
+}
+
+fn execute_data_market_publish_asset_tool(
+    state: &mut RenderState,
+    args: &DataMarketPublishArgs,
+) -> ToolBridgeResultEnvelope {
+    if !args.confirm {
+        return ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-CONFIRM-REQUIRED",
+            "Asset publish requires confirm=true after preview has been inspected.",
+            data_seller_tool_snapshot(state),
+        );
+    }
+    state.data_seller.request_publish();
+    ToolBridgeResultEnvelope::error(
+        "OA-DATA-MARKET-PUBLISH-BLOCKED",
+        state
+            .data_seller
+            .last_error
+            .clone()
+            .unwrap_or_else(|| "Asset publish is not yet wired to exact authority mutation.".to_string()),
+        data_seller_tool_snapshot(state),
+    )
+}
+
+fn execute_data_market_draft_grant_tool(
+    state: &mut RenderState,
+    args: &DataMarketDraftGrantArgs,
+) -> ToolBridgeResultEnvelope {
+    if let Some(value) = args.default_policy.as_ref() {
+        state.data_seller.active_draft.default_policy = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.price_hint_sats {
+        state.data_seller.active_draft.price_hint_sats = Some(value);
+    }
+    if let Some(value) = args.delivery_modes.as_ref() {
+        state.data_seller.active_draft.delivery_modes = value
+            .iter()
+            .map(|entry| entry.trim())
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| entry.to_string())
+            .collect();
+    }
+    if let Some(value) = args.visibility_posture.as_deref() {
+        state.data_seller.active_draft.visibility_posture =
+            match parse_data_seller_visibility_posture(value) {
+                Ok(parsed) => parsed,
+                Err(error) => return error,
+            };
+    }
+    state
+        .data_seller
+        .note_draft_mutation("Updated Data Seller default grant posture via typed tool");
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-DRAFT-GRANT-UPDATED",
+        "Updated the derived Data Seller grant posture.",
+        data_seller_tool_snapshot(state),
+    )
+}
+
+fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+    state.data_seller.request_preview();
+    let success = state
+        .data_seller
+        .active_draft
+        .last_previewed_grant_payload
+        .is_some();
+    if success {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-GRANT-PREVIEW-READY",
+            "Produced the current derived grant preview payload.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-GRANT-PREVIEW-BLOCKED",
+            "Grant preview is blocked until the remaining readiness blockers are resolved.",
+            data_seller_tool_snapshot(state),
+        )
+    }
+}
+
+fn execute_data_market_publish_grant_tool(
+    state: &mut RenderState,
+    args: &DataMarketPublishArgs,
+) -> ToolBridgeResultEnvelope {
+    if !args.confirm {
+        return ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-CONFIRM-REQUIRED",
+            "Grant publish requires confirm=true after preview has been inspected.",
+            data_seller_tool_snapshot(state),
+        );
+    }
+    ToolBridgeResultEnvelope::error(
+        "OA-DATA-MARKET-GRANT-PUBLISH-BLOCKED",
+        "Grant publish remains blocked until the typed authority mutation slice lands.",
+        data_seller_tool_snapshot(state),
+    )
+}
+
+fn execute_data_market_snapshot_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+    let mut details = data_seller_tool_snapshot(state);
+    if let Some(object) = details.as_object_mut() {
+        object.insert(
+            "market".to_string(),
+            json!({
+                "load_state": state.data_market.load_state.label(),
+                "asset_count": state.data_market.assets.len(),
+                "grant_count": state.data_market.grants.len(),
+                "delivery_count": state.data_market.deliveries.len(),
+                "revocation_count": state.data_market.revocations.len(),
+                "last_refreshed_at_ms": state.data_market.last_refreshed_at_ms,
+                "last_action": state.data_market.last_action,
+                "last_error": state.data_market.last_error,
+            }),
+        );
+    }
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-SNAPSHOT",
+        "Loaded Data Market seller and read-model snapshot.",
+        details,
+    )
 }
 
 fn is_supported_tool(tool: &str) -> bool {
@@ -6461,17 +6906,20 @@ fn normalize_key(value: &str) -> String {
 mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
-        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
+        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
         OPENAGENTS_TOOL_LABOR_SCOPE, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
         OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
         OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
         cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request,
         enforce_labor_evidence_uri_scope, enforce_matching_labor_contract_scope, normalize_key,
         pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
-        parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
-        parse_nip90_sent_payments_boundary, parse_swap_direction, parse_swap_unit,
-        parse_treasury_transfer_asset, resolve_pane_kind_for_runtime, run_blink_swap_script_json,
-        select_existing_blink_swap_script_path, validate_direction_unit,
+        parse_blink_quote_terms_from_json, parse_bool_env_override,
+        parse_data_seller_sensitivity_posture, parse_data_seller_visibility_posture,
+        parse_goal_rollout_stage, parse_nip90_sent_payments_boundary, parse_swap_direction,
+        parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind_for_runtime,
+        run_blink_swap_script_json, select_existing_blink_swap_script_path,
+        validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -6620,6 +7068,50 @@ mod tests {
         ))
         .expect("labor scope tool should decode");
         assert_eq!(decoded.tool, OPENAGENTS_TOOL_LABOR_SCOPE);
+    }
+
+    #[test]
+    fn data_market_draft_asset_decode_accepts_structured_patch() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
+            r#"{"title":"Research bundle","content_digest":"sha256:test","delivery_modes":["bundle_ref","targeted_nip90"]}"#,
+        ))
+        .expect("decode should succeed");
+        let args: super::DataMarketDraftAssetArgs =
+            decoded.decode_arguments().expect("draft asset args decode");
+        assert_eq!(args.title.as_deref(), Some("Research bundle"));
+        assert_eq!(args.content_digest.as_deref(), Some("sha256:test"));
+        assert_eq!(
+            args.delivery_modes,
+            Some(vec!["bundle_ref".to_string(), "targeted_nip90".to_string()])
+        );
+    }
+
+    #[test]
+    fn data_market_publish_asset_decode_requires_confirm_field() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+            r#"{}"#,
+        ))
+        .expect("decode should succeed");
+        let error = decoded
+            .decode_arguments::<super::DataMarketPublishArgs>()
+            .expect_err("confirm should be required");
+        assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
+    fn data_market_posture_parsers_accept_expected_labels() {
+        assert_eq!(
+            parse_data_seller_visibility_posture("public_catalog")
+                .expect("visibility should parse"),
+            crate::app_state::DataSellerVisibilityPosture::PublicCatalog
+        );
+        assert_eq!(
+            parse_data_seller_sensitivity_posture("restricted")
+                .expect("sensitivity should parse"),
+            crate::app_state::DataSellerSensitivityPosture::Restricted
+        );
     }
 
     #[test]
