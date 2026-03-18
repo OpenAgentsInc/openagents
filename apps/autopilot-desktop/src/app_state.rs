@@ -120,6 +120,7 @@ pub enum PaneKind {
     LogStream,
     BuyModePayments,
     Nip90SentPayments,
+    DataSeller,
     DataMarket,
     BuyerRaceMatrix,
     SellerEarningsTimeline,
@@ -1074,6 +1075,96 @@ pub struct DataMarketPaneState {
     pub grants: Vec<AccessGrant>,
     pub deliveries: Vec<DeliveryBundle>,
     pub revocations: Vec<RevocationReceipt>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerShellSpeaker {
+    System,
+    SellerAgent,
+    Seller,
+}
+
+impl DataSellerShellSpeaker {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::SellerAgent => "seller agent",
+            Self::Seller => "seller",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataSellerShellMessage {
+    pub speaker: DataSellerShellSpeaker,
+    pub content: String,
+}
+
+pub struct DataSellerPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub status_line: String,
+    pub preview_enabled: bool,
+    pub publish_enabled: bool,
+    pub transcript_shell: Vec<DataSellerShellMessage>,
+}
+
+impl Default for DataSellerPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some(
+                "Data Seller shell ready; seller profile, draft model, and publish tools are still pending"
+                    .to_string(),
+            ),
+            status_line: "Shell only: preview and publish remain intentionally blocked until the structured draft and typed data-market tools land.".to_string(),
+            preview_enabled: false,
+            publish_enabled: false,
+            transcript_shell: vec![
+                DataSellerShellMessage {
+                    speaker: DataSellerShellSpeaker::System,
+                    content: "This pane is the conversational authoring surface for data listings. Kernel objects remain the economic truth.".to_string(),
+                },
+                DataSellerShellMessage {
+                    speaker: DataSellerShellSpeaker::SellerAgent,
+                    content: "Describe the asset, intended buyers, access posture, and the initial price or permission policy.".to_string(),
+                },
+                DataSellerShellMessage {
+                    speaker: DataSellerShellSpeaker::Seller,
+                    content: "Seller profile and structured draft gating are landing next. Use this shell to verify the pane surface and blocked publish controls.".to_string(),
+                },
+            ],
+        }
+    }
+}
+
+impl DataSellerPaneState {
+    pub fn mark_opened(&mut self) {
+        self.last_action = Some(
+            "Opened Data Seller shell; conversational seller profile and typed tools are pending"
+                .to_string(),
+        );
+        self.last_error = None;
+    }
+
+    pub fn request_preview(&mut self) {
+        self.last_action = Some("Preview requested from Data Seller shell".to_string());
+        self.last_error = None;
+        self.status_line =
+            "Preview is blocked until DataSellerDraft and exact preview payload support ship."
+                .to_string();
+    }
+
+    pub fn request_publish(&mut self) {
+        self.last_action = Some("Publish requested from Data Seller shell".to_string());
+        self.last_error = Some(
+            "Publish is blocked until structured draft readiness, exact preview, and explicit confirmation are wired.".to_string(),
+        );
+        self.status_line =
+            "Publish remains gated behind the draft -> preview -> confirm path.".to_string();
+    }
 }
 
 impl Default for DataMarketPaneState {
@@ -10518,6 +10609,7 @@ impl_pane_status_access!(
     TassadarLabPaneState,
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
+    DataSellerPaneState,
     DataMarketPaneState,
     StableSatsSimulationPaneState,
 );
@@ -10633,6 +10725,7 @@ pub struct RenderState {
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub nip90_sent_payments: Nip90SentPaymentsPaneState,
+    pub data_seller: DataSellerPaneState,
     pub data_market: DataMarketPaneState,
     pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,

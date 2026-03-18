@@ -22,7 +22,7 @@ smuggled through opaque prompt state.
 
 | Dimension | Status | Notes |
 | --- | --- | --- |
-| Product surface | starter read surface | there is now a dedicated read-only data-market pane in the desktop app, but no buyer/seller transaction UX yet |
+| Product surface | starter read surface + seller shell | there is now a dedicated read-only data-market pane in the desktop app plus an initial `Data Seller` shell with blocked preview/publish controls, but no truthful seller or buyer transaction UX yet |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
@@ -35,6 +35,7 @@ smuggled through opaque prompt state.
 - accept an access grant
 - issue a `DeliveryBundle`
 - revoke access and emit a `RevocationReceipt`
+- open a dedicated `Data Seller` desktop shell with transcript, draft-card, and blocked preview/publish scaffolding
 
 The starter authority slice is real in:
 
@@ -74,7 +75,7 @@ Authenticated HTTP read routes are live under:
 ## Not implemented yet
 
 - a transactional buyer-facing data market in Autopilot
-- dedicated seller inventory UX for data assets
+- truthful seller publication UX for data assets; the current seller pane is shell-only
 - discovery, listing, and pricing surfaces for data buyers
 - payout and provider-economics flows specific to data access
 - a dedicated checked-in `openagents.data.v1` proto package

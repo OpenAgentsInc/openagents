@@ -433,6 +433,12 @@ pub enum Nip90SentPaymentsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerPaneAction {
+    PreviewDraft,
+    PublishDraft,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataMarketPaneAction {
     Refresh,
 }
@@ -1032,6 +1038,7 @@ pub enum PaneHitAction {
     LogStream(LogStreamPaneAction),
     BuyModePayments(BuyModePaymentsPaneAction),
     Nip90SentPayments(Nip90SentPaymentsPaneAction),
+    DataSeller(DataSellerPaneAction),
     DataMarket(DataMarketPaneAction),
     SparkReplay(SparkReplayPaneAction),
     CodexAccount(CodexAccountPaneAction),
@@ -1188,6 +1195,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         }
         PaneKind::LogStream => pane_size_for_content(980.0, 560.0),
         PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
+        PaneKind::DataSeller => pane_size_for_content(1160.0, 680.0),
         PaneKind::DataMarket => pane_size_for_content(1120.0, 640.0),
         PaneKind::SellerEarningsTimeline => pane_size_for_content(1120.0, 620.0),
         PaneKind::SettlementLadder => pane_size_for_content(1120.0, 620.0),
@@ -1285,6 +1293,8 @@ impl PaneController {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
             focus_apple_adapter_training_input_for_pane_open(state);
+        } else if kind == PaneKind::DataSeller {
+            state.data_seller.mark_opened();
         } else if kind == PaneKind::DataMarket {
             crate::data_market_control::refresh_data_market_snapshot(state);
         }
@@ -1764,6 +1774,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::LogStream
             | PaneKind::BuyModePayments
             | PaneKind::Nip90SentPayments
+            | PaneKind::DataSeller
             | PaneKind::DataMarket
             | PaneKind::BuyerRaceMatrix
             | PaneKind::SellerEarningsTimeline
@@ -2372,6 +2383,20 @@ pub fn data_market_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
         92.0,
         22.0,
     )
+}
+
+pub fn data_seller_preview_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 8.0,
+        116.0,
+        22.0,
+    )
+}
+
+pub fn data_seller_publish_button_bounds(content_bounds: Bounds) -> Bounds {
+    let preview = data_seller_preview_button_bounds(content_bounds);
+    Bounds::new(preview.max_x() + 8.0, preview.origin.y, 92.0, 22.0)
 }
 
 pub fn spark_replay_prev_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -7775,6 +7800,19 @@ fn pane_hit_action_for_pane(
             } else if nip90_sent_payments_copy_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::Nip90SentPayments(
                     Nip90SentPaymentsPaneAction::CopyReport,
+                ))
+            } else {
+                None
+            }
+        }
+        PaneKind::DataSeller => {
+            if data_seller_preview_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataSeller(
+                    DataSellerPaneAction::PreviewDraft,
+                ))
+            } else if data_seller_publish_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataSeller(
+                    DataSellerPaneAction::PublishDraft,
                 ))
             } else {
                 None

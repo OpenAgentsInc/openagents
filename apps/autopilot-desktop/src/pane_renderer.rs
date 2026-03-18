@@ -9,19 +9,20 @@ use crate::app_state::{
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
     CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
     CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
-    DataMarketPaneState, DesktopPane, EarnJobLifecycleProjectionState, EarningsScoreboardState,
-    FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
-    MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
-    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
-    PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
-    ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
-    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
-    RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
-    StarterJobStatus, StarterJobsState, SyncHealthState, TassadarLabPaneState,
-    TrajectoryAuditPaneState, mission_control_local_runtime_is_ready,
-    mission_control_local_runtime_lane, mission_control_show_local_model_button,
+    DataMarketPaneState, DataSellerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
+    EarningsScoreboardState, FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState,
+    JobInboxState, JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    LogStreamPaneState, MissionControlLocalRuntimeLane, MissionControlPaneState,
+    NetworkRequestsPaneInputs, NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState,
+    PaneKind, PaneLoadState, PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState,
+    PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState,
+    ProviderControlPaneState, ProviderRuntimeState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
+    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
+    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, StarterJobStatus,
+    StarterJobsState, SyncHealthState, TassadarLabPaneState, TrajectoryAuditPaneState,
+    mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
+    mission_control_show_local_model_button,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -76,14 +77,14 @@ use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
     buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
     calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane, data_market as data_market_pane, earnings_jobs as earnings_jobs_pane,
-    frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
-    local_inference as local_inference_pane, log_stream as log_stream_pane,
-    nip90_sent_payments as nip90_sent_payments_pane, presentation as presentation_pane,
-    project_ops as project_ops_pane, provider_control as provider_control_pane,
-    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
-    relay_connections as relay_connections_pane, rive as rive_pane,
-    seller_earnings_timeline as seller_earnings_timeline_pane,
+    credit as credit_pane, data_market as data_market_pane, data_seller as data_seller_pane,
+    earnings_jobs as earnings_jobs_pane, frame_debugger as frame_debugger_pane,
+    key_ledger as key_ledger_pane, local_inference as local_inference_pane,
+    log_stream as log_stream_pane, nip90_sent_payments as nip90_sent_payments_pane,
+    presentation as presentation_pane, project_ops as project_ops_pane,
+    provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
+    relay_choreography as relay_choreography_pane, relay_connections as relay_connections_pane,
+    rive as rive_pane, seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, tassadar_lab as tassadar_lab_pane,
     wallet as wallet_pane,
@@ -224,6 +225,7 @@ impl PaneRenderer {
         log_stream: &mut LogStreamPaneState,
         buy_mode_payments: &mut BuyModePaymentsPaneState,
         nip90_sent_payments: &mut Nip90SentPaymentsPaneState,
+        data_seller: &DataSellerPaneState,
         data_market: &DataMarketPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
@@ -307,6 +309,7 @@ impl PaneRenderer {
                     nip90_payment_facts,
                     relay_connections,
                     nip90_sent_payments,
+                    data_seller,
                     data_market,
                     spark_replay,
                     spark_wallet,
@@ -588,6 +591,9 @@ impl PaneRenderer {
                         paint,
                     );
                 }
+                PaneKind::DataSeller => {
+                    data_seller_pane::paint(content_bounds, data_seller, paint);
+                }
                 PaneKind::DataMarket => {
                     data_market_pane::paint(content_bounds, data_market, paint);
                 }
@@ -836,6 +842,7 @@ fn inactive_pane_render_policy(kind: PaneKind) -> InactivePaneRenderPolicy {
         | PaneKind::LogStream
         | PaneKind::BuyModePayments
         | PaneKind::Nip90SentPayments
+        | PaneKind::DataSeller
         | PaneKind::DataMarket
         | PaneKind::BuyerRaceMatrix
         | PaneKind::SellerEarningsTimeline
@@ -873,6 +880,7 @@ fn paint_inactive_pane_preview_if_needed(
     nip90_payment_facts: &Nip90PaymentFactLedgerState,
     relay_connections: &RelayConnectionsState,
     nip90_sent_payments: &Nip90SentPaymentsPaneState,
+    data_seller: &DataSellerPaneState,
     data_market: &DataMarketPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
@@ -900,6 +908,7 @@ fn paint_inactive_pane_preview_if_needed(
         nip90_payment_facts,
         relay_connections,
         nip90_sent_payments,
+        data_seller,
         data_market,
         spark_replay,
         spark_wallet,
@@ -934,6 +943,7 @@ fn inactive_pane_preview_state(
     nip90_payment_facts: &Nip90PaymentFactLedgerState,
     relay_connections: &RelayConnectionsState,
     nip90_sent_payments: &Nip90SentPaymentsPaneState,
+    data_seller: &DataSellerPaneState,
     data_market: &DataMarketPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
@@ -970,6 +980,7 @@ fn inactive_pane_preview_state(
             nip90_buyer_payment_attempts,
             relay_connections,
         )),
+        PaneKind::DataSeller => Some(data_seller_inactive_preview_state(data_seller)),
         PaneKind::DataMarket => Some(data_market_inactive_preview_state(data_market)),
         PaneKind::BuyerRaceMatrix => Some(buyer_race_matrix_inactive_preview_state(
             network_requests,
@@ -1443,6 +1454,37 @@ fn data_market_inactive_preview_state(
             format!("revocations {}", data_market.revocations.len()),
             format!("refresh_ms {}", refreshed),
             format!("state {}", data_market.load_state.label()),
+        ],
+    }
+}
+
+fn data_seller_inactive_preview_state(
+    data_seller: &DataSellerPaneState,
+) -> InactivePanePreviewState {
+    InactivePanePreviewState {
+        source_badge: "inactive codex.data_seller".to_string(),
+        load_state: data_seller.load_state,
+        summary: "Conversational seller shell".to_string(),
+        last_action: data_seller.last_action.clone(),
+        last_error: data_seller.last_error.clone(),
+        detail_lines: vec![
+            format!(
+                "preview {}",
+                if data_seller.preview_enabled {
+                    "armed"
+                } else {
+                    "blocked"
+                }
+            ),
+            format!(
+                "publish {}",
+                if data_seller.publish_enabled {
+                    "armed"
+                } else {
+                    "blocked"
+                }
+            ),
+            format!("shell_messages {}", data_seller.transcript_shell.len()),
         ],
     }
 }
