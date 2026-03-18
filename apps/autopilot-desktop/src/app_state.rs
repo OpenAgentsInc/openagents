@@ -2018,6 +2018,8 @@ pub enum DataSellerDeliveryState {
     IssuingBundle,
     PublishingResult,
     Delivered,
+    Revoked,
+    Expired,
     Failed,
 }
 
@@ -2030,7 +2032,67 @@ impl DataSellerDeliveryState {
             Self::IssuingBundle => "issuing_bundle",
             Self::PublishingResult => "publishing_result",
             Self::Delivered => "delivered",
+            Self::Revoked => "revoked",
+            Self::Expired => "expired",
             Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataSellerRevocationState {
+    Idle,
+    Recording,
+    Revoked,
+    Expired,
+    Failed,
+}
+
+impl DataSellerRevocationState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Recording => "recording",
+            Self::Revoked => "revoked",
+            Self::Expired => "expired",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerRevocationAction {
+    Revoke,
+    Expire,
+}
+
+impl DataSellerRevocationAction {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Revoke => "revoke",
+            Self::Expire => "expire",
+        }
+    }
+
+    pub const fn terminal_state(self) -> DataSellerRevocationState {
+        match self {
+            Self::Revoke => DataSellerRevocationState::Revoked,
+            Self::Expire => DataSellerRevocationState::Expired,
+        }
+    }
+
+    pub const fn delivery_terminal_state(self) -> DataSellerDeliveryState {
+        match self {
+            Self::Revoke => DataSellerDeliveryState::Revoked,
+            Self::Expire => DataSellerDeliveryState::Expired,
+        }
+    }
+
+    pub const fn past_tense_label(self) -> &'static str {
+        match self {
+            Self::Revoke => "revoked",
+            Self::Expire => "expired",
         }
     }
 }
@@ -2093,6 +2155,12 @@ pub struct DataSellerIncomingRequest {
     pub delivery_receipt_id: Option<String>,
     pub delivery_result_event_id: Option<String>,
     pub delivery_error: Option<String>,
+    pub revocation_state: DataSellerRevocationState,
+    pub revocation_id: Option<String>,
+    pub revocation_receipt_id: Option<String>,
+    pub revocation_reason_code: Option<String>,
+    pub revocation_recorded_at_ms: Option<i64>,
+    pub revocation_error: Option<String>,
 }
 
 impl Default for DataSellerCodexProfile {
@@ -2131,6 +2199,8 @@ pub struct DataSellerPaneState {
     pub last_grant_publish_receipt_id: Option<String>,
     pub last_published_delivery: Option<DeliveryBundle>,
     pub last_delivery_publish_receipt_id: Option<String>,
+    pub last_published_revocation: Option<RevocationReceipt>,
+    pub last_revocation_publish_receipt_id: Option<String>,
     pub codex_profile: DataSellerCodexProfile,
     pub codex_thread_id: Option<String>,
     pub codex_session_phase: DataSellerCodexSessionPhase,
@@ -2182,6 +2252,8 @@ impl Default for DataSellerPaneState {
             last_grant_publish_receipt_id: None,
             last_published_delivery: None,
             last_delivery_publish_receipt_id: None,
+            last_published_revocation: None,
+            last_revocation_publish_receipt_id: None,
             codex_profile: DataSellerCodexProfile::default(),
             codex_thread_id: None,
             codex_session_phase: DataSellerCodexSessionPhase::Detached,
@@ -2654,6 +2726,12 @@ impl DataSellerPaneState {
             incoming.delivery_receipt_id = existing.delivery_receipt_id.clone();
             incoming.delivery_result_event_id = existing.delivery_result_event_id.clone();
             incoming.delivery_error = existing.delivery_error.clone();
+            incoming.revocation_state = existing.revocation_state;
+            incoming.revocation_id = existing.revocation_id.clone();
+            incoming.revocation_receipt_id = existing.revocation_receipt_id.clone();
+            incoming.revocation_reason_code = existing.revocation_reason_code.clone();
+            incoming.revocation_recorded_at_ms = existing.revocation_recorded_at_ms;
+            incoming.revocation_error = existing.revocation_error.clone();
             *existing = incoming.clone();
         } else {
             self.incoming_requests.push(incoming.clone());
@@ -2687,18 +2765,14 @@ impl DataSellerPaneState {
     }
 
     pub fn request_payment_required_quote(&mut self, request_id: &str) -> Result<u64, String> {
-        if self
-            .incoming_requests
-            .iter()
-            .any(|request| {
-                request.request_id != request_id
-                    && matches!(
-                        request.payment_state,
-                        DataSellerPaymentState::InvoiceRequested
-                            | DataSellerPaymentState::PublishingFeedback
-                    )
-            })
-        {
+        if self.incoming_requests.iter().any(|request| {
+            request.request_id != request_id
+                && matches!(
+                    request.payment_state,
+                    DataSellerPaymentState::InvoiceRequested
+                        | DataSellerPaymentState::PublishingFeedback
+                )
+        }) {
             return Err(
                 "Another seller payment quote is already creating or publishing an invoice. Wait for it to finish before starting a new one."
                     .to_string(),
@@ -2783,7 +2857,8 @@ impl DataSellerPaneState {
             .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
         request.pending_bolt11 = Some(bolt11.to_string());
         request.pending_bolt11_created_at_epoch_seconds = created_at_epoch_seconds;
-        request.settlement_payment_hash = crate::spark_wallet::decode_lightning_invoice_payment_hash(bolt11);
+        request.settlement_payment_hash =
+            crate::spark_wallet::decode_lightning_invoice_payment_hash(bolt11);
         request.payment_state = DataSellerPaymentState::PublishingFeedback;
         request.payment_error = None;
         self.last_error = None;
@@ -2910,6 +2985,51 @@ impl DataSellerPaneState {
             .find(|request| request.request_id == request_id)
     }
 
+    pub fn request_revoke_access(
+        &mut self,
+        request_id: &str,
+        action: DataSellerRevocationAction,
+    ) -> Result<(), String> {
+        let request_id_owned = {
+            let request = self
+                .request_by_id_mut(request_id)
+                .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+            if request.matched_grant_id.is_none() {
+                return Err(format!(
+                    "Request {} has no matched grant to revoke or expire.",
+                    request.request_id
+                ));
+            }
+            if matches!(
+                request.revocation_state,
+                DataSellerRevocationState::Recording
+                    | DataSellerRevocationState::Revoked
+                    | DataSellerRevocationState::Expired
+            ) {
+                return Err(format!(
+                    "Request {} already has revocation state {}.",
+                    request.request_id,
+                    request.revocation_state.label()
+                ));
+            }
+            request.revocation_state = DataSellerRevocationState::Recording;
+            request.revocation_error = None;
+            request.request_id.clone()
+        };
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Recording {} control for data request {}",
+            action.label(),
+            request_id_owned
+        ));
+        self.status_line = format!(
+            "Recording {} control against kernel authority for request {}.",
+            action.label(),
+            request_id_owned
+        );
+        Ok(())
+    }
+
     pub fn prepare_delivery_draft(
         &mut self,
         request_id: &str,
@@ -2929,6 +3049,13 @@ impl DataSellerPaneState {
                     "Request {} cannot prepare delivery before payment settles. Current payment state is {}.",
                     request.request_id,
                     request.payment_state.label()
+                ));
+            }
+            if !matches!(request.revocation_state, DataSellerRevocationState::Idle) {
+                return Err(format!(
+                    "Request {} cannot prepare delivery because access is already in revocation state {}.",
+                    request.request_id,
+                    request.revocation_state.label()
                 ));
             }
             if request.matched_grant_id.is_none() {
@@ -2952,16 +3079,16 @@ impl DataSellerPaneState {
             }
 
             if let Some(preview_text) = preview_text {
-                request.delivery_draft.preview_text = Some(preview_text.trim().to_string())
-                    .filter(|value| !value.is_empty());
+                request.delivery_draft.preview_text =
+                    Some(preview_text.trim().to_string()).filter(|value| !value.is_empty());
             }
             if let Some(delivery_ref) = delivery_ref {
-                request.delivery_draft.delivery_ref = Some(delivery_ref.trim().to_string())
-                    .filter(|value| !value.is_empty());
+                request.delivery_draft.delivery_ref =
+                    Some(delivery_ref.trim().to_string()).filter(|value| !value.is_empty());
             }
             if let Some(delivery_digest) = delivery_digest {
-                request.delivery_draft.delivery_digest = Some(delivery_digest.trim().to_string())
-                    .filter(|value| !value.is_empty());
+                request.delivery_draft.delivery_digest =
+                    Some(delivery_digest.trim().to_string()).filter(|value| !value.is_empty());
             }
             if let Some(manifest_refs) = manifest_refs {
                 request.delivery_draft.manifest_refs = manifest_refs
@@ -2982,14 +3109,12 @@ impl DataSellerPaneState {
                 .delivery_ref
                 .as_deref()
                 .is_some_and(|value| !value.trim().is_empty())
-                && (!matches!(
-                    request.delivery_mode.as_deref(),
-                    Some("inline_preview")
-                ) || request
-                    .delivery_draft
-                    .preview_text
-                    .as_deref()
-                    .is_some_and(|value| !value.trim().is_empty()));
+                && (!matches!(request.delivery_mode.as_deref(), Some("inline_preview"))
+                    || request
+                        .delivery_draft
+                        .preview_text
+                        .as_deref()
+                        .is_some_and(|value| !value.trim().is_empty()));
 
             if ready {
                 request.delivery_state = DataSellerDeliveryState::DraftReady;
@@ -3039,6 +3164,13 @@ impl DataSellerPaneState {
                     "Request {} cannot issue delivery before payment settles. Current payment state is {}.",
                     request.request_id,
                     request.payment_state.label()
+                ));
+            }
+            if !matches!(request.revocation_state, DataSellerRevocationState::Idle) {
+                return Err(format!(
+                    "Request {} cannot issue delivery because access is already in revocation state {}.",
+                    request.request_id,
+                    request.revocation_state.label()
                 ));
             }
             if !matches!(
@@ -3166,10 +3298,7 @@ impl DataSellerPaneState {
                 "Published NIP-90 delivery result for data request {}",
                 request_id_owned
             ));
-            self.status_line = format!(
-                "Delivery flow completed for request {}.",
-                request_id_owned
-            );
+            self.status_line = format!("Delivery flow completed for request {}.", request_id_owned);
         } else {
             self.last_error = delivery_error;
             self.last_action = Some(format!(
@@ -3182,6 +3311,96 @@ impl DataSellerPaneState {
             );
         }
         true
+    }
+
+    pub fn note_revocation_recorded(
+        &mut self,
+        request_id: &str,
+        action: DataSellerRevocationAction,
+        revocation: RevocationReceipt,
+        receipt_id: Option<String>,
+        grant: AccessGrant,
+        deliveries: &[DeliveryBundle],
+    ) -> Result<(), String> {
+        let (request_id_owned, matched_delivery) = {
+            let request = self
+                .request_by_id_mut(request_id)
+                .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+            request.revocation_state = action.terminal_state();
+            request.revocation_id = Some(revocation.revocation_id.clone());
+            request.revocation_receipt_id = receipt_id.clone();
+            request.revocation_reason_code = Some(revocation.reason_code.clone());
+            request.revocation_recorded_at_ms = Some(revocation.created_at_ms);
+            request.revocation_error = None;
+            let matched_delivery = request
+                .delivery_bundle_id
+                .as_deref()
+                .and_then(|delivery_bundle_id| {
+                    deliveries
+                        .iter()
+                        .find(|delivery| delivery.delivery_bundle_id == delivery_bundle_id)
+                })
+                .or_else(|| deliveries.first())
+                .cloned();
+            if let Some(delivery) = matched_delivery.as_ref() {
+                request.delivery_bundle_id = Some(delivery.delivery_bundle_id.clone());
+                request.delivery_state = match delivery.status {
+                    openagents_kernel_core::data::DeliveryBundleStatus::Revoked => {
+                        DataSellerDeliveryState::Revoked
+                    }
+                    openagents_kernel_core::data::DeliveryBundleStatus::Expired => {
+                        DataSellerDeliveryState::Expired
+                    }
+                    openagents_kernel_core::data::DeliveryBundleStatus::Issued
+                    | openagents_kernel_core::data::DeliveryBundleStatus::Accessed => {
+                        request.delivery_state
+                    }
+                };
+            } else if matches!(
+                request.delivery_state,
+                DataSellerDeliveryState::Delivered
+                    | DataSellerDeliveryState::PublishingResult
+                    | DataSellerDeliveryState::IssuingBundle
+            ) {
+                request.delivery_state = action.delivery_terminal_state();
+            }
+            (request.request_id.clone(), matched_delivery)
+        };
+
+        if let Some(delivery) = matched_delivery {
+            self.last_published_delivery = Some(delivery);
+        }
+        self.last_published_grant = Some(grant);
+        self.last_published_revocation = Some(revocation.clone());
+        self.last_revocation_publish_receipt_id = receipt_id;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "{} access for data request {} and read back revocation {} from kernel authority",
+            action.past_tense_label(),
+            request_id_owned,
+            revocation.revocation_id
+        ));
+        self.status_line = format!(
+            "Recorded {} access for request {} with revocation receipt {}.",
+            action.label(),
+            request_id_owned,
+            revocation.revocation_id
+        );
+        Ok(())
+    }
+
+    pub fn note_revocation_failed(&mut self, request_id: &str, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(request) = self.request_by_id_mut(request_id) {
+            request.revocation_state = DataSellerRevocationState::Failed;
+            request.revocation_error = Some(error.clone());
+        }
+        self.last_error = Some(error);
+        self.last_action = Some(format!(
+            "Revocation control failed for data request {}",
+            request_id
+        ));
+        self.status_line = format!("Revocation control failed for request {}.", request_id);
     }
 
     fn evaluate_incoming_request(
@@ -3242,6 +3461,12 @@ impl DataSellerPaneState {
             delivery_receipt_id: None,
             delivery_result_event_id: None,
             delivery_error: None,
+            revocation_state: DataSellerRevocationState::Idle,
+            revocation_id: None,
+            revocation_receipt_id: None,
+            revocation_reason_code: None,
+            revocation_recorded_at_ms: None,
+            revocation_error: None,
         };
 
         if let JobInboxValidation::Invalid(reason) = &request.validation {
@@ -3648,6 +3873,35 @@ impl DataMarketPaneState {
         self.last_action = Some(format!(
             "Reflected issued delivery {} into the Data Market pane from kernel read-back",
             delivery.delivery_bundle_id
+        ));
+    }
+
+    pub fn note_published_revocation(
+        &mut self,
+        revocation: RevocationReceipt,
+        reflected_at_ms: i64,
+    ) {
+        if let Some(existing) = self
+            .revocations
+            .iter_mut()
+            .find(|existing| existing.revocation_id == revocation.revocation_id)
+        {
+            *existing = revocation.clone();
+        } else {
+            self.revocations.push(revocation.clone());
+        }
+        Self::sort_state(
+            self.assets.as_mut_slice(),
+            self.grants.as_mut_slice(),
+            self.deliveries.as_mut_slice(),
+            self.revocations.as_mut_slice(),
+        );
+        self.last_refreshed_at_ms = Some(reflected_at_ms);
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Reflected revocation {} into the Data Market pane from kernel read-back",
+            revocation.revocation_id
         ));
     }
 
@@ -13672,7 +13926,7 @@ mod tests {
         SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use chrono::TimeZone;
-    use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle};
+    use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
     use serde_json::{Value, json};
     use wgpui::components::sections::TerminalStream;
@@ -13882,6 +14136,37 @@ mod tests {
             "access_grant.provider.alpha.bundle"
         );
         assert_eq!(pane.last_refreshed_at_ms, Some(1_762_700_100_000));
+    }
+
+    #[test]
+    fn data_market_note_published_revocation_upserts_readback_receipt() {
+        let mut pane = super::DataMarketPaneState::default();
+        pane.note_published_revocation(
+            RevocationReceipt {
+                revocation_id: "revocation.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1buyer".to_string()),
+                created_at_ms: 1_762_700_200_000,
+                reason_code: "seller_revoked_access".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: vec![
+                    "delivery_bundle.provider.alpha.bundle".to_string(),
+                ],
+                replacement_delivery_bundle_id: None,
+                status: openagents_kernel_core::data::RevocationStatus::Revoked,
+                metadata: json!({}),
+            },
+            1_762_700_210_000,
+        );
+
+        assert_eq!(pane.revocations.len(), 1);
+        assert_eq!(
+            pane.revocations[0].revocation_id,
+            "revocation.provider.alpha.bundle"
+        );
+        assert_eq!(pane.last_refreshed_at_ms, Some(1_762_700_210_000));
     }
 
     #[test]
@@ -14194,11 +14479,7 @@ mod tests {
             None,
         );
         pane.note_incoming_request(
-            &fixture_data_access_request(
-                "payment-ready",
-                "data_asset.provider.alpha.bundle",
-                250,
-            ),
+            &fixture_data_access_request("payment-ready", "data_asset.provider.alpha.bundle", 250),
             false,
             1_760_000_100,
         );
@@ -14279,31 +14560,21 @@ mod tests {
             None,
         );
         pane.note_incoming_request(
-            &fixture_data_access_request(
-                "payment-flow",
-                "data_asset.provider.alpha.bundle",
-                250,
-            ),
+            &fixture_data_access_request("payment-flow", "data_asset.provider.alpha.bundle", 250),
             false,
             1_760_000_100,
         );
         pane.request_payment_required_quote("payment-flow")
             .expect("request should quote payment");
 
-        pane.note_payment_invoice_created(
+        pane.note_payment_invoice_created("payment-flow", "lnbc2500n1payflow", Some(1_760_000_120))
+            .expect("invoice should be recorded");
+        assert!(pane.note_payment_feedback_publish_outcome(
             "payment-flow",
-            "lnbc2500n1payflow",
-            Some(1_760_000_120),
-        )
-        .expect("invoice should be recorded");
-        assert!(
-            pane.note_payment_feedback_publish_outcome(
-                "payment-flow",
-                true,
-                Some("feedback-event-1"),
-                None,
-            )
-        );
+            true,
+            Some("feedback-event-1"),
+            None,
+        ));
         assert!(pane.note_payment_observed(
             "payment-flow",
             "payment-pointer-1",
@@ -14320,7 +14591,10 @@ mod tests {
             Some("feedback-event-1")
         );
         assert_eq!(request.pending_bolt11.as_deref(), Some("lnbc2500n1payflow"));
-        assert_eq!(request.payment_pointer.as_deref(), Some("payment-pointer-1"));
+        assert_eq!(
+            request.payment_pointer.as_deref(),
+            Some("payment-pointer-1")
+        );
         assert_eq!(request.payment_amount_sats, Some(250));
         assert!(
             pane.status_line
@@ -14464,11 +14738,7 @@ mod tests {
             None,
         );
         pane.note_incoming_request(
-            &fixture_data_access_request(
-                "delivery-flow",
-                "data_asset.provider.alpha.bundle",
-                250,
-            ),
+            &fixture_data_access_request("delivery-flow", "data_asset.provider.alpha.bundle", 250),
             false,
             1_760_000_100,
         );
@@ -14480,14 +14750,12 @@ mod tests {
             Some(1_760_000_120),
         )
         .expect("invoice should be recorded");
-        assert!(
-            pane.note_payment_feedback_publish_outcome(
-                "delivery-flow",
-                true,
-                Some("feedback-event-delivery"),
-                None,
-            )
-        );
+        assert!(pane.note_payment_feedback_publish_outcome(
+            "delivery-flow",
+            true,
+            Some("feedback-event-delivery"),
+            None,
+        ));
         assert!(pane.note_payment_observed(
             "delivery-flow",
             "payment-pointer-delivery",
@@ -14532,14 +14800,12 @@ mod tests {
             Some("receipt.delivery-flow".to_string()),
         )
         .expect("delivery bundle should be recorded");
-        assert!(
-            pane.note_delivery_result_publish_outcome(
-                "delivery-flow",
-                true,
-                Some("result-event-delivery"),
-                None,
-            )
-        );
+        assert!(pane.note_delivery_result_publish_outcome(
+            "delivery-flow",
+            true,
+            Some("result-event-delivery"),
+            None,
+        ));
 
         let request = pane
             .request_by_id("delivery-flow")
@@ -14564,6 +14830,152 @@ mod tests {
             pane.status_line
                 .contains("Delivery flow completed for request delivery-flow")
         );
+    }
+
+    #[test]
+    fn data_seller_revocation_records_readback_and_updates_terminal_state() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1revocation-flow".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: Some(1_762_700_100_000),
+                status: openagents_kernel_core::data::AccessGrantStatus::Delivered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request(
+                "revocation-flow",
+                "data_asset.provider.alpha.bundle",
+                250,
+            ),
+            false,
+            1_760_000_100,
+        );
+        {
+            let request = pane
+                .request_by_id_mut("revocation-flow")
+                .expect("request should remain available");
+            request.payment_state = super::DataSellerPaymentState::Paid;
+            request.delivery_state = super::DataSellerDeliveryState::Delivered;
+            request.delivery_bundle_id =
+                Some("delivery_bundle.provider.alpha.revocation-flow".to_string());
+        }
+        pane.request_revoke_access("revocation-flow", super::DataSellerRevocationAction::Revoke)
+            .expect("revocation should be armed");
+        pane.note_revocation_recorded(
+            "revocation-flow",
+            super::DataSellerRevocationAction::Revoke,
+            RevocationReceipt {
+                revocation_id: "revocation.provider.alpha.revocation-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1revocation-flow".to_string()),
+                created_at_ms: 1_762_700_250_000,
+                reason_code: "seller_revoked_access".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: vec![
+                    "delivery_bundle.provider.alpha.revocation-flow".to_string(),
+                ],
+                replacement_delivery_bundle_id: None,
+                status: openagents_kernel_core::data::RevocationStatus::Revoked,
+                metadata: json!({
+                    "control_action": "revoke",
+                }),
+            },
+            Some("receipt.revocation-flow".to_string()),
+            AccessGrant {
+                status: openagents_kernel_core::data::AccessGrantStatus::Revoked,
+                ..pane
+                    .last_published_grant
+                    .clone()
+                    .expect("grant should be present")
+            },
+            &[DeliveryBundle {
+                delivery_bundle_id: "delivery_bundle.provider.alpha.revocation-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: "npub1revocation-flow".to_string(),
+                created_at_ms: 1_762_700_200_000,
+                delivery_ref: "oa://deliveries/revocation-flow".to_string(),
+                delivery_digest: Some("sha256:revocation-flow".to_string()),
+                bundle_size_bytes: Some(4096),
+                manifest_refs: vec!["oa://deliveries/revocation-flow/manifest".to_string()],
+                expires_at_ms: Some(1_762_786_600_000),
+                status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
+                metadata: json!({
+                    "request_id": "revocation-flow",
+                }),
+            }],
+        )
+        .expect("revocation read-back should be recorded");
+
+        let request = pane
+            .request_by_id("revocation-flow")
+            .expect("request should remain available");
+        assert_eq!(
+            request.revocation_state,
+            super::DataSellerRevocationState::Revoked
+        );
+        assert_eq!(
+            request.delivery_state,
+            super::DataSellerDeliveryState::Revoked
+        );
+        assert_eq!(
+            request.revocation_receipt_id.as_deref(),
+            Some("receipt.revocation-flow")
+        );
+        assert_eq!(
+            pane.last_revocation_publish_receipt_id.as_deref(),
+            Some("receipt.revocation-flow")
+        );
+        assert!(pane.last_published_revocation.is_some());
     }
 
     #[test]

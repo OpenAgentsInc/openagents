@@ -11,19 +11,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::app_state::{
-    ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, PaneKind, RenderState,
-    SkillRegistryDiscoveredSkill,
+    ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, DataSellerRevocationAction,
+    PaneKind, RenderState, SkillRegistryDiscoveredSkill,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
-    OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
-    OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+    OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY, OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
     OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
-    OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS,
-    OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
+    OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS, OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_LABOR_CLAIM_DENY,
     OPENAGENTS_TOOL_LABOR_CLAIM_OPEN, OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY,
     OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE, OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW,
@@ -89,6 +88,7 @@ const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY: &str =
     "openagents.data_market.prepare_delivery";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY: &str =
     "openagents.data_market.issue_delivery";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT: &str = "openagents.data_market.revoke_grant";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents.data_market.snapshot";
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
@@ -124,6 +124,7 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
@@ -380,6 +381,15 @@ struct DataMarketPrepareDeliveryArgs {
 #[derive(Clone, Debug, Deserialize)]
 struct DataMarketIssueDeliveryArgs {
     request_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketRevokeGrantArgs {
+    request_id: String,
+    action: String,
+    confirm: bool,
+    #[serde(default)]
+    reason_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -810,6 +820,14 @@ pub(super) fn execute_openagents_tool_request(
             };
             execute_data_market_issue_delivery_tool(state, &args)
         }
+        OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT => {
+            let args = match decoded.decode_arguments::<DataMarketRevokeGrantArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_revoke_grant_tool(state, &args)
+        }
         OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT => {
             execute_data_market_snapshot_tool(state)
         }
@@ -965,6 +983,23 @@ fn parse_data_seller_sensitivity_posture(
     }
 }
 
+fn parse_data_seller_revocation_action(
+    value: &str,
+) -> Result<DataSellerRevocationAction, ToolBridgeResultEnvelope> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "revoke" => Ok(DataSellerRevocationAction::Revoke),
+        "expire" => Ok(DataSellerRevocationAction::Expire),
+        _ => Err(ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-REVOCATION-ACTION-INVALID",
+            "revocation action must be one of revoke or expire",
+            json!({
+                "expected": ["revoke", "expire"],
+                "received": value,
+            }),
+        )),
+    }
+}
+
 fn parse_string_map(
     value: Value,
     field_name: &str,
@@ -1041,6 +1076,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "last_published_grant": state.data_seller.last_published_grant,
         "last_delivery_publish_receipt_id": state.data_seller.last_delivery_publish_receipt_id,
         "last_published_delivery": state.data_seller.last_published_delivery,
+        "last_revocation_publish_receipt_id": state.data_seller.last_revocation_publish_receipt_id,
+        "last_published_revocation": state.data_seller.last_published_revocation,
     });
     let incoming_requests = state
         .data_seller
@@ -1048,6 +1085,42 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         .iter()
         .take(8)
         .map(|request| {
+            let payment = json!({
+                "state": request.payment_state.label(),
+                "feedback_event_id": request.payment_feedback_event_id,
+                "pending_bolt11": request.pending_bolt11,
+                "pending_bolt11_created_at_epoch_seconds": request
+                    .pending_bolt11_created_at_epoch_seconds,
+                "settlement_payment_hash": request.settlement_payment_hash,
+                "payment_pointer": request.payment_pointer,
+                "payment_observed_at_epoch_seconds": request
+                    .payment_observed_at_epoch_seconds,
+                "payment_amount_sats": request.payment_amount_sats,
+                "payment_error": request.payment_error,
+            });
+            let delivery = json!({
+                "state": request.delivery_state.label(),
+                "draft": {
+                    "preview_text": request.delivery_draft.preview_text,
+                    "delivery_ref": request.delivery_draft.delivery_ref,
+                    "delivery_digest": request.delivery_draft.delivery_digest,
+                    "manifest_refs": request.delivery_draft.manifest_refs,
+                    "bundle_size_bytes": request.delivery_draft.bundle_size_bytes,
+                    "expires_in_hours": request.delivery_draft.expires_in_hours,
+                },
+                "bundle_id": request.delivery_bundle_id,
+                "receipt_id": request.delivery_receipt_id,
+                "result_event_id": request.delivery_result_event_id,
+                "error": request.delivery_error,
+            });
+            let revocation = json!({
+                "state": request.revocation_state.label(),
+                "revocation_id": request.revocation_id,
+                "receipt_id": request.revocation_receipt_id,
+                "reason_code": request.revocation_reason_code,
+                "recorded_at_ms": request.revocation_recorded_at_ms,
+                "error": request.revocation_error,
+            });
             json!({
                 "request_id": request.request_id,
                 "requester": request.requester,
@@ -1072,34 +1145,47 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                 "required_price_sats": request.required_price_sats,
                 "evaluation_disposition": request.evaluation_disposition.label(),
                 "evaluation_summary": request.evaluation_summary,
-                "payment_state": request.payment_state.label(),
-                "payment_feedback_event_id": request.payment_feedback_event_id,
-                "pending_bolt11": request.pending_bolt11,
-                "pending_bolt11_created_at_epoch_seconds": request
-                    .pending_bolt11_created_at_epoch_seconds,
-                "settlement_payment_hash": request.settlement_payment_hash,
-                "payment_pointer": request.payment_pointer,
-                "payment_observed_at_epoch_seconds": request
-                    .payment_observed_at_epoch_seconds,
-                "payment_amount_sats": request.payment_amount_sats,
-                "payment_error": request.payment_error,
-                "delivery_state": request.delivery_state.label(),
-                "delivery_draft": {
-                    "preview_text": request.delivery_draft.preview_text,
-                    "delivery_ref": request.delivery_draft.delivery_ref,
-                    "delivery_digest": request.delivery_draft.delivery_digest,
-                    "manifest_refs": request.delivery_draft.manifest_refs,
-                    "bundle_size_bytes": request.delivery_draft.bundle_size_bytes,
-                    "expires_in_hours": request.delivery_draft.expires_in_hours,
-                },
-                "delivery_bundle_id": request.delivery_bundle_id,
-                "delivery_receipt_id": request.delivery_receipt_id,
-                "delivery_result_event_id": request.delivery_result_event_id,
-                "delivery_error": request.delivery_error,
+                "payment": payment,
+                "delivery": delivery,
+                "revocation": revocation,
             })
         })
         .collect::<Vec<_>>();
     let latest_request = state.data_seller.latest_incoming_request().map(|request| {
+        let payment = json!({
+            "state": request.payment_state.label(),
+            "feedback_event_id": request.payment_feedback_event_id,
+            "pending_bolt11": request.pending_bolt11,
+            "pending_bolt11_created_at_epoch_seconds": request.pending_bolt11_created_at_epoch_seconds,
+            "settlement_payment_hash": request.settlement_payment_hash,
+            "payment_pointer": request.payment_pointer,
+            "payment_observed_at_epoch_seconds": request.payment_observed_at_epoch_seconds,
+            "payment_amount_sats": request.payment_amount_sats,
+            "payment_error": request.payment_error,
+        });
+        let delivery = json!({
+            "state": request.delivery_state.label(),
+            "draft": {
+                "preview_text": request.delivery_draft.preview_text,
+                "delivery_ref": request.delivery_draft.delivery_ref,
+                "delivery_digest": request.delivery_draft.delivery_digest,
+                "manifest_refs": request.delivery_draft.manifest_refs,
+                "bundle_size_bytes": request.delivery_draft.bundle_size_bytes,
+                "expires_in_hours": request.delivery_draft.expires_in_hours,
+            },
+            "bundle_id": request.delivery_bundle_id,
+            "receipt_id": request.delivery_receipt_id,
+            "result_event_id": request.delivery_result_event_id,
+            "error": request.delivery_error,
+        });
+        let revocation = json!({
+            "state": request.revocation_state.label(),
+            "revocation_id": request.revocation_id,
+            "receipt_id": request.revocation_receipt_id,
+            "reason_code": request.revocation_reason_code,
+            "recorded_at_ms": request.revocation_recorded_at_ms,
+            "error": request.revocation_error,
+        });
         json!({
             "request_id": request.request_id,
             "requester": request.requester,
@@ -1108,28 +1194,9 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
             "matched_asset_id": request.matched_asset_id,
             "matched_grant_id": request.matched_grant_id,
             "required_price_sats": request.required_price_sats,
-            "payment_state": request.payment_state.label(),
-            "payment_feedback_event_id": request.payment_feedback_event_id,
-            "pending_bolt11": request.pending_bolt11,
-            "pending_bolt11_created_at_epoch_seconds": request.pending_bolt11_created_at_epoch_seconds,
-            "settlement_payment_hash": request.settlement_payment_hash,
-            "payment_pointer": request.payment_pointer,
-            "payment_observed_at_epoch_seconds": request.payment_observed_at_epoch_seconds,
-            "payment_amount_sats": request.payment_amount_sats,
-            "payment_error": request.payment_error,
-            "delivery_state": request.delivery_state.label(),
-            "delivery_draft": {
-                "preview_text": request.delivery_draft.preview_text,
-                "delivery_ref": request.delivery_draft.delivery_ref,
-                "delivery_digest": request.delivery_draft.delivery_digest,
-                "manifest_refs": request.delivery_draft.manifest_refs,
-                "bundle_size_bytes": request.delivery_draft.bundle_size_bytes,
-                "expires_in_hours": request.delivery_draft.expires_in_hours,
-            },
-            "delivery_bundle_id": request.delivery_bundle_id,
-            "delivery_receipt_id": request.delivery_receipt_id,
-            "delivery_result_event_id": request.delivery_result_event_id,
-            "delivery_error": request.delivery_error,
+            "payment": payment,
+            "delivery": delivery,
+            "revocation": revocation,
         })
     });
     let seller = json!({
@@ -1414,7 +1481,10 @@ fn execute_data_market_request_payment_tool(
     state: &mut RenderState,
     args: &DataMarketRequestPaymentArgs,
 ) -> ToolBridgeResultEnvelope {
-    crate::data_seller_control::request_data_seller_payment_required(state, args.request_id.as_str());
+    crate::data_seller_control::request_data_seller_payment_required(
+        state,
+        args.request_id.as_str(),
+    );
     let request = state.data_seller.request_by_id(args.request_id.as_str());
     if state.data_seller.last_error.is_none()
         && request.is_some_and(|request| {
@@ -1510,6 +1580,49 @@ fn execute_data_market_issue_delivery_tool(
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "Failed to issue the seller delivery flow.".to_string()),
+            data_seller_tool_snapshot(state),
+        )
+    }
+}
+
+fn execute_data_market_revoke_grant_tool(
+    state: &mut RenderState,
+    args: &DataMarketRevokeGrantArgs,
+) -> ToolBridgeResultEnvelope {
+    if !args.confirm {
+        return ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-CONFIRM-REQUIRED",
+            "Revocation requires confirm=true because it mutates post-sale authority state.",
+            data_seller_tool_snapshot(state),
+        );
+    }
+    let action = match parse_data_seller_revocation_action(args.action.as_str()) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    crate::data_seller_control::revoke_data_seller_access(
+        state,
+        args.request_id.as_str(),
+        action,
+        args.reason_code.as_deref(),
+    );
+    let request = state.data_seller.request_by_id(args.request_id.as_str());
+    if state.data_seller.last_error.is_none()
+        && request.is_some_and(|request| request.revocation_state == action.terminal_state())
+    {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-REVOCATION-RECORDED",
+            "Recorded the seller revoke/expire control and read the resulting receipt back from kernel authority.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-REVOCATION-FAILED",
+            state
+                .data_seller
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Failed to record seller revocation control.".to_string()),
             data_seller_tool_snapshot(state),
         )
     }
@@ -7291,10 +7404,9 @@ mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
-        OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
-        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
         OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH, OPENAGENTS_TOOL_LABOR_SCOPE,
         OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT,
         OPENAGENTS_TOOL_TREASURY_RECEIPT, OPENAGENTS_TOOL_TREASURY_TRANSFER,
@@ -7302,11 +7414,12 @@ mod tests {
         cad_parse_retry_prompt, decode_tool_call_request, enforce_labor_evidence_uri_scope,
         enforce_matching_labor_contract_scope, normalize_key, pane_action_to_hit_action,
         pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
-        parse_bool_env_override, parse_data_seller_sensitivity_posture,
-        parse_data_seller_visibility_posture, parse_goal_rollout_stage,
-        parse_nip90_sent_payments_boundary, parse_swap_direction, parse_swap_unit,
-        parse_treasury_transfer_asset, resolve_pane_kind_for_runtime, run_blink_swap_script_json,
-        select_existing_blink_swap_script_path, validate_direction_unit,
+        parse_bool_env_override, parse_data_seller_revocation_action,
+        parse_data_seller_sensitivity_posture, parse_data_seller_visibility_posture,
+        parse_goal_rollout_stage, parse_nip90_sent_payments_boundary, parse_swap_direction,
+        parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind_for_runtime,
+        run_blink_swap_script_json, select_existing_blink_swap_script_path,
+        validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -7523,8 +7636,9 @@ mod tests {
             r#"{"request_id":"req-data-1","delivery_ref":"oa://deliveries/req-data-1","delivery_digest":"sha256:bundle","manifest_refs":["oa://deliveries/req-data-1/manifest"],"bundle_size_bytes":2048,"expires_in_hours":24}"#,
         ))
         .expect("decode should succeed");
-        let args: super::DataMarketPrepareDeliveryArgs =
-            decoded.decode_arguments().expect("prepare delivery args decode");
+        let args: super::DataMarketPrepareDeliveryArgs = decoded
+            .decode_arguments()
+            .expect("prepare delivery args decode");
         assert_eq!(args.request_id, "req-data-1");
         assert_eq!(
             args.delivery_ref.as_deref(),
@@ -7548,6 +7662,28 @@ mod tests {
     }
 
     #[test]
+    fn data_market_revoke_grant_decode_requires_request_action_and_confirm() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
+            r#"{"request_id":"req-data-1","action":"expire","confirm":true}"#,
+        ))
+        .expect("decode should succeed");
+        let args: super::DataMarketRevokeGrantArgs =
+            decoded.decode_arguments().expect("revoke args decode");
+        assert_eq!(args.request_id, "req-data-1");
+        assert_eq!(args.action, "expire");
+        assert!(args.confirm);
+
+        let decoded =
+            decode_tool_call_request(&request(OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT, r#"{}"#))
+                .expect("decode should succeed");
+        let error = decoded
+            .decode_arguments::<super::DataMarketRevokeGrantArgs>()
+            .expect_err("request_id, action, and confirm should be required");
+        assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
     fn data_market_posture_parsers_accept_expected_labels() {
         assert_eq!(
             parse_data_seller_visibility_posture("public_catalog")
@@ -7557,6 +7693,10 @@ mod tests {
         assert_eq!(
             parse_data_seller_sensitivity_posture("restricted").expect("sensitivity should parse"),
             crate::app_state::DataSellerSensitivityPosture::Restricted
+        );
+        assert_eq!(
+            parse_data_seller_revocation_action("expire").expect("revocation action should parse"),
+            crate::app_state::DataSellerRevocationAction::Expire
         );
     }
 

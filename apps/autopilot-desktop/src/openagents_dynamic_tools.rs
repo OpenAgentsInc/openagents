@@ -27,6 +27,8 @@ pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY: &str =
     "openagents_data_market_prepare_delivery";
 pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY: &str =
     "openagents_data_market_issue_delivery";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT: &str =
+    "openagents_data_market_revoke_grant";
 pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents_data_market_snapshot";
 pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
@@ -69,6 +71,7 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
     OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
     OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+    OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_CAD_ACTION,
@@ -345,6 +348,26 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "request_id": { "type": "string" }
                 },
                 "required": ["request_id"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT.to_string(),
+            description:
+                "Record an explicit revoke or expire control against the matched AccessGrant and read the resulting RevocationReceipt back."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "request_id": { "type": "string" },
+                    "action": {
+                        "type": "string",
+                        "enum": ["revoke", "expire"]
+                    },
+                    "confirm": { "type": "boolean" },
+                    "reason_code": { "type": "string" }
+                },
+                "required": ["request_id", "action", "confirm"],
                 "additionalProperties": false
             }),
         },
@@ -750,11 +773,10 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
 mod tests {
     use super::{
         OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
-        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_SWAP_EXECUTE,
-        OPENAGENTS_TOOL_SWAP_QUOTE,
-        openagents_dynamic_tool_specs,
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
+        OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT, OPENAGENTS_TOOL_SWAP_EXECUTE,
+        OPENAGENTS_TOOL_SWAP_QUOTE, openagents_dynamic_tool_specs,
     };
     use serde_json::json;
     use std::collections::HashSet;
@@ -848,6 +870,10 @@ mod tests {
             .iter()
             .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY)
             .expect("data market prepare delivery spec should exist");
+        let revoke_grant_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT)
+            .expect("data market revoke grant spec should exist");
 
         assert!(
             draft_spec
@@ -878,6 +904,18 @@ mod tests {
         assert_eq!(
             prepare_delivery_spec.input_schema.pointer("/required/0"),
             Some(&json!("request_id"))
+        );
+        assert_eq!(
+            revoke_grant_spec.input_schema.pointer("/required/0"),
+            Some(&json!("request_id"))
+        );
+        assert_eq!(
+            revoke_grant_spec.input_schema.pointer("/required/1"),
+            Some(&json!("action"))
+        );
+        assert_eq!(
+            revoke_grant_spec.input_schema.pointer("/required/2"),
+            Some(&json!("confirm"))
         );
     }
 }
