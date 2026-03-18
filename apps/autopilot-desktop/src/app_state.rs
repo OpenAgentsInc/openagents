@@ -15487,6 +15487,224 @@ mod tests {
     }
 
     #[test]
+    fn data_seller_full_lifecycle_progresses_from_grant_to_revocation() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1lifecycle-flow".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request("lifecycle-flow", "data_asset.provider.alpha.bundle", 250),
+            false,
+            1_760_000_100,
+        );
+
+        pane.request_payment_required_quote("lifecycle-flow")
+            .expect("payment quote should succeed");
+        pane.note_payment_invoice_created(
+            "lifecycle-flow",
+            "lnbc2500n1lifecycleflow",
+            Some(1_760_000_120),
+        )
+        .expect("invoice should be recorded");
+        assert!(pane.note_payment_feedback_publish_outcome(
+            "lifecycle-flow",
+            true,
+            Some("feedback-event-lifecycle"),
+            None,
+        ));
+        assert!(pane.note_payment_observed(
+            "lifecycle-flow",
+            "payment-pointer-lifecycle",
+            250,
+            1_760_000_180,
+        ));
+
+        assert!(
+            pane.prepare_delivery_draft(
+                "lifecycle-flow",
+                Some("Lifecycle bundle manifest ready"),
+                Some("oa://deliveries/lifecycle-flow"),
+                Some("sha256:lifecycle-flow"),
+                Some(vec!["oa://deliveries/lifecycle-flow/manifest".to_string()]),
+                Some(4096),
+                Some(24),
+            )
+            .expect("delivery draft should be ready")
+        );
+        pane.request_issue_delivery("lifecycle-flow")
+            .expect("delivery issue should be armed");
+        pane.note_delivery_bundle_issuing("lifecycle-flow")
+            .expect("issuing state should be recorded");
+        pane.note_delivery_bundle_issued(
+            "lifecycle-flow",
+            DeliveryBundle {
+                delivery_bundle_id: "delivery_bundle.provider.alpha.lifecycle-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: "npub1lifecycle-flow".to_string(),
+                created_at_ms: 1_762_700_200_000,
+                delivery_ref: "oa://deliveries/lifecycle-flow".to_string(),
+                delivery_digest: Some("sha256:lifecycle-flow".to_string()),
+                bundle_size_bytes: Some(4096),
+                manifest_refs: vec!["oa://deliveries/lifecycle-flow/manifest".to_string()],
+                expires_at_ms: Some(1_762_786_600_000),
+                status: openagents_kernel_core::data::DeliveryBundleStatus::Issued,
+                metadata: json!({
+                    "request_id": "lifecycle-flow",
+                }),
+            },
+            Some("receipt.lifecycle-flow.delivery".to_string()),
+        )
+        .expect("delivery bundle should be recorded");
+        assert!(pane.note_delivery_result_publish_outcome(
+            "lifecycle-flow",
+            true,
+            Some("result-event-lifecycle"),
+            None,
+        ));
+
+        pane.request_revoke_access("lifecycle-flow", super::DataSellerRevocationAction::Revoke)
+            .expect("revocation should be armed");
+        pane.note_revocation_recorded(
+            "lifecycle-flow",
+            super::DataSellerRevocationAction::Revoke,
+            RevocationReceipt {
+                revocation_id: "revocation.provider.alpha.lifecycle-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1lifecycle-flow".to_string()),
+                created_at_ms: 1_762_700_250_000,
+                reason_code: "seller_revoked_access".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: vec![
+                    "delivery_bundle.provider.alpha.lifecycle-flow".to_string(),
+                ],
+                replacement_delivery_bundle_id: None,
+                status: openagents_kernel_core::data::RevocationStatus::Revoked,
+                metadata: json!({
+                    "control_action": "revoke",
+                }),
+            },
+            Some("receipt.lifecycle-flow.revocation".to_string()),
+            AccessGrant {
+                status: openagents_kernel_core::data::AccessGrantStatus::Revoked,
+                ..pane
+                    .last_published_grant
+                    .clone()
+                    .expect("grant should be present")
+            },
+            &[DeliveryBundle {
+                delivery_bundle_id: "delivery_bundle.provider.alpha.lifecycle-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: "npub1lifecycle-flow".to_string(),
+                created_at_ms: 1_762_700_200_000,
+                delivery_ref: "oa://deliveries/lifecycle-flow".to_string(),
+                delivery_digest: Some("sha256:lifecycle-flow".to_string()),
+                bundle_size_bytes: Some(4096),
+                manifest_refs: vec!["oa://deliveries/lifecycle-flow/manifest".to_string()],
+                expires_at_ms: Some(1_762_786_600_000),
+                status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
+                metadata: json!({
+                    "request_id": "lifecycle-flow",
+                }),
+            }],
+        )
+        .expect("revocation read-back should be recorded");
+
+        let request = pane
+            .request_by_id("lifecycle-flow")
+            .expect("request should remain available");
+        assert_eq!(request.payment_state, super::DataSellerPaymentState::Paid);
+        assert_eq!(
+            request.delivery_state,
+            super::DataSellerDeliveryState::Revoked
+        );
+        assert_eq!(
+            request.revocation_state,
+            super::DataSellerRevocationState::Revoked
+        );
+        assert_eq!(
+            request.payment_feedback_event_id.as_deref(),
+            Some("feedback-event-lifecycle")
+        );
+        assert_eq!(
+            request.delivery_result_event_id.as_deref(),
+            Some("result-event-lifecycle")
+        );
+        assert_eq!(
+            request.revocation_receipt_id.as_deref(),
+            Some("receipt.lifecycle-flow.revocation")
+        );
+        assert_eq!(
+            pane.last_delivery_publish_receipt_id.as_deref(),
+            Some("receipt.lifecycle-flow.delivery")
+        );
+        assert_eq!(
+            pane.last_revocation_publish_receipt_id.as_deref(),
+            Some("receipt.lifecycle-flow.revocation")
+        );
+    }
+
+    #[test]
     fn data_seller_derives_explicit_nip90_profile_from_published_asset() {
         let mut pane = DataSellerPaneState::default();
         pane.last_published_asset = Some(DataAsset {
