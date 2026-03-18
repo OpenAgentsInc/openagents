@@ -8,7 +8,7 @@ use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, DataSellerRevocationAction,
@@ -56,7 +56,7 @@ use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::{
     GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
 };
-use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
+use crate::state::os_scheduler::{preferred_adapter_for_host, OsSchedulerAdapterKind};
 use crate::state::swap_contract::{
     SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
     SwapQuoteTerms,
@@ -1642,6 +1642,24 @@ fn execute_data_market_snapshot_tool(state: &mut RenderState) -> ToolBridgeResul
                 "last_refreshed_at_ms": state.data_market.last_refreshed_at_ms,
                 "last_action": state.data_market.last_action,
                 "last_error": state.data_market.last_error,
+                "lifecycle_entries": state
+                    .data_market
+                    .lifecycle_entries
+                    .iter()
+                    .take(8)
+                    .map(|entry| {
+                        json!({
+                            "occurred_at_ms": entry.occurred_at_ms,
+                            "stage": entry.stage,
+                            "status": entry.status,
+                            "subject_id": entry.subject_id,
+                            "counterparty": entry.counterparty,
+                            "policy_id": entry.policy_id,
+                            "receipt_id": entry.receipt_id,
+                            "summary": entry.summary,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
             }),
         );
     }
@@ -7402,16 +7420,8 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
-        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
-        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
-        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH, OPENAGENTS_TOOL_LABOR_SCOPE,
-        OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT,
-        OPENAGENTS_TOOL_TREASURY_RECEIPT, OPENAGENTS_TOOL_TREASURY_TRANSFER,
-        ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
-        cad_parse_retry_prompt, decode_tool_call_request, enforce_labor_evidence_uri_scope,
+        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
+        decode_tool_call_request, enforce_labor_evidence_uri_scope,
         enforce_matching_labor_contract_scope, normalize_key, pane_action_to_hit_action,
         pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
         parse_bool_env_override, parse_data_seller_revocation_action,
@@ -7419,7 +7429,15 @@ mod tests {
         parse_goal_rollout_stage, parse_nip90_sent_payments_boundary, parse_swap_direction,
         parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind_for_runtime,
         run_blink_swap_script_json, select_existing_blink_swap_script_path,
-        validate_direction_unit,
+        validate_direction_unit, ToolBridgeResultEnvelope, CAD_CHECKPOINT_SCHEMA_VERSION,
+        CAD_TOOL_RESPONSE_SCHEMA_VERSION, LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
+        OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY, OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
+        OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+        OPENAGENTS_TOOL_LABOR_SCOPE, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
+        OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
+        OPENAGENTS_TOOL_TREASURY_TRANSFER,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -8112,27 +8130,19 @@ mod tests {
             payload.pointer("/warnings/by_code/W001"),
             Some(&serde_json::json!(1))
         );
-        assert!(
-            payload
-                .pointer("/analysis/material_id")
-                .is_some_and(|value| !value.is_null())
-        );
+        assert!(payload
+            .pointer("/analysis/material_id")
+            .is_some_and(|value| !value.is_null()));
         assert!(payload.pointer("/kinematics/profile").is_some());
-        assert!(
-            payload
-                .pointer("/failure_metrics/intent_parse_failures")
-                .is_some()
-        );
-        assert!(
-            payload
-                .pointer("/failure_metrics/dispatch_rebuild_failures")
-                .is_some()
-        );
-        assert!(
-            payload
-                .pointer("/sensor_feedback/visualization_mode")
-                .is_some()
-        );
+        assert!(payload
+            .pointer("/failure_metrics/intent_parse_failures")
+            .is_some());
+        assert!(payload
+            .pointer("/failure_metrics/dispatch_rebuild_failures")
+            .is_some());
+        assert!(payload
+            .pointer("/sensor_feedback/visualization_mode")
+            .is_some());
         assert!(payload.get("build_session").is_some());
         assert!(payload.get("last_rebuild_receipt").is_some());
 
@@ -8144,11 +8154,9 @@ mod tests {
             tool_response.pointer("/schema_version"),
             Some(&serde_json::json!(CAD_TOOL_RESPONSE_SCHEMA_VERSION))
         );
-        assert!(
-            tool_response
-                .pointer("/checkpoint/schema_version")
-                .is_some()
-        );
+        assert!(tool_response
+            .pointer("/checkpoint/schema_version")
+            .is_some());
     }
 
     #[test]

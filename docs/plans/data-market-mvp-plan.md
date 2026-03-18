@@ -51,6 +51,9 @@ also generate a Lightning invoice for a matched request, publish NIP-90
 wallet truth, prepare a seller delivery draft, issue a canonical
 `DeliveryBundle`, publish a linked NIP-90 result, and record explicit revoke
 or expire controls with `RevocationReceipt` read-back into both panes.
+The read-only `Data Market` pane also now carries a compact lifecycle activity
+view so the current session exposes receipt-bearing asset/grant/payment/
+delivery/revocation history instead of only raw object lists.
 Buyer-side request issuance still remains follow-on work.
 
 ### 1. Compute already has a real product wedge

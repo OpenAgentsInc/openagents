@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
 use nostr::nip90::{
-    DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
-    create_data_vending_result_event, create_job_feedback_event,
+    create_data_vending_result_event, create_job_feedback_event, DataVendingDeliveryMode,
+    DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
 };
 use nostr::{Event, EventTemplate, NostrIdentity};
 use openagents_kernel_core::authority::{
@@ -22,8 +22,8 @@ use openagents_spark::PaymentSummary;
 use serde_json::json;
 
 use crate::app_state::{
-    AutopilotRole, DataSellerCodexSessionPhase, DataSellerIncomingRequest,
-    DataSellerRevocationAction, DataSellerSkillAttachment, RenderState,
+    AutopilotRole, DataMarketLifecycleEntry, DataSellerCodexSessionPhase,
+    DataSellerIncomingRequest, DataSellerRevocationAction, DataSellerSkillAttachment, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
 use crate::provider_nip90_lane::{
@@ -31,8 +31,8 @@ use crate::provider_nip90_lane::{
     ProviderNip90PublishRole,
 };
 use crate::spark_wallet::{
-    SparkWalletCommand, decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
-    normalize_lightning_invoice_ref,
+    decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    normalize_lightning_invoice_ref, SparkWalletCommand,
 };
 
 fn current_session_cwd() -> Option<String> {
@@ -555,6 +555,31 @@ fn build_revoke_access_grant_request(
     }
 }
 
+fn record_data_market_lifecycle_entry(
+    state: &mut RenderState,
+    occurred_at_ms: i64,
+    stage: impl Into<String>,
+    status: impl Into<String>,
+    subject_id: impl Into<String>,
+    counterparty: Option<String>,
+    policy_id: Option<String>,
+    receipt_id: Option<String>,
+    summary: impl Into<String>,
+) {
+    state
+        .data_market
+        .record_lifecycle_entry(DataMarketLifecycleEntry {
+            occurred_at_ms,
+            stage: stage.into(),
+            status: status.into(),
+            subject_id: subject_id.into(),
+            counterparty,
+            policy_id,
+            receipt_id,
+            summary: summary.into(),
+        });
+}
+
 fn matched_settled_receive_payment<'a>(
     invoice: Option<&str>,
     payment_hash: Option<&str>,
@@ -965,6 +990,20 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
         state
             .data_market
             .note_published_delivery(readback_delivery.clone(), current_epoch_ms());
+        record_data_market_lifecycle_entry(
+            state,
+            readback_delivery.created_at_ms,
+            "delivery_issued",
+            readback_delivery.status.label(),
+            readback_delivery.delivery_bundle_id.clone(),
+            Some(readback_delivery.consumer_id.clone()),
+            Some(grant.permission_policy.policy_id.clone()),
+            state.data_seller.last_delivery_publish_receipt_id.clone(),
+            format!(
+                "Issued delivery for grant {} with ref {}.",
+                readback_delivery.grant_id, readback_delivery.delivery_ref
+            ),
+        );
         readback_delivery
     };
     state
@@ -1204,6 +1243,55 @@ pub(crate) fn revoke_data_seller_access(
     state
         .data_market
         .note_published_revocation(revocation, reflected_at_ms);
+    if let Some((
+        revocation_state,
+        revocation_id,
+        requester,
+        policy_id,
+        receipt_id,
+        grant_id,
+        reason_code,
+    )) = state.data_seller.request_by_id(request_id).map(|request| {
+        (
+            request.revocation_state,
+            request
+                .revocation_id
+                .clone()
+                .unwrap_or_else(|| format!("revocation_for_{request_id}")),
+            request.requester.clone(),
+            state
+                .data_seller
+                .last_published_grant
+                .as_ref()
+                .map(|grant| grant.permission_policy.policy_id.clone()),
+            request.revocation_receipt_id.clone(),
+            request
+                .matched_grant_id
+                .clone()
+                .unwrap_or_else(|| "unknown_grant".to_string()),
+            request
+                .revocation_reason_code
+                .clone()
+                .unwrap_or_else(|| "unspecified".to_string()),
+        )
+    }) {
+        record_data_market_lifecycle_entry(
+            state,
+            reflected_at_ms,
+            format!("access_{}", action.past_tense_label()),
+            revocation_state.label(),
+            revocation_id,
+            Some(requester),
+            policy_id,
+            receipt_id,
+            format!(
+                "{} access for grant {} with reason {}.",
+                action.past_tense_label(),
+                grant_id,
+                reason_code
+            ),
+        );
+    }
     state.provider_runtime.last_result = Some(format!(
         "seller {} access for data request {}",
         action.past_tense_label(),
@@ -1339,6 +1427,37 @@ pub(crate) fn reconcile_data_seller_wallet_update(
             amount_sats,
             observed_at_epoch_seconds,
         ) {
+            if let Some((request_id_owned, requester, payment_state, policy_id)) = state
+                .data_seller
+                .request_by_id(request_id.as_str())
+                .map(|request| {
+                    (
+                        request.request_id.clone(),
+                        request.requester.clone(),
+                        request.payment_state,
+                        state
+                            .data_seller
+                            .last_published_grant
+                            .as_ref()
+                            .map(|grant| grant.permission_policy.policy_id.clone()),
+                    )
+                })
+            {
+                record_data_market_lifecycle_entry(
+                    state,
+                    i64::try_from(observed_at_epoch_seconds).unwrap_or(i64::MAX) * 1000,
+                    "payment_settled",
+                    payment_state.label(),
+                    request_id_owned.clone(),
+                    Some(requester),
+                    policy_id,
+                    Some(payment_pointer.clone()),
+                    format!(
+                        "Settled {} sats for data request {}.",
+                        amount_sats, request_id_owned
+                    ),
+                );
+            }
             state.provider_runtime.last_result = Some(format!(
                 "seller payment settled for data request {}",
                 request_id
@@ -1371,6 +1490,39 @@ pub(crate) fn apply_data_seller_publish_outcome(
                 outcome.first_error.as_deref(),
             );
             if handled && published {
+                if let Some((request_id_owned, requester, payment_state, policy_id, quoted_sats)) =
+                    state
+                        .data_seller
+                        .request_by_id(outcome.request_id.as_str())
+                        .map(|request| {
+                            (
+                                request.request_id.clone(),
+                                request.requester.clone(),
+                                request.payment_state,
+                                state
+                                    .data_seller
+                                    .last_published_grant
+                                    .as_ref()
+                                    .map(|grant| grant.permission_policy.policy_id.clone()),
+                                request.required_price_sats.unwrap_or(request.price_sats),
+                            )
+                        })
+                {
+                    record_data_market_lifecycle_entry(
+                        state,
+                        current_epoch_ms(),
+                        "payment_required_published",
+                        payment_state.label(),
+                        request_id_owned,
+                        Some(requester),
+                        policy_id,
+                        Some(outcome.event_id.clone()),
+                        format!(
+                            "Published payment-required feedback for {} sats.",
+                            quoted_sats
+                        ),
+                    );
+                }
                 state.provider_runtime.last_result = Some(format!(
                     "seller requested Lightning payment for data request {}",
                     outcome.request_id
@@ -1464,6 +1616,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
         match crate::kernel_control::run_kernel_call(client.get_data_asset(asset_id.as_str())) {
             Ok(asset) => asset,
             Err(error) => {
+                let fallback_asset = response.asset.clone();
                 state
                     .data_seller
                     .note_asset_published(response.asset, receipt_id);
@@ -1472,6 +1625,20 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
                         .data_market
                         .note_published_asset(asset, current_epoch_ms());
                 }
+                record_data_market_lifecycle_entry(
+                    state,
+                    current_epoch_ms(),
+                    "asset_published",
+                    "published",
+                    asset_id,
+                    Some(fallback_asset.provider_id.clone()),
+                    fallback_asset
+                        .default_policy
+                        .as_ref()
+                        .map(|policy| policy.policy_id.clone()),
+                    state.data_seller.last_publish_receipt_id.clone(),
+                    format!("Published asset {} from seller lane.", fallback_asset.title),
+                );
                 sync_data_seller_nip90_profile(state);
                 state.data_seller.last_error = Some(format!(
                     "Asset was published but the immediate kernel read-back failed: {error}"
@@ -1488,6 +1655,22 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_asset(readback_asset, current_epoch_ms());
+    if let Some(asset) = state.data_seller.last_published_asset.clone() {
+        record_data_market_lifecycle_entry(
+            state,
+            asset.created_at_ms,
+            "asset_published",
+            asset.status.label(),
+            asset.asset_id.clone(),
+            Some(asset.provider_id.clone()),
+            asset
+                .default_policy
+                .as_ref()
+                .map(|policy| policy.policy_id.clone()),
+            state.data_seller.last_publish_receipt_id.clone(),
+            format!("Published asset {} from seller lane.", asset.title),
+        );
+    }
     sync_data_seller_nip90_profile(state);
     true
 }
@@ -1550,6 +1733,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
         match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
             Ok(grant) => grant,
             Err(error) => {
+                let fallback_grant = response.grant.clone();
                 state
                     .data_seller
                     .note_grant_published(response.grant, receipt_id);
@@ -1558,6 +1742,20 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                         .data_market
                         .note_published_grant(grant, current_epoch_ms());
                 }
+                record_data_market_lifecycle_entry(
+                    state,
+                    current_epoch_ms(),
+                    "grant_published",
+                    fallback_grant.status.label(),
+                    grant_id,
+                    fallback_grant.consumer_id.clone(),
+                    Some(fallback_grant.permission_policy.policy_id.clone()),
+                    state.data_seller.last_grant_publish_receipt_id.clone(),
+                    format!(
+                        "Published grant for asset {} with expiry {}.",
+                        fallback_grant.asset_id, fallback_grant.expires_at_ms
+                    ),
+                );
                 sync_data_seller_nip90_profile(state);
                 state.data_seller.last_error = Some(format!(
                     "Grant was published but the immediate kernel read-back failed: {error}"
@@ -1574,6 +1772,22 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_grant(readback_grant, current_epoch_ms());
+    if let Some(grant) = state.data_seller.last_published_grant.clone() {
+        record_data_market_lifecycle_entry(
+            state,
+            grant.created_at_ms,
+            "grant_published",
+            grant.status.label(),
+            grant.grant_id.clone(),
+            grant.consumer_id.clone(),
+            Some(grant.permission_policy.policy_id.clone()),
+            state.data_seller.last_grant_publish_receipt_id.clone(),
+            format!(
+                "Published grant for asset {} with expiry {}.",
+                grant.asset_id, grant.expires_at_ms
+            ),
+        );
+    }
     sync_data_seller_nip90_profile(state);
     true
 }

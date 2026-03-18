@@ -3,9 +3,9 @@ use openagents_kernel_core::data::{
     AccessGrant, DataAsset, DeliveryBundle, PermissionPolicy, RevocationReceipt,
 };
 use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
-use wgpui::{Bounds, PaintContext, Point, Quad, theme};
+use wgpui::{theme, Bounds, PaintContext, Point, Quad};
 
-use crate::app_state::{DataMarketPaneState, PaneLoadState};
+use crate::app_state::{DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState};
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
 use crate::pane_system::data_market_refresh_button_bounds;
 
@@ -13,11 +13,14 @@ const PADDING: f32 = 12.0;
 const METRIC_TOP: f32 = 92.0;
 const METRIC_HEIGHT: f32 = 56.0;
 const METRIC_GAP: f32 = 10.0;
-const PANELS_TOP: f32 = 168.0;
+const LIFECYCLE_TOP: f32 = 160.0;
+const LIFECYCLE_HEIGHT: f32 = 92.0;
+const PANELS_TOP: f32 = 264.0;
 const PANEL_GAP: f32 = 12.0;
 const PANEL_HEADER_HEIGHT: f32 = 24.0;
 const ROW_HEIGHT: f32 = 38.0;
 const MAX_ROWS_PER_PANEL: usize = 4;
+const MAX_LIFECYCLE_ROWS: usize = 3;
 
 pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &mut PaintContext) {
     paint_source_badge(content_bounds, "kernel.data_market.v1", paint);
@@ -74,6 +77,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
     }
 
     paint_metric_cards(content_bounds, pane_state, paint);
+    paint_lifecycle_panel(content_bounds, pane_state, paint);
     paint_panels(content_bounds, pane_state, paint);
 }
 
@@ -183,6 +187,69 @@ fn paint_panels(
             .collect::<Vec<_>>(),
         paint,
     );
+}
+
+fn paint_lifecycle_panel(
+    content_bounds: Bounds,
+    pane_state: &DataMarketPaneState,
+    paint: &mut PaintContext,
+) {
+    let bounds = Bounds::new(
+        content_bounds.origin.x + PADDING,
+        content_bounds.origin.y + LIFECYCLE_TOP,
+        content_bounds.size.width - PADDING * 2.0,
+        LIFECYCLE_HEIGHT,
+    );
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        "Lifecycle",
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 8.0),
+        11.0,
+        theme::text::SECONDARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Recent seller-side market activity with policy and receipt context.",
+        Point::new(bounds.origin.x + 70.0, bounds.origin.y + 8.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    if pane_state.lifecycle_entries.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No lifecycle entries recorded yet. Publish, settle, deliver, or revoke from the seller lane to populate this activity view.",
+            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 32.0),
+            11.0,
+            theme::text::MUTED,
+        ));
+        return;
+    }
+
+    for (index, (primary, secondary)) in pane_state
+        .lifecycle_entries
+        .iter()
+        .take(MAX_LIFECYCLE_ROWS)
+        .map(lifecycle_row_summary)
+        .enumerate()
+    {
+        let row_y = bounds.origin.y + 30.0 + index as f32 * 20.0;
+        paint.scene.draw_text(paint.text.layout(
+            primary.as_str(),
+            Point::new(bounds.origin.x + 10.0, row_y),
+            11.0,
+            theme::text::PRIMARY,
+        ));
+        paint.scene.draw_text(paint.text.layout_mono(
+            secondary.as_str(),
+            Point::new(bounds.origin.x + 10.0, row_y + 12.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
 }
 
 fn paint_panel(
@@ -355,6 +422,43 @@ fn revocation_row_summary(revocation: &RevocationReceipt) -> (String, String) {
         )
         .as_str(),
         76,
+    );
+    (primary, secondary)
+}
+
+fn lifecycle_row_summary(entry: &DataMarketLifecycleEntry) -> (String, String) {
+    let primary = compact_text(
+        format!(
+            "{} // {} // {}",
+            compact_text(entry.stage.as_str(), 22),
+            short_id(entry.subject_id.as_str()),
+            compact_text(entry.status.as_str(), 16)
+        )
+        .as_str(),
+        76,
+    );
+    let secondary = compact_text(
+        format!(
+            "{} // policy {} // receipt {} // {}",
+            entry
+                .counterparty
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "n/a".to_string()),
+            entry
+                .policy_id
+                .as_deref()
+                .map(|value| compact_text(value, 16))
+                .unwrap_or_else(|| "n/a".to_string()),
+            entry
+                .receipt_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "n/a".to_string()),
+            compact_text(entry.summary.as_str(), 28),
+        )
+        .as_str(),
+        112,
     );
     (primary, secondary)
 }
