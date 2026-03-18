@@ -195,7 +195,7 @@ impl ToolBridgeRequest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct ToolBridgeResultEnvelope {
+pub(crate) struct ToolBridgeResultEnvelope {
     pub success: bool,
     pub code: String,
     pub message: String,
@@ -203,7 +203,7 @@ pub(super) struct ToolBridgeResultEnvelope {
 }
 
 impl ToolBridgeResultEnvelope {
-    pub(super) fn ok(code: &str, message: impl Into<String>, details: Value) -> Self {
+    pub(crate) fn ok(code: &str, message: impl Into<String>, details: Value) -> Self {
         Self {
             success: true,
             code: code.to_string(),
@@ -212,7 +212,7 @@ impl ToolBridgeResultEnvelope {
         }
     }
 
-    pub(super) fn error(code: &str, message: impl Into<String>, details: Value) -> Self {
+    pub(crate) fn error(code: &str, message: impl Into<String>, details: Value) -> Self {
         Self {
             success: false,
             code: code.to_string(),
@@ -221,7 +221,7 @@ impl ToolBridgeResultEnvelope {
         }
     }
 
-    pub(super) fn to_response(&self) -> DynamicToolCallResponse {
+    pub(crate) fn to_response(&self) -> DynamicToolCallResponse {
         DynamicToolCallResponse {
             content_items: vec![DynamicToolCallOutputContentItem::InputText {
                 text: serde_json::to_string(self)
@@ -303,93 +303,93 @@ struct PaneActionArgs {
     index: Option<usize>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketDraftAssetArgs {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketDraftAssetArgs {
     #[serde(default)]
-    asset_kind: Option<String>,
+    pub asset_kind: Option<String>,
     #[serde(default)]
-    title: Option<String>,
+    pub title: Option<String>,
     #[serde(default)]
-    description: Option<String>,
+    pub description: Option<String>,
     #[serde(default)]
-    content_digest: Option<String>,
+    pub content_digest: Option<String>,
     #[serde(default)]
-    provenance_ref: Option<String>,
+    pub provenance_ref: Option<String>,
     #[serde(default)]
-    default_policy: Option<String>,
+    pub default_policy: Option<String>,
     #[serde(default)]
-    price_hint_sats: Option<u64>,
+    pub price_hint_sats: Option<u64>,
     #[serde(default)]
-    delivery_modes: Option<Vec<String>>,
+    pub delivery_modes: Option<Vec<String>>,
     #[serde(default)]
-    visibility_posture: Option<String>,
+    pub visibility_posture: Option<String>,
     #[serde(default)]
-    sensitivity_posture: Option<String>,
+    pub sensitivity_posture: Option<String>,
     #[serde(default)]
-    metadata: Option<Value>,
+    pub metadata: Option<Value>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketDraftGrantArgs {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketDraftGrantArgs {
     #[serde(default)]
-    default_policy: Option<String>,
+    pub default_policy: Option<String>,
     #[serde(default)]
-    policy_template: Option<String>,
+    pub policy_template: Option<String>,
     #[serde(default)]
-    consumer_id: Option<String>,
+    pub consumer_id: Option<String>,
     #[serde(default)]
-    price_hint_sats: Option<u64>,
+    pub price_hint_sats: Option<u64>,
     #[serde(default)]
-    delivery_modes: Option<Vec<String>>,
+    pub delivery_modes: Option<Vec<String>>,
     #[serde(default)]
-    visibility_posture: Option<String>,
+    pub visibility_posture: Option<String>,
     #[serde(default)]
-    expires_in_hours: Option<u64>,
+    pub expires_in_hours: Option<u64>,
     #[serde(default)]
-    warranty_window_hours: Option<u64>,
+    pub warranty_window_hours: Option<u64>,
     #[serde(default)]
-    metadata: Option<Value>,
+    pub metadata: Option<Value>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketPublishArgs {
-    confirm: bool,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketPublishArgs {
+    pub confirm: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketRequestPaymentArgs {
-    request_id: String,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketRequestPaymentArgs {
+    pub request_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketPrepareDeliveryArgs {
-    request_id: String,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketPrepareDeliveryArgs {
+    pub request_id: String,
     #[serde(default)]
-    preview_text: Option<String>,
+    pub preview_text: Option<String>,
     #[serde(default)]
-    delivery_ref: Option<String>,
+    pub delivery_ref: Option<String>,
     #[serde(default)]
-    delivery_digest: Option<String>,
+    pub delivery_digest: Option<String>,
     #[serde(default)]
-    manifest_refs: Option<Vec<String>>,
+    pub manifest_refs: Option<Vec<String>>,
     #[serde(default)]
-    bundle_size_bytes: Option<u64>,
+    pub bundle_size_bytes: Option<u64>,
     #[serde(default)]
-    expires_in_hours: Option<u64>,
+    pub expires_in_hours: Option<u64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketIssueDeliveryArgs {
-    request_id: String,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketIssueDeliveryArgs {
+    pub request_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketRevokeGrantArgs {
-    request_id: String,
-    action: String,
-    confirm: bool,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketRevokeGrantArgs {
+    pub request_id: String,
+    pub action: String,
+    pub confirm: bool,
     #[serde(default)]
-    reason_code: Option<String>,
+    pub reason_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1225,7 +1225,9 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
     })
 }
 
-fn execute_data_market_seller_status_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_seller_status_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::ok(
         "OA-DATA-MARKET-SELLER-STATUS",
         "Loaded Data Seller status snapshot.",
@@ -1233,7 +1235,7 @@ fn execute_data_market_seller_status_tool(state: &mut RenderState) -> ToolBridge
     )
 }
 
-fn execute_data_market_draft_asset_tool(
+pub(crate) fn execute_data_market_draft_asset_tool(
     state: &mut RenderState,
     args: &DataMarketDraftAssetArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1296,7 +1298,9 @@ fn execute_data_market_draft_asset_tool(
     )
 }
 
-fn execute_data_market_preview_asset_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_preview_asset_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     crate::data_seller_control::request_data_seller_preview(state);
     let success = matches!(
         state.data_seller.active_draft.preview_posture,
@@ -1317,7 +1321,7 @@ fn execute_data_market_preview_asset_tool(state: &mut RenderState) -> ToolBridge
     }
 }
 
-fn execute_data_market_publish_asset_tool(
+pub(crate) fn execute_data_market_publish_asset_tool(
     state: &mut RenderState,
     args: &DataMarketPublishArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1361,7 +1365,7 @@ fn execute_data_market_publish_asset_tool(
     }
 }
 
-fn execute_data_market_draft_grant_tool(
+pub(crate) fn execute_data_market_draft_grant_tool(
     state: &mut RenderState,
     args: &DataMarketDraftGrantArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1417,7 +1421,9 @@ fn execute_data_market_draft_grant_tool(
     )
 }
 
-fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_preview_grant_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     crate::data_seller_control::request_data_seller_grant_preview(state);
     let success = state
         .data_seller
@@ -1439,7 +1445,7 @@ fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridge
     }
 }
 
-fn execute_data_market_publish_grant_tool(
+pub(crate) fn execute_data_market_publish_grant_tool(
     state: &mut RenderState,
     args: &DataMarketPublishArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1477,7 +1483,7 @@ fn execute_data_market_publish_grant_tool(
     }
 }
 
-fn execute_data_market_request_payment_tool(
+pub(crate) fn execute_data_market_request_payment_tool(
     state: &mut RenderState,
     args: &DataMarketRequestPaymentArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1515,7 +1521,7 @@ fn execute_data_market_request_payment_tool(
     }
 }
 
-fn execute_data_market_prepare_delivery_tool(
+pub(crate) fn execute_data_market_prepare_delivery_tool(
     state: &mut RenderState,
     args: &DataMarketPrepareDeliveryArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1552,7 +1558,7 @@ fn execute_data_market_prepare_delivery_tool(
     }
 }
 
-fn execute_data_market_issue_delivery_tool(
+pub(crate) fn execute_data_market_issue_delivery_tool(
     state: &mut RenderState,
     args: &DataMarketIssueDeliveryArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1585,7 +1591,7 @@ fn execute_data_market_issue_delivery_tool(
     }
 }
 
-fn execute_data_market_revoke_grant_tool(
+pub(crate) fn execute_data_market_revoke_grant_tool(
     state: &mut RenderState,
     args: &DataMarketRevokeGrantArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1628,7 +1634,9 @@ fn execute_data_market_revoke_grant_tool(
     }
 }
 
-fn execute_data_market_snapshot_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_snapshot_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     let mut details = data_seller_tool_snapshot(state);
     if let Some(object) = details.as_object_mut() {
         object.insert(
