@@ -1,17 +1,18 @@
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
+use tiny_skia::{FilterQuality, IntSize, Pixmap, PixmapPaint, Transform};
 use wgpui::{
-    Bounds, Component, Hsla, PaintContext, Point, Quad, RiveFitMode, RiveHandle, RiveSurface,
-    SvgQuad, theme,
+    Bounds, Hsla, ImageData, ImageQuad, ImageSource, PaintContext, Point, Quad, SvgQuad, theme,
 };
+use wgpui::tools::load_image_from_path;
 use winit::keyboard::{Key as WinitLogicalKey, NamedKey as WinitNamedKey};
+use winit::window::CursorIcon;
 
-use crate::app_state::{
-    MissionControlLocalRuntimeLane, PaneLoadState, RenderState, mission_control_local_runtime_lane,
-};
+use crate::app_state::RenderState;
 use crate::pane_registry::{
     HOTBAR_COMMAND_PALETTE_SHORTCUT, HOTBAR_COMMAND_PALETTE_TOOLTIP, HOTBAR_SLOT_EARNINGS_JOBS,
     HOTBAR_SLOT_LOG_STREAM, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_PROVIDER_CONTROL,
@@ -20,10 +21,10 @@ use crate::pane_registry::{
 use crate::pane_renderer::{
     mission_control_cyan_color, mission_control_green_color, mission_control_panel_border_color,
     mission_control_panel_color, mission_control_text_color, paint_disabled_button,
-    paint_mission_control_section_panel, paint_primary_button, split_text_for_display,
+    paint_mission_control_go_online_button, paint_mission_control_section_panel,
+    split_text_for_display,
 };
 use crate::pane_system::mission_control_layout_for_mode;
-use crate::rive_assets::simple_fui_hud_asset;
 use crate::runtime_log;
 
 const ONBOARDING_SCHEMA_VERSION: u32 = 1;
@@ -32,10 +33,20 @@ const MODAL_HEADER_HEIGHT: f32 = 28.0;
 const MODAL_OUTER_PAD: f32 = 18.0;
 const MODAL_COLUMN_GAP: f32 = 18.0;
 const MODAL_STEP_ROW_HEIGHT: f32 = 56.0;
+const SETUP_STEP_DURATION_MS: u64 = 2_000;
+const SETUP_LOADING_DOT_INTERVAL_MS: u64 = 400;
+const ONBOARDING_LOTTIE_SUPERSAMPLE_SCALE: f32 = 2.0;
 const HOTKEYS_TARGET_WIDTH: f32 = 296.0;
 const HOTKEYS_TARGET_HEIGHT: f32 = 84.0;
 const HOTKEYS_TARGET_INSET: f32 = 26.0;
 const TOUR_FOCUS_INSET: f32 = 10.0;
+const ONBOARDING_LOTTIE_JSON: &str =
+    include_str!("../resources/lottie/onboarding-hud-effect.json");
+const ONBOARDING_LOTTIE_CACHE_KEY: &str = "autopilot-onboarding-hud-effect";
+const FORCE_ONBOARDING_ENV: &str = "AUTOPILOT_FORCE_ONBOARDING";
+const ONBOARDING_LOTTIE_VISIBLE_START_FRAME: usize = 96;
+const TOUR_ADVANCE_ARROW_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg>"##;
+const TOUR_CLOSE_X_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M183.1 137.4C170.6 124.9 150.3 124.9 137.8 137.4C125.3 149.9 125.3 170.2 137.8 182.7L275.2 320L137.9 457.4C125.4 469.9 125.4 490.2 137.9 502.7C150.4 515.2 170.7 515.2 183.2 502.7L320.5 365.3L457.9 502.6C470.4 515.1 490.7 515.1 503.2 502.6C515.7 490.1 515.7 469.8 503.2 457.3L365.8 320L503.1 182.6C515.6 170.1 515.6 149.8 503.1 137.3C490.6 124.8 470.3 124.8 457.8 137.3L320.5 274.7L183.1 137.4z"/></svg>"##;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum OnboardingPhase {
@@ -103,23 +114,6 @@ enum SetupRowStatus {
     Complete,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct SetupCompletionSnapshot {
-    wallet_ready: bool,
-    network_ready: bool,
-    connection_ready: bool,
-}
-
-impl SetupCompletionSnapshot {
-    const fn all_complete(self) -> bool {
-        self.wallet_ready && self.network_ready && self.connection_ready
-    }
-
-    const fn flags(self) -> [bool; 3] {
-        [self.wallet_ready, self.network_ready, self.connection_ready]
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct OnboardingDocumentV1 {
     schema_version: u32,
@@ -131,6 +125,338 @@ struct OnboardingDocumentV1 {
     last_seen_app_version: Option<String>,
 }
 
+struct OnboardingLottiePlayer {
+    composition: OnboardingLottieComposition,
+    started_at: Instant,
+    last_frame: Option<usize>,
+    cached_size: Option<(usize, usize)>,
+    cached_image: Option<ImageData>,
+}
+
+impl OnboardingLottiePlayer {
+    fn from_packaged_json() -> Result<Self, String> {
+        let composition = OnboardingLottieComposition::from_packaged_json()?;
+        Ok(Self {
+            composition,
+            started_at: Instant::now(),
+            last_frame: None,
+            cached_size: None,
+            cached_image: None,
+        })
+    }
+
+    fn source_width(&self) -> f32 {
+        self.composition.source_width as f32
+    }
+
+    fn source_height(&self) -> f32 {
+        self.composition.source_height as f32
+    }
+
+    fn frame_for_now(&self, now: Instant) -> usize {
+        let total_frames = self.composition.total_frames.max(1);
+        let fps = self.composition.fps.max(1.0);
+        let elapsed = now.saturating_duration_since(self.started_at).as_secs_f64();
+        let visible_start = ONBOARDING_LOTTIE_VISIBLE_START_FRAME.min(total_frames.saturating_sub(1));
+        let visible_len = total_frames.saturating_sub(visible_start).max(1);
+        visible_start + (((elapsed * fps).floor() as usize) % visible_len)
+    }
+
+    fn render_image(&mut self, bounds: Bounds) -> Option<ImageQuad> {
+        let fitted_bounds = aspect_fit_bounds(bounds, self.source_width(), self.source_height());
+        let width = (fitted_bounds.size.width * ONBOARDING_LOTTIE_SUPERSAMPLE_SCALE)
+            .round()
+            .max(1.0) as usize;
+        let height = (fitted_bounds.size.height * ONBOARDING_LOTTIE_SUPERSAMPLE_SCALE)
+            .round()
+            .max(1.0) as usize;
+        let frame = self.frame_for_now(Instant::now());
+        let cache_key = (width, height);
+        if self.last_frame != Some(frame) || self.cached_size != Some(cache_key) || self.cached_image.is_none() {
+            self.cached_image = self
+                .composition
+                .render_frame(frame as f32, width as u32, height as u32);
+            self.last_frame = Some(frame);
+            self.cached_size = Some(cache_key);
+        }
+
+        Some(ImageQuad::new(
+            fitted_bounds,
+            ImageSource::Rgba8(self.cached_image.clone()?),
+        ))
+    }
+}
+
+#[derive(Clone)]
+struct OnboardingLottieComposition {
+    source_width: u32,
+    source_height: u32,
+    fps: f64,
+    total_frames: usize,
+    layers: Vec<OnboardingLottieLayer>,
+    assets: std::collections::HashMap<String, Pixmap>,
+}
+
+#[derive(Clone)]
+struct OnboardingLottieLayer {
+    ref_id: String,
+    in_frame: f32,
+    out_frame: f32,
+    opacity: AnimatedScalar,
+    rotation_degrees: AnimatedScalar,
+    position: AnimatedVec2,
+    anchor: AnimatedVec2,
+    scale: AnimatedVec2,
+}
+
+#[derive(Clone)]
+enum AnimatedScalar {
+    Static(f32),
+    Keyframes(Vec<ScalarKeyframe>),
+}
+
+#[derive(Clone)]
+struct ScalarKeyframe {
+    t: f32,
+    s: f32,
+}
+
+#[derive(Clone)]
+enum AnimatedVec2 {
+    Static([f32; 2]),
+    Keyframes(Vec<Vec2Keyframe>),
+}
+
+#[derive(Clone)]
+struct Vec2Keyframe {
+    t: f32,
+    s: [f32; 2],
+}
+
+#[derive(Deserialize)]
+struct OnboardingLottieDocument {
+    w: u32,
+    h: u32,
+    fr: f64,
+    op: f32,
+    assets: Vec<OnboardingLottieAsset>,
+    layers: Vec<OnboardingLottieLayerDocument>,
+}
+
+#[derive(Deserialize)]
+struct OnboardingLottieAsset {
+    id: String,
+    u: Option<String>,
+    p: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OnboardingLottieLayerDocument {
+    ty: u8,
+    #[serde(rename = "refId")]
+    ref_id: Option<String>,
+    parent: Option<i64>,
+    ip: Option<f32>,
+    op: Option<f32>,
+    ks: OnboardingLottieTransformDocument,
+}
+
+#[derive(Deserialize)]
+struct OnboardingLottieTransformDocument {
+    o: Value,
+    r: Value,
+    p: Value,
+    a: Value,
+    s: Value,
+}
+
+impl OnboardingLottieComposition {
+    fn from_packaged_json() -> Result<Self, String> {
+        let document = serde_json::from_str::<OnboardingLottieDocument>(ONBOARDING_LOTTIE_JSON)
+            .map_err(|error| format!("Failed to parse packaged onboarding Lottie JSON: {error}"))?;
+
+        let mut assets = std::collections::HashMap::new();
+        for asset in &document.assets {
+            let Some(path) = asset_file_path(asset) else {
+                continue;
+            };
+            let decoded = load_image_from_path(&path)
+                .map_err(|_| format!("Failed to load Lottie asset {}", path.display()))?;
+            let Some(size) = IntSize::from_wh(decoded.width, decoded.height) else {
+                return Err(format!(
+                    "Invalid Lottie asset dimensions for {}: {}x{}",
+                    path.display(),
+                    decoded.width,
+                    decoded.height
+                ));
+            };
+            let Some(pixmap) = Pixmap::from_vec(decoded.pixels, size) else {
+                return Err(format!("Failed to decode Lottie pixmap {}", path.display()));
+            };
+            assets.insert(asset.id.clone(), pixmap);
+        }
+
+        let mut layers = Vec::new();
+        for layer in document.layers {
+            if layer.ty != 2 || layer.parent.is_some() {
+                continue;
+            }
+            let Some(ref_id) = layer.ref_id else {
+                continue;
+            };
+            if !assets.contains_key(&ref_id) {
+                continue;
+            }
+            layers.push(OnboardingLottieLayer {
+                ref_id,
+                in_frame: layer.ip.unwrap_or(0.0),
+                out_frame: layer.op.unwrap_or(document.op),
+                opacity: AnimatedScalar::parse(&layer.ks.o)?,
+                rotation_degrees: AnimatedScalar::parse(&layer.ks.r)?,
+                position: AnimatedVec2::parse(&layer.ks.p)?,
+                anchor: AnimatedVec2::parse(&layer.ks.a)?,
+                scale: AnimatedVec2::parse(&layer.ks.s)?,
+            });
+        }
+
+        Ok(Self {
+            source_width: document.w,
+            source_height: document.h,
+            fps: document.fr,
+            total_frames: document.op.ceil().max(1.0) as usize,
+            layers,
+            assets,
+        })
+    }
+
+    fn render_frame(&self, frame: f32, width: u32, height: u32) -> Option<ImageData> {
+        let mut canvas = Pixmap::new(width, height)?;
+        let root_scale_x = width as f32 / self.source_width.max(1) as f32;
+        let root_scale_y = height as f32 / self.source_height.max(1) as f32;
+
+        for layer in self.layers.iter().rev() {
+            if frame < layer.in_frame || frame >= layer.out_frame {
+                continue;
+            }
+            let Some(asset) = self.assets.get(&layer.ref_id) else {
+                continue;
+            };
+
+            let opacity = (layer.opacity.value_at(frame) / 100.0).clamp(0.0, 1.0);
+            if opacity <= 0.001 {
+                continue;
+            }
+            let scale = layer.scale.value_at(frame);
+            let scale_x = scale[0] / 100.0;
+            let scale_y = scale[1] / 100.0;
+            if scale_x.abs() <= 0.0001 || scale_y.abs() <= 0.0001 {
+                continue;
+            }
+            let position = layer.position.value_at(frame);
+            let anchor = layer.anchor.value_at(frame);
+            let rotation = layer.rotation_degrees.value_at(frame).to_radians();
+            let cos = rotation.cos();
+            let sin = rotation.sin();
+            let transform = Transform::from_row(
+                root_scale_x * cos * scale_x,
+                root_scale_y * sin * scale_x,
+                root_scale_x * -sin * scale_y,
+                root_scale_y * cos * scale_y,
+                root_scale_x * (position[0] - cos * scale_x * anchor[0] + sin * scale_y * anchor[1]),
+                root_scale_y * (position[1] - sin * scale_x * anchor[0] - cos * scale_y * anchor[1]),
+            );
+            let mut paint = PixmapPaint::default();
+            paint.opacity = opacity;
+            paint.quality = FilterQuality::Bilinear;
+            canvas.draw_pixmap(0, 0, asset.as_ref(), &paint, transform, None);
+        }
+
+        ImageData::rgba8(width, height, Arc::<[u8]>::from(canvas.take()))
+    }
+}
+
+impl AnimatedScalar {
+    fn parse(value: &Value) -> Result<Self, String> {
+        let animated = value
+            .get("a")
+            .and_then(Value::as_u64)
+            .unwrap_or_default()
+            == 1;
+        let Some(keyframes) = value.get("k") else {
+            return Err("Missing animated scalar payload".to_string());
+        };
+        if !animated {
+            return Ok(Self::Static(json_scalar_value(keyframes)?));
+        }
+        let Some(items) = keyframes.as_array() else {
+            return Err("Animated scalar keyframes were not an array".to_string());
+        };
+        let mut parsed = Vec::new();
+        for item in items {
+            let t = item.get("t").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+            let Some(s) = item.get("s") else {
+                continue;
+            };
+            parsed.push(ScalarKeyframe {
+                t,
+                s: json_scalar_value(s)?,
+            });
+        }
+        if parsed.is_empty() {
+            return Err("Animated scalar keyframes were empty".to_string());
+        }
+        Ok(Self::Keyframes(parsed))
+    }
+
+    fn value_at(&self, frame: f32) -> f32 {
+        match self {
+            Self::Static(value) => *value,
+            Self::Keyframes(keyframes) => interpolate_scalar_keyframes(keyframes, frame),
+        }
+    }
+}
+
+impl AnimatedVec2 {
+    fn parse(value: &Value) -> Result<Self, String> {
+        let animated = value
+            .get("a")
+            .and_then(Value::as_u64)
+            .unwrap_or_default()
+            == 1;
+        let Some(keyframes) = value.get("k") else {
+            return Err("Missing animated vec2 payload".to_string());
+        };
+        if !animated {
+            return Ok(Self::Static(json_vec2_value(keyframes)?));
+        }
+        let Some(items) = keyframes.as_array() else {
+            return Err("Animated vec2 keyframes were not an array".to_string());
+        };
+        let mut parsed = Vec::new();
+        for item in items {
+            let t = item.get("t").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+            let Some(s) = item.get("s") else {
+                continue;
+            };
+            parsed.push(Vec2Keyframe {
+                t,
+                s: json_vec2_value(s)?,
+            });
+        }
+        if parsed.is_empty() {
+            return Err("Animated vec2 keyframes were empty".to_string());
+        }
+        Ok(Self::Keyframes(parsed))
+    }
+
+    fn value_at(&self, frame: f32) -> [f32; 2] {
+        match self {
+            Self::Static(value) => *value,
+            Self::Keyframes(keyframes) => interpolate_vec2_keyframes(keyframes, frame),
+        }
+    }
+}
+
 pub struct OnboardingState {
     file_path: PathBuf,
     pub phase: OnboardingPhase,
@@ -139,11 +465,9 @@ pub struct OnboardingState {
     pub completed_at_epoch_ms: Option<u64>,
     pub skipped_at_epoch_ms: Option<u64>,
     pub last_seen_app_version: Option<String>,
-    pub animation_surface: Option<RiveSurface>,
+    animation_player: Option<OnboardingLottiePlayer>,
     pub animation_last_error: Option<String>,
     pub animation_last_action: Option<String>,
-    animation_last_applied_fit_mode: Option<RiveFitMode>,
-    animation_last_applied_playing: Option<bool>,
     logged_active_step: Option<SetupStepId>,
     logged_tour_hotkeys: bool,
     logged_tour_sell_compute: bool,
@@ -163,15 +487,17 @@ impl OnboardingState {
             completed_at_epoch_ms: None,
             skipped_at_epoch_ms: None,
             last_seen_app_version: Some(ONBOARDING_VERSION.to_string()),
-            animation_surface: None,
+            animation_player: None,
             animation_last_error: None,
             animation_last_action: None,
-            animation_last_applied_fit_mode: None,
-            animation_last_applied_playing: None,
             logged_active_step: None,
             logged_tour_hotkeys: false,
             logged_tour_sell_compute: false,
         };
+
+        if force_onboarding_override_enabled() {
+            return state;
+        }
 
         let raw = match std::fs::read_to_string(&state.file_path) {
             Ok(raw) => raw,
@@ -217,7 +543,22 @@ impl OnboardingState {
         self.phase.is_active()
     }
 
+    fn animation_needs_redraw(&self) -> bool {
+        if self.phase != OnboardingPhase::SetupModal {
+            return false;
+        }
+        let lottie_active = self.animation_last_error.is_none() && self.animation_player.is_some();
+        let loading_active = self
+            .shown_at_epoch_ms
+            .map(|shown_at| current_timestamp_ms().saturating_sub(shown_at) < total_setup_loading_duration_ms())
+            .unwrap_or(true);
+        lottie_active || loading_active
+    }
+
     fn persist(&mut self) {
+        if force_onboarding_override_enabled() {
+            return;
+        }
         self.last_seen_app_version = Some(ONBOARDING_VERSION.to_string());
         let document = OnboardingDocumentV1 {
             schema_version: ONBOARDING_SCHEMA_VERSION,
@@ -417,6 +758,7 @@ struct SetupProgressView {
     active_step: Option<SetupStepId>,
     cta_enabled: bool,
     detail_lines: Vec<String>,
+    loading_dot_count: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -484,8 +826,47 @@ pub fn build_view(state: &RenderState) -> OnboardingView {
     }
 }
 
+pub fn animation_needs_redraw(state: &RenderState) -> bool {
+    state.onboarding.animation_needs_redraw()
+}
+
 pub fn blocks_root_input(state: &RenderState) -> bool {
     state.onboarding.is_active()
+}
+
+pub fn cursor_icon(state: &RenderState, point: Point) -> Option<CursorIcon> {
+    if !state.onboarding.is_active() {
+        return None;
+    }
+    let root_bounds = root_bounds_for_state(state);
+    match state.onboarding.phase {
+        OnboardingPhase::SetupModal => {
+            let progress = derive_setup_progress(state);
+            let cta_bounds = setup_modal_layout(root_bounds).cta;
+            if progress.cta_enabled && cta_bounds.contains(point) {
+                Some(CursorIcon::Pointer)
+            } else {
+                Some(CursorIcon::Default)
+            }
+        }
+        OnboardingPhase::TourHotkeys => {
+            let layout = tour_hotkeys_layout(root_bounds);
+            if layout.advance_button.contains(point) {
+                Some(CursorIcon::Pointer)
+            } else {
+                Some(CursorIcon::Default)
+            }
+        }
+        OnboardingPhase::TourSellCompute => {
+            let layout = tour_sell_compute_layout(root_bounds);
+            if layout.close_button.contains(point) {
+                Some(CursorIcon::Pointer)
+            } else {
+                Some(CursorIcon::Default)
+            }
+        }
+        OnboardingPhase::Done | OnboardingPhase::Skipped => None,
+    }
 }
 
 pub fn handle_mouse_down(state: &mut RenderState) -> bool {
@@ -574,7 +955,7 @@ fn paint_setup_modal(
     paint_overlay_scrim(root_bounds, paint);
     paint_mission_control_section_panel(
         layout.modal,
-        "Initializing User Account",
+        "INITIALIZING USER ACCOUNT",
         mission_control_green_color(),
         false,
         paint,
@@ -597,32 +978,24 @@ fn paint_setup_modal(
             layout.step_rows[index],
             step.label(),
             progress.statuses[index],
+            (progress.active_step == Some(step)).then_some(progress.loading_dot_count),
             paint,
         );
     }
 
     paint_status_block(layout.status_block, &progress.detail_lines, paint);
     if progress.cta_enabled {
-        paint_primary_button(layout.cta, "Start Earning Bitcoin", paint);
+        paint_mission_control_go_online_button(
+            layout.cta,
+            "START EARNING BITCOIN",
+            true,
+            mission_control_green_color(),
+            paint,
+        );
     } else {
-        paint_disabled_button(layout.cta, "Start Earning Bitcoin", paint);
+        paint_disabled_button(layout.cta, "START EARNING BITCOIN", paint);
     }
 
-    paint.scene.draw_quad(
-        Quad::new(layout.right_column)
-            .with_background(mission_control_panel_color().with_alpha(0.44))
-            .with_border(mission_control_panel_border_color(), 1.0)
-            .with_corner_radius(8.0),
-    );
-    paint.scene.draw_text(paint.text.layout_mono(
-        "LOCAL RIVE",
-        Point::new(
-            layout.right_column.origin.x + 14.0,
-            layout.right_column.origin.y + 14.0,
-        ),
-        10.0,
-        mission_control_cyan_color(),
-    ));
     paint_setup_animation(onboarding, layout.animation_bounds, paint);
 }
 
@@ -660,15 +1033,17 @@ fn paint_hotkeys_tour(root_bounds: Bounds, paint: &mut PaintContext) {
             .with_background(Hsla::black())
             .with_corner_radius(3.0),
     );
-    paint.scene.draw_text(paint.text.layout_mono(
-        ">",
-        Point::new(
-            layout.advance_button.origin.x + 14.0,
-            layout.advance_button.origin.y + 8.0,
+    paint.scene.draw_svg(SvgQuad {
+        bounds: Bounds::new(
+            layout.advance_button.origin.x + 6.0,
+            layout.advance_button.origin.y + 6.0,
+            16.0,
+            16.0,
         ),
-        16.0,
-        Hsla::white(),
-    ));
+        svg_data: Arc::from(TOUR_ADVANCE_ARROW_SVG.as_bytes()),
+        tint: Some(Hsla::white()),
+        opacity: 1.0,
+    });
     paint_callout_caret(layout.caret, CalloutCaretDirection::Down, paint);
 }
 
@@ -700,18 +1075,20 @@ fn paint_sell_compute_tour(root_bounds: Bounds, paint: &mut PaintContext) {
     }
     paint.scene.draw_quad(
         Quad::new(layout.close_button)
-            .with_background(Hsla::black().with_alpha(0.08))
+            .with_background(Hsla::black())
             .with_corner_radius(3.0),
     );
-    paint.scene.draw_text(paint.text.layout_mono(
-        "X",
-        Point::new(
-            layout.close_button.origin.x + 7.0,
+    paint.scene.draw_svg(SvgQuad {
+        bounds: Bounds::new(
+            layout.close_button.origin.x + 6.0,
             layout.close_button.origin.y + 6.0,
+            16.0,
+            16.0,
         ),
-        12.0,
-        Hsla::black(),
-    ));
+        svg_data: Arc::from(TOUR_CLOSE_X_SVG.as_bytes()),
+        tint: Some(Hsla::white()),
+        opacity: 1.0,
+    });
     paint_callout_caret(layout.caret, CalloutCaretDirection::Left, paint);
 }
 
@@ -719,53 +1096,89 @@ fn paint_setup_step_row(
     bounds: Bounds,
     label: &str,
     status: SetupRowStatus,
+    loading_dot_count: Option<usize>,
     paint: &mut PaintContext,
 ) {
-    let (fill, border, text_color) = match status {
-        SetupRowStatus::Pending => (
-            mission_control_panel_color().with_alpha(0.55),
-            mission_control_panel_border_color(),
-            mission_control_text_color().with_alpha(0.68),
-        ),
-        SetupRowStatus::Active => (
-            mission_control_panel_color().with_alpha(0.9),
-            mission_control_cyan_color(),
-            mission_control_text_color(),
-        ),
-        SetupRowStatus::Complete => (
-            mission_control_panel_color().with_alpha(0.75),
-            mission_control_green_color().with_alpha(0.8),
-            mission_control_text_color(),
-        ),
+    let loading_gray = Hsla::from_hex(0x555B66);
+    let (text_color, icon_color) = match status {
+        SetupRowStatus::Pending | SetupRowStatus::Active => (loading_gray, loading_gray),
+        SetupRowStatus::Complete => (Hsla::white(), mission_control_green_color()),
     };
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(fill)
-            .with_border(border, 1.0)
-            .with_corner_radius(8.0),
-    );
     let icon_bounds = Bounds::new(
         bounds.origin.x + 12.0,
         bounds.origin.y + bounds.size.height * 0.5 - 10.0,
         20.0,
         20.0,
     );
-    match status {
-        SetupRowStatus::Complete => {
-            draw_check_icon(icon_bounds, mission_control_green_color(), paint)
-        }
-        SetupRowStatus::Active => draw_pulse_dot(icon_bounds, mission_control_cyan_color(), paint),
-        SetupRowStatus::Pending => draw_pending_dot(icon_bounds, paint),
-    }
+    draw_check_icon(icon_bounds, icon_color, paint);
+
+    let display_label = if let Some(dot_count) = loading_dot_count {
+        let dots = ".".repeat(dot_count.clamp(1, 3));
+        format!("{label} {dots}")
+    } else {
+        label.to_string()
+    };
+    let label_y = bounds.origin.y + bounds.size.height * 0.5 - 12.0;
     paint.scene.draw_text(paint.text.layout(
-        label,
-        Point::new(icon_bounds.max_x() + 12.0, bounds.origin.y + 20.0),
-        12.0,
+        &display_label,
+        Point::new(icon_bounds.max_x() + 12.0, label_y),
+        14.0,
         text_color,
     ));
 }
 
+fn total_setup_loading_duration_ms() -> u64 {
+    SETUP_STEP_DURATION_MS * SetupStepId::ALL.len() as u64
+}
+
+fn onboarding_elapsed_ms(state: &RenderState) -> u64 {
+    state.onboarding.shown_at_epoch_ms.map_or(0, |shown_at| {
+        current_timestamp_ms().saturating_sub(shown_at)
+    })
+}
+
+fn setup_progress_from_elapsed(elapsed_ms: u64) -> SetupProgressView {
+    let total_duration = total_setup_loading_duration_ms();
+    let clamped_elapsed = elapsed_ms.min(total_duration);
+    let completed_steps = (clamped_elapsed / SETUP_STEP_DURATION_MS)
+        .min(SetupStepId::ALL.len() as u64) as usize;
+    let statuses = std::array::from_fn(|index| {
+        if index < completed_steps {
+            SetupRowStatus::Complete
+        } else if index == completed_steps && completed_steps < SetupStepId::ALL.len() {
+            SetupRowStatus::Active
+        } else {
+            SetupRowStatus::Pending
+        }
+    });
+    let active_step = if completed_steps < SetupStepId::ALL.len() {
+        Some(SetupStepId::ALL[completed_steps])
+    } else {
+        None
+    };
+    let loading_dot_count =
+        ((clamped_elapsed / SETUP_LOADING_DOT_INTERVAL_MS) % 3 + 1) as usize;
+    let detail_lines = if completed_steps >= SetupStepId::ALL.len() {
+        vec![
+            "User setup complete.".to_string(),
+            "Click Start Earning Bitcoin to continue into Mission Control.".to_string(),
+        ]
+    } else {
+        Vec::new()
+    };
+    SetupProgressView {
+        statuses,
+        active_step,
+        cta_enabled: completed_steps >= SetupStepId::ALL.len(),
+        detail_lines,
+        loading_dot_count,
+    }
+}
+
 fn paint_status_block(bounds: Bounds, lines: &[String], paint: &mut PaintContext) {
+    if lines.is_empty() {
+        return;
+    }
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(mission_control_panel_color().with_alpha(0.3))
@@ -791,9 +1204,10 @@ fn paint_setup_animation(
     paint: &mut PaintContext,
 ) {
     ensure_animation_loaded(onboarding);
-    sync_animation_state(onboarding);
-    if let Some(surface) = onboarding.animation_surface.as_mut() {
-        surface.paint(bounds, paint);
+    if let Some(player) = onboarding.animation_player.as_mut()
+        && let Some(image) = player.render_image(bounds)
+    {
+        paint.scene.draw_image(image);
         return;
     }
     paint.scene.draw_quad(
@@ -805,7 +1219,7 @@ fn paint_setup_animation(
     let fallback = onboarding
         .animation_last_error
         .clone()
-        .unwrap_or_else(|| "Packaged Rive placeholder unavailable".to_string());
+        .unwrap_or_else(|| "Packaged onboarding Lottie preview unavailable".to_string());
     for (index, line) in split_text_for_display(&fallback, 28)
         .into_iter()
         .enumerate()
@@ -823,49 +1237,21 @@ fn paint_setup_animation(
 }
 
 fn ensure_animation_loaded(onboarding: &mut OnboardingState) {
-    if onboarding.animation_surface.is_some() || onboarding.animation_last_error.is_some() {
+    if onboarding.animation_player.is_some() || onboarding.animation_last_error.is_some() {
         return;
     }
-    let asset = simple_fui_hud_asset();
-    match RiveSurface::from_bytes_with_handles(
-        asset.bytes,
-        RiveHandle::Default,
-        RiveHandle::Default,
-        None,
-    ) {
-        Ok(surface) => {
-            onboarding.animation_surface = Some(surface);
+    match OnboardingLottiePlayer::from_packaged_json() {
+        Ok(player) => {
+            onboarding.animation_player = Some(player);
             onboarding.animation_last_error = None;
             onboarding.animation_last_action =
-                Some("Loaded packaged onboarding Rive surface".to_string());
+                Some("Loaded packaged onboarding Lottie animation".to_string());
         }
         Err(error) => {
-            onboarding.animation_last_error = Some(error.to_string());
+            onboarding.animation_last_error = Some(error);
             onboarding.animation_last_action =
-                Some("Failed to load packaged onboarding Rive surface".to_string());
+                Some("Failed to load packaged onboarding Lottie animation".to_string());
         }
-    }
-}
-
-fn sync_animation_state(onboarding: &mut OnboardingState) {
-    let Some(surface) = onboarding.animation_surface.as_mut() else {
-        return;
-    };
-    let desired_fit_mode = RiveFitMode::Contain;
-    let desired_playing = false;
-    let mut changed = false;
-    if onboarding.animation_last_applied_fit_mode != Some(desired_fit_mode) {
-        surface.controller_mut().set_fit_mode(desired_fit_mode);
-        onboarding.animation_last_applied_fit_mode = Some(desired_fit_mode);
-        changed = true;
-    }
-    if onboarding.animation_last_applied_playing != Some(desired_playing) {
-        surface.controller_mut().pause();
-        onboarding.animation_last_applied_playing = Some(desired_playing);
-        changed = true;
-    }
-    if changed {
-        surface.mark_dirty();
     }
 }
 
@@ -880,30 +1266,39 @@ fn paint_hotkeys_target(bounds: Bounds, paint: &mut PaintContext) {
         "HOTKEYS",
         Point::new(bounds.origin.x + 14.0, bounds.origin.y + 10.0),
         10.0,
-        mission_control_green_color(),
+        mission_control_cyan_color(),
     ));
     let entries = hotkey_legend_entries();
     let column_width = (bounds.size.width - 24.0) * 0.5;
+    let chip_width = 24.0;
+    let chip_height = 14.0;
+    let chip_accent = mission_control_cyan_color();
     for (index, entry) in entries.into_iter().enumerate() {
         let row = index % 3;
         let column = index / 3;
         let x = bounds.origin.x + 12.0 + column as f32 * column_width;
         let y = bounds.origin.y + 28.0 + row as f32 * 17.0;
+        let chip_bounds = Bounds::new(x, y, chip_width, chip_height);
         paint.scene.draw_quad(
-            Quad::new(Bounds::new(x, y, 20.0, 14.0))
-                .with_background(mission_control_green_color().with_alpha(0.18))
-                .with_border(mission_control_green_color().with_alpha(0.5), 1.0)
+            Quad::new(chip_bounds)
+                .with_background(chip_accent.with_alpha(0.18))
+                .with_border(chip_accent.with_alpha(0.5), 1.0)
                 .with_corner_radius(3.0),
         );
+        let key_font_size = 9.0;
+        let estimated_key_width = entry.key.chars().count() as f32 * key_font_size * 0.6;
         paint.scene.draw_text(paint.text.layout_mono(
             &entry.key,
-            Point::new(x + 5.0, y + 2.0),
-            9.0,
+            Point::new(
+                chip_bounds.origin.x + ((chip_width - estimated_key_width) * 0.5).max(2.0),
+                chip_bounds.origin.y + 2.0,
+            ),
+            key_font_size,
             mission_control_text_color(),
         ));
         paint.scene.draw_text(paint.text.layout(
             &entry.label,
-            Point::new(x + 28.0, y + 1.0),
+            Point::new(chip_bounds.max_x() + 8.0, y + 1.0),
             10.0,
             mission_control_text_color().with_alpha(0.86),
         ));
@@ -1134,17 +1529,19 @@ fn setup_modal_layout(root_bounds: Bounds) -> SetupModalLayout {
         left_column.size.width,
         52.0,
     );
+    let cta_left_inset = 12.0;
+    let cta_right_inset = 20.0;
     let cta = Bounds::new(
-        left_column.origin.x,
-        left_column.max_y() - 44.0,
-        left_column.size.width,
+        left_column.origin.x + cta_left_inset,
+        left_column.max_y() - 59.0,
+        (left_column.size.width - cta_left_inset - cta_right_inset).max(220.0),
         44.0,
     );
     let animation_bounds = Bounds::new(
-        right_column.origin.x + 12.0,
-        right_column.origin.y + 24.0,
-        (right_column.size.width - 24.0).max(0.0),
-        (right_column.size.height - 36.0).max(0.0),
+        right_column.origin.x,
+        right_column.origin.y,
+        right_column.size.width.max(0.0),
+        right_column.size.height.max(0.0),
     );
     SetupModalLayout {
         modal,
@@ -1189,7 +1586,7 @@ fn tour_sell_compute_layout(root_bounds: Bounds) -> TourSellComputeLayout {
     let card_x = (focus.max_x() + 26.0).min(root_bounds.max_x() - card_width - 20.0);
     let card_y = (focus.origin.y + 20.0).min(root_bounds.max_y() - card_height - 20.0);
     let card = Bounds::new(card_x, card_y, card_width, card_height);
-    let close_button = Bounds::new(card.max_x() - 28.0, card.origin.y + 10.0, 18.0, 18.0);
+    let close_button = Bounds::new(card.max_x() - 40.0, card.origin.y + 10.0, 28.0, 28.0);
     let caret = Bounds::new(card.origin.x - 10.0, card.origin.y + 28.0, 10.0, 16.0);
     TourSellComputeLayout {
         focus,
@@ -1208,114 +1605,131 @@ fn hotkeys_target_bounds(root_bounds: Bounds) -> Bounds {
     )
 }
 
-fn derive_setup_progress(state: &RenderState) -> SetupProgressView {
-    let completion = derive_setup_completion(state);
-    let statuses = setup_row_statuses(completion.flags());
-    let active_step = statuses
-        .iter()
-        .position(|status| *status == SetupRowStatus::Active)
-        .map(|index| SetupStepId::ALL[index]);
-    SetupProgressView {
-        statuses,
-        active_step,
-        cta_enabled: completion.all_complete(),
-        detail_lines: derive_setup_detail_lines(state, completion),
+fn packaged_lottie_resource_dir() -> &'static Path {
+    static RESOURCE_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    RESOURCE_DIR
+        .get_or_init(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("lottie")
+        })
+        .as_path()
+}
+
+fn asset_file_path(asset: &OnboardingLottieAsset) -> Option<PathBuf> {
+    let mut path = packaged_lottie_resource_dir().to_path_buf();
+    let relative_dir = asset.u.as_deref().unwrap_or_default().trim_start_matches('/');
+    if !relative_dir.is_empty() {
+        path = path.join(relative_dir);
+    }
+    path = path.join(asset.p.as_deref()?);
+    Some(path)
+}
+
+fn force_onboarding_override_enabled() -> bool {
+    #[cfg(debug_assertions)]
+    {
+        matches!(
+            std::env::var(FORCE_ONBOARDING_ENV).ok().as_deref(),
+            Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
+        )
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
     }
 }
 
-fn derive_setup_completion(state: &RenderState) -> SetupCompletionSnapshot {
-    let configured_relays = state.configured_provider_relay_urls();
-    let wallet_ready = state.nostr_identity.is_some()
-        && state.spark_wallet.identity_path.is_some()
-        && state.spark_wallet.last_error.is_none()
-        && (state.spark_wallet.network_status.is_some()
-            || state.spark_wallet.balance.is_some()
-            || state.spark_wallet.spark_address.is_some()
-            || state.spark_wallet.bitcoin_address.is_some());
-    let network_ready = state.settings.load_state == PaneLoadState::Ready
-        && state.settings.last_error.is_none()
-        && !configured_relays.is_empty()
-        && state.provider_nip90_lane.configured_relays == configured_relays;
-    let connection_ready = match mission_control_local_runtime_lane(
-        state.desktop_shell_mode,
-        &state.gpt_oss_execution,
-    ) {
-        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
-            state.provider_runtime.apple_fm.bridge_status.is_some()
-                || state.provider_runtime.apple_fm.reachable
-                || state.provider_runtime.apple_fm.ready_model.is_some()
-                || state
-                    .provider_runtime
-                    .apple_fm
-                    .availability_error_message()
-                    .is_some()
-        }
-        Some(MissionControlLocalRuntimeLane::GptOss) => {
-            state.gpt_oss_execution.reachable
-                || state.gpt_oss_execution.ready_model.is_some()
-                || state.gpt_oss_execution.artifact_present
-                || state.gpt_oss_execution.last_error.is_some()
-        }
-        None => true,
+fn json_scalar_value(value: &Value) -> Result<f32, String> {
+    if let Some(number) = value.as_f64() {
+        return Ok(number as f32);
+    }
+    let Some(items) = value.as_array() else {
+        return Err("Expected scalar or scalar array".to_string());
     };
-    SetupCompletionSnapshot {
-        wallet_ready,
-        network_ready,
-        connection_ready,
-    }
+    items
+        .first()
+        .and_then(Value::as_f64)
+        .map(|value| value as f32)
+        .ok_or_else(|| "Expected scalar array item".to_string())
 }
 
-fn derive_setup_detail_lines(
-    state: &RenderState,
-    completion: SetupCompletionSnapshot,
-) -> Vec<String> {
-    if !completion.wallet_ready {
-        let wallet_status = state.spark_wallet.network_status_label();
-        let mut lines = vec![format!("Wallet bootstrap: {}", wallet_status)];
-        if let Some(action) = state.spark_wallet.last_action.as_deref() {
-            lines.push(action.to_string());
-        }
-        if let Some(error) = state.spark_wallet.last_error.as_deref() {
-            lines.push(format!("Wallet error: {error}"));
-        }
-        return lines;
+fn json_vec2_value(value: &Value) -> Result<[f32; 2], String> {
+    let Some(items) = value.as_array() else {
+        return Err("Expected vec2 array".to_string());
+    };
+    let x = items
+        .first()
+        .and_then(Value::as_f64)
+        .ok_or_else(|| "Expected vec2 x component".to_string())? as f32;
+    let y = items
+        .get(1)
+        .and_then(Value::as_f64)
+        .ok_or_else(|| "Expected vec2 y component".to_string())? as f32;
+    Ok([x, y])
+}
+
+fn interpolate_scalar_keyframes(keyframes: &[ScalarKeyframe], frame: f32) -> f32 {
+    if keyframes.len() == 1 {
+        return keyframes[0].s;
     }
-    if !completion.network_ready {
-        let relay_count = state.configured_provider_relay_urls().len();
-        let mut lines = vec![format!("Relay bundle: {relay_count} configured relay(s)")];
-        if let Some(action) = state.provider_nip90_lane.last_action.as_deref() {
-            lines.push(action.to_string());
+    for window in keyframes.windows(2) {
+        let current = &window[0];
+        let next = &window[1];
+        if frame <= current.t {
+            return current.s;
         }
-        if let Some(error) = state.provider_nip90_lane.last_error.as_deref() {
-            lines.push(format!("Relay lane error: {error}"));
+        if frame < next.t {
+            let span = (next.t - current.t).max(f32::EPSILON);
+            let progress = ((frame - current.t) / span).clamp(0.0, 1.0);
+            return current.s + (next.s - current.s) * progress;
         }
-        return lines;
     }
-    if !completion.connection_ready {
-        let mut lines = Vec::new();
-        if let Some(status) = state.provider_runtime.apple_fm.bridge_status.as_deref() {
-            lines.push(format!("Apple FM bridge: {status}"));
-        } else if !state.gpt_oss_execution.backend_label.trim().is_empty() {
-            lines.push(format!(
-                "Runtime backend: {}",
-                state.gpt_oss_execution.backend_label
-            ));
-        }
-        if let Some(action) = state.provider_control.last_action.as_deref() {
-            lines.push(action.to_string());
-        }
-        if let Some(error) = state.provider_control.last_error.as_deref() {
-            lines.push(format!("Runtime note: {error}"));
-        }
-        if lines.is_empty() {
-            lines.push("Preparing local runtime preflight.".to_string());
-        }
-        return lines;
+    keyframes.last().map(|frame| frame.s).unwrap_or_default()
+}
+
+fn interpolate_vec2_keyframes(keyframes: &[Vec2Keyframe], frame: f32) -> [f32; 2] {
+    if keyframes.len() == 1 {
+        return keyframes[0].s;
     }
-    vec![
-        "User setup complete.".to_string(),
-        "Click Start Earning Bitcoin to continue into Mission Control.".to_string(),
-    ]
+    for window in keyframes.windows(2) {
+        let current = &window[0];
+        let next = &window[1];
+        if frame <= current.t {
+            return current.s;
+        }
+        if frame < next.t {
+            let span = (next.t - current.t).max(f32::EPSILON);
+            let progress = ((frame - current.t) / span).clamp(0.0, 1.0);
+            return [
+                current.s[0] + (next.s[0] - current.s[0]) * progress,
+                current.s[1] + (next.s[1] - current.s[1]) * progress,
+            ];
+        }
+    }
+    keyframes.last().map(|frame| frame.s).unwrap_or([0.0, 0.0])
+}
+
+fn aspect_fit_bounds(bounds: Bounds, source_width: f32, source_height: f32) -> Bounds {
+    if source_width <= 0.0 || source_height <= 0.0 || bounds.size.width <= 0.0 || bounds.size.height <= 0.0
+    {
+        return bounds;
+    }
+    let scale = (bounds.size.width / source_width)
+        .min(bounds.size.height / source_height)
+        .max(0.0);
+    let width = (source_width * scale).max(1.0);
+    let height = (source_height * scale).max(1.0);
+    Bounds::new(
+        bounds.origin.x + (bounds.size.width - width) * 0.5,
+        bounds.origin.y + (bounds.size.height - height) * 0.5,
+        width,
+        height,
+    )
+}
+
+fn derive_setup_progress(state: &RenderState) -> SetupProgressView {
+    setup_progress_from_elapsed(onboarding_elapsed_ms(state))
 }
 
 fn setup_row_statuses(completed: [bool; 3]) -> [SetupRowStatus; 3] {
@@ -1366,10 +1780,11 @@ fn default_file_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnboardingPhase, OnboardingState, SetupRowStatus, hotkeys_target_bounds,
-        setup_row_statuses, tour_sell_compute_layout,
+        OnboardingLottiePlayer, OnboardingPhase, OnboardingState, SETUP_STEP_DURATION_MS,
+        SetupRowStatus, hotkeys_target_bounds, setup_progress_from_elapsed, setup_row_statuses,
+        tour_sell_compute_layout,
     };
-    use wgpui::Bounds;
+    use wgpui::{Bounds, ImageSource};
 
     fn unique_temp_path(label: &str) -> std::path::PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -1437,6 +1852,42 @@ mod tests {
         let root = Bounds::new(0.0, 0.0, 1280.0, 800.0);
         let layout = tour_sell_compute_layout(root);
         assert!(layout.card.origin.x >= layout.focus.max_x() - 12.0);
+    }
+
+    #[test]
+    fn packaged_onboarding_lottie_renders_visible_pixels() {
+        let mut player = OnboardingLottiePlayer::from_packaged_json()
+            .expect("packaged onboarding lottie should load");
+        let image = player
+            .render_image(Bounds::new(0.0, 0.0, 320.0, 320.0))
+            .expect("packaged onboarding lottie should render an image");
+        let ImageSource::Rgba8(image_data) = image.source else {
+            panic!("expected rgba8 onboarding image");
+        };
+        let pixel_bytes = image_data.rgba8.as_ref();
+        let visible_pixels = pixel_bytes
+            .chunks_exact(4)
+            .filter(|px| px[3] > 0 && (px[0] > 0 || px[1] > 0 || px[2] > 0))
+            .count();
+        assert!(
+            visible_pixels > 0,
+            "packaged onboarding lottie rendered only transparent/black pixels"
+        );
+    }
+
+    #[test]
+    fn timed_setup_progress_has_no_active_step_after_completion() {
+        let progress = setup_progress_from_elapsed(SETUP_STEP_DURATION_MS * 3);
+        assert_eq!(progress.active_step, None);
+        assert!(progress.cta_enabled);
+        assert_eq!(
+            progress.statuses,
+            [
+                SetupRowStatus::Complete,
+                SetupRowStatus::Complete,
+                SetupRowStatus::Complete
+            ]
+        );
     }
 
     #[test]

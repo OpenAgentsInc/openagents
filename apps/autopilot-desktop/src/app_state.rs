@@ -10498,6 +10498,7 @@ pub struct RenderState {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub renderer: Renderer,
+    pub backdrop_blur: crate::render::BackdropBlurRenderer,
     pub text_system: TextSystem,
     pub scale_factor: f32,
     pub desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
