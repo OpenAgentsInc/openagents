@@ -11,7 +11,17 @@ This is not “another chat app.” It is a **two-sided marketplace** collapsed 
 * **Buy side:** you use Autopilot as a personal agent (a high-leverage wrapper around Codex + your computer) and can submit work requests out to the network when it makes sense.
 * **Sell side:** you provide compute now (and later additional provider lanes such as liquidity solving and plugins/skills) to the network and **earn Bitcoin**.
 
-Autopilot Earn is a provider marketplace with multiple potential revenue lanes. The MVP activates only the compute-provider lane; liquidity-solver mode is future scope.
+Autopilot Earn is a provider marketplace with multiple potential revenue lanes. The MVP's primary paid loop remains the compute-provider lane; liquidity-solver mode is future scope.
+
+The retained repo now also ships a secondary Data Market MVP slice, but it does not replace the compute-first product promise. Today that slice is:
+
+* a dedicated `Data Seller` conversational pane
+* a read-only `Data Market` pane
+* a narrow `Data Buyer` targeted-request pane
+* full `autopilotctl data-market ...` and headless runtime control
+* a targeted NIP-90 data-vending flow layered on top of kernel authority objects
+
+That is a real implementation path for selling permissioned access to packaged local data, but it is not yet the primary onboarding or monetization loop described in this MVP spec.
 
 The MVP is designed to make the core emotional beat unavoidable: *“holy shit, the numbers are ticking up.”* If that moment doesn’t happen, nothing else matters.
 
@@ -135,6 +145,7 @@ We are shipping:
 * A provider mode that can accept and execute NIP-90 compute requests.
 * A wallet that can receive earnings, generate invoices, send payments, and show deterministic history.
 * A retained sync lane so conversations and job/activity state remain consistent and replay-safe across reconnects and restarts.
+* A starter Data Market slice that can register assets, publish grants, accept targeted NIP-90 access requests, issue delivery bundles, revoke access, and expose the same flow through panes, `autopilotctl`, and the no-window headless runtime.
 
 We are intentionally *not* shipping:
 
@@ -142,6 +153,7 @@ We are intentionally *not* shipping:
 * Advanced underwriting/policy layers (Hydra/Aegis UX)
 * Liquidity solver mode and Hydra intent-routing UX (future lane, explicit opt-in only)
 * A comprehensive plugin store UI
+* Broad public Data Market discovery, catalog search, or rich buyer procurement UX beyond the current narrow targeted-request flow
 * Multi-surface parity across web/mobile
 * Operator-only consoles or complicated admin tooling
 
