@@ -1,3 +1,4 @@
+use serde_json::Value;
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
@@ -6,8 +7,9 @@ use crate::app_state::{
 };
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
 use crate::pane_system::{
-    data_seller_composer_input_bounds, data_seller_preview_button_bounds,
-    data_seller_publish_button_bounds, data_seller_send_button_bounds, pane_content_bounds,
+    data_seller_composer_input_bounds, data_seller_confirm_button_bounds,
+    data_seller_preview_button_bounds, data_seller_publish_button_bounds,
+    data_seller_send_button_bounds, pane_content_bounds,
 };
 
 const PADDING: f32 = 12.0;
@@ -29,6 +31,11 @@ pub fn paint(
     paint_action_button(
         data_seller_preview_button_bounds(content_bounds),
         "Preview Draft",
+        paint,
+    );
+    paint_action_button(
+        data_seller_confirm_button_bounds(content_bounds),
+        "Confirm Preview",
         paint,
     );
     paint_action_button(
@@ -61,6 +68,13 @@ pub fn paint(
         status_y,
         "preview",
         gate_label(pane_state.preview_enabled),
+    );
+    status_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + PADDING,
+        status_y,
+        "confirm",
+        gate_label(pane_state.confirm_enabled),
     );
     status_y = paint_label_line(
         paint,
@@ -135,17 +149,24 @@ pub fn paint(
         transcript_bounds.max_x() + COLUMN_GAP,
         transcript_bounds.origin.y,
         side_width,
-        available_height * 0.52,
+        available_height * 0.38,
     );
-    let status_bounds = Bounds::new(
+    let preview_bounds = Bounds::new(
         draft_bounds.origin.x,
         draft_bounds.max_y() + COLUMN_GAP,
         side_width,
-        (transcript_bounds.max_y() - draft_bounds.max_y() - COLUMN_GAP).max(150.0),
+        available_height * 0.30,
+    );
+    let status_bounds = Bounds::new(
+        draft_bounds.origin.x,
+        preview_bounds.max_y() + COLUMN_GAP,
+        side_width,
+        (transcript_bounds.max_y() - preview_bounds.max_y() - COLUMN_GAP).max(150.0),
     );
 
     paint_transcript_shell(transcript_bounds, pane_state, autopilot_chat, paint);
     paint_draft_shell_card(draft_bounds, pane_state, paint);
+    paint_asset_preview_card(preview_bounds, pane_state, paint);
     paint_publication_status_card(status_bounds, pane_state, paint);
 }
 
@@ -349,6 +370,13 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
+        "confirm control",
+        gate_label(pane_state.confirm_enabled),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
         "publish control",
         gate_label(pane_state.publish_enabled),
     );
@@ -358,6 +386,13 @@ fn paint_publication_status_card(
         row_y,
         "preview posture",
         pane_state.active_draft.preview_posture.label(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "confirmed",
+        bool_label(pane_state.asset_preview_confirmed),
     );
     let thread_id = option_label(pane_state.codex_thread_id.as_deref());
     row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, "thread", &thread_id);
@@ -399,7 +434,7 @@ fn paint_publication_status_card(
 
     paint.scene.draw_text(paint.text.layout(
         &format!(
-            "Local asset preview: {}",
+            "Exact asset preview: {}",
             if pane_state.active_draft.last_previewed_asset_payload.is_some() {
                 "ready"
             } else {
@@ -412,18 +447,103 @@ fn paint_publication_status_card(
     ));
     paint.scene.draw_text(paint.text.layout(
         &format!(
-            "session origin: {}",
-            pane_state.codex_profile.session_origin
+            "confirmed preview: {}",
+            if pane_state.last_confirmed_asset_payload.is_some() {
+                "ready"
+            } else {
+                "not confirmed"
+            }
         ),
         Point::new(bounds.origin.x + 10.0, row_y + 26.0),
         11.0,
         theme::text::SECONDARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
+        &format!(
+            "session origin: {}",
+            pane_state.codex_profile.session_origin
+        ),
         Point::new(bounds.origin.x + 10.0, row_y + 44.0),
         11.0,
         theme::text::SECONDARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
+        Point::new(bounds.origin.x + 10.0, row_y + 62.0),
+        11.0,
+        theme::text::SECONDARY,
+    ));
+}
+
+fn paint_asset_preview_card(bounds: Bounds, pane_state: &DataSellerPaneState, paint: &mut PaintContext) {
+    paint_card(
+        bounds,
+        "Exact asset preview",
+        "RegisterDataAssetRequest",
+        paint,
+    );
+
+    let payload = pane_state.active_draft.last_previewed_asset_payload.as_ref();
+    let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "preview",
+        if payload.is_some() { "ready" } else { "pending" },
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "confirmed",
+        bool_label(pane_state.asset_preview_confirmed),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "asset id",
+        &preview_field(payload, &["asset", "asset_id"]),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "provider",
+        &preview_field(payload, &["asset", "provider_id"]),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "policy bundle",
+        &preview_field(payload, &["policy", "policy_bundle_id"]),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "idempotency key",
+        &preview_field(payload, &["idempotency_key"]),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "evidence refs",
+        &preview_array_len(payload, &["evidence"]),
+    );
+
+    paint.scene.draw_text(paint.text.layout(
+        if payload.is_some() {
+            "Preview shows the exact authority request shape that the later publish path will submit."
+        } else {
+            "Run preview after resolving blockers to materialize the exact authority payload."
+        },
+        Point::new(bounds.origin.x + 10.0, row_y + 10.0),
+        10.0,
+        theme::text::MUTED,
     ));
 }
 
@@ -457,6 +577,33 @@ fn option_label(value: Option<&str>) -> String {
         .filter(|text| !text.trim().is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| "pending".to_string())
+}
+
+fn bool_label(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
+}
+
+fn preview_field(payload: Option<&Value>, path: &[&str]) -> String {
+    let mut current = payload;
+    for segment in path {
+        current = current.and_then(|value| value.get(*segment));
+    }
+    current
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "pending".to_string())
+}
+
+fn preview_array_len(payload: Option<&Value>, path: &[&str]) -> String {
+    let mut current = payload;
+    for segment in path {
+        current = current.and_then(|value| value.get(*segment));
+    }
+    current
+        .and_then(Value::as_array)
+        .map(|entries| entries.len().to_string())
+        .unwrap_or_else(|| "0".to_string())
 }
 
 fn speaker_color(speaker: DataSellerShellSpeaker) -> wgpui::Hsla {

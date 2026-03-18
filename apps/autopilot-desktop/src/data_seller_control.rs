@@ -13,6 +13,14 @@ fn current_session_cwd() -> Option<String> {
         .and_then(|value| value.into_os_string().into_string().ok())
 }
 
+fn current_epoch_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| {
+            duration.as_millis().min(i64::MAX as u128) as i64
+        })
+}
+
 pub(crate) fn ensure_data_seller_codex_session(state: &mut RenderState) -> bool {
     if matches!(
         state.data_seller.codex_session_phase,
@@ -152,5 +160,18 @@ pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
             ));
         }
     }
+    true
+}
+
+pub(crate) fn request_data_seller_preview(state: &mut RenderState) -> bool {
+    let provider_id = crate::kernel_control::provider_id_for_state(state);
+    state
+        .data_seller
+        .request_preview(provider_id.as_str(), current_epoch_ms());
+    true
+}
+
+pub(crate) fn confirm_data_seller_preview(state: &mut RenderState) -> bool {
+    state.data_seller.confirm_asset_preview();
     true
 }

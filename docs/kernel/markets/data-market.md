@@ -35,10 +35,11 @@ smuggled through opaque prompt state.
 - accept an access grant
 - issue a `DeliveryBundle`
 - revoke access and emit a `RevocationReceipt`
-- open a dedicated `Data Seller` desktop shell with transcript, draft-card, and blocked preview/publish scaffolding
+- open a dedicated `Data Seller` desktop shell with transcript, draft-card, exact preview card, and gated confirm/publish scaffolding
 - auto-provision and pin the first-party `autopilot-data-seller` and `autopilot-data-market-control` skills for the dedicated seller lane
-- expose typed `openagents.data_market.*` dynamic tools for seller status, draft, preview, blocked publish, and snapshot flows
+- expose typed `openagents.data_market.*` dynamic tools for seller status, draft, exact preview, blocked publish, and snapshot flows
 - send seller prompts from the dedicated pane into the dedicated Codex seller thread and render the resulting transcript back into the pane
+- require an explicit preview-confirm step before publication can be armed
 
 The starter authority slice is real in:
 

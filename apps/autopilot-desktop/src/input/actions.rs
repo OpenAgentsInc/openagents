@@ -10217,9 +10217,11 @@ pub(super) fn run_data_seller_action(
     }
     match action {
         DataSellerPaneAction::SubmitPrompt => crate::data_seller_control::submit_data_seller_prompt(state),
+        DataSellerPaneAction::ConfirmPreview => {
+            crate::data_seller_control::confirm_data_seller_preview(state)
+        }
         DataSellerPaneAction::PreviewDraft => {
-            state.data_seller.request_preview();
-            true
+            crate::data_seller_control::request_data_seller_preview(state)
         }
         DataSellerPaneAction::PublishDraft => {
             state.data_seller.request_publish();

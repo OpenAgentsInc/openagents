@@ -119,12 +119,12 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 - attach a dedicated Codex thread/session with seller-specific personality and collaboration defaults
 - submit seller prompts from the pane into that dedicated Codex thread
 - render the seller-thread transcript back into the pane
-- expose explicit preview/publish controls
-- keep publication blocked until the exact preview and typed tool slices land
+- expose explicit preview/confirm/publish controls
+- materialize an exact `RegisterDataAssetRequest` preview payload
+- require explicit in-pane confirmation before publication can be armed
 
 It cannot yet:
 
-- preview an exact authority payload
 - publish a kernel object
 
 The dedicated seller lane now also auto-provisions the first-party

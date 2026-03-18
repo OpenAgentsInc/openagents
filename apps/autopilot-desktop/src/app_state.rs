@@ -6,9 +6,12 @@ use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
 use nostr::{Event, NostrIdentity};
+use openagents_kernel_core::authority::RegisterDataAssetRequest;
 use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
 use openagents_kernel_core::ids::sha256_prefixed_text;
-use openagents_kernel_core::receipts::EvidenceRef;
+use openagents_kernel_core::receipts::{
+    Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use wgpui::components::TextInput;
@@ -1152,7 +1155,7 @@ impl DataSellerSensitivityPosture {
 pub enum DataSellerPreviewPosture {
     NotRequested,
     Blocked,
-    StructuralPreviewReady,
+    ExactPreviewReady,
 }
 
 impl DataSellerPreviewPosture {
@@ -1160,7 +1163,7 @@ impl DataSellerPreviewPosture {
         match self {
             Self::NotRequested => "not_requested",
             Self::Blocked => "blocked",
-            Self::StructuralPreviewReady => "structural_preview_ready",
+            Self::ExactPreviewReady => "exact_preview_ready",
         }
     }
 }
@@ -1347,10 +1350,166 @@ impl DataSellerDraft {
             "visibility_posture": self.visibility_posture.label(),
         })
     }
+
+    fn exact_asset_preview_payload(
+        &self,
+        provider_id: &str,
+        thread_id: Option<&str>,
+        created_at_ms: i64,
+    ) -> Value {
+        let title = self.title.as_deref().unwrap_or("untitled asset");
+        let asset_kind = self.asset_kind.as_deref().unwrap_or("dataset");
+        let description = self
+            .description
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let content_digest = self
+            .content_digest
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let provenance_ref = self
+            .provenance_ref
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let default_policy = self.default_policy.as_ref().map(|policy_id| {
+            openagents_kernel_core::data::PermissionPolicy {
+                policy_id: policy_id.trim().to_string(),
+                allowed_scopes: self.delivery_modes.clone(),
+                metadata: json!({
+                    "visibility_posture": self.visibility_posture.label(),
+                    "sensitivity_posture": self.sensitivity_posture.label(),
+                }),
+                ..Default::default()
+            }
+        });
+        let price_hint = self.price_hint_sats.map(|value| Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(value),
+        });
+        let normalized_provider = canonical_data_seller_id_component(provider_id);
+        let normalized_asset_kind = canonical_data_seller_id_component(asset_kind);
+        let title_component = canonical_data_seller_id_component(title);
+        let digest_component = content_digest
+            .as_deref()
+            .map(canonical_data_seller_id_component)
+            .unwrap_or_else(|| "unknown_digest".to_string());
+        let asset_id = format!(
+            "data_asset.{}.{}.{}.{}",
+            normalized_provider, normalized_asset_kind, title_component, digest_component
+        );
+        let idempotency_material = format!(
+            "{provider_id}|{asset_kind}|{}|{}|{}|{}",
+            title.trim(),
+            content_digest.as_deref().unwrap_or("missing_digest"),
+            provenance_ref.as_deref().unwrap_or("missing_provenance"),
+            self.price_hint_sats.unwrap_or_default()
+        );
+        let request = RegisterDataAssetRequest {
+            idempotency_key: format!(
+                "register_data_asset:{}",
+                sha256_prefixed_text(idempotency_material.as_str())
+            ),
+            trace: TraceContext {
+                session_id: thread_id.map(str::to_string),
+                trajectory_hash: thread_id.map(sha256_prefixed_text),
+                claim_id: Some(format!("claim.data_asset.preview.{asset_id}")),
+                ..Default::default()
+            },
+            policy: PolicyContext {
+                policy_bundle_id: "policy.data_market.asset_publish.mvp".to_string(),
+                policy_version: "v0".to_string(),
+                approved_by: "openagents.data_market.seller_pane".to_string(),
+            },
+            asset: openagents_kernel_core::data::DataAsset {
+                asset_id,
+                provider_id: provider_id.trim().to_string(),
+                asset_kind: asset_kind.trim().to_string(),
+                title: title.trim().to_string(),
+                description,
+                content_digest: content_digest.clone(),
+                provenance_ref: provenance_ref.clone(),
+                default_policy,
+                price_hint,
+                created_at_ms,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": self.delivery_modes,
+                    "visibility_posture": self.visibility_posture.label(),
+                    "sensitivity_posture": self.sensitivity_posture.label(),
+                    "draft_metadata": self.metadata,
+                }),
+            },
+            evidence: preview_evidence_refs(
+                provider_id,
+                content_digest.as_deref(),
+                provenance_ref.as_deref(),
+            ),
+            hints: ReceiptHints::default(),
+        };
+        serde_json::to_value(&request).unwrap_or_else(|_| {
+            json!({
+                "error": "failed_to_serialize_register_data_asset_request",
+            })
+        })
+    }
 }
 
 fn option_text_is_missing(value: Option<&str>) -> bool {
     value.is_none_or(|text| text.trim().is_empty())
+}
+
+fn preview_evidence_refs(
+    provider_id: &str,
+    content_digest: Option<&str>,
+    provenance_ref: Option<&str>,
+) -> Vec<EvidenceRef> {
+    let normalized_provider = provider_id.trim();
+    let mut evidence = vec![EvidenceRef::new(
+        "provider_identity_ref",
+        format!(
+            "oa://autopilot/providers/{}",
+            canonical_data_seller_id_component(normalized_provider)
+        ),
+        normalized_provider,
+    )];
+    if let Some(content_digest) = content_digest.filter(|value| !value.trim().is_empty()) {
+        evidence.push(EvidenceRef::new(
+            "content_digest",
+            format!(
+                "oa://autopilot/data_assets/{}/content_digest",
+                canonical_data_seller_id_component(normalized_provider)
+            ),
+            content_digest,
+        ));
+    }
+    if let Some(provenance_ref) = provenance_ref.filter(|value| !value.trim().is_empty()) {
+        evidence.push(EvidenceRef::new(
+            "provenance_ref",
+            provenance_ref,
+            sha256_prefixed_text(provenance_ref),
+        ));
+    }
+    evidence
+}
+
+fn canonical_data_seller_id_component(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+    trimmed
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1412,9 +1571,12 @@ pub struct DataSellerPaneState {
     pub last_action: Option<String>,
     pub status_line: String,
     pub preview_enabled: bool,
+    pub confirm_enabled: bool,
     pub publish_enabled: bool,
     pub transcript_shell: Vec<DataSellerShellMessage>,
     pub active_draft: DataSellerDraft,
+    pub asset_preview_confirmed: bool,
+    pub last_confirmed_asset_payload: Option<Value>,
     pub codex_profile: DataSellerCodexProfile,
     pub codex_thread_id: Option<String>,
     pub codex_session_phase: DataSellerCodexSessionPhase,
@@ -1438,6 +1600,7 @@ impl Default for DataSellerPaneState {
                 draft.blocker_summary()
             ),
             preview_enabled: true,
+            confirm_enabled: false,
             publish_enabled: false,
             transcript_shell: vec![
                 DataSellerShellMessage {
@@ -1454,6 +1617,8 @@ impl Default for DataSellerPaneState {
                 },
             ],
             active_draft: draft,
+            asset_preview_confirmed: false,
+            last_confirmed_asset_payload: None,
             codex_profile: DataSellerCodexProfile::default(),
             codex_thread_id: None,
             codex_session_phase: DataSellerCodexSessionPhase::Detached,
@@ -1539,22 +1704,31 @@ impl DataSellerPaneState {
         ) && self.codex_thread_id.is_none()
     }
 
-    pub fn request_preview(&mut self) {
+    pub fn request_preview(&mut self, provider_id: &str, created_at_ms: i64) {
         self.active_draft.recompute_readiness_blockers();
         self.preview_enabled = true;
+        self.confirm_enabled = false;
         self.publish_enabled = false;
+        self.asset_preview_confirmed = false;
+        self.last_confirmed_asset_payload = None;
         self.last_error = None;
         if self.active_draft.is_structurally_ready() {
-            self.active_draft.preview_posture = DataSellerPreviewPosture::StructuralPreviewReady;
-            self.active_draft.last_previewed_asset_payload =
-                Some(self.active_draft.structural_asset_preview_payload());
+            self.active_draft.preview_posture = DataSellerPreviewPosture::ExactPreviewReady;
+            self.active_draft.last_previewed_asset_payload = Some(
+                self.active_draft.exact_asset_preview_payload(
+                    provider_id,
+                    self.codex_thread_id.as_deref(),
+                    created_at_ms,
+                ),
+            );
             self.active_draft.last_previewed_grant_payload =
                 Some(self.active_draft.structural_grant_preview_payload());
+            self.confirm_enabled = true;
             self.last_action = Some(
-                "Local structural preview ready; exact authority preview still depends on typed tools"
+                "Exact DataAsset preview ready; inspect it and confirm before publication."
                     .to_string(),
             );
-            self.status_line = "Draft passed local readiness checks. Publish remains blocked until exact preview and explicit confirmation land.".to_string();
+            self.status_line = "Exact preview ready. Confirm the preview before publication is allowed.".to_string();
         } else {
             self.active_draft.preview_posture = DataSellerPreviewPosture::Blocked;
             self.active_draft.last_previewed_asset_payload = None;
@@ -1567,6 +1741,30 @@ impl DataSellerPaneState {
         }
     }
 
+    pub fn confirm_asset_preview(&mut self) {
+        if self.active_draft.last_previewed_asset_payload.is_none() {
+            self.asset_preview_confirmed = false;
+            self.confirm_enabled = false;
+            self.publish_enabled = false;
+            self.last_error = Some(
+                "Run preview first. Confirmation only applies to an exact preview payload."
+                    .to_string(),
+            );
+            self.status_line =
+                "Confirmation blocked until an exact preview payload exists.".to_string();
+            return;
+        }
+
+        self.asset_preview_confirmed = true;
+        self.confirm_enabled = true;
+        self.publish_enabled = true;
+        self.last_error = None;
+        self.last_confirmed_asset_payload = self.active_draft.last_previewed_asset_payload.clone();
+        self.last_action = Some("Confirmed the current DataAsset preview payload".to_string());
+        self.status_line =
+            "Preview confirmed. Publication is now armed for this exact payload.".to_string();
+    }
+
     pub fn request_publish(&mut self) {
         self.last_action = Some("Publish requested from Data Seller pane".to_string());
         if !self.active_draft.is_structurally_ready() {
@@ -1577,12 +1775,29 @@ impl DataSellerPaneState {
             self.status_line = format!("Publish blocked. {}", self.active_draft.blocker_summary());
             return;
         }
+        if self.active_draft.last_previewed_asset_payload.is_none() {
+            self.last_error = Some(
+                "Publish is blocked because no exact preview payload exists yet. Run preview first."
+                    .to_string(),
+            );
+            self.status_line = "Publish blocked until an exact preview payload exists.".to_string();
+            return;
+        }
+        if !self.asset_preview_confirmed {
+            self.last_error = Some(
+                "Publish is blocked until the current exact preview payload has been explicitly confirmed in the pane."
+                    .to_string(),
+            );
+            self.status_line =
+                "Publish blocked until the current preview has been explicitly confirmed."
+                    .to_string();
+            return;
+        }
         self.last_error = Some(
-            "Publish is blocked until the exact preview and explicit confirmation flow are wired."
-                .to_string(),
+            "Publish gate is open, but the kernel authority write is not wired yet.".to_string(),
         );
-        self.status_line =
-            "Publish remains gated behind exact preview and explicit confirmation.".to_string();
+        self.status_line = "Publish armed. Waiting for the kernel authority write implementation."
+            .to_string();
     }
 
     pub fn note_draft_mutation(&mut self, action: impl Into<String>) {
@@ -1591,11 +1806,15 @@ impl DataSellerPaneState {
         self.active_draft.last_previewed_asset_payload = None;
         self.active_draft.last_previewed_grant_payload = None;
         self.preview_enabled = true;
+        self.confirm_enabled = false;
         self.publish_enabled = false;
+        self.asset_preview_confirmed = false;
+        self.last_confirmed_asset_payload = None;
         self.last_error = None;
         self.last_action = Some(action.into());
         self.status_line = if self.active_draft.is_structurally_ready() {
-            "Draft updated. Run preview to materialize the current payload.".to_string()
+            "Draft updated. Run preview again to materialize and confirm the current payload."
+                .to_string()
         } else {
             format!("Draft updated. {}", self.active_draft.blocker_summary())
         };
@@ -11775,7 +11994,7 @@ mod tests {
     fn data_seller_preview_reports_blockers_for_incomplete_draft() {
         let mut pane = DataSellerPaneState::default();
 
-        pane.request_preview();
+        pane.request_preview("provider.data.alpha", 1_762_700_000_000);
 
         assert_eq!(
             pane.active_draft.preview_posture,
@@ -11794,16 +12013,36 @@ mod tests {
         pane.active_draft.content_digest = Some("sha256:data-bundle".to_string());
         pane.active_draft.provenance_ref = Some("oa://bundle/support-1".to_string());
 
-        pane.request_preview();
+        pane.request_preview("provider.data.alpha", 1_762_700_000_000);
 
         assert_eq!(
             pane.active_draft.preview_posture,
-            DataSellerPreviewPosture::StructuralPreviewReady
+            DataSellerPreviewPosture::ExactPreviewReady
         );
         assert!(pane.active_draft.readiness_blockers.is_empty());
         assert!(pane.active_draft.last_previewed_asset_payload.is_some());
         assert!(pane.active_draft.last_previewed_grant_payload.is_some());
+        assert!(pane.confirm_enabled);
         assert!(!pane.publish_enabled);
+    }
+
+    #[test]
+    fn data_seller_confirm_requires_preview_and_arms_publish() {
+        let mut pane = DataSellerPaneState::default();
+        pane.confirm_asset_preview();
+        assert!(!pane.asset_preview_confirmed);
+        assert!(!pane.publish_enabled);
+
+        pane.active_draft.title = Some("Support bundle".to_string());
+        pane.active_draft.description = Some("Three cleaned support conversations".to_string());
+        pane.active_draft.content_digest = Some("sha256:data-bundle".to_string());
+        pane.active_draft.provenance_ref = Some("oa://bundle/support-1".to_string());
+        pane.request_preview("provider.data.alpha", 1_762_700_000_000);
+        pane.confirm_asset_preview();
+
+        assert!(pane.asset_preview_confirmed);
+        assert!(pane.publish_enabled);
+        assert!(pane.last_confirmed_asset_payload.is_some());
     }
 
     #[test]
