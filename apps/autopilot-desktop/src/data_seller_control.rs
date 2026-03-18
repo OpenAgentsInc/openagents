@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
-use openagents_kernel_core::authority::{KernelAuthority, RegisterDataAssetRequest};
+use openagents_kernel_core::authority::{
+    CreateAccessGrantRequest, KernelAuthority, RegisterDataAssetRequest,
+};
 
 use crate::app_state::{
     AutopilotRole, DataSellerCodexSessionPhase, DataSellerSkillAttachment, RenderState,
@@ -177,6 +179,14 @@ pub(crate) fn confirm_data_seller_preview(state: &mut RenderState) -> bool {
     true
 }
 
+pub(crate) fn request_data_seller_grant_preview(state: &mut RenderState) -> bool {
+    let provider_id = crate::kernel_control::provider_id_for_state(state);
+    state
+        .data_seller
+        .request_grant_preview(provider_id.as_str(), current_epoch_ms());
+    true
+}
+
 pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     state.data_seller.request_publish();
     if !state.data_seller.publish_is_armed() {
@@ -254,5 +264,87 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_asset(readback_asset, current_epoch_ms());
+    true
+}
+
+pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
+    state.data_seller.request_publish_grant();
+    if !state.data_seller.grant_publish_is_armed() {
+        return true;
+    }
+
+    let preview_payload = match state.data_seller.active_draft.last_previewed_grant_payload.clone()
+    {
+        Some(payload) => payload,
+        None => {
+            state.data_seller.last_error = Some(
+                "Grant publish is armed but the exact preview payload is missing.".to_string(),
+            );
+            return true;
+        }
+    };
+    let request: CreateAccessGrantRequest = match serde_json::from_value(preview_payload) {
+        Ok(request) => request,
+        Err(error) => {
+            state.data_seller.last_error = Some(format!(
+                "Failed to decode the exact grant preview payload into CreateAccessGrantRequest: {error}"
+            ));
+            state.data_seller.status_line =
+                "Grant publish blocked because the preview payload is no longer valid."
+                    .to_string();
+            return true;
+        }
+    };
+
+    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
+        Ok(client) => client,
+        Err(error) => {
+            state.data_seller.last_error = Some(error);
+            state.data_seller.status_line =
+                "Grant publish blocked because kernel authority is unavailable.".to_string();
+            return true;
+        }
+    };
+
+    let response = match crate::kernel_control::run_kernel_call(client.create_access_grant(request))
+    {
+        Ok(response) => response,
+        Err(error) => {
+            state.data_seller.last_error = Some(error);
+            state.data_seller.status_line =
+                "Kernel authority rejected the grant publication.".to_string();
+            return true;
+        }
+    };
+    let grant_id = response.grant.grant_id.clone();
+    let receipt_id = Some(response.receipt.receipt_id.clone());
+    let readback_grant = match crate::kernel_control::run_kernel_call(client.get_access_grant(
+        grant_id.as_str(),
+    )) {
+        Ok(grant) => grant,
+        Err(error) => {
+            state
+                .data_seller
+                .note_grant_published(response.grant, receipt_id);
+            if let Some(grant) = state.data_seller.last_published_grant.clone() {
+                state
+                    .data_market
+                    .note_published_grant(grant, current_epoch_ms());
+            }
+            state.data_seller.last_error = Some(format!(
+                "Grant was published but the immediate kernel read-back failed: {error}"
+            ));
+            state.data_seller.status_line =
+                "Grant published, but immediate kernel read-back failed.".to_string();
+            return true;
+        }
+    };
+
+    state
+        .data_seller
+        .note_grant_published(readback_grant.clone(), receipt_id);
+    state
+        .data_market
+        .note_published_grant(readback_grant, current_epoch_ms());
     true
 }

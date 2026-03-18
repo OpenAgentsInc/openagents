@@ -30,22 +30,22 @@ pub fn paint(
     paint_action_button(data_seller_send_button_bounds(content_bounds), "Send", paint);
     paint_action_button(
         data_seller_preview_button_bounds(content_bounds),
-        "Preview Draft",
+        "Preview Asset",
         paint,
     );
     paint_action_button(
         data_seller_confirm_button_bounds(content_bounds),
-        "Confirm Preview",
+        "Confirm Asset",
         paint,
     );
     paint_action_button(
         data_seller_publish_button_bounds(content_bounds),
-        "Publish",
+        "Publish Asset",
         paint,
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Conversational authoring surface for truthful data listings. Seller turns now run on the dedicated Codex thread and the typed Data Market tools update the structured draft.",
+        "Conversational authoring surface for truthful data listings. Asset and grant publication remain separate economic actions even though the seller flow shares one pane.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -479,6 +479,43 @@ fn paint_publication_status_card(
         row_y,
         "publish receipt",
         &option_label(pane_state.last_publish_receipt_id.as_deref()),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant preview",
+        if pane_state.active_draft.last_previewed_grant_payload.is_some() {
+            "ready"
+        } else {
+            "pending"
+        },
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant confirmed",
+        bool_label(pane_state.grant_preview_confirmed),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "published grant",
+        &option_label(
+            pane_state
+                .last_published_grant
+                .as_ref()
+                .map(|grant| grant.grant_id.as_str()),
+        ),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant receipt",
+        &option_label(pane_state.last_grant_publish_receipt_id.as_deref()),
     );
 
     paint.scene.draw_text(paint.text.layout(

@@ -43,6 +43,7 @@ smuggled through opaque prompt state.
 - publish a `DataAsset` from the seller pane through Nexus and immediately read the canonical asset back into seller state
 - reflect newly published assets into the read-only `Data Market` pane from the same kernel read-back path
 - carry reusable grant-policy templates plus a first seller-side grant draft posture in the conversational seller flow
+- preview and publish `AccessGrant` objects from the same seller flow and reflect the resulting grant read-back into the read-only `Data Market` pane
 
 The starter authority slice is real in:
 
