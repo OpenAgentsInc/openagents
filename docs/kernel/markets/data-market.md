@@ -62,9 +62,11 @@ smuggled through opaque prompt state.
 - use the repo-owned `skills/autopilot-data-seller-cli` skill for shell-first packaging and publication discipline
 - resolve a delivered local `DeliveryBundle` back into copied buyer-side files through `autopilotctl data-market consume-delivery`
 - run `scripts/autopilot/headless-data-market-e2e.sh` to mechanically verify the local headless publish -> request -> delivery -> consume path
+- run `scripts/autopilot/headless-data-market-public-e2e.sh` to mechanically verify the same flow against real public relays (`wss://relay.damus.io`, `wss://relay.primal.net`)
 - run `scripts/autopilot/verify-data-market-cli-headless.sh` to mechanically verify the publish/consume path plus the critical lifecycle checks
 - allow both seller request intake and buyer result tracking to run in a relay-only online posture without requiring a compute-ready local inference runtime
 - normalize targeted buyer/seller identity matching across `npub` and raw hex Nostr pubkeys for the current NIP-90 targeted request/result flow
+- import a targeted request or buyer response back from configured relays through `autopilotctl data-market seller-import-request` and `autopilotctl data-market buyer-import-response`
 
 The starter authority slice is real in:
 
@@ -139,6 +141,17 @@ The repo now also includes a real shell-first control path:
 This path is intentionally not a second seller implementation.
 It targets the same app-owned seller state and kernel mutation logic through the
 typed desktop-control contract.
+
+The public-relay verified posture is now:
+
+- buyer request kind `5960` publishes to configured public relays and is
+  accepted by both Damus and Primal in the verified run
+- seller result kind `6960` publishes back to those relays and is also accepted
+  by both Damus and Primal in the verified run
+- buyer result tracking worked live on those relays in the verified run
+- seller request intake on public relays is still not fully reliable, so the
+  repo now includes an explicit relay import path to keep the public demo
+  truthful and reproducible
 
 The current buyer-side consume step is local by design:
 

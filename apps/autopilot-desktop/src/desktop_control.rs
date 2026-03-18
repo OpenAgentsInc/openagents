@@ -67,7 +67,8 @@ use crate::bitcoin_display::format_sats_amount;
 use crate::input::DesktopControlToolBridgeResultEnvelope;
 pub use crate::input::{
     DesktopControlDataMarketBuyerRequestArgs, DesktopControlDataMarketDraftAssetArgs,
-    DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketIssueDeliveryArgs,
+    DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketImportBuyerResponseArgs,
+    DesktopControlDataMarketImportSellerRequestArgs, DesktopControlDataMarketIssueDeliveryArgs,
     DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
     DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketResolveDeliveryArgs,
     DesktopControlDataMarketRevokeGrantArgs,
@@ -1290,6 +1291,12 @@ pub enum DesktopControlActionRequest {
     PublishDataMarketBuyerRequest {
         args: DesktopControlDataMarketBuyerRequestArgs,
     },
+    ImportDataMarketSellerRequest {
+        args: DesktopControlDataMarketImportSellerRequestArgs,
+    },
+    ImportDataMarketBuyerResponse {
+        args: DesktopControlDataMarketImportBuyerResponseArgs,
+    },
     ResolveDataMarketDelivery {
         args: DesktopControlDataMarketResolveDeliveryArgs,
     },
@@ -1440,6 +1447,8 @@ impl DesktopControlActionRequest {
             Self::IssueDataMarketDelivery { .. } => "data-market-delivery-issue",
             Self::RevokeDataMarketGrant { .. } => "data-market-grant-revoke",
             Self::PublishDataMarketBuyerRequest { .. } => "data-market-buyer-publish-request",
+            Self::ImportDataMarketSellerRequest { .. } => "data-market-seller-import-request",
+            Self::ImportDataMarketBuyerResponse { .. } => "data-market-buyer-import-response",
             Self::ResolveDataMarketDelivery { .. } => "data-market-delivery-resolve",
             Self::GetDataMarketSnapshot => "data-market-snapshot",
             Self::GetAttnResStatus => "attnres-status",
@@ -2346,6 +2355,14 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
             "args": args,
         }),
         DesktopControlActionRequest::PublishDataMarketBuyerRequest { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::ImportDataMarketSellerRequest { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::ImportDataMarketBuyerResponse { args } => json!({
             "command_label": action.label(),
             "args": args,
         }),
@@ -3519,6 +3536,18 @@ fn apply_action_request(
         DesktopControlActionRequest::PublishDataMarketBuyerRequest { args } => {
             data_market_tool_action_response(
                 crate::input::desktop_control_data_market_buyer_publish_request(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::ImportDataMarketSellerRequest { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_import_seller_request(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::ImportDataMarketBuyerResponse { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_import_buyer_response(state, args),
             )
             .into()
         }
@@ -8875,6 +8904,10 @@ mod tests {
         DesktopControlDataMarketPublishArgs, DesktopControlDataMarketResolveDeliveryArgs,
         DesktopControlDataMarketRevokeGrantArgs,
     };
+    use crate::input::{
+        DesktopControlDataMarketImportBuyerResponseArgs,
+        DesktopControlDataMarketImportSellerRequestArgs,
+    };
     use crate::nip28_chat_lane::{Nip28ChatLaneUpdate, Nip28ChatLaneWorker};
     use crate::provider_nip90_lane::{
         ProviderNip90AuthIdentity, ProviderNip90ComputeCapability, ProviderNip90LaneCommand,
@@ -11076,6 +11109,26 @@ mod tests {
             }
             .label(),
             "data-market-buyer-publish-request"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ImportDataMarketSellerRequest {
+                args: DesktopControlDataMarketImportSellerRequestArgs {
+                    event_json: json!({"id":"event-alpha"}),
+                    source_relay_url: Some("wss://relay.example".to_string()),
+                },
+            }
+            .label(),
+            "data-market-seller-import-request"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ImportDataMarketBuyerResponse {
+                args: DesktopControlDataMarketImportBuyerResponseArgs {
+                    event_json: json!({"id":"event-beta"}),
+                    source_relay_url: Some("wss://relay.example".to_string()),
+                },
+            }
+            .label(),
+            "data-market-buyer-import-response"
         );
         assert_eq!(
             DesktopControlActionRequest::ResolveDataMarketDelivery {

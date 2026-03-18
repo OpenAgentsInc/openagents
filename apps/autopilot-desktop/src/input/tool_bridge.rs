@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::DateTime;
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
+use nostr::Event;
 use openagents_kernel_core::data::DeliveryBundle;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
@@ -413,6 +414,20 @@ pub struct DataMarketResolveDeliveryArgs {
     pub asset_id: Option<String>,
     #[serde(default)]
     pub refresh_market: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketImportSellerRequestArgs {
+    pub event_json: Value,
+    #[serde(default)]
+    pub source_relay_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketImportBuyerResponseArgs {
+    pub event_json: Value,
+    #[serde(default)]
+    pub source_relay_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1641,6 +1656,102 @@ pub(crate) fn execute_data_market_resolve_delivery_tool(
             }),
         ),
     }
+}
+
+fn parse_data_market_import_event(raw: &Value) -> Result<Event, String> {
+    serde_json::from_value::<Event>(raw.clone())
+        .map_err(|error| format!("Invalid Nostr event JSON: {error}"))
+}
+
+pub(crate) fn execute_data_market_import_seller_request_tool(
+    state: &mut RenderState,
+    args: &DataMarketImportSellerRequestArgs,
+) -> ToolBridgeResultEnvelope {
+    let event = match parse_data_market_import_event(&args.event_json) {
+        Ok(event) => event,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-SELLER-IMPORT-INVALID-EVENT",
+                error,
+                data_seller_tool_snapshot(state),
+            );
+        }
+    };
+    let request = match crate::provider_nip90_lane::event_to_inbox_request(
+        &event,
+        args.source_relay_url.as_deref(),
+    ) {
+        Some(request) if request.capability == "openagents.data.access" => request,
+        Some(_) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-SELLER-IMPORT-UNSUPPORTED",
+                "Relay event is not a targeted Data Market access request.",
+                data_seller_tool_snapshot(state),
+            );
+        }
+        None => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-SELLER-IMPORT-NOT-REQUEST",
+                "Relay event did not decode as a supported NIP-90 request.",
+                data_seller_tool_snapshot(state),
+            );
+        }
+    };
+
+    super::reducers::apply_provider_ingressed_request_from_desktop_control(state, request);
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-SELLER-REQUEST-IMPORTED",
+        "Imported the targeted Data Market request into the seller lane.",
+        data_seller_tool_snapshot(state),
+    )
+}
+
+pub(crate) fn execute_data_market_import_buyer_response_tool(
+    state: &mut RenderState,
+    args: &DataMarketImportBuyerResponseArgs,
+) -> ToolBridgeResultEnvelope {
+    let event = match parse_data_market_import_event(&args.event_json) {
+        Ok(event) => event,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-BUYER-IMPORT-INVALID-EVENT",
+                error,
+                data_buyer_tool_snapshot(state),
+            );
+        }
+    };
+    let tracked_buyer_request_ids = state
+        .network_requests
+        .submitted
+        .iter()
+        .map(|request| request.request_id.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let local_pubkey_hex = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.public_key_hex.as_str());
+    let response = match crate::provider_nip90_lane::event_to_buyer_response_event(
+        &event,
+        &tracked_buyer_request_ids,
+        local_pubkey_hex,
+        args.source_relay_url.as_deref(),
+    ) {
+        Some(response) => response,
+        None => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-BUYER-IMPORT-UNTRACKED",
+                "Relay event did not match a tracked buyer request/result or feedback shape.",
+                data_buyer_tool_snapshot(state),
+            );
+        }
+    };
+
+    super::reducers::apply_provider_buyer_response_from_desktop_control(state, response);
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-BUYER-RESPONSE-IMPORTED",
+        "Imported the targeted Data Market buyer response into the buyer lane.",
+        data_buyer_tool_snapshot(state),
+    )
 }
 
 pub(crate) fn execute_data_market_draft_asset_tool(
