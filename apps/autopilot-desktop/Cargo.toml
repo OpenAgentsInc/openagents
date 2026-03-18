@@ -81,6 +81,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 dirs = "6.0"
 reqwest = { workspace = true, features = ["blocking"] }
 chrono = { version = "0.4", default-features = true, features = ["clock"] }
+bech32 = { workspace = true }
 hex = { workspace = true }
 base64 = "0.22"
 bitcoin = { workspace = true }

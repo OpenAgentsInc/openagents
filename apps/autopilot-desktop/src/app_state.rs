@@ -1167,6 +1167,12 @@ impl Default for DataBuyerPaneState {
 }
 
 impl DataBuyerPaneState {
+    pub fn requires_nip90_response_tracking(&self) -> bool {
+        self.last_published_request_id
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    }
+
     pub fn configure_local_buyer_id(&mut self, buyer_id: impl Into<String>) {
         let buyer_id = buyer_id.into();
         let buyer_id = buyer_id.trim();
@@ -1223,6 +1229,33 @@ impl DataBuyerPaneState {
 
     pub fn select_next_asset(&mut self, market: &DataMarketPaneState) -> bool {
         self.select_asset_step(market, 1)
+    }
+
+    pub fn select_asset_by_id(
+        &mut self,
+        market: &DataMarketPaneState,
+        asset_id: &str,
+    ) -> Result<(), String> {
+        let asset_id = asset_id.trim();
+        if asset_id.is_empty() {
+            return Err("Data Buyer asset_id cannot be empty.".to_string());
+        }
+        let selected = market
+            .assets
+            .iter()
+            .find(|asset| {
+                asset.asset_id == asset_id
+                    && asset.status == openagents_kernel_core::data::DataAssetStatus::Active
+            })
+            .ok_or_else(|| format!("No active data asset matches {asset_id}."))?;
+        self.selected_asset_id = Some(selected.asset_id.clone());
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Selected targeted data asset {} from {}",
+            selected.asset_id, selected.provider_id
+        ));
+        self.sync_selection(market);
+        Ok(())
     }
 
     fn select_asset_step(&mut self, market: &DataMarketPaneState, delta: isize) -> bool {
@@ -1361,9 +1394,7 @@ impl DataBuyerPaneState {
         } else {
             "metadata_only".to_string()
         };
-        let bid_sats = published_data_request_price_sats(grant, Some(asset))
-            .unwrap_or(1)
-            .max(1);
+        let bid_sats = published_data_request_price_sats(grant, Some(asset)).unwrap_or(0);
 
         Some(DataBuyerRequestDraft {
             asset_id: asset.asset_id.clone(),
@@ -1997,6 +2028,46 @@ fn request_execution_param_values(request: &JobInboxNetworkRequest, key: &str) -
     values
 }
 
+fn parse_request_json_payload(raw: &str) -> Option<Value> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(payload) = serde_json::from_str::<Value>(trimmed) {
+        return Some(payload);
+    }
+    let content_marker = "Content:\n";
+    let content_start = trimmed.find(content_marker)? + content_marker.len();
+    let content_tail = &trimmed[content_start..];
+    let content_end = content_tail
+        .find("\n\nParameters:\n")
+        .or_else(|| content_tail.find("\n\nInputs:\n"))
+        .or_else(|| content_tail.find("\n\nRequested output:"))
+        .unwrap_or(content_tail.len());
+    serde_json::from_str::<Value>(content_tail[..content_end].trim()).ok()
+}
+
+fn request_json_string_field(request: &JobInboxNetworkRequest, fields: &[&str]) -> Option<String> {
+    let payload = request
+        .execution_input
+        .as_deref()
+        .and_then(parse_request_json_payload)
+        .or_else(|| {
+            request
+                .execution_prompt
+                .as_deref()
+                .and_then(parse_request_json_payload)
+        })?;
+    fields.iter().find_map(|field| {
+        payload
+            .get(*field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
+}
+
 fn json_string_array_field(value: &Value, field: &str) -> Vec<String> {
     let Some(entries) = value.get(field).and_then(Value::as_array) else {
         return Vec::new();
@@ -2256,6 +2327,7 @@ pub struct DataSellerSkillAttachment {
 #[serde(rename_all = "snake_case")]
 pub enum DataSellerRequestEvaluationDisposition {
     ReadyForPaymentQuote,
+    ReadyForDelivery,
     NoPublishedAsset,
     AssetMismatch,
     UnsupportedDeliveryMode,
@@ -2271,6 +2343,7 @@ impl DataSellerRequestEvaluationDisposition {
     pub const fn label(self) -> &'static str {
         match self {
             Self::ReadyForPaymentQuote => "ready_for_payment_quote",
+            Self::ReadyForDelivery => "ready_for_delivery",
             Self::NoPublishedAsset => "no_published_asset",
             Self::AssetMismatch => "asset_mismatch",
             Self::UnsupportedDeliveryMode => "unsupported_delivery_mode",
@@ -2416,6 +2489,8 @@ pub struct DataSellerDeliveryDraft {
 pub struct DataSellerIncomingRequest {
     pub request_id: String,
     pub requester: String,
+    #[serde(default)]
+    pub requested_consumer_id: Option<String>,
     pub source_relay_url: Option<String>,
     pub request_kind: u16,
     pub profile_id: Option<String>,
@@ -2460,6 +2535,36 @@ pub struct DataSellerIncomingRequest {
     pub revocation_reason_code: Option<String>,
     pub revocation_recorded_at_ms: Option<i64>,
     pub revocation_error: Option<String>,
+}
+
+impl DataSellerIncomingRequest {
+    pub fn effective_consumer_id(&self) -> &str {
+        self.requested_consumer_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(self.requester.as_str())
+    }
+
+    pub fn matches_consumer_id(&self, consumer_id: &str) -> bool {
+        let normalized = consumer_id.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+        normalized.eq_ignore_ascii_case(self.requester.as_str())
+            || self
+                .requested_consumer_id
+                .as_deref()
+                .is_some_and(|value| normalized.eq_ignore_ascii_case(value))
+    }
+
+    pub fn payment_required_for_fulfillment(&self) -> bool {
+        self.required_price_sats.unwrap_or(0) > 0
+    }
+
+    pub fn payment_ready_for_delivery(&self) -> bool {
+        self.payment_state == DataSellerPaymentState::Paid
+            || !self.payment_required_for_fulfillment()
+    }
 }
 
 impl Default for DataSellerCodexProfile {
@@ -3343,7 +3448,7 @@ impl DataSellerPaneState {
             let request = self
                 .request_by_id_mut(request_id)
                 .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
-            if request.payment_state != DataSellerPaymentState::Paid {
+            if !request.payment_ready_for_delivery() {
                 return Err(format!(
                     "Request {} cannot prepare delivery before payment settles. Current payment state is {}.",
                     request.request_id,
@@ -3458,7 +3563,7 @@ impl DataSellerPaneState {
             let request = self
                 .request_by_id_mut(request_id)
                 .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
-            if request.payment_state != DataSellerPaymentState::Paid {
+            if !request.payment_ready_for_delivery() {
                 return Err(format!(
                     "Request {} cannot issue delivery before payment settles. Current payment state is {}.",
                     request.request_id,
@@ -3710,6 +3815,8 @@ impl DataSellerPaneState {
     ) -> DataSellerIncomingRequest {
         let profile_id = request_execution_param_value(request, "oa_profile").map(str::to_string);
         let asset_ref = request_execution_param_value(request, "oa_asset_ref").map(str::to_string);
+        let requested_consumer_id =
+            request_json_string_field(request, &["buyer_id", "consumer_id"]);
         let permission_scopes = request_execution_param_values(request, "oa_scope");
         let delivery_mode =
             request_execution_param_value(request, "oa_delivery_mode").map(str::to_string);
@@ -3724,6 +3831,7 @@ impl DataSellerPaneState {
         let mut incoming = DataSellerIncomingRequest {
             request_id: request.request_id.clone(),
             requester: request.requester.clone(),
+            requested_consumer_id,
             source_relay_url: request.source_relay_url.clone(),
             request_kind: request.request_kind,
             profile_id,
@@ -3876,13 +3984,25 @@ impl DataSellerPaneState {
             .as_deref()
             .filter(|value| !value.trim().is_empty())
         {
-            if !consumer_id.eq_ignore_ascii_case(request.requester.as_str()) {
+            if !incoming.matches_consumer_id(consumer_id) {
                 incoming.evaluation_disposition =
                     DataSellerRequestEvaluationDisposition::GrantConsumerMismatch;
-                incoming.evaluation_summary = format!(
-                    "Published grant {} is targeted to {}, not requester {}",
-                    grant.grant_id, consumer_id, request.requester
-                );
+                incoming.evaluation_summary = incoming
+                    .requested_consumer_id
+                    .as_deref()
+                    .filter(|value| !value.eq_ignore_ascii_case(request.requester.as_str()))
+                    .map(|requested_consumer_id| {
+                        format!(
+                            "Published grant {} is targeted to {}, not requester {} or buyer_id {}",
+                            grant.grant_id, consumer_id, request.requester, requested_consumer_id
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        format!(
+                            "Published grant {} is targeted to {}, not requester {}",
+                            grant.grant_id, consumer_id, request.requester
+                        )
+                    });
                 return incoming;
             }
         }
@@ -3914,16 +4034,29 @@ impl DataSellerPaneState {
             }
         }
 
-        incoming.evaluation_disposition =
-            DataSellerRequestEvaluationDisposition::ReadyForPaymentQuote;
-        incoming.evaluation_summary = format!(
-            "Request matches asset {} and grant {}; seller can quote payment-required next.",
-            incoming
-                .matched_asset_id
-                .as_deref()
-                .unwrap_or(asset.asset_id.as_str()),
-            grant.grant_id
-        );
+        if incoming.required_price_sats.unwrap_or(0) > 0 {
+            incoming.evaluation_disposition =
+                DataSellerRequestEvaluationDisposition::ReadyForPaymentQuote;
+            incoming.evaluation_summary = format!(
+                "Request matches asset {} and grant {}; seller can quote payment-required next.",
+                incoming
+                    .matched_asset_id
+                    .as_deref()
+                    .unwrap_or(asset.asset_id.as_str()),
+                grant.grant_id
+            );
+        } else {
+            incoming.evaluation_disposition =
+                DataSellerRequestEvaluationDisposition::ReadyForDelivery;
+            incoming.evaluation_summary = format!(
+                "Request matches asset {} and grant {}; no payment is required, so seller can deliver next.",
+                incoming
+                    .matched_asset_id
+                    .as_deref()
+                    .unwrap_or(asset.asset_id.as_str()),
+                grant.grant_id
+            );
+        }
         incoming
     }
 
@@ -14198,6 +14331,11 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
+        if self.data_seller.derived_nip90_profile().is_some()
+            || self.data_buyer.requires_nip90_response_tracking()
+        {
+            return blockers;
+        }
         let runtime_view = mission_control_local_runtime_view_model(
             self.desktop_shell_mode,
             &self.provider_runtime,
@@ -14872,6 +15010,193 @@ mod tests {
     }
 
     #[test]
+    fn data_seller_intake_marks_free_request_ready_for_delivery() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.free".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Free support bundle".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle-free".to_string()),
+                provenance_ref: Some("oa://bundle/support-free".to_string()),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.free".to_string(),
+                asset_id: "data_asset.provider.alpha.free".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1data-intake-free".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        let request =
+            fixture_data_access_request("data-intake-free", "data_asset.provider.alpha.free", 0);
+
+        pane.note_incoming_request(&request, false, 1_760_000_100);
+
+        let incoming = pane
+            .latest_incoming_request()
+            .expect("incoming request should be recorded");
+        assert_eq!(
+            incoming.evaluation_disposition,
+            super::DataSellerRequestEvaluationDisposition::ReadyForDelivery
+        );
+        assert_eq!(incoming.required_price_sats, Some(0));
+
+        let ready = pane
+            .prepare_delivery_draft(
+                "data-intake-free",
+                Some("Free preview"),
+                Some("bundle://free-support/1"),
+                Some("sha256:free-support"),
+                Some(vec!["manifest://free-support/1".to_string()]),
+                Some(1024),
+                Some(24),
+            )
+            .expect("free request should allow delivery draft preparation");
+        assert!(ready);
+        pane.request_issue_delivery("data-intake-free")
+            .expect("free request should allow delivery issuance");
+    }
+
+    #[test]
+    fn data_seller_intake_matches_targeted_grant_against_payload_buyer_id() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.headless".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Headless bundle".to_string(),
+                description: None,
+                content_digest: Some("sha256:headless".to_string()),
+                provenance_ref: Some("oa://bundle/headless".to_string()),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.headless".to_string(),
+                asset_id: "data_asset.provider.alpha.headless".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1headlessbuyer".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(0),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        let mut request = fixture_data_access_request(
+            "data-intake-headless",
+            "data_asset.provider.alpha.headless",
+            0,
+        );
+        request.requester = "11".repeat(32);
+        request.execution_input = Some(format!(
+            "Content:\n{}\n\nParameters:\n- oa_asset_ref=data_asset.provider.alpha.headless",
+            json!({
+                "request_type": super::DATA_MARKET_BUYER_REQUEST_TYPE,
+                "asset_id": "data_asset.provider.alpha.headless",
+                "buyer_id": "npub1headlessbuyer",
+                "delivery_mode": "delivery_bundle_ref",
+            })
+        ));
+
+        pane.note_incoming_request(&request, false, 1_760_000_100);
+
+        let incoming = pane
+            .latest_incoming_request()
+            .expect("incoming request should be recorded");
+        assert_eq!(
+            incoming.requested_consumer_id.as_deref(),
+            Some("npub1headlessbuyer")
+        );
+        assert_eq!(
+            incoming.evaluation_disposition,
+            super::DataSellerRequestEvaluationDisposition::ReadyForDelivery
+        );
+    }
+
+    #[test]
     fn data_seller_intake_rejects_scope_outside_published_policy_envelope() {
         let mut pane = DataSellerPaneState::default();
         pane.note_asset_published(
@@ -15484,6 +15809,224 @@ mod tests {
             Some("receipt.revocation-flow")
         );
         assert!(pane.last_published_revocation.is_some());
+    }
+
+    #[test]
+    fn data_seller_full_lifecycle_progresses_from_grant_to_revocation() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1lifecycle-flow".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request("lifecycle-flow", "data_asset.provider.alpha.bundle", 250),
+            false,
+            1_760_000_100,
+        );
+
+        pane.request_payment_required_quote("lifecycle-flow")
+            .expect("payment quote should succeed");
+        pane.note_payment_invoice_created(
+            "lifecycle-flow",
+            "lnbc2500n1lifecycleflow",
+            Some(1_760_000_120),
+        )
+        .expect("invoice should be recorded");
+        assert!(pane.note_payment_feedback_publish_outcome(
+            "lifecycle-flow",
+            true,
+            Some("feedback-event-lifecycle"),
+            None,
+        ));
+        assert!(pane.note_payment_observed(
+            "lifecycle-flow",
+            "payment-pointer-lifecycle",
+            250,
+            1_760_000_180,
+        ));
+
+        assert!(
+            pane.prepare_delivery_draft(
+                "lifecycle-flow",
+                Some("Lifecycle bundle manifest ready"),
+                Some("oa://deliveries/lifecycle-flow"),
+                Some("sha256:lifecycle-flow"),
+                Some(vec!["oa://deliveries/lifecycle-flow/manifest".to_string()]),
+                Some(4096),
+                Some(24),
+            )
+            .expect("delivery draft should be ready")
+        );
+        pane.request_issue_delivery("lifecycle-flow")
+            .expect("delivery issue should be armed");
+        pane.note_delivery_bundle_issuing("lifecycle-flow")
+            .expect("issuing state should be recorded");
+        pane.note_delivery_bundle_issued(
+            "lifecycle-flow",
+            DeliveryBundle {
+                delivery_bundle_id: "delivery_bundle.provider.alpha.lifecycle-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: "npub1lifecycle-flow".to_string(),
+                created_at_ms: 1_762_700_200_000,
+                delivery_ref: "oa://deliveries/lifecycle-flow".to_string(),
+                delivery_digest: Some("sha256:lifecycle-flow".to_string()),
+                bundle_size_bytes: Some(4096),
+                manifest_refs: vec!["oa://deliveries/lifecycle-flow/manifest".to_string()],
+                expires_at_ms: Some(1_762_786_600_000),
+                status: openagents_kernel_core::data::DeliveryBundleStatus::Issued,
+                metadata: json!({
+                    "request_id": "lifecycle-flow",
+                }),
+            },
+            Some("receipt.lifecycle-flow.delivery".to_string()),
+        )
+        .expect("delivery bundle should be recorded");
+        assert!(pane.note_delivery_result_publish_outcome(
+            "lifecycle-flow",
+            true,
+            Some("result-event-lifecycle"),
+            None,
+        ));
+
+        pane.request_revoke_access("lifecycle-flow", super::DataSellerRevocationAction::Revoke)
+            .expect("revocation should be armed");
+        pane.note_revocation_recorded(
+            "lifecycle-flow",
+            super::DataSellerRevocationAction::Revoke,
+            RevocationReceipt {
+                revocation_id: "revocation.provider.alpha.lifecycle-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1lifecycle-flow".to_string()),
+                created_at_ms: 1_762_700_250_000,
+                reason_code: "seller_revoked_access".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: vec![
+                    "delivery_bundle.provider.alpha.lifecycle-flow".to_string(),
+                ],
+                replacement_delivery_bundle_id: None,
+                status: openagents_kernel_core::data::RevocationStatus::Revoked,
+                metadata: json!({
+                    "control_action": "revoke",
+                }),
+            },
+            Some("receipt.lifecycle-flow.revocation".to_string()),
+            AccessGrant {
+                status: openagents_kernel_core::data::AccessGrantStatus::Revoked,
+                ..pane
+                    .last_published_grant
+                    .clone()
+                    .expect("grant should be present")
+            },
+            &[DeliveryBundle {
+                delivery_bundle_id: "delivery_bundle.provider.alpha.lifecycle-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: "npub1lifecycle-flow".to_string(),
+                created_at_ms: 1_762_700_200_000,
+                delivery_ref: "oa://deliveries/lifecycle-flow".to_string(),
+                delivery_digest: Some("sha256:lifecycle-flow".to_string()),
+                bundle_size_bytes: Some(4096),
+                manifest_refs: vec!["oa://deliveries/lifecycle-flow/manifest".to_string()],
+                expires_at_ms: Some(1_762_786_600_000),
+                status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
+                metadata: json!({
+                    "request_id": "lifecycle-flow",
+                }),
+            }],
+        )
+        .expect("revocation read-back should be recorded");
+
+        let request = pane
+            .request_by_id("lifecycle-flow")
+            .expect("request should remain available");
+        assert_eq!(request.payment_state, super::DataSellerPaymentState::Paid);
+        assert_eq!(
+            request.delivery_state,
+            super::DataSellerDeliveryState::Revoked
+        );
+        assert_eq!(
+            request.revocation_state,
+            super::DataSellerRevocationState::Revoked
+        );
+        assert_eq!(
+            request.payment_feedback_event_id.as_deref(),
+            Some("feedback-event-lifecycle")
+        );
+        assert_eq!(
+            request.delivery_result_event_id.as_deref(),
+            Some("result-event-lifecycle")
+        );
+        assert_eq!(
+            request.revocation_receipt_id.as_deref(),
+            Some("receipt.lifecycle-flow.revocation")
+        );
+        assert_eq!(
+            pane.last_delivery_publish_receipt_id.as_deref(),
+            Some("receipt.lifecycle-flow.delivery")
+        );
+        assert_eq!(
+            pane.last_revocation_publish_receipt_id.as_deref(),
+            Some("receipt.lifecycle-flow.revocation")
+        );
     }
 
     #[test]

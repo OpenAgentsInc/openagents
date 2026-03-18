@@ -265,7 +265,7 @@ fn build_accept_access_grant_request(
             approved_by: "openagents.data_market.seller_pane".to_string(),
         },
         grant_id: grant_id.to_string(),
-        consumer_id: request.requester.clone(),
+        consumer_id: request.effective_consumer_id().to_string(),
         accepted_at_ms,
         settlement_price: payment_amount_sats.map(sats_money),
         metadata: json!({

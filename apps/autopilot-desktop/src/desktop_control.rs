@@ -64,6 +64,14 @@ use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmWorkbenchCommand, AppleFmWorkbenchOperation,
 };
 use crate::bitcoin_display::format_sats_amount;
+use crate::input::DesktopControlToolBridgeResultEnvelope;
+pub use crate::input::{
+    DesktopControlDataMarketBuyerRequestArgs, DesktopControlDataMarketDraftAssetArgs,
+    DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketIssueDeliveryArgs,
+    DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
+    DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketResolveDeliveryArgs,
+    DesktopControlDataMarketRevokeGrantArgs,
+};
 use crate::local_inference_runtime::{LocalInferenceRuntimeCommand, LocalRuntimeDiagnostics};
 use crate::local_runtime_capabilities::{
     LocalRuntimeWorkbenchAction, active_local_runtime_capability_surface,
@@ -83,6 +91,9 @@ const DESKTOP_CONTROL_EVENT_QUERY_LIMIT: usize = 128;
 const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
+
+pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIFEST";
+pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRuntimeConfig {
@@ -1247,6 +1258,42 @@ pub enum DesktopControlActionRequest {
     GetPaneSnapshot {
         pane: String,
     },
+    GetDataMarketSellerStatus,
+    GetDataMarketBuyerStatus,
+    RefreshDataMarketBuyerMarket,
+    DraftDataMarketAsset {
+        args: DesktopControlDataMarketDraftAssetArgs,
+    },
+    PreviewDataMarketAsset,
+    PublishDataMarketAsset {
+        args: DesktopControlDataMarketPublishArgs,
+    },
+    DraftDataMarketGrant {
+        args: DesktopControlDataMarketDraftGrantArgs,
+    },
+    PreviewDataMarketGrant,
+    PublishDataMarketGrant {
+        args: DesktopControlDataMarketPublishArgs,
+    },
+    RequestDataMarketPayment {
+        args: DesktopControlDataMarketRequestPaymentArgs,
+    },
+    PrepareDataMarketDelivery {
+        args: DesktopControlDataMarketPrepareDeliveryArgs,
+    },
+    IssueDataMarketDelivery {
+        args: DesktopControlDataMarketIssueDeliveryArgs,
+    },
+    RevokeDataMarketGrant {
+        args: DesktopControlDataMarketRevokeGrantArgs,
+    },
+    PublishDataMarketBuyerRequest {
+        args: DesktopControlDataMarketBuyerRequestArgs,
+    },
+    ResolveDataMarketDelivery {
+        args: DesktopControlDataMarketResolveDeliveryArgs,
+    },
+    GetDataMarketSnapshot,
     GetAttnResStatus,
     StartAttnRes,
     PauseAttnRes,
@@ -1379,6 +1426,22 @@ impl DesktopControlActionRequest {
             Self::FocusPane { .. } => "pane-focus",
             Self::ClosePane { .. } => "pane-close",
             Self::GetPaneSnapshot { .. } => "pane-snapshot",
+            Self::GetDataMarketSellerStatus => "data-market-seller-status",
+            Self::GetDataMarketBuyerStatus => "data-market-buyer-status",
+            Self::RefreshDataMarketBuyerMarket => "data-market-buyer-refresh",
+            Self::DraftDataMarketAsset { .. } => "data-market-asset-draft",
+            Self::PreviewDataMarketAsset => "data-market-asset-preview",
+            Self::PublishDataMarketAsset { .. } => "data-market-asset-publish",
+            Self::DraftDataMarketGrant { .. } => "data-market-grant-draft",
+            Self::PreviewDataMarketGrant => "data-market-grant-preview",
+            Self::PublishDataMarketGrant { .. } => "data-market-grant-publish",
+            Self::RequestDataMarketPayment { .. } => "data-market-payment-request",
+            Self::PrepareDataMarketDelivery { .. } => "data-market-delivery-prepare",
+            Self::IssueDataMarketDelivery { .. } => "data-market-delivery-issue",
+            Self::RevokeDataMarketGrant { .. } => "data-market-grant-revoke",
+            Self::PublishDataMarketBuyerRequest { .. } => "data-market-buyer-publish-request",
+            Self::ResolveDataMarketDelivery { .. } => "data-market-delivery-resolve",
+            Self::GetDataMarketSnapshot => "data-market-snapshot",
             Self::GetAttnResStatus => "attnres-status",
             Self::StartAttnRes => "attnres-start",
             Self::PauseAttnRes => "attnres-pause",
@@ -1722,6 +1785,12 @@ pub fn control_base_url(listen_addr: SocketAddr) -> String {
 }
 
 pub fn control_manifest_path() -> PathBuf {
+    if let Ok(value) = std::env::var(DESKTOP_CONTROL_MANIFEST_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
     crate::runtime_log::autopilot_log_dir().join(DESKTOP_CONTROL_MANIFEST_FILENAME)
 }
 
@@ -2238,6 +2307,51 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetPaneSnapshot { pane } => json!({
             "command_label": action.label(),
             "pane": pane,
+        }),
+        DesktopControlActionRequest::GetDataMarketSellerStatus
+        | DesktopControlActionRequest::GetDataMarketBuyerStatus
+        | DesktopControlActionRequest::RefreshDataMarketBuyerMarket
+        | DesktopControlActionRequest::PreviewDataMarketAsset
+        | DesktopControlActionRequest::PreviewDataMarketGrant
+        | DesktopControlActionRequest::GetDataMarketSnapshot => {
+            json!({ "command_label": action.label() })
+        }
+        DesktopControlActionRequest::DraftDataMarketAsset { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::PublishDataMarketAsset { args }
+        | DesktopControlActionRequest::PublishDataMarketGrant { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::DraftDataMarketGrant { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::RequestDataMarketPayment { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::PrepareDataMarketDelivery { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::IssueDataMarketDelivery { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::RevokeDataMarketGrant { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::PublishDataMarketBuyerRequest { args } => json!({
+            "command_label": action.label(),
+            "args": args,
+        }),
+        DesktopControlActionRequest::ResolveDataMarketDelivery { args } => json!({
+            "command_label": action.label(),
+            "args": args,
         }),
         DesktopControlActionRequest::GetAttnResStatus
         | DesktopControlActionRequest::StartAttnRes
@@ -3338,6 +3452,86 @@ fn apply_action_request(
         DesktopControlActionRequest::GetPaneSnapshot { pane } => {
             pane_snapshot_payload_response(state, pane.as_str()).into()
         }
+        DesktopControlActionRequest::GetDataMarketSellerStatus => data_market_tool_action_response(
+            crate::input::desktop_control_data_market_seller_status(state),
+        )
+        .into(),
+        DesktopControlActionRequest::GetDataMarketBuyerStatus => data_market_tool_action_response(
+            crate::input::desktop_control_data_market_buyer_status(state),
+        )
+        .into(),
+        DesktopControlActionRequest::RefreshDataMarketBuyerMarket => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_buyer_refresh(state),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::DraftDataMarketAsset { args } => {
+            data_market_tool_action_response(crate::input::desktop_control_data_market_draft_asset(
+                state, args,
+            ))
+            .into()
+        }
+        DesktopControlActionRequest::PreviewDataMarketAsset => data_market_tool_action_response(
+            crate::input::desktop_control_data_market_preview_asset(state),
+        )
+        .into(),
+        DesktopControlActionRequest::PublishDataMarketAsset { args } => {
+            data_market_tool_action_response(data_market_publish_asset_action(state, args)).into()
+        }
+        DesktopControlActionRequest::DraftDataMarketGrant { args } => {
+            data_market_tool_action_response(crate::input::desktop_control_data_market_draft_grant(
+                state, args,
+            ))
+            .into()
+        }
+        DesktopControlActionRequest::PreviewDataMarketGrant => data_market_tool_action_response(
+            crate::input::desktop_control_data_market_preview_grant(state),
+        )
+        .into(),
+        DesktopControlActionRequest::PublishDataMarketGrant { args } => {
+            data_market_tool_action_response(data_market_publish_grant_action(state, args)).into()
+        }
+        DesktopControlActionRequest::RequestDataMarketPayment { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_request_payment(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::PrepareDataMarketDelivery { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_prepare_delivery(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::IssueDataMarketDelivery { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_issue_delivery(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::RevokeDataMarketGrant { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_revoke_grant(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::PublishDataMarketBuyerRequest { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_buyer_publish_request(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::ResolveDataMarketDelivery { args } => {
+            data_market_tool_action_response(
+                crate::input::desktop_control_data_market_resolve_delivery(state, args),
+            )
+            .into()
+        }
+        DesktopControlActionRequest::GetDataMarketSnapshot => data_market_tool_action_response(
+            crate::input::desktop_control_data_market_snapshot(state),
+        )
+        .into(),
         DesktopControlActionRequest::GetAttnResStatus => attnres_status_payload_response(state),
         DesktopControlActionRequest::StartAttnRes => start_attnres_action(state).into(),
         DesktopControlActionRequest::PauseAttnRes => pause_attnres_action(state).into(),
@@ -4158,6 +4352,48 @@ fn pay_invoice_action_response(
                 .clone()
                 .unwrap_or_else(|| default_message.to_string()),
         )
+    }
+}
+
+fn data_market_publish_asset_action(
+    state: &mut RenderState,
+    args: &DesktopControlDataMarketPublishArgs,
+) -> DesktopControlToolBridgeResultEnvelope {
+    if args.confirm {
+        state.data_seller.confirm_asset_preview();
+    }
+    crate::input::desktop_control_data_market_publish_asset(state, args)
+}
+
+fn data_market_publish_grant_action(
+    state: &mut RenderState,
+    args: &DesktopControlDataMarketPublishArgs,
+) -> DesktopControlToolBridgeResultEnvelope {
+    if args.confirm {
+        state.data_seller.confirm_grant_preview();
+    }
+    crate::input::desktop_control_data_market_publish_grant(state, args)
+}
+
+fn data_market_tool_action_response(
+    envelope: DesktopControlToolBridgeResultEnvelope,
+) -> DesktopControlActionResponse {
+    let payload = match envelope.details {
+        Value::Object(mut object) => {
+            object.insert("code".to_string(), Value::String(envelope.code.clone()));
+            Value::Object(object)
+        }
+        details => json!({
+            "code": envelope.code,
+            "details": details,
+        }),
+    };
+    DesktopControlActionResponse {
+        success: envelope.success,
+        message: envelope.message,
+        payload: Some(payload),
+        snapshot_revision: None,
+        state_signature: None,
     }
 }
 
@@ -8634,6 +8870,11 @@ mod tests {
         ManagedChatProjectionState, NetworkRequestSubmission,
     };
     use crate::autopilot_compute_presence::pump_provider_chat_presence;
+    use crate::input::{
+        DesktopControlDataMarketBuyerRequestArgs, DesktopControlDataMarketDraftAssetArgs,
+        DesktopControlDataMarketPublishArgs, DesktopControlDataMarketResolveDeliveryArgs,
+        DesktopControlDataMarketRevokeGrantArgs,
+    };
     use crate::nip28_chat_lane::{Nip28ChatLaneUpdate, Nip28ChatLaneWorker};
     use crate::provider_nip90_lane::{
         ProviderNip90AuthIdentity, ProviderNip90ComputeCapability, ProviderNip90LaneCommand,
@@ -10783,6 +11024,184 @@ mod tests {
             }
             .label(),
             "attnres-speed-set"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::GetDataMarketSellerStatus.label(),
+            "data-market-seller-status"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::GetDataMarketBuyerStatus.label(),
+            "data-market-buyer-status"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::RefreshDataMarketBuyerMarket.label(),
+            "data-market-buyer-refresh"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::DraftDataMarketAsset {
+                args: DesktopControlDataMarketDraftAssetArgs {
+                    asset_kind: Some("conversation_bundle".to_string()),
+                    title: None,
+                    description: None,
+                    content_digest: None,
+                    provenance_ref: None,
+                    default_policy: None,
+                    price_hint_sats: None,
+                    delivery_modes: None,
+                    visibility_posture: None,
+                    sensitivity_posture: None,
+                    metadata: None,
+                },
+            }
+            .label(),
+            "data-market-asset-draft"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::PublishDataMarketAsset {
+                args: DesktopControlDataMarketPublishArgs { confirm: true },
+            }
+            .label(),
+            "data-market-asset-publish"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::GetDataMarketSnapshot.label(),
+            "data-market-snapshot"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::PublishDataMarketBuyerRequest {
+                args: DesktopControlDataMarketBuyerRequestArgs {
+                    asset_id: Some("data_asset.alpha".to_string()),
+                    refresh_market: true,
+                },
+            }
+            .label(),
+            "data-market-buyer-publish-request"
+        );
+        assert_eq!(
+            DesktopControlActionRequest::ResolveDataMarketDelivery {
+                args: DesktopControlDataMarketResolveDeliveryArgs {
+                    delivery_bundle_id: None,
+                    request_id: Some("data_request.alpha".to_string()),
+                    grant_id: Some("grant.alpha".to_string()),
+                    asset_id: None,
+                    refresh_market: true,
+                },
+            }
+            .label(),
+            "data-market-delivery-resolve"
+        );
+    }
+
+    fn ready_asset_draft_args() -> DesktopControlDataMarketDraftAssetArgs {
+        DesktopControlDataMarketDraftAssetArgs {
+            asset_kind: Some("conversation_bundle".to_string()),
+            title: Some("Revenue QA bundle".to_string()),
+            description: Some("Curated conversation bundle for CLI seller tests.".to_string()),
+            content_digest: Some("sha256:test-bundle-digest".to_string()),
+            provenance_ref: Some("oa://tests/data/revenue-qa-bundle".to_string()),
+            default_policy: Some("targeted_request".to_string()),
+            price_hint_sats: Some(250),
+            delivery_modes: Some(vec![
+                "encrypted_pointer".to_string(),
+                "delivery_bundle_ref".to_string(),
+            ]),
+            visibility_posture: Some("targeted_only".to_string()),
+            sensitivity_posture: Some("private".to_string()),
+            metadata: Some(json!({
+                "suite": "desktop_control",
+                "fixture": "ready_asset_draft",
+            })),
+        }
+    }
+
+    #[test]
+    fn desktop_control_data_market_draft_command_payload_preserves_structured_args() {
+        let event = command_received_event(&DesktopControlActionRequest::DraftDataMarketAsset {
+            args: ready_asset_draft_args(),
+        });
+        let payload = event.payload.expect("received payload");
+        assert_eq!(
+            payload.get("command_label").and_then(Value::as_str),
+            Some("data-market-asset-draft")
+        );
+        assert_eq!(
+            payload
+                .get("args")
+                .and_then(|args| args.get("title"))
+                .and_then(Value::as_str),
+            Some("Revenue QA bundle")
+        );
+        assert_eq!(
+            payload
+                .get("args")
+                .and_then(|args| args.get("metadata"))
+                .and_then(|metadata| metadata.get("fixture"))
+                .and_then(Value::as_str),
+            Some("ready_asset_draft")
+        );
+    }
+
+    #[test]
+    fn desktop_control_data_market_revoke_payload_preserves_requested_action() {
+        let event = command_received_event(&DesktopControlActionRequest::RevokeDataMarketGrant {
+            args: DesktopControlDataMarketRevokeGrantArgs {
+                request_id: "data_request.test".to_string(),
+                action: "bad_action".to_string(),
+                confirm: true,
+                reason_code: None,
+            },
+        });
+        let payload = event.payload.expect("revoke payload");
+        assert_eq!(
+            payload.get("command_label").and_then(Value::as_str),
+            Some("data-market-grant-revoke")
+        );
+        assert_eq!(
+            payload
+                .get("args")
+                .and_then(|args| args.get("action"))
+                .and_then(Value::as_str),
+            Some("bad_action")
+        );
+        assert_eq!(
+            payload
+                .get("args")
+                .and_then(|args| args.get("confirm"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn desktop_control_data_market_resolve_delivery_payload_preserves_selectors() {
+        let event =
+            command_received_event(&DesktopControlActionRequest::ResolveDataMarketDelivery {
+                args: DesktopControlDataMarketResolveDeliveryArgs {
+                    delivery_bundle_id: Some("delivery.alpha".to_string()),
+                    request_id: Some("data_request.alpha".to_string()),
+                    grant_id: Some("grant.alpha".to_string()),
+                    asset_id: Some("asset.alpha".to_string()),
+                    refresh_market: true,
+                },
+            });
+        let payload = event.payload.expect("resolve payload");
+        assert_eq!(
+            payload.get("command_label").and_then(Value::as_str),
+            Some("data-market-delivery-resolve")
+        );
+        assert_eq!(
+            payload
+                .get("args")
+                .and_then(|args| args.get("delivery_bundle_id"))
+                .and_then(Value::as_str),
+            Some("delivery.alpha")
+        );
+        assert_eq!(
+            payload
+                .get("args")
+                .and_then(|args| args.get("request_id"))
+                .and_then(Value::as_str),
+            Some("data_request.alpha")
         );
     }
 
