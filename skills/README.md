@@ -67,6 +67,7 @@ The repo currently ships three first-party Data Market skills with distinct jobs
 - `autopilot-data-seller-cli`
   - use for shell-first or no-window operation through `autopilotctl` and `autopilot_headless_data_market`
   - packages local files/directories for sale and drives the same seller lifecycle without bootstrapping the visible UI
+  - now also includes a dedicated redacted Codex conversation packager for selling `.codex/sessions` material without publishing raw rollout files
 
 Current supporting docs:
 
