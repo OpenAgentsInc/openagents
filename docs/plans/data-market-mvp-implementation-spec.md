@@ -116,6 +116,7 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 - expose the dedicated seller pane and state model
 - show transcript-shell, draft-shell, and status-shell cards
 - keep a structured local draft with readiness blockers and preview posture
+- attach a dedicated Codex thread/session with seller-specific personality and collaboration defaults
 - expose explicit preview/publish controls
 - keep publication blocked until the exact preview and typed tool slices land
 

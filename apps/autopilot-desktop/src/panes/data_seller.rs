@@ -56,6 +56,13 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &m
         "publish",
         gate_label(pane_state.publish_enabled),
     );
+    status_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + PADDING,
+        status_y,
+        "codex session",
+        pane_state.codex_session_phase.label(),
+    );
     let _ = paint_label_line(
         paint,
         content_bounds.origin.x + PADDING,
@@ -253,18 +260,57 @@ fn paint_publication_status_card(
     );
 
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
-    for (label, value) in [
-        ("preview control", gate_label(pane_state.preview_enabled)),
-        ("publish control", gate_label(pane_state.publish_enabled)),
-        (
-            "preview posture",
-            pane_state.active_draft.preview_posture.label(),
-        ),
-        ("authority truth", "kernel DataAsset / AccessGrant"),
-        ("read-back surface", "Data Market pane"),
-    ] {
-        row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, label, value);
-    }
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "preview control",
+        gate_label(pane_state.preview_enabled),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "publish control",
+        gate_label(pane_state.publish_enabled),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "preview posture",
+        pane_state.active_draft.preview_posture.label(),
+    );
+    let thread_id = option_label(pane_state.codex_thread_id.as_deref());
+    row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, "thread", &thread_id);
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "personality",
+        pane_state.codex_profile.personality.label(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "collab",
+        pane_state.codex_profile.collaboration_mode.label(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "authority truth",
+        "kernel DataAsset / AccessGrant",
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "read-back surface",
+        "Data Market pane",
+    );
 
     paint.scene.draw_text(paint.text.layout(
         &format!(
@@ -280,8 +326,17 @@ fn paint_publication_status_card(
         theme::text::SECONDARY,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
+        &format!(
+            "session origin: {}",
+            pane_state.codex_profile.session_origin
+        ),
         Point::new(bounds.origin.x + 10.0, row_y + 26.0),
+        11.0,
+        theme::text::SECONDARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
+        Point::new(bounds.origin.x + 10.0, row_y + 44.0),
         11.0,
         theme::text::SECONDARY,
     ));

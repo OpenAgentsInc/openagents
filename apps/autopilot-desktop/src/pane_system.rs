@@ -1295,6 +1295,7 @@ impl PaneController {
             focus_apple_adapter_training_input_for_pane_open(state);
         } else if kind == PaneKind::DataSeller {
             state.data_seller.mark_opened();
+            crate::data_seller_control::ensure_data_seller_codex_session(state);
         } else if kind == PaneKind::DataMarket {
             crate::data_market_control::refresh_data_market_snapshot(state);
         }
