@@ -1,3 +1,4 @@
+use std::io::{BufReader, Cursor};
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -5,9 +6,10 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use reqwest::blocking::Client as HttpClient;
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -16,6 +18,10 @@ const GOOGLE_STT_BASE_URL: &str = "https://us-speech.googleapis.com";
 const GOOGLE_STT_LOCATION: &str = "us";
 const GOOGLE_STT_MODEL: &str = "chirp_3";
 const GOOGLE_STT_LANGUAGE_CODE: &str = "en-US";
+const GOOGLE_TTS_BASE_URL: &str = "https://texttospeech.googleapis.com";
+const GOOGLE_TTS_VOICE_NAME: &str = "en-US-Chirp3-HD-Charon";
+const GOOGLE_TTS_LANGUAGE_CODE: &str = "en-US";
+const GOOGLE_TTS_SAMPLE_RATE_HZ: u32 = 24_000;
 const GCLOUD_PROJECT_ENV_KEYS: [&str; 3] = [
     "OPENAGENTS_GOOGLE_CLOUD_PROJECT",
     "GOOGLE_CLOUD_PROJECT",
@@ -29,6 +35,10 @@ pub struct VoicePlaygroundConfig {
     pub stt_location: String,
     pub stt_model: String,
     pub stt_language_code: String,
+    pub tts_base_url: String,
+    pub tts_voice_name: String,
+    pub tts_language_code: String,
+    pub tts_sample_rate_hz: u32,
 }
 
 impl Default for VoicePlaygroundConfig {
@@ -55,6 +65,26 @@ impl Default for VoicePlaygroundConfig {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| GOOGLE_STT_LANGUAGE_CODE.to_string()),
+            tts_base_url: std::env::var("OPENAGENTS_GOOGLE_TTS_BASE_URL")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| GOOGLE_TTS_BASE_URL.to_string()),
+            tts_voice_name: std::env::var("OPENAGENTS_GOOGLE_TTS_VOICE")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| GOOGLE_TTS_VOICE_NAME.to_string()),
+            tts_language_code: std::env::var("OPENAGENTS_GOOGLE_TTS_LANGUAGE_CODE")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| GOOGLE_TTS_LANGUAGE_CODE.to_string()),
+            tts_sample_rate_hz: std::env::var("OPENAGENTS_GOOGLE_TTS_SAMPLE_RATE_HZ")
+                .ok()
+                .and_then(|value| value.trim().parse::<u32>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(GOOGLE_TTS_SAMPLE_RATE_HZ),
         }
     }
 }
@@ -95,6 +125,46 @@ impl VoiceTranscriptionState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum VoiceSynthesisState {
+    #[default]
+    Idle,
+    Running,
+    Ready,
+    Error,
+}
+
+impl VoiceSynthesisState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Running => "running",
+            Self::Ready => "ready",
+            Self::Error => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum VoicePlaybackState {
+    #[default]
+    Idle,
+    Playing,
+    Completed,
+    Error,
+}
+
+impl VoicePlaybackState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Playing => "playing",
+            Self::Completed => "completed",
+            Self::Error => "failed",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VoicePlaygroundSnapshot {
     pub backend_label: String,
@@ -103,14 +173,22 @@ pub struct VoicePlaygroundSnapshot {
     pub stt_location: String,
     pub stt_model: String,
     pub stt_language_code: String,
+    pub tts_voice_name: String,
+    pub tts_language_code: String,
     pub recording_state: VoiceRecordingState,
     pub transcription_state: VoiceTranscriptionState,
+    pub synthesis_state: VoiceSynthesisState,
+    pub playback_state: VoicePlaybackState,
     pub input_device_name: Option<String>,
     pub pending_request_id: Option<String>,
     pub last_request_id: Option<String>,
     pub last_clip_duration_ms: Option<u64>,
     pub last_transcript: Option<String>,
     pub last_transcription_latency_ms: Option<u64>,
+    pub last_synthesis_request_id: Option<String>,
+    pub last_synthesis_latency_ms: Option<u64>,
+    pub last_speech_text: Option<String>,
+    pub last_tts_duration_ms: Option<u64>,
     pub last_action: Option<String>,
     pub last_error: Option<String>,
 }
@@ -141,6 +219,32 @@ pub enum VoicePlaygroundUpdate {
         request_id: String,
         error: String,
     },
+    SynthesisStarted {
+        request_id: String,
+        text: String,
+    },
+    SynthesisCompleted {
+        request_id: String,
+        text: String,
+        voice_name: String,
+        latency_ms: u64,
+        duration_ms: Option<u64>,
+    },
+    SynthesisFailed {
+        request_id: String,
+        error: String,
+    },
+    PlaybackStarted {
+        request_id: String,
+    },
+    PlaybackStopped {
+        request_id: Option<String>,
+        reason: &'static str,
+    },
+    PlaybackFailed {
+        request_id: Option<String>,
+        error: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -151,6 +255,12 @@ pub enum VoicePlaygroundCommand {
     StopRecordingAndTranscribe {
         request_id: String,
     },
+    SynthesizeAndPlay {
+        request_id: String,
+        text: String,
+    },
+    ReplayLastSynthesis,
+    StopPlayback,
 }
 
 enum VoicePlaygroundWorkerCommand {
@@ -175,11 +285,12 @@ impl VoicePlaygroundWorker {
                 let gcloud = Arc::new(SystemGcloudCli);
                 let auth = Arc::new(GcloudAccessTokenProvider::new(gcloud.clone()));
                 let environment = GcloudEnvironmentProbe::new(gcloud);
-                let backend = Box::new(GoogleCloudSttBackend::new(config.clone(), auth))
-                    as Box<dyn VoiceTranscriptionBackend>;
+                let backend = Box::new(GoogleCloudVoiceBackend::new(config.clone(), auth))
+                    as Box<dyn VoiceBackend>;
                 let capture = Box::new(CpalAudioCapture::default()) as Box<dyn AudioCapture>;
+                let player = Box::new(RodioAudioPlayer::default()) as Box<dyn AudioPlayer>;
                 let mut controller =
-                    VoicePlaygroundController::new(config, backend, capture, environment);
+                    VoicePlaygroundController::new(config, backend, capture, player, environment);
                 let _ = update_tx.send(VoicePlaygroundUpdate::Snapshot(
                     controller.snapshot().clone(),
                 ));
@@ -191,7 +302,11 @@ impl VoicePlaygroundWorker {
                             }
                         }
                         Ok(VoicePlaygroundWorkerCommand::Shutdown) => break,
-                        Err(RecvTimeoutError::Timeout) => {}
+                        Err(RecvTimeoutError::Timeout) => {
+                            if let Some(update) = controller.handle_tick() {
+                                let _ = update_tx.send(update);
+                            }
+                        }
                         Err(RecvTimeoutError::Disconnected) => break,
                     }
                 }
@@ -207,8 +322,9 @@ impl VoicePlaygroundWorker {
     #[cfg(test)]
     fn with_components(
         config: VoicePlaygroundConfig,
-        backend: Box<dyn VoiceTranscriptionBackend>,
+        backend: Box<dyn VoiceBackend>,
         capture: Box<dyn AudioCapture + Send>,
+        player: Box<dyn AudioPlayer + Send>,
         environment: GcloudEnvironmentProbe,
     ) -> Self {
         let (command_tx, command_rx) = mpsc::channel::<VoicePlaygroundWorkerCommand>();
@@ -217,7 +333,7 @@ impl VoicePlaygroundWorker {
             .name("voice-playground".to_string())
             .spawn(move || {
                 let mut controller =
-                    VoicePlaygroundController::new(config, backend, capture, environment);
+                    VoicePlaygroundController::new(config, backend, capture, player, environment);
                 let _ = update_tx.send(VoicePlaygroundUpdate::Snapshot(
                     controller.snapshot().clone(),
                 ));
@@ -229,7 +345,11 @@ impl VoicePlaygroundWorker {
                             }
                         }
                         Ok(VoicePlaygroundWorkerCommand::Shutdown) => break,
-                        Err(RecvTimeoutError::Timeout) => {}
+                        Err(RecvTimeoutError::Timeout) => {
+                            if let Some(update) = controller.handle_tick() {
+                                let _ = update_tx.send(update);
+                            }
+                        }
                         Err(RecvTimeoutError::Disconnected) => break,
                     }
                 }
@@ -264,25 +384,31 @@ impl Drop for VoicePlaygroundWorker {
 
 struct VoicePlaygroundController {
     config: VoicePlaygroundConfig,
-    backend: Box<dyn VoiceTranscriptionBackend>,
+    backend: Box<dyn VoiceBackend>,
     capture: Box<dyn AudioCapture>,
+    player: Box<dyn AudioPlayer>,
     environment: GcloudEnvironmentProbe,
     snapshot: VoicePlaygroundSnapshot,
+    last_synthesized_audio: Option<SynthesizedAudio>,
+    playback_request_id: Option<String>,
 }
 
 impl VoicePlaygroundController {
     fn new(
         config: VoicePlaygroundConfig,
-        backend: Box<dyn VoiceTranscriptionBackend>,
+        backend: Box<dyn VoiceBackend>,
         capture: Box<dyn AudioCapture>,
+        player: Box<dyn AudioPlayer>,
         environment: GcloudEnvironmentProbe,
     ) -> Self {
         let mut snapshot = VoicePlaygroundSnapshot {
-            backend_label: "google-cloud-speech-v2".to_string(),
+            backend_label: "google-cloud-speech-v2 + google-cloud-tts".to_string(),
             project_id: config.project_id.clone(),
             stt_location: config.stt_location.clone(),
             stt_model: config.stt_model.clone(),
             stt_language_code: config.stt_language_code.clone(),
+            tts_voice_name: config.tts_voice_name.clone(),
+            tts_language_code: config.tts_language_code.clone(),
             last_action: Some("Voice playground ready".to_string()),
             ..VoicePlaygroundSnapshot::default()
         };
@@ -293,8 +419,11 @@ impl VoicePlaygroundController {
             config,
             backend,
             capture,
+            player,
             environment,
             snapshot,
+            last_synthesized_audio: None,
+            playback_request_id: None,
         }
     }
 
@@ -310,7 +439,25 @@ impl VoicePlaygroundController {
             VoicePlaygroundCommand::StopRecordingAndTranscribe { request_id } => {
                 self.stop_and_transcribe(request_id)
             }
+            VoicePlaygroundCommand::SynthesizeAndPlay { request_id, text } => {
+                self.synthesize_and_play(request_id, text)
+            }
+            VoicePlaygroundCommand::ReplayLastSynthesis => self.replay_last_synthesis(),
+            VoicePlaygroundCommand::StopPlayback => self.stop_playback(),
         }
+    }
+
+    fn handle_tick(&mut self) -> Option<VoicePlaygroundUpdate> {
+        if self.snapshot.playback_state == VoicePlaybackState::Playing && !self.player.is_playing() {
+            self.snapshot.playback_state = VoicePlaybackState::Completed;
+            self.snapshot.last_action = Some("Voice playback completed".to_string());
+            let request_id = self.playback_request_id.take();
+            return Some(VoicePlaygroundUpdate::PlaybackStopped {
+                request_id,
+                reason: "completed",
+            });
+        }
+        None
     }
 
     fn refresh(&mut self) -> Vec<VoicePlaygroundUpdate> {
@@ -424,12 +571,148 @@ impl VoicePlaygroundController {
 
         updates
     }
+
+    fn synthesize_and_play(&mut self, request_id: String, text: String) -> Vec<VoicePlaygroundUpdate> {
+        if text.trim().is_empty() {
+            self.snapshot.synthesis_state = VoiceSynthesisState::Error;
+            self.snapshot.playback_state = VoicePlaybackState::Error;
+            self.snapshot.last_error =
+                Some("Text is required before synthesizing speech".to_string());
+            self.snapshot.last_action = Some("Voice synthesis blocked".to_string());
+            return vec![VoicePlaygroundUpdate::SynthesisFailed {
+                request_id,
+                error: "Text is required before synthesizing speech".to_string(),
+            }];
+        }
+
+        self.snapshot.synthesis_state = VoiceSynthesisState::Running;
+        self.snapshot.playback_state = VoicePlaybackState::Idle;
+        self.snapshot.last_error = None;
+        self.snapshot.last_action = Some(format!("Synthesizing speech [{}]", request_id));
+        let mut updates = vec![VoicePlaygroundUpdate::SynthesisStarted {
+            request_id: request_id.clone(),
+            text: text.clone(),
+        }];
+        let started_at = Instant::now();
+        match self.backend.synthesize(&SynthesisRequest {
+            request_id: request_id.clone(),
+            project_id: self.snapshot.project_id.clone(),
+            text: text.clone(),
+        }) {
+            Ok(synthesized) => {
+                let latency_ms =
+                    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let play_result = self.player.play_wav(synthesized.audio.wav_bytes.as_slice());
+                self.snapshot.synthesis_state = VoiceSynthesisState::Ready;
+                self.snapshot.last_synthesis_request_id = Some(request_id.clone());
+                self.snapshot.last_synthesis_latency_ms = Some(latency_ms);
+                self.snapshot.last_speech_text = Some(text.clone());
+                self.snapshot.last_tts_duration_ms = synthesized.audio.duration_ms;
+                self.snapshot.tts_voice_name = synthesized.voice_name.clone();
+                self.snapshot.last_error = None;
+                self.snapshot.last_action = Some(format!(
+                    "Synthesized speech [{}] in {} ms",
+                    request_id, latency_ms
+                ));
+                self.last_synthesized_audio = Some(synthesized.audio.clone());
+                updates.push(VoicePlaygroundUpdate::SynthesisCompleted {
+                    request_id: request_id.clone(),
+                    text,
+                    voice_name: synthesized.voice_name,
+                    latency_ms,
+                    duration_ms: synthesized.audio.duration_ms,
+                });
+                match play_result {
+                    Ok(()) => {
+                        self.snapshot.playback_state = VoicePlaybackState::Playing;
+                        self.playback_request_id = Some(request_id.clone());
+                        updates.push(VoicePlaygroundUpdate::PlaybackStarted { request_id });
+                    }
+                    Err(error) => {
+                        self.snapshot.playback_state = VoicePlaybackState::Error;
+                        self.snapshot.last_error = Some(error.clone());
+                        updates.push(VoicePlaygroundUpdate::PlaybackFailed {
+                            request_id: Some(request_id),
+                            error,
+                        });
+                    }
+                }
+            }
+            Err(error) => {
+                self.snapshot.synthesis_state = VoiceSynthesisState::Error;
+                self.snapshot.playback_state = VoicePlaybackState::Error;
+                self.snapshot.last_error = Some(error.clone());
+                self.snapshot.last_action = Some("Voice synthesis failed".to_string());
+                updates.push(VoicePlaygroundUpdate::SynthesisFailed { request_id, error });
+            }
+        }
+
+        updates
+    }
+
+    fn replay_last_synthesis(&mut self) -> Vec<VoicePlaygroundUpdate> {
+        let Some(audio) = self.last_synthesized_audio.as_ref() else {
+            self.snapshot.playback_state = VoicePlaybackState::Error;
+            self.snapshot.last_error = Some("No synthesized clip is available to replay".to_string());
+            self.snapshot.last_action = Some("Voice replay blocked".to_string());
+            return vec![VoicePlaygroundUpdate::PlaybackFailed {
+                request_id: self.snapshot.last_synthesis_request_id.clone(),
+                error: "No synthesized clip is available to replay".to_string(),
+            }];
+        };
+        let request_id = self
+            .snapshot
+            .last_synthesis_request_id
+            .clone()
+            .unwrap_or_else(|| "voice-replay".to_string());
+        match self.player.play_wav(audio.wav_bytes.as_slice()) {
+            Ok(()) => {
+                self.snapshot.playback_state = VoicePlaybackState::Playing;
+                self.snapshot.last_error = None;
+                self.snapshot.last_action = Some("Replaying synthesized voice clip".to_string());
+                self.playback_request_id = Some(request_id.clone());
+                vec![VoicePlaygroundUpdate::PlaybackStarted { request_id }]
+            }
+            Err(error) => {
+                self.snapshot.playback_state = VoicePlaybackState::Error;
+                self.snapshot.last_error = Some(error.clone());
+                self.snapshot.last_action = Some("Voice replay failed".to_string());
+                vec![VoicePlaygroundUpdate::PlaybackFailed {
+                    request_id: Some(request_id),
+                    error,
+                }]
+            }
+        }
+    }
+
+    fn stop_playback(&mut self) -> Vec<VoicePlaygroundUpdate> {
+        self.player.stop();
+        self.snapshot.playback_state = VoicePlaybackState::Idle;
+        self.snapshot.last_error = None;
+        self.snapshot.last_action = Some("Stopped voice playback".to_string());
+        vec![VoicePlaygroundUpdate::PlaybackStopped {
+            request_id: self.playback_request_id.take(),
+            reason: "stopped",
+        }]
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TranscriptionResult {
     pub transcript: String,
     pub clip_duration_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SynthesizedAudio {
+    pub wav_bytes: Vec<u8>,
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SynthesisResult {
+    pub voice_name: String,
+    pub audio: SynthesizedAudio,
 }
 
 #[derive(Clone, Debug)]
@@ -439,17 +722,25 @@ pub struct TranscriptionRequest {
     pub project_id: Option<String>,
 }
 
-pub trait VoiceTranscriptionBackend: Send {
-    fn transcribe(&self, request: &TranscriptionRequest) -> Result<TranscriptionResult, String>;
+#[derive(Clone, Debug)]
+pub struct SynthesisRequest {
+    pub request_id: String,
+    pub project_id: Option<String>,
+    pub text: String,
 }
 
-struct GoogleCloudSttBackend {
+pub trait VoiceBackend: Send {
+    fn transcribe(&self, request: &TranscriptionRequest) -> Result<TranscriptionResult, String>;
+    fn synthesize(&self, request: &SynthesisRequest) -> Result<SynthesisResult, String>;
+}
+
+struct GoogleCloudVoiceBackend {
     config: VoicePlaygroundConfig,
     auth: Arc<dyn AccessTokenProvider>,
     http: HttpClient,
 }
 
-impl GoogleCloudSttBackend {
+impl GoogleCloudVoiceBackend {
     fn new(config: VoicePlaygroundConfig, auth: Arc<dyn AccessTokenProvider>) -> Self {
         Self {
             config,
@@ -477,9 +768,32 @@ impl GoogleCloudSttBackend {
             "content": URL_SAFE_NO_PAD.encode(clip.wav_bytes.as_slice()),
         })
     }
+
+    fn synthesize_url(&self) -> String {
+        format!(
+            "{}/v1/text:synthesize",
+            self.config.tts_base_url.trim_end_matches('/')
+        )
+    }
+
+    fn synthesis_payload(&self, text: &str) -> serde_json::Value {
+        json!({
+            "input": {
+                "text": text,
+            },
+            "voice": {
+                "languageCode": self.config.tts_language_code,
+                "name": self.config.tts_voice_name,
+            },
+            "audioConfig": {
+                "audioEncoding": "LINEAR16",
+                "sampleRateHertz": self.config.tts_sample_rate_hz,
+            },
+        })
+    }
 }
 
-impl VoiceTranscriptionBackend for GoogleCloudSttBackend {
+impl VoiceBackend for GoogleCloudVoiceBackend {
     fn transcribe(&self, request: &TranscriptionRequest) -> Result<TranscriptionResult, String> {
         let project_id = request
             .project_id
@@ -524,6 +838,49 @@ impl VoiceTranscriptionBackend for GoogleCloudSttBackend {
             clip_duration_ms: request.clip.duration_ms,
         })
     }
+
+    fn synthesize(&self, request: &SynthesisRequest) -> Result<SynthesisResult, String> {
+        let project_id = request
+            .project_id
+            .clone()
+            .or_else(|| self.config.project_id.clone())
+            .ok_or_else(|| {
+                "Google Cloud project is unset. Configure `OPENAGENTS_GOOGLE_CLOUD_PROJECT` or run `gcloud config set project ...`.".to_string()
+            })?;
+        let response = self
+            .http
+            .post(self.synthesize_url())
+            .bearer_auth(self.auth.access_token()?)
+            .header("x-goog-user-project", project_id.as_str())
+            .json(&self.synthesis_payload(request.text.as_str()))
+            .send()
+            .map_err(|error| format!("Text-to-Speech request failed: {error}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .unwrap_or_else(|_| "failed to read response body".to_string());
+            return Err(format!("Text-to-Speech request failed ({status}): {body}"));
+        }
+
+        let payload: SynthesizeResponse = response
+            .json()
+            .map_err(|error| format!("Text-to-Speech response decode failed: {error}"))?;
+        let audio_content = payload
+            .audio_content
+            .ok_or_else(|| "Text-to-Speech returned no audio".to_string())?;
+        let wav_bytes = STANDARD
+            .decode(audio_content.as_bytes())
+            .map_err(|error| format!("Text-to-Speech audio decode failed: {error}"))?;
+        Ok(SynthesisResult {
+            voice_name: self.config.tts_voice_name.clone(),
+            audio: SynthesizedAudio {
+                duration_ms: wav_duration_ms(wav_bytes.as_slice()),
+                wav_bytes,
+            },
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -541,6 +898,12 @@ struct RecognizeResult {
 #[derive(Debug, Deserialize)]
 struct RecognizeAlternative {
     transcript: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SynthesizeResponse {
+    #[serde(rename = "audioContent")]
+    audio_content: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -732,6 +1095,91 @@ fn encode_wav_i16(samples: &[i16], sample_rate_hz: u32, channels: u16) -> Vec<u8
     bytes
 }
 
+fn wav_duration_ms(bytes: &[u8]) -> Option<u64> {
+    if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return None;
+    }
+    let channels = u16::from_le_bytes([*bytes.get(22)?, *bytes.get(23)?]);
+    let sample_rate_hz = u32::from_le_bytes([
+        *bytes.get(24)?,
+        *bytes.get(25)?,
+        *bytes.get(26)?,
+        *bytes.get(27)?,
+    ]);
+    let bits_per_sample = u16::from_le_bytes([*bytes.get(34)?, *bytes.get(35)?]);
+    let data_len = u32::from_le_bytes([
+        *bytes.get(40)?,
+        *bytes.get(41)?,
+        *bytes.get(42)?,
+        *bytes.get(43)?,
+    ]);
+    if channels == 0 || sample_rate_hz == 0 || bits_per_sample == 0 {
+        return None;
+    }
+    let bytes_per_frame = u32::from(channels).saturating_mul(u32::from(bits_per_sample / 8));
+    if bytes_per_frame == 0 {
+        return None;
+    }
+    let frames = data_len / bytes_per_frame;
+    Some(((frames as f64 / f64::from(sample_rate_hz)) * 1000.0).round() as u64)
+}
+
+trait AudioPlayer {
+    fn play_wav(&mut self, wav_bytes: &[u8]) -> Result<(), String>;
+    fn stop(&mut self);
+    fn is_playing(&self) -> bool;
+}
+
+#[derive(Default)]
+struct RodioAudioPlayer {
+    stream: Option<OutputStream>,
+    handle: Option<OutputStreamHandle>,
+    sink: Option<Sink>,
+}
+
+impl RodioAudioPlayer {
+    fn ensure_output(&mut self) -> Result<(), String> {
+        if self.stream.is_some() && self.handle.is_some() {
+            return Ok(());
+        }
+        let (stream, handle) = OutputStream::try_default()
+            .map_err(|error| format!("Failed to open speaker output: {error}"))?;
+        self.stream = Some(stream);
+        self.handle = Some(handle);
+        Ok(())
+    }
+}
+
+impl AudioPlayer for RodioAudioPlayer {
+    fn play_wav(&mut self, wav_bytes: &[u8]) -> Result<(), String> {
+        self.ensure_output()?;
+        self.stop();
+        let handle = self
+            .handle
+            .as_ref()
+            .ok_or_else(|| "Speaker output is unavailable".to_string())?;
+        let sink =
+            Sink::try_new(handle).map_err(|error| format!("Failed to create audio sink: {error}"))?;
+        let cursor = Cursor::new(wav_bytes.to_vec());
+        let decoder = Decoder::new(BufReader::new(cursor))
+            .map_err(|error| format!("Failed to decode synthesized audio: {error}"))?;
+        sink.append(decoder);
+        sink.play();
+        self.sink = Some(sink);
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        if let Some(sink) = self.sink.take() {
+            sink.stop();
+        }
+    }
+
+    fn is_playing(&self) -> bool {
+        self.sink.as_ref().is_some_and(|sink| !sink.empty())
+    }
+}
+
 trait AccessTokenProvider: Send + Sync {
     fn access_token(&self) -> Result<String, String>;
 }
@@ -825,17 +1273,35 @@ mod tests {
     #[derive(Default)]
     struct MockBackend {
         transcript: Mutex<Option<Result<TranscriptionResult, String>>>,
+        synthesis: Mutex<Option<Result<SynthesisResult, String>>>,
     }
 
     impl MockBackend {
         fn with_transcript(result: Result<TranscriptionResult, String>) -> Self {
             Self {
                 transcript: Mutex::new(Some(result)),
+                synthesis: Mutex::new(Some(Ok(SynthesisResult {
+                    voice_name: GOOGLE_TTS_VOICE_NAME.to_string(),
+                    audio: SynthesizedAudio {
+                        wav_bytes: encode_wav_i16(&[0_i16, 128_i16, -64_i16, 32_i16], 24_000, 1),
+                        duration_ms: Some(8),
+                    },
+                }))),
+            }
+        }
+
+        fn with_synthesis(result: Result<SynthesisResult, String>) -> Self {
+            Self {
+                transcript: Mutex::new(Some(Ok(TranscriptionResult {
+                    transcript: "unused".to_string(),
+                    clip_duration_ms: 0,
+                }))),
+                synthesis: Mutex::new(Some(result)),
             }
         }
     }
 
-    impl VoiceTranscriptionBackend for MockBackend {
+    impl VoiceBackend for MockBackend {
         fn transcribe(&self, request: &TranscriptionRequest) -> Result<TranscriptionResult, String> {
             let result = self
                 .transcript
@@ -850,6 +1316,14 @@ mod tests {
                 }
                 Err(error) => Err(error),
             }
+        }
+
+        fn synthesize(&self, _request: &SynthesisRequest) -> Result<SynthesisResult, String> {
+            self.synthesis
+                .lock()
+                .expect("mock synthesis lock")
+                .take()
+                .expect("mock synthesis result")
         }
     }
 
@@ -891,6 +1365,74 @@ mod tests {
 
         fn cancel_recording(&mut self) {
             self.cancelled = true;
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct MockPlayerHandle {
+        state: Arc<Mutex<MockPlayerState>>,
+    }
+
+    impl MockPlayerHandle {
+        fn set_playing(&self, playing: bool) {
+            self.state.lock().expect("mock player state").playing = playing;
+        }
+
+        fn plays(&self) -> usize {
+            self.state.lock().expect("mock player state").plays
+        }
+
+        fn fail_on_play(&self, error: &str) {
+            self.state.lock().expect("mock player state").fail_on_play = Some(error.to_string());
+        }
+    }
+
+    #[derive(Default)]
+    struct MockPlayerState {
+        playing: bool,
+        plays: usize,
+        fail_on_play: Option<String>,
+    }
+
+    struct MockPlayer {
+        state: Arc<Mutex<MockPlayerState>>,
+    }
+
+    impl Default for MockPlayer {
+        fn default() -> Self {
+            Self::with_handle().0
+        }
+    }
+
+    impl MockPlayer {
+        fn with_handle() -> (Self, MockPlayerHandle) {
+            let handle = MockPlayerHandle::default();
+            (
+                Self {
+                    state: handle.state.clone(),
+                },
+                handle,
+            )
+        }
+    }
+
+    impl AudioPlayer for MockPlayer {
+        fn play_wav(&mut self, _wav_bytes: &[u8]) -> Result<(), String> {
+            let mut state = self.state.lock().expect("mock player state");
+            if let Some(error) = state.fail_on_play.take() {
+                return Err(error);
+            }
+            state.playing = true;
+            state.plays = state.plays.saturating_add(1);
+            Ok(())
+        }
+
+        fn stop(&mut self) {
+            self.state.lock().expect("mock player state").playing = false;
+        }
+
+        fn is_playing(&self) -> bool {
+            self.state.lock().expect("mock player state").playing
         }
     }
 
@@ -961,8 +1503,9 @@ mod tests {
         let backend = Box::new(MockBackend::with_transcript(Ok(TranscriptionResult {
             transcript: "Open Agents voice smoke test.".to_string(),
             clip_duration_ms: 0,
-        }))) as Box<dyn VoiceTranscriptionBackend>;
+        }))) as Box<dyn VoiceBackend>;
         let capture = Box::new(MockCapture::ready(820)) as Box<dyn AudioCapture>;
+        let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![
             (
                 vec!["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
@@ -970,7 +1513,7 @@ mod tests {
             ),
             (vec!["config", "get-value", "project"], Ok("openagentsgemini")),
         ])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, probe);
+        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let started = controller.handle_command(VoicePlaygroundCommand::StartRecording);
         let updates = controller.handle_command(
@@ -1037,10 +1580,11 @@ mod tests {
         };
         let backend = Box::new(MockBackend::with_transcript(Err(
             "backend should not be called".to_string(),
-        ))) as Box<dyn VoiceTranscriptionBackend>;
+        ))) as Box<dyn VoiceBackend>;
         let capture = Box::new(MockCapture::ready(400)) as Box<dyn AudioCapture>;
+        let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let mut controller = VoicePlaygroundController::new(config, backend, capture, probe);
+        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
 
         let _ = controller.handle_command(VoicePlaygroundCommand::StartRecording);
         let cancelled = controller.handle_command(VoicePlaygroundCommand::CancelRecording);
@@ -1071,10 +1615,11 @@ mod tests {
         let backend = Box::new(MockBackend::with_transcript(Ok(TranscriptionResult {
             transcript: "mock".to_string(),
             clip_duration_ms: 0,
-        }))) as Box<dyn VoiceTranscriptionBackend>;
+        }))) as Box<dyn VoiceBackend>;
         let capture = Box::new(MockCapture::ready(100)) as Box<dyn AudioCapture + Send>;
+        let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer + Send>;
         let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
-        let worker = VoicePlaygroundWorker::with_components(config, backend, capture, probe);
+        let worker = VoicePlaygroundWorker::with_components(config, backend, capture, player, probe);
 
         let mut updates = VecDeque::new();
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -1087,5 +1632,169 @@ mod tests {
             updates.pop_front(),
             Some(VoicePlaygroundUpdate::Snapshot(_))
         ));
+    }
+
+    #[test]
+    fn controller_synthesizes_and_tracks_playback_state() {
+        let config = VoicePlaygroundConfig {
+            project_id: Some("openagentsgemini".to_string()),
+            ..VoicePlaygroundConfig::default()
+        };
+        let backend = Box::new(MockBackend::with_synthesis(Ok(SynthesisResult {
+            voice_name: GOOGLE_TTS_VOICE_NAME.to_string(),
+            audio: SynthesizedAudio {
+                wav_bytes: encode_wav_i16(&[0_i16, 128_i16, -64_i16, 32_i16], 24_000, 1),
+                duration_ms: Some(12),
+            },
+        }))) as Box<dyn VoiceBackend>;
+        let capture = Box::new(MockCapture::ready(120)) as Box<dyn AudioCapture>;
+        let player = Box::new(MockPlayer::default()) as Box<dyn AudioPlayer>;
+        let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
+        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+
+        let updates = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
+            request_id: "voice-tts-1".to_string(),
+            text: "OpenAgents voice test".to_string(),
+        });
+
+        assert!(matches!(
+            updates.first(),
+            Some(VoicePlaygroundUpdate::SynthesisStarted { .. })
+        ));
+        assert!(matches!(
+            updates.get(1),
+            Some(VoicePlaygroundUpdate::SynthesisCompleted { .. })
+        ));
+        assert!(matches!(
+            updates.get(2),
+            Some(VoicePlaygroundUpdate::PlaybackStarted { .. })
+        ));
+        assert_eq!(controller.snapshot.synthesis_state, VoiceSynthesisState::Ready);
+        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Playing);
+        assert_eq!(
+            controller.snapshot.last_speech_text.as_deref(),
+            Some("OpenAgents voice test")
+        );
+    }
+
+    #[test]
+    fn controller_replays_and_stops_last_synthesized_audio() {
+        let config = VoicePlaygroundConfig {
+            project_id: Some("openagentsgemini".to_string()),
+            ..VoicePlaygroundConfig::default()
+        };
+        let backend = Box::new(MockBackend::with_synthesis(Ok(SynthesisResult {
+            voice_name: GOOGLE_TTS_VOICE_NAME.to_string(),
+            audio: SynthesizedAudio {
+                wav_bytes: encode_wav_i16(&[0_i16, 128_i16, -64_i16, 32_i16], 24_000, 1),
+                duration_ms: Some(12),
+            },
+        }))) as Box<dyn VoiceBackend>;
+        let capture = Box::new(MockCapture::ready(120)) as Box<dyn AudioCapture>;
+        let (player, player_handle) = MockPlayer::with_handle();
+        let player = Box::new(player) as Box<dyn AudioPlayer>;
+        let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
+        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+
+        let _ = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
+            request_id: "voice-tts-1".to_string(),
+            text: "OpenAgents voice test".to_string(),
+        });
+        assert_eq!(player_handle.plays(), 1);
+
+        let stopped = controller.handle_command(VoicePlaygroundCommand::StopPlayback);
+        assert!(matches!(
+            stopped.as_slice(),
+            [VoicePlaygroundUpdate::PlaybackStopped { reason: "stopped", .. }]
+        ));
+        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Idle);
+
+        let replayed = controller.handle_command(VoicePlaygroundCommand::ReplayLastSynthesis);
+        assert!(matches!(
+            replayed.as_slice(),
+            [VoicePlaygroundUpdate::PlaybackStarted { .. }]
+        ));
+        assert_eq!(player_handle.plays(), 2);
+        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Playing);
+    }
+
+    #[test]
+    fn controller_marks_playback_completed_when_player_finishes() {
+        let config = VoicePlaygroundConfig {
+            project_id: Some("openagentsgemini".to_string()),
+            ..VoicePlaygroundConfig::default()
+        };
+        let backend = Box::new(MockBackend::with_synthesis(Ok(SynthesisResult {
+            voice_name: GOOGLE_TTS_VOICE_NAME.to_string(),
+            audio: SynthesizedAudio {
+                wav_bytes: encode_wav_i16(&[0_i16, 128_i16, -64_i16, 32_i16], 24_000, 1),
+                duration_ms: Some(12),
+            },
+        }))) as Box<dyn VoiceBackend>;
+        let capture = Box::new(MockCapture::ready(120)) as Box<dyn AudioCapture>;
+        let (player, player_handle) = MockPlayer::with_handle();
+        let player = Box::new(player) as Box<dyn AudioPlayer>;
+        let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
+        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+
+        let _ = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
+            request_id: "voice-tts-1".to_string(),
+            text: "OpenAgents voice test".to_string(),
+        });
+        player_handle.set_playing(false);
+
+        let completed = controller.handle_tick();
+
+        assert!(matches!(
+            completed,
+            Some(VoicePlaygroundUpdate::PlaybackStopped {
+                reason: "completed",
+                ..
+            })
+        ));
+        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Completed);
+    }
+
+    #[test]
+    fn controller_reports_replay_failures_and_missing_clips() {
+        let config = VoicePlaygroundConfig {
+            project_id: Some("openagentsgemini".to_string()),
+            ..VoicePlaygroundConfig::default()
+        };
+        let backend = Box::new(MockBackend::with_synthesis(Ok(SynthesisResult {
+            voice_name: GOOGLE_TTS_VOICE_NAME.to_string(),
+            audio: SynthesizedAudio {
+                wav_bytes: encode_wav_i16(&[0_i16, 128_i16, -64_i16, 32_i16], 24_000, 1),
+                duration_ms: Some(12),
+            },
+        }))) as Box<dyn VoiceBackend>;
+        let capture = Box::new(MockCapture::ready(120)) as Box<dyn AudioCapture>;
+        let (player, player_handle) = MockPlayer::with_handle();
+        let player = Box::new(player) as Box<dyn AudioPlayer>;
+        let probe = GcloudEnvironmentProbe::new(Arc::new(MockGcloudCli::from_pairs(vec![])));
+        let mut controller = VoicePlaygroundController::new(config, backend, capture, player, probe);
+
+        let missing_clip = controller.handle_command(VoicePlaygroundCommand::ReplayLastSynthesis);
+        assert!(matches!(
+            missing_clip.as_slice(),
+            [VoicePlaygroundUpdate::PlaybackFailed { error, .. }]
+            if error.contains("No synthesized clip")
+        ));
+
+        let _ = controller.handle_command(VoicePlaygroundCommand::SynthesizeAndPlay {
+            request_id: "voice-tts-2".to_string(),
+            text: "OpenAgents voice test".to_string(),
+        });
+        let _ = controller.handle_command(VoicePlaygroundCommand::StopPlayback);
+        player_handle.fail_on_play("speaker output unavailable");
+
+        let replay_failed = controller.handle_command(VoicePlaygroundCommand::ReplayLastSynthesis);
+
+        assert!(matches!(
+            replay_failed.as_slice(),
+            [VoicePlaygroundUpdate::PlaybackFailed { error, .. }]
+            if error.contains("speaker output unavailable")
+        ));
+        assert_eq!(controller.snapshot.playback_state, VoicePlaybackState::Error);
     }
 }

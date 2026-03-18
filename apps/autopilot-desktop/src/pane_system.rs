@@ -487,6 +487,9 @@ pub enum VoicePlaygroundPaneAction {
     StartRecording,
     StopRecordingAndTranscribe,
     CancelRecording,
+    Speak,
+    Replay,
+    StopPlayback,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1677,7 +1680,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
-            PaneKind::VoicePlayground => {}
+            PaneKind::VoicePlayground => {
+                if voice_playground_tts_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
+            }
             PaneKind::NetworkRequests => {
                 if network_requests_type_input_bounds(content_bounds).contains(point)
                     || network_requests_payload_input_bounds(content_bounds).contains(point)
@@ -3420,6 +3427,45 @@ pub fn voice_playground_cancel_button_bounds(content_bounds: Bounds) -> Bounds {
         stop.origin.y,
         124.0,
         stop.size.height,
+    )
+}
+
+pub fn voice_playground_tts_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + 356.0,
+        (content_bounds.size.width - CHAT_PAD * 2.0 - 372.0).max(280.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn voice_playground_speak_button_bounds(content_bounds: Bounds) -> Bounds {
+    let input = voice_playground_tts_input_bounds(content_bounds);
+    Bounds::new(
+        input.max_x() + JOB_INBOX_BUTTON_GAP,
+        input.origin.y,
+        96.0,
+        input.size.height,
+    )
+}
+
+pub fn voice_playground_replay_button_bounds(content_bounds: Bounds) -> Bounds {
+    let speak = voice_playground_speak_button_bounds(content_bounds);
+    Bounds::new(
+        speak.max_x() + JOB_INBOX_BUTTON_GAP,
+        speak.origin.y,
+        96.0,
+        speak.size.height,
+    )
+}
+
+pub fn voice_playground_stop_playback_button_bounds(content_bounds: Bounds) -> Bounds {
+    let replay = voice_playground_replay_button_bounds(content_bounds);
+    Bounds::new(
+        replay.max_x() + JOB_INBOX_BUTTON_GAP,
+        replay.origin.y,
+        140.0,
+        replay.size.height,
     )
 }
 
@@ -6905,6 +6951,17 @@ fn pane_hit_action_for_pane(
             if voice_playground_cancel_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::VoicePlayground(
                     VoicePlaygroundPaneAction::CancelRecording,
+                ));
+            }
+            if voice_playground_speak_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(VoicePlaygroundPaneAction::Speak));
+            }
+            if voice_playground_replay_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(VoicePlaygroundPaneAction::Replay));
+            }
+            if voice_playground_stop_playback_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::StopPlayback,
                 ));
             }
             None

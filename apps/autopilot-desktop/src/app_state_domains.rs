@@ -58,8 +58,12 @@ pub struct VoicePlaygroundPaneState {
     pub stt_location: String,
     pub stt_model: String,
     pub stt_language_code: String,
+    pub tts_voice_name: String,
+    pub tts_language_code: String,
     pub recording_state: crate::voice_playground::VoiceRecordingState,
     pub transcription_state: crate::voice_playground::VoiceTranscriptionState,
+    pub synthesis_state: crate::voice_playground::VoiceSynthesisState,
+    pub playback_state: crate::voice_playground::VoicePlaybackState,
     pub input_device_name: Option<String>,
     pub pending_request_id: Option<String>,
     pub last_request_id: Option<String>,
@@ -67,6 +71,11 @@ pub struct VoicePlaygroundPaneState {
     pub transcript_preview: String,
     pub transcript_chars: usize,
     pub last_transcription_latency_ms: Option<u64>,
+    pub last_synthesis_request_id: Option<String>,
+    pub last_synthesis_latency_ms: Option<u64>,
+    pub tts_duration_ms: Option<u64>,
+    pub speech_preview: String,
+    pub speech_chars: usize,
 }
 
 impl Default for VoicePlaygroundPaneState {
@@ -82,8 +91,14 @@ impl Default for VoicePlaygroundPaneState {
             stt_model: crate::voice_playground::VoicePlaygroundConfig::default().stt_model,
             stt_language_code: crate::voice_playground::VoicePlaygroundConfig::default()
                 .stt_language_code,
+            tts_voice_name: crate::voice_playground::VoicePlaygroundConfig::default()
+                .tts_voice_name,
+            tts_language_code: crate::voice_playground::VoicePlaygroundConfig::default()
+                .tts_language_code,
             recording_state: crate::voice_playground::VoiceRecordingState::Idle,
             transcription_state: crate::voice_playground::VoiceTranscriptionState::Idle,
+            synthesis_state: crate::voice_playground::VoiceSynthesisState::Idle,
+            playback_state: crate::voice_playground::VoicePlaybackState::Idle,
             input_device_name: None,
             pending_request_id: None,
             last_request_id: None,
@@ -91,6 +106,11 @@ impl Default for VoicePlaygroundPaneState {
             transcript_preview: String::new(),
             transcript_chars: 0,
             last_transcription_latency_ms: None,
+            last_synthesis_request_id: None,
+            last_synthesis_latency_ms: None,
+            tts_duration_ms: None,
+            speech_preview: String::new(),
+            speech_chars: 0,
         }
     }
 }

@@ -487,11 +487,17 @@ impl Default for NetworkRequestsPaneInputs {
     }
 }
 
-pub struct VoicePlaygroundPaneInputs;
+pub struct VoicePlaygroundPaneInputs {
+    pub tts_text: TextInput,
+}
 
 impl Default for VoicePlaygroundPaneInputs {
     fn default() -> Self {
-        Self
+        Self {
+            tts_text: TextInput::new()
+                .value("OpenAgents voice playground ready.")
+                .placeholder("Text to synthesize and play"),
+        }
     }
 }
 

@@ -98,6 +98,90 @@ pub(super) fn apply_voice_update(state: &mut RenderState, update: &VoicePlaygrou
             state.voice_playground.last_error = Some(error.clone());
             true
         }
+        VoicePlaygroundUpdate::SynthesisStarted { request_id, text } => {
+            state.voice_playground.load_state = PaneLoadState::Loading;
+            state.voice_playground.synthesis_state =
+                crate::voice_playground::VoiceSynthesisState::Running;
+            state.voice_playground.playback_state =
+                crate::voice_playground::VoicePlaybackState::Idle;
+            state.voice_playground.last_synthesis_request_id = Some(request_id.clone());
+            state.voice_playground.last_error = None;
+            state.voice_playground.last_action =
+                Some(format!("Synthesizing speech [{}]", request_id));
+            state.voice_playground.speech_chars = text.chars().count();
+            state.voice_playground.speech_preview =
+                truncate_preview(text.as_str(), TRANSCRIPT_PREVIEW_LIMIT);
+            true
+        }
+        VoicePlaygroundUpdate::SynthesisCompleted {
+            request_id,
+            text,
+            voice_name,
+            latency_ms,
+            duration_ms,
+        } => {
+            state.voice_playground.load_state = PaneLoadState::Ready;
+            state.voice_playground.synthesis_state =
+                crate::voice_playground::VoiceSynthesisState::Ready;
+            state.voice_playground.last_synthesis_request_id = Some(request_id.clone());
+            state.voice_playground.last_synthesis_latency_ms = Some(*latency_ms);
+            state.voice_playground.tts_duration_ms = *duration_ms;
+            state.voice_playground.tts_voice_name = voice_name.clone();
+            state.voice_playground.last_error = None;
+            state.voice_playground.last_action = Some(format!(
+                "Synthesized speech [{}] in {} ms",
+                request_id, latency_ms
+            ));
+            state.voice_playground.speech_chars = text.chars().count();
+            state.voice_playground.speech_preview =
+                truncate_preview(text.as_str(), TRANSCRIPT_PREVIEW_LIMIT);
+            true
+        }
+        VoicePlaygroundUpdate::SynthesisFailed { request_id, error } => {
+            state.voice_playground.load_state = PaneLoadState::Error;
+            state.voice_playground.synthesis_state =
+                crate::voice_playground::VoiceSynthesisState::Error;
+            state.voice_playground.playback_state =
+                crate::voice_playground::VoicePlaybackState::Error;
+            state.voice_playground.last_synthesis_request_id = Some(request_id.clone());
+            state.voice_playground.last_action =
+                Some(format!("Voice synthesis failed [{}]", request_id));
+            state.voice_playground.last_error = Some(error.clone());
+            true
+        }
+        VoicePlaygroundUpdate::PlaybackStarted { request_id } => {
+            state.voice_playground.load_state = PaneLoadState::Ready;
+            state.voice_playground.playback_state =
+                crate::voice_playground::VoicePlaybackState::Playing;
+            state.voice_playground.last_action =
+                Some(format!("Playing synthesized voice clip [{}]", request_id));
+            state.voice_playground.last_error = None;
+            true
+        }
+        VoicePlaygroundUpdate::PlaybackStopped { request_id, reason } => {
+            state.voice_playground.load_state = PaneLoadState::Ready;
+            state.voice_playground.playback_state = if *reason == "completed" {
+                crate::voice_playground::VoicePlaybackState::Completed
+            } else {
+                crate::voice_playground::VoicePlaybackState::Idle
+            };
+            state.voice_playground.last_action = Some(match request_id {
+                Some(request_id) => format!("Playback {} [{}]", reason, request_id),
+                None => format!("Playback {}", reason),
+            });
+            true
+        }
+        VoicePlaygroundUpdate::PlaybackFailed { request_id, error } => {
+            state.voice_playground.load_state = PaneLoadState::Error;
+            state.voice_playground.playback_state =
+                crate::voice_playground::VoicePlaybackState::Error;
+            state.voice_playground.last_error = Some(error.clone());
+            state.voice_playground.last_action = Some(match request_id {
+                Some(request_id) => format!("Playback failed [{}]", request_id),
+                None => "Playback failed".to_string(),
+            });
+            true
+        }
     }
 }
 
@@ -108,19 +192,31 @@ fn apply_snapshot(state: &mut RenderState, snapshot: &VoicePlaygroundSnapshot) -
     state.voice_playground.stt_location = snapshot.stt_location.clone();
     state.voice_playground.stt_model = snapshot.stt_model.clone();
     state.voice_playground.stt_language_code = snapshot.stt_language_code.clone();
+    state.voice_playground.tts_voice_name = snapshot.tts_voice_name.clone();
+    state.voice_playground.tts_language_code = snapshot.tts_language_code.clone();
     state.voice_playground.input_device_name = snapshot.input_device_name.clone();
     state.voice_playground.last_request_id = snapshot.last_request_id.clone();
     state.voice_playground.pending_request_id = snapshot.pending_request_id.clone();
     state.voice_playground.clip_duration_ms = snapshot.last_clip_duration_ms;
     state.voice_playground.last_transcription_latency_ms = snapshot.last_transcription_latency_ms;
+    state.voice_playground.last_synthesis_request_id = snapshot.last_synthesis_request_id.clone();
+    state.voice_playground.last_synthesis_latency_ms = snapshot.last_synthesis_latency_ms;
+    state.voice_playground.tts_duration_ms = snapshot.last_tts_duration_ms;
     state.voice_playground.last_action = snapshot.last_action.clone();
     state.voice_playground.last_error = snapshot.last_error.clone();
     state.voice_playground.recording_state = snapshot.recording_state;
     state.voice_playground.transcription_state = snapshot.transcription_state;
+    state.voice_playground.synthesis_state = snapshot.synthesis_state;
+    state.voice_playground.playback_state = snapshot.playback_state;
     if let Some(transcript) = snapshot.last_transcript.as_ref() {
         state.voice_playground.transcript_chars = transcript.chars().count();
         state.voice_playground.transcript_preview =
             truncate_preview(transcript.as_str(), TRANSCRIPT_PREVIEW_LIMIT);
+    }
+    if let Some(text) = snapshot.last_speech_text.as_ref() {
+        state.voice_playground.speech_chars = text.chars().count();
+        state.voice_playground.speech_preview =
+            truncate_preview(text.as_str(), TRANSCRIPT_PREVIEW_LIMIT);
     }
     state.voice_playground.load_state = if snapshot.last_error.is_some() {
         PaneLoadState::Error

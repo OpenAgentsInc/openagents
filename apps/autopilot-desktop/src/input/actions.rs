@@ -8881,6 +8881,24 @@ pub(super) fn run_voice_playground_action(
         VoicePlaygroundPaneAction::CancelRecording => {
             crate::voice_playground::VoicePlaygroundCommand::CancelRecording
         }
+        VoicePlaygroundPaneAction::Speak => {
+            let text = state
+                .voice_playground_inputs
+                .tts_text
+                .get_value()
+                .trim()
+                .to_string();
+            crate::voice_playground::VoicePlaygroundCommand::SynthesizeAndPlay {
+                request_id: format!("voice-playground-tts-{}", state.reserve_runtime_command_seq()),
+                text,
+            }
+        }
+        VoicePlaygroundPaneAction::Replay => {
+            crate::voice_playground::VoicePlaygroundCommand::ReplayLastSynthesis
+        }
+        VoicePlaygroundPaneAction::StopPlayback => {
+            crate::voice_playground::VoicePlaygroundCommand::StopPlayback
+        }
     };
     match state.voice_playground_worker.enqueue(command) {
         Ok(()) => {
