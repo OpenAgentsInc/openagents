@@ -530,6 +530,16 @@ fn paint_publication_status_card(
             .map(|request| request.evaluation_disposition.label())
             .unwrap_or("pending"),
     );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "payment state",
+        pane_state
+            .latest_incoming_request()
+            .map(|request| request.payment_state.label())
+            .unwrap_or("pending"),
+    );
 
     let warnings = pane_state.inventory_warnings();
     let warning_color = if warnings.is_empty() {
@@ -554,16 +564,26 @@ fn paint_publication_status_card(
         warning_color,
     ));
     if let Some(latest_request) = pane_state.latest_incoming_request() {
+        let mut payment_summary = format!("payment={}", latest_request.payment_state.label());
+        if let Some(amount_sats) = latest_request.payment_amount_sats {
+            payment_summary.push_str(format!(" | settled={} sats", amount_sats).as_str());
+        } else if let Some(invoice) = latest_request.pending_bolt11.as_ref() {
+            payment_summary.push_str(format!(" | invoice={} chars", invoice.len()).as_str());
+        }
+        if let Some(payment_pointer) = latest_request.payment_pointer.as_ref() {
+            payment_summary.push_str(format!(" | receipt={payment_pointer}").as_str());
+        }
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "{} | buyer={} | bid={} sats{}",
+                "{} | buyer={} | bid={} sats{} | {}",
                 latest_request.evaluation_summary,
                 latest_request.requester,
                 latest_request.price_sats,
                 latest_request
                     .required_price_sats
                     .map(|price| format!(" | ask={} sats", price))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                payment_summary,
             ),
             Point::new(bounds.origin.x + 10.0, row_y + 28.0),
             10.0,

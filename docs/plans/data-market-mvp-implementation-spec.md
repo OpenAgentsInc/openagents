@@ -141,9 +141,11 @@ kernel read-back into the read-only market pane. They now also produce exact
 `CreateAccessGrantRequest` previews, publish `AccessGrant` objects through
 Nexus after explicit confirmation, and reflect the resulting grant read-back
 into the read-only market pane. They also surface incoming targeted data
-requests inside the seller lane with explicit evaluation results so the next
-issues can layer payment-required, delivery, revocation, and buyer-facing flows
-on top of one truthful intake surface.
+requests inside the seller lane with explicit evaluation results, can now
+generate a seller Lightning invoice, publish NIP-90 `payment-required`
+feedback, and reconcile the paid state back from Spark wallet truth so the next
+issues can layer delivery, revocation, and buyer-facing flows on top of one
+truthful intake surface.
 
 ### 3. Codex is already deeply integrated
 

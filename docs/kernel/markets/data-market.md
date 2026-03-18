@@ -49,6 +49,7 @@ smuggled through opaque prompt state.
 - parse incoming OpenAgents data-vending requests on the desktop relay lane as `openagents.data.access` demand instead of treating them as malformed compute jobs
 - advertise the current data-vending request kind and coarse asset-family/delivery metadata on the provider NIP-89 handler when a seller profile is present
 - surface incoming targeted data-access requests in the seller pane and seller status tools with explicit evaluation outcomes such as `no_published_asset`, `grant_required`, `scope_mismatch`, and `ready_for_payment_quote`
+- generate seller-side Lightning invoices for matched targeted data requests, publish NIP-90 `payment-required` feedback, and track the request through `invoice_requested`, `publishing_feedback`, `awaiting_payment`, and `paid`
 
 The starter authority slice is real in:
 

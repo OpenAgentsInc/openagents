@@ -71,6 +71,12 @@ fn reconcile_spark_wallet_update(
         previous_error.as_deref(),
     );
 
+    crate::data_seller_control::reconcile_data_seller_wallet_update(
+        state,
+        previous_invoice.as_deref(),
+        previous_error.as_deref(),
+    );
+
     reconcile_pending_buyer_payment_confirmation(
         state,
         previous_payment_id.as_deref(),

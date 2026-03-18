@@ -1236,6 +1236,7 @@ pub(super) fn apply_publish_outcome(state: &mut RenderState, outcome: ProviderNi
     }
 
     super::apply_active_job_publish_outcome(state, &outcome);
+    let _ = crate::data_seller_control::apply_data_seller_publish_outcome(state, &outcome);
 
     if outcome.role == ProviderNip90PublishRole::Request {
         state
