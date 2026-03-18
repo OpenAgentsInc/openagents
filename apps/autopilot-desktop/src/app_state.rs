@@ -2009,6 +2009,48 @@ impl DataSellerPaymentState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataSellerDeliveryState {
+    Idle,
+    DraftReady,
+    AcceptingGrant,
+    IssuingBundle,
+    PublishingResult,
+    Delivered,
+    Failed,
+}
+
+impl DataSellerDeliveryState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::DraftReady => "draft_ready",
+            Self::AcceptingGrant => "accepting_grant",
+            Self::IssuingBundle => "issuing_bundle",
+            Self::PublishingResult => "publishing_result",
+            Self::Delivered => "delivered",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataSellerDeliveryDraft {
+    #[serde(default)]
+    pub preview_text: Option<String>,
+    #[serde(default)]
+    pub delivery_ref: Option<String>,
+    #[serde(default)]
+    pub delivery_digest: Option<String>,
+    #[serde(default)]
+    pub manifest_refs: Vec<String>,
+    #[serde(default)]
+    pub bundle_size_bytes: Option<u64>,
+    #[serde(default)]
+    pub expires_in_hours: Option<u64>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DataSellerIncomingRequest {
     pub request_id: String,
@@ -2044,6 +2086,13 @@ pub struct DataSellerIncomingRequest {
     pub payment_observed_at_epoch_seconds: Option<u64>,
     pub payment_amount_sats: Option<u64>,
     pub payment_error: Option<String>,
+    pub delivery_state: DataSellerDeliveryState,
+    #[serde(default)]
+    pub delivery_draft: DataSellerDeliveryDraft,
+    pub delivery_bundle_id: Option<String>,
+    pub delivery_receipt_id: Option<String>,
+    pub delivery_result_event_id: Option<String>,
+    pub delivery_error: Option<String>,
 }
 
 impl Default for DataSellerCodexProfile {
@@ -2080,6 +2129,8 @@ pub struct DataSellerPaneState {
     pub last_confirmed_grant_payload: Option<Value>,
     pub last_published_grant: Option<AccessGrant>,
     pub last_grant_publish_receipt_id: Option<String>,
+    pub last_published_delivery: Option<DeliveryBundle>,
+    pub last_delivery_publish_receipt_id: Option<String>,
     pub codex_profile: DataSellerCodexProfile,
     pub codex_thread_id: Option<String>,
     pub codex_session_phase: DataSellerCodexSessionPhase,
@@ -2129,6 +2180,8 @@ impl Default for DataSellerPaneState {
             last_confirmed_grant_payload: None,
             last_published_grant: None,
             last_grant_publish_receipt_id: None,
+            last_published_delivery: None,
+            last_delivery_publish_receipt_id: None,
             codex_profile: DataSellerCodexProfile::default(),
             codex_thread_id: None,
             codex_session_phase: DataSellerCodexSessionPhase::Detached,
@@ -2485,6 +2538,39 @@ impl DataSellerPaneState {
         );
     }
 
+    pub fn note_grant_state_reconciled(&mut self, grant: AccessGrant) {
+        self.active_draft.last_published_grant_id = Some(grant.grant_id.clone());
+        self.last_published_grant = Some(grant.clone());
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Reconciled AccessGrant {} state from kernel authority",
+            grant.grant_id
+        ));
+        self.status_line = format!(
+            "Grant {} reconciled from kernel authority with status {}.",
+            grant.grant_id,
+            grant.status.label()
+        );
+    }
+
+    pub fn note_delivery_published(
+        &mut self,
+        delivery: DeliveryBundle,
+        receipt_id: Option<String>,
+    ) {
+        self.last_published_delivery = Some(delivery.clone());
+        self.last_delivery_publish_receipt_id = receipt_id;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Issued DeliveryBundle {} and read it back from kernel authority",
+            delivery.delivery_bundle_id
+        ));
+        self.status_line = format!(
+            "Issued delivery {} and confirmed kernel read-back.",
+            delivery.delivery_bundle_id
+        );
+    }
+
     pub fn note_draft_mutation(&mut self, action: impl Into<String>) {
         self.active_draft.recompute_readiness_blockers();
         self.active_draft.preview_posture = DataSellerPreviewPosture::NotRequested;
@@ -2562,6 +2648,12 @@ impl DataSellerPaneState {
             incoming.payment_observed_at_epoch_seconds = existing.payment_observed_at_epoch_seconds;
             incoming.payment_amount_sats = existing.payment_amount_sats;
             incoming.payment_error = existing.payment_error.clone();
+            incoming.delivery_state = existing.delivery_state;
+            incoming.delivery_draft = existing.delivery_draft.clone();
+            incoming.delivery_bundle_id = existing.delivery_bundle_id.clone();
+            incoming.delivery_receipt_id = existing.delivery_receipt_id.clone();
+            incoming.delivery_result_event_id = existing.delivery_result_event_id.clone();
+            incoming.delivery_error = existing.delivery_error.clone();
             *existing = incoming.clone();
         } else {
             self.incoming_requests.push(incoming.clone());
@@ -2809,6 +2901,289 @@ impl DataSellerPaneState {
             .find(|request| request.request_id == request_id)
     }
 
+    pub fn request_by_id_mut(
+        &mut self,
+        request_id: &str,
+    ) -> Option<&mut DataSellerIncomingRequest> {
+        self.incoming_requests
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+    }
+
+    pub fn prepare_delivery_draft(
+        &mut self,
+        request_id: &str,
+        preview_text: Option<&str>,
+        delivery_ref: Option<&str>,
+        delivery_digest: Option<&str>,
+        manifest_refs: Option<Vec<String>>,
+        bundle_size_bytes: Option<u64>,
+        expires_in_hours: Option<u64>,
+    ) -> Result<bool, String> {
+        let (request_id_owned, ready) = {
+            let request = self
+                .request_by_id_mut(request_id)
+                .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+            if request.payment_state != DataSellerPaymentState::Paid {
+                return Err(format!(
+                    "Request {} cannot prepare delivery before payment settles. Current payment state is {}.",
+                    request.request_id,
+                    request.payment_state.label()
+                ));
+            }
+            if request.matched_grant_id.is_none() {
+                return Err(format!(
+                    "Request {} has no matched grant to deliver against.",
+                    request.request_id
+                ));
+            }
+            if matches!(
+                request.delivery_state,
+                DataSellerDeliveryState::AcceptingGrant
+                    | DataSellerDeliveryState::IssuingBundle
+                    | DataSellerDeliveryState::PublishingResult
+                    | DataSellerDeliveryState::Delivered
+            ) {
+                return Err(format!(
+                    "Request {} already has delivery state {}.",
+                    request.request_id,
+                    request.delivery_state.label()
+                ));
+            }
+
+            if let Some(preview_text) = preview_text {
+                request.delivery_draft.preview_text = Some(preview_text.trim().to_string())
+                    .filter(|value| !value.is_empty());
+            }
+            if let Some(delivery_ref) = delivery_ref {
+                request.delivery_draft.delivery_ref = Some(delivery_ref.trim().to_string())
+                    .filter(|value| !value.is_empty());
+            }
+            if let Some(delivery_digest) = delivery_digest {
+                request.delivery_draft.delivery_digest = Some(delivery_digest.trim().to_string())
+                    .filter(|value| !value.is_empty());
+            }
+            if let Some(manifest_refs) = manifest_refs {
+                request.delivery_draft.manifest_refs = manifest_refs
+                    .into_iter()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .collect();
+            }
+            if let Some(bundle_size_bytes) = bundle_size_bytes {
+                request.delivery_draft.bundle_size_bytes = Some(bundle_size_bytes);
+            }
+            if let Some(expires_in_hours) = expires_in_hours {
+                request.delivery_draft.expires_in_hours = Some(expires_in_hours.max(1));
+            }
+
+            let ready = request
+                .delivery_draft
+                .delivery_ref
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+                && (!matches!(
+                    request.delivery_mode.as_deref(),
+                    Some("inline_preview")
+                ) || request
+                    .delivery_draft
+                    .preview_text
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty()));
+
+            if ready {
+                request.delivery_state = DataSellerDeliveryState::DraftReady;
+                request.delivery_error = None;
+                request.delivery_result_event_id = None;
+            } else {
+                request.delivery_state = DataSellerDeliveryState::Idle;
+                request.delivery_error = Some(
+                    "Delivery draft still needs a delivery_ref, and inline preview delivery also requires preview_text."
+                        .to_string(),
+                );
+            }
+            (request.request_id.clone(), ready)
+        };
+
+        self.last_error = None;
+        if ready {
+            self.last_action = Some(format!(
+                "Prepared delivery draft for data request {}",
+                request_id_owned
+            ));
+            self.status_line = format!(
+                "Delivery draft ready for request {}. Issue delivery next.",
+                request_id_owned
+            );
+        } else {
+            self.last_action = Some(format!(
+                "Updated delivery draft for data request {}",
+                request_id_owned
+            ));
+            self.status_line = format!(
+                "Delivery draft for request {} still needs required fields.",
+                request_id_owned
+            );
+        }
+
+        Ok(ready)
+    }
+
+    pub fn request_issue_delivery(&mut self, request_id: &str) -> Result<(), String> {
+        let request_id_owned = {
+            let request = self
+                .request_by_id_mut(request_id)
+                .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+            if request.payment_state != DataSellerPaymentState::Paid {
+                return Err(format!(
+                    "Request {} cannot issue delivery before payment settles. Current payment state is {}.",
+                    request.request_id,
+                    request.payment_state.label()
+                ));
+            }
+            if !matches!(
+                request.delivery_state,
+                DataSellerDeliveryState::DraftReady | DataSellerDeliveryState::Failed
+            ) {
+                return Err(format!(
+                    "Request {} is not ready to issue delivery. Current delivery state is {}.",
+                    request.request_id,
+                    request.delivery_state.label()
+                ));
+            }
+            request.delivery_state = DataSellerDeliveryState::AcceptingGrant;
+            request.delivery_error = None;
+            request.request_id.clone()
+        };
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Accepting grant and issuing delivery for data request {}",
+            request_id_owned
+        ));
+        self.status_line = format!(
+            "Accepting grant for request {} before delivery issuance.",
+            request_id_owned
+        );
+        Ok(())
+    }
+
+    pub fn note_delivery_bundle_issuing(&mut self, request_id: &str) -> Result<(), String> {
+        let request_id_owned = {
+            let request = self
+                .request_by_id_mut(request_id)
+                .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+            request.delivery_state = DataSellerDeliveryState::IssuingBundle;
+            request.delivery_error = None;
+            request.request_id.clone()
+        };
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Issuing DeliveryBundle for data request {}",
+            request_id_owned
+        ));
+        self.status_line = format!(
+            "Kernel delivery issuance in progress for request {}.",
+            request_id_owned
+        );
+        Ok(())
+    }
+
+    pub fn note_delivery_bundle_issued(
+        &mut self,
+        request_id: &str,
+        delivery: DeliveryBundle,
+        receipt_id: Option<String>,
+    ) -> Result<(), String> {
+        let request_id_owned = {
+            let request = self
+                .request_by_id_mut(request_id)
+                .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+            request.delivery_state = DataSellerDeliveryState::PublishingResult;
+            request.delivery_bundle_id = Some(delivery.delivery_bundle_id.clone());
+            request.delivery_receipt_id = receipt_id.clone();
+            request.delivery_error = None;
+            request.request_id.clone()
+        };
+        self.last_published_delivery = Some(delivery.clone());
+        self.last_delivery_publish_receipt_id = receipt_id;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Issued DeliveryBundle {} for data request {}",
+            delivery.delivery_bundle_id, request_id_owned
+        ));
+        self.status_line = format!(
+            "Delivery bundle {} issued for request {}. Publishing NIP-90 result next.",
+            delivery.delivery_bundle_id, request_id_owned
+        );
+        Ok(())
+    }
+
+    pub fn note_delivery_issue_failed(&mut self, request_id: &str, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(request) = self.request_by_id_mut(request_id) {
+            request.delivery_state = DataSellerDeliveryState::Failed;
+            request.delivery_error = Some(error.clone());
+        }
+        self.last_error = Some(error);
+        self.last_action = Some(format!(
+            "Delivery issue failed for data request {}",
+            request_id
+        ));
+        self.status_line = format!("Delivery issue failed for request {}.", request_id);
+    }
+
+    pub fn note_delivery_result_publish_outcome(
+        &mut self,
+        request_id: &str,
+        published: bool,
+        event_id: Option<&str>,
+        error: Option<&str>,
+    ) -> bool {
+        let Some((request_id_owned, delivery_error)) = ({
+            let Some(request) = self.request_by_id_mut(request_id) else {
+                return false;
+            };
+            if published {
+                request.delivery_state = DataSellerDeliveryState::Delivered;
+                request.delivery_result_event_id = event_id.map(str::to_string);
+                request.delivery_error = None;
+            } else {
+                request.delivery_state = DataSellerDeliveryState::Failed;
+                request.delivery_result_event_id = None;
+                request.delivery_error = Some(
+                    error
+                        .unwrap_or("delivery result publish failed")
+                        .to_string(),
+                );
+            }
+            Some((request.request_id.clone(), request.delivery_error.clone()))
+        }) else {
+            return false;
+        };
+        if published {
+            self.last_error = None;
+            self.last_action = Some(format!(
+                "Published NIP-90 delivery result for data request {}",
+                request_id_owned
+            ));
+            self.status_line = format!(
+                "Delivery flow completed for request {}.",
+                request_id_owned
+            );
+        } else {
+            self.last_error = delivery_error;
+            self.last_action = Some(format!(
+                "Delivery result publish failed for data request {}",
+                request_id_owned
+            ));
+            self.status_line = format!(
+                "Delivery result publish failed for request {}.",
+                request_id_owned
+            );
+        }
+        true
+    }
+
     fn evaluate_incoming_request(
         &self,
         request: &JobInboxNetworkRequest,
@@ -2861,6 +3236,12 @@ impl DataSellerPaneState {
             payment_observed_at_epoch_seconds: None,
             payment_amount_sats: None,
             payment_error: None,
+            delivery_state: DataSellerDeliveryState::Idle,
+            delivery_draft: DataSellerDeliveryDraft::default(),
+            delivery_bundle_id: None,
+            delivery_receipt_id: None,
+            delivery_result_event_id: None,
+            delivery_error: None,
         };
 
         if let JobInboxValidation::Invalid(reason) = &request.validation {
@@ -3242,6 +3623,31 @@ impl DataMarketPaneState {
         self.last_action = Some(format!(
             "Reflected published grant {} into the Data Market pane from kernel read-back",
             grant.grant_id
+        ));
+    }
+
+    pub fn note_published_delivery(&mut self, delivery: DeliveryBundle, reflected_at_ms: i64) {
+        if let Some(existing) = self
+            .deliveries
+            .iter_mut()
+            .find(|existing| existing.delivery_bundle_id == delivery.delivery_bundle_id)
+        {
+            *existing = delivery.clone();
+        } else {
+            self.deliveries.push(delivery.clone());
+        }
+        Self::sort_state(
+            self.assets.as_mut_slice(),
+            self.grants.as_mut_slice(),
+            self.deliveries.as_mut_slice(),
+            self.revocations.as_mut_slice(),
+        );
+        self.last_refreshed_at_ms = Some(reflected_at_ms);
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Reflected issued delivery {} into the Data Market pane from kernel read-back",
+            delivery.delivery_bundle_id
         ));
     }
 
@@ -13266,7 +13672,7 @@ mod tests {
         SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use chrono::TimeZone;
-    use openagents_kernel_core::data::{AccessGrant, DataAsset};
+    use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle};
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
     use serde_json::{Value, json};
     use wgpui::components::sections::TerminalStream;
@@ -13919,6 +14325,244 @@ mod tests {
         assert!(
             pane.status_line
                 .contains("Payment settled for request payment-flow")
+        );
+    }
+
+    #[test]
+    fn data_seller_prepare_delivery_requires_paid_request() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1delivery-blocked".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request(
+                "delivery-blocked",
+                "data_asset.provider.alpha.bundle",
+                250,
+            ),
+            false,
+            1_760_000_100,
+        );
+
+        let error = pane
+            .prepare_delivery_draft(
+                "delivery-blocked",
+                Some("metadata preview"),
+                Some("oa://deliveries/delivery-blocked"),
+                Some("sha256:delivery-blocked"),
+                None,
+                Some(2048),
+                Some(24),
+            )
+            .expect_err("delivery draft should require a paid request");
+
+        assert!(error.contains("before payment settles"));
+    }
+
+    #[test]
+    fn data_seller_delivery_state_progresses_from_draft_to_delivered() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1delivery-flow".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request(
+                "delivery-flow",
+                "data_asset.provider.alpha.bundle",
+                250,
+            ),
+            false,
+            1_760_000_100,
+        );
+        pane.request_payment_required_quote("delivery-flow")
+            .expect("payment quote should succeed");
+        pane.note_payment_invoice_created(
+            "delivery-flow",
+            "lnbc2500n1deliveryflow",
+            Some(1_760_000_120),
+        )
+        .expect("invoice should be recorded");
+        assert!(
+            pane.note_payment_feedback_publish_outcome(
+                "delivery-flow",
+                true,
+                Some("feedback-event-delivery"),
+                None,
+            )
+        );
+        assert!(pane.note_payment_observed(
+            "delivery-flow",
+            "payment-pointer-delivery",
+            250,
+            1_760_000_180,
+        ));
+        assert!(
+            pane.prepare_delivery_draft(
+                "delivery-flow",
+                Some("Bundle manifest ready"),
+                Some("oa://deliveries/delivery-flow"),
+                Some("sha256:delivery-flow"),
+                Some(vec!["oa://deliveries/delivery-flow/manifest".to_string()]),
+                Some(4096),
+                Some(24),
+            )
+            .expect("delivery draft should be ready")
+        );
+        pane.request_issue_delivery("delivery-flow")
+            .expect("delivery issue should be armed");
+        pane.note_delivery_bundle_issuing("delivery-flow")
+            .expect("issuing state should be recorded");
+        pane.note_delivery_bundle_issued(
+            "delivery-flow",
+            DeliveryBundle {
+                delivery_bundle_id: "delivery_bundle.provider.alpha.delivery-flow".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: "npub1delivery-flow".to_string(),
+                created_at_ms: 1_762_700_200_000,
+                delivery_ref: "oa://deliveries/delivery-flow".to_string(),
+                delivery_digest: Some("sha256:delivery-flow".to_string()),
+                bundle_size_bytes: Some(4096),
+                manifest_refs: vec!["oa://deliveries/delivery-flow/manifest".to_string()],
+                expires_at_ms: Some(1_762_786_600_000),
+                status: openagents_kernel_core::data::DeliveryBundleStatus::Issued,
+                metadata: json!({
+                    "request_id": "delivery-flow",
+                }),
+            },
+            Some("receipt.delivery-flow".to_string()),
+        )
+        .expect("delivery bundle should be recorded");
+        assert!(
+            pane.note_delivery_result_publish_outcome(
+                "delivery-flow",
+                true,
+                Some("result-event-delivery"),
+                None,
+            )
+        );
+
+        let request = pane
+            .request_by_id("delivery-flow")
+            .expect("request should remain available");
+        assert_eq!(
+            request.delivery_state,
+            super::DataSellerDeliveryState::Delivered
+        );
+        assert_eq!(
+            request.delivery_bundle_id.as_deref(),
+            Some("delivery_bundle.provider.alpha.delivery-flow")
+        );
+        assert_eq!(
+            request.delivery_result_event_id.as_deref(),
+            Some("result-event-delivery")
+        );
+        assert_eq!(
+            pane.last_delivery_publish_receipt_id.as_deref(),
+            Some("receipt.delivery-flow")
+        );
+        assert!(
+            pane.status_line
+                .contains("Delivery flow completed for request delivery-flow")
         );
     }
 

@@ -36,6 +36,8 @@ Prefer only these tools for seller flows:
 - `openagents.data_market.draft_grant`
 - `openagents.data_market.preview_grant`
 - `openagents.data_market.publish_grant`
+- `openagents.data_market.prepare_delivery`
+- `openagents.data_market.issue_delivery`
 - `openagents.data_market.snapshot`
 
 Use generic `openagents.pane.*` tools only for inspection or recovery when a
@@ -50,6 +52,7 @@ typed data-market tool cannot provide the needed truth.
 5. Preview before publish every time.
 6. Require explicit seller confirmation before publish.
 7. Read back published state after mutation.
+8. For paid targeted requests, prepare delivery explicitly, then issue delivery so kernel truth exists before the NIP-90 result is published.
 
 ## Safety Rules
 
@@ -57,4 +60,4 @@ typed data-market tool cannot provide the needed truth.
 - Do not invent provenance, digest, price, policy, or delivery posture.
 - Do not silently widen permissions beyond what the seller confirmed.
 - Do not skip preview because the request "sounds obvious."
-
+- Do not claim delivery succeeded unless the `DeliveryBundle` exists and the linked NIP-90 result publish completed.

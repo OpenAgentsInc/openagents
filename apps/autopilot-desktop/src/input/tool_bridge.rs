@@ -18,6 +18,8 @@ use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+    OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
     OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS,
@@ -83,6 +85,10 @@ const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
     "openagents.data_market.publish_grant";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT: &str =
     "openagents.data_market.request_payment";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY: &str =
+    "openagents.data_market.prepare_delivery";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY: &str =
+    "openagents.data_market.issue_delivery";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents.data_market.snapshot";
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
@@ -116,6 +122,8 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
@@ -349,6 +357,28 @@ struct DataMarketPublishArgs {
 
 #[derive(Clone, Debug, Deserialize)]
 struct DataMarketRequestPaymentArgs {
+    request_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketPrepareDeliveryArgs {
+    request_id: String,
+    #[serde(default)]
+    preview_text: Option<String>,
+    #[serde(default)]
+    delivery_ref: Option<String>,
+    #[serde(default)]
+    delivery_digest: Option<String>,
+    #[serde(default)]
+    manifest_refs: Option<Vec<String>>,
+    #[serde(default)]
+    bundle_size_bytes: Option<u64>,
+    #[serde(default)]
+    expires_in_hours: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketIssueDeliveryArgs {
     request_id: String,
 }
 
@@ -764,6 +794,22 @@ pub(super) fn execute_openagents_tool_request(
             };
             execute_data_market_request_payment_tool(state, &args)
         }
+        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY => {
+            let args = match decoded.decode_arguments::<DataMarketPrepareDeliveryArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_prepare_delivery_tool(state, &args)
+        }
+        OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY => {
+            let args = match decoded.decode_arguments::<DataMarketIssueDeliveryArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_issue_delivery_tool(state, &args)
+        }
         OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT => {
             execute_data_market_snapshot_tool(state)
         }
@@ -993,6 +1039,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
         "last_grant_publish_receipt_id": state.data_seller.last_grant_publish_receipt_id,
         "last_published_grant": state.data_seller.last_published_grant,
+        "last_delivery_publish_receipt_id": state.data_seller.last_delivery_publish_receipt_id,
+        "last_published_delivery": state.data_seller.last_published_delivery,
     });
     let incoming_requests = state
         .data_seller
@@ -1035,6 +1083,19 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                     .payment_observed_at_epoch_seconds,
                 "payment_amount_sats": request.payment_amount_sats,
                 "payment_error": request.payment_error,
+                "delivery_state": request.delivery_state.label(),
+                "delivery_draft": {
+                    "preview_text": request.delivery_draft.preview_text,
+                    "delivery_ref": request.delivery_draft.delivery_ref,
+                    "delivery_digest": request.delivery_draft.delivery_digest,
+                    "manifest_refs": request.delivery_draft.manifest_refs,
+                    "bundle_size_bytes": request.delivery_draft.bundle_size_bytes,
+                    "expires_in_hours": request.delivery_draft.expires_in_hours,
+                },
+                "delivery_bundle_id": request.delivery_bundle_id,
+                "delivery_receipt_id": request.delivery_receipt_id,
+                "delivery_result_event_id": request.delivery_result_event_id,
+                "delivery_error": request.delivery_error,
             })
         })
         .collect::<Vec<_>>();
@@ -1056,6 +1117,19 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
             "payment_observed_at_epoch_seconds": request.payment_observed_at_epoch_seconds,
             "payment_amount_sats": request.payment_amount_sats,
             "payment_error": request.payment_error,
+            "delivery_state": request.delivery_state.label(),
+            "delivery_draft": {
+                "preview_text": request.delivery_draft.preview_text,
+                "delivery_ref": request.delivery_draft.delivery_ref,
+                "delivery_digest": request.delivery_draft.delivery_digest,
+                "manifest_refs": request.delivery_draft.manifest_refs,
+                "bundle_size_bytes": request.delivery_draft.bundle_size_bytes,
+                "expires_in_hours": request.delivery_draft.expires_in_hours,
+            },
+            "delivery_bundle_id": request.delivery_bundle_id,
+            "delivery_receipt_id": request.delivery_receipt_id,
+            "delivery_result_event_id": request.delivery_result_event_id,
+            "delivery_error": request.delivery_error,
         })
     });
     let seller = json!({
@@ -1366,6 +1440,76 @@ fn execute_data_market_request_payment_tool(
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "Failed to queue the seller payment-required flow.".to_string()),
+            data_seller_tool_snapshot(state),
+        )
+    }
+}
+
+fn execute_data_market_prepare_delivery_tool(
+    state: &mut RenderState,
+    args: &DataMarketPrepareDeliveryArgs,
+) -> ToolBridgeResultEnvelope {
+    let ready = match state.data_seller.prepare_delivery_draft(
+        args.request_id.as_str(),
+        args.preview_text.as_deref(),
+        args.delivery_ref.as_deref(),
+        args.delivery_digest.as_deref(),
+        args.manifest_refs.clone(),
+        args.bundle_size_bytes,
+        args.expires_in_hours,
+    ) {
+        Ok(ready) => ready,
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-DATA-MARKET-DELIVERY-DRAFT-FAILED",
+                error,
+                data_seller_tool_snapshot(state),
+            );
+        }
+    };
+    if ready {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-DELIVERY-DRAFT-READY",
+            "Prepared the seller delivery draft for the targeted data request.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-DELIVERY-DRAFT-BLOCKED",
+            "Delivery draft still needs required fields before issuance is allowed.",
+            data_seller_tool_snapshot(state),
+        )
+    }
+}
+
+fn execute_data_market_issue_delivery_tool(
+    state: &mut RenderState,
+    args: &DataMarketIssueDeliveryArgs,
+) -> ToolBridgeResultEnvelope {
+    crate::data_seller_control::issue_data_seller_delivery(state, args.request_id.as_str());
+    let request = state.data_seller.request_by_id(args.request_id.as_str());
+    if state.data_seller.last_error.is_none()
+        && request.is_some_and(|request| {
+            matches!(
+                request.delivery_state,
+                crate::app_state::DataSellerDeliveryState::PublishingResult
+                    | crate::app_state::DataSellerDeliveryState::Delivered
+            )
+        })
+    {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-DELIVERY-ISSUED",
+            "Accepted the grant if needed, issued the DeliveryBundle, and queued the linked NIP-90 result.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-DELIVERY-ISSUE-FAILED",
+            state
+                .data_seller
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Failed to issue the seller delivery flow.".to_string()),
             data_seller_tool_snapshot(state),
         )
     }
@@ -7148,8 +7292,10 @@ mod tests {
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
         OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
-        OPENAGENTS_TOOL_LABOR_SCOPE,
+        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
+        OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH, OPENAGENTS_TOOL_LABOR_SCOPE,
         OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT,
         OPENAGENTS_TOOL_TREASURY_RECEIPT, OPENAGENTS_TOOL_TREASURY_TRANSFER,
         ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
@@ -7366,6 +7512,37 @@ mod tests {
         .expect("decode should succeed");
         let error = decoded
             .decode_arguments::<super::DataMarketRequestPaymentArgs>()
+            .expect_err("request_id should be required");
+        assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
+    fn data_market_prepare_delivery_decode_accepts_delivery_fields() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+            r#"{"request_id":"req-data-1","delivery_ref":"oa://deliveries/req-data-1","delivery_digest":"sha256:bundle","manifest_refs":["oa://deliveries/req-data-1/manifest"],"bundle_size_bytes":2048,"expires_in_hours":24}"#,
+        ))
+        .expect("decode should succeed");
+        let args: super::DataMarketPrepareDeliveryArgs =
+            decoded.decode_arguments().expect("prepare delivery args decode");
+        assert_eq!(args.request_id, "req-data-1");
+        assert_eq!(
+            args.delivery_ref.as_deref(),
+            Some("oa://deliveries/req-data-1")
+        );
+        assert_eq!(args.bundle_size_bytes, Some(2048));
+        assert_eq!(args.expires_in_hours, Some(24));
+    }
+
+    #[test]
+    fn data_market_issue_delivery_decode_requires_request_id() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+            r#"{}"#,
+        ))
+        .expect("decode should succeed");
+        let error = decoded
+            .decode_arguments::<super::DataMarketIssueDeliveryArgs>()
             .expect_err("request_id should be required");
         assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
     }

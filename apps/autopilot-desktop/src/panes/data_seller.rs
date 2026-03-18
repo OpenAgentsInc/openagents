@@ -469,6 +469,25 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
+        "last delivery",
+        &option_label(
+            pane_state
+                .last_published_delivery
+                .as_ref()
+                .map(|delivery| delivery.delivery_bundle_id.as_str()),
+        ),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "delivery receipt",
+        &option_label(pane_state.last_delivery_publish_receipt_id.as_deref()),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
         "asset preview",
         if pane_state
             .active_draft
@@ -540,6 +559,16 @@ fn paint_publication_status_card(
             .map(|request| request.payment_state.label())
             .unwrap_or("pending"),
     );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "delivery state",
+        pane_state
+            .latest_incoming_request()
+            .map(|request| request.delivery_state.label())
+            .unwrap_or("pending"),
+    );
 
     let warnings = pane_state.inventory_warnings();
     let warning_color = if warnings.is_empty() {
@@ -573,9 +602,18 @@ fn paint_publication_status_card(
         if let Some(payment_pointer) = latest_request.payment_pointer.as_ref() {
             payment_summary.push_str(format!(" | receipt={payment_pointer}").as_str());
         }
+        let delivery_summary = format!(
+            "delivery={}{}",
+            latest_request.delivery_state.label(),
+            latest_request
+                .delivery_bundle_id
+                .as_deref()
+                .map(|bundle_id| format!(" | bundle={bundle_id}"))
+                .unwrap_or_default()
+        );
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "{} | buyer={} | bid={} sats{} | {}",
+                "{} | buyer={} | bid={} sats{} | {} | {}",
                 latest_request.evaluation_summary,
                 latest_request.requester,
                 latest_request.price_sats,
@@ -584,6 +622,7 @@ fn paint_publication_status_card(
                     .map(|price| format!(" | ask={} sats", price))
                     .unwrap_or_default(),
                 payment_summary,
+                delivery_summary,
             ),
             Point::new(bounds.origin.x + 10.0, row_y + 28.0),
             10.0,
