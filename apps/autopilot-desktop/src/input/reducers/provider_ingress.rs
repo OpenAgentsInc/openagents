@@ -220,7 +220,8 @@ pub(super) fn apply_ingressed_request(
     state: &mut RenderState,
     mut request: JobInboxNetworkRequest,
 ) {
-    if state.provider_runtime.active_inference_backend().is_none() {
+    let data_access_request = request.capability == "openagents.data.access";
+    if !data_access_request && state.provider_runtime.active_inference_backend().is_none() {
         return;
     }
 
@@ -228,6 +229,11 @@ pub(super) fn apply_ingressed_request(
     apply_encrypted_request_handling(state, &mut request);
     if let Some(reason) = target_policy_reject_reason(state, &request) {
         apply_ignored_ingress_request(state, &request, reason.as_str());
+        return;
+    }
+
+    if data_access_request {
+        apply_data_seller_ingressed_request(state, request, preview_only);
         return;
     }
 
@@ -331,6 +337,79 @@ pub(super) fn apply_ingressed_request(
             });
             state.activity_feed.load_state = PaneLoadState::Ready;
         }
+    }
+
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+}
+
+fn apply_data_seller_ingressed_request(
+    state: &mut RenderState,
+    request: JobInboxNetworkRequest,
+    preview_only: bool,
+) {
+    let is_new = !state
+        .data_seller
+        .incoming_requests
+        .iter()
+        .any(|existing| existing.request_id == request.request_id);
+    if preview_only && !is_new {
+        return;
+    }
+
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+    let seller_is_new =
+        state
+            .data_seller
+            .note_incoming_request(&request, preview_only, now_epoch_seconds);
+
+    if preview_only {
+        state.provider_runtime.last_result =
+            Some("relay preview observing targeted data-access demand".to_string());
+    } else {
+        state.provider_runtime.last_result = Some(format!(
+            "relay ingress received data request {} ({})",
+            request.request_id, request.capability
+        ));
+        state.provider_runtime.last_authoritative_status = Some("accepted".to_string());
+        state.provider_runtime.last_authoritative_event_id = Some(request.request_id.clone());
+        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+            state.provider_runtime.last_authoritative_error_class = None;
+        }
+    }
+
+    if seller_is_new && !preview_only {
+        let latest = state.data_seller.latest_incoming_request();
+        let evaluation_summary = latest
+            .map(|incoming| incoming.evaluation_summary.as_str())
+            .unwrap_or("evaluation unavailable");
+        state.activity_feed.upsert_event(ActivityEventRow {
+            event_id: format!("nip90:data:req:{}", request.request_id),
+            domain: ActivityEventDomain::Network,
+            source_tag: "nip90.data_market".to_string(),
+            summary: "Targeted data access request arrived".to_string(),
+            detail: format!(
+                "request={} requester={} price_sats={} ttl_seconds={} evaluation={}\n\nshape:\n{}\n\nraw_event_json:\n{}",
+                request.request_id,
+                request.requester,
+                request.price_sats,
+                request.ttl_seconds,
+                evaluation_summary,
+                request
+                    .parsed_event_shape
+                    .as_deref()
+                    .unwrap_or("shape unavailable"),
+                request
+                    .raw_event_json
+                    .as_deref()
+                    .unwrap_or("raw event json unavailable"),
+            ),
+            occurred_at_epoch_seconds: now_epoch_seconds,
+        });
+        state.activity_feed.load_state = PaneLoadState::Ready;
     }
 
     state.sync_health.last_applied_event_seq =

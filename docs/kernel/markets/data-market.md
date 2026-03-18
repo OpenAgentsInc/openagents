@@ -22,7 +22,7 @@ smuggled through opaque prompt state.
 
 | Dimension | Status | Notes |
 | --- | --- | --- |
-| Product surface | starter read surface + seller shell | there is now a dedicated read-only data-market pane in the desktop app plus an initial `Data Seller` shell with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, and a first typed `openagents.data_market.*` tool family for status/draft/preview/publish/snapshot, but no truthful seller or buyer transaction UX yet |
+| Product surface | seller authoring + read surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, and a first seller-side targeted-request intake/evaluation surface, but payment, delivery, revocation, and buyer transaction UX are still incomplete |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
@@ -48,6 +48,7 @@ smuggled through opaque prompt state.
 - derive and publish an explicit OpenAgents-local NIP-90 data-vending profile from the seller pane into the shared relay/runtime lane
 - parse incoming OpenAgents data-vending requests on the desktop relay lane as `openagents.data.access` demand instead of treating them as malformed compute jobs
 - advertise the current data-vending request kind and coarse asset-family/delivery metadata on the provider NIP-89 handler when a seller profile is present
+- surface incoming targeted data-access requests in the seller pane and seller status tools with explicit evaluation outcomes such as `no_published_asset`, `grant_required`, `scope_mismatch`, and `ready_for_payment_quote`
 
 The starter authority slice is real in:
 
