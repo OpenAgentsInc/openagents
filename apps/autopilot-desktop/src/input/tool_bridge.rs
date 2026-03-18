@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::DateTime;
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
+use openagents_kernel_core::data::DeliveryBundle;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -195,7 +196,7 @@ impl ToolBridgeRequest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(super) struct ToolBridgeResultEnvelope {
+pub(crate) struct ToolBridgeResultEnvelope {
     pub success: bool,
     pub code: String,
     pub message: String,
@@ -203,7 +204,7 @@ pub(super) struct ToolBridgeResultEnvelope {
 }
 
 impl ToolBridgeResultEnvelope {
-    pub(super) fn ok(code: &str, message: impl Into<String>, details: Value) -> Self {
+    pub(crate) fn ok(code: &str, message: impl Into<String>, details: Value) -> Self {
         Self {
             success: true,
             code: code.to_string(),
@@ -212,7 +213,7 @@ impl ToolBridgeResultEnvelope {
         }
     }
 
-    pub(super) fn error(code: &str, message: impl Into<String>, details: Value) -> Self {
+    pub(crate) fn error(code: &str, message: impl Into<String>, details: Value) -> Self {
         Self {
             success: false,
             code: code.to_string(),
@@ -221,7 +222,7 @@ impl ToolBridgeResultEnvelope {
         }
     }
 
-    pub(super) fn to_response(&self) -> DynamicToolCallResponse {
+    pub(crate) fn to_response(&self) -> DynamicToolCallResponse {
         DynamicToolCallResponse {
             content_items: vec![DynamicToolCallOutputContentItem::InputText {
                 text: serde_json::to_string(self)
@@ -303,93 +304,115 @@ struct PaneActionArgs {
     index: Option<usize>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketDraftAssetArgs {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketDraftAssetArgs {
     #[serde(default)]
-    asset_kind: Option<String>,
+    pub asset_kind: Option<String>,
     #[serde(default)]
-    title: Option<String>,
+    pub title: Option<String>,
     #[serde(default)]
-    description: Option<String>,
+    pub description: Option<String>,
     #[serde(default)]
-    content_digest: Option<String>,
+    pub content_digest: Option<String>,
     #[serde(default)]
-    provenance_ref: Option<String>,
+    pub provenance_ref: Option<String>,
     #[serde(default)]
-    default_policy: Option<String>,
+    pub default_policy: Option<String>,
     #[serde(default)]
-    price_hint_sats: Option<u64>,
+    pub price_hint_sats: Option<u64>,
     #[serde(default)]
-    delivery_modes: Option<Vec<String>>,
+    pub delivery_modes: Option<Vec<String>>,
     #[serde(default)]
-    visibility_posture: Option<String>,
+    pub visibility_posture: Option<String>,
     #[serde(default)]
-    sensitivity_posture: Option<String>,
+    pub sensitivity_posture: Option<String>,
     #[serde(default)]
-    metadata: Option<Value>,
+    pub metadata: Option<Value>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketDraftGrantArgs {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketDraftGrantArgs {
     #[serde(default)]
-    default_policy: Option<String>,
+    pub default_policy: Option<String>,
     #[serde(default)]
-    policy_template: Option<String>,
+    pub policy_template: Option<String>,
     #[serde(default)]
-    consumer_id: Option<String>,
+    pub consumer_id: Option<String>,
     #[serde(default)]
-    price_hint_sats: Option<u64>,
+    pub price_hint_sats: Option<u64>,
     #[serde(default)]
-    delivery_modes: Option<Vec<String>>,
+    pub delivery_modes: Option<Vec<String>>,
     #[serde(default)]
-    visibility_posture: Option<String>,
+    pub visibility_posture: Option<String>,
     #[serde(default)]
-    expires_in_hours: Option<u64>,
+    pub expires_in_hours: Option<u64>,
     #[serde(default)]
-    warranty_window_hours: Option<u64>,
+    pub warranty_window_hours: Option<u64>,
     #[serde(default)]
-    metadata: Option<Value>,
+    pub metadata: Option<Value>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketPublishArgs {
-    confirm: bool,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketPublishArgs {
+    pub confirm: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketRequestPaymentArgs {
-    request_id: String,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketRequestPaymentArgs {
+    pub request_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketPrepareDeliveryArgs {
-    request_id: String,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketPrepareDeliveryArgs {
+    pub request_id: String,
     #[serde(default)]
-    preview_text: Option<String>,
+    pub preview_text: Option<String>,
     #[serde(default)]
-    delivery_ref: Option<String>,
+    pub delivery_ref: Option<String>,
     #[serde(default)]
-    delivery_digest: Option<String>,
+    pub delivery_digest: Option<String>,
     #[serde(default)]
-    manifest_refs: Option<Vec<String>>,
+    pub manifest_refs: Option<Vec<String>>,
     #[serde(default)]
-    bundle_size_bytes: Option<u64>,
+    pub bundle_size_bytes: Option<u64>,
     #[serde(default)]
-    expires_in_hours: Option<u64>,
+    pub expires_in_hours: Option<u64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketIssueDeliveryArgs {
-    request_id: String,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketIssueDeliveryArgs {
+    pub request_id: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct DataMarketRevokeGrantArgs {
-    request_id: String,
-    action: String,
-    confirm: bool,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketRevokeGrantArgs {
+    pub request_id: String,
+    pub action: String,
+    pub confirm: bool,
     #[serde(default)]
-    reason_code: Option<String>,
+    pub reason_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketBuyerRequestArgs {
+    #[serde(default)]
+    pub asset_id: Option<String>,
+    #[serde(default)]
+    pub refresh_market: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DataMarketResolveDeliveryArgs {
+    #[serde(default)]
+    pub delivery_bundle_id: Option<String>,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub grant_id: Option<String>,
+    #[serde(default)]
+    pub asset_id: Option<String>,
+    #[serde(default)]
+    pub refresh_market: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1225,7 +1248,306 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
     })
 }
 
-fn execute_data_market_seller_status_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+fn data_buyer_request_tool_snapshot(
+    request: &crate::state::operations::SubmittedNetworkRequest,
+) -> Value {
+    json!({
+        "request_id": request.request_id,
+        "request_type": request.request_type,
+        "status": request.status.label(),
+        "published_request_event_id": request.published_request_event_id,
+        "request_published_at_epoch_seconds": request.request_published_at_epoch_seconds,
+        "target_provider_pubkeys": request.target_provider_pubkeys,
+        "budget_sats": request.budget_sats,
+        "timeout_seconds": request.timeout_seconds,
+        "last_provider_pubkey": request.last_provider_pubkey,
+        "last_feedback_status": request.last_feedback_status,
+        "last_feedback_event_id": request.last_feedback_event_id,
+        "last_result_event_id": request.last_result_event_id,
+        "last_payment_pointer": request.last_payment_pointer,
+        "payment_required_at_epoch_seconds": request.payment_required_at_epoch_seconds,
+        "payment_sent_at_epoch_seconds": request.payment_sent_at_epoch_seconds,
+        "payment_failed_at_epoch_seconds": request.payment_failed_at_epoch_seconds,
+        "payment_error": request.payment_error,
+        "payment_notice": request.payment_notice,
+        "pending_bolt11": request.pending_bolt11,
+        "winning_provider_pubkey": request.winning_provider_pubkey,
+        "winning_result_event_id": request.winning_result_event_id,
+        "resolution_reason_code": request.resolution_reason_code,
+        "authority_status": request.authority_status,
+        "authority_event_id": request.authority_event_id,
+        "provider_observations": request
+            .provider_observations
+            .iter()
+            .take(8)
+            .map(|observation| {
+                json!({
+                    "provider_pubkey": observation.provider_pubkey,
+                    "last_feedback_event_id": observation.last_feedback_event_id,
+                    "last_feedback_status": observation.last_feedback_status,
+                    "last_feedback_status_extra": observation.last_feedback_status_extra,
+                    "last_feedback_amount_msats": observation.last_feedback_amount_msats,
+                    "last_feedback_bolt11": observation.last_feedback_bolt11,
+                    "last_result_event_id": observation.last_result_event_id,
+                    "last_result_status": observation.last_result_status,
+                    "last_feedback_relay_urls": observation.last_feedback_relay_urls,
+                    "last_result_relay_urls": observation.last_result_relay_urls,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn data_buyer_tool_snapshot(state: &RenderState) -> Value {
+    let selected_asset = state.data_buyer.selected_asset(&state.data_market);
+    let selected_grant = state.data_buyer.selected_offer_grant(&state.data_market);
+    let selected_revocation = state.data_buyer.selected_revocation(&state.data_market);
+    let derived_draft = state.data_buyer.derived_request_draft(&state.data_market);
+    let latest_request = state
+        .data_buyer
+        .last_published_request_id
+        .as_deref()
+        .and_then(|request_id| {
+            state
+                .network_requests
+                .submitted
+                .iter()
+                .find(|request| request.request_id == request_id)
+        });
+    json!({
+        "schema_version": DATA_MARKET_TOOL_SCHEMA_VERSION,
+        "buyer": {
+            "load_state": state.data_buyer.load_state.label(),
+            "local_buyer_id": state.data_buyer.local_buyer_id,
+            "selected_asset_id": state.data_buyer.selected_asset_id,
+            "status_line": state.data_buyer.status_line,
+            "last_action": state.data_buyer.last_action,
+            "last_error": state.data_buyer.last_error,
+            "last_published_request_id": state.data_buyer.last_published_request_id,
+            "last_published_request_event_id": state.data_buyer.last_published_request_event_id,
+            "selected_asset": selected_asset.map(|asset| {
+                json!({
+                    "asset_id": asset.asset_id,
+                    "provider_id": asset.provider_id,
+                    "asset_kind": asset.asset_kind,
+                    "title": asset.title,
+                    "status": asset.status.label(),
+                    "price_hint_sats": asset.price_hint.as_ref().and_then(|money| match money.amount {
+                        openagents_kernel_core::receipts::MoneyAmount::AmountSats(amount) => Some(amount),
+                        openagents_kernel_core::receipts::MoneyAmount::AmountMsats(amount) => Some(amount / 1000),
+                    }),
+                    "default_policy_id": asset.default_policy.as_ref().map(|policy| policy.policy_id.clone()),
+                })
+            }),
+            "selected_offer_grant": selected_grant.map(|grant| {
+                json!({
+                    "grant_id": grant.grant_id,
+                    "consumer_id": grant.consumer_id,
+                    "status": grant.status.label(),
+                    "offer_price_sats": grant.offer_price.as_ref().and_then(|money| match money.amount {
+                        openagents_kernel_core::receipts::MoneyAmount::AmountSats(amount) => Some(amount),
+                        openagents_kernel_core::receipts::MoneyAmount::AmountMsats(amount) => Some(amount / 1000),
+                    }),
+                    "policy_id": grant.permission_policy.policy_id,
+                    "expires_at_ms": grant.expires_at_ms,
+                })
+            }),
+            "selected_revocation": selected_revocation.map(|revocation| {
+                json!({
+                    "revocation_id": revocation.revocation_id,
+                    "status": revocation.status.label(),
+                    "reason_code": revocation.reason_code,
+                    "created_at_ms": revocation.created_at_ms,
+                })
+            }),
+            "derived_request_draft": derived_draft.map(|draft| {
+                json!({
+                    "asset_id": draft.asset_id,
+                    "provider_id": draft.provider_id,
+                    "offer_grant_id": draft.offer_grant_id,
+                    "permission_scopes": draft.permission_scopes,
+                    "delivery_mode": draft.delivery_mode,
+                    "preview_posture": draft.preview_posture,
+                    "bid_sats": draft.bid_sats,
+                    "timeout_seconds": draft.timeout_seconds,
+                })
+            }),
+            "latest_request": latest_request.map(data_buyer_request_tool_snapshot),
+        }
+    })
+}
+
+fn data_market_delivery_payload(delivery: &DeliveryBundle) -> Value {
+    json!({
+        "delivery_bundle_id": delivery.delivery_bundle_id,
+        "asset_id": delivery.asset_id,
+        "grant_id": delivery.grant_id,
+        "provider_id": delivery.provider_id,
+        "consumer_id": delivery.consumer_id,
+        "created_at_ms": delivery.created_at_ms,
+        "delivery_ref": delivery.delivery_ref,
+        "delivery_digest": delivery.delivery_digest,
+        "bundle_size_bytes": delivery.bundle_size_bytes,
+        "manifest_refs": delivery.manifest_refs,
+        "expires_at_ms": delivery.expires_at_ms,
+        "status": delivery.status.label(),
+        "metadata": delivery.metadata.clone(),
+    })
+}
+
+fn normalized_data_market_selector(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn delivery_request_id(delivery: &DeliveryBundle) -> Option<&str> {
+    delivery
+        .metadata
+        .get("request_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn resolve_data_market_delivery<'a>(
+    state: &'a RenderState,
+    args: &DataMarketResolveDeliveryArgs,
+) -> Result<(&'a DeliveryBundle, &'static str, Option<String>), String> {
+    let explicit_delivery_bundle_id =
+        normalized_data_market_selector(args.delivery_bundle_id.as_deref());
+    let explicit_request_id = normalized_data_market_selector(args.request_id.as_deref());
+    let explicit_grant_id = normalized_data_market_selector(args.grant_id.as_deref());
+    let explicit_asset_id = normalized_data_market_selector(args.asset_id.as_deref());
+    let inferred_request_id = if explicit_delivery_bundle_id.is_none()
+        && explicit_request_id.is_none()
+        && explicit_grant_id.is_none()
+        && explicit_asset_id.is_none()
+    {
+        state.data_buyer.last_published_request_id.clone()
+    } else {
+        None
+    };
+    let inferred_grant_id = if explicit_delivery_bundle_id.is_none()
+        && explicit_request_id.is_none()
+        && explicit_grant_id.is_none()
+        && explicit_asset_id.is_none()
+    {
+        state
+            .data_buyer
+            .selected_offer_grant(&state.data_market)
+            .map(|grant| grant.grant_id.clone())
+    } else {
+        None
+    };
+
+    let mut candidates = state
+        .data_market
+        .deliveries
+        .iter()
+        .filter(|delivery| {
+            explicit_delivery_bundle_id
+                .as_deref()
+                .is_none_or(|expected| delivery.delivery_bundle_id == expected)
+        })
+        .filter(|delivery| {
+            explicit_request_id
+                .as_deref()
+                .is_none_or(|expected| delivery_request_id(delivery) == Some(expected))
+        })
+        .filter(|delivery| {
+            explicit_grant_id
+                .as_deref()
+                .is_none_or(|expected| delivery.grant_id == expected)
+        })
+        .filter(|delivery| {
+            explicit_asset_id
+                .as_deref()
+                .is_none_or(|expected| delivery.asset_id == expected)
+        })
+        .collect::<Vec<_>>();
+
+    if candidates.is_empty() {
+        if let Some(request_id) = inferred_request_id.as_deref() {
+            candidates = state
+                .data_market
+                .deliveries
+                .iter()
+                .filter(|delivery| delivery_request_id(delivery) == Some(request_id))
+                .collect::<Vec<_>>();
+            if !candidates.is_empty() {
+                return candidates
+                    .into_iter()
+                    .max_by_key(|delivery| {
+                        (delivery.created_at_ms, delivery.delivery_bundle_id.as_str())
+                    })
+                    .map(|delivery| {
+                        (
+                            delivery,
+                            "latest_buyer_request",
+                            Some(request_id.to_string()),
+                        )
+                    })
+                    .ok_or_else(|| "No matching delivery bundles found.".to_string());
+            }
+        }
+        if let Some(grant_id) = inferred_grant_id.as_deref() {
+            candidates = state
+                .data_market
+                .deliveries
+                .iter()
+                .filter(|delivery| delivery.grant_id == grant_id)
+                .collect::<Vec<_>>();
+            if !candidates.is_empty() {
+                return candidates
+                    .into_iter()
+                    .max_by_key(|delivery| {
+                        (delivery.created_at_ms, delivery.delivery_bundle_id.as_str())
+                    })
+                    .map(|delivery| {
+                        (
+                            delivery,
+                            "selected_offer_grant",
+                            delivery_request_id(delivery).map(str::to_string),
+                        )
+                    })
+                    .ok_or_else(|| "No matching delivery bundles found.".to_string());
+            }
+        }
+        return state
+            .data_market
+            .deliveries
+            .iter()
+            .max_by_key(|delivery| (delivery.created_at_ms, delivery.delivery_bundle_id.as_str()))
+            .map(|delivery| {
+                (
+                    delivery,
+                    "latest_delivery",
+                    delivery_request_id(delivery).map(str::to_string),
+                )
+            })
+            .ok_or_else(|| {
+                "No delivery bundles are currently visible in the Data Market snapshot.".to_string()
+            });
+    }
+
+    candidates
+        .into_iter()
+        .max_by_key(|delivery| (delivery.created_at_ms, delivery.delivery_bundle_id.as_str()))
+        .map(|delivery| {
+            (
+                delivery,
+                "explicit_selector",
+                delivery_request_id(delivery).map(str::to_string),
+            )
+        })
+        .ok_or_else(|| "No matching delivery bundles found.".to_string())
+}
+
+pub(crate) fn execute_data_market_seller_status_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::ok(
         "OA-DATA-MARKET-SELLER-STATUS",
         "Loaded Data Seller status snapshot.",
@@ -1233,7 +1555,95 @@ fn execute_data_market_seller_status_tool(state: &mut RenderState) -> ToolBridge
     )
 }
 
-fn execute_data_market_draft_asset_tool(
+pub(crate) fn execute_data_market_buyer_status_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-BUYER-STATUS",
+        "Loaded Data Buyer status snapshot.",
+        data_buyer_tool_snapshot(state),
+    )
+}
+
+pub(crate) fn execute_data_market_buyer_refresh_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
+    crate::data_buyer_control::refresh_data_buyer_market(state);
+    ToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-BUYER-REFRESHED",
+        "Refreshed the Data Buyer market snapshot and selection.",
+        data_buyer_tool_snapshot(state),
+    )
+}
+
+pub(crate) fn execute_data_market_buyer_publish_request_tool(
+    state: &mut RenderState,
+    args: &DataMarketBuyerRequestArgs,
+) -> ToolBridgeResultEnvelope {
+    if args.refresh_market {
+        crate::data_buyer_control::refresh_data_buyer_market(state);
+    }
+    if let Some(asset_id) = args.asset_id.as_deref()
+        && let Err(error) = crate::data_buyer_control::select_data_buyer_asset(state, asset_id)
+    {
+        return ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-BUYER-ASSET-SELECT-FAILED",
+            error,
+            data_buyer_tool_snapshot(state),
+        );
+    }
+    crate::data_buyer_control::publish_data_buyer_request(state);
+    if state.data_buyer.last_error.is_none() && state.data_buyer.last_published_request_id.is_some()
+    {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-BUYER-REQUEST-PUBLISHED",
+            "Published the targeted Data Buyer request.",
+            data_buyer_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-BUYER-REQUEST-PUBLISH-FAILED",
+            state.data_buyer.last_error.clone().unwrap_or_else(|| {
+                "Failed to publish the targeted Data Buyer request.".to_string()
+            }),
+            data_buyer_tool_snapshot(state),
+        )
+    }
+}
+
+pub(crate) fn execute_data_market_resolve_delivery_tool(
+    state: &mut RenderState,
+    args: &DataMarketResolveDeliveryArgs,
+) -> ToolBridgeResultEnvelope {
+    if args.refresh_market {
+        crate::data_buyer_control::refresh_data_buyer_market(state);
+    }
+
+    match resolve_data_market_delivery(state, args) {
+        Ok((delivery, selection_reason, resolved_request_id)) => ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-DELIVERY-RESOLVED",
+            "Resolved Data Market delivery details for local consumption.",
+            json!({
+                "schema_version": DATA_MARKET_TOOL_SCHEMA_VERSION,
+                "selection_reason": selection_reason,
+                "resolved_request_id": resolved_request_id,
+                "delivery": data_market_delivery_payload(delivery),
+            }),
+        ),
+        Err(error) => ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-DELIVERY-RESOLVE-FAILED",
+            error,
+            json!({
+                "schema_version": DATA_MARKET_TOOL_SCHEMA_VERSION,
+                "selection_reason": Value::Null,
+                "resolved_request_id": Value::Null,
+                "delivery": Value::Null,
+            }),
+        ),
+    }
+}
+
+pub(crate) fn execute_data_market_draft_asset_tool(
     state: &mut RenderState,
     args: &DataMarketDraftAssetArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1296,7 +1706,9 @@ fn execute_data_market_draft_asset_tool(
     )
 }
 
-fn execute_data_market_preview_asset_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_preview_asset_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     crate::data_seller_control::request_data_seller_preview(state);
     let success = matches!(
         state.data_seller.active_draft.preview_posture,
@@ -1317,7 +1729,7 @@ fn execute_data_market_preview_asset_tool(state: &mut RenderState) -> ToolBridge
     }
 }
 
-fn execute_data_market_publish_asset_tool(
+pub(crate) fn execute_data_market_publish_asset_tool(
     state: &mut RenderState,
     args: &DataMarketPublishArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1361,7 +1773,7 @@ fn execute_data_market_publish_asset_tool(
     }
 }
 
-fn execute_data_market_draft_grant_tool(
+pub(crate) fn execute_data_market_draft_grant_tool(
     state: &mut RenderState,
     args: &DataMarketDraftGrantArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1417,7 +1829,9 @@ fn execute_data_market_draft_grant_tool(
     )
 }
 
-fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_preview_grant_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     crate::data_seller_control::request_data_seller_grant_preview(state);
     let success = state
         .data_seller
@@ -1439,7 +1853,7 @@ fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridge
     }
 }
 
-fn execute_data_market_publish_grant_tool(
+pub(crate) fn execute_data_market_publish_grant_tool(
     state: &mut RenderState,
     args: &DataMarketPublishArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1477,7 +1891,7 @@ fn execute_data_market_publish_grant_tool(
     }
 }
 
-fn execute_data_market_request_payment_tool(
+pub(crate) fn execute_data_market_request_payment_tool(
     state: &mut RenderState,
     args: &DataMarketRequestPaymentArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1515,7 +1929,7 @@ fn execute_data_market_request_payment_tool(
     }
 }
 
-fn execute_data_market_prepare_delivery_tool(
+pub(crate) fn execute_data_market_prepare_delivery_tool(
     state: &mut RenderState,
     args: &DataMarketPrepareDeliveryArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1552,7 +1966,7 @@ fn execute_data_market_prepare_delivery_tool(
     }
 }
 
-fn execute_data_market_issue_delivery_tool(
+pub(crate) fn execute_data_market_issue_delivery_tool(
     state: &mut RenderState,
     args: &DataMarketIssueDeliveryArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1585,7 +1999,7 @@ fn execute_data_market_issue_delivery_tool(
     }
 }
 
-fn execute_data_market_revoke_grant_tool(
+pub(crate) fn execute_data_market_revoke_grant_tool(
     state: &mut RenderState,
     args: &DataMarketRevokeGrantArgs,
 ) -> ToolBridgeResultEnvelope {
@@ -1628,9 +2042,18 @@ fn execute_data_market_revoke_grant_tool(
     }
 }
 
-fn execute_data_market_snapshot_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
+pub(crate) fn execute_data_market_snapshot_tool(
+    state: &mut RenderState,
+) -> ToolBridgeResultEnvelope {
     let mut details = data_seller_tool_snapshot(state);
     if let Some(object) = details.as_object_mut() {
+        object.insert(
+            "buyer".to_string(),
+            data_buyer_tool_snapshot(state)
+                .get("buyer")
+                .cloned()
+                .unwrap_or(Value::Null),
+        );
         object.insert(
             "market".to_string(),
             json!({

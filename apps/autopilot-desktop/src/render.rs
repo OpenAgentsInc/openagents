@@ -107,10 +107,11 @@ fn configure_event_context_clipboard(event_context: &mut wgpui::EventContext) {
     });
 }
 
-pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
+pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<RenderState> {
     let window_attrs = Window::default_attributes()
         .with_title(WINDOW_TITLE)
-        .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+        .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+        .with_visible(window_visible);
 
     let window = Arc::new(
         event_loop
@@ -428,6 +429,12 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
         let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
+        if let Ok(bind_addr) = std::env::var(crate::desktop_control::DESKTOP_CONTROL_BIND_ENV) {
+            let trimmed = bind_addr.trim();
+            if !trimmed.is_empty() {
+                state.desktop_control.requested_bind_addr = trimmed.to_string();
+            }
+        }
         open_startup_panes(&mut state);
         let _ = crate::desktop_control::enable_runtime(&mut state, None);
         Ok(state)

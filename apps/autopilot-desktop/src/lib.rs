@@ -92,11 +92,29 @@ pub use local_inference_runtime::{
     local_runtime_execution_posture_label, local_runtime_scheduler_posture_label,
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DesktopAppOptions {
+    pub window_visible: bool,
+}
+
+impl Default for DesktopAppOptions {
+    fn default() -> Self {
+        Self {
+            window_visible: true,
+        }
+    }
+}
+
 pub fn run_desktop_app() -> Result<()> {
+    run_desktop_app_with_options(DesktopAppOptions::default())
+}
+
+pub fn run_desktop_app_with_options(options: DesktopAppOptions) -> Result<()> {
     logging::init();
     let event_loop = EventLoop::new().context("failed to create event loop")?;
     let mut app = AppShell {
         inner: App::default(),
+        options,
     };
     event_loop
         .run_app(&mut app)
@@ -106,6 +124,7 @@ pub fn run_desktop_app() -> Result<()> {
 
 struct AppShell {
     inner: App,
+    options: DesktopAppOptions,
 }
 
 impl ApplicationHandler for AppShell {
@@ -114,7 +133,7 @@ impl ApplicationHandler for AppShell {
             return;
         }
 
-        match render::init_state(event_loop) {
+        match render::init_state(event_loop, self.options.window_visible) {
             Ok(state) => {
                 state.window.request_redraw();
                 self.inner.state = Some(state);

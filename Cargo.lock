@@ -626,6 +626,7 @@ dependencies = [
  "autopilot-spacetime",
  "axum 0.8.8",
  "base64 0.22.1",
+ "bech32 0.11.1",
  "bitcoin 0.32.8",
  "chrono",
  "clap",
