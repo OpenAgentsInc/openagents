@@ -23,6 +23,7 @@ use crate::app_state::{
     StarterJobStatus, StarterJobsState, SyncHealthState, TassadarLabPaneState,
     TrajectoryAuditPaneState, mission_control_local_runtime_is_ready,
     mission_control_local_runtime_lane, mission_control_show_local_model_button,
+    VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -88,7 +89,7 @@ use crate::panes::{
     seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, tassadar_lab as tassadar_lab_pane,
-    wallet as wallet_pane,
+    voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::{SparkInvoiceState, SparkPaneState};
 use crate::state::job_inbox::JobInboxRequest;
@@ -166,6 +167,7 @@ impl PaneRenderer {
         provider_runtime: &ProviderRuntimeState,
         local_inference_runtime: &LocalInferenceExecutionSnapshot,
         apple_fm_execution: &AppleFmBridgeSnapshot,
+        voice_playground: &VoicePlaygroundPaneState,
         local_inference: &LocalInferencePaneState,
         attnres_lab: &AttnResLabPaneState,
         tassadar_lab: &TassadarLabPaneState,
@@ -211,6 +213,7 @@ impl PaneRenderer {
         create_invoice_inputs: &mut CreateInvoicePaneInputs,
         relay_connections_inputs: &mut RelayConnectionsPaneInputs,
         network_requests_inputs: &mut NetworkRequestsPaneInputs,
+        voice_playground_inputs: &mut VoicePlaygroundPaneInputs,
         local_inference_inputs: &mut LocalInferencePaneInputs,
         apple_fm_workbench_inputs: &mut AppleFmWorkbenchPaneInputs,
         apple_adapter_training_inputs: &mut AppleAdapterTrainingPaneInputs,
@@ -421,6 +424,14 @@ impl PaneRenderer {
                         earn_job_lifecycle_projection,
                         backend_kernel_authority,
                         provider_blockers,
+                        paint,
+                    );
+                }
+                PaneKind::VoicePlayground => {
+                    voice_playground_pane::paint(
+                        content_bounds,
+                        voice_playground,
+                        voice_playground_inputs,
                         paint,
                     );
                 }

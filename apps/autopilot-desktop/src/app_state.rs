@@ -99,6 +99,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderControl,
     ProviderStatus,
+    VoicePlayground,
     LocalInference,
     PsionicViz,
     AttnResLab,
@@ -483,6 +484,14 @@ impl Default for NetworkRequestsPaneInputs {
                 .placeholder("Delivery window minutes"),
             max_price_sats: TextInput::new().value("34").placeholder("Max price sats"),
         }
+    }
+}
+
+pub struct VoicePlaygroundPaneInputs;
+
+impl Default for VoicePlaygroundPaneInputs {
+    fn default() -> Self {
+        Self
     }
 }
 
@@ -13809,6 +13818,7 @@ impl_pane_status_access!(
     SkillRegistryPaneState,
     SkillTrustRevocationPaneState,
     CadDemoPaneState,
+    VoicePlaygroundPaneState,
     AttnResLabPaneState,
     TassadarLabPaneState,
     CreditDeskPaneState,
@@ -13917,6 +13927,7 @@ pub struct RenderState {
     pub create_invoice_inputs: CreateInvoicePaneInputs,
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
+    pub voice_playground_inputs: VoicePlaygroundPaneInputs,
     pub local_inference_inputs: LocalInferencePaneInputs,
     pub apple_fm_workbench_inputs: AppleFmWorkbenchPaneInputs,
     pub apple_adapter_training_inputs: AppleAdapterTrainingPaneInputs,
@@ -13964,6 +13975,7 @@ pub struct RenderState {
     pub nip28_chat_lane_worker: crate::nip28_chat_lane::Nip28ChatLaneWorker,
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
+    pub voice_playground_worker: crate::voice_playground::VoicePlaygroundWorker,
     pub gpt_oss_execution: LocalInferenceExecutionSnapshot,
     pub local_inference_runtime: Box<dyn LocalInferenceRuntime>,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
@@ -13971,6 +13983,7 @@ pub struct RenderState {
     pub provider_runtime: ProviderRuntimeState,
     pub provider_heartbeat_cadence: ProviderHeartbeatCadenceState,
     pub background_cadence: BackgroundCadenceState,
+    pub voice_playground: VoicePlaygroundPaneState,
     pub local_inference: LocalInferencePaneState,
     pub attnres_lab: AttnResLabPaneState,
     pub tassadar_lab: TassadarLabPaneState,

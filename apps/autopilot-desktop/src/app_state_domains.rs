@@ -48,6 +48,53 @@ impl Default for LocalInferencePaneState {
     }
 }
 
+pub struct VoicePlaygroundPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub backend_label: String,
+    pub active_account: Option<String>,
+    pub project_id: Option<String>,
+    pub stt_location: String,
+    pub stt_model: String,
+    pub stt_language_code: String,
+    pub recording_state: crate::voice_playground::VoiceRecordingState,
+    pub transcription_state: crate::voice_playground::VoiceTranscriptionState,
+    pub input_device_name: Option<String>,
+    pub pending_request_id: Option<String>,
+    pub last_request_id: Option<String>,
+    pub clip_duration_ms: Option<u64>,
+    pub transcript_preview: String,
+    pub transcript_chars: usize,
+    pub last_transcription_latency_ms: Option<u64>,
+}
+
+impl Default for VoicePlaygroundPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for voice playground snapshot".to_string()),
+            backend_label: "google-cloud-speech-v2".to_string(),
+            active_account: None,
+            project_id: None,
+            stt_location: crate::voice_playground::VoicePlaygroundConfig::default().stt_location,
+            stt_model: crate::voice_playground::VoicePlaygroundConfig::default().stt_model,
+            stt_language_code: crate::voice_playground::VoicePlaygroundConfig::default()
+                .stt_language_code,
+            recording_state: crate::voice_playground::VoiceRecordingState::Idle,
+            transcription_state: crate::voice_playground::VoiceTranscriptionState::Idle,
+            input_device_name: None,
+            pending_request_id: None,
+            last_request_id: None,
+            clip_duration_ms: None,
+            transcript_preview: String::new(),
+            transcript_chars: 0,
+            last_transcription_latency_ms: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AttnResLabViewMode {

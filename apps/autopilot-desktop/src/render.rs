@@ -38,6 +38,7 @@ use crate::runtime_lanes::{
     SaLifecycleCommand, SklLaneSnapshot, SklLaneWorker,
 };
 use crate::spark_wallet::SparkWalletCommand;
+use crate::voice_playground::VoicePlaygroundWorker;
 
 const WALLET_BALANCE_CHIP_MARGIN: f32 = 12.0;
 const WALLET_BALANCE_CHIP_HEIGHT: f32 = 48.0;
@@ -204,6 +205,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let nip28_chat_lane_worker = crate::nip28_chat_lane::Nip28ChatLaneWorker::spawn();
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
+        let voice_playground_worker = VoicePlaygroundWorker::new();
         let chat_terminal_worker = crate::chat_terminal::ChatTerminalWorker::spawn();
         let local_inference_runtime = default_local_inference_runtime().map_err(|error| {
             anyhow::anyhow!("failed to start default local inference runtime: {error}")
@@ -282,6 +284,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
             create_invoice_inputs: crate::app_state::CreateInvoicePaneInputs::default(),
             relay_connections_inputs: crate::app_state::RelayConnectionsPaneInputs::default(),
             network_requests_inputs: crate::app_state::NetworkRequestsPaneInputs::default(),
+            voice_playground_inputs: crate::app_state::VoicePlaygroundPaneInputs::default(),
             local_inference_inputs: crate::app_state::LocalInferencePaneInputs::default(),
             apple_fm_workbench_inputs: crate::app_state::AppleFmWorkbenchPaneInputs::default(),
             apple_adapter_training_inputs:
@@ -330,6 +333,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
             nip28_chat_lane_worker,
             apple_fm_execution: AppleFmBridgeSnapshot::default(),
             apple_fm_execution_worker,
+            voice_playground_worker,
             gpt_oss_execution: initial_local_inference_runtime_snapshot(),
             local_inference_runtime,
             runtime_command_responses: Vec::new(),
@@ -337,6 +341,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             provider_heartbeat_cadence: crate::app_state::ProviderHeartbeatCadenceState::default(),
             background_cadence: crate::app_state::BackgroundCadenceState::default(),
+            voice_playground: crate::app_state::VoicePlaygroundPaneState::default(),
             local_inference: crate::app_state::LocalInferencePaneState::default(),
             attnres_lab: crate::app_state::AttnResLabPaneState::default(),
             tassadar_lab: crate::app_state::TassadarLabPaneState::default(),
@@ -1132,6 +1137,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &state.provider_runtime,
             &state.gpt_oss_execution,
             &state.apple_fm_execution,
+            &state.voice_playground,
             &state.local_inference,
             &state.attnres_lab,
             &state.tassadar_lab,
@@ -1177,6 +1183,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.create_invoice_inputs,
             &mut state.relay_connections_inputs,
             &mut state.network_requests_inputs,
+            &mut state.voice_playground_inputs,
             &mut state.local_inference_inputs,
             &mut state.apple_fm_workbench_inputs,
             &mut state.apple_adapter_training_inputs,

@@ -14,7 +14,8 @@ use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
     chat as chat_pane, data_seller as data_seller_pane, local_inference as local_inference_pane,
-    relay_connections as relay_connections_pane, rive as rive_pane, wallet as wallet_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, pane_fullscreen_active, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -478,6 +479,14 @@ pub enum SyncHealthPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderStatusPaneAction {
     ToggleInventory(crate::app_state::ProviderInventoryProductToggleTarget),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VoicePlaygroundPaneAction {
+    Refresh,
+    StartRecording,
+    StopRecordingAndTranscribe,
+    CancelRecording,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1065,6 +1074,7 @@ pub enum PaneHitAction {
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
     ProviderStatus(ProviderStatusPaneAction),
+    VoicePlayground(VoicePlaygroundPaneAction),
     LocalInference(LocalInferencePaneAction),
     AttnResLab(AttnResLabPaneAction),
     TassadarLab(TassadarLabPaneAction),
@@ -1184,6 +1194,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
+        PaneKind::VoicePlayground => pane_size_for_content(980.0, 540.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
         PaneKind::AttnResLab | PaneKind::TassadarLab => pane_size_for_content(1080.0, 680.0),
@@ -1666,6 +1677,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     return CursorIcon::Text;
                 }
             }
+            PaneKind::VoicePlayground => {}
             PaneKind::NetworkRequests => {
                 if network_requests_type_input_bounds(content_bounds).contains(point)
                     || network_requests_payload_input_bounds(content_bounds).contains(point)
@@ -3369,6 +3381,45 @@ pub fn sync_health_rebootstrap_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn voice_playground_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        128.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn voice_playground_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = voice_playground_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        152.0,
+        refresh.size.height,
+    )
+}
+
+pub fn voice_playground_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    let start = voice_playground_start_button_bounds(content_bounds);
+    Bounds::new(
+        start.max_x() + JOB_INBOX_BUTTON_GAP,
+        start.origin.y,
+        184.0,
+        start.size.height,
+    )
+}
+
+pub fn voice_playground_cancel_button_bounds(content_bounds: Bounds) -> Bounds {
+    let stop = voice_playground_stop_button_bounds(content_bounds);
+    Bounds::new(
+        stop.max_x() + JOB_INBOX_BUTTON_GAP,
+        stop.origin.y,
+        124.0,
+        stop.size.height,
     )
 }
 
@@ -6835,6 +6886,29 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::VoicePlayground => {
+            if voice_playground_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::Refresh,
+                ));
+            }
+            if voice_playground_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::StartRecording,
+                ));
+            }
+            if voice_playground_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::StopRecordingAndTranscribe,
+                ));
+            }
+            if voice_playground_cancel_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::CancelRecording,
+                ));
+            }
+            None
+        }
         PaneKind::LocalInference => {
             if local_inference_refresh_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::LocalInference(
@@ -8284,6 +8358,13 @@ pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEv
 
 pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     relay_connections_pane::dispatch_input_event(state, event)
+}
+
+pub fn dispatch_voice_playground_input_event(
+    state: &mut RenderState,
+    event: &InputEvent,
+) -> bool {
+    voice_playground_pane::dispatch_input_event(state, event)
 }
 
 pub fn dispatch_local_inference_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
