@@ -5,13 +5,14 @@ metadata:
   oa:
     project: openagents
     identifier: autopilot-data-seller-cli
-    version: "0.1.0"
+    version: "0.2.0"
     expires_at_unix: 1798761600
     capabilities:
       - codex:shell
       - data-market:packaging
       - data-market:cli-publication
       - data-market:headless-control
+      - data-market:conversation-redaction
 ---
 
 # Autopilot Data Seller CLI
@@ -23,6 +24,8 @@ or manage it through CLI, not through the visible `Data Seller` pane.
 
 - Package local files or folders with
   [`scripts/package_data_asset.sh`](scripts/package_data_asset.sh).
+- Package redacted Codex conversations with
+  [`scripts/package_codex_conversations.sh`](scripts/package_codex_conversations.sh).
 - Start the no-window runtime when needed:
   `cargo run -p autopilot-desktop --bin autopilot_headless_data_market -- --manifest-path ...`
 - Inspect truth first with:
@@ -43,11 +46,21 @@ or manage it through CLI, not through the visible `Data Seller` pane.
    posture.
 7. Keep packaging metadata flat and string-valued so it remains compatible with
    the seller tool contract.
+8. For Codex session bundles, default to the redacted conversation packager
+   rather than hand-editing rollout JSONL or packaging raw `.codex` files.
+9. Developer/system prompt material should stay excluded unless the user
+   explicitly asks to include it after redaction.
+10. Before publish, inspect the exported bundle for any project-specific names
+    or literals that still need scrubbing and rerun packaging with `--scrub`
+    when needed.
 
 ## When to read references
 
 - Read [references/packaging-contract.md](references/packaging-contract.md)
   before packaging or editing emitted JSON.
+- Read
+  [references/codex-conversation-redaction.md](references/codex-conversation-redaction.md)
+  before packaging Codex sessions or editing redacted conversation bundles.
 - Read [references/cli-workflow.md](references/cli-workflow.md) for the
   end-to-end flow from package to published asset/grant.
 - Read
@@ -58,6 +71,8 @@ or manage it through CLI, not through the visible `Data Seller` pane.
 
 - `scripts/package_data_asset.sh`: thin wrapper around the deterministic local
   packaging helper.
+- `scripts/package_codex_conversations.sh`: redact recent or explicit Codex
+  rollout sessions and turn them into normal Data Market draft artifacts.
 - `scripts/publish_asset.sh`: semantic asset draft/preview/publish/snapshot
   flow.
 - `scripts/publish_grant.sh`: semantic grant draft/preview/publish/snapshot

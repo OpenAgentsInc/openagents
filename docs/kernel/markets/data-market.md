@@ -57,6 +57,7 @@ smuggled through opaque prompt state.
 - expose a checked-in `openagents.data.v1` proto package and use it for data-market authority mutation/read envelopes
 - expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
 - package local files or directories into deterministic `listing-template.json`, `grant-template.json`, `packaging-manifest.json`, and `packaging-summary.json` artifacts through `scripts/autopilot/data_market_package.py`
+- package recent or explicit Codex rollout conversations into a redacted seller-ready bundle through `scripts/autopilot/package_codex_conversations.py`
 - drive the same seller path through `autopilotctl data-market ...` without opening the visible UI window
 - start a no-window Data Market runtime through `autopilot_headless_data_market`
 - use the repo-owned `skills/autopilot-data-seller-cli` skill for shell-first packaging and publication discipline

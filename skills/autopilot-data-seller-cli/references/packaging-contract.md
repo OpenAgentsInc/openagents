@@ -19,12 +19,26 @@ That wrapper calls:
 scripts/autopilot/data_market_package.py
 ```
 
+For Codex rollout conversations, use:
+
+```bash
+skills/autopilot-data-seller-cli/scripts/package_codex_conversations.sh
+```
+
+That wrapper calls:
+
+```bash
+scripts/autopilot/package_codex_conversations.py
+```
+
 ## Emitted files
 
 - `listing-template.json`
 - `grant-template.json` unless `--skip-grant-template`
 - `packaging-manifest.json`
 - `packaging-summary.json`
+- `redacted-codex-conversations/` and `conversation-index.json` when packaging
+  Codex sessions
 
 ## Important constraints
 
@@ -34,6 +48,9 @@ scripts/autopilot/data_market_package.py
   can derive them.
 - Re-run packaging if the underlying source material changes.
 - Treat emitted JSON as draft input, not published market truth.
+- For Codex session sales, do not publish raw rollout files without running the
+  redaction packager first unless the user explicitly asks for unredacted
+  material.
 
 ## Listing template mapping
 

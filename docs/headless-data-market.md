@@ -102,6 +102,22 @@ scripts/autopilot/data_market_package.py \
   --price-sats 250
 ```
 
+If the asset is a bundle of Codex conversations, use the dedicated redaction
+packager instead:
+
+```bash
+skills/autopilot-data-seller-cli/scripts/package_codex_conversations.sh \
+  --limit 5 \
+  --output-dir ./tmp/codex-package \
+  --title "Redacted Codex conversation bundle" \
+  --price-sats 500
+```
+
+That wrapper reads rollout JSONL from `~/.codex/sessions`, exports a redacted
+conversation bundle into `redacted-codex-conversations/`, and still emits the
+normal `listing-template.json` / `grant-template.json` artifacts used by the
+rest of the seller flow.
+
 2. Draft, preview, and publish the asset:
 
 ```bash

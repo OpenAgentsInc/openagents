@@ -29,6 +29,23 @@ skills/autopilot-data-seller-cli/scripts/package_data_asset.sh \
   --price-sats 250
 ```
 
+If the material is a bundle of Codex conversations rather than an arbitrary
+directory, use the dedicated redaction packager instead:
+
+```bash
+skills/autopilot-data-seller-cli/scripts/package_codex_conversations.sh \
+  --limit 5 \
+  --output-dir ./tmp/codex-package \
+  --title "Redacted Codex conversation bundle" \
+  --price-sats 500
+```
+
+That wrapper:
+
+1. reads rollout JSONL from `~/.codex/sessions` or explicit `--session` paths
+2. exports a redacted conversation bundle into `redacted-codex-conversations/`
+3. emits the normal `listing-template.json` and `grant-template.json`
+
 ## 3. Inspect seller state first
 
 ```bash
