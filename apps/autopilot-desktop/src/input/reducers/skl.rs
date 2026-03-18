@@ -90,6 +90,12 @@ pub(super) fn run_skill_registry_action(
                     error
                 );
             }
+            if let Err(error) = crate::skill_autoload::ensure_required_data_market_skills() {
+                tracing::warn!(
+                    "failed to auto-provision managed Data Market skills before discover: {}",
+                    error
+                );
+            }
             let extra_user_roots = crate::skill_autoload::codex_extra_skill_roots(&cwd);
             state.skill_registry.repo_skills_root = extra_user_roots
                 .first()

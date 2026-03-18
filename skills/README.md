@@ -9,6 +9,8 @@ This directory is the project-owned Agent Skills registry.
 | [blink](./blink/SKILL.md) | Blink Lightning wallet for agents — balances, invoices, payments, QR codes, price conversion, and transaction history. |
 | [autopilot-cad-builder](./autopilot-cad-builder/SKILL.md) | Deterministic CAD design/build orchestration for Autopilot Chat using `openagents.cad.*` and pane tools. |
 | [autopilot-pane-control](./autopilot-pane-control/SKILL.md) | OpenAgents desktop pane and CAD control for Codex via `openagents.*` tool calls. |
+| [autopilot-data-seller](./autopilot-data-seller/SKILL.md) | Conversational seller-authoring policy for Data Market listings in the dedicated `Data Seller` pane. |
+| [autopilot-data-market-control](./autopilot-data-market-control/SKILL.md) | Typed OpenAgents Data Market tool contract for seller publication and authority read-back. |
 | [charms](./charms/SKILL.md) | Charms workflows for Bitcoin app contracts, spell proving, and UTXO asset operations. |
 | [cast](./cast/SKILL.md) | Charms CAST DEX workflows for order creation, cancellation/replacement, partial fulfillment, signing, and transaction verification on Bitcoin. |
 | [l402](./l402/SKILL.md) | L402 agent commerce workflows with lnd, lnget, scoped macaroons, aperture, and MCP. |

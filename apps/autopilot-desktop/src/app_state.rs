@@ -1367,6 +1367,13 @@ pub struct DataSellerCodexProfile {
     pub thread_preview: String,
     pub personality: AutopilotChatPersonality,
     pub collaboration_mode: AutopilotChatCollaborationMode,
+    pub required_skill_names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataSellerSkillAttachment {
+    pub name: String,
+    pub path: String,
 }
 
 impl Default for DataSellerCodexProfile {
@@ -1377,6 +1384,10 @@ impl Default for DataSellerCodexProfile {
             thread_preview: "Dedicated data-market seller authoring lane".to_string(),
             personality: AutopilotChatPersonality::Pragmatic,
             collaboration_mode: AutopilotChatCollaborationMode::Default,
+            required_skill_names: crate::skill_autoload::REQUIRED_DATA_MARKET_POLICY_SKILLS
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
         }
     }
 }
@@ -1395,6 +1406,7 @@ pub struct DataSellerPaneState {
     pub codex_session_phase: DataSellerCodexSessionPhase,
     pub codex_thread_status: Option<String>,
     pub codex_session_cwd: Option<String>,
+    pub required_skill_attachments: Vec<DataSellerSkillAttachment>,
 }
 
 impl Default for DataSellerPaneState {
@@ -1433,6 +1445,7 @@ impl Default for DataSellerPaneState {
             codex_session_phase: DataSellerCodexSessionPhase::Detached,
             codex_thread_status: None,
             codex_session_cwd: None,
+            required_skill_attachments: Vec::new(),
         }
     }
 }
@@ -1556,6 +1569,33 @@ impl DataSellerPaneState {
         );
         self.status_line =
             "Publish remains gated behind exact preview and explicit confirmation.".to_string();
+    }
+
+    pub fn set_required_skill_attachments(
+        &mut self,
+        attachments: Vec<DataSellerSkillAttachment>,
+    ) {
+        self.required_skill_attachments = attachments;
+    }
+
+    pub fn required_skill_summary(&self) -> String {
+        if self.required_skill_attachments.is_empty() {
+            self.codex_profile.required_skill_names.join(", ")
+        } else {
+            self.required_skill_attachments
+                .iter()
+                .map(|attachment| attachment.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    }
+
+    pub fn required_skill_count(&self) -> usize {
+        if self.required_skill_attachments.is_empty() {
+            self.codex_profile.required_skill_names.len()
+        } else {
+            self.required_skill_attachments.len()
+        }
     }
 }
 
@@ -11708,6 +11748,13 @@ mod tests {
         assert_eq!(
             pane.codex_profile.collaboration_mode,
             super::AutopilotChatCollaborationMode::Default
+        );
+        assert_eq!(
+            pane.codex_profile.required_skill_names,
+            vec![
+                "autopilot-data-seller".to_string(),
+                "autopilot-data-market-control".to_string()
+            ]
         );
     }
 

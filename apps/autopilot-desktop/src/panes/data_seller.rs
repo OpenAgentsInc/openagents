@@ -301,6 +301,13 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
+        "required skills",
+        &pane_state.required_skill_summary(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
         "authority truth",
         "kernel DataAsset / AccessGrant",
     );
