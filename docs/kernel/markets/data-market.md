@@ -45,6 +45,9 @@ smuggled through opaque prompt state.
 - carry reusable grant-policy templates plus a first seller-side grant draft posture in the conversational seller flow
 - preview and publish `AccessGrant` objects from the same seller flow and reflect the resulting grant read-back into the read-only `Data Market` pane
 - show a seller-side inventory/status card with published asset/default-offer summaries and draft-vs-published warnings
+- derive and publish an explicit OpenAgents-local NIP-90 data-vending profile from the seller pane into the shared relay/runtime lane
+- parse incoming OpenAgents data-vending requests on the desktop relay lane as `openagents.data.access` demand instead of treating them as malformed compute jobs
+- advertise the current data-vending request kind and coarse asset-family/delivery metadata on the provider NIP-89 handler when a seller profile is present
 
 The starter authority slice is real in:
 

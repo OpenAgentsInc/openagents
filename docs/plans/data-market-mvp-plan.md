@@ -270,6 +270,13 @@ Recommendation:
 This plan deliberately does not assign a specific numeric request kind.
 The point is to keep the MVP on the NIP-90 rail without creating avoidable kind conflicts.
 
+Current repo note:
+
+* the desktop/runtime now uses an explicit temporary OpenAgents-local request
+  kind `5960` for the initial seller/data-vending implementation
+* that value should be treated as local launch posture until the job-kind
+  registry decision is frozen
+
 ### In-repo helper profile
 
 The in-repo helper surface should stay explicit about what is local policy versus public protocol.

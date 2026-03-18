@@ -1,10 +1,11 @@
 use crate::state::job_inbox::{JobExecutionParam, JobInboxNetworkRequest, JobInboxValidation};
 use nostr::nip90::{
-    InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX,
-    JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK,
-    KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY,
-    KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
-    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind,
+    DataVendingRequest, InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN,
+    JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW,
+    KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
+    KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT,
+    KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION,
+    KIND_JOB_TRANSLATION, OPENAGENTS_DATA_VENDING_PROFILE, is_job_feedback_kind,
     is_job_request_kind, is_job_result_kind,
 };
 use nostr::{Event, EventTemplate};
@@ -104,6 +105,18 @@ pub struct ProviderNip90ComputeCapability {
     pub last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProviderNip90DataVendingProfile {
+    pub profile_id: String,
+    pub request_kind: u16,
+    pub result_kind: u16,
+    pub kind_posture: String,
+    pub targeting_posture: String,
+    pub asset_families: Vec<String>,
+    pub delivery_modes: Vec<String>,
+    pub preview_postures: Vec<String>,
+}
+
 impl ProviderNip90ComputeCapability {
     pub fn is_ready(&self) -> bool {
         self.reachable && self.ready_model.is_some()
@@ -155,6 +168,9 @@ pub enum ProviderNip90LaneCommand {
     },
     ConfigureComputeCapability {
         capability: ProviderNip90ComputeCapability,
+    },
+    ConfigureDataVendingProfile {
+        profile: Option<ProviderNip90DataVendingProfile>,
     },
     ConfigureRelays {
         relays: Vec<String>,
@@ -305,6 +321,7 @@ struct ProviderNip90LaneState {
     pool: Option<Arc<RelayPool>>,
     auth_identity: Option<ProviderNip90AuthIdentity>,
     compute_capability: ProviderNip90ComputeCapability,
+    data_vending_profile: Option<ProviderNip90DataVendingProfile>,
     handler_publication_state: HandlerPublicationState,
     next_handler_publish_retry_at: Option<Instant>,
     tracked_provider_publish_request_ids: Vec<String>,
@@ -345,7 +362,7 @@ impl ProviderNip90LaneState {
     }
 
     fn provider_request_ingress_enabled(&self) -> bool {
-        self.compute_capability.is_ready()
+        self.compute_capability.is_ready() || self.data_vending_profile.is_some()
     }
 
     fn ingress_filters(&self) -> Vec<serde_json::Value> {
@@ -484,6 +501,7 @@ fn run_lane_loop(
         pool: None,
         auth_identity: None,
         compute_capability: ProviderNip90ComputeCapability::default(),
+        data_vending_profile: None,
         handler_publication_state: HandlerPublicationState::None,
         next_handler_publish_retry_at: None,
         tracked_provider_publish_request_ids: Vec::new(),
@@ -645,6 +663,7 @@ fn handle_command_or_publish(
     match command {
         ProviderNip90LaneCommand::ConfigureIdentity { .. }
         | ProviderNip90LaneCommand::ConfigureComputeCapability { .. }
+        | ProviderNip90LaneCommand::ConfigureDataVendingProfile { .. }
         | ProviderNip90LaneCommand::ConfigureRelays { .. }
         | ProviderNip90LaneCommand::SetOnline { .. }
         | ProviderNip90LaneCommand::TrackProviderPublishRequestIds { .. }
@@ -716,6 +735,29 @@ fn handle_command(
             } else {
                 format!("{backend} capability pending: {status}")
             });
+            if let Some(pool) = state.pool.as_ref().cloned() {
+                resubscribe_ingress_filters(runtime, state, pool);
+            }
+            refresh_relay_health_snapshot(runtime, state);
+        }
+        ProviderNip90LaneCommand::ConfigureDataVendingProfile { profile } => {
+            if profile == state.data_vending_profile {
+                return;
+            }
+            let summary = profile
+                .as_ref()
+                .map(|profile| {
+                    format!(
+                        "Configured data-vending profile {} kind {} ({})",
+                        profile.profile_id, profile.request_kind, profile.kind_posture
+                    )
+                })
+                .unwrap_or_else(|| "Cleared data-vending profile".to_string());
+            state.data_vending_profile = profile;
+            state.clear_preview_request_cache();
+            state.handler_publication_state = HandlerPublicationState::None;
+            state.next_handler_publish_retry_at = None;
+            state.snapshot.last_action = Some(summary);
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
@@ -1359,7 +1401,9 @@ fn maybe_publish_handler_info(
         return;
     };
 
-    let desired_publication = if state.compute_capability.is_ready() {
+    let desired_publication = if state.compute_capability.is_ready()
+        || state.data_vending_profile.is_some()
+    {
         HandlerPublicationState::Healthy
     } else {
         HandlerPublicationState::Disabled
@@ -1653,6 +1697,7 @@ fn event_to_inbox_request(
     let parsed = JobRequest::from_event(event);
     let raw_event_json = serde_json::to_string_pretty(event).ok();
     let (
+        capability,
         skill_scope_id,
         price_sats,
         ttl_seconds,
@@ -1668,6 +1713,7 @@ fn event_to_inbox_request(
         parsed_event_shape,
     ) = match parsed.as_ref() {
         Ok(request) => {
+            let data_vending_request = DataVendingRequest::from_job_request(request.clone()).ok();
             let bid_msats = request.bid.unwrap_or(0);
             let price_sats = msats_to_sats_ceil(bid_msats);
             let ttl_seconds = extract_ttl_seconds(request).unwrap_or(DEFAULT_TTL_SECONDS);
@@ -1686,7 +1732,42 @@ fn event_to_inbox_request(
             } else {
                 execution_input_from_request(request)
             };
-            let validation = if request.kind == KIND_JOB_TEXT_GENERATION
+            let mut normalized_params = normalized_request_params(request);
+            if let Some(data_request) = data_vending_request.as_ref() {
+                append_unique_param(
+                    &mut normalized_params,
+                    "oa_profile",
+                    OPENAGENTS_DATA_VENDING_PROFILE,
+                );
+                append_unique_param(&mut normalized_params, "oa_asset_ref", data_request.asset_ref.as_str());
+                append_unique_param(
+                    &mut normalized_params,
+                    "oa_delivery_mode",
+                    data_request.delivery_mode.as_str(),
+                );
+                append_unique_param(
+                    &mut normalized_params,
+                    "oa_preview_posture",
+                    data_request.preview_posture.as_str(),
+                );
+                for scope in &data_request.permission_scopes {
+                    append_unique_param(&mut normalized_params, "oa_scope", scope.as_str());
+                }
+            }
+            let capability = if data_vending_request.is_some() {
+                "openagents.data.access".to_string()
+            } else {
+                capability_for_kind(request.kind)
+            };
+            let validation = if let Some(data_request) = data_vending_request.as_ref() {
+                validate_data_vending_request(
+                    request,
+                    data_request,
+                    price_sats,
+                    target_provider_pubkeys.as_slice(),
+                    event,
+                )
+            } else if request.kind == KIND_JOB_TEXT_GENERATION
                 && !encrypted
                 && normalized_text_generation_prompt(request).is_none()
             {
@@ -1718,13 +1799,13 @@ fn event_to_inbox_request(
             } else {
                 JobInboxValidation::Valid
             };
-            let parsed_event_shape = Some(format_nip90_request_shape(
-                event,
-                request,
-                price_sats,
-                ttl_seconds,
-            ));
+            let parsed_event_shape = Some(if let Some(data_request) = data_vending_request.as_ref() {
+                format_data_vending_request_shape(event, request, data_request, price_sats, ttl_seconds)
+            } else {
+                format_nip90_request_shape(event, request, price_sats, ttl_seconds)
+            });
             (
+                capability,
                 skill_scope_id,
                 price_sats,
                 ttl_seconds,
@@ -1732,8 +1813,12 @@ fn event_to_inbox_request(
                 encrypted,
                 encrypted_payload,
                 execution_input,
-                normalized_text_generation_prompt(request),
-                normalized_request_params(request)
+                if data_vending_request.is_some() {
+                    None
+                } else {
+                    normalized_text_generation_prompt(request)
+                },
+                normalized_params
                     .into_iter()
                     .map(|(key, value)| JobExecutionParam { key, value })
                     .collect::<Vec<_>>(),
@@ -1744,6 +1829,7 @@ fn event_to_inbox_request(
             )
         }
         Err(error) => (
+            format!("nip90.kind.{}", event.kind),
             None,
             0,
             DEFAULT_TTL_SECONDS,
@@ -1769,7 +1855,7 @@ fn event_to_inbox_request(
         source_relay_url: relay_url.map(ToString::to_string),
         demand_source: crate::app_state::JobDemandSource::OpenNetwork,
         request_kind: event.kind,
-        capability: capability_for_kind(event.kind),
+        capability,
         execution_input,
         execution_prompt,
         execution_params,
@@ -1897,6 +1983,48 @@ fn normalized_request_params(request: &JobRequest) -> Vec<(String, String)> {
         normalized.insert(key, value.to_string());
     }
     normalized.into_iter().collect()
+}
+
+fn append_unique_param(params: &mut Vec<(String, String)>, key: &str, value: &str) {
+    let key = canonical_param_key(key);
+    let value = value.trim();
+    if key.is_empty() || value.is_empty() {
+        return;
+    }
+    if params
+        .iter()
+        .any(|(existing_key, existing_value)| existing_key == &key && existing_value == value)
+    {
+        return;
+    }
+    params.push((key, value.to_string()));
+    params.sort();
+}
+
+fn validate_data_vending_request(
+    request: &JobRequest,
+    data_request: &DataVendingRequest,
+    price_sats: u64,
+    target_provider_pubkeys: &[String],
+    event: &Event,
+) -> JobInboxValidation {
+    if data_request.asset_ref.trim().is_empty() {
+        JobInboxValidation::Invalid("data-vending request missing oa_asset_ref".to_string())
+    } else if data_request.permission_scopes.is_empty() {
+        JobInboxValidation::Invalid("data-vending request missing oa_scope".to_string())
+    } else if target_provider_pubkeys.is_empty() {
+        JobInboxValidation::Invalid(
+            "data-vending request missing target provider for targeted MVP posture".to_string(),
+        )
+    } else if request.encrypted && event.content.trim().is_empty() {
+        JobInboxValidation::Invalid(
+            "data-vending request marked encrypted but content payload is empty".to_string(),
+        )
+    } else if request.bid.is_none() || price_sats == 0 {
+        JobInboxValidation::Pending
+    } else {
+        JobInboxValidation::Valid
+    }
 }
 
 fn requested_output_mime(request: &JobRequest) -> Option<String> {
@@ -2224,6 +2352,30 @@ fn format_nip90_request_shape(
     )
 }
 
+fn format_data_vending_request_shape(
+    event: &Event,
+    request: &JobRequest,
+    data_request: &DataVendingRequest,
+    price_sats: u64,
+    ttl_seconds: u64,
+) -> String {
+    let mut base = format_nip90_request_shape(event, request, price_sats, ttl_seconds);
+    base.push_str(
+        format!(
+            "\nprofile={} asset_ref={} scopes=[{}] delivery_mode={} preview_posture={} targeted={} encrypted={}",
+            OPENAGENTS_DATA_VENDING_PROFILE,
+            data_request.asset_ref,
+            data_request.permission_scopes.join(","),
+            data_request.delivery_mode.as_str(),
+            data_request.preview_posture.as_str(),
+            !data_request.service_providers.is_empty(),
+            data_request.encrypted,
+        )
+        .as_str(),
+    );
+    base
+}
+
 fn format_generic_event_shape(event: &Event) -> String {
     let tag_names = event
         .tags
@@ -2281,7 +2433,7 @@ fn build_provider_handler_event(
         vec!["t".to_string(), "openagents".to_string()],
     ];
     if publication_state == HandlerPublicationState::Healthy {
-        for kind in supported_handler_kinds() {
+        for kind in supported_handler_kinds(state) {
             tags.push(vec!["k".to_string(), kind.to_string()]);
         }
     }
@@ -2300,6 +2452,16 @@ fn build_provider_handler_event(
             .as_deref()
             .or(state.compute_capability.configured_model.as_deref()),
         "last_error": state.compute_capability.last_error.clone(),
+        "data_vending": state.data_vending_profile.as_ref().map(|profile| json!({
+            "profile_id": profile.profile_id,
+            "request_kind": profile.request_kind,
+            "result_kind": profile.result_kind,
+            "kind_posture": profile.kind_posture,
+            "targeting_posture": profile.targeting_posture,
+            "asset_families": profile.asset_families,
+            "delivery_modes": profile.delivery_modes,
+            "preview_postures": profile.preview_postures,
+        })),
     })
     .to_string();
     let template = EventTemplate {
@@ -2313,8 +2475,17 @@ fn build_provider_handler_event(
         .map_err(|error| format!("failed signing provider handler event: {error}"))
 }
 
-fn supported_handler_kinds() -> &'static [u16] {
-    &[KIND_JOB_TEXT_GENERATION]
+fn supported_handler_kinds(state: &ProviderNip90LaneState) -> Vec<u16> {
+    let mut kinds = Vec::new();
+    if state.compute_capability.is_ready() {
+        kinds.push(KIND_JOB_TEXT_GENERATION);
+    }
+    if let Some(profile) = state.data_vending_profile.as_ref() {
+        kinds.push(profile.request_kind);
+    }
+    kinds.sort();
+    kinds.dedup();
+    kinds
 }
 
 fn handler_request_id(public_key_hex: &str) -> String {
@@ -2413,9 +2584,9 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 mod tests {
     use super::{
         ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90ComputeCapability,
-        ProviderNip90LaneCommand, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
-        ProviderNip90PublishRole, ProviderNip90RelayStatus, event_to_buyer_response_event,
-        event_to_inbox_request, execution_input_from_request,
+        ProviderNip90DataVendingProfile, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
+        ProviderNip90LaneWorker, ProviderNip90PublishRole, ProviderNip90RelayStatus,
+        event_to_buyer_response_event, event_to_inbox_request, execution_input_from_request,
     };
     use crate::app_state::{
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
@@ -2424,7 +2595,11 @@ mod tests {
     use crate::state::job_inbox::JobInboxValidation;
     use futures_util::{SinkExt, StreamExt};
     use nostr::Event;
-    use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
+    use nostr::nip90::{
+        DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingRequest, JobInput,
+        JobRequest, KIND_JOB_TEXT_GENERATION, OPENAGENTS_DATA_VENDING_PROFILE,
+        create_data_vending_request_event,
+    };
     use openagents_spark::{Balance, PaymentSummary};
     use serde_json::Value;
     use std::collections::HashSet;
@@ -2480,6 +2655,7 @@ mod tests {
             pool: None,
             auth_identity: Some(fixture_auth_identity()),
             compute_capability: ProviderNip90ComputeCapability::default(),
+            data_vending_profile: None,
             handler_publication_state: super::HandlerPublicationState::None,
             next_handler_publish_retry_at: None,
             tracked_provider_publish_request_ids: Vec::new(),
@@ -2488,6 +2664,23 @@ mod tests {
             relay_last_seen: std::collections::HashMap::new(),
             relay_latency_ms: std::collections::HashMap::new(),
             relay_last_error: std::collections::HashMap::new(),
+        }
+    }
+
+    fn fixture_data_vending_profile() -> ProviderNip90DataVendingProfile {
+        ProviderNip90DataVendingProfile {
+            profile_id: OPENAGENTS_DATA_VENDING_PROFILE.to_string(),
+            request_kind: crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+            result_kind: crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND + 1000,
+            kind_posture: crate::app_state::OPENAGENTS_DATA_VENDING_KIND_POSTURE.to_string(),
+            targeting_posture: crate::app_state::OPENAGENTS_DATA_VENDING_TARGETING_POSTURE
+                .to_string(),
+            asset_families: vec!["project_context_bundle".to_string()],
+            delivery_modes: vec![
+                "encrypted_pointer".to_string(),
+                "delivery_bundle_ref".to_string(),
+            ],
+            preview_postures: vec!["metadata_only".to_string(), "inline_preview".to_string()],
         }
     }
 
@@ -2547,6 +2740,56 @@ mod tests {
             row.raw_event_json
                 .as_deref()
                 .is_some_and(|value| value.contains("\"kind\": 5050"))
+        );
+    }
+
+    #[test]
+    fn maps_data_vending_request_event_to_job_inbox_request() {
+        let template = create_data_vending_request_event(
+            &DataVendingRequest::new(
+                crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+                "asset://repo-alpha",
+                "read.context",
+            )
+            .expect("data request")
+            .with_delivery_mode(DataVendingDeliveryMode::EncryptedPointer)
+            .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
+            .with_bid(42_000)
+            .add_service_provider("npub1localprovider")
+            .add_relay("wss://relay.ingress.test")
+            .with_encrypted_content("{\"ciphertext\":\"nip44\"}"),
+        )
+        .expect("template");
+        let event = Event {
+            id: "req-data-001".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_220,
+            kind: crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+            tags: template.tags,
+            content: template.content,
+            sig: "33".repeat(64),
+        };
+
+        let row = event_to_inbox_request(&event, Some("wss://relay.ingress.test/"))
+            .expect("data-vending request should map");
+        assert_eq!(row.capability, "openagents.data.access");
+        assert_eq!(row.price_sats, 42);
+        assert!(row.encrypted);
+        assert!(matches!(row.validation, JobInboxValidation::Valid));
+        assert!(
+            row.execution_params
+                .iter()
+                .any(|param| param.key == "oa_asset_ref" && param.value == "asset://repo-alpha")
+        );
+        assert!(
+            row.execution_params
+                .iter()
+                .any(|param| param.key == "oa_scope" && param.value == "read.context")
+        );
+        assert!(
+            row.parsed_event_shape
+                .as_deref()
+                .is_some_and(|shape| shape.contains("profile=openagents.data-vending.v1"))
         );
     }
 
@@ -3707,6 +3950,44 @@ mod tests {
 
         let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
         relay_task.abort();
+    }
+
+    #[test]
+    fn build_provider_handler_event_includes_data_vending_profile_metadata() {
+        let mut state = fixture_lane_state();
+        state.data_vending_profile = Some(fixture_data_vending_profile());
+
+        let event = super::build_provider_handler_event(
+            &fixture_auth_identity(),
+            super::HandlerPublicationState::Healthy,
+            &state,
+        )
+        .expect("handler event");
+        assert!(
+            event.tags.iter().any(|tag| {
+                tag.first().is_some_and(|value| value == "k")
+                    && tag.get(1).is_some_and(|value| {
+                        value.as_str()
+                            == crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND
+                                .to_string()
+                    })
+            }),
+            "expected data-vending request kind tag"
+        );
+        let metadata: serde_json::Value =
+            serde_json::from_str(event.content.as_str()).expect("parse handler metadata");
+        assert_eq!(
+            metadata["data_vending"]["profile_id"],
+            OPENAGENTS_DATA_VENDING_PROFILE
+        );
+        assert_eq!(
+            metadata["data_vending"]["request_kind"],
+            crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND
+        );
+        assert_eq!(
+            metadata["data_vending"]["kind_posture"],
+            crate::app_state::OPENAGENTS_DATA_VENDING_KIND_POSTURE
+        );
     }
 
     #[test]

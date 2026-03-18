@@ -5,6 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
+use nostr::nip90::{OPENAGENTS_DATA_VENDING_PROFILE, get_result_kind};
 use nostr::{Event, NostrIdentity};
 use openagents_kernel_core::authority::{CreateAccessGrantRequest, RegisterDataAssetRequest};
 use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -1094,6 +1095,41 @@ pub struct DataMarketPaneState {
     pub revocations: Vec<RevocationReceipt>,
 }
 
+pub const OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND: u16 = 5960;
+pub const OPENAGENTS_DATA_VENDING_KIND_POSTURE: &str =
+    "temporary_local_until_registry_check";
+pub const OPENAGENTS_DATA_VENDING_TARGETING_POSTURE: &str = "targeted_only";
+pub const OPENAGENTS_DATA_VENDING_ASSET_FAMILIES: &[&str] = &[
+    "conversation_bundle",
+    "project_context_bundle",
+    "document_bundle",
+    "workflow_artifact_bundle",
+];
+pub const OPENAGENTS_DATA_VENDING_SUPPORTED_DELIVERY_MODES: &[&str] = &[
+    "encrypted_pointer",
+    "delivery_bundle_ref",
+    "inline_preview",
+];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataSellerNip90Profile {
+    pub profile_id: String,
+    pub request_kind: u16,
+    pub result_kind: u16,
+    pub kind_posture: String,
+    pub targeting_posture: String,
+    pub asset_families: Vec<String>,
+    pub delivery_modes: Vec<String>,
+    pub preview_postures: Vec<String>,
+}
+
+impl DataSellerNip90Profile {
+    pub fn default_result_kind() -> u16 {
+        get_result_kind(OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND)
+            .unwrap_or(OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND.saturating_add(1000))
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataSellerShellSpeaker {
     System,
@@ -1223,7 +1259,10 @@ impl Default for DataSellerDraft {
             grant_expires_in_hours: Some(24),
             grant_warranty_window_hours: Some(24),
             price_hint_sats: Some(250),
-            delivery_modes: vec!["bundle_ref".to_string(), "targeted_nip90".to_string()],
+            delivery_modes: vec![
+                "encrypted_pointer".to_string(),
+                "delivery_bundle_ref".to_string(),
+            ],
             visibility_posture: DataSellerVisibilityPosture::TargetedOnly,
             sensitivity_posture: DataSellerSensitivityPosture::Private,
             preview_posture: DataSellerPreviewPosture::NotRequested,
@@ -1241,6 +1280,24 @@ impl Default for DataSellerDraft {
 }
 
 impl DataSellerDraft {
+    pub fn normalized_delivery_modes(&self) -> Vec<String> {
+        let mut normalized = self
+            .delivery_modes
+            .iter()
+            .filter_map(|mode| normalize_data_seller_delivery_mode(mode))
+            .collect::<Vec<_>>();
+        if normalized.is_empty() {
+            normalized = OPENAGENTS_DATA_VENDING_SUPPORTED_DELIVERY_MODES
+                .iter()
+                .take(2)
+                .map(|value| value.to_string())
+                .collect();
+        }
+        normalized.sort();
+        normalized.dedup();
+        normalized
+    }
+
     pub fn recompute_readiness_blockers(&mut self) {
         let mut blockers = Vec::new();
 
@@ -1337,6 +1394,7 @@ impl DataSellerDraft {
     }
 
     fn structural_asset_preview_payload(&self) -> Value {
+        let delivery_modes = self.normalized_delivery_modes();
         json!({
             "asset_kind": self.asset_kind,
             "title": self.title,
@@ -1345,7 +1403,7 @@ impl DataSellerDraft {
             "provenance_ref": self.provenance_ref,
             "default_policy": self.default_policy,
             "price_hint_sats": self.price_hint_sats,
-            "delivery_modes": self.delivery_modes,
+            "delivery_modes": delivery_modes,
             "visibility_posture": self.visibility_posture.label(),
             "sensitivity_posture": self.sensitivity_posture.label(),
             "metadata": self.metadata,
@@ -1353,6 +1411,7 @@ impl DataSellerDraft {
     }
 
     fn structural_grant_preview_payload(&self) -> Value {
+        let delivery_modes = self.normalized_delivery_modes();
         let policy_template = self
             .grant_policy_template
             .as_deref()
@@ -1362,13 +1421,13 @@ impl DataSellerDraft {
             "grant_policy_template": policy_template,
             "consumer_id": self.grant_consumer_id,
             "offer_price_sats": self.price_hint_sats,
-            "delivery_modes": self.delivery_modes,
+            "delivery_modes": delivery_modes.clone(),
             "visibility_posture": self.visibility_posture.label(),
             "expires_in_hours": self.grant_expires_in_hours,
             "warranty_window_hours": self.grant_warranty_window_hours,
             "permission_policy": data_seller_permission_policy_template(
                 policy_template,
-                self.delivery_modes.as_slice(),
+                delivery_modes.as_slice(),
                 self.visibility_posture,
                 self.sensitivity_posture,
             ),
@@ -1383,6 +1442,7 @@ impl DataSellerDraft {
         thread_id: Option<&str>,
         created_at_ms: i64,
     ) -> Value {
+        let delivery_modes = self.normalized_delivery_modes();
         let policy_template = self
             .grant_policy_template
             .as_deref()
@@ -1417,7 +1477,7 @@ impl DataSellerDraft {
         });
         let permission_policy = data_seller_permission_policy_template(
             policy_template,
-            self.delivery_modes.as_slice(),
+            delivery_modes.as_slice(),
             self.visibility_posture,
             self.sensitivity_posture,
         );
@@ -1462,7 +1522,7 @@ impl DataSellerDraft {
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
                 metadata: json!({
                     "grant_policy_template": policy_template,
-                    "delivery_modes": self.delivery_modes,
+                    "delivery_modes": delivery_modes,
                     "visibility_posture": self.visibility_posture.label(),
                     "grant_metadata": self.grant_metadata,
                 }),
@@ -1495,6 +1555,7 @@ impl DataSellerDraft {
         thread_id: Option<&str>,
         created_at_ms: i64,
     ) -> Value {
+        let delivery_modes = self.normalized_delivery_modes();
         let title = self.title.as_deref().unwrap_or("untitled asset");
         let asset_kind = self.asset_kind.as_deref().unwrap_or("dataset");
         let description = self
@@ -1515,7 +1576,7 @@ impl DataSellerDraft {
         let default_policy = self.default_policy.as_deref().map(|policy_id| {
             data_seller_permission_policy_template(
                 policy_id,
-                self.delivery_modes.as_slice(),
+                delivery_modes.as_slice(),
                 self.visibility_posture,
                 self.sensitivity_posture,
             )
@@ -1571,7 +1632,7 @@ impl DataSellerDraft {
                 created_at_ms,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
                 metadata: json!({
-                    "delivery_modes": self.delivery_modes,
+                    "delivery_modes": delivery_modes,
                     "visibility_posture": self.visibility_posture.label(),
                     "sensitivity_posture": self.sensitivity_posture.label(),
                     "draft_metadata": self.metadata,
@@ -1594,6 +1655,21 @@ impl DataSellerDraft {
 
 fn option_text_is_missing(value: Option<&str>) -> bool {
     value.is_none_or(|text| text.trim().is_empty())
+}
+
+fn normalize_data_seller_delivery_mode(mode: &str) -> Option<String> {
+    match mode.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" => None,
+        "bundle_ref" | "delivery_bundle" | "delivery_bundle_ref" => {
+            Some("delivery_bundle_ref".to_string())
+        }
+        "encrypted_pointer" | "pointer" | "bundle_pointer" => {
+            Some("encrypted_pointer".to_string())
+        }
+        "inline_preview" | "inline" => Some("inline_preview".to_string()),
+        "targeted_nip90" => Some("encrypted_pointer".to_string()),
+        other => Some(other.to_string()),
+    }
 }
 
 fn preview_evidence_refs(
@@ -1887,6 +1963,45 @@ impl Default for DataSellerPaneState {
 }
 
 impl DataSellerPaneState {
+    pub fn derived_nip90_profile(&self) -> Option<DataSellerNip90Profile> {
+        let asset_kind = self
+            .last_published_asset
+            .as_ref()
+            .map(|asset| asset.asset_kind.as_str())
+            .or(self.active_draft.asset_kind.as_deref())?;
+        let mut asset_families = vec![asset_kind.trim().to_string()];
+        if !OPENAGENTS_DATA_VENDING_ASSET_FAMILIES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(asset_kind.trim()))
+        {
+            asset_families.extend(
+                OPENAGENTS_DATA_VENDING_ASSET_FAMILIES
+                    .iter()
+                    .map(|value| value.to_string()),
+            );
+        }
+        asset_families.sort();
+        asset_families.dedup();
+
+        let mut preview_postures = vec!["metadata_only".to_string()];
+        if self.active_draft.preview_posture == DataSellerPreviewPosture::ExactPreviewReady {
+            preview_postures.push("inline_preview".to_string());
+        }
+        preview_postures.sort();
+        preview_postures.dedup();
+
+        Some(DataSellerNip90Profile {
+            profile_id: OPENAGENTS_DATA_VENDING_PROFILE.to_string(),
+            request_kind: OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+            result_kind: DataSellerNip90Profile::default_result_kind(),
+            kind_posture: OPENAGENTS_DATA_VENDING_KIND_POSTURE.to_string(),
+            targeting_posture: OPENAGENTS_DATA_VENDING_TARGETING_POSTURE.to_string(),
+            asset_families,
+            delivery_modes: self.active_draft.normalized_delivery_modes(),
+            preview_postures,
+        })
+    }
+
     pub fn mark_opened(&mut self) {
         self.last_action = Some(
             "Opened Data Seller pane; structured draft and local readiness checks are available"
@@ -12742,6 +12857,55 @@ mod tests {
             Some("receipt.access_grant.alpha")
         );
         assert!(pane.last_published_grant.is_some());
+    }
+
+    #[test]
+    fn data_seller_derives_explicit_nip90_profile_from_published_asset() {
+        let mut pane = DataSellerPaneState::default();
+        pane.last_published_asset = Some(DataAsset {
+            asset_id: "data_asset.provider.alpha.bundle".to_string(),
+            provider_id: "provider.alpha".to_string(),
+            asset_kind: "project_context_bundle".to_string(),
+            title: "Project Alpha context".to_string(),
+            ..Default::default()
+        });
+        pane.active_draft.preview_posture = DataSellerPreviewPosture::ExactPreviewReady;
+
+        let profile = pane
+            .derived_nip90_profile()
+            .expect("published asset should derive profile");
+        assert_eq!(profile.profile_id, super::OPENAGENTS_DATA_VENDING_PROFILE);
+        assert_eq!(
+            profile.request_kind,
+            super::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND
+        );
+        assert_eq!(profile.result_kind, 6960);
+        assert_eq!(
+            profile.kind_posture,
+            super::OPENAGENTS_DATA_VENDING_KIND_POSTURE
+        );
+        assert_eq!(
+            profile.targeting_posture,
+            super::OPENAGENTS_DATA_VENDING_TARGETING_POSTURE
+        );
+        assert!(
+            profile
+                .asset_families
+                .iter()
+                .any(|value| value == "project_context_bundle")
+        );
+        assert!(
+            profile
+                .delivery_modes
+                .iter()
+                .any(|value| value == "delivery_bundle_ref")
+        );
+        assert!(
+            profile
+                .preview_postures
+                .iter()
+                .any(|value| value == "inline_preview")
+        );
     }
 
     #[test]
