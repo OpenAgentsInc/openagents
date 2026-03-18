@@ -433,6 +433,11 @@ pub enum Nip90SentPaymentsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataMarketPaneAction {
+    Refresh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SparkReplayPaneAction {
     PrevStep,
     ToggleAuto,
@@ -1027,6 +1032,7 @@ pub enum PaneHitAction {
     LogStream(LogStreamPaneAction),
     BuyModePayments(BuyModePaymentsPaneAction),
     Nip90SentPayments(Nip90SentPaymentsPaneAction),
+    DataMarket(DataMarketPaneAction),
     SparkReplay(SparkReplayPaneAction),
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
@@ -1182,6 +1188,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         }
         PaneKind::LogStream => pane_size_for_content(980.0, 560.0),
         PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
+        PaneKind::DataMarket => pane_size_for_content(1120.0, 640.0),
         PaneKind::SellerEarningsTimeline => pane_size_for_content(1120.0, 620.0),
         PaneKind::SettlementLadder => pane_size_for_content(1120.0, 620.0),
         PaneKind::KeyLedger => pane_size_for_content(1160.0, 620.0),
@@ -1278,6 +1285,8 @@ impl PaneController {
             focus_apple_fm_workbench_prompt_for_pane_open(state);
         } else if kind == PaneKind::AppleAdapterTraining {
             focus_apple_adapter_training_input_for_pane_open(state);
+        } else if kind == PaneKind::DataMarket {
+            crate::data_market_control::refresh_data_market_snapshot(state);
         }
         id
     }
@@ -1755,6 +1764,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::LogStream
             | PaneKind::BuyModePayments
             | PaneKind::Nip90SentPayments
+            | PaneKind::DataMarket
             | PaneKind::BuyerRaceMatrix
             | PaneKind::SellerEarningsTimeline
             | PaneKind::SettlementLadder
@@ -2351,6 +2361,15 @@ pub fn nip90_sent_payments_copy_button_bounds(content_bounds: Bounds) -> Bounds 
         content_bounds.max_x() - 120.0,
         content_bounds.origin.y + 8.0,
         108.0,
+        22.0,
+    )
+}
+
+pub fn data_market_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 8.0,
+        92.0,
         22.0,
     )
 }
@@ -7757,6 +7776,13 @@ fn pane_hit_action_for_pane(
                 Some(PaneHitAction::Nip90SentPayments(
                     Nip90SentPaymentsPaneAction::CopyReport,
                 ))
+            } else {
+                None
+            }
+        }
+        PaneKind::DataMarket => {
+            if data_market_refresh_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataMarket(DataMarketPaneAction::Refresh))
             } else {
                 None
             }

@@ -13,9 +13,10 @@ use crate::local_runtime_capabilities::{
 use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
-    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction,
-    LogStreamPaneAction, MissionControlPaneAction, Nip90SentPaymentsPaneAction,
-    ProviderControlPaneAction, RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction,
+    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataMarketPaneAction,
+    LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
+    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
+    SparkReplayPaneAction, TassadarLabPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -10192,6 +10193,17 @@ pub(super) fn run_nip90_sent_payments_action(
                 state.nip90_sent_payments.record_action(notice);
             }
             true
+        }
+    }
+}
+
+pub(super) fn run_data_market_action(
+    state: &mut crate::app_state::RenderState,
+    action: DataMarketPaneAction,
+) -> bool {
+    match action {
+        DataMarketPaneAction::Refresh => {
+            crate::data_market_control::refresh_data_market_snapshot(state)
         }
     }
 }

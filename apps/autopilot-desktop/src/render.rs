@@ -295,6 +295,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             log_stream: crate::app_state::LogStreamPaneState::default(),
             buy_mode_payments: crate::app_state::BuyModePaymentsPaneState::default(),
             nip90_sent_payments: crate::app_state::Nip90SentPaymentsPaneState::default(),
+            data_market: crate::app_state::DataMarketPaneState::default(),
             spark_replay: crate::app_state::SparkReplayPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
@@ -1181,6 +1182,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             &mut state.log_stream,
             &mut state.buy_mode_payments,
             &mut state.nip90_sent_payments,
+            &state.data_market,
             &mut state.spark_replay,
             &mut paint,
         );
@@ -1668,6 +1670,11 @@ mod tests {
             command.id == "pane.credit_settlement_ledger"
                 && command.label == "Credit Settlement Ledger"
         }));
+        assert!(
+            commands.iter().any(|command| {
+                command.id == "pane.data_market" && command.label == "Data Market"
+            })
+        );
     }
 
     #[test]

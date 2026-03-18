@@ -6,6 +6,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
 use nostr::{Event, NostrIdentity};
+use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
@@ -119,6 +120,7 @@ pub enum PaneKind {
     LogStream,
     BuyModePayments,
     Nip90SentPayments,
+    DataMarket,
     BuyerRaceMatrix,
     SellerEarningsTimeline,
     SettlementLadder,
@@ -1060,6 +1062,103 @@ impl Nip90SentPaymentsPaneState {
 
     pub fn record_error(&mut self, error: impl Into<String>) {
         self.last_error = Some(error.into());
+    }
+}
+
+pub struct DataMarketPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub last_refreshed_at_ms: Option<i64>,
+    pub assets: Vec<DataAsset>,
+    pub grants: Vec<AccessGrant>,
+    pub deliveries: Vec<DeliveryBundle>,
+    pub revocations: Vec<RevocationReceipt>,
+}
+
+impl Default for DataMarketPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some("Data Market pane ready; refresh to load Nexus state".to_string()),
+            last_refreshed_at_ms: None,
+            assets: Vec::new(),
+            grants: Vec::new(),
+            deliveries: Vec::new(),
+            revocations: Vec::new(),
+        }
+    }
+}
+
+impl DataMarketPaneState {
+    pub fn begin_refresh(&mut self) {
+        self.load_state = PaneLoadState::Loading;
+        self.last_error = None;
+        self.last_action = Some("Refreshing Data Market snapshot from Nexus".to_string());
+    }
+
+    pub fn apply_snapshot(
+        &mut self,
+        mut assets: Vec<DataAsset>,
+        mut grants: Vec<AccessGrant>,
+        mut deliveries: Vec<DeliveryBundle>,
+        mut revocations: Vec<RevocationReceipt>,
+        refreshed_at_ms: i64,
+    ) {
+        assets.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.asset_id.cmp(&right.asset_id))
+        });
+        grants.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.grant_id.cmp(&right.grant_id))
+        });
+        deliveries.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.delivery_bundle_id.cmp(&right.delivery_bundle_id))
+        });
+        revocations.sort_by(|left, right| {
+            right
+                .created_at_ms
+                .cmp(&left.created_at_ms)
+                .then_with(|| left.revocation_id.cmp(&right.revocation_id))
+        });
+
+        let summary = format!(
+            "Refreshed Data Market snapshot: {} assets, {} grants, {} deliveries, {} revocations",
+            assets.len(),
+            grants.len(),
+            deliveries.len(),
+            revocations.len()
+        );
+
+        self.assets = assets;
+        self.grants = grants;
+        self.deliveries = deliveries;
+        self.revocations = revocations;
+        self.last_refreshed_at_ms = Some(refreshed_at_ms);
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(summary);
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.load_state = PaneLoadState::Error;
+        self.last_error = Some(error.into());
+    }
+
+    pub fn has_snapshot(&self) -> bool {
+        !self.assets.is_empty()
+            || !self.grants.is_empty()
+            || !self.deliveries.is_empty()
+            || !self.revocations.is_empty()
     }
 }
 
@@ -10419,6 +10518,7 @@ impl_pane_status_access!(
     TassadarLabPaneState,
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
+    DataMarketPaneState,
     StableSatsSimulationPaneState,
 );
 
@@ -10533,6 +10633,7 @@ pub struct RenderState {
     pub log_stream: LogStreamPaneState,
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub nip90_sent_payments: Nip90SentPaymentsPaneState,
+    pub data_market: DataMarketPaneState,
     pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,
     pub project_ops: ProjectOpsPaneState,

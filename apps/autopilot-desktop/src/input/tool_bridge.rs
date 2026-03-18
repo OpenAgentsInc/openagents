@@ -37,7 +37,7 @@ use crate::pane_system::{
     CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
+    DataMarketPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
     LocalInferencePaneAction, MissionControlPaneAction, NetworkRequestsPaneAction,
     Nip90SentPaymentsPaneAction, PaneController, PaneHitAction, ProviderControlPaneAction,
     ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
@@ -2256,6 +2256,21 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     ),
                 );
             }
+            PaneKind::DataMarket => {
+                map.insert(
+                    "data_market".to_string(),
+                    json!({
+                        "load_state": state.data_market.load_state.label(),
+                        "assets": state.data_market.assets.len(),
+                        "grants": state.data_market.grants.len(),
+                        "deliveries": state.data_market.deliveries.len(),
+                        "revocations": state.data_market.revocations.len(),
+                        "last_action": state.data_market.last_action,
+                        "last_error": state.data_market.last_error,
+                        "last_refreshed_at_ms": state.data_market.last_refreshed_at_ms,
+                    }),
+                );
+            }
             PaneKind::SparkWallet | PaneKind::SparkCreateInvoice | PaneKind::SparkPayInvoice => {
                 map.insert(
                     "wallet".to_string(),
@@ -2329,6 +2344,10 @@ fn pane_action_to_hit_action(
         PaneKind::KeyLedger => unsupported(),
         PaneKind::SettlementAtlas => unsupported(),
         PaneKind::RelayChoreography => unsupported(),
+        PaneKind::DataMarket => match action {
+            "refresh" => Ok(PaneHitAction::DataMarket(DataMarketPaneAction::Refresh)),
+            _ => unsupported(),
+        },
         PaneKind::SparkReplay => match action {
             "prev" | "prev_step" => Ok(PaneHitAction::SparkReplay(
                 crate::pane_system::SparkReplayPaneAction::PrevStep,
@@ -6277,6 +6296,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "buyer_sent_payments",
             "daily_sent_report",
         ],
+        PaneKind::DataMarket => &["data_market", "data", "kernel_data", "data_assets"],
         PaneKind::BuyerRaceMatrix => &[
             "buyer_race_matrix",
             "race_matrix",
@@ -6361,6 +6381,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::LogStream => "log_stream",
         PaneKind::BuyModePayments => "buy_mode",
         PaneKind::Nip90SentPayments => "nip90_sent_payments",
+        PaneKind::DataMarket => "data_market",
         PaneKind::BuyerRaceMatrix => "buyer_race_matrix",
         PaneKind::SellerEarningsTimeline => "seller_earnings_timeline",
         PaneKind::SettlementLadder => "settlement_ladder",
@@ -6419,8 +6440,9 @@ mod tests {
         Nip90SentPaymentsWindowPreset, PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, MissionControlPaneAction, Nip90SentPaymentsPaneAction, PaneHitAction,
-        ProviderControlPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, DataMarketPaneAction, MissionControlPaneAction,
+        Nip90SentPaymentsPaneAction, PaneHitAction, ProviderControlPaneAction,
+        RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -6727,6 +6749,7 @@ mod tests {
             pane_kind_key(PaneKind::Nip90SentPayments),
             "nip90_sent_payments"
         );
+        assert_eq!(pane_kind_key(PaneKind::DataMarket), "data_market");
         assert_eq!(
             normalize_key("Spark Lightning Wallet"),
             "spark_lightning_wallet"
@@ -6794,6 +6817,11 @@ mod tests {
             pane_action_to_hit_action(PaneKind::RivePreview, "next_asset", None)
                 .expect("rive preview next asset"),
             PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::NextAsset)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataMarket, "refresh", None)
+                .expect("data market refresh"),
+            PaneHitAction::DataMarket(DataMarketPaneAction::Refresh)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::SparkWallet, "refresh", None)
