@@ -91,6 +91,9 @@ const DESKTOP_CONTROL_EVENT_WAIT_TIMEOUT_MS: u64 = 20_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_REFRESH_INTERVAL_MS: u64 = 15_000;
 const DESKTOP_CONTROL_COMPUTE_HISTORY_LIMIT: usize = 8;
 
+pub const DESKTOP_CONTROL_MANIFEST_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_MANIFEST";
+pub const DESKTOP_CONTROL_BIND_ENV: &str = "OPENAGENTS_DESKTOP_CONTROL_BIND";
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DesktopControlRuntimeConfig {
     pub listen_addr: SocketAddr,
@@ -1769,6 +1772,12 @@ pub fn control_base_url(listen_addr: SocketAddr) -> String {
 }
 
 pub fn control_manifest_path() -> PathBuf {
+    if let Ok(value) = std::env::var(DESKTOP_CONTROL_MANIFEST_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
     crate::runtime_log::autopilot_log_dir().join(DESKTOP_CONTROL_MANIFEST_FILENAME)
 }
 

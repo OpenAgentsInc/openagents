@@ -228,10 +228,13 @@ def build_listing_template(
     files: list[PackagedFile],
 ) -> dict[str, Any]:
     delivery_modes = args.delivery_modes or list(DEFAULT_DELIVERY_MODES)
+    description = args.description or (
+        f"Packaged data bundle with {len(files)} file(s) and manifest {manifest_digest}."
+    )
     return {
         "asset_kind": args.asset_kind,
         "title": args.title,
-        "description": args.description,
+        "description": description,
         "content_digest": content_digest,
         "provenance_ref": provenance_ref,
         "default_policy": args.default_policy,
@@ -240,13 +243,13 @@ def build_listing_template(
         "visibility_posture": args.visibility_posture,
         "sensitivity_posture": args.sensitivity_posture,
         "metadata": {
-            "packaging_schema_version": SCHEMA_VERSION,
+            "packaging_schema_version": str(SCHEMA_VERSION),
             "packaging_package_label": package_label,
             "packaging_manifest_digest": manifest_digest,
-            "packaging_file_count": len(files),
-            "packaging_total_bytes": sum(row.size_bytes for row in files),
-            "packaging_source_roots": sorted(
-                {row.package_path.split("/", 1)[0] for row in files}
+            "packaging_file_count": str(len(files)),
+            "packaging_total_bytes": str(sum(row.size_bytes for row in files)),
+            "packaging_source_roots": json.dumps(
+                sorted({row.package_path.split("/", 1)[0] for row in files})
             ),
             "packaging_script": "scripts/autopilot/data_market_package.py",
         },
@@ -269,7 +272,7 @@ def build_grant_template(
         "expires_in_hours": args.grant_expires_hours,
         "warranty_window_hours": args.grant_warranty_window_hours,
         "metadata": {
-            "packaging_schema_version": SCHEMA_VERSION,
+            "packaging_schema_version": str(SCHEMA_VERSION),
             "packaging_package_label": package_label,
             "packaging_manifest_digest": manifest_digest,
             "packaging_script": "scripts/autopilot/data_market_package.py",
