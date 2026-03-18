@@ -34,25 +34,35 @@ Use this as the issue breakdown for the second NIP-28 chat milestone.
 
 ---
 
-## Ticket G — Filter OA presence events from chat transcript
+## Ticket G — Introduce dedicated human chat channel (separate from presence channel)
 
-**Summary:** Autopilot presence payloads published as kind-42 appear as raw JSON walls in the message list.
+**Summary:** Split the single NIP-28 channel into two: one for OA autopilot presence (existing), one for clean human chat (new).
 
-**Problem:** OA nodes publish `{"type":"oa.autopilot.presence.v1", ...}` as kind-42 channel messages. They render identically to human chat messages, making the transcript unreadable.
+**Problem:** `OA_DEFAULT_NIP28_CHANNEL_ID` (the existing channel) is used by both autopilot nodes publishing presence payloads and by humans posting chat messages. These concerns don't belong in the same channel. Content-filtering in the UI is a workaround; the right fix is channel separation at the source.
+
+**Decision:**
+- `OA_DEFAULT_NIP28_CHANNEL_ID` (existing `ebf2e35…`) → **presence/system channel**. Autopilot nodes continue publishing `oa.autopilot.presence.v1` kind-42 events here. No change to the publish path.
+- `OA_DEFAULT_NIP28_CHAT_CHANNEL_ID` (new) → **human chat channel**. This is what the composer targets and what the transcript displays.
 
 **Acceptance criteria:**
-- OA presence messages are visually distinct from human messages.
-- Render as a single dim system line, e.g.: `⚡ 2c879c went online` or `⚡ 2c879c went offline`.
-- Human messages are unaffected.
+- New env var `OA_DEFAULT_NIP28_CHAT_CHANNEL_ID` added with a new default channel ID.
+- `DefaultNip28ChannelConfig` gains a `chat_channel_id` field alongside the existing `channel_id` (presence).
+- `nip28_chat_lane` subscribes to `chat_channel_id` for the transcript (kinds 40, 41, 42).
+- Composer sends outbound kind-42 messages to `chat_channel_id`, not the presence channel.
+- The presence channel (`channel_id`) is not subscribed by the chat lane — fully separated for now.
+- Chat transcript contains only human messages. No presence JSON.
+
+**Prerequisite:**
+- A new NIP-28 channel must be created (kind-40 published to the relay) to obtain the default `chat_channel_id` value.
 
 **Files:**
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs` — kind-42 projection branch (~line 863); add `is_oa_presence_event()` check
-- `apps/autopilot-desktop/src/panes/chat.rs` — message rendering loop (~lines 3274–3332); render presence rows in dim style
+- `apps/autopilot-desktop/src/app_state.rs` — `DefaultNip28ChannelConfig`: add `chat_channel_id` field, new env var constant `OA_DEFAULT_NIP28_CHAT_CHANNEL_ID`, default value
+- `apps/autopilot-desktop/src/nip28_chat_lane.rs` — use `config.chat_channel_id` for subscription filters and outbound publish
+- `apps/autopilot-desktop/src/app_state/chat_projection.rs` — no change needed (lane feeds the same projection)
 
 **Notes:**
-- Detection: `content.trim_start().starts_with("{\"type\":\"oa.autopilot.")`.
-- Parse `mode` field (`provider-online` / `provider-offline`) and `pubkey` for the one-liner label.
-- Add a `ManagedChatMessageKind` variant (e.g. `PresenceSystem`) or store a boolean flag `is_system_event` on the projection.
+- Presence channel subscription can be reintroduced later (separate lane or config flag) to power a "who's online" indicator without polluting the transcript.
+- The existing `OA_DEFAULT_NIP28_CHANNEL_ID` env var and default value are unchanged — presence channel continues to work as-is.
 
 ---
 
