@@ -10,7 +10,7 @@ use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, Revoc
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
@@ -1100,6 +1100,245 @@ pub struct DataSellerShellMessage {
     pub content: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerVisibilityPosture {
+    TargetedOnly,
+    OperatorOnly,
+    PublicCatalog,
+}
+
+impl DataSellerVisibilityPosture {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::TargetedOnly => "targeted_only",
+            Self::OperatorOnly => "operator_only",
+            Self::PublicCatalog => "public_catalog",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerSensitivityPosture {
+    Private,
+    Restricted,
+    Public,
+}
+
+impl DataSellerSensitivityPosture {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Private => "private",
+            Self::Restricted => "restricted",
+            Self::Public => "public",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerPreviewPosture {
+    NotRequested,
+    Blocked,
+    StructuralPreviewReady,
+}
+
+impl DataSellerPreviewPosture {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NotRequested => "not_requested",
+            Self::Blocked => "blocked",
+            Self::StructuralPreviewReady => "structural_preview_ready",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataSellerReadinessBlocker {
+    pub code: String,
+    pub message: String,
+}
+
+impl DataSellerReadinessBlocker {
+    fn new(code: &str, message: impl Into<String>) -> Self {
+        Self {
+            code: code.to_string(),
+            message: message.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DataSellerDraft {
+    pub asset_kind: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub content_digest: Option<String>,
+    pub provenance_ref: Option<String>,
+    pub default_policy: Option<String>,
+    pub price_hint_sats: Option<u64>,
+    pub delivery_modes: Vec<String>,
+    pub visibility_posture: DataSellerVisibilityPosture,
+    pub sensitivity_posture: DataSellerSensitivityPosture,
+    pub preview_posture: DataSellerPreviewPosture,
+    pub metadata: HashMap<String, String>,
+    pub readiness_blockers: Vec<DataSellerReadinessBlocker>,
+    pub last_previewed_asset_payload: Option<Value>,
+    pub last_previewed_grant_payload: Option<Value>,
+    pub last_published_asset_id: Option<String>,
+    pub last_published_grant_id: Option<String>,
+}
+
+impl Default for DataSellerDraft {
+    fn default() -> Self {
+        let mut draft = Self {
+            asset_kind: Some("conversation_bundle".to_string()),
+            title: None,
+            description: None,
+            content_digest: None,
+            provenance_ref: None,
+            default_policy: Some("targeted_request".to_string()),
+            price_hint_sats: Some(250),
+            delivery_modes: vec!["bundle_ref".to_string(), "targeted_nip90".to_string()],
+            visibility_posture: DataSellerVisibilityPosture::TargetedOnly,
+            sensitivity_posture: DataSellerSensitivityPosture::Private,
+            preview_posture: DataSellerPreviewPosture::NotRequested,
+            metadata: HashMap::new(),
+            readiness_blockers: Vec::new(),
+            last_previewed_asset_payload: None,
+            last_previewed_grant_payload: None,
+            last_published_asset_id: None,
+            last_published_grant_id: None,
+        };
+        draft.recompute_readiness_blockers();
+        draft
+    }
+}
+
+impl DataSellerDraft {
+    pub fn recompute_readiness_blockers(&mut self) {
+        let mut blockers = Vec::new();
+
+        if option_text_is_missing(self.asset_kind.as_deref()) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "asset_kind_missing",
+                "Choose an asset family before preview.",
+            ));
+        }
+        if option_text_is_missing(self.title.as_deref()) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "title_missing",
+                "Add a short truthful title.",
+            ));
+        }
+        if option_text_is_missing(self.description.as_deref()) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "description_missing",
+                "Add a compact description of what is being sold.",
+            ));
+        }
+        if option_text_is_missing(self.content_digest.as_deref()) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "content_digest_missing",
+                "Attach a content digest or canonical bundle hash.",
+            ));
+        }
+        if option_text_is_missing(self.provenance_ref.as_deref()) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "provenance_missing",
+                "Point at provenance or bundle origin before publication.",
+            ));
+        }
+        if option_text_is_missing(self.default_policy.as_deref()) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "policy_missing",
+                "Choose the initial permission policy.",
+            ));
+        }
+        if self.price_hint_sats.is_none() {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "price_hint_missing",
+                "Set a price hint before preview.",
+            ));
+        }
+        if self.delivery_modes.is_empty() {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "delivery_modes_missing",
+                "Declare at least one delivery mode.",
+            ));
+        }
+        if matches!(
+            self.visibility_posture,
+            DataSellerVisibilityPosture::PublicCatalog
+        ) && matches!(
+            self.sensitivity_posture,
+            DataSellerSensitivityPosture::Private
+        ) {
+            blockers.push(DataSellerReadinessBlocker::new(
+                "visibility_sensitivity_conflict",
+                "Private assets cannot be public-catalog visible in the MVP posture.",
+            ));
+        }
+
+        self.readiness_blockers = blockers;
+    }
+
+    pub fn is_structurally_ready(&self) -> bool {
+        self.readiness_blockers.is_empty()
+    }
+
+    pub fn price_hint_label(&self) -> String {
+        self.price_hint_sats
+            .map(|sats| format!("{sats} sats"))
+            .unwrap_or_else(|| "pending".to_string())
+    }
+
+    pub fn blocker_summary(&self) -> String {
+        if self.readiness_blockers.is_empty() {
+            "No readiness blockers".to_string()
+        } else {
+            let labels = self
+                .readiness_blockers
+                .iter()
+                .take(3)
+                .map(|blocker| blocker.code.as_str())
+                .collect::<Vec<_>>();
+            format!(
+                "{} blockers: {}",
+                self.readiness_blockers.len(),
+                labels.join(", ")
+            )
+        }
+    }
+
+    fn structural_asset_preview_payload(&self) -> Value {
+        json!({
+            "asset_kind": self.asset_kind,
+            "title": self.title,
+            "description": self.description,
+            "content_digest": self.content_digest,
+            "provenance_ref": self.provenance_ref,
+            "default_policy": self.default_policy,
+            "price_hint_sats": self.price_hint_sats,
+            "delivery_modes": self.delivery_modes,
+            "visibility_posture": self.visibility_posture.label(),
+            "sensitivity_posture": self.sensitivity_posture.label(),
+            "metadata": self.metadata,
+        })
+    }
+
+    fn structural_grant_preview_payload(&self) -> Value {
+        json!({
+            "default_policy": self.default_policy,
+            "price_hint_sats": self.price_hint_sats,
+            "delivery_modes": self.delivery_modes,
+            "visibility_posture": self.visibility_posture.label(),
+        })
+    }
+}
+
+fn option_text_is_missing(value: Option<&str>) -> bool {
+    value.is_none_or(|text| text.trim().is_empty())
+}
+
 pub struct DataSellerPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -1108,19 +1347,24 @@ pub struct DataSellerPaneState {
     pub preview_enabled: bool,
     pub publish_enabled: bool,
     pub transcript_shell: Vec<DataSellerShellMessage>,
+    pub active_draft: DataSellerDraft,
 }
 
 impl Default for DataSellerPaneState {
     fn default() -> Self {
+        let draft = DataSellerDraft::default();
         Self {
             load_state: PaneLoadState::Ready,
             last_error: None,
             last_action: Some(
-                "Data Seller shell ready; seller profile, draft model, and publish tools are still pending"
+                "Data Seller draft ready; fill the remaining required fields before preview"
                     .to_string(),
             ),
-            status_line: "Shell only: preview and publish remain intentionally blocked until the structured draft and typed data-market tools land.".to_string(),
-            preview_enabled: false,
+            status_line: format!(
+                "Structured draft loaded. {}",
+                draft.blocker_summary()
+            ),
+            preview_enabled: true,
             publish_enabled: false,
             transcript_shell: vec![
                 DataSellerShellMessage {
@@ -1133,9 +1377,10 @@ impl Default for DataSellerPaneState {
                 },
                 DataSellerShellMessage {
                     speaker: DataSellerShellSpeaker::Seller,
-                    content: "Seller profile and structured draft gating are landing next. Use this shell to verify the pane surface and blocked publish controls.".to_string(),
+                    content: "The pane now tracks a structured draft locally. The next issues attach a seller-specific Codex session and typed tools.".to_string(),
                 },
             ],
+            active_draft: draft,
         }
     }
 }
@@ -1143,27 +1388,56 @@ impl Default for DataSellerPaneState {
 impl DataSellerPaneState {
     pub fn mark_opened(&mut self) {
         self.last_action = Some(
-            "Opened Data Seller shell; conversational seller profile and typed tools are pending"
+            "Opened Data Seller pane; structured draft and local readiness checks are available"
                 .to_string(),
         );
         self.last_error = None;
     }
 
     pub fn request_preview(&mut self) {
-        self.last_action = Some("Preview requested from Data Seller shell".to_string());
+        self.active_draft.recompute_readiness_blockers();
+        self.preview_enabled = true;
+        self.publish_enabled = false;
         self.last_error = None;
-        self.status_line =
-            "Preview is blocked until DataSellerDraft and exact preview payload support ship."
-                .to_string();
+        if self.active_draft.is_structurally_ready() {
+            self.active_draft.preview_posture = DataSellerPreviewPosture::StructuralPreviewReady;
+            self.active_draft.last_previewed_asset_payload =
+                Some(self.active_draft.structural_asset_preview_payload());
+            self.active_draft.last_previewed_grant_payload =
+                Some(self.active_draft.structural_grant_preview_payload());
+            self.last_action = Some(
+                "Local structural preview ready; exact authority preview still depends on typed tools"
+                    .to_string(),
+            );
+            self.status_line = "Draft passed local readiness checks. Publish remains blocked until exact preview and explicit confirmation land.".to_string();
+        } else {
+            self.active_draft.preview_posture = DataSellerPreviewPosture::Blocked;
+            self.active_draft.last_previewed_asset_payload = None;
+            self.active_draft.last_previewed_grant_payload = None;
+            self.last_action = Some(format!(
+                "Preview blocked by {} readiness blockers",
+                self.active_draft.readiness_blockers.len()
+            ));
+            self.status_line = format!("Preview blocked. {}", self.active_draft.blocker_summary());
+        }
     }
 
     pub fn request_publish(&mut self) {
-        self.last_action = Some("Publish requested from Data Seller shell".to_string());
+        self.last_action = Some("Publish requested from Data Seller pane".to_string());
+        if !self.active_draft.is_structurally_ready() {
+            self.last_error = Some(
+                "Publish is blocked because the draft still has readiness blockers. Run preview to inspect them."
+                    .to_string(),
+            );
+            self.status_line = format!("Publish blocked. {}", self.active_draft.blocker_summary());
+            return;
+        }
         self.last_error = Some(
-            "Publish is blocked until structured draft readiness, exact preview, and explicit confirmation are wired.".to_string(),
+            "Publish is blocked until the exact preview and explicit confirmation flow are wired."
+                .to_string(),
         );
         self.status_line =
-            "Publish remains gated behind the draft -> preview -> confirm path.".to_string();
+            "Publish remains gated behind exact preview and explicit confirmation.".to_string();
     }
 }
 
@@ -11163,18 +11437,18 @@ mod tests {
         CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
         CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
         CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
-        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
-        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation, JobLifecycleStage, LogStreamPaneState, MissionControlPaneState,
-        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
-        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
-        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
-        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, DataSellerPaneState,
+        DataSellerPreviewPosture, EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState,
+        EarningsScoreboardState, JobDemandSource, JobHistoryState, JobHistoryStatus,
+        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
+        JobInboxState, JobInboxValidation, JobLifecycleStage, LogStreamPaneState,
+        MissionControlPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use chrono::TimeZone;
     use wgpui::components::sections::TerminalStream;
@@ -11223,6 +11497,41 @@ mod tests {
             mission_control.mission_control_wallet_display_balance_sats(Some(80), 0, 1_001),
             Some(80)
         );
+    }
+
+    #[test]
+    fn data_seller_preview_reports_blockers_for_incomplete_draft() {
+        let mut pane = DataSellerPaneState::default();
+
+        pane.request_preview();
+
+        assert_eq!(
+            pane.active_draft.preview_posture,
+            DataSellerPreviewPosture::Blocked
+        );
+        assert!(!pane.active_draft.readiness_blockers.is_empty());
+        assert!(pane.active_draft.last_previewed_asset_payload.is_none());
+        assert!(!pane.publish_enabled);
+    }
+
+    #[test]
+    fn data_seller_preview_produces_local_payload_when_ready() {
+        let mut pane = DataSellerPaneState::default();
+        pane.active_draft.title = Some("Support bundle".to_string());
+        pane.active_draft.description = Some("Three cleaned support conversations".to_string());
+        pane.active_draft.content_digest = Some("sha256:data-bundle".to_string());
+        pane.active_draft.provenance_ref = Some("oa://bundle/support-1".to_string());
+
+        pane.request_preview();
+
+        assert_eq!(
+            pane.active_draft.preview_posture,
+            DataSellerPreviewPosture::StructuralPreviewReady
+        );
+        assert!(pane.active_draft.readiness_blockers.is_empty());
+        assert!(pane.active_draft.last_previewed_asset_payload.is_some());
+        assert!(pane.active_draft.last_previewed_grant_payload.is_some());
+        assert!(!pane.publish_enabled);
     }
 
     fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {

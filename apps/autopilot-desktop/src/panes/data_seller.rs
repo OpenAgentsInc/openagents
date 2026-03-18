@@ -25,7 +25,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &m
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Conversational authoring shell for truthful data listings. The seller profile, structured draft, and typed publish tools land in the next slices.",
+        "Conversational authoring surface for truthful data listings. The pane now keeps a structured draft locally while the seller-specific Codex session and typed publish tools land next.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -165,18 +165,58 @@ fn paint_draft_shell_card(
     pane_state: &DataSellerPaneState,
     paint: &mut PaintContext,
 ) {
-    paint_card(bounds, "Draft card", "Structured object lands next", paint);
+    paint_card(bounds, "Draft card", "Structured local truth object", paint);
 
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
-    for (label, value) in [
-        ("title", "pending"),
-        ("asset kind", "pending"),
-        ("price posture", "pending"),
-        ("policy posture", "pending"),
-        ("provenance", "pending"),
-    ] {
-        row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, label, value);
-    }
+    let title = option_label(pane_state.active_draft.title.as_deref());
+    row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, "title", &title);
+    let asset_kind = option_label(pane_state.active_draft.asset_kind.as_deref());
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "asset kind",
+        &asset_kind,
+    );
+    let price_hint = pane_state.active_draft.price_hint_label();
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "price hint",
+        &price_hint,
+    );
+    let policy = option_label(pane_state.active_draft.default_policy.as_deref());
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "policy posture",
+        &policy,
+    );
+    let provenance = option_label(pane_state.active_draft.provenance_ref.as_deref());
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "provenance",
+        &provenance,
+    );
+
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "preview posture",
+        pane_state.active_draft.preview_posture.label(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "blockers",
+        &pane_state.active_draft.blocker_summary(),
+    );
 
     paint.scene.draw_text(paint.text.layout(
         &pane_state.status_line,
@@ -184,8 +224,16 @@ fn paint_draft_shell_card(
         11.0,
         theme::text::SECONDARY,
     ));
+    if let Some(first_blocker) = pane_state.active_draft.readiness_blockers.first() {
+        paint.scene.draw_text(paint.text.layout(
+            &format!("next blocker: {}", first_blocker.message),
+            Point::new(bounds.origin.x + 10.0, row_y + 28.0),
+            10.0,
+            theme::status::WARNING,
+        ));
+    }
     paint.scene.draw_text(paint.text.layout(
-        "The next issue adds DataSellerDraft, readiness blockers, exact preview payloads, and explicit publish gating.",
+        "Later issues replace the local preview contour with the exact authority payload and explicit confirmation.",
         Point::new(bounds.origin.x + 10.0, bounds.max_y() - 18.0),
         10.0,
         theme::text::MUTED,
@@ -208,6 +256,10 @@ fn paint_publication_status_card(
     for (label, value) in [
         ("preview control", gate_label(pane_state.preview_enabled)),
         ("publish control", gate_label(pane_state.publish_enabled)),
+        (
+            "preview posture",
+            pane_state.active_draft.preview_posture.label(),
+        ),
         ("authority truth", "kernel DataAsset / AccessGrant"),
         ("read-back surface", "Data Market pane"),
     ] {
@@ -215,8 +267,21 @@ fn paint_publication_status_card(
     }
 
     paint.scene.draw_text(paint.text.layout(
-        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
+        &format!(
+            "Local asset preview: {}",
+            if pane_state.active_draft.last_previewed_asset_payload.is_some() {
+                "ready"
+            } else {
+                "not ready"
+            }
+        ),
         Point::new(bounds.origin.x + 10.0, row_y + 8.0),
+        11.0,
+        theme::text::SECONDARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
+        Point::new(bounds.origin.x + 10.0, row_y + 26.0),
         11.0,
         theme::text::SECONDARY,
     ));
@@ -245,6 +310,13 @@ fn paint_card(bounds: Bounds, title: &str, subtitle: &str, paint: &mut PaintCont
 
 fn gate_label(enabled: bool) -> &'static str {
     if enabled { "armed" } else { "blocked" }
+}
+
+fn option_label(value: Option<&str>) -> String {
+    value
+        .filter(|text| !text.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "pending".to_string())
 }
 
 fn speaker_color(speaker: DataSellerShellSpeaker) -> wgpui::Hsla {
