@@ -15,6 +15,18 @@ It reuses:
 - the same typed `Data Market` desktop-control actions that `autopilotctl`
   already drives
 
+The buyer-side consume step now also has a semantic CLI path:
+
+- `autopilotctl data-market consume-delivery ...`
+
+For the current targeted NIP-90 flow, seller and buyer online posture is now
+split cleanly:
+
+- the seller goes online for request intake and result publication
+- the buyer goes online in a relay-only posture for result tracking
+- neither path requires a compute-ready GPT-OSS or Apple FM runtime for the
+  Data Market headless MVP
+
 ## Current MVP shape
 
 The current MVP-safe headless path is:
@@ -133,6 +145,38 @@ That harness verifies:
 - asset preview and publish work without opening the UI window
 - grant preview and publish work without opening the UI window
 
+## Real local E2E harness
+
+The repo now also includes a full two-party local harness:
+
+```bash
+scripts/autopilot/headless-data-market-e2e.sh
+```
+
+That harness does a real local loop:
+
+- starts a local relay
+- starts a local `nexus-control`
+- creates isolated seller and buyer homes + identities
+- launches two no-window Data Market runtimes
+- packages a dummy dataset
+- publishes an asset and a zero-price targeted grant
+- publishes a buyer-side targeted request
+- brings the buyer online in relay-only mode for response tracking
+- waits for seller intake
+- issues a real `DeliveryBundle`
+- waits for the buyer-side NIP-90 result
+- consumes the delivered local payload into a buyer output directory
+- verifies the consumed files match the original dummy dataset
+
+The verified runtime path also now handles the two identity-normalization edges
+that mattered in practice:
+
+- seller-side grant evaluation accepts the buyer `buyer_id` from the targeted
+  request payload even when the raw Nostr event pubkey arrives in hex
+- buyer-side result tracking accepts seller results when the request targeted
+  the seller `npub` but the result event is authored by the seller hex pubkey
+
 ## Full verification bundle
 
 For a local end-to-end verification pass, run:
@@ -143,11 +187,42 @@ scripts/autopilot/verify-data-market-cli-headless.sh
 
 That verification bundle currently proves:
 
-- the headless CLI path can package, preview, and publish an asset and grant
+- the headless CLI path can package, preview, publish, request, deliver, and
+  consume a local dummy dataset end to end
 - the seller state machine has a mechanical payment -> delivery -> revocation
   lifecycle test
 - the Nexus authority slice still proves the canonical asset -> grant ->
   delivery -> revocation receipt flow
+
+## Consume-delivery command
+
+For local or operator-controlled flows where the seller publishes a local
+`file://` delivery reference, the buyer can materialize the delivered payload
+through `autopilotctl`:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/buyer-desktop-control.json \
+  --json data-market consume-delivery \
+  --request-id <request-id> \
+  --grant-id <grant-id> \
+  --output-dir ./tmp/consumed-dataset \
+  --refresh-market \
+  --overwrite
+```
+
+Current behavior:
+
+- resolves the matching `DeliveryBundle` from the app-owned Data Market state
+- supports local `file://` and plain local-path `delivery_ref` values
+- copies the payload into `output-dir/payload/`
+- copies any local manifest refs into `output-dir/manifests/`
+- writes `output-dir/consumed-delivery.json`
+
+Current limitation:
+
+- this is a local/headless materialization path, not yet a general remote blob
+  transport or encrypted retrieval client
 
 ## Truth boundary notes
 

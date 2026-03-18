@@ -188,6 +188,7 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1.0.86"
+bech32 = "0.11.1"
 hex = "0.4.3"
 rand = "0.9"
 bitcoin = "0.32.6"

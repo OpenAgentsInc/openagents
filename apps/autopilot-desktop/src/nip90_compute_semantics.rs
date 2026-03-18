@@ -26,8 +26,21 @@ pub(crate) struct BuyerInvoiceAmountAnalysis {
     pub amount_mismatch: bool,
 }
 
+fn normalize_npub_to_hex(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if !trimmed.to_ascii_lowercase().starts_with("npub1") {
+        return None;
+    }
+    let (hrp, data) = bech32::decode(trimmed).ok()?;
+    if hrp.as_str() != "npub" || data.len() != 32 {
+        return None;
+    }
+    Some(hex::encode(data))
+}
+
 pub(crate) fn normalize_pubkey(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
+    let trimmed = value.trim();
+    normalize_npub_to_hex(trimmed).unwrap_or_else(|| trimmed.to_ascii_lowercase())
 }
 
 fn trim_lightning_prefix(value: &str) -> &str {
@@ -342,5 +355,17 @@ mod tests {
             .expect("under-budget provider should still win");
         assert_eq!(selection.provider_pubkey, "bb");
         assert_eq!(selection.selection_source, "first_payable_provider");
+    }
+
+    #[test]
+    fn normalize_pubkey_maps_npub_to_hex_for_target_matching() {
+        assert_eq!(
+            normalize_pubkey("npub1xcygyvv4asqjmetdv0uz0gv9xkw37mjvwp83nysdun3ksckvq32qeers06"),
+            "3608823195ec012de56d63f827a185359d1f6e4c704f19920de4e36862cc0454"
+        );
+        assert_eq!(
+            normalize_pubkey("3608823195EC012DE56D63F827A185359D1F6E4C704F19920DE4E36862CC0454"),
+            "3608823195ec012de56d63f827a185359d1f6e4c704f19920de4e36862cc0454"
+        );
     }
 }

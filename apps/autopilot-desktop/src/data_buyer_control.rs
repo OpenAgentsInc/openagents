@@ -135,6 +135,19 @@ pub(crate) fn select_next_data_buyer_asset(state: &mut RenderState) -> bool {
     state.data_buyer.select_next_asset(&state.data_market)
 }
 
+pub(crate) fn select_data_buyer_asset(
+    state: &mut RenderState,
+    asset_id: &str,
+) -> Result<bool, String> {
+    let buyer_id = crate::kernel_control::provider_id_for_state(state);
+    state.data_buyer.configure_local_buyer_id(buyer_id);
+    state.data_buyer.sync_selection(&state.data_market);
+    state
+        .data_buyer
+        .select_asset_by_id(&state.data_market, asset_id)?;
+    Ok(true)
+}
+
 pub(crate) fn publish_data_buyer_request(state: &mut RenderState) -> bool {
     let buyer_id = crate::kernel_control::provider_id_for_state(state);
     state.data_buyer.configure_local_buyer_id(buyer_id.clone());
