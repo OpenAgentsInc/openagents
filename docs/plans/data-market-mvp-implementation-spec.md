@@ -461,6 +461,15 @@ The implementation should:
 - check the current job-kind registry before launch
 - keep the corresponding result kind as `request_kind + 1000`
 
+Current in-repo runtime posture:
+
+- use the OpenAgents helper profile id `openagents.data-vending.v1`
+- keep the request kind explicit in code and handler metadata
+- use the temporary OpenAgents-local request kind `5960` in the desktop/runtime
+  implementation until the registry/upstream decision is finalized
+- treat that number as a local launch contour, not as a permanent public
+  assignment from this doc
+
 ### Request shape
 
 The request should carry enough information to ask for permissioned data access
@@ -500,6 +509,13 @@ For MVP:
 - advertise the OpenAgents profile version in handler metadata or custom tags
 - advertise coarse asset families only
 - avoid publishing sensitive asset details publicly
+
+Current desktop/runtime contour:
+
+- the provider relay lane now includes the data-vending request kind in the
+  shared NIP-89 handler when a seller profile is configured
+- handler metadata now carries the profile id, kind posture, targeting posture,
+  coarse asset families, delivery modes, and preview postures
 
 ### Feedback shape
 

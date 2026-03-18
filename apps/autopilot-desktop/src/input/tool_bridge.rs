@@ -7186,7 +7186,7 @@ mod tests {
     fn data_market_draft_asset_decode_accepts_structured_patch() {
         let decoded = decode_tool_call_request(&request(
             OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
-            r#"{"title":"Research bundle","content_digest":"sha256:test","delivery_modes":["bundle_ref","targeted_nip90"]}"#,
+            r#"{"title":"Research bundle","content_digest":"sha256:test","delivery_modes":["encrypted_pointer","delivery_bundle_ref"]}"#,
         ))
         .expect("decode should succeed");
         let args: super::DataMarketDraftAssetArgs =
@@ -7195,7 +7195,10 @@ mod tests {
         assert_eq!(args.content_digest.as_deref(), Some("sha256:test"));
         assert_eq!(
             args.delivery_modes,
-            Some(vec!["bundle_ref".to_string(), "targeted_nip90".to_string()])
+            Some(vec![
+                "encrypted_pointer".to_string(),
+                "delivery_bundle_ref".to_string()
+            ])
         );
     }
 

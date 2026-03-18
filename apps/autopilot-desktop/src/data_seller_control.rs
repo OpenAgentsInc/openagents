@@ -9,6 +9,7 @@ use crate::app_state::{
     AutopilotRole, DataSellerCodexSessionPhase, DataSellerSkillAttachment, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
+use crate::provider_nip90_lane::{ProviderNip90DataVendingProfile, ProviderNip90LaneCommand};
 
 fn current_session_cwd() -> Option<String> {
     std::env::current_dir()
@@ -22,6 +23,25 @@ fn current_epoch_ms() -> i64 {
         .map_or(0, |duration| {
             duration.as_millis().min(i64::MAX as u128) as i64
         })
+}
+
+fn sync_data_seller_nip90_profile(state: &mut RenderState) {
+    let profile = state
+        .data_seller
+        .derived_nip90_profile()
+        .map(|profile| ProviderNip90DataVendingProfile {
+            profile_id: profile.profile_id,
+            request_kind: profile.request_kind,
+            result_kind: profile.result_kind,
+            kind_posture: profile.kind_posture,
+            targeting_posture: profile.targeting_posture,
+            asset_families: profile.asset_families,
+            delivery_modes: profile.delivery_modes,
+            preview_postures: profile.preview_postures,
+        });
+    let _ = state.queue_provider_nip90_lane_command(
+        ProviderNip90LaneCommand::ConfigureDataVendingProfile { profile },
+    );
 }
 
 pub(crate) fn ensure_data_seller_codex_session(state: &mut RenderState) -> bool {
@@ -249,6 +269,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
                     .data_market
                     .note_published_asset(asset, current_epoch_ms());
             }
+            sync_data_seller_nip90_profile(state);
             state.data_seller.last_error = Some(format!(
                 "Asset was published but the immediate kernel read-back failed: {error}"
             ));
@@ -264,6 +285,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_asset(readback_asset, current_epoch_ms());
+    sync_data_seller_nip90_profile(state);
     true
 }
 
@@ -331,6 +353,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                     .data_market
                     .note_published_grant(grant, current_epoch_ms());
             }
+            sync_data_seller_nip90_profile(state);
             state.data_seller.last_error = Some(format!(
                 "Grant was published but the immediate kernel read-back failed: {error}"
             ));
@@ -346,5 +369,6 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_grant(readback_grant, current_epoch_ms());
+    sync_data_seller_nip90_profile(state);
     true
 }
