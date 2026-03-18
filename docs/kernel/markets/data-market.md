@@ -56,6 +56,7 @@ smuggled through opaque prompt state.
 - open a dedicated `Data Buyer` desktop pane that derives a request draft from the visible market snapshot, selects an active asset/default offer, and publishes a targeted NIP-90 data-access request without widening into public discovery
 - expose a checked-in `openagents.data.v1` proto package and use it for data-market authority mutation/read envelopes
 - expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
+- package local files or directories into deterministic `listing-template.json`, `grant-template.json`, `packaging-manifest.json`, and `packaging-summary.json` artifacts through `scripts/autopilot/data_market_package.py`
 
 The starter authority slice is real in:
 
@@ -87,11 +88,36 @@ Authenticated HTTP read routes are live under:
 ## Local prototype or partial only
 
 - richer provenance modeling beyond the starter permission and delivery objects
-- private-data packaging and policy detail beyond the current starter shapes
+- private-data packaging and policy detail beyond the current starter shapes, though there is now a deterministic local packaging helper for turning a selected file or folder boundary into truthful draft inputs
 - local or adjacent desktop concepts for context packaging, but not a
   generalized canonical data-market product surface
 - broader public discovery and richer indexing ideas still live in docs rather
   than in a full market-facing catalog surface
+
+## Local packaging helper
+
+The current repo now includes a deterministic local packaging helper:
+
+- `scripts/autopilot/data_market_package.py`
+
+Its job is narrow:
+
+- select a package boundary from one or more local files or directories
+- compute a canonical bundle digest from a sorted manifest of file digests
+- emit a stable `provenance_ref`
+- write `listing-template.json`
+- optionally write `grant-template.json`
+- write `packaging-manifest.json` and `packaging-summary.json`
+
+The helper is intentionally local and preparatory. It does not publish to
+kernel authority by itself.
+
+The generated outputs map directly into the current seller flow:
+
+- `listing-template.json` -> `autopilotctl data-market draft-asset --file ...`
+- `grant-template.json` -> `autopilotctl data-market draft-grant --file ...`
+- `packaging-summary.json` -> local operator or agent audit surface for the
+  chosen package boundary and resulting digests
 
 ## Not implemented yet
 

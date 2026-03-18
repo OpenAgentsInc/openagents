@@ -59,6 +59,20 @@ asset/default offer from that market snapshot and publishes a targeted NIP-90
 data-access request. Broader buyer-side discovery, pricing comparison, and
 transaction UX still remain follow-on work.
 
+There is now also a deterministic local packaging helper at
+`scripts/autopilot/data_market_package.py` that turns a selected file or folder
+boundary into truthful seller draft inputs:
+
+* `listing-template.json`
+* `grant-template.json`
+* `packaging-manifest.json`
+* `packaging-summary.json`
+
+That helper does not publish by itself.
+It exists so operator and agent flows can compute `content_digest`,
+`provenance_ref`, delivery posture, and starter metadata without hand-authoring
+every field.
+
 ### 1. Compute already has a real product wedge
 
 The compute market is already productized enough to matter:
@@ -195,10 +209,23 @@ The first honest product families should be narrow and local:
 
 The MVP should not pretend it already supports a broad commodity market for arbitrary datasets.
 
+That means seller-side packaging matters.
+An honest MVP should make it easy to turn local conversation exports, project
+bundles, and document sets into deterministic listing drafts without requiring
+the operator to manually invent:
+
+* `content_digest`
+* `provenance_ref`
+* delivery modes
+* starter grant posture
+* packaging metadata
+
 ## MVP scope
 
 The MVP should support the following end-to-end loop:
 
+0. A seller packages local material into a truthful draft boundary with stable
+   digest and provenance outputs.
 1. A seller registers or exposes a `DataAsset`.
 2. A buyer sends a targeted NIP-90 request for access.
 3. The seller evaluates the request against local policy and asset posture.
