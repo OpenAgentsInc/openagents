@@ -10,6 +10,7 @@ This directory is the project-owned Agent Skills registry.
 | [autopilot-cad-builder](./autopilot-cad-builder/SKILL.md) | Deterministic CAD design/build orchestration for Autopilot Chat using `openagents.cad.*` and pane tools. |
 | [autopilot-pane-control](./autopilot-pane-control/SKILL.md) | OpenAgents desktop pane and CAD control for Codex via `openagents.*` tool calls. |
 | [autopilot-data-seller](./autopilot-data-seller/SKILL.md) | Conversational seller-authoring policy for Data Market listings in the dedicated `Data Seller` pane. |
+| [autopilot-data-seller-cli](./autopilot-data-seller-cli/SKILL.md) | Shell-first Data Market packaging, publication, and lifecycle control through `autopilotctl` and the headless runtime. |
 | [autopilot-data-market-control](./autopilot-data-market-control/SKILL.md) | Typed OpenAgents Data Market tool contract for seller publication and authority read-back. |
 | [charms](./charms/SKILL.md) | Charms workflows for Bitcoin app contracts, spell proving, and UTXO asset operations. |
 | [cast](./cast/SKILL.md) | Charms CAST DEX workflows for order creation, cancellation/replacement, partial fulfillment, signing, and transaction verification on Bitcoin. |

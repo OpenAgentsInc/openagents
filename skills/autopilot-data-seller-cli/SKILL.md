@@ -1,0 +1,72 @@
+---
+name: autopilot-data-seller-cli
+description: Shell-first OpenAgents Data Market packaging and publication workflow using the deterministic packaging helper, autopilotctl, and the no-window headless runtime.
+metadata:
+  oa:
+    project: openagents
+    identifier: autopilot-data-seller-cli
+    version: "0.1.0"
+    expires_at_unix: 1798761600
+    capabilities:
+      - codex:shell
+      - data-market:packaging
+      - data-market:cli-publication
+      - data-market:headless-control
+---
+
+# Autopilot Data Seller CLI
+
+Use this skill when the task is to package local material for sale and publish
+or manage it through CLI, not through the visible `Data Seller` pane.
+
+## Quick start
+
+- Package local files or folders with
+  [`scripts/package_data_asset.sh`](scripts/package_data_asset.sh).
+- Start the no-window runtime when needed:
+  `cargo run -p autopilot-desktop --bin autopilot_headless_data_market -- --manifest-path ...`
+- Inspect truth first with:
+  `cargo run -p autopilot-desktop --bin autopilotctl -- --manifest ... --json data-market seller-status`
+- Follow the semantic CLI order:
+  draft asset -> preview asset -> publish asset -> snapshot -> draft grant ->
+  preview grant -> publish grant -> payment -> delivery -> revoke
+
+## Required operating rules
+
+1. Use semantic CLI commands only. Do not simulate pane clicks.
+2. Package before drafting when local files still need digest/provenance truth.
+3. Preview before every publish.
+4. Pass `--confirm` for publish or revoke only after preview or intent has been
+   explicitly checked.
+5. Read back state after every mutation with `seller-status` or `snapshot`.
+6. Do not invent `content_digest`, `provenance_ref`, policy, price, or delivery
+   posture.
+7. Keep packaging metadata flat and string-valued so it remains compatible with
+   the seller tool contract.
+
+## When to read references
+
+- Read [references/packaging-contract.md](references/packaging-contract.md)
+  before packaging or editing emitted JSON.
+- Read [references/cli-workflow.md](references/cli-workflow.md) for the
+  end-to-end flow from package to published asset/grant.
+- Read
+  [references/policy-template-cheatsheet.md](references/policy-template-cheatsheet.md)
+  when selecting `default_policy` or `policy_template`.
+
+## Scripts
+
+- `scripts/package_data_asset.sh`: thin wrapper around the deterministic local
+  packaging helper.
+- `scripts/publish_asset.sh`: semantic asset draft/preview/publish/snapshot
+  flow.
+- `scripts/publish_grant.sh`: semantic grant draft/preview/publish/snapshot
+  flow.
+
+## Boundary
+
+- This skill is shell-first, but it still targets the app-owned Data Seller
+  logic through `autopilotctl`.
+- Use the dedicated pane skill for conversational in-app seller work.
+- Do not create a parallel publication path that bypasses preview, confirm, or
+  kernel read-back.
