@@ -3,6 +3,11 @@
 Status: proposed  
 Date: 2026-03-17
 
+Companion docs:
+
+* `docs/plans/data-market-mvp-implementation-spec.md`
+* `docs/audits/2026-03-17-conversational-data-market-seller-pane-audit.md`
+
 ## Purpose
 
 Define the narrowest honest MVP for the OpenAgents Data Market, grounded in the current kernel docs and in the reality that the existing compute-market wedge already runs through NIP-90.
