@@ -148,10 +148,14 @@ The public-relay verified posture is now:
   accepted by both Damus and Primal in the verified run
 - seller result kind `6960` publishes back to those relays and is also accepted
   by both Damus and Primal in the verified run
-- buyer result tracking worked live on those relays in the verified run
-- seller request intake on public relays is still not fully reliable, so the
-  repo now includes an explicit relay import path to keep the public demo
-  truthful and reproducible
+- seller request intake worked live on those relays in the verified strict run
+- buyer result tracking also worked live on those relays in the verified strict
+  run
+- the seller observed the verified request from `wss://relay.primal.net`
+- the buyer tracked the verified result on both configured relays
+- the explicit relay import commands still exist as operator recovery tools if
+  a relay regression needs to be worked around, but they were not needed in the
+  current strict public verification
 
 The current buyer-side consume step is local by design:
 

@@ -197,20 +197,22 @@ The current verified public-relay truth is:
 - the seller publishes the delivery result as NIP-90 kind `6960` back to the
   same configured public relays
 - seller and buyer NIP-89 handler/capability events remain kind `31990`
-- buyer-side result intake worked live in the verified public run
-- seller-side live public-relay request intake is still inconsistent today
+- seller-side request intake worked live in the verified strict run
+- buyer-side result intake also worked live in the verified strict run
+- the seller observed the request from `wss://relay.primal.net` in the
+  verified strict run
+- the buyer tracked the result on both configured relays in the verified
+  strict run
 
-Because seller-side live intake is still inconsistent on public relays, the
-public harness now falls back automatically after a short wait:
+The strict public verification command is:
 
-- it waits `OPENAGENTS_HEADLESS_DATA_MARKET_LIVE_INGEST_WAIT_SECONDS`
-  seconds for live seller intake
-- if live intake does not happen, it fetches the request event back from the
-  configured relays by event id
-- it imports that event into the seller lane through the normal desktop-owned
-  state machine
+```bash
+OPENAGENTS_HEADLESS_DATA_MARKET_REQUIRE_LIVE_INGEST=true \
+  scripts/autopilot/headless-data-market-public-e2e.sh
+```
 
-The current operator commands for that fallback are:
+The manual recovery commands still exist as operator escape hatches if a relay
+regression appears again:
 
 ```bash
 cargo run -p autopilot-desktop --bin autopilotctl -- \
@@ -219,11 +221,7 @@ cargo run -p autopilot-desktop --bin autopilotctl -- \
   --event-id <request-event-id> \
   --relay-url wss://relay.damus.io \
   --relay-url wss://relay.primal.net
-```
 
-and, if buyer-side public relay intake ever needs the same recovery:
-
-```bash
 cargo run -p autopilot-desktop --bin autopilotctl -- \
   --manifest /tmp/buyer-desktop-control.json \
   --json data-market buyer-import-response \
@@ -239,6 +237,8 @@ The verified public run summary now records:
 - result kind
 - seller request ingest mode (`live_relay` vs `relay_import`)
 - buyer result ingest mode (`live_relay` vs `relay_import`)
+- seller request source relay URL
+- buyer result relay URLs
 - request and result event ids
 - final consumed payload path
 
