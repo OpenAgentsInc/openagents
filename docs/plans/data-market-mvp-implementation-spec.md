@@ -151,6 +151,10 @@ expire controls through kernel authority, read the resulting
 `RevocationReceipt` back, and reflect the terminal grant/delivery state into
 both panes so buyer-facing flows can layer on top of one truthful intake and
 post-sale control surface.
+The read-only market pane now also carries a compact lifecycle activity view so
+the operator surface can answer which asset, grant, payment, delivery, or
+revocation event happened under which policy and with which receipt or event
+identifier during the current session.
 
 ### 3. Codex is already deeply integrated
 

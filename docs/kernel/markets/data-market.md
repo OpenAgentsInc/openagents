@@ -52,6 +52,7 @@ smuggled through opaque prompt state.
 - generate seller-side Lightning invoices for matched targeted data requests, publish NIP-90 `payment-required` feedback, and track the request through `invoice_requested`, `publishing_feedback`, `awaiting_payment`, and `paid`
 - prepare seller-side delivery drafts for paid targeted requests, accept the matched grant if needed, issue authoritative `DeliveryBundle` objects, and publish linked NIP-90 result events from the same seller flow
 - let the seller revoke or expire access from the same flow, read the resulting `RevocationReceipt` back from kernel authority, and immediately reflect the terminal grant/delivery state into both panes
+- record recent asset/grant/payment/delivery/revocation lifecycle entries in the read-only `Data Market` pane so operator-facing activity includes policy, counterparty, and receipt context
 
 The starter authority slice is real in:
 
