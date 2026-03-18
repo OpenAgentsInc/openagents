@@ -70,14 +70,12 @@ const LEGACY_OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents.pane.set_input";
 const LEGACY_OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents.pane.action";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS: &str =
     "openagents.data_market.seller_status";
-const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET: &str =
-    "openagents.data_market.draft_asset";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET: &str = "openagents.data_market.draft_asset";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET: &str =
     "openagents.data_market.preview_asset";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET: &str =
     "openagents.data_market.publish_asset";
-const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT: &str =
-    "openagents.data_market.draft_grant";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT: &str = "openagents.data_market.draft_grant";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT: &str =
     "openagents.data_market.preview_grant";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
@@ -979,6 +977,50 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "last_grant_publish_receipt_id": state.data_seller.last_grant_publish_receipt_id,
         "last_published_grant": state.data_seller.last_published_grant,
     });
+    let incoming_requests = state
+        .data_seller
+        .incoming_requests
+        .iter()
+        .take(8)
+        .map(|request| {
+            json!({
+                "request_id": request.request_id,
+                "requester": request.requester,
+                "source_relay_url": request.source_relay_url,
+                "request_kind": request.request_kind,
+                "profile_id": request.profile_id,
+                "asset_ref": request.asset_ref,
+                "permission_scopes": request.permission_scopes,
+                "delivery_mode": request.delivery_mode,
+                "preview_posture": request.preview_posture,
+                "price_sats": request.price_sats,
+                "ttl_seconds": request.ttl_seconds,
+                "created_at_epoch_seconds": request.created_at_epoch_seconds,
+                "expires_at_epoch_seconds": request.expires_at_epoch_seconds,
+                "encrypted": request.encrypted,
+                "preview_only": request.preview_only,
+                "validation_label": request.validation_label,
+                "content_preview": request.content_preview,
+                "matched_asset_id": request.matched_asset_id,
+                "matched_grant_id": request.matched_grant_id,
+                "asset_match_posture": request.asset_match_posture,
+                "required_price_sats": request.required_price_sats,
+                "evaluation_disposition": request.evaluation_disposition.label(),
+                "evaluation_summary": request.evaluation_summary,
+            })
+        })
+        .collect::<Vec<_>>();
+    let latest_request = state.data_seller.latest_incoming_request().map(|request| {
+        json!({
+            "request_id": request.request_id,
+            "requester": request.requester,
+            "evaluation_disposition": request.evaluation_disposition.label(),
+            "evaluation_summary": request.evaluation_summary,
+            "matched_asset_id": request.matched_asset_id,
+            "matched_grant_id": request.matched_grant_id,
+            "required_price_sats": request.required_price_sats,
+        })
+    });
     let seller = json!({
         "load_state": state.data_seller.load_state.label(),
         "preview_enabled": state.data_seller.preview_enabled,
@@ -987,6 +1029,9 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
         "grant_preview_confirmed": state.data_seller.grant_preview_confirmed,
         "inventory_warnings": state.data_seller.inventory_warnings(),
+        "incoming_request_count": state.data_seller.incoming_requests.len(),
+        "latest_incoming_request": latest_request,
+        "incoming_requests": incoming_requests,
         "status_line": state.data_seller.status_line,
         "last_action": state.data_seller.last_action,
         "last_error": state.data_seller.last_error,
@@ -1114,7 +1159,11 @@ fn execute_data_market_publish_asset_tool(
     }
     crate::data_seller_control::publish_data_seller_asset(state);
     if state.data_seller.last_error.is_none()
-        && state.data_seller.active_draft.last_published_asset_id.is_some()
+        && state
+            .data_seller
+            .active_draft
+            .last_published_asset_id
+            .is_some()
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-ASSET-PUBLISHED",
@@ -1226,7 +1275,11 @@ fn execute_data_market_publish_grant_tool(
     state.data_seller.confirm_grant_preview();
     crate::data_seller_control::publish_data_seller_grant(state);
     if state.data_seller.last_error.is_none()
-        && state.data_seller.active_draft.last_published_grant_id.is_some()
+        && state
+            .data_seller
+            .active_draft
+            .last_published_grant_id
+            .is_some()
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-GRANT-PUBLISHED",
@@ -3692,7 +3745,10 @@ fn apply_chat_input(state: &mut RenderState, field: &str, value: &str) -> bool {
 
 fn apply_data_seller_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     if matches!(field, "composer" | "prompt" | "seller_prompt") {
-        state.data_seller_inputs.composer.set_value(value.to_string());
+        state
+            .data_seller_inputs
+            .composer
+            .set_value(value.to_string());
         return true;
     }
     false
@@ -7026,12 +7082,12 @@ mod tests {
         ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
         cad_parse_retry_prompt, decode_tool_call_request, enforce_labor_evidence_uri_scope,
         enforce_matching_labor_contract_scope, normalize_key, pane_action_to_hit_action,
-        pane_kind_key, parse_blink_execution_payload_from_json,
-        parse_blink_quote_terms_from_json, parse_bool_env_override,
-        parse_data_seller_sensitivity_posture, parse_data_seller_visibility_posture,
-        parse_goal_rollout_stage, parse_nip90_sent_payments_boundary, parse_swap_direction,
-        parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind_for_runtime,
-        run_blink_swap_script_json, select_existing_blink_swap_script_path, validate_direction_unit,
+        pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
+        parse_bool_env_override, parse_data_seller_sensitivity_posture,
+        parse_data_seller_visibility_posture, parse_goal_rollout_stage,
+        parse_nip90_sent_payments_boundary, parse_swap_direction, parse_swap_unit,
+        parse_treasury_transfer_asset, resolve_pane_kind_for_runtime, run_blink_swap_script_json,
+        select_existing_blink_swap_script_path, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -7204,11 +7260,9 @@ mod tests {
 
     #[test]
     fn data_market_publish_asset_decode_requires_confirm_field() {
-        let decoded = decode_tool_call_request(&request(
-            OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-            r#"{}"#,
-        ))
-        .expect("decode should succeed");
+        let decoded =
+            decode_tool_call_request(&request(OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, r#"{}"#))
+                .expect("decode should succeed");
         let error = decoded
             .decode_arguments::<super::DataMarketPublishArgs>()
             .expect_err("confirm should be required");
@@ -7238,8 +7292,7 @@ mod tests {
             crate::app_state::DataSellerVisibilityPosture::PublicCatalog
         );
         assert_eq!(
-            parse_data_seller_sensitivity_posture("restricted")
-                .expect("sensitivity should parse"),
+            parse_data_seller_sensitivity_posture("restricted").expect("sensitivity should parse"),
             crate::app_state::DataSellerSensitivityPosture::Restricted
         );
     }

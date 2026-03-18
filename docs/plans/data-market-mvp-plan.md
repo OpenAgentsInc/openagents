@@ -42,6 +42,12 @@ kernel-side `DataAsset`, `AccessGrant`, `DeliveryBundle`, and
 `RevocationReceipt` objects from Nexus. That is useful as an operator/control
 surface, but it is not yet the transactional MVP loop described below.
 
+There is now also a dedicated `Data Seller` pane that can hold a truthful local
+draft, publish assets and grants through Nexus after explicit preview/confirm
+steps, and ingest targeted NIP-90 data-access requests into seller state for
+evaluation against the current asset/grant posture. Payment, delivery,
+revocation, and buyer-side request issuance still remain follow-on work.
+
 ### 1. Compute already has a real product wedge
 
 The compute market is already productized enough to matter:

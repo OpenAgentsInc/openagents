@@ -123,10 +123,11 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 - materialize an exact `RegisterDataAssetRequest` preview payload
 - require explicit in-pane confirmation before publication can be armed
 - show a seller inventory/status surface with published asset/default-offer truth and divergence warnings
+- ingest targeted NIP-90 data-access requests into seller state and evaluate them against the published asset/grant posture
 
 It cannot yet:
 
-- extend the same publication/read-back discipline beyond assets into grants, delivery, revocation, and buyer-facing flows
+- extend the same publication/read-back discipline through payment, delivery, revocation, and buyer-facing flows
 
 The dedicated seller lane now also auto-provisions the first-party
 `autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
@@ -139,8 +140,10 @@ through Nexus after explicit in-pane confirmation, and reflect the resulting
 kernel read-back into the read-only market pane. They now also produce exact
 `CreateAccessGrantRequest` previews, publish `AccessGrant` objects through
 Nexus after explicit confirmation, and reflect the resulting grant read-back
-into the read-only market pane. The follow-on issues now move on to inventory
-summary, NIP-90 intake, delivery, payment, revocation, and buyer-facing flows.
+into the read-only market pane. They also surface incoming targeted data
+requests inside the seller lane with explicit evaluation results so the next
+issues can layer payment-required, delivery, revocation, and buyer-facing flows
+on top of one truthful intake surface.
 
 ### 3. Codex is already deeply integrated
 

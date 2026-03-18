@@ -27,7 +27,11 @@ pub fn paint(
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "codex.data_seller.v0", paint);
-    paint_action_button(data_seller_send_button_bounds(content_bounds), "Send", paint);
+    paint_action_button(
+        data_seller_send_button_bounds(content_bounds),
+        "Send",
+        paint,
+    );
     paint_action_button(
         data_seller_preview_button_bounds(content_bounds),
         "Preview Asset",
@@ -466,7 +470,11 @@ fn paint_publication_status_card(
         bounds.origin.x + 10.0,
         row_y,
         "asset preview",
-        if pane_state.active_draft.last_previewed_asset_payload.is_some() {
+        if pane_state
+            .active_draft
+            .last_previewed_asset_payload
+            .is_some()
+        {
             "ready"
         } else {
             "pending"
@@ -477,7 +485,11 @@ fn paint_publication_status_card(
         bounds.origin.x + 10.0,
         row_y,
         "grant preview",
-        if pane_state.active_draft.last_previewed_grant_payload.is_some() {
+        if pane_state
+            .active_draft
+            .last_previewed_grant_payload
+            .is_some()
+        {
             "ready"
         } else {
             "pending"
@@ -489,6 +501,34 @@ fn paint_publication_status_card(
         row_y,
         "offer warnings",
         &inventory_warning_summary(pane_state),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "incoming requests",
+        &pane_state.incoming_requests.len().to_string(),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "latest request",
+        &option_label(
+            pane_state
+                .latest_incoming_request()
+                .map(|request| request.request_id.as_str()),
+        ),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "latest evaluation",
+        pane_state
+            .latest_incoming_request()
+            .map(|request| request.evaluation_disposition.label())
+            .unwrap_or("pending"),
     );
 
     let warnings = pane_state.inventory_warnings();
@@ -513,9 +553,30 @@ fn paint_publication_status_card(
         10.0,
         warning_color,
     ));
+    if let Some(latest_request) = pane_state.latest_incoming_request() {
+        paint.scene.draw_text(paint.text.layout(
+            &format!(
+                "{} | buyer={} | bid={} sats{}",
+                latest_request.evaluation_summary,
+                latest_request.requester,
+                latest_request.price_sats,
+                latest_request
+                    .required_price_sats
+                    .map(|price| format!(" | ask={} sats", price))
+                    .unwrap_or_default()
+            ),
+            Point::new(bounds.origin.x + 10.0, row_y + 28.0),
+            10.0,
+            theme::text::MUTED,
+        ));
+    }
 }
 
-fn paint_asset_preview_card(bounds: Bounds, pane_state: &DataSellerPaneState, paint: &mut PaintContext) {
+fn paint_asset_preview_card(
+    bounds: Bounds,
+    pane_state: &DataSellerPaneState,
+    paint: &mut PaintContext,
+) {
     paint_card(
         bounds,
         "Exact asset preview",
@@ -523,14 +584,21 @@ fn paint_asset_preview_card(bounds: Bounds, pane_state: &DataSellerPaneState, pa
         paint,
     );
 
-    let payload = pane_state.active_draft.last_previewed_asset_payload.as_ref();
+    let payload = pane_state
+        .active_draft
+        .last_previewed_asset_payload
+        .as_ref();
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
         "preview",
-        if payload.is_some() { "ready" } else { "pending" },
+        if payload.is_some() {
+            "ready"
+        } else {
+            "pending"
+        },
     );
     row_y = paint_label_line(
         paint,
