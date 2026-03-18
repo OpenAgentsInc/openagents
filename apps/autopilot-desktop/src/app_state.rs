@@ -1890,19 +1890,11 @@ impl Default for DataMarketPaneState {
 }
 
 impl DataMarketPaneState {
-    pub fn begin_refresh(&mut self) {
-        self.load_state = PaneLoadState::Loading;
-        self.last_error = None;
-        self.last_action = Some("Refreshing Data Market snapshot from Nexus".to_string());
-    }
-
-    pub fn apply_snapshot(
-        &mut self,
-        mut assets: Vec<DataAsset>,
-        mut grants: Vec<AccessGrant>,
-        mut deliveries: Vec<DeliveryBundle>,
-        mut revocations: Vec<RevocationReceipt>,
-        refreshed_at_ms: i64,
+    fn sort_state(
+        assets: &mut [DataAsset],
+        grants: &mut [AccessGrant],
+        deliveries: &mut [DeliveryBundle],
+        revocations: &mut [RevocationReceipt],
     ) {
         assets.sort_by(|left, right| {
             right
@@ -1928,6 +1920,28 @@ impl DataMarketPaneState {
                 .cmp(&left.created_at_ms)
                 .then_with(|| left.revocation_id.cmp(&right.revocation_id))
         });
+    }
+
+    pub fn begin_refresh(&mut self) {
+        self.load_state = PaneLoadState::Loading;
+        self.last_error = None;
+        self.last_action = Some("Refreshing Data Market snapshot from Nexus".to_string());
+    }
+
+    pub fn apply_snapshot(
+        &mut self,
+        mut assets: Vec<DataAsset>,
+        mut grants: Vec<AccessGrant>,
+        mut deliveries: Vec<DeliveryBundle>,
+        mut revocations: Vec<RevocationReceipt>,
+        refreshed_at_ms: i64,
+    ) {
+        Self::sort_state(
+            assets.as_mut_slice(),
+            grants.as_mut_slice(),
+            deliveries.as_mut_slice(),
+            revocations.as_mut_slice(),
+        );
 
         let summary = format!(
             "Refreshed Data Market snapshot: {} assets, {} grants, {} deliveries, {} revocations",
@@ -1945,6 +1959,31 @@ impl DataMarketPaneState {
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
         self.last_action = Some(summary);
+    }
+
+    pub fn note_published_asset(&mut self, asset: DataAsset, reflected_at_ms: i64) {
+        if let Some(existing) = self
+            .assets
+            .iter_mut()
+            .find(|existing| existing.asset_id == asset.asset_id)
+        {
+            *existing = asset.clone();
+        } else {
+            self.assets.push(asset.clone());
+        }
+        Self::sort_state(
+            self.assets.as_mut_slice(),
+            self.grants.as_mut_slice(),
+            self.deliveries.as_mut_slice(),
+            self.revocations.as_mut_slice(),
+        );
+        self.last_refreshed_at_ms = Some(reflected_at_ms);
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Reflected published asset {} into the Data Market pane from kernel read-back",
+            asset.asset_id
+        ));
     }
 
     pub fn record_error(&mut self, error: impl Into<String>) {
@@ -12122,6 +12161,32 @@ mod tests {
         );
         assert!(pane.last_published_asset.is_some());
         assert!(!pane.publish_enabled);
+    }
+
+    #[test]
+    fn data_market_note_published_asset_upserts_readback_asset() {
+        let mut pane = super::DataMarketPaneState::default();
+        pane.note_published_asset(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle".to_string()),
+                provenance_ref: Some("oa://bundle/support-1".to_string()),
+                default_policy: None,
+                price_hint: None,
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({}),
+            },
+            1_762_700_100_000,
+        );
+
+        assert_eq!(pane.assets.len(), 1);
+        assert_eq!(pane.assets[0].asset_id, "data_asset.provider.alpha.bundle");
+        assert_eq!(pane.last_refreshed_at_ms, Some(1_762_700_100_000));
     }
 
     #[test]

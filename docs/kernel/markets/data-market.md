@@ -41,6 +41,7 @@ smuggled through opaque prompt state.
 - send seller prompts from the dedicated pane into the dedicated Codex seller thread and render the resulting transcript back into the pane
 - require an explicit preview-confirm step before publication can be armed
 - publish a `DataAsset` from the seller pane through Nexus and immediately read the canonical asset back into seller state
+- reflect newly published assets into the read-only `Data Market` pane from the same kernel read-back path
 
 The starter authority slice is real in:
 
