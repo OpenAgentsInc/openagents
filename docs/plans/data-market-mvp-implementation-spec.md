@@ -136,8 +136,10 @@ runtime for seller status, draft, preview, blocked publish, and snapshot flows.
 Those tools now produce the exact asset preview shape, can publish a `DataAsset`
 through Nexus after explicit in-pane confirmation, and reflect the resulting
 kernel read-back into the read-only market pane. The follow-on issues still
-need to extend the same discipline to grants and fill in the rest of the market
-lifecycle.
+need to extend the same discipline to grant publication and fill in the rest of
+the market lifecycle. The seller draft now also carries reusable grant-policy
+templates plus bounded offer posture fields so the next grant issue can build
+on first-class state instead of transcript prose.
 
 ### 3. Codex is already deeply integrated
 

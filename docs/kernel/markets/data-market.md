@@ -42,6 +42,7 @@ smuggled through opaque prompt state.
 - require an explicit preview-confirm step before publication can be armed
 - publish a `DataAsset` from the seller pane through Nexus and immediately read the canonical asset back into seller state
 - reflect newly published assets into the read-only `Data Market` pane from the same kernel read-back path
+- carry reusable grant-policy templates plus a first seller-side grant draft posture in the conversational seller flow
 
 The starter authority slice is real in:
 

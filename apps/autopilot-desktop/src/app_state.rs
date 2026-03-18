@@ -1191,12 +1191,17 @@ pub struct DataSellerDraft {
     pub content_digest: Option<String>,
     pub provenance_ref: Option<String>,
     pub default_policy: Option<String>,
+    pub grant_policy_template: Option<String>,
+    pub grant_consumer_id: Option<String>,
+    pub grant_expires_in_hours: Option<u64>,
+    pub grant_warranty_window_hours: Option<u64>,
     pub price_hint_sats: Option<u64>,
     pub delivery_modes: Vec<String>,
     pub visibility_posture: DataSellerVisibilityPosture,
     pub sensitivity_posture: DataSellerSensitivityPosture,
     pub preview_posture: DataSellerPreviewPosture,
     pub metadata: HashMap<String, String>,
+    pub grant_metadata: HashMap<String, String>,
     pub readiness_blockers: Vec<DataSellerReadinessBlocker>,
     pub last_previewed_asset_payload: Option<Value>,
     pub last_previewed_grant_payload: Option<Value>,
@@ -1213,12 +1218,17 @@ impl Default for DataSellerDraft {
             content_digest: None,
             provenance_ref: None,
             default_policy: Some("targeted_request".to_string()),
+            grant_policy_template: Some("targeted_request".to_string()),
+            grant_consumer_id: None,
+            grant_expires_in_hours: Some(24),
+            grant_warranty_window_hours: Some(24),
             price_hint_sats: Some(250),
             delivery_modes: vec!["bundle_ref".to_string(), "targeted_nip90".to_string()],
             visibility_posture: DataSellerVisibilityPosture::TargetedOnly,
             sensitivity_posture: DataSellerSensitivityPosture::Private,
             preview_posture: DataSellerPreviewPosture::NotRequested,
             metadata: HashMap::new(),
+            grant_metadata: HashMap::new(),
             readiness_blockers: Vec::new(),
             last_previewed_asset_payload: None,
             last_previewed_grant_payload: None,
@@ -1343,11 +1353,26 @@ impl DataSellerDraft {
     }
 
     fn structural_grant_preview_payload(&self) -> Value {
+        let policy_template = self
+            .grant_policy_template
+            .as_deref()
+            .or(self.default_policy.as_deref())
+            .unwrap_or("targeted_request");
         json!({
-            "default_policy": self.default_policy,
-            "price_hint_sats": self.price_hint_sats,
+            "grant_policy_template": policy_template,
+            "consumer_id": self.grant_consumer_id,
+            "offer_price_sats": self.price_hint_sats,
             "delivery_modes": self.delivery_modes,
             "visibility_posture": self.visibility_posture.label(),
+            "expires_in_hours": self.grant_expires_in_hours,
+            "warranty_window_hours": self.grant_warranty_window_hours,
+            "permission_policy": data_seller_permission_policy_template(
+                policy_template,
+                self.delivery_modes.as_slice(),
+                self.visibility_posture,
+                self.sensitivity_posture,
+            ),
+            "metadata": self.grant_metadata,
         })
     }
 
@@ -1374,16 +1399,13 @@ impl DataSellerDraft {
             .as_ref()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
-        let default_policy = self.default_policy.as_ref().map(|policy_id| {
-            openagents_kernel_core::data::PermissionPolicy {
-                policy_id: policy_id.trim().to_string(),
-                allowed_scopes: self.delivery_modes.clone(),
-                metadata: json!({
-                    "visibility_posture": self.visibility_posture.label(),
-                    "sensitivity_posture": self.sensitivity_posture.label(),
-                }),
-                ..Default::default()
-            }
+        let default_policy = self.default_policy.as_deref().map(|policy_id| {
+            data_seller_permission_policy_template(
+                policy_id,
+                self.delivery_modes.as_slice(),
+                self.visibility_posture,
+                self.sensitivity_posture,
+            )
         });
         let price_hint = self.price_hint_sats.map(|value| Money {
             asset: Asset::Btc,
@@ -1493,6 +1515,116 @@ fn preview_evidence_refs(
         ));
     }
     evidence
+}
+
+fn data_seller_permission_policy_template(
+    policy_id: &str,
+    delivery_modes: &[String],
+    visibility_posture: DataSellerVisibilityPosture,
+    sensitivity_posture: DataSellerSensitivityPosture,
+) -> openagents_kernel_core::data::PermissionPolicy {
+    let normalized_policy = policy_id.trim();
+    let mut allowed_scopes = delivery_modes
+        .iter()
+        .map(|mode| mode.trim())
+        .filter(|mode| !mode.is_empty())
+        .map(|mode| mode.to_string())
+        .collect::<Vec<_>>();
+    match normalized_policy {
+        "targeted_request" => {
+            allowed_scopes.push("targeted_request".to_string());
+            openagents_kernel_core::data::PermissionPolicy {
+                policy_id: normalized_policy.to_string(),
+                allowed_scopes,
+                allowed_tool_tags: vec!["openagents.data_market".to_string(), "nostr.nip90".to_string()],
+                allowed_origins: visibility_allowed_origins(visibility_posture),
+                export_allowed: false,
+                derived_outputs_allowed: false,
+                retention_seconds: Some(86_400),
+                max_bundle_size_bytes: Some(64 * 1024 * 1024),
+                metadata: json!({
+                    "template": "targeted_request",
+                    "visibility_posture": visibility_posture.label(),
+                    "sensitivity_posture": sensitivity_posture.label(),
+                }),
+            }
+        }
+        "evaluation_window" => {
+            allowed_scopes.extend([
+                "analysis_preview".to_string(),
+                "evaluation_window".to_string(),
+            ]);
+            openagents_kernel_core::data::PermissionPolicy {
+                policy_id: normalized_policy.to_string(),
+                allowed_scopes,
+                allowed_tool_tags: vec!["openagents.data_market".to_string(), "nostr.nip90".to_string()],
+                allowed_origins: visibility_allowed_origins(visibility_posture),
+                export_allowed: false,
+                derived_outputs_allowed: true,
+                retention_seconds: Some(14_400),
+                max_bundle_size_bytes: Some(32 * 1024 * 1024),
+                metadata: json!({
+                    "template": "evaluation_window",
+                    "visibility_posture": visibility_posture.label(),
+                    "sensitivity_posture": sensitivity_posture.label(),
+                }),
+            }
+        }
+        "licensed_bundle" => {
+            allowed_scopes.extend([
+                "bundle_delivery".to_string(),
+                "licensed_bundle".to_string(),
+            ]);
+            openagents_kernel_core::data::PermissionPolicy {
+                policy_id: normalized_policy.to_string(),
+                allowed_scopes,
+                allowed_tool_tags: vec!["openagents.data_market".to_string(), "nostr.nip90".to_string()],
+                allowed_origins: visibility_allowed_origins(visibility_posture),
+                export_allowed: !matches!(sensitivity_posture, DataSellerSensitivityPosture::Private),
+                derived_outputs_allowed: true,
+                retention_seconds: None,
+                max_bundle_size_bytes: Some(512 * 1024 * 1024),
+                metadata: json!({
+                    "template": "licensed_bundle",
+                    "visibility_posture": visibility_posture.label(),
+                    "sensitivity_posture": sensitivity_posture.label(),
+                }),
+            }
+        }
+        _ => openagents_kernel_core::data::PermissionPolicy {
+            policy_id: normalized_policy.to_string(),
+            allowed_scopes,
+            allowed_tool_tags: vec!["openagents.data_market".to_string()],
+            allowed_origins: visibility_allowed_origins(visibility_posture),
+            metadata: json!({
+                "template": "custom",
+                "visibility_posture": visibility_posture.label(),
+                "sensitivity_posture": sensitivity_posture.label(),
+            }),
+            ..Default::default()
+        },
+    }
+}
+
+fn visibility_allowed_origins(
+    visibility_posture: DataSellerVisibilityPosture,
+) -> Vec<String> {
+    match visibility_posture {
+        DataSellerVisibilityPosture::TargetedOnly => vec![
+            "nostr:nip90".to_string(),
+            "openagents:data_seller".to_string(),
+        ],
+        DataSellerVisibilityPosture::OperatorOnly => vec![
+            "nostr:nip90".to_string(),
+            "openagents:data_seller".to_string(),
+            "openagents:operator".to_string(),
+        ],
+        DataSellerVisibilityPosture::PublicCatalog => vec![
+            "nostr:nip90".to_string(),
+            "openagents:data_seller".to_string(),
+            "openagents:catalog".to_string(),
+        ],
+    }
 }
 
 fn canonical_data_seller_id_component(value: &str) -> String {
@@ -12106,7 +12238,18 @@ mod tests {
                 .and_then(Value::as_str)
                 .is_some()
         );
-        assert!(pane.active_draft.last_previewed_grant_payload.is_some());
+        let grant_preview = pane
+            .active_draft
+            .last_previewed_grant_payload
+            .as_ref()
+            .expect("grant preview should exist");
+        assert_eq!(
+            grant_preview
+                .get("grant_policy_template")
+                .and_then(Value::as_str),
+            Some("targeted_request")
+        );
+        assert!(grant_preview.get("permission_policy").is_some());
         assert!(pane.confirm_enabled);
         assert!(!pane.publish_enabled);
     }

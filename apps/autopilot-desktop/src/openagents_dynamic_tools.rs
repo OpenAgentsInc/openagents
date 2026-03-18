@@ -239,6 +239,11 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                 "type": "object",
                 "properties": {
                     "default_policy": { "type": "string" },
+                    "policy_template": {
+                        "type": "string",
+                        "enum": ["targeted_request", "evaluation_window", "licensed_bundle"]
+                    },
+                    "consumer_id": { "type": "string" },
                     "price_hint_sats": { "type": "integer", "minimum": 0 },
                     "delivery_modes": {
                         "type": "array",
@@ -247,6 +252,12 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "visibility_posture": {
                         "type": "string",
                         "enum": ["targeted_only", "operator_only", "public_catalog"]
+                    },
+                    "expires_in_hours": { "type": "integer", "minimum": 1 },
+                    "warranty_window_hours": { "type": "integer", "minimum": 0 },
+                    "metadata": {
+                        "type": "object",
+                        "additionalProperties": { "type": "string" }
                     }
                 },
                 "additionalProperties": false
@@ -679,8 +690,9 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
 mod tests {
     use super::{
         OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_SWAP_EXECUTE,
-        OPENAGENTS_TOOL_SWAP_QUOTE, openagents_dynamic_tool_specs,
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+        OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
+        openagents_dynamic_tool_specs,
     };
     use serde_json::json;
     use std::collections::HashSet;
@@ -762,6 +774,10 @@ mod tests {
             .iter()
             .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET)
             .expect("data market publish asset spec should exist");
+        let grant_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT)
+            .expect("data market draft grant spec should exist");
 
         assert!(
             draft_spec
@@ -773,6 +789,12 @@ mod tests {
             draft_spec
                 .input_schema
                 .pointer("/properties/metadata")
+                .is_some()
+        );
+        assert!(
+            grant_spec
+                .input_schema
+                .pointer("/properties/policy_template")
                 .is_some()
         );
         assert_eq!(
