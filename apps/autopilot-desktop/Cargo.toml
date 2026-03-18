@@ -85,6 +85,7 @@ bech32 = { workspace = true }
 hex = { workspace = true }
 base64 = "0.22"
 cpal = "0.15"
+rodio = "0.20"
 bitcoin = { workspace = true }
 lightning-invoice = "0.33.2"
 clap = { version = "4.5", features = ["derive"] }
