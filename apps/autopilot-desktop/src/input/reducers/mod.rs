@@ -9,6 +9,7 @@ mod local_inference;
 mod provider_ingress;
 mod sa;
 mod skl;
+mod voice_playground;
 pub(super) mod wallet;
 pub(super) use cad::CadChatPromptApplyOutcome;
 
@@ -166,6 +167,10 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     for update in state.apple_fm_execution_worker.drain_updates() {
         changed |= apple_fm_workbench::apply_bridge_update(state, &update);
         changed |= jobs::apply_active_job_apple_fm_update(state, update);
+    }
+
+    for update in state.voice_playground_worker.drain_updates() {
+        changed |= voice_playground::apply_voice_update(state, &update);
     }
 
     for update in state.local_inference_runtime.drain_updates() {

@@ -84,6 +84,7 @@ chrono = { version = "0.4", default-features = true, features = ["clock"] }
 bech32 = { workspace = true }
 hex = { workspace = true }
 base64 = "0.22"
+cpal = "0.15"
 bitcoin = { workspace = true }
 lightning-invoice = "0.33.2"
 clap = { version = "4.5", features = ["derive"] }

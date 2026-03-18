@@ -3848,6 +3848,7 @@ fn pane_action_to_hit_action(
         PaneKind::KeyLedger => unsupported(),
         PaneKind::SettlementAtlas => unsupported(),
         PaneKind::RelayChoreography => unsupported(),
+        PaneKind::VoicePlayground => unsupported(),
         PaneKind::DataSeller => match action {
             "send" | "submit" | "submit_prompt" => Ok(PaneHitAction::DataSeller(
                 DataSellerPaneAction::SubmitPrompt,
@@ -7898,6 +7899,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::GoOnline => "go_online",
         PaneKind::ProviderControl => "provider_control",
         PaneKind::ProviderStatus => "provider_status",
+        PaneKind::VoicePlayground => "voice_playground",
         PaneKind::LocalInference => "local_inference",
         PaneKind::PsionicViz => "psionic_viz",
         PaneKind::AttnResLab => "attnres_lab",

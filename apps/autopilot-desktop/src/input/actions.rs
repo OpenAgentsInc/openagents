@@ -17,6 +17,7 @@ use crate::pane_system::{
     DataMarketPaneAction, DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction,
     MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
     RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction,
+    VoicePlaygroundPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -8858,6 +8859,45 @@ pub(crate) fn run_local_runtime_workbench_action(
             run_apple_fm_workbench_action(state, action)
         }
         LocalRuntimeWorkbenchAction::GptOss(action) => run_local_inference_action(state, action),
+    }
+}
+
+pub(super) fn run_voice_playground_action(
+    state: &mut crate::app_state::RenderState,
+    action: VoicePlaygroundPaneAction,
+) -> bool {
+    let command = match action {
+        VoicePlaygroundPaneAction::Refresh => {
+            crate::voice_playground::VoicePlaygroundCommand::Refresh
+        }
+        VoicePlaygroundPaneAction::StartRecording => {
+            crate::voice_playground::VoicePlaygroundCommand::StartRecording
+        }
+        VoicePlaygroundPaneAction::StopRecordingAndTranscribe => {
+            crate::voice_playground::VoicePlaygroundCommand::StopRecordingAndTranscribe {
+                request_id: format!("voice-playground-{}", state.reserve_runtime_command_seq()),
+            }
+        }
+        VoicePlaygroundPaneAction::CancelRecording => {
+            crate::voice_playground::VoicePlaygroundCommand::CancelRecording
+        }
+    };
+    match state.voice_playground_worker.enqueue(command) {
+        Ok(()) => {
+            state.voice_playground.last_error = None;
+            if matches!(action, VoicePlaygroundPaneAction::Refresh) {
+                state.voice_playground.last_action =
+                    Some("Queued voice playground backend refresh".to_string());
+            }
+            true
+        }
+        Err(error) => {
+            state.voice_playground.load_state = crate::app_state::PaneLoadState::Error;
+            state.voice_playground.last_error = Some(error);
+            state.voice_playground.last_action =
+                Some("Voice playground command failed".to_string());
+            true
+        }
     }
 }
 

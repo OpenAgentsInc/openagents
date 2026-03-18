@@ -70,8 +70,9 @@ use crate::pane_system::{
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_settings_input_event, dispatch_spark_input_event,
+    dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -3170,6 +3171,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_create_invoice_input_event(state, event);
     handled |= dispatch_relay_connections_input_event(state, event);
     handled |= dispatch_network_requests_input_event(state, event);
+    handled |= dispatch_voice_playground_input_event(state, event);
     handled |= dispatch_local_inference_input_event(state, event);
     handled |= dispatch_rive_preview_input_event(state, event);
     handled |= dispatch_apple_fm_workbench_input_event(state, event);
@@ -3465,6 +3467,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
+        PaneHitAction::VoicePlayground(action) => run_voice_playground_action(state, action),
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
         PaneHitAction::AttnResLab(action) => run_attnres_lab_action(state, action),
         PaneHitAction::TassadarLab(action) => run_tassadar_lab_action(state, action),
