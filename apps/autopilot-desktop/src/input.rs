@@ -112,16 +112,21 @@ pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
 pub use tool_bridge::{
+    DataMarketBuyerRequestArgs as DesktopControlDataMarketBuyerRequestArgs,
     DataMarketDraftAssetArgs as DesktopControlDataMarketDraftAssetArgs,
     DataMarketDraftGrantArgs as DesktopControlDataMarketDraftGrantArgs,
     DataMarketIssueDeliveryArgs as DesktopControlDataMarketIssueDeliveryArgs,
     DataMarketPrepareDeliveryArgs as DesktopControlDataMarketPrepareDeliveryArgs,
     DataMarketPublishArgs as DesktopControlDataMarketPublishArgs,
     DataMarketRequestPaymentArgs as DesktopControlDataMarketRequestPaymentArgs,
+    DataMarketResolveDeliveryArgs as DesktopControlDataMarketResolveDeliveryArgs,
     DataMarketRevokeGrantArgs as DesktopControlDataMarketRevokeGrantArgs,
 };
 pub(crate) use tool_bridge::{
     ToolBridgeResultEnvelope as DesktopControlToolBridgeResultEnvelope,
+    execute_data_market_buyer_publish_request_tool as desktop_control_data_market_buyer_publish_request,
+    execute_data_market_buyer_refresh_tool as desktop_control_data_market_buyer_refresh,
+    execute_data_market_buyer_status_tool as desktop_control_data_market_buyer_status,
     execute_data_market_draft_asset_tool as desktop_control_data_market_draft_asset,
     execute_data_market_draft_grant_tool as desktop_control_data_market_draft_grant,
     execute_data_market_issue_delivery_tool as desktop_control_data_market_issue_delivery,
@@ -131,6 +136,7 @@ pub(crate) use tool_bridge::{
     execute_data_market_publish_asset_tool as desktop_control_data_market_publish_asset,
     execute_data_market_publish_grant_tool as desktop_control_data_market_publish_grant,
     execute_data_market_request_payment_tool as desktop_control_data_market_request_payment,
+    execute_data_market_resolve_delivery_tool as desktop_control_data_market_resolve_delivery,
     execute_data_market_revoke_grant_tool as desktop_control_data_market_revoke_grant,
     execute_data_market_seller_status_tool as desktop_control_data_market_seller_status,
     execute_data_market_snapshot_tool as desktop_control_data_market_snapshot,
@@ -3506,7 +3512,13 @@ pub(crate) fn apply_provider_mode_target(
 ) -> bool {
     crate::provider_admin::set_desired_mode(state, desired_mode);
     let worker_id = state.sync_lifecycle_worker_id.clone();
+    let data_market_relay_only = state.data_seller.derived_nip90_profile().is_some()
+        || state.data_buyer.requires_nip90_response_tracking();
     if wants_online {
+        if data_market_relay_only {
+            state.provider_runtime.last_error_detail = None;
+            state.provider_runtime.last_authoritative_error_class = None;
+        }
         state.provider_runtime.inventory_session_started_at_ms = Some(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -3514,17 +3526,20 @@ pub(crate) fn apply_provider_mode_target(
                     duration.as_millis().min(i64::MAX as u128) as i64
                 }),
         );
-        let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
-        let _ = ensure_mission_control_local_runtime_preflight(state);
-        if let Some(reason) = provider_go_online_block_reason(state) {
-            state.provider_runtime.last_result = Some(format!("{origin}: {reason}"));
-            state.provider_runtime.last_error_detail = Some(reason);
-            state.provider_runtime.last_authoritative_error_class =
-                Some(EarnFailureClass::Execution);
-            state.provider_runtime.mode = ProviderMode::Offline;
-            state.provider_runtime.degraded_reason_code = None;
-            state.provider_runtime.mode_changed_at = std::time::Instant::now();
-            return true;
+        if !data_market_relay_only {
+            let _ =
+                state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
+            let _ = ensure_mission_control_local_runtime_preflight(state);
+            if let Some(reason) = provider_go_online_block_reason(state) {
+                state.provider_runtime.last_result = Some(format!("{origin}: {reason}"));
+                state.provider_runtime.last_error_detail = Some(reason);
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Execution);
+                state.provider_runtime.mode = ProviderMode::Offline;
+                state.provider_runtime.degraded_reason_code = None;
+                state.provider_runtime.mode_changed_at = std::time::Instant::now();
+                return true;
+            }
         }
         state.sync_lifecycle.mark_connecting(worker_id.as_str());
         if let Err(error) = state
@@ -3592,19 +3607,33 @@ pub(crate) fn apply_provider_mode_target(
 
     if wants_online {
         state.provider_runtime.defer_runtime_shutdown_until_idle = false;
-        let _ = ensure_mission_control_local_runtime_preflight(state);
+        if !data_market_relay_only {
+            let _ = ensure_mission_control_local_runtime_preflight(state);
+        }
         queue_spark_command(state, SparkWalletCommand::Refresh);
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
-        if let Err(error) =
-            crate::kernel_control::register_online_compute_inventory_with_kernel(state)
-        {
-            state.provider_runtime.last_result = Some(format!(
-                "Kernel online inventory registration failed: {error}"
-            ));
-            state.provider_runtime.last_error_detail = Some(error);
-            state.provider_runtime.last_authoritative_error_class =
-                Some(EarnFailureClass::Reconciliation);
+        let runtime_view = crate::app_state::mission_control_local_runtime_view_model(
+            state.desktop_shell_mode,
+            &state.provider_runtime,
+            &state.gpt_oss_execution,
+        );
+        if runtime_view.go_online_ready {
+            if let Err(error) =
+                crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+            {
+                state.provider_runtime.last_result = Some(format!(
+                    "Kernel online inventory registration failed: {error}"
+                ));
+                state.provider_runtime.last_error_detail = Some(error);
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Reconciliation);
+            }
+        } else if data_market_relay_only {
+            state.provider_runtime.last_result = Some(
+                "Provider online for Data Market relay traffic; compute inventory registration skipped because no compute-ready runtime is present."
+                    .to_string(),
+            );
         }
     }
     if let Err(error) =

@@ -1155,7 +1155,9 @@ impl NetworkRequestsState {
             return Err(self.pane_set_error("Request payload is required"));
         }
 
-        if budget_sats == 0 {
+        let zero_budget_allowed =
+            request_type.eq_ignore_ascii_case(crate::app_state::DATA_MARKET_BUYER_REQUEST_TYPE);
+        if budget_sats == 0 && !zero_budget_allowed {
             return Err(self.pane_set_error("Budget sats must be greater than 0"));
         }
 
@@ -4117,8 +4119,9 @@ impl ReciprocalLoopState {
 mod tests {
     use super::{
         AcceptedForwardComputeOrder, AcceptedSpotComputeOrder, ComputeQuoteMode,
-        ForwardComputeQuoteCandidate, ForwardComputeRfqDraft, NetworkRequestsState,
-        SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate, SpotComputeRfqDraft,
+        ForwardComputeQuoteCandidate, ForwardComputeRfqDraft, NetworkRequestSubmission,
+        NetworkRequestsState, SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate,
+        SpotComputeRfqDraft,
     };
     use openagents_kernel_core::compute::{
         ComputeBackendFamily, ComputeEnvironmentBinding, ComputeExecutionKind, ComputeFamily,
@@ -4205,6 +4208,32 @@ mod tests {
             collateral_summary: "bond=performance_bond".to_string(),
             remedy_summary: "default=>non_delivery remedy".to_string(),
         }
+    }
+
+    #[test]
+    fn data_market_requests_allow_zero_budget_submission() {
+        let mut state = NetworkRequestsState::default();
+        let request_id = state
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-data-free".to_string()),
+                request_type: crate::app_state::DATA_MARKET_BUYER_REQUEST_TYPE.to_string(),
+                payload: "{\"asset_id\":\"data_asset.alpha\"}".to_string(),
+                resolution_mode: crate::app_state::BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["npub1seller".to_string()],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 0,
+                timeout_seconds: 120,
+                authority_command_seq: 7,
+            })
+            .expect("zero-budget data request should queue");
+        assert_eq!(request_id, "req-data-free");
+        let queued = state
+            .submitted
+            .iter()
+            .find(|request| request.request_id == "req-data-free")
+            .expect("queued request");
+        assert_eq!(queued.budget_sats, 0);
     }
 
     #[test]

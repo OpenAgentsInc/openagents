@@ -10,6 +10,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 (
   cd "$ROOT"
+  timeout 300s scripts/autopilot/headless-data-market-e2e.sh
+)
+
+(
+  cd "$ROOT"
   cargo test -p autopilot-desktop data_seller_full_lifecycle_progresses_from_grant_to_revocation -- --nocapture
 )
 

@@ -12,9 +12,10 @@ use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
     DesktopControlAppleAdapterOperatorRunStatus, DesktopControlAttnResStatus,
     DesktopControlAttnResView, DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus,
-    DesktopControlDataMarketDraftAssetArgs, DesktopControlDataMarketDraftGrantArgs,
-    DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
-    DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
+    DesktopControlDataMarketBuyerRequestArgs, DesktopControlDataMarketDraftAssetArgs,
+    DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketIssueDeliveryArgs,
+    DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
+    DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketResolveDeliveryArgs,
     DesktopControlDataMarketRevokeGrantArgs, DesktopControlEventBatch,
     DesktopControlLocalRuntimeStatus, DesktopControlManifest,
     DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
@@ -576,6 +577,8 @@ enum ChatCommand {
 #[derive(Subcommand, Debug)]
 enum DataMarketCommand {
     SellerStatus,
+    BuyerStatus,
+    BuyerRefresh,
     Snapshot,
     DraftAsset {
         #[arg(long)]
@@ -618,6 +621,28 @@ enum DataMarketCommand {
         confirm: bool,
         #[arg(long)]
         reason_code: Option<String>,
+    },
+    BuyerPublishRequest {
+        #[arg(long)]
+        asset_id: Option<String>,
+        #[arg(long, default_value_t = true)]
+        refresh_market: bool,
+    },
+    ConsumeDelivery {
+        #[arg(long)]
+        output_dir: PathBuf,
+        #[arg(long)]
+        delivery_bundle_id: Option<String>,
+        #[arg(long)]
+        request_id: Option<String>,
+        #[arg(long)]
+        grant_id: Option<String>,
+        #[arg(long)]
+        asset_id: Option<String>,
+        #[arg(long, default_value_t = true)]
+        refresh_market: bool,
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
     },
 }
 
@@ -1138,6 +1163,8 @@ impl DataMarketCommand {
     fn action_request(&self) -> Result<DesktopControlActionRequest> {
         match self {
             Self::SellerStatus => Ok(DesktopControlActionRequest::GetDataMarketSellerStatus),
+            Self::BuyerStatus => Ok(DesktopControlActionRequest::GetDataMarketBuyerStatus),
+            Self::BuyerRefresh => Ok(DesktopControlActionRequest::RefreshDataMarketBuyerMarket),
             Self::Snapshot => Ok(DesktopControlActionRequest::GetDataMarketSnapshot),
             Self::DraftAsset { file } => Ok(DesktopControlActionRequest::DraftDataMarketAsset {
                 args: load_json_file::<DesktopControlDataMarketDraftAssetArgs>(
@@ -1205,6 +1232,31 @@ impl DataMarketCommand {
                     action: action.as_request_action().to_string(),
                     confirm: *confirm,
                     reason_code: reason_code.clone(),
+                },
+            }),
+            Self::BuyerPublishRequest {
+                asset_id,
+                refresh_market,
+            } => Ok(DesktopControlActionRequest::PublishDataMarketBuyerRequest {
+                args: DesktopControlDataMarketBuyerRequestArgs {
+                    asset_id: asset_id.clone(),
+                    refresh_market: *refresh_market,
+                },
+            }),
+            Self::ConsumeDelivery {
+                delivery_bundle_id,
+                request_id,
+                grant_id,
+                asset_id,
+                refresh_market,
+                ..
+            } => Ok(DesktopControlActionRequest::ResolveDataMarketDelivery {
+                args: DesktopControlDataMarketResolveDeliveryArgs {
+                    delivery_bundle_id: delivery_bundle_id.clone(),
+                    request_id: request_id.clone(),
+                    grant_id: grant_id.clone(),
+                    asset_id: asset_id.clone(),
+                    refresh_market: *refresh_market,
                 },
             }),
         }
@@ -1347,6 +1399,33 @@ struct StatusEnvelope<'a> {
 struct ActionEnvelope<'a> {
     response: &'a DesktopControlActionResponse,
     snapshot: Option<&'a DesktopControlSnapshot>,
+}
+
+#[derive(Serialize)]
+struct DataMarketConsumeEnvelope<'a> {
+    message: &'a str,
+    payload: &'a Value,
+    consumed: &'a DataMarketConsumedDeliverySummary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct DataMarketConsumedDeliverySummary {
+    schema_version: &'static str,
+    selection_reason: Option<String>,
+    resolved_request_id: Option<String>,
+    delivery_bundle_id: String,
+    grant_id: String,
+    asset_id: String,
+    provider_id: String,
+    consumer_id: String,
+    delivery_ref: String,
+    delivery_digest: Option<String>,
+    output_dir: String,
+    payload_source_kind: String,
+    payload_output_path: String,
+    copied_manifest_paths: Vec<String>,
+    unresolved_manifest_refs: Vec<String>,
+    manifest_refs: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -1923,7 +2002,25 @@ fn main() -> Result<()> {
             let response = client.action(&command.action_request()?)?;
             ensure_action_success(&response)?;
             let payload = response.payload.as_ref().unwrap_or(&Value::Null);
-            if json_output {
+            if let DataMarketCommand::ConsumeDelivery {
+                output_dir,
+                overwrite,
+                ..
+            } = &command
+            {
+                let consumed =
+                    materialize_data_market_delivery(payload, output_dir.as_path(), *overwrite)?;
+                if json_output {
+                    print_json(&DataMarketConsumeEnvelope {
+                        message: response.message.as_str(),
+                        payload,
+                        consumed: &consumed,
+                    })?;
+                } else {
+                    println!("{}", response.message);
+                    print_data_market_consumed_delivery_text(&consumed);
+                }
+            } else if json_output {
                 print_json(&json!({
                     "message": response.message,
                     "payload": payload,
@@ -1931,7 +2028,9 @@ fn main() -> Result<()> {
             } else {
                 if !matches!(
                     command,
-                    DataMarketCommand::SellerStatus | DataMarketCommand::Snapshot
+                    DataMarketCommand::SellerStatus
+                        | DataMarketCommand::BuyerStatus
+                        | DataMarketCommand::Snapshot
                 ) {
                     println!("{}", response.message);
                 }
@@ -2615,8 +2714,8 @@ fn print_pane_snapshot_text(payload: &Value) {
 fn print_data_market_snapshot_text(payload: &Value) {
     let schema_version = payload
         .get("schema_version")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+        .and_then(Value::as_str)
+        .unwrap_or("-");
     let seller = payload.get("seller").unwrap_or(&Value::Null);
     let draft = seller.get("draft").unwrap_or(&Value::Null);
     println!(
@@ -2694,6 +2793,56 @@ fn print_data_market_snapshot_text(payload: &Value) {
             print_data_market_request_summary("latest request", latest_request);
         }
     }
+    if let Some(buyer) = payload.get("buyer") {
+        println!(
+            "buyer: load_state={} buyer_id={} selected_asset={} status={}",
+            json_str(buyer.get("load_state")).unwrap_or("-"),
+            json_str(buyer.get("local_buyer_id")).unwrap_or("-"),
+            json_str(buyer.get("selected_asset_id")).unwrap_or("-"),
+            json_str(buyer.get("status_line")).unwrap_or("-"),
+        );
+        if let Some(last_action) = json_str(buyer.get("last_action")) {
+            println!("buyer last action: {last_action}");
+        }
+        if let Some(last_error) = json_str(buyer.get("last_error")) {
+            println!("buyer last error: {last_error}");
+        }
+        if let Some(draft) = buyer.get("derived_request_draft") {
+            if !draft.is_null() {
+                println!(
+                    "buyer draft: asset_id={} provider={} grant={} bid_sats={} delivery_mode={} preview_posture={}",
+                    json_str(draft.get("asset_id")).unwrap_or("-"),
+                    json_str(draft.get("provider_id")).unwrap_or("-"),
+                    json_str(draft.get("offer_grant_id")).unwrap_or("-"),
+                    draft
+                        .get("bid_sats")
+                        .and_then(Value::as_u64)
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    json_str(draft.get("delivery_mode")).unwrap_or("-"),
+                    json_str(draft.get("preview_posture")).unwrap_or("-"),
+                );
+            }
+        }
+        if let Some(latest_request) = buyer.get("latest_request") {
+            if !latest_request.is_null() {
+                println!(
+                    "buyer request: id={} status={} provider={} feedback={} result={} payment_pointer={}",
+                    json_str(latest_request.get("request_id")).unwrap_or("-"),
+                    json_str(latest_request.get("status")).unwrap_or("-"),
+                    json_str(
+                        latest_request
+                            .get("winning_provider_pubkey")
+                            .or_else(|| latest_request.get("last_provider_pubkey"))
+                    )
+                    .unwrap_or("-"),
+                    json_str(latest_request.get("last_feedback_status")).unwrap_or("-"),
+                    json_str(latest_request.get("last_result_event_id")).unwrap_or("-"),
+                    json_str(latest_request.get("last_payment_pointer")).unwrap_or("-"),
+                );
+            }
+        }
+    }
     if let Some(market) = payload.get("market") {
         println!(
             "market: load_state={} assets={} grants={} deliveries={} revocations={} refreshed_at_ms={}",
@@ -2753,6 +2902,277 @@ fn print_data_market_request_summary(label: &str, request: &Value) {
         )
         .unwrap_or("-"),
     );
+}
+
+fn resolve_local_data_market_ref(value: &str) -> Result<PathBuf> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        bail!("delivery reference cannot be empty");
+    }
+    if let Some(path) = trimmed.strip_prefix("file://localhost/") {
+        return Ok(PathBuf::from(format!("/{path}")));
+    }
+    if let Some(path) = trimmed.strip_prefix("file:///") {
+        return Ok(PathBuf::from(format!("/{path}")));
+    }
+    if trimmed.contains("://") {
+        bail!(
+            "unsupported delivery reference scheme in {trimmed}; current headless consume only supports file:// or local paths"
+        );
+    }
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(std::env::current_dir()
+            .context("resolve current working directory for relative delivery reference")?
+            .join(path))
+    }
+}
+
+fn ensure_clean_output_dir(path: &Path, overwrite: bool) -> Result<()> {
+    match fs::metadata(path) {
+        Ok(metadata) => {
+            if !overwrite {
+                bail!(
+                    "output directory {} already exists; pass --overwrite to replace it",
+                    path.display()
+                );
+            }
+            if metadata.is_dir() {
+                fs::remove_dir_all(path)
+                    .with_context(|| format!("remove existing output dir {}", path.display()))?;
+            } else {
+                fs::remove_file(path)
+                    .with_context(|| format!("remove existing output file {}", path.display()))?;
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("inspect output path {}", path.display()));
+        }
+    }
+    fs::create_dir_all(path).with_context(|| format!("create output dir {}", path.display()))
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
+    fs::create_dir_all(destination)
+        .with_context(|| format!("create directory {}", destination.display()))?;
+    for entry in
+        fs::read_dir(source).with_context(|| format!("read directory {}", source.display()))?
+    {
+        let entry = entry.with_context(|| format!("read entry in {}", source.display()))?;
+        let entry_type = entry
+            .file_type()
+            .with_context(|| format!("inspect {}", entry.path().display()))?;
+        let target_path = destination.join(entry.file_name());
+        if entry_type.is_dir() {
+            copy_dir_recursive(entry.path().as_path(), target_path.as_path())?;
+        } else if entry_type.is_file() {
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("create parent {}", parent.display()))?;
+            }
+            fs::copy(entry.path(), target_path.as_path()).with_context(|| {
+                format!(
+                    "copy {} -> {}",
+                    entry.path().display(),
+                    target_path.display()
+                )
+            })?;
+        } else {
+            bail!(
+                "unsupported non-file, non-directory entry in delivery payload: {}",
+                entry.path().display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn materialize_data_market_delivery(
+    payload: &Value,
+    output_dir: &Path,
+    overwrite: bool,
+) -> Result<DataMarketConsumedDeliverySummary> {
+    let delivery = payload
+        .get("delivery")
+        .ok_or_else(|| anyhow!("missing delivery payload"))?;
+    let delivery_bundle_id = json_str(delivery.get("delivery_bundle_id"))
+        .ok_or_else(|| anyhow!("delivery payload missing delivery_bundle_id"))?
+        .to_string();
+    let grant_id = json_str(delivery.get("grant_id"))
+        .ok_or_else(|| anyhow!("delivery payload missing grant_id"))?
+        .to_string();
+    let asset_id = json_str(delivery.get("asset_id"))
+        .ok_or_else(|| anyhow!("delivery payload missing asset_id"))?
+        .to_string();
+    let provider_id = json_str(delivery.get("provider_id"))
+        .ok_or_else(|| anyhow!("delivery payload missing provider_id"))?
+        .to_string();
+    let consumer_id = json_str(delivery.get("consumer_id"))
+        .ok_or_else(|| anyhow!("delivery payload missing consumer_id"))?
+        .to_string();
+    let delivery_ref = json_str(delivery.get("delivery_ref"))
+        .ok_or_else(|| anyhow!("delivery payload missing delivery_ref"))?
+        .to_string();
+    let delivery_digest = json_str(delivery.get("delivery_digest")).map(str::to_string);
+    let manifest_refs = delivery
+        .get("manifest_refs")
+        .and_then(Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    ensure_clean_output_dir(output_dir, overwrite)?;
+
+    let source_path = resolve_local_data_market_ref(delivery_ref.as_str())?;
+    if !source_path.exists() {
+        bail!(
+            "delivery source {} does not exist locally",
+            source_path.display()
+        );
+    }
+    let payload_root = output_dir.join("payload");
+    let (payload_source_kind, payload_output_path) = if source_path.is_dir() {
+        copy_dir_recursive(source_path.as_path(), payload_root.as_path())?;
+        ("directory".to_string(), payload_root.display().to_string())
+    } else if source_path.is_file() {
+        fs::create_dir_all(payload_root.as_path())
+            .with_context(|| format!("create payload dir {}", payload_root.display()))?;
+        let file_name = source_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow!("delivery source file has no usable basename"))?;
+        let target_path = payload_root.join(file_name);
+        fs::copy(source_path.as_path(), target_path.as_path()).with_context(|| {
+            format!(
+                "copy {} -> {}",
+                source_path.display(),
+                target_path.display()
+            )
+        })?;
+        ("file".to_string(), target_path.display().to_string())
+    } else {
+        bail!(
+            "delivery source {} is neither a regular file nor a directory",
+            source_path.display()
+        );
+    };
+
+    let manifests_root = output_dir.join("manifests");
+    let mut copied_manifest_paths = Vec::new();
+    let mut unresolved_manifest_refs = Vec::new();
+    for (index, manifest_ref) in manifest_refs.iter().enumerate() {
+        let manifest_path = match resolve_local_data_market_ref(manifest_ref.as_str()) {
+            Ok(path) => path,
+            Err(_) => {
+                unresolved_manifest_refs.push(manifest_ref.clone());
+                continue;
+            }
+        };
+        if !manifest_path.exists() {
+            unresolved_manifest_refs.push(manifest_ref.clone());
+            continue;
+        }
+        fs::create_dir_all(manifests_root.as_path())
+            .with_context(|| format!("create manifests dir {}", manifests_root.display()))?;
+        let base_name = manifest_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("manifest");
+        let target_path = manifests_root.join(format!("{index:02}-{base_name}"));
+        if manifest_path.is_dir() {
+            copy_dir_recursive(manifest_path.as_path(), target_path.as_path())?;
+        } else if manifest_path.is_file() {
+            fs::copy(manifest_path.as_path(), target_path.as_path()).with_context(|| {
+                format!(
+                    "copy manifest {} -> {}",
+                    manifest_path.display(),
+                    target_path.display()
+                )
+            })?;
+        } else {
+            unresolved_manifest_refs.push(manifest_ref.clone());
+            continue;
+        }
+        copied_manifest_paths.push(target_path.display().to_string());
+    }
+
+    let summary = DataMarketConsumedDeliverySummary {
+        schema_version: "oa.data_market.consume.v1",
+        selection_reason: json_str(payload.get("selection_reason")).map(str::to_string),
+        resolved_request_id: json_str(payload.get("resolved_request_id")).map(str::to_string),
+        delivery_bundle_id,
+        grant_id,
+        asset_id,
+        provider_id,
+        consumer_id,
+        delivery_ref,
+        delivery_digest,
+        output_dir: output_dir.display().to_string(),
+        payload_source_kind,
+        payload_output_path,
+        copied_manifest_paths,
+        unresolved_manifest_refs,
+        manifest_refs,
+    };
+    fs::write(
+        output_dir.join("consumed-delivery.json"),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&summary).context("encode consumed delivery summary")?
+        ),
+    )
+    .with_context(|| {
+        format!(
+            "write consumed delivery summary {}",
+            output_dir.join("consumed-delivery.json").display()
+        )
+    })?;
+    Ok(summary)
+}
+
+fn print_data_market_consumed_delivery_text(summary: &DataMarketConsumedDeliverySummary) {
+    println!(
+        "consumed delivery: bundle_id={} grant_id={} asset_id={} request_id={} source_kind={}",
+        summary.delivery_bundle_id,
+        summary.grant_id,
+        summary.asset_id,
+        summary.resolved_request_id.as_deref().unwrap_or("-"),
+        summary.payload_source_kind,
+    );
+    println!(
+        "output: dir={} payload={} copied_manifests={} unresolved_manifests={}",
+        summary.output_dir,
+        summary.payload_output_path,
+        summary.copied_manifest_paths.len(),
+        summary.unresolved_manifest_refs.len(),
+    );
+    println!(
+        "delivery refs: delivery_ref={} delivery_digest={}",
+        summary.delivery_ref,
+        summary.delivery_digest.as_deref().unwrap_or("-"),
+    );
+    if !summary.copied_manifest_paths.is_empty() {
+        println!("copied manifests:");
+        for path in &summary.copied_manifest_paths {
+            println!("  {path}");
+        }
+    }
+    if !summary.unresolved_manifest_refs.is_empty() {
+        println!("unresolved manifest refs:");
+        for reference in &summary.unresolved_manifest_refs {
+            println!("  {reference}");
+        }
+    }
 }
 
 fn json_str(value: Option<&Value>) -> Option<&str> {
@@ -5967,13 +6387,15 @@ mod tests {
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlAttnResView, DesktopControlBuyModeRequestStatus,
-        DesktopControlBuyModeStatus, DesktopControlDataMarketDraftAssetArgs,
-        DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketIssueDeliveryArgs,
-        DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
-        DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketRevokeGrantArgs,
-        DesktopControlNip28MessageStatus, DesktopControlNip90SentPaymentsReport,
-        DesktopControlSnapshot, DesktopControlTassadarReplayFamily,
-        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
+        DesktopControlBuyModeStatus, DesktopControlDataMarketBuyerRequestArgs,
+        DesktopControlDataMarketDraftAssetArgs, DesktopControlDataMarketDraftGrantArgs,
+        DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
+        DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
+        DesktopControlDataMarketResolveDeliveryArgs, DesktopControlDataMarketRevokeGrantArgs,
+        DesktopControlNip28MessageStatus,
+        DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
+        DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
+        DesktopControlTassadarView,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -6768,6 +7190,18 @@ mod tests {
             DesktopControlActionRequest::GetDataMarketSellerStatus
         );
         assert_eq!(
+            DataMarketCommand::BuyerStatus
+                .action_request()
+                .expect("buyer status action"),
+            DesktopControlActionRequest::GetDataMarketBuyerStatus
+        );
+        assert_eq!(
+            DataMarketCommand::BuyerRefresh
+                .action_request()
+                .expect("buyer refresh action"),
+            DesktopControlActionRequest::RefreshDataMarketBuyerMarket
+        );
+        assert_eq!(
             DataMarketCommand::PreviewAsset
                 .action_request()
                 .expect("preview asset action"),
@@ -6903,6 +7337,42 @@ mod tests {
                 .action_request()
                 .expect("snapshot action"),
             DesktopControlActionRequest::GetDataMarketSnapshot
+        );
+        assert_eq!(
+            DataMarketCommand::BuyerPublishRequest {
+                asset_id: Some("data_asset.alpha".to_string()),
+                refresh_market: true,
+            }
+            .action_request()
+            .expect("buyer publish request action"),
+            DesktopControlActionRequest::PublishDataMarketBuyerRequest {
+                args: DesktopControlDataMarketBuyerRequestArgs {
+                    asset_id: Some("data_asset.alpha".to_string()),
+                    refresh_market: true,
+                },
+            }
+        );
+        assert_eq!(
+            DataMarketCommand::ConsumeDelivery {
+                output_dir: PathBuf::from("/tmp/data-market-consume"),
+                delivery_bundle_id: Some("delivery.alpha".to_string()),
+                request_id: Some("data_request.alpha".to_string()),
+                grant_id: Some("grant.alpha".to_string()),
+                asset_id: Some("asset.alpha".to_string()),
+                refresh_market: true,
+                overwrite: true,
+            }
+            .action_request()
+            .expect("consume delivery action"),
+            DesktopControlActionRequest::ResolveDataMarketDelivery {
+                args: DesktopControlDataMarketResolveDeliveryArgs {
+                    delivery_bundle_id: Some("delivery.alpha".to_string()),
+                    request_id: Some("data_request.alpha".to_string()),
+                    grant_id: Some("grant.alpha".to_string()),
+                    asset_id: Some("asset.alpha".to_string()),
+                    refresh_market: true,
+                },
+            }
         );
     }
 
