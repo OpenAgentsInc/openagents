@@ -968,6 +968,8 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                 "last_previewed_grant_payload": state.data_seller.active_draft.last_previewed_grant_payload,
                 "last_confirmed_asset_payload": state.data_seller.last_confirmed_asset_payload,
                 "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
+                "last_publish_receipt_id": state.data_seller.last_publish_receipt_id,
+                "last_published_asset": state.data_seller.last_published_asset,
                 "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
             }
         }
@@ -1084,16 +1086,26 @@ fn execute_data_market_publish_asset_tool(
             data_seller_tool_snapshot(state),
         );
     }
-    state.data_seller.request_publish();
-    ToolBridgeResultEnvelope::error(
-        "OA-DATA-MARKET-PUBLISH-BLOCKED",
-        state
-            .data_seller
-            .last_error
-            .clone()
-            .unwrap_or_else(|| "Asset publish is not yet wired to exact authority mutation.".to_string()),
-        data_seller_tool_snapshot(state),
-    )
+    crate::data_seller_control::publish_data_seller_asset(state);
+    if state.data_seller.last_error.is_none()
+        && state.data_seller.active_draft.last_published_asset_id.is_some()
+    {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-ASSET-PUBLISHED",
+            "Published the DataAsset and read it back from kernel authority.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-PUBLISH-FAILED",
+            state
+                .data_seller
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Asset publish failed.".to_string()),
+            data_seller_tool_snapshot(state),
+        )
+    }
 }
 
 fn execute_data_market_draft_grant_tool(
@@ -2738,6 +2750,8 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
                         "has_asset_preview": state.data_seller.active_draft.last_previewed_asset_payload.is_some(),
                         "has_confirmed_asset_preview": state.data_seller.last_confirmed_asset_payload.is_some(),
+                        "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
+                        "last_publish_receipt_id": state.data_seller.last_publish_receipt_id,
                         "last_action": state.data_seller.last_action,
                         "last_error": state.data_seller.last_error,
                     }),

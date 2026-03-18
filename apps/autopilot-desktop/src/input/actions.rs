@@ -10224,8 +10224,7 @@ pub(super) fn run_data_seller_action(
             crate::data_seller_control::request_data_seller_preview(state)
         }
         DataSellerPaneAction::PublishDraft => {
-            state.data_seller.request_publish();
-            true
+            crate::data_seller_control::publish_data_seller_asset(state)
         }
     }
 }
