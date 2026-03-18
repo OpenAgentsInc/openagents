@@ -931,7 +931,9 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
         "seller": {
             "load_state": state.data_seller.load_state.label(),
             "preview_enabled": state.data_seller.preview_enabled,
+            "confirm_enabled": state.data_seller.confirm_enabled,
             "publish_enabled": state.data_seller.publish_enabled,
+            "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
             "status_line": state.data_seller.status_line,
             "last_action": state.data_seller.last_action,
             "last_error": state.data_seller.last_error,
@@ -964,6 +966,7 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                     .collect::<Vec<_>>(),
                 "last_previewed_asset_payload": state.data_seller.active_draft.last_previewed_asset_payload,
                 "last_previewed_grant_payload": state.data_seller.active_draft.last_previewed_grant_payload,
+                "last_confirmed_asset_payload": state.data_seller.last_confirmed_asset_payload,
                 "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
                 "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
             }
@@ -1043,15 +1046,15 @@ fn execute_data_market_draft_asset_tool(
 }
 
 fn execute_data_market_preview_asset_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
-    state.data_seller.request_preview();
+    crate::data_seller_control::request_data_seller_preview(state);
     let success = matches!(
         state.data_seller.active_draft.preview_posture,
-        crate::app_state::DataSellerPreviewPosture::StructuralPreviewReady
+        crate::app_state::DataSellerPreviewPosture::ExactPreviewReady
     );
     if success {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-ASSET-PREVIEW-READY",
-            "Produced the current Data Seller asset preview payload.",
+            "Produced the current exact Data Seller asset preview payload.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -1071,6 +1074,13 @@ fn execute_data_market_publish_asset_tool(
         return ToolBridgeResultEnvelope::error(
             "OA-DATA-MARKET-CONFIRM-REQUIRED",
             "Asset publish requires confirm=true after preview has been inspected.",
+            data_seller_tool_snapshot(state),
+        );
+    }
+    if !state.data_seller.asset_preview_confirmed {
+        return ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-PREVIEW-NOT-CONFIRMED",
+            "Asset publish still requires the current preview payload to be explicitly confirmed in the Data Seller pane.",
             data_seller_tool_snapshot(state),
         );
     }
@@ -1122,7 +1132,7 @@ fn execute_data_market_draft_grant_tool(
 }
 
 fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
-    state.data_seller.request_preview();
+    crate::data_seller_control::request_data_seller_preview(state);
     let success = state
         .data_seller
         .active_draft
@@ -2708,7 +2718,9 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     json!({
                         "load_state": state.data_seller.load_state.label(),
                         "preview_enabled": state.data_seller.preview_enabled,
+                        "confirm_enabled": state.data_seller.confirm_enabled,
                         "publish_enabled": state.data_seller.publish_enabled,
+                        "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
                         "shell_messages": state.data_seller.transcript_shell.len(),
                         "composer_chars": state.data_seller_inputs.composer.get_value().chars().count(),
                         "status_line": state.data_seller.status_line,
@@ -2725,6 +2737,7 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "title": state.data_seller.active_draft.title,
                         "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
                         "has_asset_preview": state.data_seller.active_draft.last_previewed_asset_payload.is_some(),
+                        "has_confirmed_asset_preview": state.data_seller.last_confirmed_asset_payload.is_some(),
                         "last_action": state.data_seller.last_action,
                         "last_error": state.data_seller.last_error,
                     }),
@@ -2824,6 +2837,9 @@ fn pane_action_to_hit_action(
             )),
             "preview" | "preview_draft" => Ok(PaneHitAction::DataSeller(
                 DataSellerPaneAction::PreviewDraft,
+            )),
+            "confirm" | "confirm_preview" => Ok(PaneHitAction::DataSeller(
+                DataSellerPaneAction::ConfirmPreview,
             )),
             "publish" | "publish_draft" => Ok(PaneHitAction::DataSeller(
                 DataSellerPaneAction::PublishDraft,
@@ -7371,6 +7387,11 @@ mod tests {
             pane_action_to_hit_action(PaneKind::DataSeller, "preview", None)
                 .expect("data seller preview"),
             PaneHitAction::DataSeller(DataSellerPaneAction::PreviewDraft)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataSeller, "confirm", None)
+                .expect("data seller confirm"),
+            PaneHitAction::DataSeller(DataSellerPaneAction::ConfirmPreview)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::DataSeller, "publish_draft", None)

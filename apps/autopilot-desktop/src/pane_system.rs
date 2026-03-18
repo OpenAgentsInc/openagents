@@ -438,6 +438,7 @@ pub enum Nip90SentPaymentsPaneAction {
 pub enum DataSellerPaneAction {
     SubmitPrompt,
     PreviewDraft,
+    ConfirmPreview,
     PublishDraft,
 }
 
@@ -2398,9 +2399,14 @@ pub fn data_seller_preview_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn data_seller_publish_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn data_seller_confirm_button_bounds(content_bounds: Bounds) -> Bounds {
     let preview = data_seller_preview_button_bounds(content_bounds);
-    Bounds::new(preview.max_x() + 8.0, preview.origin.y, 92.0, 22.0)
+    Bounds::new(preview.max_x() + 8.0, preview.origin.y, 124.0, 22.0)
+}
+
+pub fn data_seller_publish_button_bounds(content_bounds: Bounds) -> Bounds {
+    let confirm = data_seller_confirm_button_bounds(content_bounds);
+    Bounds::new(confirm.max_x() + 8.0, confirm.origin.y, 92.0, 22.0)
 }
 
 pub fn data_seller_send_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -7836,6 +7842,10 @@ fn pane_hit_action_for_pane(
             } else if data_seller_preview_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::DataSeller(
                     DataSellerPaneAction::PreviewDraft,
+                ))
+            } else if data_seller_confirm_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataSeller(
+                    DataSellerPaneAction::ConfirmPreview,
                 ))
             } else if data_seller_publish_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::DataSeller(
