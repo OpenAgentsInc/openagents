@@ -1484,7 +1484,14 @@ fn data_seller_inactive_preview_state(
                     "blocked"
                 }
             ),
-            format!("shell_messages {}", data_seller.transcript_shell.len()),
+            format!(
+                "posture {}",
+                data_seller.active_draft.preview_posture.label()
+            ),
+            format!(
+                "blockers {}",
+                data_seller.active_draft.readiness_blockers.len()
+            ),
         ],
     }
 }
