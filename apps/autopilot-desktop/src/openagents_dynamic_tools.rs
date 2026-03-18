@@ -23,6 +23,10 @@ pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
     "openagents_data_market_publish_grant";
 pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT: &str =
     "openagents_data_market_request_payment";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY: &str =
+    "openagents_data_market_prepare_delivery";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY: &str =
+    "openagents_data_market_issue_delivery";
 pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents_data_market_snapshot";
 pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
@@ -63,6 +67,8 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
+    OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
+    OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
     OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_CAD_ACTION,
@@ -295,6 +301,43 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
             name: OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT.to_string(),
             description:
                 "Generate a seller invoice and publish payment-required feedback for a targeted data-access request."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "request_id": { "type": "string" }
+                },
+                "required": ["request_id"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY.to_string(),
+            description:
+                "Update the local seller delivery draft for a paid targeted data-access request."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "request_id": { "type": "string" },
+                    "preview_text": { "type": "string" },
+                    "delivery_ref": { "type": "string" },
+                    "delivery_digest": { "type": "string" },
+                    "manifest_refs": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "bundle_size_bytes": { "type": "integer", "minimum": 0 },
+                    "expires_in_hours": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["request_id"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY.to_string(),
+            description:
+                "Accept the matched grant if needed, issue the DeliveryBundle, and publish the linked NIP-90 result."
                     .to_string(),
             input_schema: json!({
                 "type": "object",
@@ -708,6 +751,7 @@ mod tests {
     use super::{
         OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
         OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
         OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_SWAP_EXECUTE,
         OPENAGENTS_TOOL_SWAP_QUOTE,
         openagents_dynamic_tool_specs,
@@ -800,6 +844,10 @@ mod tests {
             .iter()
             .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT)
             .expect("data market request payment spec should exist");
+        let prepare_delivery_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY)
+            .expect("data market prepare delivery spec should exist");
 
         assert!(
             draft_spec
@@ -825,6 +873,10 @@ mod tests {
         );
         assert_eq!(
             request_payment_spec.input_schema.pointer("/required/0"),
+            Some(&json!("request_id"))
+        );
+        assert_eq!(
+            prepare_delivery_spec.input_schema.pointer("/required/0"),
             Some(&json!("request_id"))
         );
     }

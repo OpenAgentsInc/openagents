@@ -22,7 +22,7 @@ smuggled through opaque prompt state.
 
 | Dimension | Status | Notes |
 | --- | --- | --- |
-| Product surface | seller authoring + read surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, and a first seller-side targeted-request intake/evaluation surface, but payment, delivery, revocation, and buyer transaction UX are still incomplete |
+| Product surface | seller authoring + read surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, and seller delivery-bundle/result publication, but revocation and buyer transaction UX are still incomplete |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
@@ -50,6 +50,7 @@ smuggled through opaque prompt state.
 - advertise the current data-vending request kind and coarse asset-family/delivery metadata on the provider NIP-89 handler when a seller profile is present
 - surface incoming targeted data-access requests in the seller pane and seller status tools with explicit evaluation outcomes such as `no_published_asset`, `grant_required`, `scope_mismatch`, and `ready_for_payment_quote`
 - generate seller-side Lightning invoices for matched targeted data requests, publish NIP-90 `payment-required` feedback, and track the request through `invoice_requested`, `publishing_feedback`, `awaiting_payment`, and `paid`
+- prepare seller-side delivery drafts for paid targeted requests, accept the matched grant if needed, issue authoritative `DeliveryBundle` objects, and publish linked NIP-90 result events from the same seller flow
 
 The starter authority slice is real in:
 

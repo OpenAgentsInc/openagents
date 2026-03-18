@@ -1,15 +1,27 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
-use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
-use nostr::{Event, EventTemplate, NostrIdentity};
-use openagents_spark::PaymentSummary;
-use openagents_kernel_core::authority::{
-    CreateAccessGrantRequest, KernelAuthority, RegisterDataAssetRequest,
+use nostr::nip90::{
+    DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback,
+    JobStatus, create_data_vending_result_event, create_job_feedback_event,
 };
+use nostr::{Event, EventTemplate, NostrIdentity};
+use openagents_kernel_core::authority::{
+    AcceptAccessGrantRequest, CreateAccessGrantRequest, IssueDeliveryBundleRequest,
+    KernelAuthority, RegisterDataAssetRequest,
+};
+use openagents_kernel_core::data::{AccessGrantStatus, DeliveryBundle, DeliveryBundleStatus};
+use openagents_kernel_core::ids::sha256_prefixed_text;
+use openagents_kernel_core::receipts::{
+    Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
+};
+use openagents_spark::PaymentSummary;
+use serde_json::json;
 
 use crate::app_state::{
-    AutopilotRole, DataSellerCodexSessionPhase, DataSellerSkillAttachment, RenderState,
+    AutopilotRole, DataSellerCodexSessionPhase, DataSellerIncomingRequest,
+    DataSellerSkillAttachment, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
 use crate::provider_nip90_lane::{
@@ -96,6 +108,307 @@ fn build_data_seller_payment_required_feedback_event(
         );
     let template = create_job_feedback_event(&feedback);
     sign_event_template(identity, &template)
+}
+
+fn canonical_component(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "unknown".to_string();
+    }
+    trimmed
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn sats_money(amount_sats: u64) -> Money {
+    Money {
+        asset: Asset::Btc,
+        amount: MoneyAmount::AmountSats(amount_sats),
+    }
+}
+
+fn delivery_mode_for_request(request: &DataSellerIncomingRequest) -> DataVendingDeliveryMode {
+    request
+        .delivery_mode
+        .as_deref()
+        .and_then(|value| DataVendingDeliveryMode::from_str(value).ok())
+        .unwrap_or_default()
+}
+
+fn preview_posture_for_request(request: &DataSellerIncomingRequest) -> DataVendingPreviewPosture {
+    if request
+        .delivery_draft
+        .preview_text
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        DataVendingPreviewPosture::InlinePreview
+    } else {
+        request
+            .preview_posture
+            .as_deref()
+            .and_then(|value| DataVendingPreviewPosture::from_str(value).ok())
+            .unwrap_or(DataVendingPreviewPosture::MetadataOnly)
+    }
+}
+
+fn build_delivery_result_content(
+    request: &DataSellerIncomingRequest,
+    delivery: &DeliveryBundle,
+) -> String {
+    if let Some(preview_text) = request
+        .delivery_draft
+        .preview_text
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        preview_text.to_string()
+    } else {
+        json!({
+            "delivery_bundle_id": delivery.delivery_bundle_id,
+            "delivery_ref": delivery.delivery_ref,
+            "delivery_digest": delivery.delivery_digest,
+            "grant_id": delivery.grant_id,
+            "asset_id": delivery.asset_id,
+        })
+        .to_string()
+    }
+}
+
+fn build_data_seller_delivery_result_event(
+    identity: &NostrIdentity,
+    request: &DataSellerIncomingRequest,
+    delivery: &DeliveryBundle,
+) -> Result<Event, String> {
+    let asset_ref = request
+        .asset_ref
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(delivery.asset_id.as_str());
+    let mut result = DataVendingResult::new(
+        request.request_kind,
+        request.request_id.as_str(),
+        request.requester.as_str(),
+        asset_ref,
+        delivery.delivery_bundle_id.as_str(),
+        build_delivery_result_content(request, delivery),
+    )
+    .map_err(|error| format!("Cannot build data-vending result: {error}"))?
+    .with_delivery_mode(delivery_mode_for_request(request))
+    .with_preview_posture(preview_posture_for_request(request))
+    .with_grant_id(delivery.grant_id.clone())
+    .with_delivery_ref(delivery.delivery_ref.clone());
+    if request.encrypted
+        || matches!(
+            delivery_mode_for_request(request),
+            DataVendingDeliveryMode::EncryptedPointer
+        )
+    {
+        result = result.with_encrypted_content();
+    }
+    let template = create_data_vending_result_event(&result)
+        .map_err(|error| format!("Cannot build NIP-90 delivery result event: {error}"))?;
+    sign_event_template(identity, &template)
+}
+
+fn build_accept_access_grant_request(
+    request: &DataSellerIncomingRequest,
+    grant_id: &str,
+    session_id: Option<&str>,
+    accepted_at_ms: i64,
+) -> AcceptAccessGrantRequest {
+    let payment_amount_sats = request
+        .payment_amount_sats
+        .or(request.required_price_sats)
+        .or((request.price_sats > 0).then_some(request.price_sats));
+    let payment_pointer = request
+        .payment_pointer
+        .as_deref()
+        .unwrap_or("missing_payment_pointer");
+    AcceptAccessGrantRequest {
+        idempotency_key: format!(
+            "accept_access_grant:{}",
+            sha256_prefixed_text(
+                format!(
+                    "{grant_id}|{}|{payment_pointer}|{}",
+                    request.request_id,
+                    payment_amount_sats.unwrap_or_default()
+                )
+                .as_str()
+            )
+        ),
+        trace: TraceContext {
+            session_id: session_id.map(str::to_string),
+            trajectory_hash: session_id.map(sha256_prefixed_text),
+            claim_id: Some(format!(
+                "claim.access_grant.accept.{}",
+                canonical_component(grant_id)
+            )),
+            ..Default::default()
+        },
+        policy: PolicyContext {
+            policy_bundle_id: "policy.data_market.delivery.mvp".to_string(),
+            policy_version: "v0".to_string(),
+            approved_by: "openagents.data_market.seller_pane".to_string(),
+        },
+        grant_id: grant_id.to_string(),
+        consumer_id: request.requester.clone(),
+        accepted_at_ms,
+        settlement_price: payment_amount_sats.map(sats_money),
+        metadata: json!({
+            "request_id": request.request_id,
+            "payment_feedback_event_id": request.payment_feedback_event_id,
+            "payment_pointer": request.payment_pointer,
+            "payment_amount_sats": request.payment_amount_sats,
+        }),
+        evidence: {
+            let mut evidence = vec![EvidenceRef::new(
+                "nip90_request_event",
+                format!("nostr:event:{}", request.request_id),
+                request.request_id.as_str(),
+            )];
+            if let Some(payment_pointer) = request
+                .payment_pointer
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "payment_pointer",
+                    format!("oa://autopilot/payments/{}", canonical_component(payment_pointer)),
+                    payment_pointer,
+                ));
+            }
+            evidence
+        },
+        hints: ReceiptHints::default(),
+    }
+}
+
+fn build_issue_delivery_bundle_request(
+    request: &DataSellerIncomingRequest,
+    grant_id: &str,
+    asset_id: &str,
+    provider_id: &str,
+    consumer_id: &str,
+    session_id: Option<&str>,
+    created_at_ms: i64,
+) -> IssueDeliveryBundleRequest {
+    let delivery_ref = request
+        .delivery_draft
+        .delivery_ref
+        .clone()
+        .unwrap_or_else(|| format!("oa://deliveries/{}", canonical_component(request.request_id.as_str())));
+    let delivery_bundle_id = format!(
+        "delivery_bundle.{}.{}.{}",
+        canonical_component(provider_id),
+        canonical_component(grant_id),
+        canonical_component(request.request_id.as_str())
+    );
+    let expires_at_ms = request.delivery_draft.expires_in_hours.map(|hours| {
+        created_at_ms.saturating_add(
+            i64::try_from(hours)
+                .unwrap_or(i64::MAX)
+                .saturating_mul(60)
+                .saturating_mul(60)
+                .saturating_mul(1000),
+        )
+    });
+    IssueDeliveryBundleRequest {
+        idempotency_key: format!(
+            "issue_delivery_bundle:{}",
+            sha256_prefixed_text(
+                format!(
+                    "{grant_id}|{}|{}|{}",
+                    request.request_id,
+                    delivery_ref,
+                    request
+                        .delivery_draft
+                        .delivery_digest
+                        .as_deref()
+                        .unwrap_or("missing_delivery_digest")
+                )
+                .as_str()
+            )
+        ),
+        trace: TraceContext {
+            session_id: session_id.map(str::to_string),
+            trajectory_hash: session_id.map(sha256_prefixed_text),
+            claim_id: Some(format!(
+                "claim.data.delivery.issue.{}",
+                canonical_component(request.request_id.as_str())
+            )),
+            ..Default::default()
+        },
+        policy: PolicyContext {
+            policy_bundle_id: "policy.data_market.delivery.mvp".to_string(),
+            policy_version: "v0".to_string(),
+            approved_by: "openagents.data_market.seller_pane".to_string(),
+        },
+        delivery_bundle: DeliveryBundle {
+            delivery_bundle_id,
+            asset_id: asset_id.to_string(),
+            grant_id: grant_id.to_string(),
+            provider_id: provider_id.to_string(),
+            consumer_id: consumer_id.to_string(),
+            created_at_ms,
+            delivery_ref,
+            delivery_digest: request.delivery_draft.delivery_digest.clone(),
+            bundle_size_bytes: request.delivery_draft.bundle_size_bytes,
+            manifest_refs: request.delivery_draft.manifest_refs.clone(),
+            expires_at_ms,
+            status: DeliveryBundleStatus::Issued,
+            metadata: json!({
+                "request_id": request.request_id,
+                "payment_pointer": request.payment_pointer,
+                "payment_amount_sats": request.payment_amount_sats,
+                "delivery_mode": request.delivery_mode,
+                "preview_posture": request.preview_posture,
+                "preview_text": request.delivery_draft.preview_text,
+            }),
+        },
+        evidence: {
+            let mut evidence = vec![EvidenceRef::new(
+                "nip90_request_event",
+                format!("nostr:event:{}", request.request_id),
+                request.request_id.as_str(),
+            )];
+            if let Some(payment_pointer) = request
+                .payment_pointer
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "payment_pointer",
+                    format!("oa://autopilot/payments/{}", canonical_component(payment_pointer)),
+                    payment_pointer,
+                ));
+            }
+            if let Some(delivery_digest) = request
+                .delivery_draft
+                .delivery_digest
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "delivery_digest",
+                    format!(
+                        "oa://autopilot/data_deliveries/{}/digest",
+                        canonical_component(request.request_id.as_str())
+                    ),
+                    delivery_digest,
+                ));
+            }
+            evidence
+        },
+        hints: ReceiptHints::default(),
+    }
 }
 
 fn matched_settled_receive_payment<'a>(
@@ -342,6 +655,216 @@ pub(crate) fn request_data_seller_payment_required(
     true
 }
 
+pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &str) -> bool {
+    if let Err(error) = state.data_seller.request_issue_delivery(request_id) {
+        state.data_seller.last_error = Some(error);
+        return true;
+    }
+
+    let Some(request) = state.data_seller.request_by_id(request_id).cloned() else {
+        state.data_seller.last_error = Some(format!(
+            "Unknown data-access request {request_id} after delivery issue start."
+        ));
+        return true;
+    };
+    let Some(grant_id) = request.matched_grant_id.clone() else {
+        state.data_seller.note_delivery_issue_failed(
+            request_id,
+            "Matched grant is missing for delivery issuance.",
+        );
+        return true;
+    };
+
+    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
+        Ok(client) => client,
+        Err(error) => {
+            state.data_seller.note_delivery_issue_failed(request_id, error);
+            return true;
+        }
+    };
+
+    let mut grant = match crate::kernel_control::run_kernel_call(client.get_access_grant(
+        grant_id.as_str(),
+    )) {
+        Ok(grant) => grant,
+        Err(error) => {
+            state.data_seller.note_delivery_issue_failed(
+                request_id,
+                format!("Failed to load grant {grant_id} before delivery: {error}"),
+            );
+            return true;
+        }
+    };
+
+    if grant.status == AccessGrantStatus::Offered {
+        let accepted_at_ms = current_epoch_ms();
+        let accept_request = build_accept_access_grant_request(
+            &request,
+            grant_id.as_str(),
+            state.data_seller.codex_thread_id.as_deref(),
+            accepted_at_ms,
+        );
+        let accept_response =
+            match crate::kernel_control::run_kernel_call(client.accept_access_grant(accept_request))
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    state.data_seller.note_delivery_issue_failed(
+                        request_id,
+                        format!("Failed to accept grant {grant_id} before delivery: {error}"),
+                    );
+                    return true;
+                }
+            };
+        grant = match crate::kernel_control::run_kernel_call(client.get_access_grant(
+            grant_id.as_str(),
+        )) {
+            Ok(grant) => grant,
+            Err(_) => accept_response.grant,
+        };
+    } else if !matches!(
+        grant.status,
+        AccessGrantStatus::Accepted | AccessGrantStatus::Delivered
+    ) {
+        state.data_seller.note_delivery_issue_failed(
+            request_id,
+            format!(
+                "Grant {} is not ready for delivery. Current status is {}.",
+                grant_id,
+                grant.status.label()
+            ),
+        );
+        return true;
+    }
+    state.data_seller.note_grant_state_reconciled(grant.clone());
+    state
+        .data_market
+        .note_published_grant(grant.clone(), current_epoch_ms());
+
+    let delivery = if let Some(existing_delivery_bundle_id) = request.delivery_bundle_id.as_deref() {
+        match crate::kernel_control::run_kernel_call(client.get_delivery_bundle(
+            existing_delivery_bundle_id,
+        )) {
+            Ok(delivery) => delivery,
+            Err(error) => {
+                state.data_seller.note_delivery_issue_failed(
+                    request_id,
+                    format!(
+                        "Failed to reload previously issued delivery {}: {error}",
+                        existing_delivery_bundle_id
+                    ),
+                );
+                return true;
+            }
+        }
+    } else {
+        if let Err(error) = state.data_seller.note_delivery_bundle_issuing(request_id) {
+            state.data_seller.note_delivery_issue_failed(request_id, error);
+            return true;
+        }
+        let created_at_ms = current_epoch_ms();
+        let consumer_id = grant
+            .consumer_id
+            .clone()
+            .unwrap_or_else(|| request.requester.clone());
+        let issue_request = build_issue_delivery_bundle_request(
+            &request,
+            grant.grant_id.as_str(),
+            grant.asset_id.as_str(),
+            grant.provider_id.as_str(),
+            consumer_id.as_str(),
+            state.data_seller.codex_thread_id.as_deref(),
+            created_at_ms,
+        );
+        let issue_response =
+            match crate::kernel_control::run_kernel_call(client.issue_delivery_bundle(issue_request))
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    state.data_seller.note_delivery_issue_failed(
+                        request_id,
+                        format!("Kernel authority rejected delivery issuance: {error}"),
+                    );
+                    return true;
+                }
+            };
+        let receipt_id = Some(issue_response.receipt.receipt_id.clone());
+        let delivery_bundle_id = issue_response.delivery_bundle.delivery_bundle_id.clone();
+        let readback_delivery = match crate::kernel_control::run_kernel_call(client.get_delivery_bundle(
+            delivery_bundle_id.as_str(),
+        )) {
+            Ok(delivery) => delivery,
+            Err(_) => issue_response.delivery_bundle,
+        };
+        if let Err(error) = state.data_seller.note_delivery_bundle_issued(
+            request_id,
+            readback_delivery.clone(),
+            receipt_id,
+        ) {
+            state.data_seller.note_delivery_issue_failed(request_id, error);
+            return true;
+        }
+        state
+            .data_market
+            .note_published_delivery(readback_delivery.clone(), current_epoch_ms());
+        readback_delivery
+    };
+    state
+        .data_market
+        .note_published_delivery(delivery.clone(), current_epoch_ms());
+
+    let identity = match state.nostr_identity.as_ref() {
+        Some(identity) => identity,
+        None => {
+            state.data_seller.note_delivery_issue_failed(
+                request_id,
+                "Cannot publish delivery result: Nostr identity unavailable.",
+            );
+            return true;
+        }
+    };
+    let event = match build_data_seller_delivery_result_event(identity, &request, &delivery) {
+        Ok(event) => event,
+        Err(error) => {
+            state.data_seller.note_delivery_issue_failed(request_id, error);
+            return true;
+        }
+    };
+    if let Err(error) = state.queue_provider_nip90_lane_command(
+        ProviderNip90LaneCommand::PublishEvent {
+            request_id: request_id.to_string(),
+            role: ProviderNip90PublishRole::Result,
+            event: Box::new(event),
+        },
+    ) {
+        state.data_seller.note_delivery_issue_failed(
+            request_id,
+            format!("Cannot queue NIP-90 delivery result publish: {error}"),
+        );
+        return true;
+    }
+
+    if let Some(request) = state.data_seller.request_by_id_mut(request_id) {
+        request.delivery_state = crate::app_state::DataSellerDeliveryState::PublishingResult;
+        request.delivery_error = None;
+    }
+    state.data_seller.last_error = None;
+    state.data_seller.last_action = Some(format!(
+        "Queued NIP-90 delivery result publication for data request {}",
+        request_id
+    ));
+    state.data_seller.status_line = format!(
+        "Publishing NIP-90 delivery result for request {}.",
+        request_id
+    );
+
+    state.provider_runtime.last_result = Some(format!(
+        "queued delivery result publication for data request {}",
+        request_id
+    ));
+    true
+}
+
 fn queue_data_seller_payment_required_feedback(
     state: &mut RenderState,
     request_id: &str,
@@ -468,26 +991,58 @@ pub(crate) fn apply_data_seller_publish_outcome(
     state: &mut RenderState,
     outcome: &ProviderNip90PublishOutcome,
 ) -> bool {
-    if outcome.role != ProviderNip90PublishRole::Feedback {
-        return false;
-    }
-    let Some(request) = state.data_seller.request_by_id(outcome.request_id.as_str()) else {
+    let Some((payment_state, delivery_state)) = state
+        .data_seller
+        .request_by_id(outcome.request_id.as_str())
+        .map(|request| (request.payment_state, request.delivery_state))
+    else {
         return false;
     };
-    if request.payment_state != crate::app_state::DataSellerPaymentState::PublishingFeedback {
-        return false;
-    }
-
     let published = outcome.accepted_relays > 0;
-    let handled = state.data_seller.note_payment_feedback_publish_outcome(
-        outcome.request_id.as_str(),
-        published,
-        published.then_some(outcome.event_id.as_str()),
-        outcome.first_error.as_deref(),
-    );
-    if handled && published {
+    let handled = match outcome.role {
+        ProviderNip90PublishRole::Feedback => {
+            if payment_state != crate::app_state::DataSellerPaymentState::PublishingFeedback {
+                return false;
+            }
+            let handled = state.data_seller.note_payment_feedback_publish_outcome(
+                outcome.request_id.as_str(),
+                published,
+                published.then_some(outcome.event_id.as_str()),
+                outcome.first_error.as_deref(),
+            );
+            if handled && published {
+                state.provider_runtime.last_result = Some(format!(
+                    "seller requested Lightning payment for data request {}",
+                    outcome.request_id
+                ));
+            }
+            handled
+        }
+        ProviderNip90PublishRole::Result => {
+            if delivery_state
+                != crate::app_state::DataSellerDeliveryState::PublishingResult
+            {
+                return false;
+            }
+            let handled = state.data_seller.note_delivery_result_publish_outcome(
+                outcome.request_id.as_str(),
+                published,
+                published.then_some(outcome.event_id.as_str()),
+                outcome.first_error.as_deref(),
+            );
+            if handled && published {
+                state.provider_runtime.last_result = Some(format!(
+                    "seller published delivery result for data request {}",
+                    outcome.request_id
+                ));
+            }
+            handled
+        }
+        _ => return false,
+    };
+    if handled && !published {
         state.provider_runtime.last_result = Some(format!(
-            "seller requested Lightning payment for data request {}",
+            "seller publish failed for data request {}",
             outcome.request_id
         ));
     }

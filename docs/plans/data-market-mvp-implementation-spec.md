@@ -143,9 +143,10 @@ Nexus after explicit confirmation, and reflect the resulting grant read-back
 into the read-only market pane. They also surface incoming targeted data
 requests inside the seller lane with explicit evaluation results, can now
 generate a seller Lightning invoice, publish NIP-90 `payment-required`
-feedback, and reconcile the paid state back from Spark wallet truth so the next
-issues can layer delivery, revocation, and buyer-facing flows on top of one
-truthful intake surface.
+feedback, reconcile the paid state back from Spark wallet truth, prepare
+delivery drafts, issue `DeliveryBundle` authority objects, and publish linked
+NIP-90 result events so the next issues can layer revocation and buyer-facing
+flows on top of one truthful intake surface.
 
 ### 3. Codex is already deeply integrated
 
@@ -345,13 +346,15 @@ Recommended MVP tool family:
   - show the exact `CreateAccessGrantRequest` preview plus blockers
 - `openagents.data_market.publish_grant`
   - create a concrete grant after explicit confirmation
+- `openagents.data_market.prepare_delivery`
+  - update the local delivery draft for a paid targeted request
+- `openagents.data_market.issue_delivery`
+  - accept the matched grant if needed, issue the `DeliveryBundle`, and publish the linked NIP-90 result
 - `openagents.data_market.snapshot`
   - return a compact summary of current draft + latest published ids
 
 Later-scope tools:
 
-- `openagents.data_market.prepare_delivery`
-- `openagents.data_market.issue_delivery`
 - `openagents.data_market.revoke_grant`
 - `openagents.data_market.publish_dvm_offer`
 
