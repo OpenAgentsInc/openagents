@@ -1,6 +1,6 @@
 use codex_client::{ThreadResumeParams, ThreadStartParams};
 
-use crate::app_state::{DataSellerCodexSessionPhase, RenderState};
+use crate::app_state::{DataSellerCodexSessionPhase, DataSellerSkillAttachment, RenderState};
 use crate::codex_lane::CodexLaneCommand;
 
 fn current_session_cwd() -> Option<String> {
@@ -18,6 +18,26 @@ pub(crate) fn ensure_data_seller_codex_session(state: &mut RenderState) -> bool 
     }
 
     let cwd = current_session_cwd();
+    match crate::skill_autoload::ensure_required_data_market_skills() {
+        Ok(skills) => state.data_seller.set_required_skill_attachments(
+            skills
+                .into_iter()
+                .map(|skill| DataSellerSkillAttachment {
+                    name: skill.name,
+                    path: skill.path,
+                })
+                .collect(),
+        ),
+        Err(error) => {
+            tracing::warn!(
+                "failed to auto-provision managed Data Market skills before seller session: {}",
+                error
+            );
+            state.data_seller.last_error = Some(format!(
+                "Failed to auto-provision seller skills: {error}"
+            ));
+        }
+    }
     let model = state.autopilot_chat.selected_model_override();
     let service_tier = state.autopilot_chat.service_tier.request_value();
     let approval_policy = Some(state.autopilot_chat.approval_mode);

@@ -22,7 +22,7 @@ smuggled through opaque prompt state.
 
 | Dimension | Status | Notes |
 | --- | --- | --- |
-| Product surface | starter read surface + seller shell | there is now a dedicated read-only data-market pane in the desktop app plus an initial `Data Seller` shell with a structured local draft, seller-specific Codex session wiring, readiness blockers, and blocked publish gating, but no truthful seller or buyer transaction UX yet |
+| Product surface | starter read surface + seller shell | there is now a dedicated read-only data-market pane in the desktop app plus an initial `Data Seller` shell with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, readiness blockers, and blocked publish gating, but no truthful seller or buyer transaction UX yet |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
@@ -36,6 +36,7 @@ smuggled through opaque prompt state.
 - issue a `DeliveryBundle`
 - revoke access and emit a `RevocationReceipt`
 - open a dedicated `Data Seller` desktop shell with transcript, draft-card, and blocked preview/publish scaffolding
+- auto-provision and pin the first-party `autopilot-data-seller` and `autopilot-data-market-control` skills for the dedicated seller lane
 
 The starter authority slice is real in:
 

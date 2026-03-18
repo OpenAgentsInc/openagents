@@ -9,6 +9,10 @@ const MANAGED_SKILLS_REMOTE_TIMEOUT_SECS: u64 = 4;
 
 pub const REQUIRED_CAD_POLICY_SKILLS: &[&str] =
     &["autopilot-cad-builder", "autopilot-pane-control"];
+pub const REQUIRED_DATA_MARKET_POLICY_SKILLS: &[&str] = &[
+    "autopilot-data-seller",
+    "autopilot-data-market-control",
+];
 
 struct ManagedSkillSpec {
     name: &'static str,
@@ -26,6 +30,19 @@ const MANAGED_CAD_SKILLS: &[ManagedSkillSpec] = &[
         name: "autopilot-pane-control",
         raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-pane-control/SKILL.md",
         embedded_skill_md: include_str!("../../../skills/autopilot-pane-control/SKILL.md"),
+    },
+];
+
+const MANAGED_DATA_MARKET_SKILLS: &[ManagedSkillSpec] = &[
+    ManagedSkillSpec {
+        name: "autopilot-data-seller",
+        raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-data-seller/SKILL.md",
+        embedded_skill_md: include_str!("../../../skills/autopilot-data-seller/SKILL.md"),
+    },
+    ManagedSkillSpec {
+        name: "autopilot-data-market-control",
+        raw_url: "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/skills/autopilot-data-market-control/SKILL.md",
+        embedded_skill_md: include_str!("../../../skills/autopilot-data-market-control/SKILL.md"),
     },
 ];
 
@@ -48,8 +65,18 @@ pub fn managed_skills_root() -> PathBuf {
 }
 
 pub fn ensure_required_cad_skills() -> Result<Vec<ManagedSkillAttachment>, String> {
-    ensure_required_cad_skills_in(
+    ensure_required_skills_in(
         &managed_skills_root(),
+        MANAGED_CAD_SKILLS,
+        managed_skills_remote_fetch_enabled(),
+        true,
+    )
+}
+
+pub fn ensure_required_data_market_skills() -> Result<Vec<ManagedSkillAttachment>, String> {
+    ensure_required_skills_in(
+        &managed_skills_root(),
+        MANAGED_DATA_MARKET_SKILLS,
         managed_skills_remote_fetch_enabled(),
         true,
     )
@@ -73,8 +100,9 @@ fn codex_extra_skill_roots_with_managed_root(cwd: &Path, managed_root: &Path) ->
     roots.into_iter().collect()
 }
 
-fn ensure_required_cad_skills_in(
+fn ensure_required_skills_in(
     managed_root: &Path,
+    specs: &[ManagedSkillSpec],
     allow_remote_fetch: bool,
     write_existing_if_empty: bool,
 ) -> Result<Vec<ManagedSkillAttachment>, String> {
@@ -85,8 +113,8 @@ fn ensure_required_cad_skills_in(
         )
     })?;
 
-    let mut attachments = Vec::with_capacity(MANAGED_CAD_SKILLS.len());
-    for spec in MANAGED_CAD_SKILLS {
+    let mut attachments = Vec::with_capacity(specs.len());
+    for spec in specs {
         let skill_md_path = managed_root.join(spec.name).join("SKILL.md");
         ensure_skill_md_present(
             &skill_md_path,
@@ -190,7 +218,7 @@ fn managed_skills_remote_fetch_enabled() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{codex_extra_skill_roots_with_managed_root, ensure_required_cad_skills_in};
+    use super::{codex_extra_skill_roots_with_managed_root, ensure_required_skills_in};
     use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -212,12 +240,38 @@ mod tests {
     #[test]
     fn ensure_required_cad_skills_writes_embedded_fallback_payloads() {
         let managed_root = temp_dir("openagents-managed-cad-skills");
-        let ensured = ensure_required_cad_skills_in(&managed_root, false, true)
-            .expect("managed CAD skills should be provisioned");
+        let ensured = ensure_required_skills_in(
+            &managed_root,
+            super::MANAGED_CAD_SKILLS,
+            false,
+            true,
+        )
+        .expect("managed CAD skills should be provisioned");
         assert_eq!(ensured.len(), 2);
         for skill in ensured {
             let content = fs::read_to_string(&skill.path)
                 .expect("managed CAD SKILL.md should be readable after provisioning");
+            assert!(!content.trim().is_empty());
+            assert!(content.contains("name:"));
+        }
+
+        let _ = fs::remove_dir_all(managed_root);
+    }
+
+    #[test]
+    fn ensure_required_data_market_skills_writes_embedded_fallback_payloads() {
+        let managed_root = temp_dir("openagents-managed-data-market-skills");
+        let ensured = ensure_required_skills_in(
+            &managed_root,
+            super::MANAGED_DATA_MARKET_SKILLS,
+            false,
+            true,
+        )
+        .expect("managed data market skills should be provisioned");
+        assert_eq!(ensured.len(), 2);
+        for skill in ensured {
+            let content = fs::read_to_string(&skill.path)
+                .expect("managed Data Market SKILL.md should be readable after provisioning");
             assert!(!content.trim().is_empty());
             assert!(content.contains("name:"));
         }

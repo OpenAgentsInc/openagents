@@ -2270,6 +2270,8 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "codex_thread_status": state.data_seller.codex_thread_status,
                         "codex_personality": state.data_seller.codex_profile.personality.label(),
                         "codex_collaboration_mode": state.data_seller.codex_profile.collaboration_mode.label(),
+                        "required_skill_names": state.data_seller.codex_profile.required_skill_names,
+                        "required_skill_count": state.data_seller.required_skill_count(),
                         "preview_posture": state.data_seller.active_draft.preview_posture.label(),
                         "readiness_blockers": state.data_seller.active_draft.readiness_blockers.len(),
                         "asset_kind": state.data_seller.active_draft.asset_kind,

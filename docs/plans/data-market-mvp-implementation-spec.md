@@ -122,10 +122,13 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 
 It cannot yet:
 
-- run a seller-specific Codex session
 - normalize conversational input into a truthful draft object
 - preview an exact authority payload
 - publish a kernel object
+
+The dedicated seller lane now also auto-provisions the first-party
+`autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
+can depend on stable seller policy rather than manual skill selection.
 
 ### 3. Codex is already deeply integrated
 
