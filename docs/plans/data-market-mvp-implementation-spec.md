@@ -125,7 +125,7 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 
 It cannot yet:
 
-- reflect newly published assets automatically into the read-only `Data Market` pane without an explicit follow-on refresh path
+- extend the same publication/read-back discipline beyond assets into grants, delivery, revocation, and buyer-facing flows
 
 The dedicated seller lane now also auto-provisions the first-party
 `autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
@@ -133,10 +133,11 @@ can depend on stable seller policy rather than manual skill selection.
 
 The first typed `openagents.data_market.*` tool family now exists in the desktop
 runtime for seller status, draft, preview, blocked publish, and snapshot flows.
-Those tools now produce the exact asset preview shape and can publish a
-`DataAsset` through Nexus after explicit in-pane confirmation. The follow-on
-issues still need to reflect publication into the read-only market pane, extend
-the same discipline to grants, and fill in the rest of the market lifecycle.
+Those tools now produce the exact asset preview shape, can publish a `DataAsset`
+through Nexus after explicit in-pane confirmation, and reflect the resulting
+kernel read-back into the read-only market pane. The follow-on issues still
+need to extend the same discipline to grants and fill in the rest of the market
+lifecycle.
 
 ### 3. Codex is already deeply integrated
 

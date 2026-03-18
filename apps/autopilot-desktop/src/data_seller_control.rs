@@ -234,6 +234,11 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
             state
                 .data_seller
                 .note_asset_published(response.asset, receipt_id);
+            if let Some(asset) = state.data_seller.last_published_asset.clone() {
+                state
+                    .data_market
+                    .note_published_asset(asset, current_epoch_ms());
+            }
             state.data_seller.last_error = Some(format!(
                 "Asset was published but the immediate kernel read-back failed: {error}"
             ));
@@ -245,6 +250,9 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
 
     state
         .data_seller
-        .note_asset_published(readback_asset, receipt_id);
+        .note_asset_published(readback_asset.clone(), receipt_id);
+    state
+        .data_market
+        .note_published_asset(readback_asset, current_epoch_ms());
     true
 }
