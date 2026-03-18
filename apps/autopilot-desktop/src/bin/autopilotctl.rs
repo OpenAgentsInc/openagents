@@ -12,7 +12,11 @@ use autopilot_desktop::desktop_control::{
     DesktopControlActionRequest, DesktopControlActionResponse, DesktopControlActiveJobStatus,
     DesktopControlAppleAdapterOperatorRunStatus, DesktopControlAttnResStatus,
     DesktopControlAttnResView, DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus,
-    DesktopControlEventBatch, DesktopControlLocalRuntimeStatus, DesktopControlManifest,
+    DesktopControlDataMarketDraftAssetArgs, DesktopControlDataMarketDraftGrantArgs,
+    DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
+    DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
+    DesktopControlDataMarketRevokeGrantArgs, DesktopControlEventBatch,
+    DesktopControlLocalRuntimeStatus, DesktopControlManifest,
     DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
     DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
     DesktopControlTassadarStatus, DesktopControlTassadarView, control_manifest_path,
@@ -28,7 +32,7 @@ use chrono::{DateTime, Datelike, Local, LocalResult, NaiveDate, TimeZone};
 use clap::{Parser, Subcommand, ValueEnum};
 use psionic_sandbox::ProviderSandboxEntrypointType;
 use reqwest::blocking::Client;
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 const DEFAULT_EVENTS_LIMIT: usize = 64;
@@ -131,6 +135,10 @@ enum Command {
     Chat {
         #[command(subcommand)]
         command: ChatCommand,
+    },
+    DataMarket {
+        #[command(subcommand)]
+        command: DataMarketCommand,
     },
     ActiveJob,
     Withdraw {
@@ -563,6 +571,70 @@ enum ChatCommand {
         #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
         timeout_ms: u64,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum DataMarketCommand {
+    SellerStatus,
+    Snapshot,
+    DraftAsset {
+        #[arg(long)]
+        file: PathBuf,
+    },
+    PreviewAsset,
+    PublishAsset {
+        #[arg(long)]
+        confirm: bool,
+    },
+    DraftGrant {
+        #[arg(long)]
+        file: PathBuf,
+    },
+    PreviewGrant,
+    PublishGrant {
+        #[arg(long)]
+        confirm: bool,
+    },
+    RequestPayment {
+        #[arg(long)]
+        request_id: String,
+    },
+    PrepareDelivery {
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        file: PathBuf,
+    },
+    IssueDelivery {
+        #[arg(long)]
+        request_id: String,
+    },
+    RevokeGrant {
+        #[arg(long)]
+        request_id: String,
+        #[arg(long, value_enum)]
+        action: DataMarketRevocationActionArg,
+        #[arg(long)]
+        confirm: bool,
+        #[arg(long)]
+        reason_code: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum DataMarketRevocationActionArg {
+    Revoke,
+    Expire,
+}
+
+#[derive(serde::Deserialize)]
+struct DataMarketPrepareDeliveryFileArgs {
+    preview_text: Option<String>,
+    delivery_ref: Option<String>,
+    delivery_digest: Option<String>,
+    manifest_refs: Option<Vec<String>>,
+    bundle_size_bytes: Option<u64>,
+    expires_in_hours: Option<u64>,
 }
 
 impl ProviderCommand {
@@ -1048,6 +1120,92 @@ impl ChatCommand {
             }),
             Self::Retry { event_id, .. } => Some(DesktopControlActionRequest::RetryNip28Message {
                 event_id: event_id.clone(),
+            }),
+        }
+    }
+}
+
+impl DataMarketRevocationActionArg {
+    const fn as_request_action(self) -> &'static str {
+        match self {
+            Self::Revoke => "revoke",
+            Self::Expire => "expire",
+        }
+    }
+}
+
+impl DataMarketCommand {
+    fn action_request(&self) -> Result<DesktopControlActionRequest> {
+        match self {
+            Self::SellerStatus => Ok(DesktopControlActionRequest::GetDataMarketSellerStatus),
+            Self::Snapshot => Ok(DesktopControlActionRequest::GetDataMarketSnapshot),
+            Self::DraftAsset { file } => Ok(DesktopControlActionRequest::DraftDataMarketAsset {
+                args: load_json_file::<DesktopControlDataMarketDraftAssetArgs>(
+                    file,
+                    "data market asset draft",
+                )?,
+            }),
+            Self::PreviewAsset => Ok(DesktopControlActionRequest::PreviewDataMarketAsset),
+            Self::PublishAsset { confirm } => {
+                Ok(DesktopControlActionRequest::PublishDataMarketAsset {
+                    args: DesktopControlDataMarketPublishArgs { confirm: *confirm },
+                })
+            }
+            Self::DraftGrant { file } => Ok(DesktopControlActionRequest::DraftDataMarketGrant {
+                args: load_json_file::<DesktopControlDataMarketDraftGrantArgs>(
+                    file,
+                    "data market grant draft",
+                )?,
+            }),
+            Self::PreviewGrant => Ok(DesktopControlActionRequest::PreviewDataMarketGrant),
+            Self::PublishGrant { confirm } => {
+                Ok(DesktopControlActionRequest::PublishDataMarketGrant {
+                    args: DesktopControlDataMarketPublishArgs { confirm: *confirm },
+                })
+            }
+            Self::RequestPayment { request_id } => {
+                Ok(DesktopControlActionRequest::RequestDataMarketPayment {
+                    args: DesktopControlDataMarketRequestPaymentArgs {
+                        request_id: request_id.clone(),
+                    },
+                })
+            }
+            Self::PrepareDelivery { request_id, file } => {
+                let loaded = load_json_file::<DataMarketPrepareDeliveryFileArgs>(
+                    file,
+                    "data market delivery draft",
+                )?;
+                Ok(DesktopControlActionRequest::PrepareDataMarketDelivery {
+                    args: DesktopControlDataMarketPrepareDeliveryArgs {
+                        request_id: request_id.clone(),
+                        preview_text: loaded.preview_text,
+                        delivery_ref: loaded.delivery_ref,
+                        delivery_digest: loaded.delivery_digest,
+                        manifest_refs: loaded.manifest_refs,
+                        bundle_size_bytes: loaded.bundle_size_bytes,
+                        expires_in_hours: loaded.expires_in_hours,
+                    },
+                })
+            }
+            Self::IssueDelivery { request_id } => {
+                Ok(DesktopControlActionRequest::IssueDataMarketDelivery {
+                    args: DesktopControlDataMarketIssueDeliveryArgs {
+                        request_id: request_id.clone(),
+                    },
+                })
+            }
+            Self::RevokeGrant {
+                request_id,
+                action,
+                confirm,
+                reason_code,
+            } => Ok(DesktopControlActionRequest::RevokeDataMarketGrant {
+                args: DesktopControlDataMarketRevokeGrantArgs {
+                    request_id: request_id.clone(),
+                    action: action.as_request_action().to_string(),
+                    confirm: *confirm,
+                    reason_code: reason_code.clone(),
+                },
             }),
         }
     }
@@ -1761,6 +1919,25 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, waited.as_ref())?;
             }
         },
+        Command::DataMarket { command } => {
+            let response = client.action(&command.action_request()?)?;
+            ensure_action_success(&response)?;
+            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+            if json_output {
+                print_json(&json!({
+                    "message": response.message,
+                    "payload": payload,
+                }))?;
+            } else {
+                if !matches!(
+                    command,
+                    DataMarketCommand::SellerStatus | DataMarketCommand::Snapshot
+                ) {
+                    println!("{}", response.message);
+                }
+                print_data_market_snapshot_text(payload);
+            }
+        }
         Command::ActiveJob => {
             let snapshot = client.snapshot()?;
             if json_output {
@@ -2307,6 +2484,13 @@ fn tail_file_lines(path: &Path, tail: usize) -> Result<Vec<String>> {
     Ok(lines)
 }
 
+fn load_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T> {
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("read {label} {}", path.display()))?;
+    serde_json::from_str::<T>(raw.as_str())
+        .with_context(|| format!("decode {label} {}", path.display()))
+}
+
 fn print_json<T: Serialize>(value: &T) -> Result<()> {
     println!(
         "{}",
@@ -2426,6 +2610,174 @@ fn print_pane_snapshot_text(payload: &Value) {
             );
         }
     }
+}
+
+fn print_data_market_snapshot_text(payload: &Value) {
+    let schema_version = payload
+        .get("schema_version")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let seller = payload.get("seller").unwrap_or(&Value::Null);
+    let draft = seller.get("draft").unwrap_or(&Value::Null);
+    println!(
+        "data market: schema={} seller_load_state={} preview_enabled={} confirm_enabled={} publish_enabled={} incoming_requests={}",
+        schema_version,
+        json_str(seller.get("load_state")).unwrap_or("-"),
+        json_bool(seller.get("preview_enabled")),
+        json_bool(seller.get("confirm_enabled")),
+        json_bool(seller.get("publish_enabled")),
+        json_array_len(seller.get("incoming_requests"))
+    );
+    println!(
+        "seller: status={} codex_phase={} inventory_warnings={} required_skills={}",
+        json_str(seller.get("status_line")).unwrap_or("-"),
+        json_str(seller.get("codex_session_phase")).unwrap_or("-"),
+        json_array_len(seller.get("inventory_warnings")),
+        seller
+            .get("required_skill_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    );
+    if let Some(thread_id) = json_str(seller.get("codex_thread_id")) {
+        println!("seller thread: {thread_id}");
+    }
+    if let Some(last_action) = json_str(seller.get("last_action")) {
+        println!("seller last action: {last_action}");
+    }
+    if let Some(last_error) = json_str(seller.get("last_error")) {
+        println!("seller last error: {last_error}");
+    }
+    println!(
+        "draft: kind={} title={} price_hint_sats={} policy={} visibility={} sensitivity={} preview_posture={}",
+        json_str(draft.get("asset_kind")).unwrap_or("-"),
+        json_str(draft.get("title")).unwrap_or("-"),
+        draft
+            .get("price_hint_sats")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        json_str(draft.get("default_policy")).unwrap_or("-"),
+        json_str(draft.get("visibility_posture")).unwrap_or("-"),
+        json_str(draft.get("sensitivity_posture")).unwrap_or("-"),
+        json_str(draft.get("preview_posture")).unwrap_or("-"),
+    );
+    println!(
+        "draft refs: content_digest={} provenance_ref={} delivery_modes={}",
+        json_str(draft.get("content_digest")).unwrap_or("-"),
+        json_str(draft.get("provenance_ref")).unwrap_or("-"),
+        json_joined_array(draft.get("delivery_modes")).unwrap_or_else(|| "-".to_string()),
+    );
+    println!(
+        "draft publish: asset_id={} grant_id={} asset_confirmed={} grant_confirmed={}",
+        json_str(draft.get("last_published_asset_id")).unwrap_or("-"),
+        json_str(draft.get("last_published_grant_id")).unwrap_or("-"),
+        json_bool(seller.get("asset_preview_confirmed")),
+        json_bool(seller.get("grant_preview_confirmed")),
+    );
+    let blockers = draft
+        .get("readiness_blockers")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if blockers.is_empty() {
+        println!("draft blockers: none");
+    } else {
+        println!("draft blockers:");
+        for blocker in blockers {
+            let code = json_str(blocker.get("code")).unwrap_or("-");
+            let message = json_str(blocker.get("message")).unwrap_or("-");
+            println!("  {code}: {message}");
+        }
+    }
+    if let Some(latest_request) = seller.get("latest_incoming_request") {
+        if !latest_request.is_null() {
+            print_data_market_request_summary("latest request", latest_request);
+        }
+    }
+    if let Some(market) = payload.get("market") {
+        println!(
+            "market: load_state={} assets={} grants={} deliveries={} revocations={} refreshed_at_ms={}",
+            json_str(market.get("load_state")).unwrap_or("-"),
+            market
+                .get("asset_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            market
+                .get("grant_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            market
+                .get("delivery_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            market
+                .get("revocation_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            market
+                .get("last_refreshed_at_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        );
+        if let Some(last_action) = json_str(market.get("last_action")) {
+            println!("market last action: {last_action}");
+        }
+        if let Some(last_error) = json_str(market.get("last_error")) {
+            println!("market last error: {last_error}");
+        }
+    }
+}
+
+fn print_data_market_request_summary(label: &str, request: &Value) {
+    println!(
+        "{label}: id={} requester={} eval={} matched_asset={} matched_grant={} price_sats={}",
+        json_str(request.get("request_id")).unwrap_or("-"),
+        json_str(request.get("requester")).unwrap_or("-"),
+        json_str(request.get("evaluation_disposition")).unwrap_or("-"),
+        json_str(request.get("matched_asset_id")).unwrap_or("-"),
+        json_str(request.get("matched_grant_id")).unwrap_or("-"),
+        request
+            .get("required_price_sats")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+    );
+    println!(
+        "{label} states: payment={} delivery={} revocation={}",
+        json_str(request.get("payment").and_then(|value| value.get("state"))).unwrap_or("-"),
+        json_str(request.get("delivery").and_then(|value| value.get("state"))).unwrap_or("-"),
+        json_str(
+            request
+                .get("revocation")
+                .and_then(|value| value.get("state"))
+        )
+        .unwrap_or("-"),
+    );
+}
+
+fn json_str(value: Option<&Value>) -> Option<&str> {
+    value
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
+fn json_bool(value: Option<&Value>) -> bool {
+    value.and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn json_array_len(value: Option<&Value>) -> usize {
+    value.and_then(Value::as_array).map(Vec::len).unwrap_or(0)
+}
+
+fn json_joined_array(value: Option<&Value>) -> Option<String> {
+    value.and_then(Value::as_array).map(|entries| {
+        entries
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    })
 }
 
 fn print_attnres_text(status: &DesktopControlAttnResStatus) {
@@ -5603,22 +5955,25 @@ mod tests {
     use super::{
         AppleFmCommand, AttnResCommand, AttnResSpeedCommand, AttnResSublayerCommand,
         AttnResViewArg, BuyModeCommand, ChallengeCommand, ChatCommand, ClusterCommand,
-        GptOssCommand, LocalRuntimeCommand, ProofCommand, ProviderCommand, ResearchCommand,
-        SandboxCommand, SandboxEntrypointTypeArg, TassadarCommand, TassadarFamilyCommand,
-        TassadarNavigationCommand, TassadarReplayFamilyArg, TassadarSourceArg,
-        TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand, TrainingCommand,
-        WaitCondition, WaitConditionArg, WalletCommand, buy_mode_has_failed_request,
-        buy_mode_has_paid_request, buyer_procurement_status_lines, ensure_buy_mode_budget_ack,
-        inventory_status_lines, nip90_sent_payments_report_lines, parse_local_daily_window,
-        parse_nip90_sent_payments_report, parse_report_boundary, request_has_failed,
-        request_has_paid, request_has_payment_required, training_status_lines,
+        DataMarketCommand, DataMarketRevocationActionArg, GptOssCommand, LocalRuntimeCommand,
+        ProofCommand, ProviderCommand, ResearchCommand, SandboxCommand, SandboxEntrypointTypeArg,
+        TassadarCommand, TassadarFamilyCommand, TassadarNavigationCommand, TassadarReplayFamilyArg,
+        TassadarSourceArg, TassadarSpeedCommand, TassadarViewArg, TassadarWindowCommand,
+        TrainingCommand, WaitCondition, WaitConditionArg, WalletCommand,
+        buy_mode_has_failed_request, buy_mode_has_paid_request, buyer_procurement_status_lines,
+        ensure_buy_mode_budget_ack, inventory_status_lines, nip90_sent_payments_report_lines,
+        parse_local_daily_window, parse_nip90_sent_payments_report, parse_report_boundary,
+        request_has_failed, request_has_paid, request_has_payment_required, training_status_lines,
     };
     use autopilot_desktop::desktop_control::{
         DesktopControlActionRequest, DesktopControlAttnResView, DesktopControlBuyModeRequestStatus,
-        DesktopControlBuyModeStatus, DesktopControlNip28MessageStatus,
-        DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-        DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
-        DesktopControlTassadarView,
+        DesktopControlBuyModeStatus, DesktopControlDataMarketDraftAssetArgs,
+        DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketIssueDeliveryArgs,
+        DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
+        DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketRevokeGrantArgs,
+        DesktopControlNip28MessageStatus, DesktopControlNip90SentPaymentsReport,
+        DesktopControlSnapshot, DesktopControlTassadarReplayFamily,
+        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -5634,6 +5989,13 @@ mod tests {
     };
     use psionic_sandbox::ProviderSandboxEntrypointType;
     use std::path::PathBuf;
+    use tempfile::NamedTempFile;
+
+    fn write_temp_json(raw: &str) -> NamedTempFile {
+        let file = NamedTempFile::new().expect("temp json file");
+        std::fs::write(file.path(), raw).expect("write temp json");
+        file
+    }
 
     fn sample_snapshot() -> DesktopControlSnapshot {
         let mut snapshot = DesktopControlSnapshot::default();
@@ -6366,6 +6728,185 @@ mod tests {
     }
 
     #[test]
+    fn data_market_commands_map_to_control_requests() {
+        let asset_file = write_temp_json(
+            r#"{
+                "asset_kind": "conversation_bundle",
+                "title": "Support transcripts",
+                "price_hint_sats": 250,
+                "delivery_modes": ["bundle_ref"]
+            }"#,
+        );
+        let asset_action = DataMarketCommand::DraftAsset {
+            file: asset_file.path().to_path_buf(),
+        }
+        .action_request()
+        .expect("asset draft action");
+        assert_eq!(
+            asset_action,
+            DesktopControlActionRequest::DraftDataMarketAsset {
+                args: DesktopControlDataMarketDraftAssetArgs {
+                    asset_kind: Some("conversation_bundle".to_string()),
+                    title: Some("Support transcripts".to_string()),
+                    description: None,
+                    content_digest: None,
+                    provenance_ref: None,
+                    default_policy: None,
+                    price_hint_sats: Some(250),
+                    delivery_modes: Some(vec!["bundle_ref".to_string()]),
+                    visibility_posture: None,
+                    sensitivity_posture: None,
+                    metadata: None,
+                },
+            }
+        );
+
+        assert_eq!(
+            DataMarketCommand::SellerStatus
+                .action_request()
+                .expect("seller status action"),
+            DesktopControlActionRequest::GetDataMarketSellerStatus
+        );
+        assert_eq!(
+            DataMarketCommand::PreviewAsset
+                .action_request()
+                .expect("preview asset action"),
+            DesktopControlActionRequest::PreviewDataMarketAsset
+        );
+        assert_eq!(
+            DataMarketCommand::PublishAsset { confirm: true }
+                .action_request()
+                .expect("publish asset action"),
+            DesktopControlActionRequest::PublishDataMarketAsset {
+                args: DesktopControlDataMarketPublishArgs { confirm: true },
+            }
+        );
+
+        let grant_file = write_temp_json(
+            r#"{
+                "consumer_id": "buyer-pubkey",
+                "price_hint_sats": 300,
+                "expires_in_hours": 24
+            }"#,
+        );
+        let grant_action = DataMarketCommand::DraftGrant {
+            file: grant_file.path().to_path_buf(),
+        }
+        .action_request()
+        .expect("grant draft action");
+        assert_eq!(
+            grant_action,
+            DesktopControlActionRequest::DraftDataMarketGrant {
+                args: DesktopControlDataMarketDraftGrantArgs {
+                    default_policy: None,
+                    policy_template: None,
+                    consumer_id: Some("buyer-pubkey".to_string()),
+                    price_hint_sats: Some(300),
+                    delivery_modes: None,
+                    visibility_posture: None,
+                    expires_in_hours: Some(24),
+                    warranty_window_hours: None,
+                    metadata: None,
+                },
+            }
+        );
+
+        assert_eq!(
+            DataMarketCommand::PreviewGrant
+                .action_request()
+                .expect("preview grant action"),
+            DesktopControlActionRequest::PreviewDataMarketGrant
+        );
+        assert_eq!(
+            DataMarketCommand::PublishGrant { confirm: true }
+                .action_request()
+                .expect("publish grant action"),
+            DesktopControlActionRequest::PublishDataMarketGrant {
+                args: DesktopControlDataMarketPublishArgs { confirm: true },
+            }
+        );
+        assert_eq!(
+            DataMarketCommand::RequestPayment {
+                request_id: "req-1".to_string(),
+            }
+            .action_request()
+            .expect("payment request action"),
+            DesktopControlActionRequest::RequestDataMarketPayment {
+                args: DesktopControlDataMarketRequestPaymentArgs {
+                    request_id: "req-1".to_string(),
+                },
+            }
+        );
+
+        let delivery_file = write_temp_json(
+            r#"{
+                "preview_text": "bundle preview",
+                "delivery_ref": "bundle://fixture/1",
+                "delivery_digest": "sha256:fixture",
+                "manifest_refs": ["manifest://fixture/1"],
+                "bundle_size_bytes": 4096,
+                "expires_in_hours": 48
+            }"#,
+        );
+        let delivery_action = DataMarketCommand::PrepareDelivery {
+            request_id: "req-2".to_string(),
+            file: delivery_file.path().to_path_buf(),
+        }
+        .action_request()
+        .expect("prepare delivery action");
+        assert_eq!(
+            delivery_action,
+            DesktopControlActionRequest::PrepareDataMarketDelivery {
+                args: DesktopControlDataMarketPrepareDeliveryArgs {
+                    request_id: "req-2".to_string(),
+                    preview_text: Some("bundle preview".to_string()),
+                    delivery_ref: Some("bundle://fixture/1".to_string()),
+                    delivery_digest: Some("sha256:fixture".to_string()),
+                    manifest_refs: Some(vec!["manifest://fixture/1".to_string()]),
+                    bundle_size_bytes: Some(4096),
+                    expires_in_hours: Some(48),
+                },
+            }
+        );
+        assert_eq!(
+            DataMarketCommand::IssueDelivery {
+                request_id: "req-2".to_string(),
+            }
+            .action_request()
+            .expect("issue delivery action"),
+            DesktopControlActionRequest::IssueDataMarketDelivery {
+                args: DesktopControlDataMarketIssueDeliveryArgs {
+                    request_id: "req-2".to_string(),
+                },
+            }
+        );
+        assert_eq!(
+            DataMarketCommand::RevokeGrant {
+                request_id: "req-3".to_string(),
+                action: DataMarketRevocationActionArg::Expire,
+                confirm: true,
+                reason_code: Some("ttl_elapsed".to_string()),
+            }
+            .action_request()
+            .expect("revoke action"),
+            DesktopControlActionRequest::RevokeDataMarketGrant {
+                args: DesktopControlDataMarketRevokeGrantArgs {
+                    request_id: "req-3".to_string(),
+                    action: "expire".to_string(),
+                    confirm: true,
+                    reason_code: Some("ttl_elapsed".to_string()),
+                },
+            }
+        );
+        assert_eq!(
+            DataMarketCommand::Snapshot
+                .action_request()
+                .expect("snapshot action"),
+            DesktopControlActionRequest::GetDataMarketSnapshot
+        );
+    }
+
+    #[test]
     fn tassadar_commands_map_to_control_requests() {
         assert_eq!(
             TassadarCommand::Status.action_request(),
@@ -6581,6 +7122,14 @@ mod tests {
             "--json",
         ])
         .expect("cli should accept trailing global json flag");
+        assert!(cli.json);
+    }
+
+    #[test]
+    fn cli_accepts_global_json_after_data_market_subcommand() {
+        let cli =
+            super::Cli::try_parse_from(["autopilotctl", "data-market", "seller-status", "--json"])
+                .expect("cli should accept trailing global json flag");
         assert!(cli.json);
     }
 

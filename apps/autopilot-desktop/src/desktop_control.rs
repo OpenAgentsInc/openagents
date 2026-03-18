@@ -64,11 +64,12 @@ use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmWorkbenchCommand, AppleFmWorkbenchOperation,
 };
 use crate::bitcoin_display::format_sats_amount;
-use crate::input::{
+use crate::input::DesktopControlToolBridgeResultEnvelope;
+pub use crate::input::{
     DesktopControlDataMarketDraftAssetArgs, DesktopControlDataMarketDraftGrantArgs,
     DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
     DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
-    DesktopControlDataMarketRevokeGrantArgs, DesktopControlToolBridgeResultEnvelope,
+    DesktopControlDataMarketRevokeGrantArgs,
 };
 use crate::local_inference_runtime::{LocalInferenceRuntimeCommand, LocalRuntimeDiagnostics};
 use crate::local_runtime_capabilities::{
