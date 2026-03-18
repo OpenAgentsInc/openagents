@@ -16,8 +16,7 @@ use crate::pane_system::{
     BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataBuyerPaneAction,
     DataMarketPaneAction, DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction,
     MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
-    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction,
-    VoicePlaygroundPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -8889,7 +8888,10 @@ pub(super) fn run_voice_playground_action(
                 .trim()
                 .to_string();
             crate::voice_playground::VoicePlaygroundCommand::SynthesizeAndPlay {
-                request_id: format!("voice-playground-tts-{}", state.reserve_runtime_command_seq()),
+                request_id: format!(
+                    "voice-playground-tts-{}",
+                    state.reserve_runtime_command_seq()
+                ),
                 text,
             }
         }

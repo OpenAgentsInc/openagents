@@ -3,6 +3,7 @@ use openagents_kernel_core::data::{
     AccessGrant, DataAsset, DeliveryBundle, PermissionPolicy, RevocationReceipt,
 };
 use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
+use serde_json::Value;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState};
@@ -323,26 +324,39 @@ fn paint_panel(
 }
 
 fn asset_row_summary(asset: &DataAsset) -> (String, String) {
+    let packaging = asset_packaging_summary(asset);
+    let market_posture = asset_market_posture(asset);
     let primary = compact_text(
-        format!(
-            "{} // {} // {}",
-            asset.title,
-            asset.asset_kind,
-            asset.status.label()
-        )
+        if packaging.is_some() {
+            format!(
+                "{} // codex export // {}",
+                asset.title,
+                asset.status.label()
+            )
+        } else {
+            format!(
+                "{} // {} // {}",
+                asset.title,
+                asset.asset_kind,
+                asset.status.label()
+            )
+        }
         .as_str(),
         58,
     );
     let secondary = compact_text(
         format!(
-            "{} // provider {} // {} // {}",
+            "{} // {}{} // {} // provider {}",
             short_id(asset.asset_id.as_str()),
-            short_id(asset.provider_id.as_str()),
+            market_posture,
+            packaging
+                .map(|summary| format!(" // {summary}"))
+                .unwrap_or_else(|| format!(" // {}", format_policy(asset.default_policy.as_ref()))),
             format_money(asset.price_hint.as_ref()),
-            format_policy(asset.default_policy.as_ref())
+            short_id(asset.provider_id.as_str()),
         )
         .as_str(),
-        76,
+        92,
     );
     (primary, secondary)
 }
@@ -490,6 +504,45 @@ fn format_policy(policy: Option<&PermissionPolicy>) -> String {
     }
 }
 
+fn asset_packaging_summary(asset: &DataAsset) -> Option<String> {
+    if asset_metadata_string(asset, "codex_conversation_export").as_deref() == Some("true") {
+        let tier = asset_metadata_string(asset, "codex_redaction_tier")
+            .unwrap_or_else(|| "unspecified".to_string());
+        let sessions =
+            asset_metadata_string(asset, "codex_session_count").unwrap_or_else(|| "?".to_string());
+        return Some(compact_text(
+            format!("{tier} redaction // {sessions} sessions").as_str(),
+            36,
+        ));
+    }
+    asset_metadata_string(asset, "export_kind").map(|value| compact_text(value.as_str(), 36))
+}
+
+fn asset_market_posture(asset: &DataAsset) -> String {
+    let visibility = asset_metadata_string(asset, "visibility_posture")
+        .unwrap_or_else(|| "visibility n/a".to_string());
+    let sensitivity = asset_metadata_string(asset, "sensitivity_posture")
+        .unwrap_or_else(|| "sensitivity n/a".to_string());
+    compact_text(format!("{visibility}/{sensitivity}").as_str(), 24)
+}
+
+fn asset_metadata_string(asset: &DataAsset, field: &str) -> Option<String> {
+    asset_metadata_value(asset, field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn asset_metadata_value<'a>(asset: &'a DataAsset, field: &str) -> Option<&'a Value> {
+    asset.metadata.get(field).or_else(|| {
+        asset
+            .metadata
+            .get("draft_metadata")
+            .and_then(|value| value.get(field))
+    })
+}
+
 fn format_money(money: Option<&Money>) -> String {
     match money {
         Some(Money {
@@ -534,5 +587,37 @@ fn compact_text(value: &str, max_chars: usize) -> String {
         format!("{compact}...")
     } else {
         compact
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn asset_row_summary_surfaces_codex_export_context() {
+        let asset = DataAsset {
+            asset_id: "data_asset.provider.codex.demo".to_string(),
+            provider_id: "provider.demo".to_string(),
+            asset_kind: "conversation_bundle".to_string(),
+            title: "Redacted Codex Conversations".to_string(),
+            status: openagents_kernel_core::data::DataAssetStatus::Active,
+            metadata: json!({
+                "visibility_posture": "targeted_only",
+                "sensitivity_posture": "private",
+                "draft_metadata": {
+                    "codex_conversation_export": "true",
+                    "codex_redaction_tier": "public",
+                    "codex_session_count": "3"
+                }
+            }),
+            ..Default::default()
+        };
+
+        let (primary, secondary) = asset_row_summary(&asset);
+        assert!(primary.contains("codex export"));
+        assert!(secondary.contains("targeted_only/private"));
+        assert!(secondary.contains("3 sessions"));
     }
 }

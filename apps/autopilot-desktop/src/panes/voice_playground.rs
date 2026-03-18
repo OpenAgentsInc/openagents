@@ -1,17 +1,19 @@
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{PaneKind, RenderState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState};
+use crate::app_state::{
+    PaneKind, RenderState, VoicePlaygroundPaneInputs, VoicePlaygroundPaneState,
+};
 use crate::pane_renderer::{
     paint_action_button, paint_label_line, paint_multiline_phrase, paint_source_badge,
     paint_state_summary,
 };
 use crate::pane_system::{
     pane_content_bounds, voice_playground_cancel_button_bounds,
-    voice_playground_refresh_button_bounds, voice_playground_start_button_bounds,
-    voice_playground_replay_button_bounds, voice_playground_speak_button_bounds,
-    voice_playground_stt_panel_bounds,
+    voice_playground_refresh_button_bounds, voice_playground_replay_button_bounds,
+    voice_playground_speak_button_bounds, voice_playground_start_button_bounds,
     voice_playground_stop_button_bounds, voice_playground_stop_playback_button_bounds,
-    voice_playground_tts_input_bounds, voice_playground_tts_panel_bounds,
+    voice_playground_stt_panel_bounds, voice_playground_tts_input_bounds,
+    voice_playground_tts_panel_bounds,
 };
 
 pub fn paint(
@@ -211,7 +213,9 @@ pub fn paint(
         11.0,
         theme::text::MUTED,
     ));
-    inputs.tts_text.set_max_width(tts_input.size.width.max(120.0));
+    inputs
+        .tts_text
+        .set_max_width(tts_input.size.width.max(120.0));
     inputs.tts_text.paint(tts_input, paint);
 
     let mut tts_line_y = stop_playback.max_y() + 18.0;
@@ -255,7 +259,10 @@ pub fn paint(
         tts_panel.origin.x + 12.0,
         tts_line_y,
         "Last request",
-        pane_state.last_synthesis_request_id.as_deref().unwrap_or("-"),
+        pane_state
+            .last_synthesis_request_id
+            .as_deref()
+            .unwrap_or("-"),
     );
     tts_line_y = paint_label_line(
         paint,

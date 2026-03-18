@@ -113,8 +113,8 @@ The current Data Market is a real secondary MVP slice, not just a spec.
 What exists now:
 
 - `Data Seller`: a dedicated conversational seller lane for drafting, exact preview, confirm, publish, grant issuance, payment-required feedback, delivery, and revocation
-- `Data Market`: a read-only market snapshot and operator-facing lifecycle pane
-- `Data Buyer`: a narrow buyer surface that selects a visible asset/default offer and publishes a targeted request
+- `Data Market`: a read-only market snapshot and operator-facing lifecycle pane that now surfaces packaging posture, redacted Codex-export markers, and recent fulfillment activity
+- `Data Buyer`: a narrow buyer surface that selects a visible asset/default offer, shows the bundle/posture being purchased, and publishes a targeted request
 - `autopilotctl data-market ...`: full shell-first control over the same app-owned seller/buyer state machine
 - `autopilot_headless_data_market`: a no-window runtime for scripts, operators, and agents
 - repo-owned skills for both conversational and CLI-first seller flows
@@ -123,6 +123,7 @@ How it works today:
 
 - kernel authority owns `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt`
 - desktop, CLI, and skills all drive the same app-owned data-market logic through typed desktop-control actions
+- the panes are intentionally read-heavy: `autopilotctl` and headless/skill flows steer mutations, while the UI exposes the exact preview, package, posture, request, payment, delivery, and revocation truth
 - transport is a targeted NIP-90 data-vending profile:
   - request kind `5960`
   - result kind `6960`

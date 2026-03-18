@@ -1,5 +1,6 @@
 use chrono::{Local, TimeZone};
 use openagents_kernel_core::data::{AccessGrant, DataAsset, RevocationReceipt};
+use serde_json::Value;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{DataBuyerPaneState, DataMarketPaneState};
@@ -183,54 +184,74 @@ fn paint_asset_card(
 
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     for (label, value) in [
-        ("title", asset.title.as_str().to_string()),
-        ("asset_id", asset.asset_id.as_str().to_string()),
-        ("provider", asset.provider_id.as_str().to_string()),
-        ("kind", asset.asset_kind.as_str().to_string()),
-        ("status", asset.status.label().to_string()),
+        ("title", compact_text(asset.title.as_str(), 44)),
         (
-            "price_hint",
-            asset
-                .price_hint
-                .as_ref()
-                .map(format_money)
-                .unwrap_or_else(|| "none".to_string()),
+            "asset",
+            compact_text(
+                format!(
+                    "{} // {} // {}",
+                    short_id(asset.asset_id.as_str()),
+                    asset.asset_kind,
+                    asset.status.label()
+                )
+                .as_str(),
+                44,
+            ),
         ),
+        ("provider", compact_text(asset.provider_id.as_str(), 44)),
         (
-            "policy",
-            asset
-                .default_policy
-                .as_ref()
-                .map(|policy| policy.policy_id.clone())
-                .unwrap_or_else(|| "none".to_string()),
+            "pricing",
+            compact_text(
+                format!(
+                    "{} // {}",
+                    asset
+                        .price_hint
+                        .as_ref()
+                        .map(format_money)
+                        .unwrap_or_else(|| "none".to_string()),
+                    asset
+                        .default_policy
+                        .as_ref()
+                        .map(|policy| policy.policy_id.clone())
+                        .unwrap_or_else(|| "policy none".to_string()),
+                )
+                .as_str(),
+                44,
+            ),
+        ),
+        ("market", asset_market_posture(asset)),
+        (
+            "bundle",
+            asset_bundle_summary(asset).unwrap_or_else(|| "generic package".to_string()),
         ),
     ] {
         row_y = paint_row(bounds, row_y, label, value.as_str(), paint);
     }
     if let Some(grant) = grant {
         row_y = paint_row(bounds, row_y, "offer_grant", grant.grant_id.as_str(), paint);
-        row_y = paint_row(bounds, row_y, "grant_status", grant.status.label(), paint);
         row_y = paint_row(
             bounds,
             row_y,
-            "grant_duration",
-            grant_duration_label(grant).as_str(),
-            paint,
-        );
-        row_y = paint_row(
-            bounds,
-            row_y,
-            "offer_price",
-            grant
-                .offer_price
-                .as_ref()
-                .map(format_money)
-                .unwrap_or_else(|| "none".to_string())
+            "offer",
+            compact_text(
+                format!(
+                    "{} // {} // {}",
+                    grant.status.label(),
+                    grant_duration_label(grant),
+                    grant
+                        .offer_price
+                        .as_ref()
+                        .map(format_money)
+                        .unwrap_or_else(|| "none".to_string())
+                )
                 .as_str(),
+                44,
+            )
+            .as_str(),
             paint,
         );
     } else {
-        row_y = paint_row(bounds, row_y, "offer_grant", "none", paint);
+        row_y = paint_row(bounds, row_y, "offer", "none", paint);
     }
     let revocation_label = revocation
         .map(|revocation| {
@@ -448,6 +469,62 @@ fn format_money(money: &openagents_kernel_core::receipts::Money) -> String {
     }
 }
 
+fn asset_bundle_summary(asset: &DataAsset) -> Option<String> {
+    if asset_metadata_string(asset, "codex_conversation_export").as_deref() == Some("true") {
+        let tier = asset_metadata_string(asset, "codex_redaction_tier")
+            .unwrap_or_else(|| "unspecified".to_string());
+        let sessions =
+            asset_metadata_string(asset, "codex_session_count").unwrap_or_else(|| "?".to_string());
+        return Some(compact_text(
+            format!("codex export // {tier} // {sessions} sessions").as_str(),
+            44,
+        ));
+    }
+    asset_metadata_string(asset, "export_kind").map(|value| compact_text(value.as_str(), 44))
+}
+
+fn asset_market_posture(asset: &DataAsset) -> String {
+    let visibility = asset_metadata_string(asset, "visibility_posture")
+        .unwrap_or_else(|| "visibility n/a".to_string());
+    let sensitivity = asset_metadata_string(asset, "sensitivity_posture")
+        .unwrap_or_else(|| "sensitivity n/a".to_string());
+    compact_text(format!("{visibility}/{sensitivity}").as_str(), 44)
+}
+
+fn asset_metadata_string(asset: &DataAsset, field: &str) -> Option<String> {
+    asset_metadata_value(asset, field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn asset_metadata_value<'a>(asset: &'a DataAsset, field: &str) -> Option<&'a Value> {
+    asset.metadata.get(field).or_else(|| {
+        asset
+            .metadata
+            .get("draft_metadata")
+            .and_then(|value| value.get(field))
+    })
+}
+
+fn short_id(value: &str) -> String {
+    if value.len() <= 18 {
+        return value.to_string();
+    }
+    format!("{}..{}", &value[..8], &value[value.len() - 6..])
+}
+
+fn compact_text(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let compact = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{compact}...")
+    } else {
+        compact
+    }
+}
+
 fn grant_duration_label(grant: &AccessGrant) -> String {
     let window_ms = grant
         .expires_at_ms
@@ -469,4 +546,29 @@ fn format_epoch_ms(value: Option<i64>) -> String {
         .single()
         .map(|timestamp| timestamp.format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn asset_bundle_summary_prefers_codex_export_metadata() {
+        let asset = DataAsset {
+            metadata: json!({
+                "draft_metadata": {
+                    "codex_conversation_export": "true",
+                    "codex_redaction_tier": "public",
+                    "codex_session_count": "2"
+                }
+            }),
+            ..Default::default()
+        };
+
+        let summary = asset_bundle_summary(&asset).expect("bundle summary");
+        assert!(summary.contains("codex export"));
+        assert!(summary.contains("public"));
+        assert!(summary.contains("2"));
+    }
 }
