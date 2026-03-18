@@ -54,6 +54,31 @@ source ~/.profile && node skills/blink/scripts/balance.js
 source ~/.profile && node skills/blink/scripts/create_invoice.js 1000 "Payment for service"
 ```
 
+## Data Market Skill Quickstart
+
+The repo currently ships three first-party Data Market skills with distinct jobs:
+
+- `autopilot-data-seller`
+  - use when the agent is operating inside the dedicated `Data Seller` conversational pane
+  - governs seller drafting, exact preview, confirm-before-publish, and lifecycle discipline
+- `autopilot-data-market-control`
+  - use when the agent needs the typed `openagents.data_market.*` tool contract
+  - keeps seller publication and authority read-back bounded to the app-owned data-market tools
+- `autopilot-data-seller-cli`
+  - use for shell-first or no-window operation through `autopilotctl` and `autopilot_headless_data_market`
+  - packages local files/directories for sale and drives the same seller lifecycle without bootstrapping the visible UI
+
+Current supporting docs:
+
+- [../docs/headless-data-market.md](../docs/headless-data-market.md)
+- [../docs/kernel/markets/data-market.md](../docs/kernel/markets/data-market.md)
+
+Current transport truth for the Data Market MVP:
+
+- targeted NIP-90 request kind `5960`
+- targeted NIP-90 result kind `6960`
+- NIP-89 handler/capability kind `31990`
+
 ## Listing Policy
 
 - We generally welcome skills across domains.
