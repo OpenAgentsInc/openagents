@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 61] = [
+const PANE_SPECS: [PaneSpec; 62] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -683,6 +683,21 @@ const PANE_SPECS: [PaneSpec; 61] = [
             id: "pane.data_seller",
             label: "Data Seller",
             description: "Open the conversational seller shell for drafting, previewing, and publishing data listings",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::DataBuyer,
+        title: "Data Buyer",
+        default_width: 1080.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.data_buyer",
+            label: "Data Buyer",
+            description: "Open the narrow targeted-request surface for selecting an asset and issuing a buyer-side NIP-90 data-access request",
             keybinding: None,
         }),
         hotbar: None,

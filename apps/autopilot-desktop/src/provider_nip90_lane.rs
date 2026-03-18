@@ -1,12 +1,11 @@
 use crate::state::job_inbox::{JobExecutionParam, JobInboxNetworkRequest, JobInboxValidation};
 use nostr::nip90::{
-    DataVendingRequest, InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN,
-    JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW,
-    KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
-    KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT,
-    KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION,
-    KIND_JOB_TRANSLATION, OPENAGENTS_DATA_VENDING_PROFILE, is_job_feedback_kind,
-    is_job_request_kind, is_job_result_kind,
+    DataVendingRequest, InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX,
+    JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK,
+    KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY,
+    KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
+    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
+    OPENAGENTS_DATA_VENDING_PROFILE, is_job_feedback_kind, is_job_request_kind, is_job_result_kind,
 };
 use nostr::{Event, EventTemplate};
 use nostr_client::{
@@ -1401,13 +1400,12 @@ fn maybe_publish_handler_info(
         return;
     };
 
-    let desired_publication = if state.compute_capability.is_ready()
-        || state.data_vending_profile.is_some()
-    {
-        HandlerPublicationState::Healthy
-    } else {
-        HandlerPublicationState::Disabled
-    };
+    let desired_publication =
+        if state.compute_capability.is_ready() || state.data_vending_profile.is_some() {
+            HandlerPublicationState::Healthy
+        } else {
+            HandlerPublicationState::Disabled
+        };
     if state.handler_publication_state == desired_publication {
         return;
     }
@@ -1739,7 +1737,11 @@ fn event_to_inbox_request(
                     "oa_profile",
                     OPENAGENTS_DATA_VENDING_PROFILE,
                 );
-                append_unique_param(&mut normalized_params, "oa_asset_ref", data_request.asset_ref.as_str());
+                append_unique_param(
+                    &mut normalized_params,
+                    "oa_asset_ref",
+                    data_request.asset_ref.as_str(),
+                );
                 append_unique_param(
                     &mut normalized_params,
                     "oa_delivery_mode",
@@ -1799,11 +1801,18 @@ fn event_to_inbox_request(
             } else {
                 JobInboxValidation::Valid
             };
-            let parsed_event_shape = Some(if let Some(data_request) = data_vending_request.as_ref() {
-                format_data_vending_request_shape(event, request, data_request, price_sats, ttl_seconds)
-            } else {
-                format_nip90_request_shape(event, request, price_sats, ttl_seconds)
-            });
+            let parsed_event_shape =
+                Some(if let Some(data_request) = data_vending_request.as_ref() {
+                    format_data_vending_request_shape(
+                        event,
+                        request,
+                        data_request,
+                        price_sats,
+                        ttl_seconds,
+                    )
+                } else {
+                    format_nip90_request_shape(event, request, price_sats, ttl_seconds)
+                });
             (
                 capability,
                 skill_scope_id,

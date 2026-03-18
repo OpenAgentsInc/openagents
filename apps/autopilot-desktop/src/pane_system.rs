@@ -443,6 +443,14 @@ pub enum DataSellerPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataBuyerPaneAction {
+    RefreshMarket,
+    PreviousAsset,
+    NextAsset,
+    PublishRequest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DataMarketPaneAction {
     Refresh,
 }
@@ -1043,6 +1051,7 @@ pub enum PaneHitAction {
     BuyModePayments(BuyModePaymentsPaneAction),
     Nip90SentPayments(Nip90SentPaymentsPaneAction),
     DataSeller(DataSellerPaneAction),
+    DataBuyer(DataBuyerPaneAction),
     DataMarket(DataMarketPaneAction),
     SparkReplay(SparkReplayPaneAction),
     CodexAccount(CodexAccountPaneAction),
@@ -1200,6 +1209,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         PaneKind::LogStream => pane_size_for_content(980.0, 560.0),
         PaneKind::BuyModePayments => pane_size_for_content(980.0, 560.0),
         PaneKind::DataSeller => pane_size_for_content(1160.0, 680.0),
+        PaneKind::DataBuyer => pane_size_for_content(1080.0, 620.0),
         PaneKind::DataMarket => pane_size_for_content(1120.0, 640.0),
         PaneKind::SellerEarningsTimeline => pane_size_for_content(1120.0, 620.0),
         PaneKind::SettlementLadder => pane_size_for_content(1120.0, 620.0),
@@ -1300,6 +1310,8 @@ impl PaneController {
         } else if kind == PaneKind::DataSeller {
             state.data_seller.mark_opened();
             crate::data_seller_control::ensure_data_seller_codex_session(state);
+        } else if kind == PaneKind::DataBuyer {
+            crate::data_buyer_control::open_data_buyer_pane(state);
         } else if kind == PaneKind::DataMarket {
             crate::data_market_control::refresh_data_market_snapshot(state);
         }
@@ -1780,6 +1792,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::BuyModePayments
             | PaneKind::Nip90SentPayments
             | PaneKind::DataSeller
+            | PaneKind::DataBuyer
             | PaneKind::DataMarket
             | PaneKind::BuyerRaceMatrix
             | PaneKind::SellerEarningsTimeline
@@ -2386,6 +2399,34 @@ pub fn data_market_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.x + 12.0,
         content_bounds.origin.y + 8.0,
         92.0,
+        22.0,
+    )
+}
+
+pub fn data_buyer_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + 12.0,
+        content_bounds.origin.y + 8.0,
+        92.0,
+        22.0,
+    )
+}
+
+pub fn data_buyer_previous_asset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = data_buyer_refresh_button_bounds(content_bounds);
+    Bounds::new(refresh.max_x() + 8.0, refresh.origin.y, 84.0, 22.0)
+}
+
+pub fn data_buyer_next_asset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let previous = data_buyer_previous_asset_button_bounds(content_bounds);
+    Bounds::new(previous.max_x() + 8.0, previous.origin.y, 84.0, 22.0)
+}
+
+pub fn data_buyer_publish_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.max_x() - 12.0 - 132.0,
+        content_bounds.origin.y + 8.0,
+        132.0,
         22.0,
     )
 }
@@ -7850,6 +7891,21 @@ fn pane_hit_action_for_pane(
             } else if data_seller_publish_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::DataSeller(
                     DataSellerPaneAction::PublishDraft,
+                ))
+            } else {
+                None
+            }
+        }
+        PaneKind::DataBuyer => {
+            if data_buyer_refresh_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataBuyer(DataBuyerPaneAction::RefreshMarket))
+            } else if data_buyer_previous_asset_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataBuyer(DataBuyerPaneAction::PreviousAsset))
+            } else if data_buyer_next_asset_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataBuyer(DataBuyerPaneAction::NextAsset))
+            } else if data_buyer_publish_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::DataBuyer(
+                    DataBuyerPaneAction::PublishRequest,
                 ))
             } else {
                 None

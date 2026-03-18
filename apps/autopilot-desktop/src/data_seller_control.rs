@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
 use nostr::nip90::{
-    create_data_vending_result_event, create_job_feedback_event, DataVendingDeliveryMode,
-    DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
+    DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
+    create_data_vending_result_event, create_job_feedback_event,
 };
 use nostr::{Event, EventTemplate, NostrIdentity};
 use openagents_kernel_core::authority::{
@@ -31,8 +31,8 @@ use crate::provider_nip90_lane::{
     ProviderNip90PublishRole,
 };
 use crate::spark_wallet::{
-    decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
-    normalize_lightning_invoice_ref, SparkWalletCommand,
+    SparkWalletCommand, decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    normalize_lightning_invoice_ref,
 };
 
 fn current_session_cwd() -> Option<String> {
@@ -918,6 +918,7 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
     state
         .data_market
         .note_published_grant(grant.clone(), current_epoch_ms());
+    state.data_buyer.sync_selection(&state.data_market);
 
     let delivery = if let Some(existing_delivery_bundle_id) = request.delivery_bundle_id.as_deref()
     {
@@ -990,6 +991,7 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
         state
             .data_market
             .note_published_delivery(readback_delivery.clone(), current_epoch_ms());
+        state.data_buyer.sync_selection(&state.data_market);
         record_data_market_lifecycle_entry(
             state,
             readback_delivery.created_at_ms,
@@ -1009,6 +1011,7 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
     state
         .data_market
         .note_published_delivery(delivery.clone(), current_epoch_ms());
+    state.data_buyer.sync_selection(&state.data_market);
 
     let identity = match state.nostr_identity.as_ref() {
         Some(identity) => identity,
@@ -1235,14 +1238,17 @@ pub(crate) fn revoke_data_seller_access(
     state
         .data_market
         .note_published_grant(grant, reflected_at_ms);
+    state.data_buyer.sync_selection(&state.data_market);
     for delivery in deliveries {
         state
             .data_market
             .note_published_delivery(delivery, reflected_at_ms);
+        state.data_buyer.sync_selection(&state.data_market);
     }
     state
         .data_market
         .note_published_revocation(revocation, reflected_at_ms);
+    state.data_buyer.sync_selection(&state.data_market);
     if let Some((
         revocation_state,
         revocation_id,
@@ -1624,6 +1630,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
                     state
                         .data_market
                         .note_published_asset(asset, current_epoch_ms());
+                    state.data_buyer.sync_selection(&state.data_market);
                 }
                 record_data_market_lifecycle_entry(
                     state,
@@ -1655,6 +1662,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_asset(readback_asset, current_epoch_ms());
+    state.data_buyer.sync_selection(&state.data_market);
     if let Some(asset) = state.data_seller.last_published_asset.clone() {
         record_data_market_lifecycle_entry(
             state,
@@ -1741,6 +1749,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                     state
                         .data_market
                         .note_published_grant(grant, current_epoch_ms());
+                    state.data_buyer.sync_selection(&state.data_market);
                 }
                 record_data_market_lifecycle_entry(
                     state,
@@ -1772,6 +1781,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     state
         .data_market
         .note_published_grant(readback_grant, current_epoch_ms());
+    state.data_buyer.sync_selection(&state.data_market);
     if let Some(grant) = state.data_seller.last_published_grant.clone() {
         record_data_market_lifecycle_entry(
             state,

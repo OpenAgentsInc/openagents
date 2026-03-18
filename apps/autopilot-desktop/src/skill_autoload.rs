@@ -9,10 +9,8 @@ const MANAGED_SKILLS_REMOTE_TIMEOUT_SECS: u64 = 4;
 
 pub const REQUIRED_CAD_POLICY_SKILLS: &[&str] =
     &["autopilot-cad-builder", "autopilot-pane-control"];
-pub const REQUIRED_DATA_MARKET_POLICY_SKILLS: &[&str] = &[
-    "autopilot-data-seller",
-    "autopilot-data-market-control",
-];
+pub const REQUIRED_DATA_MARKET_POLICY_SKILLS: &[&str] =
+    &["autopilot-data-seller", "autopilot-data-market-control"];
 
 struct ManagedSkillSpec {
     name: &'static str,
@@ -240,13 +238,9 @@ mod tests {
     #[test]
     fn ensure_required_cad_skills_writes_embedded_fallback_payloads() {
         let managed_root = temp_dir("openagents-managed-cad-skills");
-        let ensured = ensure_required_skills_in(
-            &managed_root,
-            super::MANAGED_CAD_SKILLS,
-            false,
-            true,
-        )
-        .expect("managed CAD skills should be provisioned");
+        let ensured =
+            ensure_required_skills_in(&managed_root, super::MANAGED_CAD_SKILLS, false, true)
+                .expect("managed CAD skills should be provisioned");
         assert_eq!(ensured.len(), 2);
         for skill in ensured {
             let content = fs::read_to_string(&skill.path)

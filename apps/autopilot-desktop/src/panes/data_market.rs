@@ -3,7 +3,7 @@ use openagents_kernel_core::data::{
     AccessGrant, DataAsset, DeliveryBundle, PermissionPolicy, RevocationReceipt,
 };
 use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
-use wgpui::{theme, Bounds, PaintContext, Point, Quad};
+use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{DataMarketLifecycleEntry, DataMarketPaneState, PaneLoadState};
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
