@@ -15,6 +15,7 @@ pub mod compute;
 pub mod compute_benchmarks;
 pub mod compute_contracts;
 pub mod data;
+pub mod data_contracts;
 pub mod ids;
 pub mod labor;
 pub mod liquidity;

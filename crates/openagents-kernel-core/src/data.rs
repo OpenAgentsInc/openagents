@@ -194,3 +194,137 @@ pub struct RevocationReceipt {
     #[serde(default)]
     pub metadata: Value,
 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DataMarketSummary {
+    pub total_assets: u32,
+    pub active_assets: u32,
+    pub total_grants: u32,
+    pub offered_grants: u32,
+    pub accepted_grants: u32,
+    pub delivered_grants: u32,
+    pub terminal_grants: u32,
+    pub total_deliveries: u32,
+    pub active_deliveries: u32,
+    pub total_revocations: u32,
+    #[serde(default)]
+    pub latest_activity_at_ms: Option<i64>,
+}
+
+impl DataMarketSummary {
+    pub fn from_parts(
+        assets: &[DataAsset],
+        grants: &[AccessGrant],
+        deliveries: &[DeliveryBundle],
+        revocations: &[RevocationReceipt],
+    ) -> Self {
+        let latest_asset_ms = assets.iter().map(|asset| asset.created_at_ms).max();
+        let latest_grant_ms = grants
+            .iter()
+            .map(|grant| grant.accepted_at_ms.unwrap_or(grant.created_at_ms))
+            .max();
+        let latest_delivery_ms = deliveries.iter().map(|bundle| bundle.created_at_ms).max();
+        let latest_revocation_ms = revocations
+            .iter()
+            .map(|receipt| receipt.created_at_ms)
+            .max();
+
+        Self {
+            total_assets: assets.len().min(u32::MAX as usize) as u32,
+            active_assets: assets
+                .iter()
+                .filter(|asset| matches!(asset.status, DataAssetStatus::Active))
+                .count()
+                .min(u32::MAX as usize) as u32,
+            total_grants: grants.len().min(u32::MAX as usize) as u32,
+            offered_grants: grants
+                .iter()
+                .filter(|grant| matches!(grant.status, AccessGrantStatus::Offered))
+                .count()
+                .min(u32::MAX as usize) as u32,
+            accepted_grants: grants
+                .iter()
+                .filter(|grant| matches!(grant.status, AccessGrantStatus::Accepted))
+                .count()
+                .min(u32::MAX as usize) as u32,
+            delivered_grants: grants
+                .iter()
+                .filter(|grant| matches!(grant.status, AccessGrantStatus::Delivered))
+                .count()
+                .min(u32::MAX as usize) as u32,
+            terminal_grants: grants
+                .iter()
+                .filter(|grant| {
+                    matches!(
+                        grant.status,
+                        AccessGrantStatus::Revoked
+                            | AccessGrantStatus::Refunded
+                            | AccessGrantStatus::Expired
+                    )
+                })
+                .count()
+                .min(u32::MAX as usize) as u32,
+            total_deliveries: deliveries.len().min(u32::MAX as usize) as u32,
+            active_deliveries: deliveries
+                .iter()
+                .filter(|bundle| {
+                    matches!(
+                        bundle.status,
+                        DeliveryBundleStatus::Issued | DeliveryBundleStatus::Accessed
+                    )
+                })
+                .count()
+                .min(u32::MAX as usize) as u32,
+            total_revocations: revocations.len().min(u32::MAX as usize) as u32,
+            latest_activity_at_ms: [
+                latest_asset_ms,
+                latest_grant_ms,
+                latest_delivery_ms,
+                latest_revocation_ms,
+            ]
+            .into_iter()
+            .flatten()
+            .max(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DataMarketSnapshot {
+    pub refreshed_at_ms: i64,
+    #[serde(default)]
+    pub summary: DataMarketSummary,
+    #[serde(default)]
+    pub assets: Vec<DataAsset>,
+    #[serde(default)]
+    pub grants: Vec<AccessGrant>,
+    #[serde(default)]
+    pub deliveries: Vec<DeliveryBundle>,
+    #[serde(default)]
+    pub revocations: Vec<RevocationReceipt>,
+}
+
+impl DataMarketSnapshot {
+    pub fn from_parts(
+        assets: Vec<DataAsset>,
+        grants: Vec<AccessGrant>,
+        deliveries: Vec<DeliveryBundle>,
+        revocations: Vec<RevocationReceipt>,
+        refreshed_at_ms: i64,
+    ) -> Self {
+        let summary = DataMarketSummary::from_parts(
+            assets.as_slice(),
+            grants.as_slice(),
+            deliveries.as_slice(),
+            revocations.as_slice(),
+        );
+        Self {
+            refreshed_at_ms,
+            summary,
+            assets,
+            grants,
+            deliveries,
+            revocations,
+        }
+    }
+}

@@ -24,7 +24,7 @@ smuggled through opaque prompt state.
 | --- | --- | --- |
 | Product surface | seller authoring + read surface + narrow buyer request surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; there is now also a narrow `Data Buyer` pane that selects a visible asset and publishes a targeted NIP-90 data-access request, but broader buyer transaction UX is still incomplete |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
-| Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
+| Wire/proto | `implemented` starter slice | there is now a checked-in `openagents.data.v1` package plus proto-backed authority routes and a combined `/v1/kernel/data/snapshot` read model |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
 | Planned | yes | broader discovery, pricing, payouts, provider economics, and product-facing UX remain planned |
 
@@ -54,6 +54,8 @@ smuggled through opaque prompt state.
 - let the seller revoke or expire access from the same flow, read the resulting `RevocationReceipt` back from kernel authority, and immediately reflect the terminal grant/delivery state into both panes
 - record recent asset/grant/payment/delivery/revocation lifecycle entries in the read-only `Data Market` pane so operator-facing activity includes policy, counterparty, and receipt context
 - open a dedicated `Data Buyer` desktop pane that derives a request draft from the visible market snapshot, selects an active asset/default offer, and publishes a targeted NIP-90 data-access request without widening into public discovery
+- expose a checked-in `openagents.data.v1` proto package and use it for data-market authority mutation/read envelopes
+- expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
 
 The starter authority slice is real in:
 
@@ -80,6 +82,7 @@ Authenticated HTTP read routes are live under:
 - `GET /v1/kernel/data/deliveries/{delivery_bundle_id}`
 - `GET /v1/kernel/data/revocations`
 - `GET /v1/kernel/data/revocations/{revocation_id}`
+- `GET /v1/kernel/data/snapshot`
 
 ## Local prototype or partial only
 
@@ -96,7 +99,6 @@ Authenticated HTTP read routes are live under:
 - fully integrated seller publication UX beyond the current asset/grant/payment/delivery/revocation control slice
 - public discovery, listing, and richer pricing/comparison surfaces for data buyers
 - payout and provider-economics flows specific to data access
-- a dedicated checked-in `openagents.data.v1` proto package
 
 ## Current repo truth lives in
 

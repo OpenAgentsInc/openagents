@@ -14,9 +14,10 @@ use crate::compute::{
 };
 use crate::compute_contracts;
 use crate::data::{
-    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
+    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DataMarketSnapshot, DeliveryBundle,
     DeliveryBundleStatus, RevocationReceipt, RevocationStatus,
 };
+use crate::data_contracts;
 use crate::labor::{ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit};
 use crate::liquidity::{Envelope, Quote, ReservePartition, RoutePlan, SettlementIntent};
 use crate::receipts::{EvidenceRef, PolicyContext, Receipt, ReceiptHints, TraceContext};
@@ -26,6 +27,7 @@ use crate::risk::{
 use crate::snapshots::EconomySnapshot;
 use anyhow::{Result, anyhow};
 use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
+use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -329,6 +331,7 @@ pub trait KernelAuthority: Send + Sync {
         status: Option<RevocationStatus>,
     ) -> Result<Vec<RevocationReceipt>>;
     async fn get_revocation(&self, revocation_id: &str) -> Result<RevocationReceipt>;
+    async fn get_data_market_snapshot(&self) -> Result<DataMarketSnapshot>;
     async fn register_data_asset(
         &self,
         req: RegisterDataAssetRequest,
@@ -2340,12 +2343,14 @@ impl KernelAuthority for HttpKernelAuthorityClient {
                 ("status", status.map(|value| value.label().to_string())),
             ],
         );
-        self.get_json(path.as_str()).await
+        let response: proto_data::ListDataAssetsResponse = self.get_json(path.as_str()).await?;
+        data_contracts::list_data_assets_response_from_proto(&response)
     }
 
     async fn get_data_asset(&self, asset_id: &str) -> Result<DataAsset> {
         let path = format!("/v1/kernel/data/assets/{asset_id}");
-        self.get_json(path.as_str()).await
+        let response: proto_data::GetDataAssetResponse = self.get_json(path.as_str()).await?;
+        data_contracts::get_data_asset_response_from_proto(&response)
     }
 
     async fn list_access_grants(
@@ -2364,12 +2369,14 @@ impl KernelAuthority for HttpKernelAuthorityClient {
                 ("status", status.map(|value| value.label().to_string())),
             ],
         );
-        self.get_json(path.as_str()).await
+        let response: proto_data::ListAccessGrantsResponse = self.get_json(path.as_str()).await?;
+        data_contracts::list_access_grants_response_from_proto(&response)
     }
 
     async fn get_access_grant(&self, grant_id: &str) -> Result<AccessGrant> {
         let path = format!("/v1/kernel/data/grants/{grant_id}");
-        self.get_json(path.as_str()).await
+        let response: proto_data::GetAccessGrantResponse = self.get_json(path.as_str()).await?;
+        data_contracts::get_access_grant_response_from_proto(&response)
     }
 
     async fn list_delivery_bundles(
@@ -2390,12 +2397,15 @@ impl KernelAuthority for HttpKernelAuthorityClient {
                 ("status", status.map(|value| value.label().to_string())),
             ],
         );
-        self.get_json(path.as_str()).await
+        let response: proto_data::ListDeliveryBundlesResponse =
+            self.get_json(path.as_str()).await?;
+        data_contracts::list_delivery_bundles_response_from_proto(&response)
     }
 
     async fn get_delivery_bundle(&self, delivery_bundle_id: &str) -> Result<DeliveryBundle> {
         let path = format!("/v1/kernel/data/deliveries/{delivery_bundle_id}");
-        self.get_json(path.as_str()).await
+        let response: proto_data::GetDeliveryBundleResponse = self.get_json(path.as_str()).await?;
+        data_contracts::get_delivery_bundle_response_from_proto(&response)
     }
 
     async fn list_revocations(
@@ -2416,26 +2426,40 @@ impl KernelAuthority for HttpKernelAuthorityClient {
                 ("status", status.map(|value| value.label().to_string())),
             ],
         );
-        self.get_json(path.as_str()).await
+        let response: proto_data::ListRevocationsResponse = self.get_json(path.as_str()).await?;
+        data_contracts::list_revocations_response_from_proto(&response)
     }
 
     async fn get_revocation(&self, revocation_id: &str) -> Result<RevocationReceipt> {
         let path = format!("/v1/kernel/data/revocations/{revocation_id}");
-        self.get_json(path.as_str()).await
+        let response: proto_data::GetRevocationResponse = self.get_json(path.as_str()).await?;
+        data_contracts::get_revocation_response_from_proto(&response)
+    }
+
+    async fn get_data_market_snapshot(&self) -> Result<DataMarketSnapshot> {
+        let response: proto_data::GetDataMarketSnapshotResponse =
+            self.get_json("/v1/kernel/data/snapshot").await?;
+        data_contracts::get_data_market_snapshot_response_from_proto(&response)
     }
 
     async fn register_data_asset(
         &self,
         req: RegisterDataAssetRequest,
     ) -> Result<RegisterDataAssetResponse> {
-        self.post_json("/v1/kernel/data/assets", &req).await
+        let request = data_contracts::register_data_asset_request_to_proto(&req)?;
+        let response: proto_data::RegisterDataAssetResponse =
+            self.post_json("/v1/kernel/data/assets", &request).await?;
+        data_contracts::register_data_asset_response_from_proto(&response)
     }
 
     async fn create_access_grant(
         &self,
         req: CreateAccessGrantRequest,
     ) -> Result<CreateAccessGrantResponse> {
-        self.post_json("/v1/kernel/data/grants", &req).await
+        let request = data_contracts::create_access_grant_request_to_proto(&req)?;
+        let response: proto_data::CreateAccessGrantResponse =
+            self.post_json("/v1/kernel/data/grants", &request).await?;
+        data_contracts::create_access_grant_response_from_proto(&response)
     }
 
     async fn accept_access_grant(
@@ -2443,7 +2467,10 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         req: AcceptAccessGrantRequest,
     ) -> Result<AcceptAccessGrantResponse> {
         let path = format!("/v1/kernel/data/grants/{}/accept", req.grant_id.trim());
-        self.post_json(path.as_str(), &req).await
+        let request = data_contracts::accept_access_grant_request_to_proto(&req)?;
+        let response: proto_data::AcceptAccessGrantResponse =
+            self.post_json(path.as_str(), &request).await?;
+        data_contracts::accept_access_grant_response_from_proto(&response)
     }
 
     async fn issue_delivery_bundle(
@@ -2454,7 +2481,10 @@ impl KernelAuthority for HttpKernelAuthorityClient {
             "/v1/kernel/data/grants/{}/deliveries",
             req.delivery_bundle.grant_id.trim()
         );
-        self.post_json(path.as_str(), &req).await
+        let request = data_contracts::issue_delivery_bundle_request_to_proto(&req)?;
+        let response: proto_data::IssueDeliveryBundleResponse =
+            self.post_json(path.as_str(), &request).await?;
+        data_contracts::issue_delivery_bundle_response_from_proto(&response)
     }
 
     async fn revoke_access_grant(
@@ -2465,7 +2495,10 @@ impl KernelAuthority for HttpKernelAuthorityClient {
             "/v1/kernel/data/grants/{}/revoke",
             req.revocation.grant_id.trim()
         );
-        self.post_json(path.as_str(), &req).await
+        let request = data_contracts::revoke_access_grant_request_to_proto(&req)?;
+        let response: proto_data::RevokeAccessGrantResponse =
+            self.post_json(path.as_str(), &request).await?;
+        data_contracts::revoke_access_grant_response_from_proto(&response)
     }
 
     async fn create_liquidity_quote(

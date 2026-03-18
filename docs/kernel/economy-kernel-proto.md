@@ -93,7 +93,7 @@ This proto plan should make all five explicit even when some packages remain thi
 | Market | Current or planned package roots | Core objects | Current repo status |
 | --- | --- | --- | --- |
 | `Compute` | `openagents.compute.v1`, `openagents.economy.v1`, `openagents.common.v1` | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` thin proto slice in the repo; `planned` broader proto surface |
-| `Data` | `openagents.data.v1`, `openagents.common.v1`, `openagents.economy.v1` | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
+| `Data` | `openagents.data.v1`, `openagents.common.v1`, `openagents.economy.v1` | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `implemented` starter authority slice and starter proto/read-model surface in `kernel-core` and `nexus-control`; `planned` broader proto surface |
 | `Labor` | `openagents.labor.v1`, `openagents.economy.v1`, `openagents.common.v1` | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `implemented` thin proto slice in the repo plus starter authority flows; `planned` broader claim and dispute surface |
 | `Liquidity` | `openagents.hydra.v1`, `openagents.liquidity.v1`, `openagents.common.v1`, `openagents.economy.v1` | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
 | `Risk` | `openagents.aegis.markets.v1`, `openagents.policy.v1`, `openagents.economy.v1` | `CoverageOffer`, `CoverageBinding`, `ClaimResolution`, `RiskSignal`, `CalibrationMetric` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
@@ -102,7 +102,6 @@ This proto plan should make all five explicit even when some packages remain thi
 
 To make the five-market architecture canonical at the wire level, the proto tree still needs explicit homes for:
 
-- `openagents.data.v1`
 - `openagents.liquidity.v1`
 - `openagents.risk.v1` or a documented long-term public mapping from the risk market to `openagents.aegis.markets.v1`
 - `openagents.policy.v1`

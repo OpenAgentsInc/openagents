@@ -65,7 +65,7 @@ use openagents_kernel_core::compute::{
     validate_compute_validator_policy, validate_delivery_proof, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
-    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
+    AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DataMarketSnapshot, DeliveryBundle,
     DeliveryBundleStatus, PermissionPolicy, RevocationReceipt, RevocationStatus,
 };
 use openagents_kernel_core::ids::{sha256_prefixed_bytes, sha256_prefixed_text};
@@ -2248,6 +2248,16 @@ impl KernelState {
 
     pub fn get_revocation(&self, revocation_id: &str) -> Option<RevocationReceipt> {
         self.revocations.get(revocation_id).cloned()
+    }
+
+    pub fn data_market_snapshot(&self, refreshed_at_ms: i64) -> DataMarketSnapshot {
+        DataMarketSnapshot::from_parts(
+            self.list_data_assets(None, None, None),
+            self.list_access_grants(None, None, None, None),
+            self.list_delivery_bundles(None, None, None, None, None),
+            self.list_revocations(None, None, None, None, None),
+            refreshed_at_ms,
+        )
     }
 
     pub fn get_compute_product(&self, product_id: &str) -> Option<ComputeProduct> {
