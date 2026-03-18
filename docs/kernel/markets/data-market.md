@@ -44,6 +44,7 @@ smuggled through opaque prompt state.
 - reflect newly published assets into the read-only `Data Market` pane from the same kernel read-back path
 - carry reusable grant-policy templates plus a first seller-side grant draft posture in the conversational seller flow
 - preview and publish `AccessGrant` objects from the same seller flow and reflect the resulting grant read-back into the read-only `Data Market` pane
+- show a seller-side inventory/status card with published asset/default-offer summaries and draft-vs-published warnings
 
 The starter authority slice is real in:
 

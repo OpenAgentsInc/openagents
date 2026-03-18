@@ -2241,6 +2241,55 @@ impl DataSellerPaneState {
             self.required_skill_attachments.len()
         }
     }
+
+    pub fn inventory_warnings(&self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        let Some(asset) = self.last_published_asset.as_ref() else {
+            warnings.push("No published asset yet.".to_string());
+            if self.last_published_grant.is_none() {
+                warnings.push("No published default offer yet.".to_string());
+            }
+            return warnings;
+        };
+
+        if self.active_draft.title.as_deref() != Some(asset.title.as_str()) {
+            warnings.push("Current draft title differs from the published asset.".to_string());
+        }
+        if self.active_draft.asset_kind.as_deref() != Some(asset.asset_kind.as_str()) {
+            warnings.push("Current draft asset kind differs from the published asset.".to_string());
+        }
+        let published_policy = asset
+            .default_policy
+            .as_ref()
+            .map(|policy| policy.policy_id.as_str());
+        if self.active_draft.default_policy.as_deref() != published_policy {
+            warnings.push(
+                "Current draft asset policy template differs from the published asset."
+                    .to_string(),
+            );
+        }
+
+        if let Some(grant) = self.last_published_grant.as_ref() {
+            if self.active_draft.grant_policy_template.as_deref()
+                != Some(grant.permission_policy.policy_id.as_str())
+            {
+                warnings.push(
+                    "Current grant draft template differs from the published default offer."
+                        .to_string(),
+                );
+            }
+            if self.active_draft.grant_consumer_id.as_deref() != grant.consumer_id.as_deref() {
+                warnings.push(
+                    "Current grant draft consumer differs from the published default offer."
+                        .to_string(),
+                );
+            }
+        } else {
+            warnings.push("No published default offer yet.".to_string());
+        }
+
+        warnings
+    }
 }
 
 impl Default for DataMarketPaneState {

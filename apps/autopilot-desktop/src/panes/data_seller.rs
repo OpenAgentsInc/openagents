@@ -383,102 +383,94 @@ fn paint_publication_status_card(
 ) {
     paint_card(
         bounds,
-        "Publication status",
-        "Truth boundary reminders",
+        "Seller inventory",
+        "Published inventory + warnings",
         paint,
     );
 
+    let published_asset = pane_state.last_published_asset.as_ref();
+    let published_grant = pane_state.last_published_grant.as_ref();
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "preview control",
-        gate_label(pane_state.preview_enabled),
+        "asset id",
+        &option_label(published_asset.map(|asset| asset.asset_id.as_str())),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "confirm control",
-        gate_label(pane_state.confirm_enabled),
+        "asset status",
+        published_asset
+            .map(|asset| asset.status.label())
+            .unwrap_or("pending"),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "publish control",
-        gate_label(pane_state.publish_enabled),
+        "asset kind",
+        &option_label(published_asset.map(|asset| asset.asset_kind.as_str())),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "preview posture",
-        pane_state.active_draft.preview_posture.label(),
+        "grant id",
+        &option_label(published_grant.map(|grant| grant.grant_id.as_str())),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "confirmed",
-        bool_label(pane_state.asset_preview_confirmed),
-    );
-    let thread_id = option_label(pane_state.codex_thread_id.as_deref());
-    row_y = paint_label_line(paint, bounds.origin.x + 10.0, row_y, "thread", &thread_id);
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "personality",
-        pane_state.codex_profile.personality.label(),
+        "grant status",
+        published_grant
+            .map(|grant| grant.status.label())
+            .unwrap_or("pending"),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "collab",
-        pane_state.codex_profile.collaboration_mode.label(),
+        "grant consumer",
+        &option_label(published_grant.and_then(|grant| grant.consumer_id.as_deref())),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "required skills",
-        &pane_state.required_skill_summary(),
+        "grant price",
+        &published_grant
+            .and_then(|grant| grant.offer_price.as_ref())
+            .map(format_money)
+            .unwrap_or_else(|| "pending".to_string()),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "authority truth",
-        "kernel DataAsset / AccessGrant",
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "read-back surface",
-        "Data Market pane",
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "published asset",
-        &option_label(
-            pane_state
-                .last_published_asset
-                .as_ref()
-                .map(|asset| asset.asset_id.as_str()),
-        ),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "publish receipt",
+        "asset receipt",
         &option_label(pane_state.last_publish_receipt_id.as_deref()),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant receipt",
+        &option_label(pane_state.last_grant_publish_receipt_id.as_deref()),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "asset preview",
+        if pane_state.active_draft.last_previewed_asset_payload.is_some() {
+            "ready"
+        } else {
+            "pending"
+        },
     );
     row_y = paint_label_line(
         paint,
@@ -495,69 +487,31 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "grant confirmed",
-        bool_label(pane_state.grant_preview_confirmed),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "published grant",
-        &option_label(
-            pane_state
-                .last_published_grant
-                .as_ref()
-                .map(|grant| grant.grant_id.as_str()),
-        ),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "grant receipt",
-        &option_label(pane_state.last_grant_publish_receipt_id.as_deref()),
+        "offer warnings",
+        &inventory_warning_summary(pane_state),
     );
 
+    let warnings = pane_state.inventory_warnings();
+    let warning_color = if warnings.is_empty() {
+        theme::status::SUCCESS
+    } else {
+        theme::status::WARNING
+    };
+    let warning_text = if warnings.is_empty() {
+        "Seller inventory and draft posture are currently aligned.".to_string()
+    } else {
+        warnings
+            .iter()
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     paint.scene.draw_text(paint.text.layout(
-        &format!(
-            "Exact asset preview: {}",
-            if pane_state.active_draft.last_previewed_asset_payload.is_some() {
-                "ready"
-            } else {
-                "not ready"
-            }
-        ),
-        Point::new(bounds.origin.x + 10.0, row_y + 8.0),
-        11.0,
-        theme::text::SECONDARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        &format!(
-            "confirmed preview: {}",
-            if pane_state.last_confirmed_asset_payload.is_some() {
-                "ready"
-            } else {
-                "not confirmed"
-            }
-        ),
-        Point::new(bounds.origin.x + 10.0, row_y + 26.0),
-        11.0,
-        theme::text::SECONDARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        &format!(
-            "session origin: {}",
-            pane_state.codex_profile.session_origin
-        ),
-        Point::new(bounds.origin.x + 10.0, row_y + 44.0),
-        11.0,
-        theme::text::SECONDARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "This pane is intentionally allowed to express intent before it is allowed to mutate authority state.",
-        Point::new(bounds.origin.x + 10.0, row_y + 62.0),
-        11.0,
-        theme::text::SECONDARY,
+        warning_text.as_str(),
+        Point::new(bounds.origin.x + 10.0, row_y + 10.0),
+        10.0,
+        warning_color,
     ));
 }
 
@@ -669,10 +623,30 @@ fn bool_label(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
 }
 
+fn inventory_warning_summary(pane_state: &DataSellerPaneState) -> String {
+    let warnings = pane_state.inventory_warnings();
+    if warnings.is_empty() {
+        "none".to_string()
+    } else {
+        warnings.into_iter().take(2).collect::<Vec<_>>().join(" | ")
+    }
+}
+
 fn hours_label(value: Option<u64>) -> String {
     value
         .map(|hours| format!("{hours}h"))
         .unwrap_or_else(|| "pending".to_string())
+}
+
+fn format_money(value: &openagents_kernel_core::receipts::Money) -> String {
+    match value.amount {
+        openagents_kernel_core::receipts::MoneyAmount::AmountSats(amount) => {
+            format!("{amount} sats")
+        }
+        openagents_kernel_core::receipts::MoneyAmount::AmountMsats(amount) => {
+            format!("{amount} msats")
+        }
+    }
 }
 
 fn preview_field(payload: Option<&Value>, path: &[&str]) -> String {
