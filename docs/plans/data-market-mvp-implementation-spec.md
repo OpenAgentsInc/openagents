@@ -190,6 +190,31 @@ This can land as:
 
 but it should come after the seller path is stable and truthful.
 
+## Protocol Freeze Before Build-Out
+
+Before wider implementation starts, the MVP needs one explicit freeze step for
+its launch contour.
+
+That freeze should lock:
+
+- the initial asset families the MVP honestly supports
+- the default targeted-request posture
+- the supported delivery modes
+- the minimum request/result/feedback fields for the NIP-90 profile
+- the NIP-89 discoverability posture
+- the kernel object mapping for asset, grant, delivery, and revocation truth
+
+The point of this step is not bureaucracy. It is to avoid building a seller
+pane, typed tools, and request-handling flow against a protocol surface that is
+still drifting.
+
+Recommended initial asset families:
+
+- stored conversation bundles
+- local project-context bundles
+- document or research bundles
+- small structured workflow artifact bundles
+
 ## What We Should Build
 
 ## 1. Add a dedicated `Data Seller` pane
@@ -388,6 +413,101 @@ That means:
 The pane does not need to wait for full NIP-90 completion to ship, but it
 should gather fields that later NIP-90 flows will need.
 
+### MVP protocol contour
+
+The implementation doc should be explicit about the minimum transport contour so
+the seller pane, typed tools, and later runtime work all target the same shape.
+
+### Request kind posture
+
+The MVP should stay inside the NIP-90 DVM range.
+
+The implementation should:
+
+- reuse an acceptable existing DVM kind if one fits
+- otherwise avoid treating this spec as authority to mint a permanent public
+  number on its own
+- check the current job-kind registry before launch
+- keep the corresponding result kind as `request_kind + 1000`
+
+### Request shape
+
+The request should carry enough information to ask for permissioned data access
+without inventing a second transport.
+
+Minimum contour:
+
+- asset reference or asset selector
+- requested delivery mode
+- permission or usage scope
+- desired duration or TTL
+- pricing ceiling or bid
+- optional provenance or freshness requirements
+- optional buyer relay hints
+- target provider `p` tag by default
+
+Representative request fields:
+
+- `asset_id`
+- `asset_family`
+- `delivery_mode`
+- `max_bytes`
+- `ttl`
+- `usage_scope`
+- `freshness_hint`
+- `preview_only`
+
+### Provider discoverability
+
+Providers should advertise their supported data-vending posture through the
+same NIP-90 and NIP-89 discovery path already implied by the broader market
+plan.
+
+For MVP:
+
+- advertise support for the selected request kind through NIP-89 `k` tags
+- advertise the OpenAgents profile version in handler metadata or custom tags
+- advertise coarse asset families only
+- avoid publishing sensitive asset details publicly
+
+### Feedback shape
+
+The seller should use `kind:7000` feedback for:
+
+- `processing`
+- `payment-required`
+- `error`
+- optional `partial` preview
+
+For the data lane, `partial` should be interpreted as:
+
+- preview metadata
+- a sample row or snippet
+- bundle manifest summary
+
+### Result shape
+
+The result should not dump the full private dataset onto relays.
+
+The result event should usually carry:
+
+- result linkage to the request
+- `amount` if not already settled
+- a small inline preview when safe
+- or an encrypted delivery pointer or manifest
+- hashes or identifiers that tie the result to the `DeliveryBundle`
+
+### Delivery model
+
+The MVP should explicitly support two delivery modes:
+
+- inline small delivery for tiny, low-sensitivity payloads
+- bundle-pointer delivery as the default path
+
+Bundle-pointer delivery should remain the normal posture for private or
+meaningful payloads, with `DeliveryBundle` staying the authoritative delivery
+object.
+
 ## Proposed MVP Flow
 
 The recommended MVP should land in three product slices.
@@ -431,6 +551,23 @@ Market flow:
 7. Later revocation or expiry emits `RevocationReceipt`.
 
 This is where the full Data Market MVP becomes real end to end.
+
+## UI Truth Checklist
+
+The UI and operator surfaces should make the market lifecycle legible instead of
+collapsing it into a vague "success" state.
+
+Seller, buyer, and operator surfaces should make it possible to see:
+
+- request published
+- grant offered or accepted
+- `payment-required` seen
+- invoice or payment completed
+- delivery recorded
+- revocation or expiry state
+
+Buyer-facing surfaces should also make grant duration and revocation posture
+legible rather than burying them in raw payloads.
 
 ## Recommended Landing Zones
 
@@ -494,6 +631,9 @@ are also true:
 - payment-required and Lightning payment can gate delivery
 - delivery can be tied to a `DeliveryBundle`
 - revocation or expiry can be represented through `RevocationReceipt`
+- seller, buyer, or operator surfaces make request/grant/payment/delivery and
+  revocation lifecycle state legible
+- buyer-facing surfaces make grant duration and revocation posture legible
 - the UI does not declare success until payment and delivery truth both exist
 
 ## Non-Goals
@@ -523,12 +663,13 @@ The MVP should not try to do any of the following:
 
 The correct order is:
 
-1. add the seller pane shell, draft model, and tool contract
-2. make asset publication truthful with preview/confirm/read-back
-3. add default grant publication
-4. bind the seller flow into targeted NIP-90 request/payment/delivery behavior
-5. add revocation and richer market observability
-6. only then widen into broader buyer discovery and richer provider economics
+1. freeze the initial MVP profile and protocol contour
+2. add the seller pane shell, draft model, and tool contract
+3. make asset publication truthful with preview/confirm/read-back
+4. add default grant publication
+5. bind the seller flow into targeted NIP-90 request/payment/delivery behavior
+6. add revocation and richer market observability
+7. only then widen into broader buyer discovery and richer provider economics
 
 This order matters because a seller pane without real authority writes is a toy,
 and NIP-90 transport without a truthful seller product surface creates protocol
@@ -538,32 +679,39 @@ motion without a real market.
 
 These titles are phrased so they can be opened directly as GitHub issues.
 
-## Wave 0: Pane, profile, and tool contract
+## Wave 0: Profile freeze, pane, and tool contract
 
-1. **[DATA P0] Add `Data Seller` pane shell and state model**
+1. **[DATA P0] Freeze initial Data Market MVP profile and protocol contour**
+   - Lock the initial asset families, targeted-request default, delivery modes,
+     minimum request/result/feedback fields, NIP-89 discoverability posture,
+     and kernel object mapping before wider build-out.
+   - This prevents the seller pane and NIP-90 runtime work from targeting a
+     moving protocol surface.
+
+2. **[DATA P0] Add `Data Seller` pane shell and state model**
    - Register a new pane, pane state, renderer, and action routing in
      `apps/autopilot-desktop`.
    - The first version only needs transcript shell, draft card, status area,
      and explicit preview/publish controls.
 
-2. **[DATA P0] Define `DataSellerDraft` model and readiness rules**
+3. **[DATA P0] Define `DataSellerDraft` model and readiness rules**
    - Add the structured draft model, readiness blockers, preview state, and
      explicit publish gating.
    - This is the core truth object that prevents free-form transcript drift.
 
-3. **[DATA P0] Add seller-specific Codex pane session/profile wiring**
+4. **[DATA P0] Add seller-specific Codex pane session/profile wiring**
    - Give the new pane a dedicated Codex thread/session path on the existing
      lane with stable defaults for personality, collaboration, and session
      metadata.
    - This issue makes the seller pane a real specialized Codex surface rather
      than a generic chat clone.
 
-4. **[DATA P0] Add `autopilot-data-seller` and `autopilot-data-market-control` skills**
+5. **[DATA P0] Add `autopilot-data-seller` and `autopilot-data-market-control` skills**
    - Create the first-party seller skills and wire them into the new pane's
      turn assembly path.
    - The goal is deterministic seller behavior, not ad hoc prompting.
 
-5. **[DATA P0] Define `openagents.data_market.*` tool contract and response envelopes**
+6. **[DATA P0] Define `openagents.data_market.*` tool contract and response envelopes**
    - Extend the dynamic-tool registry and desktop tool bridge with typed
      data-market tools for draft, preview, publish, and snapshot.
    - Keep the response schema consistent with the existing OpenAgents tool
@@ -571,72 +719,72 @@ These titles are phrased so they can be opened directly as GitHub issues.
 
 ## Wave 1: truthful asset publication
 
-6. **[DATA P1] Implement conversational draft normalization for asset listing**
+7. **[DATA P1] Implement conversational draft normalization for asset listing**
    - Teach the seller pane to move from conversation into structured draft
      fields with bounded clarification questions.
    - The output of conversation must be a draft object, not only transcript
      text.
 
-7. **[DATA P1] Implement asset preview and explicit confirm/publish path**
+8. **[DATA P1] Implement asset preview and explicit confirm/publish path**
    - Build the exact payload preview card, confirm action, and publish gate.
    - Publication must be impossible until preview has produced a valid request.
 
-8. **[DATA P1] Wire `publish_asset` to kernel `register_data_asset` and immediate read-back**
+9. **[DATA P1] Wire `publish_asset` to kernel `register_data_asset` and immediate read-back**
    - Connect the publish path to the real Nexus authority route and then read
      the resulting asset back into pane state.
    - This is the first point where the seller flow becomes a real market action.
 
-9. **[DATA P1] Reflect newly published assets in the read-only `Data Market` pane**
+10. **[DATA P1] Reflect newly published assets in the read-only `Data Market` pane**
    - Ensure the operator pane and seller pane remain visibly consistent after
      publication.
    - This keeps the authoring surface and truth-inspection surface aligned.
 
 ## Wave 2: sale posture and offers
 
-10. **[DATA P2] Add default permission-policy templates and grant draft flow**
+11. **[DATA P2] Add default permission-policy templates and grant draft flow**
    - Add reusable policy templates plus seller-side grant drafting.
    - The pane should make bounded sale posture legible, not force users to
      invent raw policy objects manually.
 
-11. **[DATA P2] Implement grant preview and `create_access_grant` publication**
+12. **[DATA P2] Implement grant preview and `create_access_grant` publication**
    - Extend the same preview/confirm discipline to grant creation.
    - Keep `DataAsset` and `AccessGrant` distinct in both UI and tool semantics.
 
-12. **[DATA P2] Add seller-side published inventory summary and status card**
+13. **[DATA P2] Add seller-side published inventory summary and status card**
    - Show current published assets, default offers, last published ids, and
      readiness or policy warnings in the seller pane.
-   - This is the first real seller inventory surface.
+     - This is the first real seller inventory surface.
 
 ## Wave 3: targeted NIP-90 data vending
 
-13. **[DATA P3] Define the initial OpenAgents NIP-90 data-vending profile in desktop/runtime**
+14. **[DATA P3] Define the initial OpenAgents NIP-90 data-vending profile in desktop/runtime**
    - Implement the narrow targeted profile described in
      `docs/plans/data-market-mvp-plan.md` without hard-coding an unverified
      permanent kind number.
    - Keep request kind choice explicit and registry-safe.
 
-14. **[DATA P3] Add seller-side targeted request intake and evaluation flow**
+15. **[DATA P3] Add seller-side targeted request intake and evaluation flow**
    - Surface incoming targeted access requests to the seller and let the seller
      evaluate them against asset/grant posture.
    - This is the bridge from published inventory into actual market demand.
 
-15. **[DATA P3] Add `payment-required` and buyer-payment linkage for data access**
+16. **[DATA P3] Add `payment-required` and buyer-payment linkage for data access**
    - Reuse the compute-market MVP payment posture for gated delivery.
    - A data sale should not count as complete until payment truth exists.
 
 ## Wave 4: delivery and post-sale control
 
-16. **[DATA P4] Add delivery-bundle issuance and result linkage from seller flow**
+17. **[DATA P4] Add delivery-bundle issuance and result linkage from seller flow**
    - Connect seller-side delivery publication to `DeliveryBundle` authority
      objects and NIP-90 result linkage.
    - The delivery object must remain the authoritative delivery truth.
 
-17. **[DATA P4] Add revocation and expiry controls with `RevocationReceipt` read-back**
+18. **[DATA P4] Add revocation and expiry controls with `RevocationReceipt` read-back**
    - Let the seller revoke or expire access under explicit policy and read the
      resulting receipt back into both panes.
    - This matters because data access often remains live after initial delivery.
 
-18. **[DATA P4] Add seller/buyer/operator observability for data-market lifecycle**
+19. **[DATA P4] Add seller/buyer/operator observability for data-market lifecycle**
    - Make listing, grant, payment, delivery, and revocation state visible in
      durable UI summaries and activity views.
    - The system should answer what was sold, under which permissions, and with
@@ -644,12 +792,12 @@ These titles are phrased so they can be opened directly as GitHub issues.
 
 ## Wave 5: later buyer and market widening
 
-19. **[DATA P5] Add buyer-side targeted request surface for data access**
+20. **[DATA P5] Add buyer-side targeted request surface for data access**
    - Add the narrowest honest buyer surface for selecting a seller/asset and
      issuing a targeted NIP-90 request.
    - Do not turn this into broad public discovery yet.
 
-20. **[DATA P5] Add dedicated `openagents.data.v1` proto and richer read models**
+21. **[DATA P5] Add dedicated `openagents.data.v1` proto and richer read models**
    - After the MVP loop exists, codify the fuller wire package and richer
      market read models.
    - This should follow reality instead of blocking reality.
