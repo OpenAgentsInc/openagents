@@ -111,7 +111,7 @@ pub(crate) use actions::ensure_mission_control_local_runtime_preflight;
 pub(crate) use actions::queue_managed_chat_channel_message;
 pub(crate) use actions::queue_managed_chat_message_to_channel_with_relay;
 use shortcuts::*;
-pub(crate) use tool_bridge::{
+pub use tool_bridge::{
     DataMarketDraftAssetArgs as DesktopControlDataMarketDraftAssetArgs,
     DataMarketDraftGrantArgs as DesktopControlDataMarketDraftGrantArgs,
     DataMarketIssueDeliveryArgs as DesktopControlDataMarketIssueDeliveryArgs,
@@ -119,6 +119,8 @@ pub(crate) use tool_bridge::{
     DataMarketPublishArgs as DesktopControlDataMarketPublishArgs,
     DataMarketRequestPaymentArgs as DesktopControlDataMarketRequestPaymentArgs,
     DataMarketRevokeGrantArgs as DesktopControlDataMarketRevokeGrantArgs,
+};
+pub(crate) use tool_bridge::{
     ToolBridgeResultEnvelope as DesktopControlToolBridgeResultEnvelope,
     execute_data_market_draft_asset_tool as desktop_control_data_market_draft_asset,
     execute_data_market_draft_grant_tool as desktop_control_data_market_draft_grant,
