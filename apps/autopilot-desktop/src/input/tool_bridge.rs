@@ -936,58 +936,68 @@ fn parse_string_map(
 }
 
 fn data_seller_tool_snapshot(state: &RenderState) -> Value {
+    let readiness_blockers = state
+        .data_seller
+        .active_draft
+        .readiness_blockers
+        .iter()
+        .map(|blocker| {
+            json!({
+                "code": blocker.code,
+                "message": blocker.message,
+            })
+        })
+        .collect::<Vec<_>>();
+    let draft = json!({
+        "asset_kind": state.data_seller.active_draft.asset_kind,
+        "title": state.data_seller.active_draft.title,
+        "description": state.data_seller.active_draft.description,
+        "content_digest": state.data_seller.active_draft.content_digest,
+        "provenance_ref": state.data_seller.active_draft.provenance_ref,
+        "default_policy": state.data_seller.active_draft.default_policy,
+        "grant_policy_template": state.data_seller.active_draft.grant_policy_template,
+        "grant_consumer_id": state.data_seller.active_draft.grant_consumer_id,
+        "grant_expires_in_hours": state.data_seller.active_draft.grant_expires_in_hours,
+        "grant_warranty_window_hours": state.data_seller.active_draft.grant_warranty_window_hours,
+        "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
+        "delivery_modes": state.data_seller.active_draft.delivery_modes,
+        "visibility_posture": state.data_seller.active_draft.visibility_posture.label(),
+        "sensitivity_posture": state.data_seller.active_draft.sensitivity_posture.label(),
+        "preview_posture": state.data_seller.active_draft.preview_posture.label(),
+        "metadata": state.data_seller.active_draft.metadata,
+        "grant_metadata": state.data_seller.active_draft.grant_metadata,
+        "readiness_blockers": readiness_blockers,
+        "last_previewed_asset_payload": state.data_seller.active_draft.last_previewed_asset_payload,
+        "last_previewed_grant_payload": state.data_seller.active_draft.last_previewed_grant_payload,
+        "last_confirmed_asset_payload": state.data_seller.last_confirmed_asset_payload,
+        "grant_preview_confirmed": state.data_seller.grant_preview_confirmed,
+        "last_confirmed_grant_payload": state.data_seller.last_confirmed_grant_payload,
+        "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
+        "last_publish_receipt_id": state.data_seller.last_publish_receipt_id,
+        "last_published_asset": state.data_seller.last_published_asset,
+        "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
+        "last_grant_publish_receipt_id": state.data_seller.last_grant_publish_receipt_id,
+        "last_published_grant": state.data_seller.last_published_grant,
+    });
+    let seller = json!({
+        "load_state": state.data_seller.load_state.label(),
+        "preview_enabled": state.data_seller.preview_enabled,
+        "confirm_enabled": state.data_seller.confirm_enabled,
+        "publish_enabled": state.data_seller.publish_enabled,
+        "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
+        "grant_preview_confirmed": state.data_seller.grant_preview_confirmed,
+        "status_line": state.data_seller.status_line,
+        "last_action": state.data_seller.last_action,
+        "last_error": state.data_seller.last_error,
+        "codex_session_phase": state.data_seller.codex_session_phase.label(),
+        "codex_thread_id": state.data_seller.codex_thread_id,
+        "required_skill_names": state.data_seller.codex_profile.required_skill_names,
+        "required_skill_count": state.data_seller.required_skill_count(),
+        "draft": draft,
+    });
     json!({
         "schema_version": DATA_MARKET_TOOL_SCHEMA_VERSION,
-        "seller": {
-            "load_state": state.data_seller.load_state.label(),
-            "preview_enabled": state.data_seller.preview_enabled,
-            "confirm_enabled": state.data_seller.confirm_enabled,
-            "publish_enabled": state.data_seller.publish_enabled,
-            "asset_preview_confirmed": state.data_seller.asset_preview_confirmed,
-            "status_line": state.data_seller.status_line,
-            "last_action": state.data_seller.last_action,
-            "last_error": state.data_seller.last_error,
-            "codex_session_phase": state.data_seller.codex_session_phase.label(),
-            "codex_thread_id": state.data_seller.codex_thread_id,
-            "required_skill_names": state.data_seller.codex_profile.required_skill_names,
-            "required_skill_count": state.data_seller.required_skill_count(),
-            "draft": {
-                "asset_kind": state.data_seller.active_draft.asset_kind,
-                "title": state.data_seller.active_draft.title,
-                "description": state.data_seller.active_draft.description,
-                "content_digest": state.data_seller.active_draft.content_digest,
-                "provenance_ref": state.data_seller.active_draft.provenance_ref,
-                "default_policy": state.data_seller.active_draft.default_policy,
-                "grant_policy_template": state.data_seller.active_draft.grant_policy_template,
-                "grant_consumer_id": state.data_seller.active_draft.grant_consumer_id,
-                "grant_expires_in_hours": state.data_seller.active_draft.grant_expires_in_hours,
-                "grant_warranty_window_hours": state.data_seller.active_draft.grant_warranty_window_hours,
-                "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
-                "delivery_modes": state.data_seller.active_draft.delivery_modes,
-                "visibility_posture": state.data_seller.active_draft.visibility_posture.label(),
-                "sensitivity_posture": state.data_seller.active_draft.sensitivity_posture.label(),
-                "preview_posture": state.data_seller.active_draft.preview_posture.label(),
-                "metadata": state.data_seller.active_draft.metadata,
-                "grant_metadata": state.data_seller.active_draft.grant_metadata,
-                "readiness_blockers": state
-                    .data_seller
-                    .active_draft
-                    .readiness_blockers
-                    .iter()
-                    .map(|blocker| json!({
-                        "code": blocker.code,
-                        "message": blocker.message,
-                    }))
-                    .collect::<Vec<_>>(),
-                "last_previewed_asset_payload": state.data_seller.active_draft.last_previewed_asset_payload,
-                "last_previewed_grant_payload": state.data_seller.active_draft.last_previewed_grant_payload,
-                "last_confirmed_asset_payload": state.data_seller.last_confirmed_asset_payload,
-                "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
-                "last_publish_receipt_id": state.data_seller.last_publish_receipt_id,
-                "last_published_asset": state.data_seller.last_published_asset,
-                "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
-            }
-        }
+        "seller": seller,
     })
 }
 
@@ -1180,7 +1190,7 @@ fn execute_data_market_draft_grant_tool(
 }
 
 fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
-    crate::data_seller_control::request_data_seller_preview(state);
+    crate::data_seller_control::request_data_seller_grant_preview(state);
     let success = state
         .data_seller
         .active_draft
@@ -1189,7 +1199,7 @@ fn execute_data_market_preview_grant_tool(state: &mut RenderState) -> ToolBridge
     if success {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-GRANT-PREVIEW-READY",
-            "Produced the current derived grant preview payload.",
+            "Produced the current exact AccessGrant preview payload.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -1212,11 +1222,27 @@ fn execute_data_market_publish_grant_tool(
             data_seller_tool_snapshot(state),
         );
     }
-    ToolBridgeResultEnvelope::error(
-        "OA-DATA-MARKET-GRANT-PUBLISH-BLOCKED",
-        "Grant publish remains blocked until the typed authority mutation slice lands.",
-        data_seller_tool_snapshot(state),
-    )
+    state.data_seller.confirm_grant_preview();
+    crate::data_seller_control::publish_data_seller_grant(state);
+    if state.data_seller.last_error.is_none()
+        && state.data_seller.active_draft.last_published_grant_id.is_some()
+    {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-GRANT-PUBLISHED",
+            "Published the AccessGrant and read it back from kernel authority.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-GRANT-PUBLISH-FAILED",
+            state
+                .data_seller
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Grant publish failed.".to_string()),
+            data_seller_tool_snapshot(state),
+        )
+    }
 }
 
 fn execute_data_market_snapshot_tool(state: &mut RenderState) -> ToolBridgeResultEnvelope {
@@ -2788,7 +2814,10 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
                         "has_asset_preview": state.data_seller.active_draft.last_previewed_asset_payload.is_some(),
                         "has_confirmed_asset_preview": state.data_seller.last_confirmed_asset_payload.is_some(),
+                        "has_grant_preview": state.data_seller.active_draft.last_previewed_grant_payload.is_some(),
+                        "grant_preview_confirmed": state.data_seller.grant_preview_confirmed,
                         "last_published_asset_id": state.data_seller.active_draft.last_published_asset_id,
+                        "last_published_grant_id": state.data_seller.active_draft.last_published_grant_id,
                         "last_publish_receipt_id": state.data_seller.last_publish_receipt_id,
                         "last_action": state.data_seller.last_action,
                         "last_error": state.data_seller.last_error,

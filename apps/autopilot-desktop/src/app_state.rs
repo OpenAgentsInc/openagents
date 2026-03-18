@@ -6,7 +6,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
 use nostr::{Event, NostrIdentity};
-use openagents_kernel_core::authority::RegisterDataAssetRequest;
+use openagents_kernel_core::authority::{CreateAccessGrantRequest, RegisterDataAssetRequest};
 use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{
@@ -1376,6 +1376,119 @@ impl DataSellerDraft {
         })
     }
 
+    fn exact_grant_preview_payload(
+        &self,
+        provider_id: &str,
+        asset_id: &str,
+        thread_id: Option<&str>,
+        created_at_ms: i64,
+    ) -> Value {
+        let policy_template = self
+            .grant_policy_template
+            .as_deref()
+            .or(self.default_policy.as_deref())
+            .unwrap_or("targeted_request");
+        let normalized_provider = canonical_data_seller_id_component(provider_id);
+        let normalized_asset = canonical_data_seller_id_component(asset_id);
+        let consumer_component = self
+            .grant_consumer_id
+            .as_deref()
+            .map(canonical_data_seller_id_component)
+            .unwrap_or_else(|| "open_offer".to_string());
+        let grant_id = format!(
+            "access_grant.{}.{}.{}.{}",
+            normalized_provider,
+            normalized_asset,
+            canonical_data_seller_id_component(policy_template),
+            consumer_component
+        );
+        let ttl_hours = self.grant_expires_in_hours.unwrap_or(24).max(1);
+        let expires_at_ms = created_at_ms.saturating_add(
+            (ttl_hours as i64)
+                .saturating_mul(60)
+                .saturating_mul(60)
+                .saturating_mul(1000),
+        );
+        let warranty_window_ms = self.grant_warranty_window_hours.map(|hours| {
+            hours
+                .saturating_mul(60)
+                .saturating_mul(60)
+                .saturating_mul(1000)
+        });
+        let permission_policy = data_seller_permission_policy_template(
+            policy_template,
+            self.delivery_modes.as_slice(),
+            self.visibility_posture,
+            self.sensitivity_posture,
+        );
+        let offer_price = self.price_hint_sats.map(|value| Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(value),
+        });
+        let request = CreateAccessGrantRequest {
+            idempotency_key: format!(
+                "create_access_grant:{}",
+                sha256_prefixed_text(
+                    format!(
+                        "{provider_id}|{asset_id}|{policy_template}|{}|{}",
+                        self.grant_consumer_id.as_deref().unwrap_or("open_offer"),
+                        self.price_hint_sats.unwrap_or_default()
+                    )
+                    .as_str()
+                )
+            ),
+            trace: TraceContext {
+                session_id: thread_id.map(str::to_string),
+                trajectory_hash: thread_id.map(sha256_prefixed_text),
+                claim_id: Some(format!("claim.access_grant.preview.{grant_id}")),
+                ..Default::default()
+            },
+            policy: PolicyContext {
+                policy_bundle_id: "policy.data_market.access_grant.mvp".to_string(),
+                policy_version: "v0".to_string(),
+                approved_by: "openagents.data_market.seller_pane".to_string(),
+            },
+            grant: openagents_kernel_core::data::AccessGrant {
+                grant_id,
+                asset_id: asset_id.to_string(),
+                provider_id: provider_id.trim().to_string(),
+                consumer_id: self.grant_consumer_id.clone(),
+                permission_policy,
+                offer_price,
+                warranty_window_ms,
+                created_at_ms,
+                expires_at_ms,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "grant_policy_template": policy_template,
+                    "delivery_modes": self.delivery_modes,
+                    "visibility_posture": self.visibility_posture.label(),
+                    "grant_metadata": self.grant_metadata,
+                }),
+            },
+            evidence: {
+                let mut refs = preview_evidence_refs(
+                    provider_id,
+                    self.content_digest.as_deref(),
+                    self.provenance_ref.as_deref(),
+                );
+                refs.push(EvidenceRef::new(
+                    "data_asset_ref",
+                    format!("oa://autopilot/data_assets/{normalized_asset}"),
+                    asset_id,
+                ));
+                refs
+            },
+            hints: ReceiptHints::default(),
+        };
+        serde_json::to_value(&request).unwrap_or_else(|_| {
+            json!({
+                "error": "failed_to_serialize_create_access_grant_request",
+            })
+        })
+    }
+
     fn exact_asset_preview_payload(
         &self,
         provider_id: &str,
@@ -1711,6 +1824,10 @@ pub struct DataSellerPaneState {
     pub last_confirmed_asset_payload: Option<Value>,
     pub last_published_asset: Option<DataAsset>,
     pub last_publish_receipt_id: Option<String>,
+    pub grant_preview_confirmed: bool,
+    pub last_confirmed_grant_payload: Option<Value>,
+    pub last_published_grant: Option<AccessGrant>,
+    pub last_grant_publish_receipt_id: Option<String>,
     pub codex_profile: DataSellerCodexProfile,
     pub codex_thread_id: Option<String>,
     pub codex_session_phase: DataSellerCodexSessionPhase,
@@ -1755,6 +1872,10 @@ impl Default for DataSellerPaneState {
             last_confirmed_asset_payload: None,
             last_published_asset: None,
             last_publish_receipt_id: None,
+            grant_preview_confirmed: false,
+            last_confirmed_grant_payload: None,
+            last_published_grant: None,
+            last_grant_publish_receipt_id: None,
             codex_profile: DataSellerCodexProfile::default(),
             codex_thread_id: None,
             codex_session_phase: DataSellerCodexSessionPhase::Detached,
@@ -1857,8 +1978,6 @@ impl DataSellerPaneState {
                     created_at_ms,
                 ),
             );
-            self.active_draft.last_previewed_grant_payload =
-                Some(self.active_draft.structural_grant_preview_payload());
             self.confirm_enabled = true;
             self.last_action = Some(
                 "Exact DataAsset preview ready; inspect it and confirm before publication."
@@ -1901,6 +2020,66 @@ impl DataSellerPaneState {
             "Preview confirmed. Publication is now armed for this exact payload.".to_string();
     }
 
+    pub fn request_grant_preview(&mut self, provider_id: &str, created_at_ms: i64) {
+        let Some(asset_id) = self
+            .last_published_asset
+            .as_ref()
+            .map(|asset| asset.asset_id.as_str())
+            .or(self.active_draft.last_published_asset_id.as_deref())
+        else {
+            self.grant_preview_confirmed = false;
+            self.last_confirmed_grant_payload = None;
+            self.active_draft.last_previewed_grant_payload = None;
+            self.last_error = Some(
+                "Publish an asset first. Grant creation requires a canonical DataAsset identity."
+                    .to_string(),
+            );
+            self.status_line =
+                "Grant preview blocked until a DataAsset has been published.".to_string();
+            return;
+        };
+
+        self.grant_preview_confirmed = false;
+        self.last_confirmed_grant_payload = None;
+        self.active_draft.last_previewed_grant_payload = Some(
+            self.active_draft.exact_grant_preview_payload(
+                provider_id,
+                asset_id,
+                self.codex_thread_id.as_deref(),
+                created_at_ms,
+            ),
+        );
+        self.last_error = None;
+        self.last_action = Some(
+            "Exact AccessGrant preview ready; confirm before grant publication.".to_string(),
+        );
+        self.status_line =
+            "Grant preview ready. Confirm the exact grant payload before publication."
+                .to_string();
+    }
+
+    pub fn confirm_grant_preview(&mut self) {
+        if self.active_draft.last_previewed_grant_payload.is_none() {
+            self.grant_preview_confirmed = false;
+            self.last_confirmed_grant_payload = None;
+            self.last_error = Some(
+                "Run grant preview first. Confirmation only applies to an exact grant payload."
+                    .to_string(),
+            );
+            self.status_line =
+                "Grant confirmation blocked until an exact preview payload exists.".to_string();
+            return;
+        }
+
+        self.grant_preview_confirmed = true;
+        self.last_confirmed_grant_payload = self.active_draft.last_previewed_grant_payload.clone();
+        self.last_error = None;
+        self.last_action = Some("Confirmed the current AccessGrant preview payload".to_string());
+        self.status_line =
+            "Grant preview confirmed. Publication is now armed for this exact payload."
+                .to_string();
+    }
+
     pub fn request_publish(&mut self) {
         self.last_action = Some("Publish requested from Data Seller pane".to_string());
         if !self.active_draft.is_structurally_ready() {
@@ -1940,6 +2119,10 @@ impl DataSellerPaneState {
             && self.asset_preview_confirmed
     }
 
+    pub fn grant_publish_is_armed(&self) -> bool {
+        self.active_draft.last_previewed_grant_payload.is_some() && self.grant_preview_confirmed
+    }
+
     pub fn note_asset_published(&mut self, asset: DataAsset, receipt_id: Option<String>) {
         self.active_draft.last_published_asset_id = Some(asset.asset_id.clone());
         self.last_published_asset = Some(asset.clone());
@@ -1958,6 +2141,58 @@ impl DataSellerPaneState {
         );
     }
 
+    pub fn request_publish_grant(&mut self) {
+        self.last_action = Some("Grant publish requested from Data Seller pane".to_string());
+        if self.active_draft.last_published_asset_id.is_none() && self.last_published_asset.is_none() {
+            self.last_error = Some(
+                "Grant publish is blocked because there is no published asset identity yet."
+                    .to_string(),
+            );
+            self.status_line =
+                "Grant publish blocked until a DataAsset has been published.".to_string();
+            return;
+        }
+        if self.active_draft.last_previewed_grant_payload.is_none() {
+            self.last_error = Some(
+                "Grant publish is blocked because no exact grant preview payload exists yet. Run preview first."
+                    .to_string(),
+            );
+            self.status_line =
+                "Grant publish blocked until an exact preview payload exists.".to_string();
+            return;
+        }
+        if !self.grant_preview_confirmed {
+            self.last_error = Some(
+                "Grant publish is blocked until the current exact grant preview payload has been explicitly confirmed."
+                    .to_string(),
+            );
+            self.status_line =
+                "Grant publish blocked until the current grant preview has been confirmed."
+                    .to_string();
+            return;
+        }
+        self.last_error = None;
+        self.status_line =
+            "Grant publish armed. Submitting the exact grant payload to kernel authority."
+                .to_string();
+    }
+
+    pub fn note_grant_published(&mut self, grant: AccessGrant, receipt_id: Option<String>) {
+        self.active_draft.last_published_grant_id = Some(grant.grant_id.clone());
+        self.last_published_grant = Some(grant.clone());
+        self.last_grant_publish_receipt_id = receipt_id;
+        self.grant_preview_confirmed = false;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Published AccessGrant {} and read it back from kernel authority",
+            grant.grant_id
+        ));
+        self.status_line = format!(
+            "Published grant {} and confirmed kernel read-back.",
+            grant.grant_id
+        );
+    }
+
     pub fn note_draft_mutation(&mut self, action: impl Into<String>) {
         self.active_draft.recompute_readiness_blockers();
         self.active_draft.preview_posture = DataSellerPreviewPosture::NotRequested;
@@ -1968,6 +2203,8 @@ impl DataSellerPaneState {
         self.publish_enabled = false;
         self.asset_preview_confirmed = false;
         self.last_confirmed_asset_payload = None;
+        self.grant_preview_confirmed = false;
+        self.last_confirmed_grant_payload = None;
         self.last_error = None;
         self.last_action = Some(action.into());
         self.status_line = if self.active_draft.is_structurally_ready() {
@@ -2115,6 +2352,31 @@ impl DataMarketPaneState {
         self.last_action = Some(format!(
             "Reflected published asset {} into the Data Market pane from kernel read-back",
             asset.asset_id
+        ));
+    }
+
+    pub fn note_published_grant(&mut self, grant: AccessGrant, reflected_at_ms: i64) {
+        if let Some(existing) = self
+            .grants
+            .iter_mut()
+            .find(|existing| existing.grant_id == grant.grant_id)
+        {
+            *existing = grant.clone();
+        } else {
+            self.grants.push(grant.clone());
+        }
+        Self::sort_state(
+            self.assets.as_mut_slice(),
+            self.grants.as_mut_slice(),
+            self.deliveries.as_mut_slice(),
+            self.revocations.as_mut_slice(),
+        );
+        self.last_refreshed_at_ms = Some(reflected_at_ms);
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Reflected published grant {} into the Data Market pane from kernel read-back",
+            grant.grant_id
         ));
     }
 
@@ -12139,7 +12401,7 @@ mod tests {
         SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use chrono::TimeZone;
-    use openagents_kernel_core::data::DataAsset;
+    use openagents_kernel_core::data::{AccessGrant, DataAsset};
     use serde_json::{Value, json};
     use wgpui::components::sections::TerminalStream;
 
@@ -12238,18 +12500,7 @@ mod tests {
                 .and_then(Value::as_str)
                 .is_some()
         );
-        let grant_preview = pane
-            .active_draft
-            .last_previewed_grant_payload
-            .as_ref()
-            .expect("grant preview should exist");
-        assert_eq!(
-            grant_preview
-                .get("grant_policy_template")
-                .and_then(Value::as_str),
-            Some("targeted_request")
-        );
-        assert!(grant_preview.get("permission_policy").is_some());
+        assert!(pane.active_draft.last_previewed_grant_payload.is_none());
         assert!(pane.confirm_enabled);
         assert!(!pane.publish_enabled);
     }
@@ -12330,6 +12581,118 @@ mod tests {
         assert_eq!(pane.assets.len(), 1);
         assert_eq!(pane.assets[0].asset_id, "data_asset.provider.alpha.bundle");
         assert_eq!(pane.last_refreshed_at_ms, Some(1_762_700_100_000));
+    }
+
+    #[test]
+    fn data_market_note_published_grant_upserts_readback_grant() {
+        let mut pane = super::DataMarketPaneState::default();
+        pane.note_published_grant(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1buyer".to_string()),
+                permission_policy: openagents_kernel_core::data::PermissionPolicy::default(),
+                offer_price: None,
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({}),
+            },
+            1_762_700_100_000,
+        );
+
+        assert_eq!(pane.grants.len(), 1);
+        assert_eq!(pane.grants[0].grant_id, "access_grant.provider.alpha.bundle");
+        assert_eq!(pane.last_refreshed_at_ms, Some(1_762_700_100_000));
+    }
+
+    #[test]
+    fn data_seller_grant_preview_requires_published_asset() {
+        let mut pane = DataSellerPaneState::default();
+        pane.request_grant_preview("provider.data.alpha", 1_762_700_000_000);
+
+        assert!(pane.active_draft.last_previewed_grant_payload.is_none());
+        assert!(pane.last_error.is_some());
+    }
+
+    #[test]
+    fn data_seller_grant_preview_produces_exact_payload_when_asset_is_published() {
+        let mut pane = DataSellerPaneState::default();
+        pane.active_draft.grant_consumer_id = Some("npub1buyer".to_string());
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle".to_string()),
+                provenance_ref: Some("oa://bundle/support-1".to_string()),
+                default_policy: None,
+                price_hint: None,
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({}),
+            },
+            None,
+        );
+
+        pane.request_grant_preview("provider.data.alpha", 1_762_700_010_000);
+
+        let grant_preview = pane
+            .active_draft
+            .last_previewed_grant_payload
+            .as_ref()
+            .expect("grant preview should exist");
+        assert_eq!(
+            grant_preview
+                .get("grant")
+                .and_then(|value| value.get("asset_id"))
+                .and_then(Value::as_str),
+            Some("data_asset.provider.alpha.bundle")
+        );
+        assert_eq!(
+            grant_preview
+                .get("grant")
+                .and_then(|value| value.get("consumer_id"))
+                .and_then(Value::as_str),
+            Some("npub1buyer")
+        );
+    }
+
+    #[test]
+    fn data_seller_note_grant_published_records_kernel_readback() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1buyer".to_string()),
+                permission_policy: openagents_kernel_core::data::PermissionPolicy::default(),
+                offer_price: None,
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({}),
+            },
+            Some("receipt.access_grant.alpha".to_string()),
+        );
+
+        assert_eq!(
+            pane.active_draft.last_published_grant_id.as_deref(),
+            Some("access_grant.provider.alpha.bundle")
+        );
+        assert_eq!(
+            pane.last_grant_publish_receipt_id.as_deref(),
+            Some("receipt.access_grant.alpha")
+        );
+        assert!(pane.last_published_grant.is_some());
     }
 
     #[test]

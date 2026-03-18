@@ -135,11 +135,11 @@ The first typed `openagents.data_market.*` tool family now exists in the desktop
 runtime for seller status, draft, preview, blocked publish, and snapshot flows.
 Those tools now produce the exact asset preview shape, can publish a `DataAsset`
 through Nexus after explicit in-pane confirmation, and reflect the resulting
-kernel read-back into the read-only market pane. The follow-on issues still
-need to extend the same discipline to grant publication and fill in the rest of
-the market lifecycle. The seller draft now also carries reusable grant-policy
-templates plus bounded offer posture fields so the next grant issue can build
-on first-class state instead of transcript prose.
+kernel read-back into the read-only market pane. They now also produce exact
+`CreateAccessGrantRequest` previews, publish `AccessGrant` objects through
+Nexus after explicit confirmation, and reflect the resulting grant read-back
+into the read-only market pane. The follow-on issues now move on to inventory
+summary, NIP-90 intake, delivery, payment, revocation, and buyer-facing flows.
 
 ### 3. Codex is already deeply integrated
 
