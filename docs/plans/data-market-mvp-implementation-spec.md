@@ -91,7 +91,7 @@ The mutation calls already exist in `crates/openagents-kernel-core` and
 
 That means the problem is not ontology. The problem is productization.
 
-### 2. The desktop currently has only a read-only data pane
+### 2. The desktop currently has a read-only data pane plus an initial seller shell
 
 The current `Data Market` pane can:
 
@@ -110,6 +110,20 @@ It cannot:
 
 This pane should remain the read-model and operator snapshot surface. It should
 not be overloaded into the primary authoring surface for listings.
+
+There is now also an initial `Data Seller` shell in the desktop app. It can:
+
+- expose the dedicated seller pane and state model
+- show transcript-shell, draft-shell, and status-shell cards
+- expose explicit preview/publish controls
+- keep those controls blocked until the draft model and typed tools land
+
+It cannot yet:
+
+- run a seller-specific Codex session
+- normalize conversational input into a truthful draft object
+- preview an exact authority payload
+- publish a kernel object
 
 ### 3. Codex is already deeply integrated
 

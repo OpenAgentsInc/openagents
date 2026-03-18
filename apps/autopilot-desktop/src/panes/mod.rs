@@ -11,6 +11,7 @@ pub mod chat;
 pub mod codex;
 pub mod credit;
 pub mod data_market;
+pub mod data_seller;
 pub mod earnings_jobs;
 pub mod frame_debugger;
 pub mod key_ledger;

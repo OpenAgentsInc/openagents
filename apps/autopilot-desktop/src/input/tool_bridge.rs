@@ -37,12 +37,12 @@ use crate::pane_system::{
     CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    DataMarketPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
-    LocalInferencePaneAction, MissionControlPaneAction, NetworkRequestsPaneAction,
-    Nip90SentPaymentsPaneAction, PaneController, PaneHitAction, ProviderControlPaneAction,
-    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    DataMarketPaneAction, DataSellerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
+    JobInboxPaneAction, LocalInferencePaneAction, MissionControlPaneAction,
+    NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
+    ProviderControlPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
+    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -2256,6 +2256,20 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                     ),
                 );
             }
+            PaneKind::DataSeller => {
+                map.insert(
+                    "data_seller".to_string(),
+                    json!({
+                        "load_state": state.data_seller.load_state.label(),
+                        "preview_enabled": state.data_seller.preview_enabled,
+                        "publish_enabled": state.data_seller.publish_enabled,
+                        "shell_messages": state.data_seller.transcript_shell.len(),
+                        "status_line": state.data_seller.status_line,
+                        "last_action": state.data_seller.last_action,
+                        "last_error": state.data_seller.last_error,
+                    }),
+                );
+            }
             PaneKind::DataMarket => {
                 map.insert(
                     "data_market".to_string(),
@@ -2344,6 +2358,15 @@ fn pane_action_to_hit_action(
         PaneKind::KeyLedger => unsupported(),
         PaneKind::SettlementAtlas => unsupported(),
         PaneKind::RelayChoreography => unsupported(),
+        PaneKind::DataSeller => match action {
+            "preview" | "preview_draft" => Ok(PaneHitAction::DataSeller(
+                DataSellerPaneAction::PreviewDraft,
+            )),
+            "publish" | "publish_draft" => Ok(PaneHitAction::DataSeller(
+                DataSellerPaneAction::PublishDraft,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::DataMarket => match action {
             "refresh" => Ok(PaneHitAction::DataMarket(DataMarketPaneAction::Refresh)),
             _ => unsupported(),
@@ -6296,6 +6319,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "buyer_sent_payments",
             "daily_sent_report",
         ],
+        PaneKind::DataSeller => &["data_seller", "seller", "data_listing", "seller_draft"],
         PaneKind::DataMarket => &["data_market", "data", "kernel_data", "data_assets"],
         PaneKind::BuyerRaceMatrix => &[
             "buyer_race_matrix",
@@ -6381,6 +6405,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::LogStream => "log_stream",
         PaneKind::BuyModePayments => "buy_mode",
         PaneKind::Nip90SentPayments => "nip90_sent_payments",
+        PaneKind::DataSeller => "data_seller",
         PaneKind::DataMarket => "data_market",
         PaneKind::BuyerRaceMatrix => "buyer_race_matrix",
         PaneKind::SellerEarningsTimeline => "seller_earnings_timeline",
@@ -6440,7 +6465,7 @@ mod tests {
         Nip90SentPaymentsWindowPreset, PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, DataMarketPaneAction, MissionControlPaneAction,
+        CadDemoPaneAction, DataMarketPaneAction, DataSellerPaneAction, MissionControlPaneAction,
         Nip90SentPaymentsPaneAction, PaneHitAction, ProviderControlPaneAction,
         RelayConnectionsPaneAction, SettingsPaneAction,
     };
@@ -6749,6 +6774,7 @@ mod tests {
             pane_kind_key(PaneKind::Nip90SentPayments),
             "nip90_sent_payments"
         );
+        assert_eq!(pane_kind_key(PaneKind::DataSeller), "data_seller");
         assert_eq!(pane_kind_key(PaneKind::DataMarket), "data_market");
         assert_eq!(
             normalize_key("Spark Lightning Wallet"),
@@ -6817,6 +6843,16 @@ mod tests {
             pane_action_to_hit_action(PaneKind::RivePreview, "next_asset", None)
                 .expect("rive preview next asset"),
             PaneHitAction::RivePreview(crate::pane_system::RivePreviewPaneAction::NextAsset)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataSeller, "preview", None)
+                .expect("data seller preview"),
+            PaneHitAction::DataSeller(DataSellerPaneAction::PreviewDraft)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataSeller, "publish_draft", None)
+                .expect("data seller publish"),
+            PaneHitAction::DataSeller(DataSellerPaneAction::PublishDraft)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::DataMarket, "refresh", None)

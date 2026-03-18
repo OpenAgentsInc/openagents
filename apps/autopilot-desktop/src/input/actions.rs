@@ -14,7 +14,7 @@ use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
     BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataMarketPaneAction,
-    LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
+    DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
     Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
     SparkReplayPaneAction, TassadarLabPaneAction,
 };
@@ -10204,6 +10204,22 @@ pub(super) fn run_data_market_action(
     match action {
         DataMarketPaneAction::Refresh => {
             crate::data_market_control::refresh_data_market_snapshot(state)
+        }
+    }
+}
+
+pub(super) fn run_data_seller_action(
+    state: &mut crate::app_state::RenderState,
+    action: DataSellerPaneAction,
+) -> bool {
+    match action {
+        DataSellerPaneAction::PreviewDraft => {
+            state.data_seller.request_preview();
+            true
+        }
+        DataSellerPaneAction::PublishDraft => {
+            state.data_seller.request_publish();
+            true
         }
     }
 }
