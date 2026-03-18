@@ -24,6 +24,8 @@ const MAX_UPDATES_PER_DRAIN: usize = 32;
 const MAX_PREVIEW_SEEN_REQUEST_IDS: usize = 4096;
 const SUBSCRIPTION_ID: &str = "autopilot-provider-nip90-ingress";
 const DEFAULT_TTL_SECONDS: u64 = 60;
+const LIVE_REQUEST_FILTER_LOOKBACK_SECONDS: u64 = 30;
+const LIVE_FILTER_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 const NIP89_HANDLER_KIND: u16 = 31_990;
 const HANDLER_PUBLISH_RETRY: Duration = Duration::from_secs(10);
 const HANDLER_METADATA_NAME: &str = "Autopilot";
@@ -329,6 +331,7 @@ struct ProviderNip90LaneState {
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
     relay_last_error: HashMap<String, String>,
+    next_live_filter_refresh_at: Option<Instant>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -368,6 +371,9 @@ impl ProviderNip90LaneState {
         build_ingress_filters(
             self.provider_request_ingress_enabled(),
             self.tracked_buyer_request_ids.as_slice(),
+            self.auth_identity.as_ref(),
+            self.compute_capability.is_ready(),
+            self.data_vending_profile.as_ref(),
         )
     }
 
@@ -509,6 +515,7 @@ fn run_lane_loop(
         relay_last_seen: HashMap::new(),
         relay_latency_ms: HashMap::new(),
         relay_last_error: HashMap::new(),
+        next_live_filter_refresh_at: None,
     };
     refresh_relay_health_snapshot(&runtime, &mut state);
 
@@ -556,6 +563,11 @@ fn run_lane_loop(
         let Some(pool) = state.pool.as_ref().cloned() else {
             continue;
         };
+
+        if should_refresh_live_filters(&state) {
+            resubscribe_ingress_filters(&runtime, &mut state, pool.clone());
+            state.next_live_filter_refresh_at = Some(Instant::now() + LIVE_FILTER_REFRESH_INTERVAL);
+        }
 
         let relay_health_before_poll = state.snapshot.relay_health.clone();
         let outcome = runtime.block_on(poll_ingress(
@@ -702,6 +714,7 @@ fn handle_command(
                         Some("Rebinding provider relay identity".to_string());
                 }
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureComputeCapability { capability } => {
@@ -737,6 +750,7 @@ fn handle_command(
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureDataVendingProfile { profile } => {
@@ -760,6 +774,7 @@ fn handle_command(
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureRelays { relays } => {
@@ -788,6 +803,7 @@ fn handle_command(
             if state.pool.is_some() {
                 disconnect_pool(runtime, state);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::SetOnline { online } => {
@@ -795,6 +811,7 @@ fn handle_command(
             state.clear_preview_request_cache();
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
+            state.next_live_filter_refresh_at = if online { Some(Instant::now()) } else { None };
             if online {
                 state.snapshot.mode = ProviderNip90LaneMode::Connecting;
                 state.snapshot.last_action = Some("Connecting provider relay ingress".to_string());
@@ -824,6 +841,7 @@ fn handle_command(
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::TrackProviderPublishRequestIds { request_ids } => {
@@ -1382,6 +1400,15 @@ fn resubscribe_ingress_filters(
     });
 }
 
+fn should_refresh_live_filters(state: &ProviderNip90LaneState) -> bool {
+    state.wants_online
+        && state.data_vending_profile.is_some()
+        && state.snapshot.connected_relays > 0
+        && state
+            .next_live_filter_refresh_at
+            .is_none_or(|refresh_at| Instant::now() >= refresh_at)
+}
+
 fn maybe_publish_handler_info(
     runtime: &tokio::runtime::Runtime,
     state: &mut ProviderNip90LaneState,
@@ -1438,13 +1465,72 @@ fn maybe_publish_handler_info(
 fn build_ingress_filters(
     observe_provider_requests: bool,
     tracked_buyer_request_ids: &[String],
+    auth_identity: Option<&ProviderNip90AuthIdentity>,
+    compute_ready: bool,
+    data_vending_profile: Option<&ProviderNip90DataVendingProfile>,
 ) -> Vec<serde_json::Value> {
     let mut filters = Vec::new();
     if observe_provider_requests {
-        let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
-            .map(serde_json::Value::from)
-            .collect::<Vec<_>>();
-        filters.push(json!({"kinds": kinds, "limit": 256}));
+        let request_since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| {
+                duration
+                    .as_secs()
+                    .saturating_sub(LIVE_REQUEST_FILTER_LOOKBACK_SECONDS)
+            })
+            .unwrap_or(0);
+
+        if let Some(profile) = data_vending_profile
+            && profile
+                .targeting_posture
+                .trim()
+                .eq_ignore_ascii_case("targeted_only")
+        {
+            let mut target_pubkeys = auth_identity
+                .map(|identity| {
+                    vec![
+                        identity.public_key_hex.trim().to_ascii_lowercase(),
+                        identity.npub.trim().to_ascii_lowercase(),
+                    ]
+                })
+                .unwrap_or_default();
+            target_pubkeys.retain(|value| !value.is_empty());
+            target_pubkeys.sort();
+            target_pubkeys.dedup();
+            if !target_pubkeys.is_empty() {
+                filters.push(json!({
+                    "kinds": [profile.request_kind],
+                    "#p": target_pubkeys,
+                    "since": request_since,
+                    "limit": 128
+                }));
+            }
+            // Some public relays store targeted requests correctly but do not
+            // reliably fan them out on `#p`-only live subscriptions for custom
+            // DVM kinds. Subscribe to the dedicated request kind as a fallback
+            // and keep strict local target checks in the intake path.
+            filters.push(json!({
+                "kinds": [profile.request_kind],
+                "since": request_since,
+                "limit": 128
+            }));
+        }
+
+        if compute_ready || data_vending_profile.is_none() {
+            let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
+                .filter(|kind| {
+                    data_vending_profile.is_none_or(|profile| *kind != profile.request_kind)
+                })
+                .map(serde_json::Value::from)
+                .collect::<Vec<_>>();
+            if !kinds.is_empty() {
+                filters.push(json!({
+                    "kinds": kinds,
+                    "since": request_since,
+                    "limit": 256
+                }));
+            }
+        }
     }
     if !tracked_buyer_request_ids.is_empty() {
         let response_kinds = (JOB_RESULT_KIND_MIN..=JOB_RESULT_KIND_MAX)
@@ -1684,7 +1770,7 @@ async fn poll_ingress(
     }
 }
 
-fn event_to_inbox_request(
+pub(crate) fn event_to_inbox_request(
     event: &Event,
     relay_url: Option<&str>,
 ) -> Option<JobInboxNetworkRequest> {
@@ -2080,7 +2166,7 @@ fn format_input_line(input: &nostr::nip90::JobInput) -> String {
     line
 }
 
-fn event_to_buyer_response_event(
+pub(crate) fn event_to_buyer_response_event(
     event: &Event,
     tracked_buyer_request_ids: &HashSet<String>,
     local_pubkey_hex: Option<&str>,
@@ -2673,6 +2759,7 @@ mod tests {
             relay_last_seen: std::collections::HashMap::new(),
             relay_latency_ms: std::collections::HashMap::new(),
             relay_last_error: std::collections::HashMap::new(),
+            next_live_filter_refresh_at: None,
         }
     }
 
@@ -2691,6 +2778,52 @@ mod tests {
             ],
             preview_postures: vec!["metadata_only".to_string(), "inline_preview".to_string()],
         }
+    }
+
+    #[test]
+    fn build_ingress_filters_target_targeted_data_market_requests_to_local_identity() {
+        let identity = fixture_auth_identity();
+        let profile = fixture_data_vending_profile();
+        let filters =
+            super::build_ingress_filters(true, &[], Some(&identity), false, Some(&profile));
+        assert_eq!(
+            filters.len(),
+            2,
+            "expected targeted and dedicated-kind fallback filters"
+        );
+        let filter = filters.first().expect("targeted filter");
+        let p_values = filter["#p"].as_array().expect("p filter array");
+        assert!(
+            p_values
+                .iter()
+                .any(|value| value.as_str() == Some(identity.public_key_hex.as_str()))
+        );
+        assert!(
+            p_values
+                .iter()
+                .any(|value| value.as_str() == Some(identity.npub.as_str()))
+        );
+        assert_eq!(
+            filter["kinds"].as_array().expect("kinds array"),
+            &vec![Value::from(profile.request_kind)]
+        );
+        assert!(
+            filter.get("since").is_some(),
+            "targeted public-relay filter should be live-only"
+        );
+        let fallback = filters.get(1).expect("fallback filter");
+        assert!(
+            fallback.get("#p").is_none(),
+            "fallback filter should widen relay fanout without target indexing"
+        );
+        assert_eq!(
+            fallback["kinds"].as_array().expect("fallback kinds array"),
+            &vec![Value::from(profile.request_kind)]
+        );
+        assert!(
+            fallback.get("since").is_some(),
+            "fallback public-relay filter should stay live-only"
+        );
     }
 
     #[test]

@@ -17,6 +17,8 @@ SELLER_SETTINGS_PATH="$SELLER_HOME/.openagents/autopilot-settings-v1.conf"
 BUYER_SETTINGS_PATH="$BUYER_HOME/.openagents/autopilot-settings-v1.conf"
 WAIT_TIMEOUT_MS="${OPENAGENTS_HEADLESS_DATA_MARKET_WAIT_TIMEOUT_MS:-120000}"
 REQUEST_TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_REQUEST_TIMEOUT_SECONDS:-120}"
+RELAY_URLS_CSV="${OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS:-}"
+LIVE_INGEST_WAIT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_LIVE_INGEST_WAIT_SECONDS:-30}"
 
 rm -rf "$RUN_DIR"
 mkdir -p \
@@ -56,15 +58,38 @@ else:
 PY
 }
 
+join_by_comma() {
+  local IFS=','
+  echo "$*"
+}
+
+normalize_relay_csv() {
+  python3 - "$1" <<'PY'
+import sys
+
+raw = sys.argv[1]
+parts = []
+seen = set()
+for value in raw.split(","):
+    relay = value.strip()
+    if not relay or relay in seen:
+        continue
+    seen.add(relay)
+    parts.append(relay)
+print(",".join(parts))
+PY
+}
+
 write_settings() {
   local path="$1"
   local relay_url="$2"
-  local identity_path="$3"
+  local backup_relay_urls="$3"
+  local identity_path="$4"
   mkdir -p "$(dirname "$path")"
   cat >"$path" <<EOF
 schema_version=2
 primary_relay_url=${relay_url}
-backup_relay_urls=
+backup_relay_urls=${backup_relay_urls}
 identity_path=${identity_path}
 wallet_default_send_sats=1000
 provider_max_queue_depth=1
@@ -161,6 +186,22 @@ PY
   return 1
 }
 
+import_seller_request_from_relays() {
+  local manifest="$1"
+  local request_id="$2"
+  local output_path="$3"
+  shift 3
+  local relay_urls=("$@")
+  local args=()
+  local relay_url
+  for relay_url in "${relay_urls[@]}"; do
+    args+=(--relay-url "$relay_url")
+  done
+  "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market seller-import-request \
+    --event-id "$request_id" \
+    "${args[@]}" >"$output_path"
+}
+
 wait_for_buyer_result() {
   local manifest="$1"
   local request_id="$2"
@@ -188,6 +229,22 @@ PY
     sleep 2
   done
   return 1
+}
+
+import_buyer_response_from_relays() {
+  local manifest="$1"
+  local event_id="$2"
+  local output_path="$3"
+  shift 3
+  local relay_urls=("$@")
+  local args=()
+  local relay_url
+  for relay_url in "${relay_urls[@]}"; do
+    args+=(--relay-url "$relay_url")
+  done
+  "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market buyer-import-response \
+    --event-id "$event_id" \
+    "${args[@]}" >"$output_path"
 }
 
 DEFAULT_SPARK_API_KEY="$(
@@ -232,12 +289,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-RELAY_PORT="$(find_free_port)"
-RELAY_URL="ws://127.0.0.1:${RELAY_PORT}"
-echo "starting local relay on ${RELAY_URL}"
-"$HEADLESS_COMPUTE_BIN" relay --listen "127.0.0.1:${RELAY_PORT}" >"$RUN_DIR/relay.log" 2>&1 &
-RELAY_PID=$!
-sleep 2
+RELAY_URL=""
+CONFIGURED_RELAY_URLS=()
+if [[ -n "$RELAY_URLS_CSV" ]]; then
+  NORMALIZED_RELAY_URLS_CSV="$(normalize_relay_csv "$RELAY_URLS_CSV")"
+  if [[ -z "$NORMALIZED_RELAY_URLS_CSV" ]]; then
+    echo "OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS did not contain any usable relays" >&2
+    exit 1
+  fi
+  IFS=',' read -r -a CONFIGURED_RELAY_URLS <<< "$NORMALIZED_RELAY_URLS_CSV"
+  echo "using configured relay set: ${NORMALIZED_RELAY_URLS_CSV}"
+else
+  RELAY_PORT="$(find_free_port)"
+  RELAY_URL="ws://127.0.0.1:${RELAY_PORT}"
+  echo "starting local relay on ${RELAY_URL}"
+  "$HEADLESS_COMPUTE_BIN" relay --listen "127.0.0.1:${RELAY_PORT}" >"$RUN_DIR/relay.log" 2>&1 &
+  RELAY_PID=$!
+  sleep 2
+  CONFIGURED_RELAY_URLS=("$RELAY_URL")
+  NORMALIZED_RELAY_URLS_CSV="$RELAY_URL"
+fi
+
+PRIMARY_RELAY_URL="${CONFIGURED_RELAY_URLS[0]}"
+BACKUP_RELAY_URLS_CSV=""
+if (( ${#CONFIGURED_RELAY_URLS[@]} > 1 )); then
+  BACKUP_RELAY_URLS_CSV="$(join_by_comma "${CONFIGURED_RELAY_URLS[@]:1}")"
+fi
 
 echo "starting nexus-control"
 NEXUS_CONTROL_LISTEN_ADDR=127.0.0.1:0 \
@@ -276,8 +353,8 @@ echo "creating isolated nostr identities"
 SELLER_NPUB="$(json_field "$RUN_DIR/seller-identity.json" npub)"
 BUYER_NPUB="$(json_field "$RUN_DIR/buyer-identity.json" npub)"
 
-write_settings "$SELLER_SETTINGS_PATH" "$RELAY_URL" "$SELLER_IDENTITY_PATH"
-write_settings "$BUYER_SETTINGS_PATH" "$RELAY_URL" "$BUYER_IDENTITY_PATH"
+write_settings "$SELLER_SETTINGS_PATH" "$PRIMARY_RELAY_URL" "$BACKUP_RELAY_URLS_CSV" "$SELLER_IDENTITY_PATH"
+write_settings "$BUYER_SETTINGS_PATH" "$PRIMARY_RELAY_URL" "$BACKUP_RELAY_URLS_CSV" "$BUYER_IDENTITY_PATH"
 
 echo "launching seller runtime"
 HOME="$SELLER_HOME" \
@@ -362,11 +439,25 @@ echo "bringing buyer runtime online for result tracking"
 "$AUTOPILOTCTL_BIN" --manifest "$BUYER_MANIFEST" provider online --wait --timeout-ms "$WAIT_TIMEOUT_MS" >"$RUN_DIR/buyer-provider-online.json"
 
 echo "waiting for seller to receive the request"
-wait_for_seller_request_ready "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" "$REQUEST_TIMEOUT_SECONDS" || {
-  echo "seller never observed a ready-for-delivery request" >&2
-  cat "$RUN_DIR/seller-request-ready.json" >&2 || true
-  exit 1
-}
+SELLER_REQUEST_WAIT_SECONDS="$REQUEST_TIMEOUT_SECONDS"
+if [[ -n "$RELAY_URLS_CSV" ]]; then
+  SELLER_REQUEST_WAIT_SECONDS="$LIVE_INGEST_WAIT_SECONDS"
+fi
+if ! wait_for_seller_request_ready "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" "$SELLER_REQUEST_WAIT_SECONDS"; then
+  if [[ -n "$RELAY_URLS_CSV" ]]; then
+    echo "seller did not ingest live from public relays; importing request by event id"
+    import_seller_request_from_relays "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-import-request.json" "${CONFIGURED_RELAY_URLS[@]}"
+    wait_for_seller_request_ready "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" 30 || {
+      echo "seller never observed a ready-for-delivery request" >&2
+      cat "$RUN_DIR/seller-request-ready.json" >&2 || true
+      exit 1
+    }
+  else
+    echo "seller never observed a ready-for-delivery request" >&2
+    cat "$RUN_DIR/seller-request-ready.json" >&2 || true
+    exit 1
+  fi
+fi
 
 echo "staging local delivery bundle"
 mkdir -p "$RUN_DIR/delivery-bundle/payload"
@@ -411,11 +502,32 @@ echo "issuing free delivery"
 "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" --json data-market issue-delivery --request-id "$REQUEST_ID" >"$RUN_DIR/issue-delivery.json"
 
 echo "waiting for buyer result"
-wait_for_buyer_result "$BUYER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/buyer-result.json" "$REQUEST_TIMEOUT_SECONDS" || {
-  echo "buyer never observed the delivery result" >&2
-  cat "$RUN_DIR/buyer-result.json" >&2 || true
-  exit 1
-}
+BUYER_RESULT_WAIT_SECONDS="$REQUEST_TIMEOUT_SECONDS"
+if [[ -n "$RELAY_URLS_CSV" ]]; then
+  BUYER_RESULT_WAIT_SECONDS="$LIVE_INGEST_WAIT_SECONDS"
+fi
+if ! wait_for_buyer_result "$BUYER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/buyer-result.json" "$BUYER_RESULT_WAIT_SECONDS"; then
+  if [[ -n "$RELAY_URLS_CSV" ]]; then
+    echo "buyer did not ingest live from public relays; importing result by event id"
+    "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" --json data-market seller-status >"$RUN_DIR/seller-after-delivery.json"
+    RESULT_EVENT_ID="$(json_field "$RUN_DIR/seller-after-delivery.json" payload.seller.latest_incoming_request.delivery_result_event_id)"
+    if [[ -z "$RESULT_EVENT_ID" ]]; then
+      echo "seller delivery result event id was not available for buyer import" >&2
+      cat "$RUN_DIR/seller-after-delivery.json" >&2 || true
+      exit 1
+    fi
+    import_buyer_response_from_relays "$BUYER_MANIFEST" "$RESULT_EVENT_ID" "$RUN_DIR/buyer-import-response.json" "${CONFIGURED_RELAY_URLS[@]}"
+    wait_for_buyer_result "$BUYER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/buyer-result.json" 30 || {
+      echo "buyer never observed the delivery result" >&2
+      cat "$RUN_DIR/buyer-result.json" >&2 || true
+      exit 1
+    }
+  else
+    echo "buyer never observed the delivery result" >&2
+    cat "$RUN_DIR/buyer-result.json" >&2 || true
+    exit 1
+  fi
+fi
 
 echo "consuming delivered data locally"
 "$AUTOPILOTCTL_BIN" --manifest "$BUYER_MANIFEST" --json data-market consume-delivery \
@@ -426,7 +538,7 @@ echo "consuming delivered data locally"
   --overwrite >"$RUN_DIR/consume-delivery.json"
 
 echo "verifying consumed payload matches source"
-python3 - "$RUN_DIR/source-dataset" "$RUN_DIR/consumed-dataset/payload" "$RUN_DIR/consume-delivery.json" "$RUN_DIR/publish-asset.json" "$RUN_DIR/publish-grant.json" "$RUN_DIR/buyer-result.json" "$RUN_DIR/issue-delivery.json" "$RUN_DIR/summary.json" <<'PY'
+python3 - "$RUN_DIR/source-dataset" "$RUN_DIR/consumed-dataset/payload" "$RUN_DIR/consume-delivery.json" "$RUN_DIR/publish-asset.json" "$RUN_DIR/publish-grant.json" "$RUN_DIR/buyer-result.json" "$RUN_DIR/issue-delivery.json" "$RUN_DIR/seller-request-ready.json" "$RUN_DIR/summary.json" "$NORMALIZED_RELAY_URLS_CSV" "$RUN_DIR/seller-import-request.json" "$RUN_DIR/buyer-import-response.json" <<'PY'
 import filecmp
 import json
 import pathlib
@@ -439,7 +551,11 @@ publish_asset_json = pathlib.Path(sys.argv[4])
 publish_grant_json = pathlib.Path(sys.argv[5])
 buyer_result_json = pathlib.Path(sys.argv[6])
 issue_delivery_json = pathlib.Path(sys.argv[7])
-summary_path = pathlib.Path(sys.argv[8])
+seller_request_json = pathlib.Path(sys.argv[8])
+summary_path = pathlib.Path(sys.argv[9])
+configured_relay_urls = [relay for relay in sys.argv[10].split(",") if relay]
+seller_import_path = pathlib.Path(sys.argv[11])
+buyer_import_path = pathlib.Path(sys.argv[12])
 
 if not consumed_root.exists():
     raise SystemExit("consumed payload directory is missing")
@@ -463,15 +579,27 @@ publish_asset_payload = json.loads(publish_asset_json.read_text())
 publish_grant_payload = json.loads(publish_grant_json.read_text())
 buyer_result_payload = json.loads(buyer_result_json.read_text())
 issue_delivery_payload = json.loads(issue_delivery_json.read_text())
+seller_request_payload = json.loads(seller_request_json.read_text())
+latest_request = buyer_result_payload["payload"]["buyer"]["latest_request"]
+seller_latest = seller_request_payload["payload"]["seller"]["latest_incoming_request"]
+seller_import = json.loads(seller_import_path.read_text()) if seller_import_path.exists() else None
+buyer_import = json.loads(buyer_import_path.read_text()) if buyer_import_path.exists() else None
 
 summary = {
     "asset_id": publish_asset_payload["payload"]["seller"]["draft"]["last_published_asset_id"],
     "grant_id": publish_grant_payload["payload"]["seller"]["draft"]["last_published_grant_id"],
-    "request_id": buyer_result_payload["payload"]["buyer"]["latest_request"]["request_id"],
-    "result_event_id": buyer_result_payload["payload"]["buyer"]["latest_request"]["last_result_event_id"],
+    "request_id": latest_request["request_id"],
+    "result_event_id": latest_request["last_result_event_id"],
     "delivery_bundle_id": issue_delivery_payload["payload"]["seller"]["latest_incoming_request"]["delivery"]["bundle_id"],
     "consumed_payload_path": consume_payload["consumed"]["payload_output_path"],
     "copied_manifest_paths": consume_payload["consumed"]["copied_manifest_paths"],
+    "configured_relay_urls": configured_relay_urls,
+    "request_kind": seller_import["relay_fetch"]["kind"] if seller_import else 5960,
+    "request_source_relay_url": seller_import["relay_fetch"]["relay_url"] if seller_import else seller_latest.get("source_relay_url"),
+    "seller_request_ingest_mode": "relay_import" if seller_import else "live_relay",
+    "result_kind": buyer_import["relay_fetch"]["kind"] if buyer_import else 6960,
+    "buyer_result_ingest_mode": "relay_import" if buyer_import else "live_relay",
+    "result_relay_urls": latest_request.get("last_result_relay_urls") or [],
 }
 summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(summary, indent=2, sort_keys=True))

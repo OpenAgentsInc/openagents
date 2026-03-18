@@ -11,6 +11,7 @@ use crate::app_state::{
     DATA_MARKET_BUYER_REQUEST_TYPE, DataBuyerRequestDraft,
     OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND, RenderState,
 };
+use crate::nip90_compute_semantics::normalize_pubkey;
 
 fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
     let key_bytes = hex::decode(private_key_hex.trim())
@@ -99,7 +100,7 @@ fn build_data_buyer_request_event(
     for relay in normalized_relays {
         request = request.add_relay(relay);
     }
-    request = request.add_service_provider(draft.provider_id.clone());
+    request = request.add_service_provider(normalize_pubkey(draft.provider_id.as_str()));
 
     let template = create_data_vending_request_event(&request)
         .map_err(|error| format!("Cannot build data-vending request event: {error}"))?;
@@ -275,6 +276,26 @@ mod tests {
                 .permission_scopes
                 .iter()
                 .any(|scope| scope == "targeted_request")
+        );
+    }
+
+    #[test]
+    fn buyer_request_event_normalizes_real_npub_targets_to_hex_p_tags() {
+        let identity = nostr::regenerate_identity().expect("identity");
+        let provider_identity = nostr::regenerate_identity().expect("provider identity");
+        let mut draft = fixture_draft();
+        draft.provider_id = provider_identity.npub.clone();
+        let event = build_data_buyer_request_event(
+            &identity,
+            &["wss://relay.one".to_string()],
+            &draft,
+            Some("npub1buyer"),
+        )
+        .expect("request event");
+        let request = DataVendingRequest::from_event(&event).expect("data-vending request");
+        assert_eq!(
+            request.service_providers,
+            vec![provider_identity.public_key_hex.to_ascii_lowercase()]
         );
     }
 }

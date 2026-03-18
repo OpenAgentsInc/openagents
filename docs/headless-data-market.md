@@ -177,6 +177,71 @@ that mattered in practice:
 - buyer-side result tracking accepts seller results when the request targeted
   the seller `npub` but the result event is authored by the seller hex pubkey
 
+## Public relay E2E harness
+
+The repo now also includes a real public-relay harness:
+
+```bash
+scripts/autopilot/headless-data-market-public-e2e.sh
+```
+
+By default it targets:
+
+- `wss://relay.damus.io`
+- `wss://relay.primal.net`
+
+The current verified public-relay truth is:
+
+- the buyer publishes the targeted Data Market request as NIP-90 kind `5960`
+  to the configured public relays
+- the seller publishes the delivery result as NIP-90 kind `6960` back to the
+  same configured public relays
+- seller and buyer NIP-89 handler/capability events remain kind `31990`
+- buyer-side result intake worked live in the verified public run
+- seller-side live public-relay request intake is still inconsistent today
+
+Because seller-side live intake is still inconsistent on public relays, the
+public harness now falls back automatically after a short wait:
+
+- it waits `OPENAGENTS_HEADLESS_DATA_MARKET_LIVE_INGEST_WAIT_SECONDS`
+  seconds for live seller intake
+- if live intake does not happen, it fetches the request event back from the
+  configured relays by event id
+- it imports that event into the seller lane through the normal desktop-owned
+  state machine
+
+The current operator commands for that fallback are:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/seller-desktop-control.json \
+  --json data-market seller-import-request \
+  --event-id <request-event-id> \
+  --relay-url wss://relay.damus.io \
+  --relay-url wss://relay.primal.net
+```
+
+and, if buyer-side public relay intake ever needs the same recovery:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/buyer-desktop-control.json \
+  --json data-market buyer-import-response \
+  --event-id <result-or-feedback-event-id> \
+  --relay-url wss://relay.damus.io \
+  --relay-url wss://relay.primal.net
+```
+
+The verified public run summary now records:
+
+- configured relay URLs
+- request kind
+- result kind
+- seller request ingest mode (`live_relay` vs `relay_import`)
+- buyer result ingest mode (`live_relay` vs `relay_import`)
+- request and result event ids
+- final consumed payload path
+
 ## Full verification bundle
 
 For a local end-to-end verification pass, run:
