@@ -323,11 +323,21 @@ struct DataMarketDraftGrantArgs {
     #[serde(default)]
     default_policy: Option<String>,
     #[serde(default)]
+    policy_template: Option<String>,
+    #[serde(default)]
+    consumer_id: Option<String>,
+    #[serde(default)]
     price_hint_sats: Option<u64>,
     #[serde(default)]
     delivery_modes: Option<Vec<String>>,
     #[serde(default)]
     visibility_posture: Option<String>,
+    #[serde(default)]
+    expires_in_hours: Option<u64>,
+    #[serde(default)]
+    warranty_window_hours: Option<u64>,
+    #[serde(default)]
+    metadata: Option<Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -948,12 +958,17 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                 "content_digest": state.data_seller.active_draft.content_digest,
                 "provenance_ref": state.data_seller.active_draft.provenance_ref,
                 "default_policy": state.data_seller.active_draft.default_policy,
+                "grant_policy_template": state.data_seller.active_draft.grant_policy_template,
+                "grant_consumer_id": state.data_seller.active_draft.grant_consumer_id,
+                "grant_expires_in_hours": state.data_seller.active_draft.grant_expires_in_hours,
+                "grant_warranty_window_hours": state.data_seller.active_draft.grant_warranty_window_hours,
                 "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
                 "delivery_modes": state.data_seller.active_draft.delivery_modes,
                 "visibility_posture": state.data_seller.active_draft.visibility_posture.label(),
                 "sensitivity_posture": state.data_seller.active_draft.sensitivity_posture.label(),
                 "preview_posture": state.data_seller.active_draft.preview_posture.label(),
                 "metadata": state.data_seller.active_draft.metadata,
+                "grant_metadata": state.data_seller.active_draft.grant_metadata,
                 "readiness_blockers": state
                     .data_seller
                     .active_draft
@@ -1112,8 +1127,17 @@ fn execute_data_market_draft_grant_tool(
     state: &mut RenderState,
     args: &DataMarketDraftGrantArgs,
 ) -> ToolBridgeResultEnvelope {
-    if let Some(value) = args.default_policy.as_ref() {
-        state.data_seller.active_draft.default_policy = Some(value.trim().to_string());
+    if let Some(value) = args
+        .policy_template
+        .as_ref()
+        .or(args.default_policy.as_ref())
+    {
+        state.data_seller.active_draft.grant_policy_template = Some(value.trim().to_string());
+    }
+    if let Some(value) = args.consumer_id.as_ref() {
+        let trimmed = value.trim();
+        state.data_seller.active_draft.grant_consumer_id =
+            (!trimmed.is_empty()).then(|| trimmed.to_string());
     }
     if let Some(value) = args.price_hint_sats {
         state.data_seller.active_draft.price_hint_sats = Some(value);
@@ -1133,12 +1157,24 @@ fn execute_data_market_draft_grant_tool(
                 Err(error) => return error,
             };
     }
+    if let Some(value) = args.expires_in_hours {
+        state.data_seller.active_draft.grant_expires_in_hours = Some(value);
+    }
+    if let Some(value) = args.warranty_window_hours {
+        state.data_seller.active_draft.grant_warranty_window_hours = Some(value);
+    }
+    if let Some(value) = args.metadata.clone() {
+        state.data_seller.active_draft.grant_metadata = match parse_string_map(value, "metadata") {
+            Ok(parsed) => parsed,
+            Err(error) => return error,
+        };
+    }
     state
         .data_seller
-        .note_draft_mutation("Updated Data Seller default grant posture via typed tool");
+        .note_draft_mutation("Updated Data Seller grant draft via typed tool");
     ToolBridgeResultEnvelope::ok(
         "OA-DATA-MARKET-DRAFT-GRANT-UPDATED",
-        "Updated the derived Data Seller grant posture.",
+        "Updated the derived Data Seller grant draft.",
         data_seller_tool_snapshot(state),
     )
 }
@@ -2747,6 +2783,8 @@ pub(crate) fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Valu
                         "readiness_blockers": state.data_seller.active_draft.readiness_blockers.len(),
                         "asset_kind": state.data_seller.active_draft.asset_kind,
                         "title": state.data_seller.active_draft.title,
+                        "grant_policy_template": state.data_seller.active_draft.grant_policy_template,
+                        "grant_consumer_id": state.data_seller.active_draft.grant_consumer_id,
                         "price_hint_sats": state.data_seller.active_draft.price_hint_sats,
                         "has_asset_preview": state.data_seller.active_draft.last_previewed_asset_payload.is_some(),
                         "has_confirmed_asset_preview": state.data_seller.last_confirmed_asset_payload.is_some(),
@@ -6950,19 +6988,19 @@ mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
-        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
-        OPENAGENTS_TOOL_LABOR_SCOPE, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
-        OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
-        OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
-        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request,
-        enforce_labor_evidence_uri_scope, enforce_matching_labor_contract_scope, normalize_key,
-        pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH, OPENAGENTS_TOOL_LABOR_SCOPE,
+        OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT,
+        OPENAGENTS_TOOL_TREASURY_RECEIPT, OPENAGENTS_TOOL_TREASURY_TRANSFER,
+        ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
+        cad_parse_retry_prompt, decode_tool_call_request, enforce_labor_evidence_uri_scope,
+        enforce_matching_labor_contract_scope, normalize_key, pane_action_to_hit_action,
+        pane_kind_key, parse_blink_execution_payload_from_json,
         parse_blink_quote_terms_from_json, parse_bool_env_override,
         parse_data_seller_sensitivity_posture, parse_data_seller_visibility_posture,
         parse_goal_rollout_stage, parse_nip90_sent_payments_boundary, parse_swap_direction,
         parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind_for_runtime,
-        run_blink_swap_script_json, select_existing_blink_swap_script_path,
-        validate_direction_unit,
+        run_blink_swap_script_json, select_existing_blink_swap_script_path, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -7141,6 +7179,21 @@ mod tests {
             .decode_arguments::<super::DataMarketPublishArgs>()
             .expect_err("confirm should be required");
         assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
+    fn data_market_draft_grant_decode_accepts_template_fields() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
+            r#"{"policy_template":"licensed_bundle","consumer_id":"npub1buyer","expires_in_hours":48,"warranty_window_hours":24}"#,
+        ))
+        .expect("decode should succeed");
+        let args: super::DataMarketDraftGrantArgs =
+            decoded.decode_arguments().expect("draft grant args decode");
+        assert_eq!(args.policy_template.as_deref(), Some("licensed_bundle"));
+        assert_eq!(args.consumer_id.as_deref(), Some("npub1buyer"));
+        assert_eq!(args.expires_in_hours, Some(48));
+        assert_eq!(args.warranty_window_hours, Some(24));
     }
 
     #[test]

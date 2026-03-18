@@ -149,13 +149,13 @@ pub fn paint(
         transcript_bounds.max_x() + COLUMN_GAP,
         transcript_bounds.origin.y,
         side_width,
-        available_height * 0.38,
+        available_height * 0.44,
     );
     let preview_bounds = Bounds::new(
         draft_bounds.origin.x,
         draft_bounds.max_y() + COLUMN_GAP,
         side_width,
-        available_height * 0.30,
+        available_height * 0.24,
     );
     let status_bounds = Bounds::new(
         draft_bounds.origin.x,
@@ -307,6 +307,36 @@ fn paint_draft_shell_card(
         row_y,
         "provenance",
         &provenance,
+    );
+    let grant_template = option_label(pane_state.active_draft.grant_policy_template.as_deref());
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant template",
+        &grant_template,
+    );
+    let grant_consumer = option_label(pane_state.active_draft.grant_consumer_id.as_deref());
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant consumer",
+        &grant_consumer,
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant ttl",
+        &hours_label(pane_state.active_draft.grant_expires_in_hours),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant warranty",
+        &hours_label(pane_state.active_draft.grant_warranty_window_hours),
     );
 
     row_y = paint_label_line(
@@ -600,6 +630,12 @@ fn option_label(value: Option<&str>) -> String {
 
 fn bool_label(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
+}
+
+fn hours_label(value: Option<u64>) -> String {
+    value
+        .map(|hours| format!("{hours}h"))
+        .unwrap_or_else(|| "pending".to_string())
 }
 
 fn preview_field(payload: Option<&Value>, path: &[&str]) -> String {
