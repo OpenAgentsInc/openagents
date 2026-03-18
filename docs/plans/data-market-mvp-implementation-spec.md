@@ -122,6 +122,7 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 - expose explicit preview/confirm/publish controls
 - materialize an exact `RegisterDataAssetRequest` preview payload
 - require explicit in-pane confirmation before publication can be armed
+- show a seller inventory/status surface with published asset/default-offer truth and divergence warnings
 
 It cannot yet:
 
