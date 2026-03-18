@@ -10216,6 +10216,7 @@ pub(super) fn run_data_seller_action(
         crate::data_seller_control::ensure_data_seller_codex_session(state);
     }
     match action {
+        DataSellerPaneAction::SubmitPrompt => crate::data_seller_control::submit_data_seller_prompt(state),
         DataSellerPaneAction::PreviewDraft => {
             state.data_seller.request_preview();
             true

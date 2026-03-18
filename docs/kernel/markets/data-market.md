@@ -38,6 +38,7 @@ smuggled through opaque prompt state.
 - open a dedicated `Data Seller` desktop shell with transcript, draft-card, and blocked preview/publish scaffolding
 - auto-provision and pin the first-party `autopilot-data-seller` and `autopilot-data-market-control` skills for the dedicated seller lane
 - expose typed `openagents.data_market.*` dynamic tools for seller status, draft, preview, blocked publish, and snapshot flows
+- send seller prompts from the dedicated pane into the dedicated Codex seller thread and render the resulting transcript back into the pane
 
 The starter authority slice is real in:
 
@@ -77,7 +78,7 @@ Authenticated HTTP read routes are live under:
 ## Not implemented yet
 
 - a transactional buyer-facing data market in Autopilot
-- truthful seller publication UX for data assets; the current seller pane is shell-only
+- truthful seller publication UX for data assets beyond the current conversational draft-normalization loop
 - discovery, listing, and pricing surfaces for data buyers
 - payout and provider-economics flows specific to data access
 - a dedicated checked-in `openagents.data.v1` proto package

@@ -1,8 +1,14 @@
-use wgpui::{Bounds, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
-use crate::app_state::{DataSellerPaneState, DataSellerShellSpeaker};
+use crate::app_state::{
+    AutopilotChatState, AutopilotMessage, AutopilotRole, DataSellerPaneInputs, DataSellerPaneState,
+    DataSellerShellSpeaker, PaneKind, RenderState,
+};
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
-use crate::pane_system::{data_seller_preview_button_bounds, data_seller_publish_button_bounds};
+use crate::pane_system::{
+    data_seller_composer_input_bounds, data_seller_preview_button_bounds,
+    data_seller_publish_button_bounds, data_seller_send_button_bounds, pane_content_bounds,
+};
 
 const PADDING: f32 = 12.0;
 const HEADER_BOTTOM: f32 = 156.0;
@@ -11,8 +17,15 @@ const CARD_RADIUS: f32 = 8.0;
 const CARD_HEADER_HEIGHT: f32 = 36.0;
 const TRANSCRIPT_ROW_HEIGHT: f32 = 72.0;
 
-pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &mut PaintContext) {
+pub fn paint(
+    content_bounds: Bounds,
+    pane_state: &DataSellerPaneState,
+    autopilot_chat: &AutopilotChatState,
+    inputs: &mut DataSellerPaneInputs,
+    paint: &mut PaintContext,
+) {
     paint_source_badge(content_bounds, "codex.data_seller.v0", paint);
+    paint_action_button(data_seller_send_button_bounds(content_bounds), "Send", paint);
     paint_action_button(
         data_seller_preview_button_bounds(content_bounds),
         "Preview Draft",
@@ -25,7 +38,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &m
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Conversational authoring surface for truthful data listings. The pane now keeps a structured draft locally while the seller-specific Codex session and typed publish tools land next.",
+        "Conversational authoring surface for truthful data listings. Seller turns now run on the dedicated Codex thread and the typed Data Market tools update the structured draft.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -94,7 +107,20 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &m
         ));
     }
 
-    let available_height = (content_bounds.size.height - HEADER_BOTTOM - PADDING).max(220.0);
+    let composer_bounds = data_seller_composer_input_bounds(content_bounds);
+    inputs
+        .composer
+        .set_max_width(composer_bounds.size.width.max(140.0));
+    inputs.composer.paint(composer_bounds, paint);
+    paint.scene.draw_text(paint.text.layout(
+        "Seller prompt",
+        Point::new(composer_bounds.origin.x, composer_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let available_height =
+        (composer_bounds.origin.y - HEADER_BOTTOM - COLUMN_GAP - PADDING).max(220.0);
     let transcript_width =
         ((content_bounds.size.width - PADDING * 2.0 - COLUMN_GAP) * 0.57).max(360.0);
     let side_width =
@@ -118,7 +144,7 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &m
         (transcript_bounds.max_y() - draft_bounds.max_y() - COLUMN_GAP).max(150.0),
     );
 
-    paint_transcript_shell(transcript_bounds, pane_state, paint);
+    paint_transcript_shell(transcript_bounds, pane_state, autopilot_chat, paint);
     paint_draft_shell_card(draft_bounds, pane_state, paint);
     paint_publication_status_card(status_bounds, pane_state, paint);
 }
@@ -126,44 +152,96 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataSellerPaneState, paint: &m
 fn paint_transcript_shell(
     bounds: Bounds,
     pane_state: &DataSellerPaneState,
+    autopilot_chat: &AutopilotChatState,
     paint: &mut PaintContext,
 ) {
-    paint_card(bounds, "Transcript shell", "Dedicated seller lane", paint);
+    let thread_messages = pane_state
+        .codex_thread_id
+        .as_deref()
+        .and_then(|thread_id| autopilot_chat.cached_thread_messages(thread_id));
+    let has_thread_transcript = thread_messages.is_some_and(|messages| !messages.is_empty());
+    paint_card(
+        bounds,
+        "Transcript",
+        if has_thread_transcript {
+            "Dedicated seller Codex lane"
+        } else {
+            "Dedicated seller lane"
+        },
+        paint,
+    );
 
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
-    for message in pane_state.transcript_shell.iter().take(4) {
-        let row_bounds = Bounds::new(
-            bounds.origin.x + 10.0,
-            row_y,
-            bounds.size.width - 20.0,
-            TRANSCRIPT_ROW_HEIGHT,
-        );
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(theme::bg::HOVER)
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(6.0),
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            message.speaker.label(),
-            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 10.0),
-            10.0,
-            speaker_color(message.speaker),
-        ));
-        paint.scene.draw_text(paint.text.layout(
-            &message.content,
-            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 28.0),
-            11.0,
-            theme::text::PRIMARY,
-        ));
-        row_y += TRANSCRIPT_ROW_HEIGHT + 10.0;
+    if let Some(messages) = thread_messages {
+        for message in messages.iter().rev().take(4).rev() {
+            paint_transcript_row(
+                Bounds::new(
+                    bounds.origin.x + 10.0,
+                    row_y,
+                    bounds.size.width - 20.0,
+                    TRANSCRIPT_ROW_HEIGHT,
+                ),
+                transcript_role_label(message),
+                transcript_role_color(message.role),
+                &message.content,
+                paint,
+            );
+            row_y += TRANSCRIPT_ROW_HEIGHT + 10.0;
+        }
+    } else {
+        for message in pane_state.transcript_shell.iter().take(4) {
+            paint_transcript_row(
+                Bounds::new(
+                    bounds.origin.x + 10.0,
+                    row_y,
+                    bounds.size.width - 20.0,
+                    TRANSCRIPT_ROW_HEIGHT,
+                ),
+                message.speaker.label(),
+                speaker_color(message.speaker),
+                &message.content,
+                paint,
+            );
+            row_y += TRANSCRIPT_ROW_HEIGHT + 10.0;
+        }
     }
 
     paint.scene.draw_text(paint.text.layout(
-        "Later issues replace this shell transcript with a seller-specific Codex session, typed tool calls, and exact preview/publish history.",
+        if has_thread_transcript {
+            "Seller prompts now run on the dedicated Codex thread. Typed tools update the draft while the thread asks bounded follow-up questions."
+        } else {
+            "Send a seller prompt to start the dedicated Codex conversation and draft-normalization loop."
+        },
         Point::new(bounds.origin.x + 10.0, bounds.max_y() - 18.0),
         10.0,
         theme::text::MUTED,
+    ));
+}
+
+fn paint_transcript_row(
+    row_bounds: Bounds,
+    label: &str,
+    label_color: wgpui::Hsla,
+    content: &str,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(row_bounds)
+            .with_background(theme::bg::HOVER)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 10.0),
+        10.0,
+        label_color,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        content,
+        Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 28.0),
+        11.0,
+        theme::text::PRIMARY,
     ));
 }
 
@@ -240,7 +318,7 @@ fn paint_draft_shell_card(
         ));
     }
     paint.scene.draw_text(paint.text.layout(
-        "Later issues replace the local preview contour with the exact authority payload and explicit confirmation.",
+        "The draft is now expected to evolve from the seller conversation plus typed Data Market tool calls, not from transcript prose alone.",
         Point::new(bounds.origin.x + 10.0, bounds.max_y() - 18.0),
         10.0,
         theme::text::MUTED,
@@ -387,4 +465,36 @@ fn speaker_color(speaker: DataSellerShellSpeaker) -> wgpui::Hsla {
         DataSellerShellSpeaker::SellerAgent => theme::status::INFO,
         DataSellerShellSpeaker::Seller => theme::status::SUCCESS,
     }
+}
+
+fn transcript_role_label(message: &AutopilotMessage) -> &'static str {
+    match message.role {
+        AutopilotRole::User => "seller",
+        AutopilotRole::Codex => "seller agent",
+    }
+}
+
+fn transcript_role_color(role: AutopilotRole) -> wgpui::Hsla {
+    match role {
+        AutopilotRole::User => theme::status::SUCCESS,
+        AutopilotRole::Codex => theme::status::INFO,
+    }
+}
+
+pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    let top_pane = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::DataSeller)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let Some(bounds) = top_pane else {
+        return false;
+    };
+    let input_bounds = data_seller_composer_input_bounds(pane_content_bounds(bounds));
+    state
+        .data_seller_inputs
+        .composer
+        .event(event, input_bounds, &mut state.event_context)
+        .is_handled()
 }
