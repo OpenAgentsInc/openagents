@@ -32,6 +32,11 @@ This draft is grounded in:
 
 The kernel docs currently establish three important facts.
 
+There is also now a minimal read-only desktop pane that can refresh and inspect
+kernel-side `DataAsset`, `AccessGrant`, `DeliveryBundle`, and
+`RevocationReceipt` objects from Nexus. That is useful as an operator/control
+surface, but it is not yet the transactional MVP loop described below.
+
 ### 1. Compute already has a real product wedge
 
 The compute market is already productized enough to matter:

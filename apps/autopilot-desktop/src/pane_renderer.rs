@@ -9,9 +9,9 @@ use crate::app_state::{
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
     CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
     CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
-    DesktopPane, EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
-    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
-    LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
+    DataMarketPaneState, DesktopPane, EarnJobLifecycleProjectionState, EarningsScoreboardState,
+    FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
     MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
     NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
     PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
@@ -76,7 +76,7 @@ use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
     buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
     calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane, earnings_jobs as earnings_jobs_pane,
+    credit as credit_pane, data_market as data_market_pane, earnings_jobs as earnings_jobs_pane,
     frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
     local_inference as local_inference_pane, log_stream as log_stream_pane,
     nip90_sent_payments as nip90_sent_payments_pane, presentation as presentation_pane,
@@ -224,6 +224,7 @@ impl PaneRenderer {
         log_stream: &mut LogStreamPaneState,
         buy_mode_payments: &mut BuyModePaymentsPaneState,
         nip90_sent_payments: &mut Nip90SentPaymentsPaneState,
+        data_market: &DataMarketPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
     ) -> PanePaintReport {
@@ -306,6 +307,7 @@ impl PaneRenderer {
                     nip90_payment_facts,
                     relay_connections,
                     nip90_sent_payments,
+                    data_market,
                     spark_replay,
                     spark_wallet,
                     frame_debugger,
@@ -586,6 +588,9 @@ impl PaneRenderer {
                         paint,
                     );
                 }
+                PaneKind::DataMarket => {
+                    data_market_pane::paint(content_bounds, data_market, paint);
+                }
                 PaneKind::BuyerRaceMatrix => {
                     buyer_race_matrix_pane::paint(
                         content_bounds,
@@ -831,6 +836,7 @@ fn inactive_pane_render_policy(kind: PaneKind) -> InactivePaneRenderPolicy {
         | PaneKind::LogStream
         | PaneKind::BuyModePayments
         | PaneKind::Nip90SentPayments
+        | PaneKind::DataMarket
         | PaneKind::BuyerRaceMatrix
         | PaneKind::SellerEarningsTimeline
         | PaneKind::SettlementLadder
@@ -867,6 +873,7 @@ fn paint_inactive_pane_preview_if_needed(
     nip90_payment_facts: &Nip90PaymentFactLedgerState,
     relay_connections: &RelayConnectionsState,
     nip90_sent_payments: &Nip90SentPaymentsPaneState,
+    data_market: &DataMarketPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
     frame_debugger: &FrameDebuggerPaneState,
@@ -893,6 +900,7 @@ fn paint_inactive_pane_preview_if_needed(
         nip90_payment_facts,
         relay_connections,
         nip90_sent_payments,
+        data_market,
         spark_replay,
         spark_wallet,
         frame_debugger,
@@ -926,6 +934,7 @@ fn inactive_pane_preview_state(
     nip90_payment_facts: &Nip90PaymentFactLedgerState,
     relay_connections: &RelayConnectionsState,
     nip90_sent_payments: &Nip90SentPaymentsPaneState,
+    data_market: &DataMarketPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
     frame_debugger: &FrameDebuggerPaneState,
@@ -961,6 +970,7 @@ fn inactive_pane_preview_state(
             nip90_buyer_payment_attempts,
             relay_connections,
         )),
+        PaneKind::DataMarket => Some(data_market_inactive_preview_state(data_market)),
         PaneKind::BuyerRaceMatrix => Some(buyer_race_matrix_inactive_preview_state(
             network_requests,
             spark_wallet,
@@ -1403,6 +1413,37 @@ fn nip90_sent_payments_inactive_preview_state(
             last_error: Some(error),
             detail_lines: vec![format!("selected {}", pane_state.selected_window.label())],
         },
+    }
+}
+
+fn data_market_inactive_preview_state(
+    data_market: &DataMarketPaneState,
+) -> InactivePanePreviewState {
+    let summary = if data_market.has_snapshot() {
+        format!(
+            "{} assets // {} grants // {} deliveries",
+            data_market.assets.len(),
+            data_market.grants.len(),
+            data_market.deliveries.len()
+        )
+    } else {
+        "No Data Market snapshot loaded yet".to_string()
+    };
+    let refreshed = data_market
+        .last_refreshed_at_ms
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "never".to_string());
+    InactivePanePreviewState {
+        source_badge: "inactive kernel.data".to_string(),
+        load_state: data_market.load_state,
+        summary,
+        last_action: data_market.last_action.clone(),
+        last_error: data_market.last_error.clone(),
+        detail_lines: vec![
+            format!("revocations {}", data_market.revocations.len()),
+            format!("refresh_ms {}", refreshed),
+            format!("state {}", data_market.load_state.label()),
+        ],
     }
 }
 

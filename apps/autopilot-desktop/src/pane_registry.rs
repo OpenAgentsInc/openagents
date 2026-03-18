@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 59] = [
+const PANE_SPECS: [PaneSpec; 60] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -668,6 +668,21 @@ const PANE_SPECS: [PaneSpec; 59] = [
             id: "pane.nip90_sent_payments",
             label: "NIP-90 Sent Payments",
             description: "Open definitive buyer sent-payment totals and sats across the current relay scope",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::DataMarket,
+        title: "Data Market",
+        default_width: 1120.0,
+        default_height: 640.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.data_market",
+            label: "Data Market",
+            description: "Open read-only Nexus data-market assets, grants, deliveries, and revocations",
             keybinding: None,
         }),
         hotbar: None,
