@@ -6,7 +6,9 @@ Date: 2026-03-17
 Companion docs:
 
 - `docs/audits/2026-03-17-conversational-data-market-seller-pane-audit.md`
+- `docs/audits/2026-03-18-data-market-cli-and-agent-skill-audit.md`
 - `docs/plans/data-market-mvp-plan.md`
+- `docs/headless-data-market.md`
 - `docs/kernel/data-market.md`
 - `docs/kernel/markets/data-market.md`
 - `docs/kernel/markets/compute-market.md`
@@ -133,6 +135,8 @@ It cannot yet:
 The dedicated seller lane now also auto-provisions the first-party
 `autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
 can depend on stable seller policy rather than manual skill selection.
+There is now also a repo-owned `autopilot-data-seller-cli` skill for shell-first
+packaging and publication through `autopilotctl` and the no-window runtime.
 
 The first typed `openagents.data_market.*` tool family now exists in the desktop
 runtime for seller status, draft, preview, blocked publish, and snapshot flows.
@@ -208,6 +212,20 @@ The compute market already established the MVP logic we want to reuse:
 
 The data lane should look like "permissioned context vending" on that same
 architecture, not like a separate marketplace ideology.
+
+### 6. CLI and headless seller control now exist
+
+The repo now also has a truthful no-window seller control path:
+
+- `autopilotctl data-market ...`
+- `autopilot_headless_data_market`
+- `skills/autopilot-data-seller-cli/`
+- `scripts/autopilot/headless-data-market-smoke.sh`
+- `scripts/autopilot/verify-data-market-cli-headless.sh`
+
+This does not replace the dedicated pane. It proves the same seller truth can be
+driven headlessly for agent and operator workflows without inventing a separate
+authority plane.
 
 ## Product Thesis
 

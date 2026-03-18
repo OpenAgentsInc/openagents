@@ -22,6 +22,8 @@ The current MVP-safe headless path is:
 - start `autopilot-headless-data-market`
 - let it write the normal desktop-control manifest
 - target it with `autopilotctl data-market ...`
+- optionally package and publish through the repo-owned
+  `skills/autopilot-data-seller-cli/` skill wrappers
 
 Because it is the same desktop-control host, confirmation and read-back
 discipline remain unchanged:
@@ -30,6 +32,25 @@ discipline remain unchanged:
 - grant publish still requires preview + explicit confirm
 - delivery and revocation still route through the same seller logic
 - kernel read-back remains the canonical authority confirmation surface
+
+## Publish prerequisite
+
+Preview-only seller work can run without a kernel authority endpoint, but real
+asset or grant publish needs a hosted control session:
+
+- `OA_CONTROL_BASE_URL`
+- `OA_CONTROL_BEARER_TOKEN`
+
+For local work, the simplest pattern is:
+
+1. start `nexus-control`
+2. mint a desktop session at `POST /api/session/desktop`
+3. export the returned access token as `OA_CONTROL_BEARER_TOKEN`
+4. start `autopilot_headless_data_market`
+
+The no-window smoke harness now bootstraps a temporary local `nexus-control`
+and session token automatically so publish is mechanically verified rather than
+only previewed.
 
 ## Start the runtime
 
@@ -63,24 +84,42 @@ scripts/autopilot/data_market_package.py \
   --source ./my-data \
   --output-dir ./tmp/package \
   --title "My Data Bundle" \
+  --default-policy targeted_request \
+  --grant-policy-template targeted_request \
+  --consumer-id npub1buyerexample \
   --price-sats 250
 ```
 
-2. Draft and preview the asset:
+2. Draft, preview, and publish the asset:
 
 ```bash
 cargo run -p autopilot-desktop --bin autopilotctl -- --json data-market draft-asset \
   --file ./tmp/package/listing-template.json
 
 cargo run -p autopilot-desktop --bin autopilotctl -- --json data-market preview-asset
+
+cargo run -p autopilot-desktop --bin autopilotctl -- --json data-market publish-asset \
+  --confirm
 ```
 
-3. Continue with confirm-gated publish, grant, payment, delivery, and
-   revocation using the same `autopilotctl data-market ...` command tree.
+3. Draft, preview, and publish the grant:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilotctl -- --json data-market draft-grant \
+  --file ./tmp/package/grant-template.json
+
+cargo run -p autopilot-desktop --bin autopilotctl -- --json data-market preview-grant
+
+cargo run -p autopilot-desktop --bin autopilotctl -- --json data-market publish-grant \
+  --confirm
+```
+
+4. Continue with payment, delivery, and revocation using the same
+   `autopilotctl data-market ...` command tree.
 
 ## Smoke harness
 
-The repo now includes a starter no-window smoke harness:
+The repo now includes a no-window smoke harness:
 
 ```bash
 scripts/autopilot/headless-data-market-smoke.sh
@@ -91,7 +130,32 @@ That harness verifies:
 - the hidden runtime starts
 - `autopilotctl` can reach it through the standard manifest
 - deterministic packaging output can be drafted into seller state
-- asset preview works without opening the UI window
+- asset preview and publish work without opening the UI window
+- grant preview and publish work without opening the UI window
+
+## Full verification bundle
+
+For a local end-to-end verification pass, run:
+
+```bash
+scripts/autopilot/verify-data-market-cli-headless.sh
+```
+
+That verification bundle currently proves:
+
+- the headless CLI path can package, preview, and publish an asset and grant
+- the seller state machine has a mechanical payment -> delivery -> revocation
+  lifecycle test
+- the Nexus authority slice still proves the canonical asset -> grant ->
+  delivery -> revocation receipt flow
+
+## Truth boundary notes
+
+- Packaging outputs are draft inputs, not published market truth.
+- `autopilotctl` drives the app-owned seller path; it does not create a second
+  authority surface.
+- Publish and revoke remain confirm-gated.
+- Kernel read-back remains the canonical confirmation surface after mutation.
 
 ## Boundary note
 

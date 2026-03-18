@@ -57,6 +57,10 @@ smuggled through opaque prompt state.
 - expose a checked-in `openagents.data.v1` proto package and use it for data-market authority mutation/read envelopes
 - expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
 - package local files or directories into deterministic `listing-template.json`, `grant-template.json`, `packaging-manifest.json`, and `packaging-summary.json` artifacts through `scripts/autopilot/data_market_package.py`
+- drive the same seller path through `autopilotctl data-market ...` without opening the visible UI window
+- start a no-window Data Market runtime through `autopilot_headless_data_market`
+- use the repo-owned `skills/autopilot-data-seller-cli` skill for shell-first packaging and publication discipline
+- run `scripts/autopilot/verify-data-market-cli-headless.sh` to mechanically verify the headless CLI publish path plus the critical lifecycle checks
 
 The starter authority slice is real in:
 
@@ -118,6 +122,19 @@ The generated outputs map directly into the current seller flow:
 - `grant-template.json` -> `autopilotctl data-market draft-grant --file ...`
 - `packaging-summary.json` -> local operator or agent audit surface for the
   chosen package boundary and resulting digests
+
+## CLI and headless control
+
+The repo now also includes a real shell-first control path:
+
+- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
+- `skills/autopilot-data-seller-cli/`
+- `docs/headless-data-market.md`
+
+This path is intentionally not a second seller implementation.
+It targets the same app-owned seller state and kernel mutation logic through the
+typed desktop-control contract.
 
 ## Not implemented yet
 

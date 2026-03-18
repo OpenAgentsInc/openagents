@@ -7,6 +7,7 @@ Companion docs:
 
 * `docs/plans/data-market-mvp-implementation-spec.md`
 * `docs/audits/2026-03-17-conversational-data-market-seller-pane-audit.md`
+* `docs/headless-data-market.md`
 
 ## Purpose
 
@@ -72,6 +73,15 @@ That helper does not publish by itself.
 It exists so operator and agent flows can compute `content_digest`,
 `provenance_ref`, delivery posture, and starter metadata without hand-authoring
 every field.
+
+There is now also a real shell-first seller control path:
+
+* `autopilotctl data-market ...`
+* `autopilot_headless_data_market`
+* `skills/autopilot-data-seller-cli/`
+
+That path intentionally reuses the app-owned seller state machine rather than
+introducing a second publication surface.
 
 ### 1. Compute already has a real product wedge
 
