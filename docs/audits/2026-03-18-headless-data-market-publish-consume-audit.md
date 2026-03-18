@@ -61,6 +61,38 @@ Authority truth comes from `nexus-control`.
 Relay truth for targeted request/result traffic comes from the local relay.
 The CLI drives both runtimes through their desktop-control manifests.
 
+## Published event kinds and relays
+
+The successful audited run published the Data Market transport events to the
+local relay:
+
+- relay: `ws://127.0.0.1:45773`
+- request kind: `5960`
+- result kind: `6960`
+- handler/capability kind: `31990`
+
+More concretely:
+
+- the buyer published a targeted Data Market request as NIP-90 kind `5960`
+  onto `ws://127.0.0.1:45773`
+- the seller published the matching NIP-90 result as kind `6960` onto
+  `ws://127.0.0.1:45773`
+- both seller and buyer published NIP-89 handler/capability advertisements as
+  kind `31990`, also accepted on `ws://127.0.0.1:45773`
+
+The relay-local evidence from the verified run shows:
+
+- the request capture recorded `request_kind: 5960` and
+  `source_relay_url: ws://127.0.0.1:45773`
+- the seller publish log recorded the result event with `accepted_relays=1`
+- the buyer result snapshot recorded
+  `last_result_relay_urls: [ws://127.0.0.1:45773]`
+
+The runtime also maintained the managed NIP-28 chat lane against
+`wss://relay.damus.io`, but that relay was not part of the audited Data Market
+request/result publish path. For this audit, the market flow itself was proven
+on the local relay only.
+
 ## Verified flow
 
 The working E2E path is:
