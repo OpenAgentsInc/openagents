@@ -1488,6 +1488,7 @@ fn data_seller_inactive_preview_state(
                 "posture {}",
                 data_seller.active_draft.preview_posture.label()
             ),
+            format!("session {}", data_seller.codex_session_phase.label()),
             format!(
                 "blockers {}",
                 data_seller.active_draft.readiness_blockers.len()

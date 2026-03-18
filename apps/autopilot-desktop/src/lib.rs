@@ -32,6 +32,7 @@ mod codex_remote;
 pub mod compute_mcp;
 mod credentials;
 mod data_market_control;
+mod data_seller_control;
 pub mod desktop_control;
 mod desktop_shell;
 mod economy_kernel_receipts;

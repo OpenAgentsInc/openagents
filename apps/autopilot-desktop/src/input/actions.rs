@@ -10212,6 +10212,9 @@ pub(super) fn run_data_seller_action(
     state: &mut crate::app_state::RenderState,
     action: DataSellerPaneAction,
 ) -> bool {
+    if state.data_seller.codex_thread_id.is_none() {
+        crate::data_seller_control::ensure_data_seller_codex_session(state);
+    }
     match action {
         DataSellerPaneAction::PreviewDraft => {
             state.data_seller.request_preview();

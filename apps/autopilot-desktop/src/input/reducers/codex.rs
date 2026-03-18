@@ -15,6 +15,19 @@ fn current_epoch_millis() -> u64 {
         .unwrap_or(0)
 }
 
+fn apply_data_seller_thread_profile(state: &mut RenderState, thread_id: &str) {
+    state
+        .autopilot_chat
+        .remember_thread_inactive(thread_id.to_string());
+    state.autopilot_chat.apply_thread_profile_defaults(
+        thread_id,
+        Some(state.data_seller.codex_profile.session_label.clone()),
+        Some(state.data_seller.codex_profile.thread_preview.clone()),
+        state.data_seller.codex_profile.personality,
+        state.data_seller.codex_profile.collaboration_mode,
+    );
+}
+
 fn advance_completed_turn_labor_pipeline(state: &mut RenderState, turn_id: &str) {
     let is_labor_bound = state
         .autopilot_chat
@@ -1240,7 +1253,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 latest_review,
                 latest_compaction,
             } => {
-                state.autopilot_chat.remember_thread(thread_id.clone());
+                if state.data_seller.owns_codex_thread(&thread_id) {
+                    state
+                        .autopilot_chat
+                        .remember_thread_inactive(thread_id.clone());
+                } else {
+                    state.autopilot_chat.remember_thread(thread_id.clone());
+                }
                 if let Some(latest_plan) = latest_plan {
                     let updated_at_epoch_ms = state
                         .autopilot_chat
@@ -1428,30 +1447,49 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 service_tier,
                 reasoning_effort,
             } => {
-                let adopt_detached_draft = state.autopilot_chat.active_thread_id.is_none();
-                state.autopilot_chat.ensure_thread(thread_id.clone());
-                if adopt_detached_draft {
+                if state.data_seller.awaiting_new_codex_thread() {
+                    state
+                        .data_seller
+                        .attach_codex_thread(thread_id.clone(), cwd.clone());
+                    apply_data_seller_thread_profile(state, &thread_id);
+                    state.autopilot_chat.apply_thread_session_configuration(
+                        &thread_id,
+                        model,
+                        cwd,
+                        approval_policy,
+                        sandbox_mode,
+                        service_tier,
+                        reasoning_effort,
+                    );
                     state
                         .autopilot_chat
-                        .adopt_detached_composer_draft(&thread_id);
+                        .set_thread_status(&thread_id, Some("idle".to_string()));
+                } else {
+                    let adopt_detached_draft = state.autopilot_chat.active_thread_id.is_none();
+                    state.autopilot_chat.ensure_thread(thread_id.clone());
+                    if adopt_detached_draft {
+                        state
+                            .autopilot_chat
+                            .adopt_detached_composer_draft(&thread_id);
+                    }
+                    state
+                        .autopilot_chat
+                        .set_active_thread_transcript(&thread_id, Vec::new());
+                    state.autopilot_chat.apply_thread_session_configuration(
+                        &thread_id,
+                        model,
+                        cwd,
+                        approval_policy,
+                        sandbox_mode,
+                        service_tier,
+                        reasoning_effort,
+                    );
+                    state.autopilot_chat.startup_new_thread_bootstrap_pending = false;
+                    state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
+                    state.autopilot_chat.last_error = None;
+                    super::super::actions::restore_chat_composer_draft(state);
+                    queue_thread_history_refresh(state);
                 }
-                state
-                    .autopilot_chat
-                    .set_active_thread_transcript(&thread_id, Vec::new());
-                state.autopilot_chat.apply_thread_session_configuration(
-                    &thread_id,
-                    model,
-                    cwd,
-                    approval_policy,
-                    sandbox_mode,
-                    service_tier,
-                    reasoning_effort,
-                );
-                state.autopilot_chat.startup_new_thread_bootstrap_pending = false;
-                state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
-                state.autopilot_chat.last_error = None;
-                super::super::actions::restore_chat_composer_draft(state);
-                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadSessionConfigured {
                 thread_id,
@@ -1462,6 +1500,14 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 service_tier,
                 reasoning_effort,
             } => {
+                if state.data_seller.owns_codex_thread(&thread_id) {
+                    state.data_seller.note_codex_session_configured(
+                        &thread_id,
+                        cwd.clone(),
+                        Some("idle"),
+                    );
+                    apply_data_seller_thread_profile(state, &thread_id);
+                }
                 state.autopilot_chat.apply_thread_session_configuration(
                     &thread_id,
                     model,
@@ -1480,7 +1526,17 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     status,
                     state.autopilot_chat.active_thread_id
                 );
-                state.autopilot_chat.remember_thread(thread_id.clone());
+                let is_data_seller_thread = state.data_seller.owns_codex_thread(&thread_id);
+                if is_data_seller_thread {
+                    state.data_seller.set_codex_thread_status(status.clone());
+                }
+                if is_data_seller_thread {
+                    state
+                        .autopilot_chat
+                        .remember_thread_inactive(thread_id.clone());
+                } else {
+                    state.autopilot_chat.remember_thread(thread_id.clone());
+                }
                 state
                     .autopilot_chat
                     .set_thread_status(&thread_id, Some(status.clone()));

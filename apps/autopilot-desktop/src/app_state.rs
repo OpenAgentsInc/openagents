@@ -1339,6 +1339,48 @@ fn option_text_is_missing(value: Option<&str>) -> bool {
     value.is_none_or(|text| text.trim().is_empty())
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DataSellerCodexSessionPhase {
+    Detached,
+    Starting,
+    Resuming,
+    Ready,
+    Error,
+}
+
+impl DataSellerCodexSessionPhase {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Detached => "detached",
+            Self::Starting => "starting",
+            Self::Resuming => "resuming",
+            Self::Ready => "ready",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataSellerCodexProfile {
+    pub session_label: String,
+    pub session_origin: String,
+    pub thread_preview: String,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+}
+
+impl Default for DataSellerCodexProfile {
+    fn default() -> Self {
+        Self {
+            session_label: "Data Seller".to_string(),
+            session_origin: "pane.data_seller".to_string(),
+            thread_preview: "Dedicated data-market seller authoring lane".to_string(),
+            personality: AutopilotChatPersonality::Pragmatic,
+            collaboration_mode: AutopilotChatCollaborationMode::Default,
+        }
+    }
+}
+
 pub struct DataSellerPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -1348,6 +1390,11 @@ pub struct DataSellerPaneState {
     pub publish_enabled: bool,
     pub transcript_shell: Vec<DataSellerShellMessage>,
     pub active_draft: DataSellerDraft,
+    pub codex_profile: DataSellerCodexProfile,
+    pub codex_thread_id: Option<String>,
+    pub codex_session_phase: DataSellerCodexSessionPhase,
+    pub codex_thread_status: Option<String>,
+    pub codex_session_cwd: Option<String>,
 }
 
 impl Default for DataSellerPaneState {
@@ -1381,6 +1428,11 @@ impl Default for DataSellerPaneState {
                 },
             ],
             active_draft: draft,
+            codex_profile: DataSellerCodexProfile::default(),
+            codex_thread_id: None,
+            codex_session_phase: DataSellerCodexSessionPhase::Detached,
+            codex_thread_status: None,
+            codex_session_cwd: None,
         }
     }
 }
@@ -1392,6 +1444,72 @@ impl DataSellerPaneState {
                 .to_string(),
         );
         self.last_error = None;
+    }
+
+    pub fn begin_codex_session_start(&mut self, cwd: Option<String>) {
+        self.codex_session_phase = DataSellerCodexSessionPhase::Starting;
+        self.codex_session_cwd = cwd;
+        self.codex_thread_status = Some("starting".to_string());
+        self.last_error = None;
+        self.last_action = Some("Queued dedicated Data Seller Codex session start".to_string());
+    }
+
+    pub fn begin_codex_session_resume(&mut self, cwd: Option<String>) {
+        self.codex_session_phase = DataSellerCodexSessionPhase::Resuming;
+        self.codex_session_cwd = cwd;
+        self.codex_thread_status = Some("resuming".to_string());
+        self.last_error = None;
+        self.last_action = Some("Queued dedicated Data Seller Codex session resume".to_string());
+    }
+
+    pub fn attach_codex_thread(&mut self, thread_id: String, cwd: Option<String>) {
+        self.codex_thread_id = Some(thread_id.clone());
+        self.codex_session_phase = DataSellerCodexSessionPhase::Ready;
+        self.codex_thread_status = Some("idle".to_string());
+        self.codex_session_cwd = cwd;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Attached dedicated Data Seller Codex thread {thread_id}"
+        ));
+    }
+
+    pub fn note_codex_session_configured(
+        &mut self,
+        thread_id: &str,
+        cwd: Option<String>,
+        status: Option<&str>,
+    ) {
+        self.codex_thread_id = Some(thread_id.to_string());
+        self.codex_session_phase = DataSellerCodexSessionPhase::Ready;
+        self.codex_session_cwd = cwd;
+        if let Some(status) = status {
+            self.codex_thread_status = Some(status.to_string());
+        }
+        self.last_error = None;
+    }
+
+    pub fn set_codex_thread_status(&mut self, status: impl Into<String>) {
+        let status = status.into();
+        self.codex_thread_status = Some(status.clone());
+        if self.codex_thread_id.is_some() {
+            self.codex_session_phase = DataSellerCodexSessionPhase::Ready;
+        }
+    }
+
+    pub fn record_codex_session_error(&mut self, error: impl Into<String>) {
+        self.codex_session_phase = DataSellerCodexSessionPhase::Error;
+        self.last_error = Some(error.into());
+    }
+
+    pub fn owns_codex_thread(&self, thread_id: &str) -> bool {
+        self.codex_thread_id.as_deref() == Some(thread_id)
+    }
+
+    pub fn awaiting_new_codex_thread(&self) -> bool {
+        matches!(
+            self.codex_session_phase,
+            DataSellerCodexSessionPhase::Starting
+        ) && self.codex_thread_id.is_none()
     }
 
     pub fn request_preview(&mut self) {
@@ -6575,6 +6693,14 @@ impl AutopilotChatState {
         }
     }
 
+    pub fn remember_thread_inactive(&mut self, thread_id: impl Into<String>) {
+        let thread_id = thread_id.into();
+        if !self.threads.iter().any(|existing| existing == &thread_id) {
+            self.threads.insert(0, thread_id.clone());
+        }
+        self.thread_metadata.entry(thread_id).or_default();
+    }
+
     pub fn ensure_thread(&mut self, thread_id: String) {
         self.remember_thread(thread_id.clone());
         self.active_thread_id = Some(thread_id);
@@ -7986,6 +8112,38 @@ impl AutopilotChatState {
         let mut metadata = AutopilotThreadMetadata::default();
         metadata.thread_name = thread_name;
         self.thread_metadata.insert(thread_id.to_string(), metadata);
+    }
+
+    pub fn set_thread_preview(&mut self, thread_id: &str, preview: Option<String>) {
+        if let Some(metadata) = self.thread_metadata.get_mut(thread_id) {
+            metadata.preview = preview;
+            return;
+        }
+        let mut metadata = AutopilotThreadMetadata::default();
+        metadata.preview = preview;
+        self.thread_metadata.insert(thread_id.to_string(), metadata);
+    }
+
+    pub fn apply_thread_profile_defaults(
+        &mut self,
+        thread_id: &str,
+        thread_name: Option<String>,
+        preview: Option<String>,
+        personality: AutopilotChatPersonality,
+        collaboration_mode: AutopilotChatCollaborationMode,
+    ) {
+        let metadata = self
+            .thread_metadata
+            .entry(thread_id.to_string())
+            .or_default();
+        if let Some(thread_name) = thread_name {
+            metadata.thread_name = Some(thread_name);
+        }
+        if let Some(preview) = preview {
+            metadata.preview = Some(preview);
+        }
+        metadata.personality = personality;
+        metadata.collaboration_mode = collaboration_mode;
     }
 
     pub fn active_thread_status(&self) -> Option<&str> {
@@ -11532,6 +11690,36 @@ mod tests {
         assert!(pane.active_draft.last_previewed_asset_payload.is_some());
         assert!(pane.active_draft.last_previewed_grant_payload.is_some());
         assert!(!pane.publish_enabled);
+    }
+
+    #[test]
+    fn data_seller_codex_profile_defaults_are_stable() {
+        let pane = DataSellerPaneState::default();
+
+        assert_eq!(pane.codex_profile.session_label, "Data Seller");
+        assert_eq!(
+            pane.codex_profile.thread_preview,
+            "Dedicated data-market seller authoring lane"
+        );
+        assert_eq!(
+            pane.codex_profile.personality,
+            super::AutopilotChatPersonality::Pragmatic
+        );
+        assert_eq!(
+            pane.codex_profile.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
+    }
+
+    #[test]
+    fn remember_thread_inactive_does_not_steal_active_thread() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-active".to_string());
+
+        chat.remember_thread_inactive("thread-passive");
+
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
+        assert!(chat.threads.iter().any(|thread| thread == "thread-passive"));
     }
 
     fn unique_codex_artifact_projection_path(label: &str) -> std::path::PathBuf {
