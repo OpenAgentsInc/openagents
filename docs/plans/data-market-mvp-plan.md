@@ -45,8 +45,11 @@ surface, but it is not yet the transactional MVP loop described below.
 There is now also a dedicated `Data Seller` pane that can hold a truthful local
 draft, publish assets and grants through Nexus after explicit preview/confirm
 steps, and ingest targeted NIP-90 data-access requests into seller state for
-evaluation against the current asset/grant posture. Payment, delivery,
-revocation, and buyer-side request issuance still remain follow-on work.
+evaluation against the current asset/grant posture. The seller lane can now
+also generate a Lightning invoice for a matched request, publish NIP-90
+`payment-required` feedback, and observe the resulting paid state from Spark
+wallet truth. Delivery, revocation, and buyer-side request issuance still
+remain follow-on work.
 
 ### 1. Compute already has a real product wedge
 

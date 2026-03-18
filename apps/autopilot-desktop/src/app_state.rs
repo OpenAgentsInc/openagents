@@ -1985,6 +1985,30 @@ impl DataSellerRequestEvaluationDisposition {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataSellerPaymentState {
+    Idle,
+    InvoiceRequested,
+    PublishingFeedback,
+    AwaitingPayment,
+    Paid,
+    Failed,
+}
+
+impl DataSellerPaymentState {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::InvoiceRequested => "invoice_requested",
+            Self::PublishingFeedback => "publishing_feedback",
+            Self::AwaitingPayment => "awaiting_payment",
+            Self::Paid => "paid",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct DataSellerIncomingRequest {
     pub request_id: String,
@@ -2011,6 +2035,15 @@ pub struct DataSellerIncomingRequest {
     pub required_price_sats: Option<u64>,
     pub evaluation_disposition: DataSellerRequestEvaluationDisposition,
     pub evaluation_summary: String,
+    pub payment_state: DataSellerPaymentState,
+    pub payment_feedback_event_id: Option<String>,
+    pub pending_bolt11: Option<String>,
+    pub pending_bolt11_created_at_epoch_seconds: Option<u64>,
+    pub settlement_payment_hash: Option<String>,
+    pub payment_pointer: Option<String>,
+    pub payment_observed_at_epoch_seconds: Option<u64>,
+    pub payment_amount_sats: Option<u64>,
+    pub payment_error: Option<String>,
 }
 
 impl Default for DataSellerCodexProfile {
@@ -2508,7 +2541,7 @@ impl DataSellerPaneState {
         preview_only: bool,
         now_epoch_seconds: u64,
     ) -> bool {
-        let incoming = self.evaluate_incoming_request(request, preview_only, now_epoch_seconds);
+        let mut incoming = self.evaluate_incoming_request(request, preview_only, now_epoch_seconds);
         let is_new = !self
             .incoming_requests
             .iter()
@@ -2519,6 +2552,16 @@ impl DataSellerPaneState {
             .iter_mut()
             .find(|existing| existing.request_id == incoming.request_id)
         {
+            incoming.payment_state = existing.payment_state;
+            incoming.payment_feedback_event_id = existing.payment_feedback_event_id.clone();
+            incoming.pending_bolt11 = existing.pending_bolt11.clone();
+            incoming.pending_bolt11_created_at_epoch_seconds =
+                existing.pending_bolt11_created_at_epoch_seconds;
+            incoming.settlement_payment_hash = existing.settlement_payment_hash.clone();
+            incoming.payment_pointer = existing.payment_pointer.clone();
+            incoming.payment_observed_at_epoch_seconds = existing.payment_observed_at_epoch_seconds;
+            incoming.payment_amount_sats = existing.payment_amount_sats;
+            incoming.payment_error = existing.payment_error.clone();
             *existing = incoming.clone();
         } else {
             self.incoming_requests.push(incoming.clone());
@@ -2549,6 +2592,221 @@ impl DataSellerPaneState {
             incoming.evaluation_summary
         );
         is_new
+    }
+
+    pub fn request_payment_required_quote(&mut self, request_id: &str) -> Result<u64, String> {
+        if self
+            .incoming_requests
+            .iter()
+            .any(|request| {
+                request.request_id != request_id
+                    && matches!(
+                        request.payment_state,
+                        DataSellerPaymentState::InvoiceRequested
+                            | DataSellerPaymentState::PublishingFeedback
+                    )
+            })
+        {
+            return Err(
+                "Another seller payment quote is already creating or publishing an invoice. Wait for it to finish before starting a new one."
+                    .to_string(),
+            );
+        }
+
+        let request = self
+            .incoming_requests
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+            .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+        if request.evaluation_disposition
+            != DataSellerRequestEvaluationDisposition::ReadyForPaymentQuote
+        {
+            return Err(format!(
+                "Request {} is not ready for payment-required. Current evaluation is {}.",
+                request.request_id,
+                request.evaluation_disposition.label()
+            ));
+        }
+        if matches!(
+            request.payment_state,
+            DataSellerPaymentState::InvoiceRequested
+                | DataSellerPaymentState::PublishingFeedback
+                | DataSellerPaymentState::AwaitingPayment
+                | DataSellerPaymentState::Paid
+        ) {
+            return Err(format!(
+                "Request {} already has payment state {}.",
+                request.request_id,
+                request.payment_state.label()
+            ));
+        }
+
+        let amount_sats = request
+            .required_price_sats
+            .or((request.price_sats > 0).then_some(request.price_sats))
+            .ok_or_else(|| {
+                format!(
+                    "Request {} does not currently require a non-zero payment amount.",
+                    request.request_id
+                )
+            })?;
+        request.payment_state = DataSellerPaymentState::InvoiceRequested;
+        request.payment_feedback_event_id = None;
+        request.pending_bolt11 = None;
+        request.pending_bolt11_created_at_epoch_seconds = None;
+        request.settlement_payment_hash = None;
+        request.payment_pointer = None;
+        request.payment_observed_at_epoch_seconds = None;
+        request.payment_amount_sats = None;
+        request.payment_error = None;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Queued Lightning invoice creation for data request {}",
+            request.request_id
+        ));
+        self.status_line = format!(
+            "Creating Lightning invoice for request {} at {} sats.",
+            request.request_id, amount_sats
+        );
+        Ok(amount_sats)
+    }
+
+    pub fn pending_payment_invoice_request_id(&self) -> Option<&str> {
+        self.incoming_requests
+            .iter()
+            .find(|request| request.payment_state == DataSellerPaymentState::InvoiceRequested)
+            .map(|request| request.request_id.as_str())
+    }
+
+    pub fn note_payment_invoice_created(
+        &mut self,
+        request_id: &str,
+        bolt11: &str,
+        created_at_epoch_seconds: Option<u64>,
+    ) -> Result<(), String> {
+        let request = self
+            .incoming_requests
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+            .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+        request.pending_bolt11 = Some(bolt11.to_string());
+        request.pending_bolt11_created_at_epoch_seconds = created_at_epoch_seconds;
+        request.settlement_payment_hash = crate::spark_wallet::decode_lightning_invoice_payment_hash(bolt11);
+        request.payment_state = DataSellerPaymentState::PublishingFeedback;
+        request.payment_error = None;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Generated Lightning invoice for data request {}",
+            request.request_id
+        ));
+        self.status_line = format!(
+            "Invoice ready for request {}. Publishing payment-required feedback next.",
+            request.request_id
+        );
+        Ok(())
+    }
+
+    pub fn note_payment_invoice_failed(&mut self, request_id: &str, error: impl Into<String>) {
+        let error = error.into();
+        if let Some(request) = self
+            .incoming_requests
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        {
+            request.payment_state = DataSellerPaymentState::Failed;
+            request.payment_error = Some(error.clone());
+        }
+        self.last_error = Some(error.clone());
+        self.status_line = format!("Payment quote failed for request {request_id}.");
+        self.last_action = Some(format!(
+            "Failed to prepare seller payment-required flow for {}",
+            request_id
+        ));
+    }
+
+    pub fn note_payment_feedback_publish_outcome(
+        &mut self,
+        request_id: &str,
+        published: bool,
+        feedback_event_id: Option<&str>,
+        error: Option<&str>,
+    ) -> bool {
+        let Some(request) = self
+            .incoming_requests
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return false;
+        };
+        if published {
+            request.payment_state = DataSellerPaymentState::AwaitingPayment;
+            request.payment_feedback_event_id = feedback_event_id.map(str::to_string);
+            request.payment_error = None;
+            self.last_error = None;
+            self.last_action = Some(format!(
+                "Published payment-required feedback for data request {}",
+                request.request_id
+            ));
+            self.status_line = format!(
+                "Awaiting Lightning payment for request {}.",
+                request.request_id
+            );
+        } else {
+            request.payment_state = DataSellerPaymentState::Failed;
+            request.payment_feedback_event_id = None;
+            request.payment_error = Some(
+                error
+                    .unwrap_or("payment-required feedback publish failed")
+                    .to_string(),
+            );
+            self.last_error = request.payment_error.clone();
+            self.last_action = Some(format!(
+                "Payment-required publish failed for data request {}",
+                request.request_id
+            ));
+            self.status_line = format!(
+                "Payment-required publish failed for request {}.",
+                request.request_id
+            );
+        }
+        true
+    }
+
+    pub fn note_payment_observed(
+        &mut self,
+        request_id: &str,
+        payment_pointer: &str,
+        amount_sats: u64,
+        observed_at_epoch_seconds: u64,
+    ) -> bool {
+        let Some(request) = self
+            .incoming_requests
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return false;
+        };
+        request.payment_state = DataSellerPaymentState::Paid;
+        request.payment_pointer = Some(payment_pointer.to_string());
+        request.payment_observed_at_epoch_seconds = Some(observed_at_epoch_seconds);
+        request.payment_amount_sats = Some(amount_sats);
+        request.payment_error = None;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Observed settled Lightning payment for data request {}",
+            request.request_id
+        ));
+        self.status_line = format!(
+            "Payment settled for request {}. Delivery can proceed next.",
+            request.request_id
+        );
+        true
+    }
+
+    pub fn request_by_id(&self, request_id: &str) -> Option<&DataSellerIncomingRequest> {
+        self.incoming_requests
+            .iter()
+            .find(|request| request.request_id == request_id)
     }
 
     fn evaluate_incoming_request(
@@ -2594,6 +2852,15 @@ impl DataSellerPaneState {
             required_price_sats: None,
             evaluation_disposition: DataSellerRequestEvaluationDisposition::InvalidRequest,
             evaluation_summary: "Request has not been evaluated yet.".to_string(),
+            payment_state: DataSellerPaymentState::Idle,
+            payment_feedback_event_id: None,
+            pending_bolt11: None,
+            pending_bolt11_created_at_epoch_seconds: None,
+            settlement_payment_hash: None,
+            payment_pointer: None,
+            payment_observed_at_epoch_seconds: None,
+            payment_amount_sats: None,
+            payment_error: None,
         };
 
         if let JobInboxValidation::Invalid(reason) = &request.validation {
@@ -13456,6 +13723,202 @@ mod tests {
             incoming
                 .evaluation_summary
                 .contains("outside the current seller policy envelope")
+        );
+    }
+
+    #[test]
+    fn data_seller_payment_quote_sets_invoice_requested_state() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1payment-ready".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request(
+                "payment-ready",
+                "data_asset.provider.alpha.bundle",
+                250,
+            ),
+            false,
+            1_760_000_100,
+        );
+
+        let quoted_sats = pane
+            .request_payment_required_quote("payment-ready")
+            .expect("request should quote payment");
+        let request = pane
+            .request_by_id("payment-ready")
+            .expect("request should remain available");
+
+        assert_eq!(quoted_sats, 250);
+        assert_eq!(
+            request.payment_state,
+            super::DataSellerPaymentState::InvoiceRequested
+        );
+        assert_eq!(request.payment_feedback_event_id, None);
+        assert_eq!(request.pending_bolt11, None);
+        assert!(
+            pane.status_line
+                .contains("Creating Lightning invoice for request payment-ready")
+        );
+    }
+
+    #[test]
+    fn data_seller_payment_publish_and_settlement_states_progress_cleanly() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1payment-flow".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request(
+                "payment-flow",
+                "data_asset.provider.alpha.bundle",
+                250,
+            ),
+            false,
+            1_760_000_100,
+        );
+        pane.request_payment_required_quote("payment-flow")
+            .expect("request should quote payment");
+
+        pane.note_payment_invoice_created(
+            "payment-flow",
+            "lnbc2500n1payflow",
+            Some(1_760_000_120),
+        )
+        .expect("invoice should be recorded");
+        assert!(
+            pane.note_payment_feedback_publish_outcome(
+                "payment-flow",
+                true,
+                Some("feedback-event-1"),
+                None,
+            )
+        );
+        assert!(pane.note_payment_observed(
+            "payment-flow",
+            "payment-pointer-1",
+            250,
+            1_760_000_180,
+        ));
+
+        let request = pane
+            .request_by_id("payment-flow")
+            .expect("request should remain available");
+        assert_eq!(request.payment_state, super::DataSellerPaymentState::Paid);
+        assert_eq!(
+            request.payment_feedback_event_id.as_deref(),
+            Some("feedback-event-1")
+        );
+        assert_eq!(request.pending_bolt11.as_deref(), Some("lnbc2500n1payflow"));
+        assert_eq!(request.payment_pointer.as_deref(), Some("payment-pointer-1"));
+        assert_eq!(request.payment_amount_sats, Some(250));
+        assert!(
+            pane.status_line
+                .contains("Payment settled for request payment-flow")
         );
     }
 

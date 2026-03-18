@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
+use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
+use nostr::{Event, EventTemplate, NostrIdentity};
+use openagents_spark::PaymentSummary;
 use openagents_kernel_core::authority::{
     CreateAccessGrantRequest, KernelAuthority, RegisterDataAssetRequest,
 };
@@ -9,7 +12,14 @@ use crate::app_state::{
     AutopilotRole, DataSellerCodexSessionPhase, DataSellerSkillAttachment, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
-use crate::provider_nip90_lane::{ProviderNip90DataVendingProfile, ProviderNip90LaneCommand};
+use crate::provider_nip90_lane::{
+    ProviderNip90DataVendingProfile, ProviderNip90LaneCommand, ProviderNip90PublishOutcome,
+    ProviderNip90PublishRole,
+};
+use crate::spark_wallet::{
+    SparkWalletCommand, decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
+    normalize_lightning_invoice_ref,
+};
 
 fn current_session_cwd() -> Option<String> {
     std::env::current_dir()
@@ -23,6 +33,32 @@ fn current_epoch_ms() -> i64 {
         .map_or(0, |duration| {
             duration.as_millis().min(i64::MAX as u128) as i64
         })
+}
+
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
+fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("invalid identity private_key_hex: {error}"))?;
+    if key_bytes.len() != 32 {
+        return Err(format!(
+            "invalid identity private_key_hex length {}, expected 32 bytes",
+            key_bytes.len()
+        ));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(key_bytes.as_slice());
+    Ok(key)
+}
+
+fn sign_event_template(identity: &NostrIdentity, template: &EventTemplate) -> Result<Event, String> {
+    let private_key = parse_private_key_hex(identity.private_key_hex.as_str())?;
+    nostr::finalize_event(template, &private_key)
+        .map_err(|error| format!("Cannot sign NIP-90 event template: {error}"))
 }
 
 fn sync_data_seller_nip90_profile(state: &mut RenderState) {
@@ -42,6 +78,63 @@ fn sync_data_seller_nip90_profile(state: &mut RenderState) {
     let _ = state.queue_provider_nip90_lane_command(
         ProviderNip90LaneCommand::ConfigureDataVendingProfile { profile },
     );
+}
+
+fn build_data_seller_payment_required_feedback_event(
+    identity: &NostrIdentity,
+    request_id: &str,
+    requester: &str,
+    quoted_price_sats: u64,
+    bolt11: &str,
+) -> Result<Event, String> {
+    let feedback = JobFeedback::new(JobStatus::PaymentRequired, request_id, requester)
+        .with_status_extra("lightning settlement required")
+        .with_content("Pay the attached Lightning invoice before delivery can proceed.".to_string())
+        .with_amount(
+            quoted_price_sats.saturating_mul(1000),
+            Some(bolt11.to_string()),
+        );
+    let template = create_job_feedback_event(&feedback);
+    sign_event_template(identity, &template)
+}
+
+fn matched_settled_receive_payment<'a>(
+    invoice: Option<&str>,
+    payment_hash: Option<&str>,
+    recent_payments: &'a [PaymentSummary],
+) -> Option<&'a PaymentSummary> {
+    let expected_invoice = invoice.and_then(normalize_lightning_invoice_ref);
+    let expected_payment_hash = payment_hash
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .or_else(|| invoice.and_then(decode_lightning_invoice_payment_hash));
+
+    recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.direction.eq_ignore_ascii_case("receive")
+                && is_settled_wallet_payment_status(payment.status.as_str())
+                && !payment.id.trim().is_empty()
+        })
+        .filter(|payment| {
+            expected_invoice.as_deref().is_some_and(|expected_invoice| {
+                payment
+                    .invoice
+                    .as_deref()
+                    .and_then(normalize_lightning_invoice_ref)
+                    .is_some_and(|candidate| candidate == expected_invoice)
+            }) || expected_payment_hash.as_deref().is_some_and(|expected_payment_hash| {
+                payment
+                    .payment_hash
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_ascii_lowercase)
+                    .is_some_and(|candidate| candidate == expected_payment_hash)
+            })
+        })
+        .max_by_key(|payment| payment.timestamp)
 }
 
 pub(crate) fn ensure_data_seller_codex_session(state: &mut RenderState) -> bool {
@@ -205,6 +298,200 @@ pub(crate) fn request_data_seller_grant_preview(state: &mut RenderState) -> bool
         .data_seller
         .request_grant_preview(provider_id.as_str(), current_epoch_ms());
     true
+}
+
+pub(crate) fn request_data_seller_payment_required(
+    state: &mut RenderState,
+    request_id: &str,
+) -> bool {
+    if state.active_job.payment_required_invoice_requested {
+        state.data_seller.last_error = Some(
+            "A compute-market settlement invoice is already being created. Wait for it to finish before starting a data-market payment quote."
+                .to_string(),
+        );
+        return true;
+    }
+
+    let amount_sats = match state.data_seller.request_payment_required_quote(request_id) {
+        Ok(amount_sats) => amount_sats,
+        Err(error) => {
+            state.data_seller.last_error = Some(error);
+            return true;
+        }
+    };
+
+    state.spark_wallet.last_error = None;
+    if let Err(error) = state
+        .spark_worker
+        .enqueue(SparkWalletCommand::CreateBolt11Invoice {
+            amount_sats,
+            description: Some(format!("OpenAgents data access {request_id}")),
+            expiry_seconds: Some(3600),
+        })
+    {
+        state
+            .data_seller
+            .note_payment_invoice_failed(request_id, format!("Failed to queue Spark invoice creation: {error}"));
+        return true;
+    }
+
+    state.provider_runtime.last_result = Some(format!(
+        "queued seller Lightning invoice creation for data request {}",
+        request_id
+    ));
+    true
+}
+
+fn queue_data_seller_payment_required_feedback(
+    state: &mut RenderState,
+    request_id: &str,
+) -> Result<(), String> {
+    let request = state
+        .data_seller
+        .request_by_id(request_id)
+        .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
+    let request_id = request.request_id.clone();
+    let requester = request.requester.clone();
+    let quoted_price_sats = request
+        .required_price_sats
+        .or((request.price_sats > 0).then_some(request.price_sats))
+        .ok_or_else(|| format!("Request {} does not have a non-zero quoted price", request_id))?;
+    let bolt11 = request
+        .pending_bolt11
+        .as_deref()
+        .ok_or_else(|| format!("Request {} is missing the pending Lightning invoice", request_id))?
+        .to_string();
+    let identity = state
+        .nostr_identity
+        .as_ref()
+        .ok_or_else(|| "Cannot publish payment-required feedback: Nostr identity unavailable".to_string())?;
+    let event = build_data_seller_payment_required_feedback_event(
+        identity,
+        request_id.as_str(),
+        requester.as_str(),
+        quoted_price_sats,
+        bolt11.as_str(),
+    )?;
+    state
+        .queue_provider_nip90_lane_command(ProviderNip90LaneCommand::PublishEvent {
+            request_id: request_id.clone(),
+            role: ProviderNip90PublishRole::Feedback,
+            event: Box::new(event),
+        })
+        .map_err(|error| format!("Cannot queue data-market payment-required feedback: {error}"))?;
+    state.provider_runtime.last_result = Some(format!(
+        "queued payment-required feedback for data request {}",
+        request_id
+    ));
+    Ok(())
+}
+
+pub(crate) fn reconcile_data_seller_wallet_update(
+    state: &mut RenderState,
+    previous_invoice: Option<&str>,
+    previous_error: Option<&str>,
+) {
+    if let Some(request_id) = state
+        .data_seller
+        .pending_payment_invoice_request_id()
+        .map(str::to_string)
+    {
+        if state.spark_wallet.last_invoice.as_deref() != previous_invoice
+            && let Some(invoice) = state.spark_wallet.last_invoice.as_deref()
+        {
+            if let Err(error) = state.data_seller.note_payment_invoice_created(
+                request_id.as_str(),
+                invoice,
+                state.spark_wallet.last_invoice_created_at_epoch_seconds,
+            ) {
+                state
+                    .data_seller
+                    .note_payment_invoice_failed(request_id.as_str(), error);
+                return;
+            }
+            if let Err(error) = queue_data_seller_payment_required_feedback(state, request_id.as_str()) {
+                state
+                    .data_seller
+                    .note_payment_invoice_failed(request_id.as_str(), error);
+                return;
+            }
+        }
+
+        if state.spark_wallet.last_error.as_deref() != previous_error
+            && let Some(error) = state.spark_wallet.last_error.as_deref()
+        {
+            state
+                .data_seller
+                .note_payment_invoice_failed(request_id.as_str(), error);
+        }
+    }
+
+    let now_epoch_seconds = current_epoch_seconds();
+    let settled = state
+        .data_seller
+        .incoming_requests
+        .iter()
+        .filter(|request| request.payment_state == crate::app_state::DataSellerPaymentState::AwaitingPayment)
+        .filter(|request| request.payment_pointer.is_none())
+        .filter_map(|request| {
+            matched_settled_receive_payment(
+                request.pending_bolt11.as_deref(),
+                request.settlement_payment_hash.as_deref(),
+                state.spark_wallet.recent_payments.as_slice(),
+            )
+            .map(|payment| {
+                (
+                    request.request_id.clone(),
+                    payment.id.clone(),
+                    payment.amount_sats,
+                    payment.timestamp.max(now_epoch_seconds),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    for (request_id, payment_pointer, amount_sats, observed_at_epoch_seconds) in settled {
+        if state.data_seller.note_payment_observed(
+            request_id.as_str(),
+            payment_pointer.as_str(),
+            amount_sats,
+            observed_at_epoch_seconds,
+        ) {
+            state.provider_runtime.last_result = Some(format!(
+                "seller payment settled for data request {}",
+                request_id
+            ));
+        }
+    }
+}
+
+pub(crate) fn apply_data_seller_publish_outcome(
+    state: &mut RenderState,
+    outcome: &ProviderNip90PublishOutcome,
+) -> bool {
+    if outcome.role != ProviderNip90PublishRole::Feedback {
+        return false;
+    }
+    let Some(request) = state.data_seller.request_by_id(outcome.request_id.as_str()) else {
+        return false;
+    };
+    if request.payment_state != crate::app_state::DataSellerPaymentState::PublishingFeedback {
+        return false;
+    }
+
+    let published = outcome.accepted_relays > 0;
+    let handled = state.data_seller.note_payment_feedback_publish_outcome(
+        outcome.request_id.as_str(),
+        published,
+        published.then_some(outcome.event_id.as_str()),
+        outcome.first_error.as_deref(),
+    );
+    if handled && published {
+        state.provider_runtime.last_result = Some(format!(
+            "seller requested Lightning payment for data request {}",
+            outcome.request_id
+        ));
+    }
+    handled
 }
 
 pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {

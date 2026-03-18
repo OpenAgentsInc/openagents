@@ -20,7 +20,8 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
-    OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS, OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
+    OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS,
+    OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_LABOR_CLAIM_DENY,
     OPENAGENTS_TOOL_LABOR_CLAIM_OPEN, OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY,
     OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE, OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW,
@@ -80,6 +81,8 @@ const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT: &str =
     "openagents.data_market.preview_grant";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
     "openagents.data_market.publish_grant";
+const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT: &str =
+    "openagents.data_market.request_payment";
 const LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents.data_market.snapshot";
 const LEGACY_OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents.cad.intent";
 const LEGACY_OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents.cad.action";
@@ -112,6 +115,7 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
+    LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
     LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     LEGACY_OPENAGENTS_TOOL_CAD_INTENT,
     LEGACY_OPENAGENTS_TOOL_CAD_ACTION,
@@ -341,6 +345,11 @@ struct DataMarketDraftGrantArgs {
 #[derive(Clone, Debug, Deserialize)]
 struct DataMarketPublishArgs {
     confirm: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DataMarketRequestPaymentArgs {
+    request_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -747,6 +756,14 @@ pub(super) fn execute_openagents_tool_request(
             };
             execute_data_market_publish_grant_tool(state, &args)
         }
+        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT
+        | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT => {
+            let args = match decoded.decode_arguments::<DataMarketRequestPaymentArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            execute_data_market_request_payment_tool(state, &args)
+        }
         OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT | LEGACY_OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT => {
             execute_data_market_snapshot_tool(state)
         }
@@ -1007,6 +1024,17 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
                 "required_price_sats": request.required_price_sats,
                 "evaluation_disposition": request.evaluation_disposition.label(),
                 "evaluation_summary": request.evaluation_summary,
+                "payment_state": request.payment_state.label(),
+                "payment_feedback_event_id": request.payment_feedback_event_id,
+                "pending_bolt11": request.pending_bolt11,
+                "pending_bolt11_created_at_epoch_seconds": request
+                    .pending_bolt11_created_at_epoch_seconds,
+                "settlement_payment_hash": request.settlement_payment_hash,
+                "payment_pointer": request.payment_pointer,
+                "payment_observed_at_epoch_seconds": request
+                    .payment_observed_at_epoch_seconds,
+                "payment_amount_sats": request.payment_amount_sats,
+                "payment_error": request.payment_error,
             })
         })
         .collect::<Vec<_>>();
@@ -1019,6 +1047,15 @@ fn data_seller_tool_snapshot(state: &RenderState) -> Value {
             "matched_asset_id": request.matched_asset_id,
             "matched_grant_id": request.matched_grant_id,
             "required_price_sats": request.required_price_sats,
+            "payment_state": request.payment_state.label(),
+            "payment_feedback_event_id": request.payment_feedback_event_id,
+            "pending_bolt11": request.pending_bolt11,
+            "pending_bolt11_created_at_epoch_seconds": request.pending_bolt11_created_at_epoch_seconds,
+            "settlement_payment_hash": request.settlement_payment_hash,
+            "payment_pointer": request.payment_pointer,
+            "payment_observed_at_epoch_seconds": request.payment_observed_at_epoch_seconds,
+            "payment_amount_sats": request.payment_amount_sats,
+            "payment_error": request.payment_error,
         })
     });
     let seller = json!({
@@ -1294,6 +1331,41 @@ fn execute_data_market_publish_grant_tool(
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "Grant publish failed.".to_string()),
+            data_seller_tool_snapshot(state),
+        )
+    }
+}
+
+fn execute_data_market_request_payment_tool(
+    state: &mut RenderState,
+    args: &DataMarketRequestPaymentArgs,
+) -> ToolBridgeResultEnvelope {
+    crate::data_seller_control::request_data_seller_payment_required(state, args.request_id.as_str());
+    let request = state.data_seller.request_by_id(args.request_id.as_str());
+    if state.data_seller.last_error.is_none()
+        && request.is_some_and(|request| {
+            matches!(
+                request.payment_state,
+                crate::app_state::DataSellerPaymentState::InvoiceRequested
+                    | crate::app_state::DataSellerPaymentState::PublishingFeedback
+                    | crate::app_state::DataSellerPaymentState::AwaitingPayment
+                    | crate::app_state::DataSellerPaymentState::Paid
+            )
+        })
+    {
+        ToolBridgeResultEnvelope::ok(
+            "OA-DATA-MARKET-PAYMENT-REQUESTED",
+            "Queued the seller payment-required flow for the requested data access request.",
+            data_seller_tool_snapshot(state),
+        )
+    } else {
+        ToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-PAYMENT-REQUEST-FAILED",
+            state
+                .data_seller
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Failed to queue the seller payment-required flow.".to_string()),
             data_seller_tool_snapshot(state),
         )
     }
@@ -7076,7 +7148,8 @@ mod tests {
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
         LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
         OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH, OPENAGENTS_TOOL_LABOR_SCOPE,
+        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+        OPENAGENTS_TOOL_LABOR_SCOPE,
         OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT,
         OPENAGENTS_TOOL_TREASURY_RECEIPT, OPENAGENTS_TOOL_TREASURY_TRANSFER,
         ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
@@ -7282,6 +7355,19 @@ mod tests {
         assert_eq!(args.consumer_id.as_deref(), Some("npub1buyer"));
         assert_eq!(args.expires_in_hours, Some(48));
         assert_eq!(args.warranty_window_hours, Some(24));
+    }
+
+    #[test]
+    fn data_market_request_payment_decode_requires_request_id() {
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
+            r#"{}"#,
+        ))
+        .expect("decode should succeed");
+        let error = decoded
+            .decode_arguments::<super::DataMarketRequestPaymentArgs>()
+            .expect_err("request_id should be required");
+        assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
     }
 
     #[test]

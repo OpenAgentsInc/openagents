@@ -21,6 +21,8 @@ pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT: &str =
     "openagents_data_market_preview_grant";
 pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
     "openagents_data_market_publish_grant";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT: &str =
+    "openagents_data_market_request_payment";
 pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents_data_market_snapshot";
 pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
@@ -60,6 +62,7 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
     OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
     OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_CAD_ACTION,
@@ -285,6 +288,20 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "confirm": { "type": "boolean" }
                 },
                 "required": ["confirm"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT.to_string(),
+            description:
+                "Generate a seller invoice and publish payment-required feedback for a targeted data-access request."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "request_id": { "type": "string" }
+                },
+                "required": ["request_id"],
                 "additionalProperties": false
             }),
         },
@@ -691,7 +708,8 @@ mod tests {
     use super::{
         OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
         OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
-        OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
+        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_SWAP_EXECUTE,
+        OPENAGENTS_TOOL_SWAP_QUOTE,
         openagents_dynamic_tool_specs,
     };
     use serde_json::json;
@@ -778,6 +796,10 @@ mod tests {
             .iter()
             .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT)
             .expect("data market draft grant spec should exist");
+        let request_payment_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT)
+            .expect("data market request payment spec should exist");
 
         assert!(
             draft_spec
@@ -800,6 +822,10 @@ mod tests {
         assert_eq!(
             publish_spec.input_schema.pointer("/required/0"),
             Some(&json!("confirm"))
+        );
+        assert_eq!(
+            request_payment_spec.input_schema.pointer("/required/0"),
+            Some(&json!("request_id"))
         );
     }
 }
