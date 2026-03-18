@@ -9,20 +9,20 @@ use crate::app_state::{
     CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState, CodexDiagnosticsPaneState,
     CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState, CreateInvoicePaneInputs,
     CredentialsPaneInputs, CredentialsState, CreditDeskPaneState, CreditSettlementLedgerPaneState,
-    DataMarketPaneState, DataSellerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
-    EarningsScoreboardState, FrameDebuggerPaneState, JobHistoryPaneInputs, JobHistoryState,
-    JobInboxState, JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
-    LogStreamPaneState, MissionControlLocalRuntimeLane, MissionControlPaneState,
-    NetworkRequestsPaneInputs, NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState,
-    PaneKind, PaneLoadState, PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState,
-    PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState,
-    ProviderControlPaneState, ProviderRuntimeState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, RivePreviewPaneState,
-    RivePreviewRuntimeState, SettingsPaneInputs, SettingsState, SkillRegistryPaneState,
-    SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState, StarterJobStatus,
-    StarterJobsState, SyncHealthState, TassadarLabPaneState, TrajectoryAuditPaneState,
-    mission_control_local_runtime_is_ready, mission_control_local_runtime_lane,
-    mission_control_show_local_model_button,
+    DataBuyerPaneState, DataMarketPaneState, DataSellerPaneState, DesktopPane,
+    EarnJobLifecycleProjectionState, EarningsScoreboardState, FrameDebuggerPaneState,
+    JobHistoryPaneInputs, JobHistoryState, JobInboxState, JobLifecycleStage,
+    LocalInferencePaneInputs, LocalInferencePaneState, LogStreamPaneState,
+    MissionControlLocalRuntimeLane, MissionControlPaneState, NetworkRequestsPaneInputs,
+    NetworkRequestsState, Nip90SentPaymentsPaneState, NostrSecretState, PaneKind, PaneLoadState,
+    PanePaintTimingSample, PayInvoicePaneInputs, PresentationPaneState, PresentationRuntimeState,
+    ProjectOpsPaneState, ProviderBlocker, ProviderControlHudRuntimeState, ProviderControlPaneState,
+    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
+    RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs, SettingsState,
+    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs, SparkReplayPaneState,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TassadarLabPaneState,
+    TrajectoryAuditPaneState, mission_control_local_runtime_is_ready,
+    mission_control_local_runtime_lane, mission_control_show_local_model_button,
 };
 use crate::apple_fm_bridge::AppleFmBridgeSnapshot;
 use crate::bitcoin_display::{format_mission_control_amount, format_sats_amount};
@@ -77,14 +77,15 @@ use crate::panes::{
     apple_fm_workbench as apple_fm_workbench_pane, attnres_lab as attnres_lab_pane,
     buy_mode as buy_mode_pane, buyer_race_matrix as buyer_race_matrix_pane, cad as cad_pane,
     calculator as calculator_pane, cast as cast_pane, chat as chat_pane, codex as codex_pane,
-    credit as credit_pane, data_market as data_market_pane, data_seller as data_seller_pane,
-    earnings_jobs as earnings_jobs_pane, frame_debugger as frame_debugger_pane,
-    key_ledger as key_ledger_pane, local_inference as local_inference_pane,
-    log_stream as log_stream_pane, nip90_sent_payments as nip90_sent_payments_pane,
-    presentation as presentation_pane, project_ops as project_ops_pane,
-    provider_control as provider_control_pane, psionic_viz as psionic_viz_pane,
-    relay_choreography as relay_choreography_pane, relay_connections as relay_connections_pane,
-    rive as rive_pane, seller_earnings_timeline as seller_earnings_timeline_pane,
+    credit as credit_pane, data_buyer as data_buyer_pane, data_market as data_market_pane,
+    data_seller as data_seller_pane, earnings_jobs as earnings_jobs_pane,
+    frame_debugger as frame_debugger_pane, key_ledger as key_ledger_pane,
+    local_inference as local_inference_pane, log_stream as log_stream_pane,
+    nip90_sent_payments as nip90_sent_payments_pane, presentation as presentation_pane,
+    project_ops as project_ops_pane, provider_control as provider_control_pane,
+    psionic_viz as psionic_viz_pane, relay_choreography as relay_choreography_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    seller_earnings_timeline as seller_earnings_timeline_pane,
     settlement_atlas as settlement_atlas_pane, settlement_ladder as settlement_ladder_pane,
     skill as skill_pane, spark_replay as spark_replay_pane, tassadar_lab as tassadar_lab_pane,
     wallet as wallet_pane,
@@ -227,6 +228,7 @@ impl PaneRenderer {
         buy_mode_payments: &mut BuyModePaymentsPaneState,
         nip90_sent_payments: &mut Nip90SentPaymentsPaneState,
         data_seller: &DataSellerPaneState,
+        data_buyer: &DataBuyerPaneState,
         data_market: &DataMarketPaneState,
         spark_replay: &mut SparkReplayPaneState,
         paint: &mut PaintContext,
@@ -311,6 +313,7 @@ impl PaneRenderer {
                     relay_connections,
                     nip90_sent_payments,
                     data_seller,
+                    data_buyer,
                     data_market,
                     spark_replay,
                     spark_wallet,
@@ -601,6 +604,15 @@ impl PaneRenderer {
                         paint,
                     );
                 }
+                PaneKind::DataBuyer => {
+                    data_buyer_pane::paint(
+                        content_bounds,
+                        data_buyer,
+                        data_market,
+                        network_requests,
+                        paint,
+                    );
+                }
                 PaneKind::DataMarket => {
                     data_market_pane::paint(content_bounds, data_market, paint);
                 }
@@ -850,6 +862,7 @@ fn inactive_pane_render_policy(kind: PaneKind) -> InactivePaneRenderPolicy {
         | PaneKind::BuyModePayments
         | PaneKind::Nip90SentPayments
         | PaneKind::DataSeller
+        | PaneKind::DataBuyer
         | PaneKind::DataMarket
         | PaneKind::BuyerRaceMatrix
         | PaneKind::SellerEarningsTimeline
@@ -888,6 +901,7 @@ fn paint_inactive_pane_preview_if_needed(
     relay_connections: &RelayConnectionsState,
     nip90_sent_payments: &Nip90SentPaymentsPaneState,
     data_seller: &DataSellerPaneState,
+    data_buyer: &DataBuyerPaneState,
     data_market: &DataMarketPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
@@ -916,6 +930,7 @@ fn paint_inactive_pane_preview_if_needed(
         relay_connections,
         nip90_sent_payments,
         data_seller,
+        data_buyer,
         data_market,
         spark_replay,
         spark_wallet,
@@ -951,6 +966,7 @@ fn inactive_pane_preview_state(
     relay_connections: &RelayConnectionsState,
     nip90_sent_payments: &Nip90SentPaymentsPaneState,
     data_seller: &DataSellerPaneState,
+    data_buyer: &DataBuyerPaneState,
     data_market: &DataMarketPaneState,
     spark_replay: &SparkReplayPaneState,
     spark_wallet: &SparkPaneState,
@@ -988,6 +1004,7 @@ fn inactive_pane_preview_state(
             relay_connections,
         )),
         PaneKind::DataSeller => Some(data_seller_inactive_preview_state(data_seller)),
+        PaneKind::DataBuyer => Some(data_buyer_inactive_preview_state(data_buyer, data_market)),
         PaneKind::DataMarket => Some(data_market_inactive_preview_state(data_market)),
         PaneKind::BuyerRaceMatrix => Some(buyer_race_matrix_inactive_preview_state(
             network_requests,
@@ -1461,6 +1478,43 @@ fn data_market_inactive_preview_state(
             format!("revocations {}", data_market.revocations.len()),
             format!("refresh_ms {}", refreshed),
             format!("state {}", data_market.load_state.label()),
+        ],
+    }
+}
+
+fn data_buyer_inactive_preview_state(
+    data_buyer: &DataBuyerPaneState,
+    data_market: &DataMarketPaneState,
+) -> InactivePanePreviewState {
+    let summary = if let Some(asset) = data_buyer.selected_asset(data_market) {
+        format!("targeted {} // {}", asset.provider_id, asset.title)
+    } else if data_market.has_snapshot() {
+        "Market snapshot loaded but no active asset is selected".to_string()
+    } else {
+        "No buyer-targetable data asset loaded yet".to_string()
+    };
+    InactivePanePreviewState {
+        source_badge: "inactive buyer.data_access".to_string(),
+        load_state: data_buyer.load_state,
+        summary,
+        last_action: data_buyer.last_action.clone(),
+        last_error: data_buyer.last_error.clone(),
+        detail_lines: vec![
+            format!(
+                "buyer {}",
+                data_buyer
+                    .local_buyer_id
+                    .as_deref()
+                    .unwrap_or("unconfigured")
+            ),
+            format!(
+                "request {}",
+                data_buyer
+                    .last_published_request_id
+                    .as_deref()
+                    .unwrap_or("none")
+            ),
+            format!("state {}", data_buyer.load_state.label()),
         ],
     }
 }

@@ -65,14 +65,13 @@ use crate::pane_system::{
     dispatch_buy_mode_payments_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_data_seller_input_event,
-    dispatch_job_history_input_event,
-    dispatch_local_inference_input_event, dispatch_log_stream_scroll_event,
-    dispatch_mission_control_input_event, dispatch_mission_control_log_scroll_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_provider_control_scroll_event, dispatch_relay_connections_input_event,
-    dispatch_rive_preview_input_event, dispatch_settings_input_event, dispatch_spark_input_event,
-    pane_content_bounds, pane_indices_by_z_desc, pane_z_sort_invocation_count,
-    topmost_pane_hit_action_in_order,
+    dispatch_job_history_input_event, dispatch_local_inference_input_event,
+    dispatch_log_stream_scroll_event, dispatch_mission_control_input_event,
+    dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
+    dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -99,7 +98,7 @@ use crate::state::wallet_reconciliation::{
     WalletLedgerEventKind, reconcile_wallet_events_for_goal,
 };
 
-mod actions;
+pub(crate) mod actions;
 mod cad_turn_classifier;
 mod reducers;
 mod shortcuts;
@@ -3420,6 +3419,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::BuyModePayments(action) => run_buy_mode_payments_action(state, action),
         PaneHitAction::Nip90SentPayments(action) => run_nip90_sent_payments_action(state, action),
         PaneHitAction::DataSeller(action) => run_data_seller_action(state, action),
+        PaneHitAction::DataBuyer(action) => run_data_buyer_action(state, action),
         PaneHitAction::DataMarket(action) => run_data_market_action(state, action),
         PaneHitAction::SparkReplay(action) => run_spark_replay_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
@@ -3809,10 +3809,12 @@ fn handle_data_seller_keyboard_input(
         logical_key,
         |s| s.data_seller_inputs.composer.is_focused(),
         dispatch_data_seller_input_event,
-        |s| actions::run_data_seller_action(
-            s,
-            crate::pane_system::DataSellerPaneAction::SubmitPrompt,
-        ),
+        |s| {
+            actions::run_data_seller_action(
+                s,
+                crate::pane_system::DataSellerPaneAction::SubmitPrompt,
+            )
+        },
     )
 }
 

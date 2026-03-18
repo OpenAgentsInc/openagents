@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{cell::RefCell, rc::Rc};
 
 use chrono::{Datelike, Local, TimeZone, Utc};
-use nostr::nip90::{get_result_kind, OPENAGENTS_DATA_VENDING_PROFILE};
+use nostr::nip90::{OPENAGENTS_DATA_VENDING_PROFILE, get_result_kind};
 use nostr::{Event, NostrIdentity};
 use openagents_kernel_core::authority::{CreateAccessGrantRequest, RegisterDataAssetRequest};
 use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -14,12 +14,12 @@ use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
-use wgpui::components::TextInput;
 use wgpui::renderer::Renderer;
-use wgpui::{theme, Bounds, EventContext, Modifiers, Point, RiveSurface, TextSystem};
+use wgpui::{Bounds, EventContext, Modifiers, Point, RiveSurface, TextSystem, theme};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
@@ -29,11 +29,11 @@ use crate::labor_orchestrator::{
     CodexLaborVerdictState, CodexRunClassification,
 };
 use crate::local_inference_runtime::{
+    LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
+    LocalInferenceExecutionSnapshot, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
     compile_path_temperature_label, local_runtime_cache_invalidation_reason_label,
     local_runtime_device_inventory_label, local_runtime_execution_posture_label,
-    local_runtime_scheduler_posture_label, LocalInferenceExecutionMetrics,
-    LocalInferenceExecutionProvenance, LocalInferenceExecutionSnapshot, LocalInferenceRuntime,
-    LocalInferenceRuntimeCommand,
+    local_runtime_scheduler_posture_label,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
@@ -125,6 +125,7 @@ pub enum PaneKind {
     BuyModePayments,
     Nip90SentPayments,
     DataSeller,
+    DataBuyer,
     DataMarket,
     BuyerRaceMatrix,
     SellerEarningsTimeline,
@@ -1108,6 +1109,8 @@ pub struct DataMarketLifecycleEntry {
     pub summary: String,
 }
 
+pub const DATA_MARKET_BUYER_REQUEST_TYPE: &str = "openagents.data_market.access_request.v1";
+pub const DATA_MARKET_BUYER_REQUEST_TIMEOUT_SECONDS: u64 = 120;
 pub const OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND: u16 = 5960;
 pub const OPENAGENTS_DATA_VENDING_KIND_POSTURE: &str = "temporary_local_until_registry_check";
 pub const OPENAGENTS_DATA_VENDING_TARGETING_POSTURE: &str = "targeted_only";
@@ -1119,6 +1122,289 @@ pub const OPENAGENTS_DATA_VENDING_ASSET_FAMILIES: &[&str] = &[
 ];
 pub const OPENAGENTS_DATA_VENDING_SUPPORTED_DELIVERY_MODES: &[&str] =
     &["encrypted_pointer", "delivery_bundle_ref", "inline_preview"];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataBuyerRequestDraft {
+    pub asset_id: String,
+    pub provider_id: String,
+    pub offer_grant_id: Option<String>,
+    pub permission_scopes: Vec<String>,
+    pub delivery_mode: String,
+    pub preview_posture: String,
+    pub bid_sats: u64,
+    pub timeout_seconds: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DataBuyerPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub status_line: String,
+    pub local_buyer_id: Option<String>,
+    pub selected_asset_id: Option<String>,
+    pub last_published_request_id: Option<String>,
+    pub last_published_request_event_id: Option<String>,
+}
+
+impl Default for DataBuyerPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: Some(
+                "Data Buyer pane ready; refresh the market snapshot to select a targeted asset."
+                    .to_string(),
+            ),
+            status_line: "Waiting for a market snapshot before issuing a targeted request."
+                .to_string(),
+            local_buyer_id: None,
+            selected_asset_id: None,
+            last_published_request_id: None,
+            last_published_request_event_id: None,
+        }
+    }
+}
+
+impl DataBuyerPaneState {
+    pub fn configure_local_buyer_id(&mut self, buyer_id: impl Into<String>) {
+        let buyer_id = buyer_id.into();
+        let buyer_id = buyer_id.trim();
+        if buyer_id.is_empty() {
+            self.local_buyer_id = None;
+        } else {
+            self.local_buyer_id = Some(buyer_id.to_string());
+        }
+    }
+
+    pub fn mark_opened(&mut self) {
+        self.last_error = None;
+        self.last_action =
+            Some("Opened Data Buyer pane; waiting for a targeted asset selection.".to_string());
+    }
+
+    pub fn sync_selection(&mut self, market: &DataMarketPaneState) {
+        let assets = market
+            .assets
+            .iter()
+            .filter(|asset| asset.status == openagents_kernel_core::data::DataAssetStatus::Active)
+            .collect::<Vec<_>>();
+        if assets.is_empty() {
+            self.selected_asset_id = None;
+            self.status_line =
+                "No active data assets are currently visible in the market snapshot.".to_string();
+            return;
+        }
+
+        let selected = self
+            .selected_asset_id
+            .as_deref()
+            .and_then(|asset_id| {
+                assets
+                    .iter()
+                    .find(|asset| asset.asset_id == asset_id)
+                    .copied()
+            })
+            .unwrap_or(assets[0]);
+        self.selected_asset_id = Some(selected.asset_id.clone());
+        let offer_grant = self.selected_offer_grant(market);
+        let grant_suffix = offer_grant
+            .map(|grant| format!(" // grant {}", grant.grant_id))
+            .unwrap_or_else(|| " // no active offer grant".to_string());
+        self.status_line = format!(
+            "Targeted request ready for {} -> {}{}",
+            selected.provider_id, selected.title, grant_suffix
+        );
+    }
+
+    pub fn select_previous_asset(&mut self, market: &DataMarketPaneState) -> bool {
+        self.select_asset_step(market, -1)
+    }
+
+    pub fn select_next_asset(&mut self, market: &DataMarketPaneState) -> bool {
+        self.select_asset_step(market, 1)
+    }
+
+    fn select_asset_step(&mut self, market: &DataMarketPaneState, delta: isize) -> bool {
+        let assets = market
+            .assets
+            .iter()
+            .filter(|asset| asset.status == openagents_kernel_core::data::DataAssetStatus::Active)
+            .collect::<Vec<_>>();
+        if assets.is_empty() {
+            self.selected_asset_id = None;
+            self.last_error =
+                Some("No active data assets are available for selection.".to_string());
+            return false;
+        }
+        let current_index = self
+            .selected_asset_id
+            .as_deref()
+            .and_then(|asset_id| assets.iter().position(|asset| asset.asset_id == asset_id))
+            .unwrap_or(0);
+        let len = assets.len() as isize;
+        let next_index = ((current_index as isize + delta).rem_euclid(len)) as usize;
+        let selected = assets[next_index];
+        self.selected_asset_id = Some(selected.asset_id.clone());
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Selected targeted data asset {} from {}",
+            selected.asset_id, selected.provider_id
+        ));
+        self.sync_selection(market);
+        true
+    }
+
+    pub fn selected_asset<'a>(&self, market: &'a DataMarketPaneState) -> Option<&'a DataAsset> {
+        self.selected_asset_id
+            .as_deref()
+            .and_then(|asset_id| {
+                market
+                    .assets
+                    .iter()
+                    .find(|asset| asset.asset_id == asset_id)
+            })
+            .filter(|asset| asset.status == openagents_kernel_core::data::DataAssetStatus::Active)
+    }
+
+    pub fn selected_offer_grant<'a>(
+        &self,
+        market: &'a DataMarketPaneState,
+    ) -> Option<&'a AccessGrant> {
+        let selected_asset_id = self.selected_asset_id.as_deref()?;
+        let buyer_id = self.local_buyer_id.as_deref();
+        market
+            .grants
+            .iter()
+            .filter(|grant| grant.asset_id == selected_asset_id)
+            .filter(|grant| {
+                matches!(
+                    grant.status,
+                    openagents_kernel_core::data::AccessGrantStatus::Offered
+                        | openagents_kernel_core::data::AccessGrantStatus::Accepted
+                        | openagents_kernel_core::data::AccessGrantStatus::Delivered
+                )
+            })
+            .find(|grant| {
+                grant.consumer_id.as_deref().is_some_and(|consumer_id| {
+                    buyer_id.is_some_and(|buyer_id| buyer_id.eq_ignore_ascii_case(consumer_id))
+                })
+            })
+            .or_else(|| {
+                market
+                    .grants
+                    .iter()
+                    .filter(|grant| grant.asset_id == selected_asset_id)
+                    .filter(|grant| {
+                        matches!(
+                            grant.status,
+                            openagents_kernel_core::data::AccessGrantStatus::Offered
+                                | openagents_kernel_core::data::AccessGrantStatus::Accepted
+                                | openagents_kernel_core::data::AccessGrantStatus::Delivered
+                        )
+                    })
+                    .find(|grant| {
+                        grant
+                            .consumer_id
+                            .as_deref()
+                            .is_none_or(|consumer_id| consumer_id.trim().is_empty())
+                    })
+            })
+    }
+
+    pub fn selected_revocation<'a>(
+        &self,
+        market: &'a DataMarketPaneState,
+    ) -> Option<&'a RevocationReceipt> {
+        let grant_id = self.selected_offer_grant(market)?.grant_id.as_str();
+        market
+            .revocations
+            .iter()
+            .find(|revocation| revocation.grant_id == grant_id)
+    }
+
+    pub fn derived_request_draft(
+        &self,
+        market: &DataMarketPaneState,
+    ) -> Option<DataBuyerRequestDraft> {
+        let asset = self.selected_asset(market)?;
+        let grant = self.selected_offer_grant(market);
+        let mut permission_scopes = grant
+            .map(|grant| grant.permission_policy.allowed_scopes.clone())
+            .filter(|scopes| !scopes.is_empty())
+            .or_else(|| {
+                asset
+                    .default_policy
+                    .as_ref()
+                    .map(|policy| policy.allowed_scopes.clone())
+                    .filter(|scopes| !scopes.is_empty())
+            })
+            .unwrap_or_else(|| vec!["targeted_request".to_string()]);
+        permission_scopes.sort();
+        permission_scopes.dedup();
+
+        let delivery_mode = grant
+            .map(|grant| json_string_array_field(&grant.metadata, "delivery_modes"))
+            .filter(|modes| !modes.is_empty())
+            .or_else(|| {
+                let modes = json_string_array_field(&asset.metadata, "delivery_modes");
+                (!modes.is_empty()).then_some(modes)
+            })
+            .and_then(|modes| {
+                modes
+                    .into_iter()
+                    .find_map(|mode| normalize_data_seller_delivery_mode(mode.as_str()))
+            })
+            .unwrap_or_else(|| "encrypted_pointer".to_string());
+        let preview_posture = if delivery_mode == "inline_preview" {
+            "inline_preview".to_string()
+        } else {
+            "metadata_only".to_string()
+        };
+        let bid_sats = published_data_request_price_sats(grant, Some(asset))
+            .unwrap_or(1)
+            .max(1);
+
+        Some(DataBuyerRequestDraft {
+            asset_id: asset.asset_id.clone(),
+            provider_id: asset.provider_id.clone(),
+            offer_grant_id: grant.map(|grant| grant.grant_id.clone()),
+            permission_scopes,
+            delivery_mode,
+            preview_posture,
+            bid_sats,
+            timeout_seconds: DATA_MARKET_BUYER_REQUEST_TIMEOUT_SECONDS,
+        })
+    }
+
+    pub fn note_request_published(
+        &mut self,
+        request_id: impl Into<String>,
+        event_id: impl Into<String>,
+        provider_id: impl Into<String>,
+        asset_id: impl Into<String>,
+    ) {
+        let request_id = request_id.into();
+        let event_id = event_id.into();
+        let provider_id = provider_id.into();
+        let asset_id = asset_id.into();
+        self.last_published_request_id = Some(request_id.clone());
+        self.last_published_request_event_id = Some(event_id.clone());
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Published targeted data-access request {request_id} -> {provider_id}"
+        ));
+        self.status_line = format!(
+            "Targeted request {request_id} published for asset {asset_id}; waiting for seller-side feedback or result events."
+        );
+        self.load_state = PaneLoadState::Ready;
+    }
+
+    pub fn record_publish_error(&mut self, error: impl Into<String>) {
+        self.load_state = PaneLoadState::Error;
+        self.last_error = Some(error.into());
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DataSellerNip90Profile {
@@ -13395,6 +13681,7 @@ impl_pane_status_access!(
     CreditDeskPaneState,
     CreditSettlementLedgerPaneState,
     DataSellerPaneState,
+    DataBuyerPaneState,
     DataMarketPaneState,
     StableSatsSimulationPaneState,
 );
@@ -13512,6 +13799,7 @@ pub struct RenderState {
     pub buy_mode_payments: BuyModePaymentsPaneState,
     pub nip90_sent_payments: Nip90SentPaymentsPaneState,
     pub data_seller: DataSellerPaneState,
+    pub data_buyer: DataBuyerPaneState,
     pub data_market: DataMarketPaneState,
     pub spark_replay: SparkReplayPaneState,
     pub autopilot_chat: AutopilotChatState,
@@ -13949,14 +14237,14 @@ mod tests {
         CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
         CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
         CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, DataSellerPaneState,
-        DataSellerPreviewPosture, EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState,
-        EarningsScoreboardState, JobDemandSource, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, LogStreamPaneState,
-        MissionControlPaneState, NetworkAggregateCountersState, NetworkRequestStatus,
-        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
-        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, DataBuyerPaneState,
+        DataSellerPaneState, DataSellerPreviewPosture, EarnJobLifecycleProjectionRow,
+        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
+        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
+        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
+        LogStreamPaneState, MissionControlPaneState, NetworkAggregateCountersState,
+        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
+        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
         ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
         RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
         StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
@@ -13965,7 +14253,7 @@ mod tests {
     use chrono::TimeZone;
     use openagents_kernel_core::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use wgpui::components::sections::TerminalStream;
 
     #[test]
@@ -14056,11 +14344,13 @@ mod tests {
                 .and_then(Value::as_str),
             Some("policy.data_market.asset_publish.mvp")
         );
-        assert!(asset_preview
-            .get("asset")
-            .and_then(|value| value.get("asset_id"))
-            .and_then(Value::as_str)
-            .is_some());
+        assert!(
+            asset_preview
+                .get("asset")
+                .and_then(|value| value.get("asset_id"))
+                .and_then(Value::as_str)
+                .is_some()
+        );
         assert!(pane.active_draft.last_previewed_grant_payload.is_none());
         assert!(pane.confirm_enabled);
         assert!(!pane.publish_enabled);
@@ -14187,7 +14477,7 @@ mod tests {
                 reason_code: "seller_revoked_access".to_string(),
                 refund_amount: None,
                 revoked_delivery_bundle_ids: vec![
-                    "delivery_bundle.provider.alpha.bundle".to_string()
+                    "delivery_bundle.provider.alpha.bundle".to_string(),
                 ],
                 replacement_delivery_bundle_id: None,
                 status: openagents_kernel_core::data::RevocationStatus::Revoked,
@@ -14231,6 +14521,160 @@ mod tests {
         assert_eq!(pane.lifecycle_entries.len(), 2);
         assert_eq!(pane.lifecycle_entries[0].subject_id, "grant.data.alpha");
         assert_eq!(pane.lifecycle_entries[1].subject_id, "asset.data.alpha");
+    }
+
+    #[test]
+    fn data_buyer_sync_selection_prefers_active_asset_and_matching_offer() {
+        let mut market = super::DataMarketPaneState::default();
+        market.note_published_asset(
+            DataAsset {
+                asset_id: "data_asset.npub1seller.bundle".to_string(),
+                provider_id: "npub1seller".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Seller bundle".to_string(),
+                description: None,
+                content_digest: Some("sha256:bundle".to_string()),
+                provenance_ref: None,
+                default_policy: Some(openagents_kernel_core::data::PermissionPolicy {
+                    policy_id: "targeted_request".to_string(),
+                    allowed_scopes: vec![
+                        "encrypted_pointer".to_string(),
+                        "targeted_request".to_string(),
+                    ],
+                    ..Default::default()
+                }),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(21),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"]
+                }),
+            },
+            1_762_700_000_000,
+        );
+        market.note_published_grant(
+            AccessGrant {
+                grant_id: "grant.data.offer.001".to_string(),
+                asset_id: "data_asset.npub1seller.bundle".to_string(),
+                provider_id: "npub1seller".to_string(),
+                consumer_id: Some("npub1buyer".to_string()),
+                permission_policy: openagents_kernel_core::data::PermissionPolicy {
+                    policy_id: "targeted_request".to_string(),
+                    allowed_scopes: vec![
+                        "encrypted_pointer".to_string(),
+                        "targeted_request".to_string(),
+                    ],
+                    ..Default::default()
+                },
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(42),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_010_000,
+                expires_at_ms: 1_762_786_410_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"]
+                }),
+            },
+            1_762_700_010_000,
+        );
+
+        let mut pane = DataBuyerPaneState::default();
+        pane.configure_local_buyer_id("npub1buyer");
+        pane.sync_selection(&market);
+        let draft = pane
+            .derived_request_draft(&market)
+            .expect("draft should derive");
+
+        assert_eq!(
+            pane.selected_asset_id.as_deref(),
+            Some("data_asset.npub1seller.bundle")
+        );
+        assert_eq!(draft.provider_id, "npub1seller");
+        assert_eq!(
+            draft.offer_grant_id.as_deref(),
+            Some("grant.data.offer.001")
+        );
+        assert_eq!(draft.bid_sats, 42);
+        assert_eq!(draft.delivery_mode, "encrypted_pointer");
+        assert!(
+            draft
+                .permission_scopes
+                .iter()
+                .any(|scope| scope == "targeted_request")
+        );
+    }
+
+    #[test]
+    fn data_buyer_tracks_latest_revocation_for_selected_offer() {
+        let mut market = super::DataMarketPaneState::default();
+        market.note_published_asset(
+            DataAsset {
+                asset_id: "data_asset.npub1seller.bundle".to_string(),
+                provider_id: "npub1seller".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Seller bundle".to_string(),
+                description: None,
+                content_digest: None,
+                provenance_ref: None,
+                default_policy: None,
+                price_hint: None,
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({}),
+            },
+            1_762_700_000_000,
+        );
+        market.note_published_grant(
+            AccessGrant {
+                grant_id: "grant.data.offer.001".to_string(),
+                asset_id: "data_asset.npub1seller.bundle".to_string(),
+                provider_id: "npub1seller".to_string(),
+                consumer_id: Some("npub1buyer".to_string()),
+                permission_policy: openagents_kernel_core::data::PermissionPolicy::default(),
+                offer_price: None,
+                warranty_window_ms: None,
+                created_at_ms: 1_762_700_010_000,
+                expires_at_ms: 1_762_786_410_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Delivered,
+                metadata: json!({}),
+            },
+            1_762_700_010_000,
+        );
+        market.note_published_revocation(
+            RevocationReceipt {
+                revocation_id: "revocation.data.offer.001".to_string(),
+                asset_id: "data_asset.npub1seller.bundle".to_string(),
+                grant_id: "grant.data.offer.001".to_string(),
+                provider_id: "npub1seller".to_string(),
+                consumer_id: Some("npub1buyer".to_string()),
+                created_at_ms: 1_762_700_020_000,
+                reason_code: "seller_revoked_access".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: vec!["delivery.data.offer.001".to_string()],
+                replacement_delivery_bundle_id: None,
+                status: openagents_kernel_core::data::RevocationStatus::Revoked,
+                metadata: json!({}),
+            },
+            1_762_700_020_000,
+        );
+
+        let mut pane = DataBuyerPaneState::default();
+        pane.configure_local_buyer_id("npub1buyer");
+        pane.sync_selection(&market);
+
+        assert_eq!(
+            pane.selected_revocation(&market)
+                .map(|revocation| revocation.revocation_id.as_str()),
+            Some("revocation.data.offer.001")
+        );
     }
 
     #[test]
@@ -14334,9 +14778,11 @@ mod tests {
             super::DataSellerRequestEvaluationDisposition::NoPublishedAsset
         );
         assert_eq!(incoming.asset_ref.as_deref(), Some("conversation_bundle"));
-        assert!(incoming
-            .evaluation_summary
-            .contains("No published asset is available yet"));
+        assert!(
+            incoming
+                .evaluation_summary
+                .contains("No published asset is available yet")
+        );
     }
 
     #[test]
@@ -14472,9 +14918,11 @@ mod tests {
             incoming.evaluation_disposition,
             super::DataSellerRequestEvaluationDisposition::ScopeMismatch
         );
-        assert!(incoming
-            .evaluation_summary
-            .contains("outside the current seller policy envelope"));
+        assert!(
+            incoming
+                .evaluation_summary
+                .contains("outside the current seller policy envelope")
+        );
     }
 
     #[test]
@@ -14558,9 +15006,10 @@ mod tests {
         );
         assert_eq!(request.payment_feedback_event_id, None);
         assert_eq!(request.pending_bolt11, None);
-        assert!(pane
-            .status_line
-            .contains("Creating Lightning invoice for request payment-ready"));
+        assert!(
+            pane.status_line
+                .contains("Creating Lightning invoice for request payment-ready")
+        );
     }
 
     #[test]
@@ -14655,9 +15104,10 @@ mod tests {
             Some("payment-pointer-1")
         );
         assert_eq!(request.payment_amount_sats, Some(250));
-        assert!(pane
-            .status_line
-            .contains("Payment settled for request payment-flow"));
+        assert!(
+            pane.status_line
+                .contains("Payment settled for request payment-flow")
+        );
     }
 
     #[test]
@@ -14820,8 +15270,8 @@ mod tests {
             250,
             1_760_000_180,
         ));
-        assert!(pane
-            .prepare_delivery_draft(
+        assert!(
+            pane.prepare_delivery_draft(
                 "delivery-flow",
                 Some("Bundle manifest ready"),
                 Some("oa://deliveries/delivery-flow"),
@@ -14830,7 +15280,8 @@ mod tests {
                 Some(4096),
                 Some(24),
             )
-            .expect("delivery draft should be ready"));
+            .expect("delivery draft should be ready")
+        );
         pane.request_issue_delivery("delivery-flow")
             .expect("delivery issue should be armed");
         pane.note_delivery_bundle_issuing("delivery-flow")
@@ -14883,9 +15334,10 @@ mod tests {
             pane.last_delivery_publish_receipt_id.as_deref(),
             Some("receipt.delivery-flow")
         );
-        assert!(pane
-            .status_line
-            .contains("Delivery flow completed for request delivery-flow"));
+        assert!(
+            pane.status_line
+                .contains("Delivery flow completed for request delivery-flow")
+        );
     }
 
     #[test]
@@ -14976,7 +15428,7 @@ mod tests {
                 reason_code: "seller_revoked_access".to_string(),
                 refund_amount: None,
                 revoked_delivery_bundle_ids: vec![
-                    "delivery_bundle.provider.alpha.revocation-flow".to_string()
+                    "delivery_bundle.provider.alpha.revocation-flow".to_string(),
                 ],
                 replacement_delivery_bundle_id: None,
                 status: openagents_kernel_core::data::RevocationStatus::Revoked,
@@ -15063,18 +15515,24 @@ mod tests {
             profile.targeting_posture,
             super::OPENAGENTS_DATA_VENDING_TARGETING_POSTURE
         );
-        assert!(profile
-            .asset_families
-            .iter()
-            .any(|value| value == "project_context_bundle"));
-        assert!(profile
-            .delivery_modes
-            .iter()
-            .any(|value| value == "delivery_bundle_ref"));
-        assert!(profile
-            .preview_postures
-            .iter()
-            .any(|value| value == "inline_preview"));
+        assert!(
+            profile
+                .asset_families
+                .iter()
+                .any(|value| value == "project_context_bundle")
+        );
+        assert!(
+            profile
+                .delivery_modes
+                .iter()
+                .any(|value| value == "delivery_bundle_ref")
+        );
+        assert!(
+            profile
+                .preview_postures
+                .iter()
+                .any(|value| value == "inline_preview")
+        );
     }
 
     #[test]
@@ -15577,24 +16035,27 @@ mod tests {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
         chat.submit_prompt("ping".to_string());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.status == AutopilotMessageStatus::Queued));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Queued)
+        );
 
         chat.mark_turn_started("turn-1".to_string());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.status == AutopilotMessageStatus::Running));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.status == AutopilotMessageStatus::Running)
+        );
 
         chat.append_turn_delta("pong");
         chat.mark_turn_completed();
         assert!(!chat.has_pending_messages());
-        assert!(chat
-            .messages
-            .iter()
-            .any(|message| message.content.contains("pong")));
+        assert!(
+            chat.messages
+                .iter()
+                .any(|message| message.content.contains("pong"))
+        );
     }
 
     #[test]
@@ -16521,10 +16982,11 @@ mod tests {
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
-        assert!(chat
-            .threads
-            .iter()
-            .any(|thread_id| thread_id == "thread-active"));
+        assert!(
+            chat.threads
+                .iter()
+                .any(|thread_id| thread_id == "thread-active")
+        );
         assert_eq!(
             chat.thread_metadata
                 .get("thread-active")
@@ -16703,10 +17165,11 @@ mod tests {
                 .map(|artifact| artifact.source_turn_id.as_str()),
             Some("turn-a")
         );
-        assert!(chat
-            .turn_diff
-            .as_deref()
-            .is_some_and(|diff| diff.contains("+new")));
+        assert!(
+            chat.turn_diff
+                .as_deref()
+                .is_some_and(|diff| diff.contains("+new"))
+        );
         let diff = chat.active_diff_artifact().expect("thread-a diff");
         assert_eq!(diff.workspace_root.as_deref(), Some("/tmp/a"));
         assert_eq!(diff.project_name.as_deref(), Some("a"));
@@ -16931,10 +17394,12 @@ mod tests {
             metadata.project_name.as_deref(),
             repo.file_name().and_then(|value| value.to_str())
         );
-        assert!(metadata
-            .git_branch
-            .as_deref()
-            .is_some_and(|value| !value.is_empty()));
+        assert!(
+            metadata
+                .git_branch
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        );
         assert_eq!(metadata.git_dirty, Some(true));
 
         let project = chat
@@ -17753,10 +18218,12 @@ mod tests {
             .expect("running->delivered should succeed");
         let paid_transition = active.advance_stage();
         assert!(paid_transition.is_err());
-        assert!(paid_transition
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("payment pointer")));
+        assert!(
+            paid_transition
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("payment pointer"))
+        );
         let job = active.job.as_ref().expect("active job exists");
         assert!(job.payment_id.is_none());
         assert_eq!(job.stage, JobLifecycleStage::Delivered);
@@ -17773,10 +18240,11 @@ mod tests {
             Some(request.requester.as_str())
         );
         assert_eq!(row.payout_sats, 0);
-        assert!(row
-            .failure_reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("not wallet-confirmed")));
+        assert!(
+            row.failure_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("not wallet-confirmed"))
+        );
     }
 
     #[test]
@@ -17831,10 +18299,12 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(outcome
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("running event")));
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("running event"))
+        );
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Accepted
@@ -17869,10 +18339,12 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(outcome
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("delivered event")));
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("delivered event"))
+        );
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Running
@@ -17911,10 +18383,12 @@ mod tests {
 
         let outcome = active.advance_stage();
         assert!(outcome.is_err());
-        assert!(outcome
-            .err()
-            .as_deref()
-            .is_some_and(|error| error.contains("payment pointer")));
+        assert!(
+            outcome
+                .err()
+                .as_deref()
+                .is_some_and(|error| error.contains("payment pointer"))
+        );
         assert_eq!(
             active.job.as_ref().expect("job should exist").stage,
             JobLifecycleStage::Delivered
@@ -18559,10 +19033,12 @@ mod tests {
         );
 
         assert!(relays.remove_selected().is_ok());
-        assert!(relays
-            .relays
-            .iter()
-            .all(|row| row.url != "wss://relay.new.example"));
+        assert!(
+            relays
+                .relays
+                .iter()
+                .all(|row| row.url != "wss://relay.new.example")
+        );
     }
 
     #[test]
@@ -19371,9 +19847,11 @@ mod tests {
                 && line.text.contains("wallet_status=failed")
                 && line.text.contains("wallet_method=lightning")
         }));
-        assert!(lines
-            .iter()
-            .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| { line.text.contains("payment_hash=hash-buy-fail-ledger-001") })
+        );
         assert!(lines.iter().any(|line| {
             line.text.contains("lightning_destination_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
@@ -19467,12 +19945,16 @@ mod tests {
             summary,
             "2 rows  //  1 live  //  1 wallet-backfill  //  1 sent  //  1 pending  //  0 returned  //  0 failed  //  2 sats  //  3 fee sats  //  5 wallet debit sats"
         );
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("LIVE BUY MODE REQUESTS")));
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("WALLET-BACKFILL HISTORY")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("LIVE BUY MODE REQUESTS"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("WALLET-BACKFILL HISTORY"))
+        );
         assert!(lines.iter().any(|line| {
             line.text
                 .contains("request_id=wallet-inferred:6872f65774d7e233")
@@ -19490,9 +19972,11 @@ mod tests {
             line.text.contains("provider_nostr_pubkey=")
                 && line.text.contains(provider_pubkey.as_str())
         }));
-        assert!(!lines
-            .iter()
-            .any(|line| { line.text.contains("wallet-payment-non-buy-001") }));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| { line.text.contains("wallet-payment-non-buy-001") })
+        );
     }
 
     #[test]
@@ -19855,23 +20339,27 @@ mod tests {
         assert_eq!(row.winning_provider_pubkey, None);
         assert_eq!(row.pending_bolt11, None);
         assert_eq!(row.status, NetworkRequestStatus::ResultReceived);
-        assert!(row
-            .payment_notice
-            .as_deref()
-            .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2")));
+        assert!(
+            row.payment_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("requested 25 sats above approved budget 2"))
+        );
 
         let snapshot = crate::nip90_compute_flow::build_buyer_request_flow_snapshot(
             row,
             &SparkPaneState::default(),
         );
-        assert!(snapshot
-            .payment_blocker_codes
-            .iter()
-            .any(|code| code == "invoice_over_budget"));
-        assert!(snapshot
-            .payment_blocker_summary
-            .as_deref()
-            .is_some_and(|summary| summary.contains("requested 25 sats above approved budget 2")));
+        assert!(
+            snapshot
+                .payment_blocker_codes
+                .iter()
+                .any(|code| code == "invoice_over_budget")
+        );
+        assert!(
+            snapshot.payment_blocker_summary.as_deref().is_some_and(
+                |summary| summary.contains("requested 25 sats above approved budget 2")
+            )
+        );
     }
 
     #[test]
@@ -19919,10 +20407,11 @@ mod tests {
             .iter()
             .find(|request| request.request_id == request_id)
             .expect("request should remain present");
-        assert!(row
-            .payment_notice
-            .as_deref()
-            .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount")));
+        assert!(
+            row.payment_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("metadata mismatched the BOLT11 amount"))
+        );
     }
 
     #[test]
@@ -20341,9 +20830,11 @@ mod tests {
             state.agents[0].owner_kind,
             crate::app_state::StableSatsWalletOwnerKind::Operator
         );
-        assert!(state.agents[0]
-            .credential_key_name
-            .starts_with("BLINK_API_KEY"));
+        assert!(
+            state.agents[0]
+                .credential_key_name
+                .starts_with("BLINK_API_KEY")
+        );
     }
 
     #[test]
@@ -20356,10 +20847,12 @@ mod tests {
         assert_eq!(state.agents[0].btc_balance_sats, 2_000);
         assert_eq!(state.agents[0].usd_balance_cents, 250);
         assert!(!state.transfer_ledger.is_empty());
-        assert!(state
-            .transfer_ledger
-            .iter()
-            .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:")));
+        assert!(
+            state
+                .transfer_ledger
+                .iter()
+                .all(|entry| entry.transfer_ref.starts_with("blink:live:transfer:"))
+        );
     }
 
     #[test]
@@ -20388,10 +20881,12 @@ mod tests {
             state.agents[0].last_switch_summary,
             "refresh failed: missing secure credential"
         );
-        assert!(state
-            .last_error
-            .as_deref()
-            .is_some_and(|value| value.contains("1 wallet error")));
+        assert!(
+            state
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("1 wallet error"))
+        );
         assert!(!state.transfer_ledger.is_empty());
     }
 
@@ -20452,10 +20947,12 @@ mod tests {
             .expect("second dispatch check should not error");
         assert!(blocked_by_cap.is_none());
         assert_eq!(starter_jobs.inflight_jobs(), 1);
-        assert!(starter_jobs
-            .last_action
-            .as_deref()
-            .is_some_and(|value| value.contains("max=1")));
+        assert!(
+            starter_jobs
+                .last_action
+                .as_deref()
+                .is_some_and(|value| value.contains("max=1"))
+        );
 
         assert!(starter_jobs.rollback_dispatched_job(&first.job_id));
         assert_eq!(starter_jobs.inflight_jobs(), 0);
@@ -20731,10 +21228,11 @@ mod tests {
         assert_eq!(feed.rows.len(), baseline_count);
 
         feed.set_filter(ActivityFeedFilter::Wallet);
-        assert!(feed
-            .visible_rows()
-            .into_iter()
-            .all(|row| row.domain == ActivityEventDomain::Wallet));
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Wallet)
+        );
 
         feed.upsert_event(fixture_activity_event(
             "cad:event:1",
@@ -20742,10 +21240,11 @@ mod tests {
             1_761_920_260,
         ));
         feed.set_filter(ActivityFeedFilter::Cad);
-        assert!(feed
-            .visible_rows()
-            .into_iter()
-            .all(|row| row.domain == ActivityEventDomain::Cad));
+        assert!(
+            feed.visible_rows()
+                .into_iter()
+                .all(|row| row.domain == ActivityEventDomain::Cad)
+        );
     }
 
     #[test]
@@ -20926,17 +21425,21 @@ mod tests {
             1_761_920_360,
         ));
 
-        assert!(primary
-            .rows
-            .iter()
-            .all(|row| row.event_id != "sync:checkpoint:2"));
+        assert!(
+            primary
+                .rows
+                .iter()
+                .all(|row| row.event_id != "sync:checkpoint:2")
+        );
         primary
             .reload_projection()
             .expect("projection reload should reconcile rows");
-        assert!(primary
-            .rows
-            .iter()
-            .any(|row| row.event_id == "sync:checkpoint:2"));
+        assert!(
+            primary
+                .rows
+                .iter()
+                .any(|row| row.event_id == "sync:checkpoint:2")
+        );
         let _ = std::fs::remove_file(path.as_path());
     }
 
@@ -21486,10 +21989,12 @@ mod tests {
         score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
 
         assert_eq!(score.load_state, super::PaneLoadState::Error);
-        assert!(score
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("wallet backend unavailable")));
+        assert!(
+            score
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet backend unavailable"))
+        );
     }
 
     #[test]
@@ -21606,10 +22111,12 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines
-            .iter()
-            .any(|line| line.stream == TerminalStream::Stdout
-                && line.text.contains("\u{20BF} 1 000")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.stream == TerminalStream::Stdout
+                    && line.text.contains("\u{20BF} 1 000"))
+        );
     }
 
     #[test]
@@ -21734,25 +22241,35 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("GPT-OSS backend: METAL")));
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("GPT-OSS artifact: artifact present")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("GPT-OSS backend: METAL"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("GPT-OSS artifact: artifact present"))
+        );
         assert!(lines.iter().any(|line| {
             line.text
                 .contains("GPT-OSS model path: /tmp/models/gpt-oss-20b.gguf")
         }));
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("GPT-OSS load state: unloaded")));
-        assert!(lines
-            .iter()
-            .any(|line| line.text.contains("GPT-OSS error: model not loaded")));
-        assert!(!lines
-            .iter()
-            .any(|line| line.text.contains("Apple Foundation Models unavailable")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("GPT-OSS load state: unloaded"))
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.text.contains("GPT-OSS error: model not loaded"))
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+        );
     }
 
     #[test]
@@ -21929,16 +22446,22 @@ mod tests {
             &ActiveJobState::default(),
         );
         if super::mission_control_uses_apple_fm() {
-            assert!(lines
-                .iter()
-                .any(|line| line.text.contains("Apple Foundation Models unavailable")));
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+            );
         } else {
-            assert!(lines
-                .iter()
-                .any(|line| { line.text.contains("GPT-OSS ready via cuda backend") }));
-            assert!(!lines
-                .iter()
-                .any(|line| { line.text.contains("Apple Foundation Models unavailable") }));
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| { line.text.contains("GPT-OSS ready via cuda backend") })
+            );
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| { line.text.contains("Apple Foundation Models unavailable") })
+            );
         }
     }
 
@@ -21977,9 +22500,11 @@ mod tests {
                 line.text.contains("GPT-OSS ready via cuda backend")
             }
         }));
-        assert!(!lines
-            .iter()
-            .any(|line| line.text.contains("Apple Foundation Models unavailable")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.contains("Apple Foundation Models unavailable"))
+        );
     }
 
     #[test]
@@ -22277,9 +22802,11 @@ mod tests {
             &ActiveJobState::default(),
         );
 
-        assert!(lines
-            .iter()
-            .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") }));
+        assert!(
+            lines
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] delivered job-replay-001") })
+        );
         assert!(keys.iter().any(|key| {
             key == "mission_control:projection_replay:earn.lifecycle:job-replay-001:delivered:result"
         }));
@@ -22328,11 +22855,13 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(first
-            .terminal
-            .recent_lines(32)
-            .iter()
-            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
+        assert!(
+            first
+                .terminal
+                .recent_lines(32)
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
 
         let mut reopened = LogStreamPaneState::default();
         reopened.sync_log_stream(
@@ -22348,11 +22877,13 @@ mod tests {
             &JobInboxState::default(),
             &ActiveJobState::default(),
         );
-        assert!(reopened
-            .terminal
-            .recent_lines(32)
-            .iter()
-            .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") }));
+        assert!(
+            reopened
+                .terminal
+                .recent_lines(32)
+                .iter()
+                .any(|line| { line.text.contains("[REPLAY/OPEN] accepted job-replay-002") })
+        );
     }
 
     #[test]
@@ -22422,14 +22953,18 @@ mod tests {
         assert_eq!(inbox_lines.len(), 1);
         assert!(provider_lines[0].text.contains("unsupported_kind=1"));
         assert!(provider_lines[0].text.contains("target_mismatch=1"));
-        assert!(!provider_lines[0]
-            .text
-            .to_ascii_lowercase()
-            .contains("rejected"));
-        assert!(!inbox_lines[0]
-            .text
-            .to_ascii_lowercase()
-            .contains("rejected"));
+        assert!(
+            !provider_lines[0]
+                .text
+                .to_ascii_lowercase()
+                .contains("rejected")
+        );
+        assert!(
+            !inbox_lines[0]
+                .text
+                .to_ascii_lowercase()
+                .contains("rejected")
+        );
     }
 
     #[test]
@@ -22495,10 +23030,12 @@ mod tests {
             buy_mode.buy_mode_next_dispatch_countdown_millis(now),
             Some(super::MISSION_CONTROL_BUY_MODE_INTERVAL_MILLIS)
         );
-        assert!(!buy_mode.buy_mode_dispatch_due(
-            now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
-                .saturating_sub(std::time::Duration::from_millis(1))
-        ));
+        assert!(
+            !buy_mode.buy_mode_dispatch_due(
+                now + super::MISSION_CONTROL_BUY_MODE_INTERVAL
+                    .saturating_sub(std::time::Duration::from_millis(1))
+            )
+        );
 
         assert!(!buy_mode.toggle_buy_mode_loop(now));
         assert!(!buy_mode.buy_mode_loop_enabled);
@@ -22657,10 +23194,12 @@ mod tests {
 
         assert_eq!(counters.load_state, super::PaneLoadState::Error);
         assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
-        assert!(counters
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("wallet service unavailable")));
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet service unavailable"))
+        );
     }
 
     #[test]
@@ -22684,10 +23223,12 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.degraded"
         );
-        assert!(counters
-            .last_error
-            .as_deref()
-            .is_some_and(|error| error.contains("presence query timeout")));
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("presence query timeout"))
+        );
     }
 
     #[test]
@@ -22710,10 +23251,12 @@ mod tests {
             counters.providers_online_source_tag,
             "spacetime.presence.stale"
         );
-        assert!(counters
-            .last_action
-            .as_deref()
-            .is_some_and(|action| action.contains("stale")));
+        assert!(
+            counters
+                .last_action
+                .as_deref()
+                .is_some_and(|action| action.contains("stale"))
+        );
     }
 
     #[test]
@@ -22847,14 +23390,18 @@ mod tests {
         assert_eq!(archived.thread_id, "thread-1");
         assert_eq!(archived.turn_id, "turn-1");
         assert_eq!(archived.terminal_phase, CadBuildSessionPhase::Done);
-        assert!(archived
-            .latest_tool_result
-            .as_deref()
-            .is_some_and(|value| value.contains("OA-CAD-INTENT-OK")));
-        assert!(archived
-            .latest_rebuild_result
-            .as_deref()
-            .is_some_and(|value| value.contains("ai-intent:setmaterial")));
+        assert!(
+            archived
+                .latest_tool_result
+                .as_deref()
+                .is_some_and(|value| value.contains("OA-CAD-INTENT-OK"))
+        );
+        assert!(
+            archived
+                .latest_rebuild_result
+                .as_deref()
+                .is_some_and(|value| value.contains("ai-intent:setmaterial"))
+        );
         assert!(!archived.events.is_empty());
     }
 

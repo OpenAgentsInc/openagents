@@ -91,7 +91,7 @@ The mutation calls already exist in `crates/openagents-kernel-core` and
 
 That means the problem is not ontology. The problem is productization.
 
-### 2. The desktop currently has a read-only data pane plus an initial seller shell
+### 2. The desktop currently has a read-only data pane, a seller shell, and a narrow buyer request surface
 
 The current `Data Market` pane can:
 
@@ -127,7 +127,7 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 
 It cannot yet:
 
-- expose buyer-facing request issuance and transaction UX
+- expose broad buyer-facing discovery, pricing comparison, and post-request transaction UX
 - publish a dedicated checked-in `openagents.data.v1` wire package
 
 The dedicated seller lane now also auto-provisions the first-party
@@ -155,6 +155,18 @@ The read-only market pane now also carries a compact lifecycle activity view so
 the operator surface can answer which asset, grant, payment, delivery, or
 revocation event happened under which policy and with which receipt or event
 identifier during the current session.
+There is now also a narrow `Data Buyer` pane in the desktop app. It can:
+
+- select an active visible asset from the current market snapshot
+- derive a targeted request draft from the selected asset and matching offer posture
+- publish a targeted NIP-90 data-access request through the existing buyer request lane
+- show the last published request id/event together with the matching seller feedback and result truth already known to the session
+
+It does not yet:
+
+- offer broad public discovery or search
+- compare multiple pricing options across providers
+- provide a full buyer-side transactional workspace beyond the targeted request surface
 
 ### 3. Codex is already deeply integrated
 

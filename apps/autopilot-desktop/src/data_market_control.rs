@@ -56,5 +56,6 @@ pub(crate) fn refresh_data_market_snapshot(state: &mut RenderState) -> bool {
     state
         .data_market
         .apply_snapshot(assets, grants, deliveries, revocations, refreshed_at_ms);
+    state.data_buyer.sync_selection(&state.data_market);
     true
 }

@@ -54,7 +54,10 @@ or expire controls with `RevocationReceipt` read-back into both panes.
 The read-only `Data Market` pane also now carries a compact lifecycle activity
 view so the current session exposes receipt-bearing asset/grant/payment/
 delivery/revocation history instead of only raw object lists.
-Buyer-side request issuance still remains follow-on work.
+There is now also a narrow `Data Buyer` pane that selects a visible active
+asset/default offer from that market snapshot and publishes a targeted NIP-90
+data-access request. Broader buyer-side discovery, pricing comparison, and
+transaction UX still remain follow-on work.
 
 ### 1. Compute already has a real product wedge
 
@@ -519,6 +522,10 @@ Implement:
 * asset registration UX
 * targeted NIP-90 request path
 * basic permission and price review
+
+The initial targeted request path now exists as a narrow dedicated buyer pane.
+The remaining work in this phase is to deepen that into a fuller buyer loop,
+not to invent a second path.
 
 ### Phase 2: grant, payment, and delivery
 

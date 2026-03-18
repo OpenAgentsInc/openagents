@@ -22,7 +22,7 @@ smuggled through opaque prompt state.
 
 | Dimension | Status | Notes |
 | --- | --- | --- |
-| Product surface | seller authoring + read surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; buyer transaction UX is still incomplete |
+| Product surface | seller authoring + read surface + narrow buyer request surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; there is now also a narrow `Data Buyer` pane that selects a visible asset and publishes a targeted NIP-90 data-access request, but broader buyer transaction UX is still incomplete |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | not yet dedicated | there is no checked-in `openagents.data.v1` package yet |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
@@ -53,6 +53,7 @@ smuggled through opaque prompt state.
 - prepare seller-side delivery drafts for paid targeted requests, accept the matched grant if needed, issue authoritative `DeliveryBundle` objects, and publish linked NIP-90 result events from the same seller flow
 - let the seller revoke or expire access from the same flow, read the resulting `RevocationReceipt` back from kernel authority, and immediately reflect the terminal grant/delivery state into both panes
 - record recent asset/grant/payment/delivery/revocation lifecycle entries in the read-only `Data Market` pane so operator-facing activity includes policy, counterparty, and receipt context
+- open a dedicated `Data Buyer` desktop pane that derives a request draft from the visible market snapshot, selects an active asset/default offer, and publishes a targeted NIP-90 data-access request without widening into public discovery
 
 The starter authority slice is real in:
 
@@ -91,9 +92,9 @@ Authenticated HTTP read routes are live under:
 
 ## Not implemented yet
 
-- a transactional buyer-facing data market in Autopilot
+- a full transactional buyer-facing data market in Autopilot beyond the current narrow targeted-request pane
 - fully integrated seller publication UX beyond the current asset/grant/payment/delivery/revocation control slice
-- discovery, listing, and pricing surfaces for data buyers
+- public discovery, listing, and richer pricing/comparison surfaces for data buyers
 - payout and provider-economics flows specific to data access
 - a dedicated checked-in `openagents.data.v1` proto package
 

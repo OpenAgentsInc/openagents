@@ -8,7 +8,7 @@ use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::app_state::{
     ActivityFeedFilter, AutopilotToolCallRequest, CadBuildFailureClass, DataSellerRevocationAction,
@@ -43,8 +43,8 @@ use crate::pane_system::{
     CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
-    DataMarketPaneAction, DataSellerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
-    JobInboxPaneAction, LocalInferencePaneAction, MissionControlPaneAction,
+    DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction, EarningsScoreboardPaneAction,
+    JobHistoryPaneAction, JobInboxPaneAction, LocalInferencePaneAction, MissionControlPaneAction,
     NetworkRequestsPaneAction, Nip90SentPaymentsPaneAction, PaneController, PaneHitAction,
     ProviderControlPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
     SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
@@ -56,7 +56,7 @@ use crate::spark_wallet::SparkWalletCommand;
 use crate::state::autopilot_goals::{
     GoalMissedRunPolicy, GoalRolloutHardeningChecklist, GoalRolloutRollbackPolicy, GoalRolloutStage,
 };
-use crate::state::os_scheduler::{preferred_adapter_for_host, OsSchedulerAdapterKind};
+use crate::state::os_scheduler::{OsSchedulerAdapterKind, preferred_adapter_for_host};
 use crate::state::swap_contract::{
     SwapAmount, SwapAmountUnit, SwapCommandProvenance, SwapDirection, SwapExecutionStatus,
     SwapQuoteTerms,
@@ -3326,6 +3326,17 @@ fn pane_action_to_hit_action(
             )),
             "publish" | "publish_draft" => Ok(PaneHitAction::DataSeller(
                 DataSellerPaneAction::PublishDraft,
+            )),
+            _ => unsupported(),
+        },
+        PaneKind::DataBuyer => match action {
+            "refresh" => Ok(PaneHitAction::DataBuyer(DataBuyerPaneAction::RefreshMarket)),
+            "prev" | "previous" | "prev_asset" => {
+                Ok(PaneHitAction::DataBuyer(DataBuyerPaneAction::PreviousAsset))
+            }
+            "next" | "next_asset" => Ok(PaneHitAction::DataBuyer(DataBuyerPaneAction::NextAsset)),
+            "publish" | "publish_request" | "request_access" => Ok(PaneHitAction::DataBuyer(
+                DataBuyerPaneAction::PublishRequest,
             )),
             _ => unsupported(),
         },
@@ -7293,6 +7304,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
             "daily_sent_report",
         ],
         PaneKind::DataSeller => &["data_seller", "seller", "data_listing", "seller_draft"],
+        PaneKind::DataBuyer => &["data_buyer", "buyer", "data_access", "buyer_request"],
         PaneKind::DataMarket => &["data_market", "data", "kernel_data", "data_assets"],
         PaneKind::BuyerRaceMatrix => &[
             "buyer_race_matrix",
@@ -7379,6 +7391,7 @@ pub(crate) fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::BuyModePayments => "buy_mode",
         PaneKind::Nip90SentPayments => "nip90_sent_payments",
         PaneKind::DataSeller => "data_seller",
+        PaneKind::DataBuyer => "data_buyer",
         PaneKind::DataMarket => "data_market",
         PaneKind::BuyerRaceMatrix => "buyer_race_matrix",
         PaneKind::SellerEarningsTimeline => "seller_earnings_timeline",
@@ -7420,8 +7433,16 @@ fn normalize_key(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cad_action_from_key, cad_checkpoint_payload, cad_parse_retry_prompt,
-        decode_tool_call_request, enforce_labor_evidence_uri_scope,
+        CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
+        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
+        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT, OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY,
+        OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY, OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+        OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT, OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT,
+        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH, OPENAGENTS_TOOL_LABOR_SCOPE,
+        OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT,
+        OPENAGENTS_TOOL_TREASURY_RECEIPT, OPENAGENTS_TOOL_TREASURY_TRANSFER,
+        ToolBridgeResultEnvelope, cad_action_from_key, cad_checkpoint_payload,
+        cad_parse_retry_prompt, decode_tool_call_request, enforce_labor_evidence_uri_scope,
         enforce_matching_labor_contract_scope, normalize_key, pane_action_to_hit_action,
         pane_kind_key, parse_blink_execution_payload_from_json, parse_blink_quote_terms_from_json,
         parse_bool_env_override, parse_data_seller_revocation_action,
@@ -7429,24 +7450,16 @@ mod tests {
         parse_goal_rollout_stage, parse_nip90_sent_payments_boundary, parse_swap_direction,
         parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind_for_runtime,
         run_blink_swap_script_json, select_existing_blink_swap_script_path,
-        validate_direction_unit, ToolBridgeResultEnvelope, CAD_CHECKPOINT_SCHEMA_VERSION,
-        CAD_TOOL_RESPONSE_SCHEMA_VERSION, LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
-        OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
-        OPENAGENTS_TOOL_DATA_MARKET_ISSUE_DELIVERY, OPENAGENTS_TOOL_DATA_MARKET_PREPARE_DELIVERY,
-        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_DATA_MARKET_REQUEST_PAYMENT,
-        OPENAGENTS_TOOL_DATA_MARKET_REVOKE_GRANT, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
-        OPENAGENTS_TOOL_LABOR_SCOPE, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
-        OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
-        OPENAGENTS_TOOL_TREASURY_TRANSFER,
+        validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
         Nip90SentPaymentsWindowPreset, PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, DataMarketPaneAction, DataSellerPaneAction, MissionControlPaneAction,
-        Nip90SentPaymentsPaneAction, PaneHitAction, ProviderControlPaneAction,
-        RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
+        MissionControlPaneAction, Nip90SentPaymentsPaneAction, PaneHitAction,
+        ProviderControlPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -7884,6 +7897,7 @@ mod tests {
             "nip90_sent_payments"
         );
         assert_eq!(pane_kind_key(PaneKind::DataSeller), "data_seller");
+        assert_eq!(pane_kind_key(PaneKind::DataBuyer), "data_buyer");
         assert_eq!(pane_kind_key(PaneKind::DataMarket), "data_market");
         assert_eq!(
             normalize_key("Spark Lightning Wallet"),
@@ -7972,6 +7986,26 @@ mod tests {
             pane_action_to_hit_action(PaneKind::DataSeller, "publish_draft", None)
                 .expect("data seller publish"),
             PaneHitAction::DataSeller(DataSellerPaneAction::PublishDraft)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataBuyer, "refresh", None)
+                .expect("data buyer refresh"),
+            PaneHitAction::DataBuyer(DataBuyerPaneAction::RefreshMarket)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataBuyer, "prev_asset", None)
+                .expect("data buyer previous asset"),
+            PaneHitAction::DataBuyer(DataBuyerPaneAction::PreviousAsset)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataBuyer, "next_asset", None)
+                .expect("data buyer next asset"),
+            PaneHitAction::DataBuyer(DataBuyerPaneAction::NextAsset)
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::DataBuyer, "publish_request", None)
+                .expect("data buyer publish request"),
+            PaneHitAction::DataBuyer(DataBuyerPaneAction::PublishRequest)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::DataMarket, "refresh", None)
@@ -8130,19 +8164,27 @@ mod tests {
             payload.pointer("/warnings/by_code/W001"),
             Some(&serde_json::json!(1))
         );
-        assert!(payload
-            .pointer("/analysis/material_id")
-            .is_some_and(|value| !value.is_null()));
+        assert!(
+            payload
+                .pointer("/analysis/material_id")
+                .is_some_and(|value| !value.is_null())
+        );
         assert!(payload.pointer("/kinematics/profile").is_some());
-        assert!(payload
-            .pointer("/failure_metrics/intent_parse_failures")
-            .is_some());
-        assert!(payload
-            .pointer("/failure_metrics/dispatch_rebuild_failures")
-            .is_some());
-        assert!(payload
-            .pointer("/sensor_feedback/visualization_mode")
-            .is_some());
+        assert!(
+            payload
+                .pointer("/failure_metrics/intent_parse_failures")
+                .is_some()
+        );
+        assert!(
+            payload
+                .pointer("/failure_metrics/dispatch_rebuild_failures")
+                .is_some()
+        );
+        assert!(
+            payload
+                .pointer("/sensor_feedback/visualization_mode")
+                .is_some()
+        );
         assert!(payload.get("build_session").is_some());
         assert!(payload.get("last_rebuild_receipt").is_some());
 
@@ -8154,9 +8196,11 @@ mod tests {
             tool_response.pointer("/schema_version"),
             Some(&serde_json::json!(CAD_TOOL_RESPONSE_SCHEMA_VERSION))
         );
-        assert!(tool_response
-            .pointer("/checkpoint/schema_version")
-            .is_some());
+        assert!(
+            tool_response
+                .pointer("/checkpoint/schema_version")
+                .is_some()
+        );
     }
 
     #[test]

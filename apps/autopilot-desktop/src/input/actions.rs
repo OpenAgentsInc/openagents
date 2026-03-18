@@ -13,10 +13,10 @@ use crate::local_runtime_capabilities::{
 use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
-    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataMarketPaneAction,
-    DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
-    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
-    SparkReplayPaneAction, TassadarLabPaneAction,
+    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataBuyerPaneAction,
+    DataMarketPaneAction, DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction,
+    MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -10208,6 +10208,26 @@ pub(super) fn run_data_market_action(
     }
 }
 
+pub(super) fn run_data_buyer_action(
+    state: &mut crate::app_state::RenderState,
+    action: DataBuyerPaneAction,
+) -> bool {
+    match action {
+        DataBuyerPaneAction::RefreshMarket => {
+            crate::data_buyer_control::refresh_data_buyer_market(state)
+        }
+        DataBuyerPaneAction::PreviousAsset => {
+            crate::data_buyer_control::select_previous_data_buyer_asset(state)
+        }
+        DataBuyerPaneAction::NextAsset => {
+            crate::data_buyer_control::select_next_data_buyer_asset(state)
+        }
+        DataBuyerPaneAction::PublishRequest => {
+            crate::data_buyer_control::publish_data_buyer_request(state)
+        }
+    }
+}
+
 pub(super) fn run_data_seller_action(
     state: &mut crate::app_state::RenderState,
     action: DataSellerPaneAction,
@@ -10216,7 +10236,9 @@ pub(super) fn run_data_seller_action(
         crate::data_seller_control::ensure_data_seller_codex_session(state);
     }
     match action {
-        DataSellerPaneAction::SubmitPrompt => crate::data_seller_control::submit_data_seller_prompt(state),
+        DataSellerPaneAction::SubmitPrompt => {
+            crate::data_seller_control::submit_data_seller_prompt(state)
+        }
         DataSellerPaneAction::ConfirmPreview => {
             crate::data_seller_control::confirm_data_seller_preview(state)
         }
@@ -11140,7 +11162,7 @@ pub(super) fn run_pending_buyer_payment_watchdog_tick(
     true
 }
 
-fn submit_signed_network_request_with_event(
+pub(crate) fn submit_signed_network_request_with_event(
     state: &mut crate::app_state::RenderState,
     request_type: String,
     payload: String,

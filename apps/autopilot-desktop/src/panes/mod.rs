@@ -10,6 +10,7 @@ pub mod cast;
 pub mod chat;
 pub mod codex;
 pub mod credit;
+pub mod data_buyer;
 pub mod data_market;
 pub mod data_seller;
 pub mod earnings_jobs;
