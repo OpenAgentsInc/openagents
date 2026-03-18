@@ -38,6 +38,7 @@ Prefer only these tools for seller flows:
 - `openagents.data_market.publish_grant`
 - `openagents.data_market.prepare_delivery`
 - `openagents.data_market.issue_delivery`
+- `openagents.data_market.revoke_grant`
 - `openagents.data_market.snapshot`
 
 Use generic `openagents.pane.*` tools only for inspection or recovery when a
@@ -53,6 +54,7 @@ typed data-market tool cannot provide the needed truth.
 6. Require explicit seller confirmation before publish.
 7. Read back published state after mutation.
 8. For paid targeted requests, prepare delivery explicitly, then issue delivery so kernel truth exists before the NIP-90 result is published.
+9. Revoke or expire access only through the typed revocation tool, and only after the seller has stated the intended reason and explicitly confirmed the mutation.
 
 ## Safety Rules
 
@@ -61,3 +63,4 @@ typed data-market tool cannot provide the needed truth.
 - Do not silently widen permissions beyond what the seller confirmed.
 - Do not skip preview because the request "sounds obvious."
 - Do not claim delivery succeeded unless the `DeliveryBundle` exists and the linked NIP-90 result publish completed.
+- Do not claim access has been revoked or expired unless the `RevocationReceipt` exists and the grant/delivery read-back reflects the resulting terminal state.

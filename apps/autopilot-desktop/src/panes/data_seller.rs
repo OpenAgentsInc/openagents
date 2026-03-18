@@ -488,6 +488,25 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
+        "last revocation",
+        &option_label(
+            pane_state
+                .last_published_revocation
+                .as_ref()
+                .map(|revocation| revocation.revocation_id.as_str()),
+        ),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "revocation receipt",
+        &option_label(pane_state.last_revocation_publish_receipt_id.as_deref()),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
         "asset preview",
         if pane_state
             .active_draft
@@ -569,6 +588,16 @@ fn paint_publication_status_card(
             .map(|request| request.delivery_state.label())
             .unwrap_or("pending"),
     );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "revocation state",
+        pane_state
+            .latest_incoming_request()
+            .map(|request| request.revocation_state.label())
+            .unwrap_or("pending"),
+    );
 
     let warnings = pane_state.inventory_warnings();
     let warning_color = if warnings.is_empty() {
@@ -611,9 +640,18 @@ fn paint_publication_status_card(
                 .map(|bundle_id| format!(" | bundle={bundle_id}"))
                 .unwrap_or_default()
         );
+        let revocation_summary = format!(
+            "revocation={}{}",
+            latest_request.revocation_state.label(),
+            latest_request
+                .revocation_id
+                .as_deref()
+                .map(|revocation_id| format!(" | receipt={revocation_id}"))
+                .unwrap_or_default()
+        );
         paint.scene.draw_text(paint.text.layout(
             &format!(
-                "{} | buyer={} | bid={} sats{} | {} | {}",
+                "{} | buyer={} | bid={} sats{} | {} | {} | {}",
                 latest_request.evaluation_summary,
                 latest_request.requester,
                 latest_request.price_sats,
@@ -623,6 +661,7 @@ fn paint_publication_status_card(
                     .unwrap_or_default(),
                 payment_summary,
                 delivery_summary,
+                revocation_summary,
             ),
             Point::new(bounds.origin.x + 10.0, row_y + 28.0),
             10.0,

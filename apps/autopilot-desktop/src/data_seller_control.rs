@@ -3,15 +3,17 @@ use std::str::FromStr;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
 use nostr::nip90::{
-    DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback,
-    JobStatus, create_data_vending_result_event, create_job_feedback_event,
+    DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingResult, JobFeedback, JobStatus,
+    create_data_vending_result_event, create_job_feedback_event,
 };
 use nostr::{Event, EventTemplate, NostrIdentity};
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, CreateAccessGrantRequest, IssueDeliveryBundleRequest,
-    KernelAuthority, RegisterDataAssetRequest,
+    KernelAuthority, RegisterDataAssetRequest, RevokeAccessGrantRequest,
 };
-use openagents_kernel_core::data::{AccessGrantStatus, DeliveryBundle, DeliveryBundleStatus};
+use openagents_kernel_core::data::{
+    AccessGrantStatus, DeliveryBundle, DeliveryBundleStatus, RevocationReceipt,
+};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
@@ -21,7 +23,7 @@ use serde_json::json;
 
 use crate::app_state::{
     AutopilotRole, DataSellerCodexSessionPhase, DataSellerIncomingRequest,
-    DataSellerSkillAttachment, RenderState,
+    DataSellerRevocationAction, DataSellerSkillAttachment, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
 use crate::provider_nip90_lane::{
@@ -67,26 +69,30 @@ fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
     Ok(key)
 }
 
-fn sign_event_template(identity: &NostrIdentity, template: &EventTemplate) -> Result<Event, String> {
+fn sign_event_template(
+    identity: &NostrIdentity,
+    template: &EventTemplate,
+) -> Result<Event, String> {
     let private_key = parse_private_key_hex(identity.private_key_hex.as_str())?;
     nostr::finalize_event(template, &private_key)
         .map_err(|error| format!("Cannot sign NIP-90 event template: {error}"))
 }
 
 fn sync_data_seller_nip90_profile(state: &mut RenderState) {
-    let profile = state
-        .data_seller
-        .derived_nip90_profile()
-        .map(|profile| ProviderNip90DataVendingProfile {
-            profile_id: profile.profile_id,
-            request_kind: profile.request_kind,
-            result_kind: profile.result_kind,
-            kind_posture: profile.kind_posture,
-            targeting_posture: profile.targeting_posture,
-            asset_families: profile.asset_families,
-            delivery_modes: profile.delivery_modes,
-            preview_postures: profile.preview_postures,
-        });
+    let profile =
+        state
+            .data_seller
+            .derived_nip90_profile()
+            .map(|profile| ProviderNip90DataVendingProfile {
+                profile_id: profile.profile_id,
+                request_kind: profile.request_kind,
+                result_kind: profile.result_kind,
+                kind_posture: profile.kind_posture,
+                targeting_posture: profile.targeting_posture,
+                asset_families: profile.asset_families,
+                delivery_modes: profile.delivery_modes,
+                preview_postures: profile.preview_postures,
+            });
     let _ = state.queue_provider_nip90_lane_command(
         ProviderNip90LaneCommand::ConfigureDataVendingProfile { profile },
     );
@@ -281,7 +287,10 @@ fn build_accept_access_grant_request(
             {
                 evidence.push(EvidenceRef::new(
                     "payment_pointer",
-                    format!("oa://autopilot/payments/{}", canonical_component(payment_pointer)),
+                    format!(
+                        "oa://autopilot/payments/{}",
+                        canonical_component(payment_pointer)
+                    ),
                     payment_pointer,
                 ));
             }
@@ -304,7 +313,12 @@ fn build_issue_delivery_bundle_request(
         .delivery_draft
         .delivery_ref
         .clone()
-        .unwrap_or_else(|| format!("oa://deliveries/{}", canonical_component(request.request_id.as_str())));
+        .unwrap_or_else(|| {
+            format!(
+                "oa://deliveries/{}",
+                canonical_component(request.request_id.as_str())
+            )
+        });
     let delivery_bundle_id = format!(
         "delivery_bundle.{}.{}.{}",
         canonical_component(provider_id),
@@ -386,7 +400,10 @@ fn build_issue_delivery_bundle_request(
             {
                 evidence.push(EvidenceRef::new(
                     "payment_pointer",
-                    format!("oa://autopilot/payments/{}", canonical_component(payment_pointer)),
+                    format!(
+                        "oa://autopilot/payments/{}",
+                        canonical_component(payment_pointer)
+                    ),
                     payment_pointer,
                 ));
             }
@@ -403,6 +420,133 @@ fn build_issue_delivery_bundle_request(
                         canonical_component(request.request_id.as_str())
                     ),
                     delivery_digest,
+                ));
+            }
+            evidence
+        },
+        hints: ReceiptHints::default(),
+    }
+}
+
+fn default_revocation_reason_code(action: DataSellerRevocationAction) -> &'static str {
+    match action {
+        DataSellerRevocationAction::Revoke => "seller_revoked_access",
+        DataSellerRevocationAction::Expire => "access_window_expired",
+    }
+}
+
+fn explicit_revocation_reason_code(
+    action: DataSellerRevocationAction,
+    reason_code: Option<&str>,
+) -> String {
+    reason_code
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| default_revocation_reason_code(action).to_string())
+}
+
+fn build_revoke_access_grant_request(
+    request: &DataSellerIncomingRequest,
+    grant_id: &str,
+    asset_id: &str,
+    provider_id: &str,
+    consumer_id: Option<&str>,
+    revoked_delivery_bundle_ids: Vec<String>,
+    action: DataSellerRevocationAction,
+    reason_code: Option<&str>,
+    session_id: Option<&str>,
+    created_at_ms: i64,
+) -> RevokeAccessGrantRequest {
+    let canonical_reason_code = explicit_revocation_reason_code(action, reason_code);
+    RevokeAccessGrantRequest {
+        idempotency_key: format!(
+            "revoke_access_grant:{}",
+            sha256_prefixed_text(
+                format!(
+                    "{grant_id}|{}|{}|{}",
+                    request.request_id,
+                    action.label(),
+                    canonical_reason_code
+                )
+                .as_str()
+            )
+        ),
+        trace: TraceContext {
+            session_id: session_id.map(str::to_string),
+            trajectory_hash: session_id.map(sha256_prefixed_text),
+            claim_id: Some(format!(
+                "claim.data.access.{}.{}",
+                action.label(),
+                canonical_component(request.request_id.as_str())
+            )),
+            ..Default::default()
+        },
+        policy: PolicyContext {
+            policy_bundle_id: "policy.data_market.revocation.mvp".to_string(),
+            policy_version: "v0".to_string(),
+            approved_by: "openagents.data_market.seller_pane".to_string(),
+        },
+        revocation: RevocationReceipt {
+            revocation_id: format!(
+                "revocation.{}.{}.{}.{}",
+                canonical_component(provider_id),
+                canonical_component(grant_id),
+                canonical_component(request.request_id.as_str()),
+                action.label()
+            ),
+            asset_id: asset_id.to_string(),
+            grant_id: grant_id.to_string(),
+            provider_id: provider_id.to_string(),
+            consumer_id: consumer_id.map(str::to_string),
+            created_at_ms,
+            reason_code: canonical_reason_code.clone(),
+            refund_amount: None,
+            revoked_delivery_bundle_ids: revoked_delivery_bundle_ids.clone(),
+            replacement_delivery_bundle_id: None,
+            status: Default::default(),
+            metadata: json!({
+                "request_id": request.request_id,
+                "control_action": action.label(),
+                "delivery_bundle_ids": revoked_delivery_bundle_ids,
+                "payment_pointer": request.payment_pointer,
+                "payment_amount_sats": request.payment_amount_sats,
+            }),
+        },
+        evidence: {
+            let mut evidence = vec![EvidenceRef::new(
+                "nip90_request_event",
+                format!("nostr:event:{}", request.request_id),
+                request.request_id.as_str(),
+            )];
+            if let Some(payment_pointer) = request
+                .payment_pointer
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                evidence.push(EvidenceRef::new(
+                    "payment_pointer",
+                    format!(
+                        "oa://autopilot/payments/{}",
+                        canonical_component(payment_pointer)
+                    ),
+                    payment_pointer,
+                ));
+            }
+            for delivery_bundle_id in &request
+                .delivery_bundle_id
+                .iter()
+                .cloned()
+                .chain(revoked_delivery_bundle_ids.iter().cloned())
+                .collect::<Vec<_>>()
+            {
+                evidence.push(EvidenceRef::new(
+                    "delivery_bundle",
+                    format!(
+                        "oa://autopilot/data_deliveries/{}",
+                        canonical_component(delivery_bundle_id.as_str())
+                    ),
+                    delivery_bundle_id.as_str(),
                 ));
             }
             evidence
@@ -437,15 +581,17 @@ fn matched_settled_receive_payment<'a>(
                     .as_deref()
                     .and_then(normalize_lightning_invoice_ref)
                     .is_some_and(|candidate| candidate == expected_invoice)
-            }) || expected_payment_hash.as_deref().is_some_and(|expected_payment_hash| {
-                payment
-                    .payment_hash
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_ascii_lowercase)
-                    .is_some_and(|candidate| candidate == expected_payment_hash)
-            })
+            }) || expected_payment_hash
+                .as_deref()
+                .is_some_and(|expected_payment_hash| {
+                    payment
+                        .payment_hash
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_ascii_lowercase)
+                        .is_some_and(|candidate| candidate == expected_payment_hash)
+                })
         })
         .max_by_key(|payment| payment.timestamp)
 }
@@ -474,9 +620,8 @@ pub(crate) fn ensure_data_seller_codex_session(state: &mut RenderState) -> bool 
                 "failed to auto-provision managed Data Market skills before seller session: {}",
                 error
             );
-            state.data_seller.last_error = Some(format!(
-                "Failed to auto-provision seller skills: {error}"
-            ));
+            state.data_seller.last_error =
+                Some(format!("Failed to auto-provision seller skills: {error}"));
         }
     }
     let model = state.autopilot_chat.selected_model_override();
@@ -533,7 +678,12 @@ pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
         return true;
     };
 
-    let prompt = state.data_seller_inputs.composer.get_value().trim().to_string();
+    let prompt = state
+        .data_seller_inputs
+        .composer
+        .get_value()
+        .trim()
+        .to_string();
     if prompt.is_empty() {
         return false;
     }
@@ -570,9 +720,11 @@ pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
 
     match state.queue_codex_command(command) {
         Ok(command_seq) => {
-            state
-                .autopilot_chat
-                .append_cached_thread_message(&thread_id, AutopilotRole::User, prompt);
+            state.autopilot_chat.append_cached_thread_message(
+                &thread_id,
+                AutopilotRole::User,
+                prompt,
+            );
             state.data_seller_inputs.composer.set_value(String::new());
             state.data_seller.last_error = None;
             state.data_seller.last_action = Some(format!(
@@ -584,9 +736,8 @@ pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
             state.data_seller.set_codex_thread_status("running");
         }
         Err(error) => {
-            state.data_seller.last_error = Some(format!(
-                "Failed to queue Data Seller turn: {error}"
-            ));
+            state.data_seller.last_error =
+                Some(format!("Failed to queue Data Seller turn: {error}"));
         }
     }
     true
@@ -642,9 +793,10 @@ pub(crate) fn request_data_seller_payment_required(
             expiry_seconds: Some(3600),
         })
     {
-        state
-            .data_seller
-            .note_payment_invoice_failed(request_id, format!("Failed to queue Spark invoice creation: {error}"));
+        state.data_seller.note_payment_invoice_failed(
+            request_id,
+            format!("Failed to queue Spark invoice creation: {error}"),
+        );
         return true;
     }
 
@@ -678,23 +830,24 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
     let client = match crate::kernel_control::remote_authority_client_for_state(state) {
         Ok(client) => client,
         Err(error) => {
-            state.data_seller.note_delivery_issue_failed(request_id, error);
+            state
+                .data_seller
+                .note_delivery_issue_failed(request_id, error);
             return true;
         }
     };
 
-    let mut grant = match crate::kernel_control::run_kernel_call(client.get_access_grant(
-        grant_id.as_str(),
-    )) {
-        Ok(grant) => grant,
-        Err(error) => {
-            state.data_seller.note_delivery_issue_failed(
-                request_id,
-                format!("Failed to load grant {grant_id} before delivery: {error}"),
-            );
-            return true;
-        }
-    };
+    let mut grant =
+        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
+            Ok(grant) => grant,
+            Err(error) => {
+                state.data_seller.note_delivery_issue_failed(
+                    request_id,
+                    format!("Failed to load grant {grant_id} before delivery: {error}"),
+                );
+                return true;
+            }
+        };
 
     if grant.status == AccessGrantStatus::Offered {
         let accepted_at_ms = current_epoch_ms();
@@ -704,21 +857,21 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
             state.data_seller.codex_thread_id.as_deref(),
             accepted_at_ms,
         );
-        let accept_response =
-            match crate::kernel_control::run_kernel_call(client.accept_access_grant(accept_request))
-            {
-                Ok(response) => response,
-                Err(error) => {
-                    state.data_seller.note_delivery_issue_failed(
-                        request_id,
-                        format!("Failed to accept grant {grant_id} before delivery: {error}"),
-                    );
-                    return true;
-                }
-            };
-        grant = match crate::kernel_control::run_kernel_call(client.get_access_grant(
-            grant_id.as_str(),
-        )) {
+        let accept_response = match crate::kernel_control::run_kernel_call(
+            client.accept_access_grant(accept_request),
+        ) {
+            Ok(response) => response,
+            Err(error) => {
+                state.data_seller.note_delivery_issue_failed(
+                    request_id,
+                    format!("Failed to accept grant {grant_id} before delivery: {error}"),
+                );
+                return true;
+            }
+        };
+        grant = match crate::kernel_control::run_kernel_call(
+            client.get_access_grant(grant_id.as_str()),
+        ) {
             Ok(grant) => grant,
             Err(_) => accept_response.grant,
         };
@@ -741,10 +894,11 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
         .data_market
         .note_published_grant(grant.clone(), current_epoch_ms());
 
-    let delivery = if let Some(existing_delivery_bundle_id) = request.delivery_bundle_id.as_deref() {
-        match crate::kernel_control::run_kernel_call(client.get_delivery_bundle(
-            existing_delivery_bundle_id,
-        )) {
+    let delivery = if let Some(existing_delivery_bundle_id) = request.delivery_bundle_id.as_deref()
+    {
+        match crate::kernel_control::run_kernel_call(
+            client.get_delivery_bundle(existing_delivery_bundle_id),
+        ) {
             Ok(delivery) => delivery,
             Err(error) => {
                 state.data_seller.note_delivery_issue_failed(
@@ -759,7 +913,9 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
         }
     } else {
         if let Err(error) = state.data_seller.note_delivery_bundle_issuing(request_id) {
-            state.data_seller.note_delivery_issue_failed(request_id, error);
+            state
+                .data_seller
+                .note_delivery_issue_failed(request_id, error);
             return true;
         }
         let created_at_ms = current_epoch_ms();
@@ -776,23 +932,23 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
             state.data_seller.codex_thread_id.as_deref(),
             created_at_ms,
         );
-        let issue_response =
-            match crate::kernel_control::run_kernel_call(client.issue_delivery_bundle(issue_request))
-            {
-                Ok(response) => response,
-                Err(error) => {
-                    state.data_seller.note_delivery_issue_failed(
-                        request_id,
-                        format!("Kernel authority rejected delivery issuance: {error}"),
-                    );
-                    return true;
-                }
-            };
+        let issue_response = match crate::kernel_control::run_kernel_call(
+            client.issue_delivery_bundle(issue_request),
+        ) {
+            Ok(response) => response,
+            Err(error) => {
+                state.data_seller.note_delivery_issue_failed(
+                    request_id,
+                    format!("Kernel authority rejected delivery issuance: {error}"),
+                );
+                return true;
+            }
+        };
         let receipt_id = Some(issue_response.receipt.receipt_id.clone());
         let delivery_bundle_id = issue_response.delivery_bundle.delivery_bundle_id.clone();
-        let readback_delivery = match crate::kernel_control::run_kernel_call(client.get_delivery_bundle(
-            delivery_bundle_id.as_str(),
-        )) {
+        let readback_delivery = match crate::kernel_control::run_kernel_call(
+            client.get_delivery_bundle(delivery_bundle_id.as_str()),
+        ) {
             Ok(delivery) => delivery,
             Err(_) => issue_response.delivery_bundle,
         };
@@ -801,7 +957,9 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
             readback_delivery.clone(),
             receipt_id,
         ) {
-            state.data_seller.note_delivery_issue_failed(request_id, error);
+            state
+                .data_seller
+                .note_delivery_issue_failed(request_id, error);
             return true;
         }
         state
@@ -826,17 +984,19 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
     let event = match build_data_seller_delivery_result_event(identity, &request, &delivery) {
         Ok(event) => event,
         Err(error) => {
-            state.data_seller.note_delivery_issue_failed(request_id, error);
+            state
+                .data_seller
+                .note_delivery_issue_failed(request_id, error);
             return true;
         }
     };
-    if let Err(error) = state.queue_provider_nip90_lane_command(
-        ProviderNip90LaneCommand::PublishEvent {
+    if let Err(error) =
+        state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::PublishEvent {
             request_id: request_id.to_string(),
             role: ProviderNip90PublishRole::Result,
             event: Box::new(event),
-        },
-    ) {
+        })
+    {
         state.data_seller.note_delivery_issue_failed(
             request_id,
             format!("Cannot queue NIP-90 delivery result publish: {error}"),
@@ -865,6 +1025,193 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
     true
 }
 
+pub(crate) fn revoke_data_seller_access(
+    state: &mut RenderState,
+    request_id: &str,
+    action: DataSellerRevocationAction,
+    reason_code: Option<&str>,
+) -> bool {
+    if let Err(error) = state.data_seller.request_revoke_access(request_id, action) {
+        state.data_seller.last_error = Some(error);
+        return true;
+    }
+
+    let Some(request) = state.data_seller.request_by_id(request_id).cloned() else {
+        state.data_seller.last_error = Some(format!(
+            "Unknown data-access request {request_id} after revocation start."
+        ));
+        return true;
+    };
+    let Some(grant_id) = request.matched_grant_id.clone() else {
+        state
+            .data_seller
+            .note_revocation_failed(request_id, "Matched grant is missing for revocation.");
+        return true;
+    };
+
+    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
+        Ok(client) => client,
+        Err(error) => {
+            state.data_seller.note_revocation_failed(request_id, error);
+            return true;
+        }
+    };
+
+    let grant =
+        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
+            Ok(grant) => grant,
+            Err(error) => {
+                state.data_seller.note_revocation_failed(
+                    request_id,
+                    format!("Failed to load grant {grant_id} before revocation: {error}"),
+                );
+                return true;
+            }
+        };
+    if matches!(
+        grant.status,
+        AccessGrantStatus::Revoked | AccessGrantStatus::Refunded | AccessGrantStatus::Expired
+    ) {
+        state.data_seller.note_revocation_failed(
+            request_id,
+            format!(
+                "Grant {} is already in terminal status {}.",
+                grant_id,
+                grant.status.label()
+            ),
+        );
+        return true;
+    }
+
+    let deliveries = match crate::kernel_control::run_kernel_call(client.list_delivery_bundles(
+        None,
+        Some(grant_id.as_str()),
+        None,
+        None,
+        None,
+    )) {
+        Ok(deliveries) => deliveries,
+        Err(error) => {
+            state.data_seller.note_revocation_failed(
+                request_id,
+                format!("Failed to load deliveries for grant {grant_id}: {error}"),
+            );
+            return true;
+        }
+    };
+
+    let now_ms = current_epoch_ms();
+    if action == DataSellerRevocationAction::Expire {
+        let grant_expired = now_ms >= grant.expires_at_ms;
+        let delivery_expired = deliveries.iter().any(|delivery| {
+            delivery
+                .expires_at_ms
+                .is_some_and(|expires_at_ms| now_ms >= expires_at_ms)
+        });
+        if !grant_expired && !delivery_expired {
+            state.data_seller.note_revocation_failed(
+                request_id,
+                format!(
+                    "Request {} cannot be expired yet because neither the grant nor any delivery bundle is past its expiry window.",
+                    request_id
+                ),
+            );
+            return true;
+        }
+    }
+
+    let revoke_request = build_revoke_access_grant_request(
+        &request,
+        grant.grant_id.as_str(),
+        grant.asset_id.as_str(),
+        grant.provider_id.as_str(),
+        grant.consumer_id.as_deref(),
+        deliveries
+            .iter()
+            .map(|delivery| delivery.delivery_bundle_id.clone())
+            .collect(),
+        action,
+        reason_code,
+        state.data_seller.codex_thread_id.as_deref(),
+        now_ms,
+    );
+    let revoke_response =
+        match crate::kernel_control::run_kernel_call(client.revoke_access_grant(revoke_request)) {
+            Ok(response) => response,
+            Err(error) => {
+                state.data_seller.note_revocation_failed(
+                    request_id,
+                    format!("Kernel authority rejected revocation control: {error}"),
+                );
+                return true;
+            }
+        };
+
+    let revocation = match crate::kernel_control::run_kernel_call(
+        client.get_revocation(revoke_response.revocation.revocation_id.as_str()),
+    ) {
+        Ok(revocation) => revocation,
+        Err(_) => revoke_response.revocation,
+    };
+    let grant =
+        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
+            Ok(grant) => grant,
+            Err(error) => {
+                state.data_seller.note_revocation_failed(
+                    request_id,
+                    format!("Failed to reload grant {grant_id} after revocation: {error}"),
+                );
+                return true;
+            }
+        };
+    let deliveries = match crate::kernel_control::run_kernel_call(client.list_delivery_bundles(
+        None,
+        Some(grant_id.as_str()),
+        None,
+        None,
+        None,
+    )) {
+        Ok(deliveries) => deliveries,
+        Err(error) => {
+            state.data_seller.note_revocation_failed(
+                request_id,
+                format!("Failed to reload deliveries for grant {grant_id}: {error}"),
+            );
+            return true;
+        }
+    };
+
+    let reflected_at_ms = current_epoch_ms();
+    if let Err(error) = state.data_seller.note_revocation_recorded(
+        request_id,
+        action,
+        revocation.clone(),
+        Some(revoke_response.receipt.receipt_id.clone()),
+        grant.clone(),
+        deliveries.as_slice(),
+    ) {
+        state.data_seller.note_revocation_failed(request_id, error);
+        return true;
+    }
+    state
+        .data_market
+        .note_published_grant(grant, reflected_at_ms);
+    for delivery in deliveries {
+        state
+            .data_market
+            .note_published_delivery(delivery, reflected_at_ms);
+    }
+    state
+        .data_market
+        .note_published_revocation(revocation, reflected_at_ms);
+    state.provider_runtime.last_result = Some(format!(
+        "seller {} access for data request {}",
+        action.past_tense_label(),
+        request_id
+    ));
+    true
+}
+
 fn queue_data_seller_payment_required_feedback(
     state: &mut RenderState,
     request_id: &str,
@@ -878,16 +1225,25 @@ fn queue_data_seller_payment_required_feedback(
     let quoted_price_sats = request
         .required_price_sats
         .or((request.price_sats > 0).then_some(request.price_sats))
-        .ok_or_else(|| format!("Request {} does not have a non-zero quoted price", request_id))?;
+        .ok_or_else(|| {
+            format!(
+                "Request {} does not have a non-zero quoted price",
+                request_id
+            )
+        })?;
     let bolt11 = request
         .pending_bolt11
         .as_deref()
-        .ok_or_else(|| format!("Request {} is missing the pending Lightning invoice", request_id))?
+        .ok_or_else(|| {
+            format!(
+                "Request {} is missing the pending Lightning invoice",
+                request_id
+            )
+        })?
         .to_string();
-    let identity = state
-        .nostr_identity
-        .as_ref()
-        .ok_or_else(|| "Cannot publish payment-required feedback: Nostr identity unavailable".to_string())?;
+    let identity = state.nostr_identity.as_ref().ok_or_else(|| {
+        "Cannot publish payment-required feedback: Nostr identity unavailable".to_string()
+    })?;
     let event = build_data_seller_payment_required_feedback_event(
         identity,
         request_id.as_str(),
@@ -932,7 +1288,9 @@ pub(crate) fn reconcile_data_seller_wallet_update(
                     .note_payment_invoice_failed(request_id.as_str(), error);
                 return;
             }
-            if let Err(error) = queue_data_seller_payment_required_feedback(state, request_id.as_str()) {
+            if let Err(error) =
+                queue_data_seller_payment_required_feedback(state, request_id.as_str())
+            {
                 state
                     .data_seller
                     .note_payment_invoice_failed(request_id.as_str(), error);
@@ -954,7 +1312,9 @@ pub(crate) fn reconcile_data_seller_wallet_update(
         .data_seller
         .incoming_requests
         .iter()
-        .filter(|request| request.payment_state == crate::app_state::DataSellerPaymentState::AwaitingPayment)
+        .filter(|request| {
+            request.payment_state == crate::app_state::DataSellerPaymentState::AwaitingPayment
+        })
         .filter(|request| request.payment_pointer.is_none())
         .filter_map(|request| {
             matched_settled_receive_payment(
@@ -1019,9 +1379,7 @@ pub(crate) fn apply_data_seller_publish_outcome(
             handled
         }
         ProviderNip90PublishRole::Result => {
-            if delivery_state
-                != crate::app_state::DataSellerDeliveryState::PublishingResult
-            {
+            if delivery_state != crate::app_state::DataSellerDeliveryState::PublishingResult {
                 return false;
             }
             let handled = state.data_seller.note_delivery_result_publish_outcome(
@@ -1055,12 +1413,16 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
         return true;
     }
 
-    let preview_payload = match state.data_seller.active_draft.last_previewed_asset_payload.clone() {
+    let preview_payload = match state
+        .data_seller
+        .active_draft
+        .last_previewed_asset_payload
+        .clone()
+    {
         Some(payload) => payload,
         None => {
-            state.data_seller.last_error = Some(
-                "Publish is armed but the exact preview payload is missing.".to_string(),
-            );
+            state.data_seller.last_error =
+                Some("Publish is armed but the exact preview payload is missing.".to_string());
             return true;
         }
     };
@@ -1098,28 +1460,27 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     };
     let asset_id = response.asset.asset_id.clone();
     let receipt_id = Some(response.receipt.receipt_id.clone());
-    let readback_asset = match crate::kernel_control::run_kernel_call(client.get_data_asset(
-        asset_id.as_str(),
-    )) {
-        Ok(asset) => asset,
-        Err(error) => {
-            state
-                .data_seller
-                .note_asset_published(response.asset, receipt_id);
-            if let Some(asset) = state.data_seller.last_published_asset.clone() {
+    let readback_asset =
+        match crate::kernel_control::run_kernel_call(client.get_data_asset(asset_id.as_str())) {
+            Ok(asset) => asset,
+            Err(error) => {
                 state
-                    .data_market
-                    .note_published_asset(asset, current_epoch_ms());
+                    .data_seller
+                    .note_asset_published(response.asset, receipt_id);
+                if let Some(asset) = state.data_seller.last_published_asset.clone() {
+                    state
+                        .data_market
+                        .note_published_asset(asset, current_epoch_ms());
+                }
+                sync_data_seller_nip90_profile(state);
+                state.data_seller.last_error = Some(format!(
+                    "Asset was published but the immediate kernel read-back failed: {error}"
+                ));
+                state.data_seller.status_line =
+                    "Asset published, but immediate kernel read-back failed.".to_string();
+                return true;
             }
-            sync_data_seller_nip90_profile(state);
-            state.data_seller.last_error = Some(format!(
-                "Asset was published but the immediate kernel read-back failed: {error}"
-            ));
-            state.data_seller.status_line =
-                "Asset published, but immediate kernel read-back failed.".to_string();
-            return true;
-        }
-    };
+        };
 
     state
         .data_seller
@@ -1137,7 +1498,11 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
         return true;
     }
 
-    let preview_payload = match state.data_seller.active_draft.last_previewed_grant_payload.clone()
+    let preview_payload = match state
+        .data_seller
+        .active_draft
+        .last_previewed_grant_payload
+        .clone()
     {
         Some(payload) => payload,
         None => {
@@ -1154,8 +1519,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                 "Failed to decode the exact grant preview payload into CreateAccessGrantRequest: {error}"
             ));
             state.data_seller.status_line =
-                "Grant publish blocked because the preview payload is no longer valid."
-                    .to_string();
+                "Grant publish blocked because the preview payload is no longer valid.".to_string();
             return true;
         }
     };
@@ -1182,28 +1546,27 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     };
     let grant_id = response.grant.grant_id.clone();
     let receipt_id = Some(response.receipt.receipt_id.clone());
-    let readback_grant = match crate::kernel_control::run_kernel_call(client.get_access_grant(
-        grant_id.as_str(),
-    )) {
-        Ok(grant) => grant,
-        Err(error) => {
-            state
-                .data_seller
-                .note_grant_published(response.grant, receipt_id);
-            if let Some(grant) = state.data_seller.last_published_grant.clone() {
+    let readback_grant =
+        match crate::kernel_control::run_kernel_call(client.get_access_grant(grant_id.as_str())) {
+            Ok(grant) => grant,
+            Err(error) => {
                 state
-                    .data_market
-                    .note_published_grant(grant, current_epoch_ms());
+                    .data_seller
+                    .note_grant_published(response.grant, receipt_id);
+                if let Some(grant) = state.data_seller.last_published_grant.clone() {
+                    state
+                        .data_market
+                        .note_published_grant(grant, current_epoch_ms());
+                }
+                sync_data_seller_nip90_profile(state);
+                state.data_seller.last_error = Some(format!(
+                    "Grant was published but the immediate kernel read-back failed: {error}"
+                ));
+                state.data_seller.status_line =
+                    "Grant published, but immediate kernel read-back failed.".to_string();
+                return true;
             }
-            sync_data_seller_nip90_profile(state);
-            state.data_seller.last_error = Some(format!(
-                "Grant was published but the immediate kernel read-back failed: {error}"
-            ));
-            state.data_seller.status_line =
-                "Grant published, but immediate kernel read-back failed.".to_string();
-            return true;
-        }
-    };
+        };
 
     state
         .data_seller

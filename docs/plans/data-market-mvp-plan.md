@@ -49,8 +49,9 @@ evaluation against the current asset/grant posture. The seller lane can now
 also generate a Lightning invoice for a matched request, publish NIP-90
 `payment-required` feedback, observe the resulting paid state from Spark
 wallet truth, prepare a seller delivery draft, issue a canonical
-`DeliveryBundle`, and publish a linked NIP-90 result. Revocation and
-buyer-side request issuance still remain follow-on work.
+`DeliveryBundle`, publish a linked NIP-90 result, and record explicit revoke
+or expire controls with `RevocationReceipt` read-back into both panes.
+Buyer-side request issuance still remains follow-on work.
 
 ### 1. Compute already has a real product wedge
 

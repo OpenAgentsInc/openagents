@@ -127,7 +127,8 @@ There is now also an initial `Data Seller` shell in the desktop app. It can:
 
 It cannot yet:
 
-- extend the same publication/read-back discipline through payment, delivery, revocation, and buyer-facing flows
+- expose buyer-facing request issuance and transaction UX
+- publish a dedicated checked-in `openagents.data.v1` wire package
 
 The dedicated seller lane now also auto-provisions the first-party
 `autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
@@ -145,8 +146,11 @@ requests inside the seller lane with explicit evaluation results, can now
 generate a seller Lightning invoice, publish NIP-90 `payment-required`
 feedback, reconcile the paid state back from Spark wallet truth, prepare
 delivery drafts, issue `DeliveryBundle` authority objects, and publish linked
-NIP-90 result events so the next issues can layer revocation and buyer-facing
-flows on top of one truthful intake surface.
+NIP-90 result events. The seller lane can now also record explicit revoke or
+expire controls through kernel authority, read the resulting
+`RevocationReceipt` back, and reflect the terminal grant/delivery state into
+both panes so buyer-facing flows can layer on top of one truthful intake and
+post-sale control surface.
 
 ### 3. Codex is already deeply integrated
 
@@ -350,12 +354,13 @@ Recommended MVP tool family:
   - update the local delivery draft for a paid targeted request
 - `openagents.data_market.issue_delivery`
   - accept the matched grant if needed, issue the `DeliveryBundle`, and publish the linked NIP-90 result
+- `openagents.data_market.revoke_grant`
+  - record an explicit revoke or expire control against the matched grant after seller confirmation
 - `openagents.data_market.snapshot`
   - return a compact summary of current draft + latest published ids
 
 Later-scope tools:
 
-- `openagents.data_market.revoke_grant`
 - `openagents.data_market.publish_dvm_offer`
 
 These tools should use the same structured response-envelope pattern already

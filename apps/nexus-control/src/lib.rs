@@ -8237,6 +8237,37 @@ mod tests {
         }
     }
 
+    fn expire_access_grant_request(
+        revocation_id: &str,
+        grant_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RevokeAccessGrantRequest {
+        RevokeAccessGrantRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            revocation: RevocationReceipt {
+                revocation_id: revocation_id.to_string(),
+                asset_id: String::new(),
+                grant_id: grant_id.to_string(),
+                provider_id: String::new(),
+                consumer_id: None,
+                created_at_ms,
+                reason_code: "access_window_expired".to_string(),
+                refund_amount: None,
+                revoked_delivery_bundle_ids: Vec::new(),
+                replacement_delivery_bundle_id: None,
+                status: RevocationStatus::Revoked,
+                metadata: json!({
+                    "control_action": "expire"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
     fn reserve_partition_request(
         partition_id: &str,
         idempotency_key: &str,
@@ -12623,6 +12654,144 @@ mod tests {
                 .recent_receipts
                 .iter()
                 .any(|receipt| { receipt.receipt_type == "kernel.data.revocation.recorded" })
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn data_market_expiry_revocation_marks_grant_and_delivery_expired() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(8_000);
+
+        let asset = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/assets")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&data_asset_request(
+                        "asset.data.expiry",
+                        "idemp.data.asset.expiry",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(asset.status(), StatusCode::OK);
+
+        let grant = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&access_grant_request(
+                        "grant.data.expiry",
+                        "asset.data.expiry",
+                        "idemp.data.grant.expiry",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(grant.status(), StatusCode::OK);
+
+        let accepted = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants/grant.data.expiry/accept")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &accept_access_grant_request(
+                            "grant.data.expiry",
+                            "consumer.data.expiry",
+                            "idemp.data.accept.expiry",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(accepted.status(), StatusCode::OK);
+
+        let delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants/grant.data.expiry/deliveries")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&delivery_bundle_request(
+                        "delivery.data.expiry",
+                        "grant.data.expiry",
+                        "idemp.data.delivery.expiry",
+                        created_at_ms + 3_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(delivery.status(), StatusCode::OK);
+
+        let revocation = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants/grant.data.expiry/revoke")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &expire_access_grant_request(
+                            "revocation.data.expiry",
+                            "grant.data.expiry",
+                            "idemp.data.expiry.alpha",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(revocation.status(), StatusCode::OK);
+        let revocation_payload: RevokeAccessGrantResponse = response_json(revocation).await?;
+        assert_eq!(
+            revocation_payload.revocation.status,
+            RevocationStatus::Revoked
+        );
+
+        let fetched_grant = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/grants/grant.data.expiry")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched_grant.status(), StatusCode::OK);
+        let fetched_grant_payload: AccessGrant = response_json(fetched_grant).await?;
+        assert_eq!(fetched_grant_payload.status, AccessGrantStatus::Expired);
+
+        let fetched_delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/data/deliveries/delivery.data.expiry")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched_delivery.status(), StatusCode::OK);
+        let fetched_delivery_payload: DeliveryBundle = response_json(fetched_delivery).await?;
+        assert_eq!(
+            fetched_delivery_payload.status,
+            DeliveryBundleStatus::Expired
         );
 
         Ok(())

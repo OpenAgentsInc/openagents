@@ -11053,6 +11053,18 @@ impl KernelState {
         context: &KernelMutationContext,
         mut req: RevokeAccessGrantRequest,
     ) -> Result<MutationResult<RevokeAccessGrantResponse>, String> {
+        fn revocation_marks_expiry(revocation: &RevocationReceipt) -> bool {
+            revocation
+                .metadata
+                .get("control_action")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| value.eq_ignore_ascii_case("expire"))
+                || revocation
+                    .reason_code
+                    .to_ascii_lowercase()
+                    .contains("expir")
+        }
+
         let revocation_id = normalize_required(
             req.revocation.revocation_id.as_str(),
             "revocation_id_missing",
@@ -11068,7 +11080,7 @@ impl KernelState {
         };
         if matches!(
             grant_record.grant.status,
-            AccessGrantStatus::Revoked | AccessGrantStatus::Refunded
+            AccessGrantStatus::Revoked | AccessGrantStatus::Refunded | AccessGrantStatus::Expired
         ) {
             return Err("access_grant_already_revoked".to_string());
         }
@@ -11202,17 +11214,24 @@ impl KernelState {
             });
         }
 
+        let mark_expired = revocation_marks_expiry(&req.revocation);
         for record in &bundle_records {
             if let Some(bundle_record) = self
                 .delivery_bundles
                 .get_mut(record.delivery_bundle.delivery_bundle_id.as_str())
             {
-                bundle_record.delivery_bundle.status = DeliveryBundleStatus::Revoked;
+                bundle_record.delivery_bundle.status = if mark_expired {
+                    DeliveryBundleStatus::Expired
+                } else {
+                    DeliveryBundleStatus::Revoked
+                };
             }
         }
         if let Some(grant_record) = self.access_grants.get_mut(grant_id.as_str()) {
             grant_record.grant.status = if req.revocation.refund_amount.is_some() {
                 AccessGrantStatus::Refunded
+            } else if mark_expired {
+                AccessGrantStatus::Expired
             } else {
                 AccessGrantStatus::Revoked
             };
