@@ -130,6 +130,12 @@ The dedicated seller lane now also auto-provisions the first-party
 `autopilot-data-seller` and `autopilot-data-market-control` skills so the pane
 can depend on stable seller policy rather than manual skill selection.
 
+The first typed `openagents.data_market.*` tool family now exists in the desktop
+runtime for seller status, draft, preview, blocked publish, and snapshot flows.
+Those tools currently operate against local seller draft truth and read-model
+state; later issues replace the blocked publish path with exact authority
+mutation.
+
 ### 3. Codex is already deeply integrated
 
 The repo already has:

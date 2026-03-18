@@ -1571,6 +1571,22 @@ impl DataSellerPaneState {
             "Publish remains gated behind exact preview and explicit confirmation.".to_string();
     }
 
+    pub fn note_draft_mutation(&mut self, action: impl Into<String>) {
+        self.active_draft.recompute_readiness_blockers();
+        self.active_draft.preview_posture = DataSellerPreviewPosture::NotRequested;
+        self.active_draft.last_previewed_asset_payload = None;
+        self.active_draft.last_previewed_grant_payload = None;
+        self.preview_enabled = true;
+        self.publish_enabled = false;
+        self.last_error = None;
+        self.last_action = Some(action.into());
+        self.status_line = if self.active_draft.is_structurally_ready() {
+            "Draft updated. Run preview to materialize the current payload.".to_string()
+        } else {
+            format!("Draft updated. {}", self.active_draft.blocker_summary())
+        };
+    }
+
     pub fn set_required_skill_attachments(
         &mut self,
         attachments: Vec<DataSellerSkillAttachment>,

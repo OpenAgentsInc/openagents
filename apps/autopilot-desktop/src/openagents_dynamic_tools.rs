@@ -7,6 +7,21 @@ pub(crate) const OPENAGENTS_TOOL_PANE_FOCUS: &str = "openagents_pane_focus";
 pub(crate) const OPENAGENTS_TOOL_PANE_CLOSE: &str = "openagents_pane_close";
 pub(crate) const OPENAGENTS_TOOL_PANE_SET_INPUT: &str = "openagents_pane_set_input";
 pub(crate) const OPENAGENTS_TOOL_PANE_ACTION: &str = "openagents_pane_action";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS: &str =
+    "openagents_data_market_seller_status";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET: &str =
+    "openagents_data_market_draft_asset";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET: &str =
+    "openagents_data_market_preview_asset";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET: &str =
+    "openagents_data_market_publish_asset";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT: &str =
+    "openagents_data_market_draft_grant";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT: &str =
+    "openagents_data_market_preview_grant";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT: &str =
+    "openagents_data_market_publish_grant";
+pub(crate) const OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT: &str = "openagents_data_market_snapshot";
 pub(crate) const OPENAGENTS_TOOL_CAD_INTENT: &str = "openagents_cad_intent";
 pub(crate) const OPENAGENTS_TOOL_CAD_ACTION: &str = "openagents_cad_action";
 pub(crate) const OPENAGENTS_TOOL_SWAP_QUOTE: &str = "openagents_swap_quote";
@@ -38,6 +53,14 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_CLOSE,
     OPENAGENTS_TOOL_PANE_SET_INPUT,
     OPENAGENTS_TOOL_PANE_ACTION,
+    OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS,
+    OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
+    OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET,
+    OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET,
+    OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT,
+    OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT,
     OPENAGENTS_TOOL_CAD_INTENT,
     OPENAGENTS_TOOL_CAD_ACTION,
     OPENAGENTS_TOOL_SWAP_QUOTE,
@@ -135,6 +158,133 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "index": { "type": "integer", "minimum": 0 }
                 },
                 "required": ["pane", "action"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_SELLER_STATUS.to_string(),
+            description: "Return the current Data Seller pane status, draft posture, and readiness blockers."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET.to_string(),
+            description:
+                "Update structured Data Seller draft asset fields without publishing authority state."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "asset_kind": { "type": "string" },
+                    "title": { "type": "string" },
+                    "description": { "type": "string" },
+                    "content_digest": { "type": "string" },
+                    "provenance_ref": { "type": "string" },
+                    "default_policy": { "type": "string" },
+                    "price_hint_sats": { "type": "integer", "minimum": 0 },
+                    "delivery_modes": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "visibility_posture": {
+                        "type": "string",
+                        "enum": ["targeted_only", "operator_only", "public_catalog"]
+                    },
+                    "sensitivity_posture": {
+                        "type": "string",
+                        "enum": ["private", "restricted", "public"]
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "additionalProperties": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_ASSET.to_string(),
+            description: "Produce the current Data Seller asset preview payload and readiness state."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET.to_string(),
+            description:
+                "Attempt the Data Seller asset publish path after explicit confirmation."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "confirm": { "type": "boolean" }
+                },
+                "required": ["confirm"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_DRAFT_GRANT.to_string(),
+            description:
+                "Update the default grant posture derived by the Data Seller draft without publishing."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "default_policy": { "type": "string" },
+                    "price_hint_sats": { "type": "integer", "minimum": 0 },
+                    "delivery_modes": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "visibility_posture": {
+                        "type": "string",
+                        "enum": ["targeted_only", "operator_only", "public_catalog"]
+                    }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_PREVIEW_GRANT.to_string(),
+            description:
+                "Produce the current derived grant preview payload and readiness posture."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_GRANT.to_string(),
+            description:
+                "Attempt the Data Seller grant publish path after explicit confirmation."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "confirm": { "type": "boolean" }
+                },
+                "required": ["confirm"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_DATA_MARKET_SNAPSHOT.to_string(),
+            description:
+                "Return a compact Data Market snapshot covering seller draft state and read-only market counts."
+                    .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
                 "additionalProperties": false
             }),
         },
@@ -528,9 +678,11 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
 #[cfg(test)]
 mod tests {
     use super::{
-        OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
-        openagents_dynamic_tool_specs,
+        OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET,
+        OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET, OPENAGENTS_TOOL_SWAP_EXECUTE,
+        OPENAGENTS_TOOL_SWAP_QUOTE, openagents_dynamic_tool_specs,
     };
+    use serde_json::json;
     use std::collections::HashSet;
 
     fn matches_server_name_pattern(name: &str) -> bool {
@@ -596,6 +748,36 @@ mod tests {
                 .input_schema
                 .pointer("/properties/status")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn data_market_tool_schemas_expose_expected_fields() {
+        let specs = openagents_dynamic_tool_specs();
+        let draft_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_DRAFT_ASSET)
+            .expect("data market draft asset spec should exist");
+        let publish_spec = specs
+            .iter()
+            .find(|spec| spec.name == OPENAGENTS_TOOL_DATA_MARKET_PUBLISH_ASSET)
+            .expect("data market publish asset spec should exist");
+
+        assert!(
+            draft_spec
+                .input_schema
+                .pointer("/properties/title")
+                .is_some()
+        );
+        assert!(
+            draft_spec
+                .input_schema
+                .pointer("/properties/metadata")
+                .is_some()
+        );
+        assert_eq!(
+            publish_spec.input_schema.pointer("/required/0"),
+            Some(&json!("confirm"))
         );
     }
 }
