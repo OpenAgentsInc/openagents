@@ -129,38 +129,37 @@ impl BackdropBlurRenderer {
             label: Some("Backdrop Blur Shader"),
             source: wgpu::ShaderSource::Wgsl(BACKDROP_BLUR_SHADER.into()),
         });
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Backdrop Blur Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Backdrop Blur Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
+                    count: None,
+                },
+            ],
+        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Backdrop Blur Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
@@ -238,10 +237,20 @@ impl BackdropBlurRenderer {
         }
         self.target_size = (width, height);
         self.target_format = target_format;
-        let (scene_texture, scene_view) =
-            create_blur_target_texture(device, "Backdrop Blur Scene Texture", width, height, target_format);
-        let (blur_texture, blur_view) =
-            create_blur_target_texture(device, "Backdrop Blur Intermediate Texture", width, height, target_format);
+        let (scene_texture, scene_view) = create_blur_target_texture(
+            device,
+            "Backdrop Blur Scene Texture",
+            width,
+            height,
+            target_format,
+        );
+        let (blur_texture, blur_view) = create_blur_target_texture(
+            device,
+            "Backdrop Blur Intermediate Texture",
+            width,
+            height,
+            target_format,
+        );
         self.scene_texture = Some(scene_texture);
         self.scene_view = Some(scene_view);
         self.blur_texture = Some(blur_texture);
@@ -323,7 +332,11 @@ impl BackdropBlurRenderer {
         direction: [f32; 2],
         load_op: wgpu::LoadOp<wgpu::Color>,
     ) {
-        queue.write_buffer(&self.uniform_buffer, 0, &blur_uniform_bytes(texel_size, direction));
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            &blur_uniform_bytes(texel_size, direction),
+        );
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Backdrop Blur Bind Group"),
             layout: &self.bind_group_layout,
@@ -1681,17 +1694,20 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
                 .color(tooltip_text_color);
             label.paint(text_bounds, &mut paint);
         }
-
     }
 
     let overlay_scene = if state.onboarding.is_active() {
         let mut overlay_scene = Scene::new();
         let overlay_buy_mode_enabled = state.mission_control_buy_mode_enabled();
-        let overlay_backend_kernel_authority = state.kernel_projection_worker.uses_remote_authority();
+        let overlay_backend_kernel_authority =
+            state.kernel_projection_worker.uses_remote_authority();
         let overlay_cursor_position = state.cursor_position;
         let overlay_desktop_shell_mode = state.desktop_shell_mode;
-        let mut overlay_paint =
-            PaintContext::new(&mut overlay_scene, &mut state.text_system, state.scale_factor);
+        let mut overlay_paint = PaintContext::new(
+            &mut overlay_scene,
+            &mut state.text_system,
+            state.scale_factor,
+        );
         if matches!(
             onboarding_view.phase,
             crate::onboarding::OnboardingPhase::TourSellCompute
@@ -1786,12 +1802,9 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
         );
         if let Some(scene_view) = state.backdrop_blur.scene_view() {
             state.renderer.render(&mut encoder, scene_view);
-            state.backdrop_blur.render_blurred(
-                &state.device,
-                &state.queue,
-                &mut encoder,
-                &view,
-            );
+            state
+                .backdrop_blur
+                .render_blurred(&state.device, &state.queue, &mut encoder, &view);
             if let Some(overlay_scene) = overlay_scene.as_ref() {
                 state.renderer.prepare(
                     &state.device,

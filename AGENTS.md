@@ -61,6 +61,93 @@
 - When changing programmatic control, packaged verification, or Spark/NIP-90
   roundtrip behavior, update those docs if the behavior or contract changed.
 
+## Data Market Docs (agent)
+
+When the task is about packaging local material, publishing a listing/grant,
+running seller or buyer flows, consuming a delivery, or explaining how the Data
+Market works, read these docs first and in this order:
+
+1. `docs/v02.md`
+   - user-facing release doc for the Data Market MVP launch
+   - explains what exists in UI vs `autopilotctl` vs
+     `autopilot_headless_data_market` vs repo-owned skills
+   - includes explicit guidance for how to point agents at the right surface,
+     path boundary, manifest, packaged artifact, or delivery selector
+2. `docs/kernel/markets/data-market.md`
+   - canonical implementation/status doc for the current Data Market
+   - defines the kernel truth objects (`DataAsset`, `AccessGrant`,
+     `DeliveryBundle`, `RevocationReceipt`)
+   - records the current NIP-90/NIP-89 kind numbers, packaging helpers,
+     CLI/headless shape, code ownership, and repo entrypoints
+3. `docs/headless-data-market.md`
+   - exact no-window and `autopilotctl data-market ...` runbook
+   - covers packaging, draft/preview/publish, payment, delivery, revoke, and
+     `consume-delivery`
+   - documents local `nexus-control` setup, manifest targeting, and the local
+     plus public-relay E2E harnesses
+4. `skills/README.md`
+   - registry/index for the three first-party Data Market skills:
+     `autopilot-data-seller`, `autopilot-data-market-control`, and
+     `autopilot-data-seller-cli`
+5. `docs/PANES.md`
+   - current behavior/ownership of the `Data Seller`, `Data Market`, and
+     `Data Buyer` panes when UI semantics matter
+
+For concrete, already-proven flows, use these audits as operator truth:
+
+- `docs/audits/2026-03-18-headless-data-market-publish-consume-audit.md`
+  - local headless publish -> request -> delivery -> consume proof
+- `docs/audits/2026-03-18-public-relay-data-market-publish-consume-audit.md`
+  - strict live public-relay proof on Damus + Primal
+- `docs/audits/2026-03-18-data-market-paid-buyer-access-audit.md`
+  - real paid buyer-access proof and the current Nostr vs control-plane split
+- `docs/audits/2026-03-18-psionic-intro-data-market-sale-audit.md`
+  - concrete example of packaging and listing a sample dataset for sale
+
+## Data Market Entry Points (agent)
+
+Do not invent a second publication path and do not tell agents to vaguely click
+around the app. Use the repo’s existing entrypoints:
+
+- UI seller flow:
+  - `Data Seller` pane
+  - skill: `skills/autopilot-data-seller/SKILL.md`
+- Typed app-owned tool flow:
+  - skill: `skills/autopilot-data-market-control/SKILL.md`
+  - use `openagents.data_market.*` tools and read authority state back after
+    every mutation
+- Shell-first / no-window packaging + publication flow:
+  - skill: `skills/autopilot-data-seller-cli/SKILL.md`
+  - runtime: `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
+  - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+
+Current packaging helpers and seller wrappers:
+
+- deterministic package helper:
+  `scripts/autopilot/data_market_package.py`
+- Codex conversation redaction/package helper:
+  `scripts/autopilot/package_codex_conversations.py`
+- seller CLI wrappers:
+  - `skills/autopilot-data-seller-cli/scripts/package_data_asset.sh`
+  - `skills/autopilot-data-seller-cli/scripts/package_codex_conversations.sh`
+
+Current verification / proof scripts:
+
+- `scripts/autopilot/headless-data-market-smoke.sh`
+- `scripts/autopilot/headless-data-market-e2e.sh`
+- `scripts/autopilot/headless-data-market-public-e2e.sh`
+- `scripts/autopilot/verify-data-market-cli-headless.sh`
+
+Current operating truth:
+
+- preview-only seller work can run without kernel authority, but real
+  asset/grant publish requires a control/authority endpoint
+- the normal local MVP path is `nexus-control` plus a desktop session token via
+  `OA_CONTROL_BASE_URL` and `OA_CONTROL_BEARER_TOKEN`
+- Nostr currently carries the targeted request / feedback / result transport,
+  while the control plane / kernel authority owns the canonical
+  asset / grant / delivery / revocation state
+
 ## Implementation Guardrails
 
 - Retained implementation is Rust/WGPUI-first.
