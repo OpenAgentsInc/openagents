@@ -30,7 +30,7 @@ Supplementary coordination contracts that sit alongside the kernel docs:
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop plus starter authority flows for compute products, lots, instruments, delivery proofs, and indices. The supporting Psionic substrate now also includes early train/eval/runtime crates plus reusable autodiff and optimizer framework-core pieces, even though the retained productized market surface is still inference-led today. Broader commodity instruments remain planned. |
-| Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority and authenticated read-model flows for assets, grants, deliveries, revocations, and a combined `openagents.data.v1` snapshot read model. Broader discovery, pricing, and product UX remain planned. |
+| Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority and authenticated read-model flows for assets, grants, deliveries, revocations, and a combined `openagents.data.v1` snapshot read model. The desktop now also ships a dedicated `Data Seller` pane, read-only `Data Market` pane, narrow `Data Buyer` pane, CLI/headless control, and a live targeted NIP-90 transport path. Broader discovery, pricing, and richer buyer/provider economics remain planned. |
 | Labor Market | `implemented`, `local prototype`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for work units, contracts, submissions, and verdicts. The desktop still carries broader local receipt/policy/snapshot modeling, and fuller claim/dispute productization remains planned. |
 | Liquidity Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter quote, route, envelope, settlement, and reserve-partition authority flows. Broader routing, FX, and solver-market productization remain planned. |
 | Risk Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose a starter authority slice for coverage offers, coverage bindings, prediction positions, claims, and risk signals. Broader underwriting accounts, market depth, and product UX remain planned. |
@@ -139,7 +139,9 @@ In many cases the valuable thing is not raw model capability, but access to a us
 Current status:
 
 - `implemented`: starter authority plus authenticated read-model flows for asset registration, access grants, grant acceptance, delivery bundles, and revocation receipts
-- `planned`: broader discovery, pricing, payout, and user-facing product integration
+- `implemented`: a dedicated `Data Seller` conversational pane, read-only `Data Market` pane, narrow `Data Buyer` pane, full `autopilotctl data-market ...` surface, `autopilot_headless_data_market`, and repo-owned seller skills
+- `implemented`: targeted NIP-90 transport for data access with request kind `5960`, result kind `6960`, and handler/capability kind `31990`, including a strict public-relay verification path against Damus and Primal
+- `planned`: broader discovery, pricing, payout, provider economics, and richer buyer product integration
 
 ### 4. Labor Market
 

@@ -13,7 +13,8 @@ use autopilot_desktop::desktop_control::{
     DesktopControlAppleAdapterOperatorRunStatus, DesktopControlAttnResStatus,
     DesktopControlAttnResView, DesktopControlBuyModeRequestStatus, DesktopControlBuyModeStatus,
     DesktopControlDataMarketBuyerRequestArgs, DesktopControlDataMarketDraftAssetArgs,
-    DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketIssueDeliveryArgs,
+    DesktopControlDataMarketDraftGrantArgs, DesktopControlDataMarketImportBuyerResponseArgs,
+    DesktopControlDataMarketImportSellerRequestArgs, DesktopControlDataMarketIssueDeliveryArgs,
     DesktopControlDataMarketPrepareDeliveryArgs, DesktopControlDataMarketPublishArgs,
     DesktopControlDataMarketRequestPaymentArgs, DesktopControlDataMarketResolveDeliveryArgs,
     DesktopControlDataMarketRevokeGrantArgs, DesktopControlEventBatch,
@@ -31,6 +32,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Datelike, Local, LocalResult, NaiveDate, TimeZone};
 use clap::{Parser, Subcommand, ValueEnum};
+use nostr_client::{RelayConnection, RelayMessage};
 use psionic_sandbox::ProviderSandboxEntrypointType;
 use reqwest::blocking::Client;
 use serde::{Serialize, de::DeserializeOwned};
@@ -627,6 +629,22 @@ enum DataMarketCommand {
         asset_id: Option<String>,
         #[arg(long, default_value_t = true)]
         refresh_market: bool,
+    },
+    SellerImportRequest {
+        #[arg(long)]
+        event_id: String,
+        #[arg(long = "relay-url")]
+        relay_urls: Vec<String>,
+        #[arg(long, default_value_t = 15_000)]
+        timeout_ms: u64,
+    },
+    BuyerImportResponse {
+        #[arg(long)]
+        event_id: String,
+        #[arg(long = "relay-url")]
+        relay_urls: Vec<String>,
+        #[arg(long, default_value_t = 15_000)]
+        timeout_ms: u64,
     },
     ConsumeDelivery {
         #[arg(long)]
@@ -1243,6 +1261,9 @@ impl DataMarketCommand {
                     refresh_market: *refresh_market,
                 },
             }),
+            Self::SellerImportRequest { .. } | Self::BuyerImportResponse { .. } => Err(anyhow!(
+                "relay import commands build their action after fetching from relay"
+            )),
             Self::ConsumeDelivery {
                 delivery_bundle_id,
                 request_id,
@@ -1406,6 +1427,15 @@ struct DataMarketConsumeEnvelope<'a> {
     message: &'a str,
     payload: &'a Value,
     consumed: &'a DataMarketConsumedDeliverySummary,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct RelayFetchedEventEnvelope {
+    relay_url: String,
+    event_id: String,
+    kind: u16,
+    pubkey: String,
+    event_json: Value,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1998,45 +2028,116 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, waited.as_ref())?;
             }
         },
-        Command::DataMarket { command } => {
-            let response = client.action(&command.action_request()?)?;
-            ensure_action_success(&response)?;
-            let payload = response.payload.as_ref().unwrap_or(&Value::Null);
-            if let DataMarketCommand::ConsumeDelivery {
-                output_dir,
-                overwrite,
-                ..
-            } = &command
-            {
-                let consumed =
-                    materialize_data_market_delivery(payload, output_dir.as_path(), *overwrite)?;
+        Command::DataMarket { command } => match &command {
+            DataMarketCommand::SellerImportRequest {
+                event_id,
+                relay_urls,
+                timeout_ms,
+            } => {
+                let relay_urls = resolve_data_market_relay_urls(&client, relay_urls.as_slice())?;
+                let fetched =
+                    fetch_relay_event_by_id(event_id.as_str(), relay_urls.as_slice(), *timeout_ms)?;
+                let response = client.action(
+                    &DesktopControlActionRequest::ImportDataMarketSellerRequest {
+                        args: DesktopControlDataMarketImportSellerRequestArgs {
+                            event_json: fetched.event_json.clone(),
+                            source_relay_url: Some(fetched.relay_url.clone()),
+                        },
+                    },
+                )?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
                 if json_output {
-                    print_json(&DataMarketConsumeEnvelope {
-                        message: response.message.as_str(),
-                        payload,
-                        consumed: &consumed,
-                    })?;
+                    print_json(&json!({
+                        "message": response.message,
+                        "payload": payload,
+                        "relay_fetch": fetched,
+                    }))?;
                 } else {
                     println!("{}", response.message);
-                    print_data_market_consumed_delivery_text(&consumed);
+                    println!(
+                        "imported from relay {} event={} kind={}",
+                        fetched.relay_url, fetched.event_id, fetched.kind
+                    );
+                    print_data_market_snapshot_text(payload);
                 }
-            } else if json_output {
-                print_json(&json!({
-                    "message": response.message,
-                    "payload": payload,
-                }))?;
-            } else {
-                if !matches!(
-                    command,
-                    DataMarketCommand::SellerStatus
-                        | DataMarketCommand::BuyerStatus
-                        | DataMarketCommand::Snapshot
-                ) {
-                    println!("{}", response.message);
-                }
-                print_data_market_snapshot_text(payload);
             }
-        }
+            DataMarketCommand::BuyerImportResponse {
+                event_id,
+                relay_urls,
+                timeout_ms,
+            } => {
+                let relay_urls = resolve_data_market_relay_urls(&client, relay_urls.as_slice())?;
+                let fetched =
+                    fetch_relay_event_by_id(event_id.as_str(), relay_urls.as_slice(), *timeout_ms)?;
+                let response = client.action(
+                    &DesktopControlActionRequest::ImportDataMarketBuyerResponse {
+                        args: DesktopControlDataMarketImportBuyerResponseArgs {
+                            event_json: fetched.event_json.clone(),
+                            source_relay_url: Some(fetched.relay_url.clone()),
+                        },
+                    },
+                )?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if json_output {
+                    print_json(&json!({
+                        "message": response.message,
+                        "payload": payload,
+                        "relay_fetch": fetched,
+                    }))?;
+                } else {
+                    println!("{}", response.message);
+                    println!(
+                        "imported from relay {} event={} kind={}",
+                        fetched.relay_url, fetched.event_id, fetched.kind
+                    );
+                    print_data_market_snapshot_text(payload);
+                }
+            }
+            _ => {
+                let response = client.action(&command.action_request()?)?;
+                ensure_action_success(&response)?;
+                let payload = response.payload.as_ref().unwrap_or(&Value::Null);
+                if let DataMarketCommand::ConsumeDelivery {
+                    output_dir,
+                    overwrite,
+                    ..
+                } = &command
+                {
+                    let consumed = materialize_data_market_delivery(
+                        payload,
+                        output_dir.as_path(),
+                        *overwrite,
+                    )?;
+                    if json_output {
+                        print_json(&DataMarketConsumeEnvelope {
+                            message: response.message.as_str(),
+                            payload,
+                            consumed: &consumed,
+                        })?;
+                    } else {
+                        println!("{}", response.message);
+                        print_data_market_consumed_delivery_text(&consumed);
+                    }
+                } else if json_output {
+                    print_json(&json!({
+                        "message": response.message,
+                        "payload": payload,
+                    }))?;
+                } else {
+                    if !matches!(
+                        command,
+                        DataMarketCommand::SellerStatus
+                            | DataMarketCommand::BuyerStatus
+                            | DataMarketCommand::Snapshot
+                    ) {
+                        println!("{}", response.message);
+                    }
+                    print_data_market_snapshot_text(payload);
+                }
+            }
+        },
         Command::ActiveJob => {
             let snapshot = client.snapshot()?;
             if json_output {
@@ -2256,6 +2357,115 @@ impl DesktopControlClient {
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.target.base_url.trim_end_matches('/'), path)
     }
+}
+
+fn resolve_data_market_relay_urls(
+    client: &DesktopControlClient,
+    requested: &[String],
+) -> Result<Vec<String>> {
+    if !requested.is_empty() {
+        let relays = requested
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        if relays.is_empty() {
+            bail!("No usable relay URLs were supplied");
+        }
+        return Ok(relays);
+    }
+
+    let snapshot = client.snapshot()?;
+    if snapshot.provider.relay_urls.is_empty() {
+        bail!("No relay URLs were supplied and the runtime snapshot has no provider relay URLs");
+    }
+    Ok(snapshot.provider.relay_urls)
+}
+
+fn fetch_relay_event_by_id(
+    event_id: &str,
+    relay_urls: &[String],
+    timeout_ms: u64,
+) -> Result<RelayFetchedEventEnvelope> {
+    let timeout = Duration::from_millis(timeout_ms.max(1));
+    let runtime = tokio::runtime::Runtime::new().context("create relay fetch runtime")?;
+    runtime.block_on(async move {
+        let mut last_error = None::<String>;
+        for relay_url in relay_urls {
+            let connection = RelayConnection::new(relay_url.as_str())
+                .with_context(|| format!("create relay connection for {relay_url}"))?;
+            if let Err(error) = connection.connect().await {
+                last_error = Some(format!("{relay_url}: {error}"));
+                continue;
+            }
+
+            let subscription_id = format!(
+                "autopilotctl-import-{}",
+                event_id.chars().take(12).collect::<String>()
+            );
+            if let Err(error) = connection
+                .subscribe_filters(
+                    subscription_id.as_str(),
+                    vec![json!({
+                        "ids": [event_id],
+                        "limit": 1,
+                    })],
+                )
+                .await
+            {
+                let _ = connection.disconnect().await;
+                last_error = Some(format!("{relay_url}: {error}"));
+                continue;
+            }
+
+            let started = Instant::now();
+            let mut found = None;
+            while started.elapsed() < timeout {
+                let remaining = timeout
+                    .checked_sub(started.elapsed())
+                    .unwrap_or_else(|| Duration::from_millis(1));
+                match tokio::time::timeout(remaining.min(Duration::from_secs(1)), connection.recv())
+                    .await
+                {
+                    Ok(Ok(Some(RelayMessage::Event(_, event)))) => {
+                        if event.id == event_id {
+                            found = Some(event);
+                            break;
+                        }
+                    }
+                    Ok(Ok(Some(RelayMessage::Eose(_)))) => break,
+                    Ok(Ok(Some(_))) => {}
+                    Ok(Ok(None)) => break,
+                    Ok(Err(error)) => {
+                        last_error = Some(format!("{relay_url}: {error}"));
+                        break;
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            let _ = connection.unsubscribe(subscription_id.as_str()).await;
+            let _ = connection.disconnect().await;
+
+            if let Some(event) = found {
+                return Ok(RelayFetchedEventEnvelope {
+                    relay_url: relay_url.clone(),
+                    event_id: event.id.clone(),
+                    kind: event.kind,
+                    pubkey: event.pubkey.clone(),
+                    event_json: serde_json::to_value(&event)
+                        .context("encode fetched relay event")?,
+                });
+            }
+        }
+
+        Err(anyhow!(
+            "Failed to fetch event {} from relays: {}",
+            event_id,
+            last_error.unwrap_or_else(|| "not found before relay EOSE".to_string())
+        ))
+    })
 }
 
 impl WaitConditionArg {
@@ -6392,10 +6602,9 @@ mod tests {
         DesktopControlDataMarketIssueDeliveryArgs, DesktopControlDataMarketPrepareDeliveryArgs,
         DesktopControlDataMarketPublishArgs, DesktopControlDataMarketRequestPaymentArgs,
         DesktopControlDataMarketResolveDeliveryArgs, DesktopControlDataMarketRevokeGrantArgs,
-        DesktopControlNip28MessageStatus,
-        DesktopControlNip90SentPaymentsReport, DesktopControlSnapshot,
-        DesktopControlTassadarReplayFamily, DesktopControlTassadarSourceMode,
-        DesktopControlTassadarView,
+        DesktopControlNip28MessageStatus, DesktopControlNip90SentPaymentsReport,
+        DesktopControlSnapshot, DesktopControlTassadarReplayFamily,
+        DesktopControlTassadarSourceMode, DesktopControlTassadarView,
     };
     use autopilot_desktop::{
         LocalRuntimeCacheInvalidation, LocalRuntimeCacheInvalidationReason,
@@ -7351,6 +7560,24 @@ mod tests {
                     refresh_market: true,
                 },
             }
+        );
+        assert!(
+            DataMarketCommand::SellerImportRequest {
+                event_id: "event.alpha".to_string(),
+                relay_urls: vec!["wss://relay.example".to_string()],
+                timeout_ms: 15_000,
+            }
+            .action_request()
+            .is_err()
+        );
+        assert!(
+            DataMarketCommand::BuyerImportResponse {
+                event_id: "event.beta".to_string(),
+                relay_urls: vec!["wss://relay.example".to_string()],
+                timeout_ms: 15_000,
+            }
+            .action_request()
+            .is_err()
         );
         assert_eq!(
             DataMarketCommand::ConsumeDelivery {

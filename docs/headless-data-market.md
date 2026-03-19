@@ -102,6 +102,22 @@ scripts/autopilot/data_market_package.py \
   --price-sats 250
 ```
 
+If the asset is a bundle of Codex conversations, use the dedicated redaction
+packager instead:
+
+```bash
+skills/autopilot-data-seller-cli/scripts/package_codex_conversations.sh \
+  --limit 5 \
+  --output-dir ./tmp/codex-package \
+  --title "Redacted Codex conversation bundle" \
+  --price-sats 500
+```
+
+That wrapper reads rollout JSONL from `~/.codex/sessions`, exports a redacted
+conversation bundle into `redacted-codex-conversations/`, and still emits the
+normal `listing-template.json` / `grant-template.json` artifacts used by the
+rest of the seller flow.
+
 2. Draft, preview, and publish the asset:
 
 ```bash
@@ -176,6 +192,71 @@ that mattered in practice:
   request payload even when the raw Nostr event pubkey arrives in hex
 - buyer-side result tracking accepts seller results when the request targeted
   the seller `npub` but the result event is authored by the seller hex pubkey
+
+## Public relay E2E harness
+
+The repo now also includes a real public-relay harness:
+
+```bash
+scripts/autopilot/headless-data-market-public-e2e.sh
+```
+
+By default it targets:
+
+- `wss://relay.damus.io`
+- `wss://relay.primal.net`
+
+The current verified public-relay truth is:
+
+- the buyer publishes the targeted Data Market request as NIP-90 kind `5960`
+  to the configured public relays
+- the seller publishes the delivery result as NIP-90 kind `6960` back to the
+  same configured public relays
+- seller and buyer NIP-89 handler/capability events remain kind `31990`
+- seller-side request intake worked live in the verified strict run
+- buyer-side result intake also worked live in the verified strict run
+- the seller observed the request from `wss://relay.primal.net` in the
+  verified strict run
+- the buyer tracked the result on both configured relays in the verified
+  strict run
+
+The strict public verification command is:
+
+```bash
+OPENAGENTS_HEADLESS_DATA_MARKET_REQUIRE_LIVE_INGEST=true \
+  scripts/autopilot/headless-data-market-public-e2e.sh
+```
+
+The manual recovery commands still exist as operator escape hatches if a relay
+regression appears again:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/seller-desktop-control.json \
+  --json data-market seller-import-request \
+  --event-id <request-event-id> \
+  --relay-url wss://relay.damus.io \
+  --relay-url wss://relay.primal.net
+
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/buyer-desktop-control.json \
+  --json data-market buyer-import-response \
+  --event-id <result-or-feedback-event-id> \
+  --relay-url wss://relay.damus.io \
+  --relay-url wss://relay.primal.net
+```
+
+The verified public run summary now records:
+
+- configured relay URLs
+- request kind
+- result kind
+- seller request ingest mode (`live_relay` vs `relay_import`)
+- buyer result ingest mode (`live_relay` vs `relay_import`)
+- seller request source relay URL
+- buyer result relay URLs
+- request and result event ids
+- final consumed payload path
 
 ## Full verification bundle
 

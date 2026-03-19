@@ -81,6 +81,7 @@ mod sync_bootstrap;
 mod sync_lifecycle;
 mod tassadar_lab_control;
 pub mod throughput_bench;
+mod voice_playground;
 
 #[cfg(test)]
 mod chat_regression_tests;

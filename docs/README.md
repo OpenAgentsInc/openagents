@@ -7,7 +7,10 @@ This directory is organized around a small number of canonical entry points.
 - `MVP.md`: product authority for the current MVP.
 - `OWNERSHIP.md`: crate/app ownership boundaries.
 - `kernel/README.md`: marketplace and kernel architecture overview.
+- `kernel/markets/data-market.md`: canonical current Data Market implementation status.
+- `headless-data-market.md`: no-window and `autopilotctl` Data Market runbook.
 - `autopilot-earn/README.md`: consolidated Autopilot Earn docs.
+- `../skills/README.md`: repo-owned agent skills, including the current Data Market seller skills.
 - `deploy/NEXUS_GCP_RUNBOOK.md`: stateful Nexus deployment runbook.
 - `plans/deprecated/`: archived historical plans kept for provenance.
 - `audits/`: repo audits, gap analyses, and architecture reviews.
@@ -33,6 +36,7 @@ Examples:
 
 - `MVP.md`
 - `OWNERSHIP.md`
+- `headless-data-market.md`
 - `PANES.md`
 - `PROTOCOL_SURFACE.md`
 - `SPACETIME_ROLLOUT_INDEX.md`

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde_json::Value;
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, theme};
 
@@ -288,6 +290,13 @@ fn paint_draft_shell_card(
         "asset kind",
         &asset_kind,
     );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "package",
+        &draft_package_summary(&pane_state.active_draft.metadata),
+    );
     let price_hint = pane_state.active_draft.price_hint_label();
     row_y = paint_label_line(
         paint,
@@ -371,9 +380,16 @@ fn paint_draft_shell_card(
             10.0,
             theme::status::WARNING,
         ));
+    } else if let Some(package_note) = draft_package_note(&pane_state.active_draft.metadata) {
+        paint.scene.draw_text(paint.text.layout(
+            package_note.as_str(),
+            Point::new(bounds.origin.x + 10.0, row_y + 28.0),
+            10.0,
+            theme::text::MUTED,
+        ));
     }
     paint.scene.draw_text(paint.text.layout(
-        "The draft is now expected to evolve from the seller conversation plus typed Data Market tool calls, not from transcript prose alone.",
+        "The draft evolves through the seller conversation plus typed Data Market tools. Use autopilotctl or headless flows to steer the same underlying state machine.",
         Point::new(bounds.origin.x + 10.0, bounds.max_y() - 18.0),
         10.0,
         theme::text::MUTED,
@@ -388,7 +404,7 @@ fn paint_publication_status_card(
     paint_card(
         bounds,
         "Seller inventory",
-        "Published inventory + warnings",
+        "Published authority + latest request flow",
         paint,
     );
 
@@ -399,205 +415,139 @@ fn paint_publication_status_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "asset id",
-        &option_label(published_asset.map(|asset| asset.asset_id.as_str())),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "asset status",
+        "asset",
         published_asset
-            .map(|asset| asset.status.label())
-            .unwrap_or("pending"),
+            .map(asset_inventory_summary)
+            .unwrap_or_else(|| "pending".to_string())
+            .as_str(),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "asset kind",
-        &option_label(published_asset.map(|asset| asset.asset_kind.as_str())),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "grant id",
-        &option_label(published_grant.map(|grant| grant.grant_id.as_str())),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "grant status",
+        "grant",
         published_grant
-            .map(|grant| grant.status.label())
-            .unwrap_or("pending"),
+            .map(grant_inventory_summary)
+            .unwrap_or_else(|| "pending".to_string())
+            .as_str(),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "grant consumer",
-        &option_label(published_grant.and_then(|grant| grant.consumer_id.as_deref())),
+        "receipts",
+        format!(
+            "asset {} // grant {}",
+            option_short_id(pane_state.last_publish_receipt_id.as_deref()),
+            option_short_id(pane_state.last_grant_publish_receipt_id.as_deref())
+        )
+        .as_str(),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "grant price",
-        &published_grant
-            .and_then(|grant| grant.offer_price.as_ref())
-            .map(format_money)
-            .unwrap_or_else(|| "pending".to_string()),
+        "fulfillment",
+        format!(
+            "delivery {} // revocation {}",
+            option_short_id(
+                pane_state
+                    .last_published_delivery
+                    .as_ref()
+                    .map(|delivery| delivery.delivery_bundle_id.as_str())
+            ),
+            option_short_id(
+                pane_state
+                    .last_published_revocation
+                    .as_ref()
+                    .map(|revocation| revocation.revocation_id.as_str())
+            )
+        )
+        .as_str(),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "asset receipt",
-        &option_label(pane_state.last_publish_receipt_id.as_deref()),
+        "previews",
+        format!(
+            "asset {} ({}) // grant {} ({})",
+            if pane_state
+                .active_draft
+                .last_previewed_asset_payload
+                .is_some()
+            {
+                "ready"
+            } else {
+                "pending"
+            },
+            bool_label(pane_state.asset_preview_confirmed),
+            if pane_state
+                .active_draft
+                .last_previewed_grant_payload
+                .is_some()
+            {
+                "ready"
+            } else {
+                "pending"
+            },
+            bool_label(pane_state.grant_preview_confirmed),
+        )
+        .as_str(),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "grant receipt",
-        &option_label(pane_state.last_grant_publish_receipt_id.as_deref()),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "last delivery",
-        &option_label(
-            pane_state
-                .last_published_delivery
-                .as_ref()
-                .map(|delivery| delivery.delivery_bundle_id.as_str()),
-        ),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "delivery receipt",
-        &option_label(pane_state.last_delivery_publish_receipt_id.as_deref()),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "last revocation",
-        &option_label(
-            pane_state
-                .last_published_revocation
-                .as_ref()
-                .map(|revocation| revocation.revocation_id.as_str()),
-        ),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "revocation receipt",
-        &option_label(pane_state.last_revocation_publish_receipt_id.as_deref()),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "asset preview",
-        if pane_state
-            .active_draft
-            .last_previewed_asset_payload
-            .is_some()
-        {
-            "ready"
-        } else {
-            "pending"
-        },
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "grant preview",
-        if pane_state
-            .active_draft
-            .last_previewed_grant_payload
-            .is_some()
-        {
-            "ready"
-        } else {
-            "pending"
-        },
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "offer warnings",
+        "warnings",
         &inventory_warning_summary(pane_state),
     );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "incoming requests",
-        &pane_state.incoming_requests.len().to_string(),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "latest request",
-        &option_label(
-            pane_state
-                .latest_incoming_request()
-                .map(|request| request.request_id.as_str()),
-        ),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "latest evaluation",
-        pane_state
-            .latest_incoming_request()
-            .map(|request| request.evaluation_disposition.label())
-            .unwrap_or("pending"),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "payment state",
-        pane_state
-            .latest_incoming_request()
-            .map(|request| request.payment_state.label())
-            .unwrap_or("pending"),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "delivery state",
-        pane_state
-            .latest_incoming_request()
-            .map(|request| request.delivery_state.label())
-            .unwrap_or("pending"),
-    );
-    row_y = paint_label_line(
-        paint,
-        bounds.origin.x + 10.0,
-        row_y,
-        "revocation state",
-        pane_state
-            .latest_incoming_request()
-            .map(|request| request.revocation_state.label())
-            .unwrap_or("pending"),
-    );
+
+    if let Some(latest_request) = pane_state.latest_incoming_request() {
+        row_y = paint_label_line(
+            paint,
+            bounds.origin.x + 10.0,
+            row_y,
+            "latest request",
+            request_inventory_summary(latest_request).as_str(),
+        );
+        row_y = paint_label_line(
+            paint,
+            bounds.origin.x + 10.0,
+            row_y,
+            "route",
+            request_route_summary(latest_request).as_str(),
+        );
+        row_y = paint_label_line(
+            paint,
+            bounds.origin.x + 10.0,
+            row_y,
+            "payment",
+            request_payment_summary(latest_request).as_str(),
+        );
+        row_y = paint_label_line(
+            paint,
+            bounds.origin.x + 10.0,
+            row_y,
+            "delivery",
+            request_delivery_summary(latest_request).as_str(),
+        );
+        row_y = paint_label_line(
+            paint,
+            bounds.origin.x + 10.0,
+            row_y,
+            "revocation",
+            request_revocation_summary(latest_request).as_str(),
+        );
+    } else {
+        row_y = paint_label_line(
+            paint,
+            bounds.origin.x + 10.0,
+            row_y,
+            "latest request",
+            "none",
+        );
+    }
 
     let warnings = pane_state.inventory_warnings();
     let warning_color = if warnings.is_empty() {
@@ -677,22 +627,26 @@ fn paint_asset_preview_card(
 ) {
     paint_card(
         bounds,
-        "Exact asset preview",
-        "RegisterDataAssetRequest",
+        "Exact previews",
+        "Asset + grant authority payloads",
         paint,
     );
 
-    let payload = pane_state
+    let asset_payload = pane_state
         .active_draft
         .last_previewed_asset_payload
+        .as_ref();
+    let grant_payload = pane_state
+        .active_draft
+        .last_previewed_grant_payload
         .as_ref();
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "preview",
-        if payload.is_some() {
+        "asset preview",
+        if asset_payload.is_some() {
             "ready"
         } else {
             "pending"
@@ -702,7 +656,7 @@ fn paint_asset_preview_card(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "confirmed",
+        "asset confirm",
         bool_label(pane_state.asset_preview_confirmed),
     );
     row_y = paint_label_line(
@@ -710,40 +664,58 @@ fn paint_asset_preview_card(
         bounds.origin.x + 10.0,
         row_y,
         "asset id",
-        &preview_field(payload, &["asset", "asset_id"]),
+        &preview_value(asset_payload, &["asset", "asset_id"]),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "provider",
-        &preview_field(payload, &["asset", "provider_id"]),
+        "asset policy",
+        &preview_value(asset_payload, &["policy", "policy_bundle_id"]),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "policy bundle",
-        &preview_field(payload, &["policy", "policy_bundle_id"]),
+        "grant preview",
+        if grant_payload.is_some() {
+            "ready"
+        } else {
+            "pending"
+        },
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "idempotency key",
-        &preview_field(payload, &["idempotency_key"]),
+        "grant confirm",
+        bool_label(pane_state.grant_preview_confirmed),
     );
     row_y = paint_label_line(
         paint,
         bounds.origin.x + 10.0,
         row_y,
-        "evidence refs",
-        &preview_array_len(payload, &["evidence"]),
+        "grant id",
+        &preview_value(grant_payload, &["grant", "grant_id"]),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant consumer",
+        &preview_value(grant_payload, &["grant", "consumer_id"]),
+    );
+    row_y = paint_label_line(
+        paint,
+        bounds.origin.x + 10.0,
+        row_y,
+        "grant policy",
+        &preview_value(grant_payload, &["grant", "permission_policy", "policy_id"]),
     );
 
     paint.scene.draw_text(paint.text.layout(
-        if payload.is_some() {
-            "Preview shows the exact authority request shape that the later publish path will submit."
+        if asset_payload.is_some() || grant_payload.is_some() {
+            "These previews are the exact authority payloads that autopilotctl, headless runs, and the pane publish paths submit."
         } else {
             "Run preview after resolving blockers to materialize the exact authority payload."
         },
@@ -815,27 +787,198 @@ fn format_money(value: &openagents_kernel_core::receipts::Money) -> String {
     }
 }
 
-fn preview_field(payload: Option<&Value>, path: &[&str]) -> String {
+fn preview_value(payload: Option<&Value>, path: &[&str]) -> String {
     let mut current = payload;
     for segment in path {
         current = current.and_then(|value| value.get(*segment));
     }
     current
-        .and_then(Value::as_str)
+        .map(value_label)
         .filter(|value| !value.trim().is_empty())
-        .map(str::to_string)
         .unwrap_or_else(|| "pending".to_string())
 }
 
-fn preview_array_len(payload: Option<&Value>, path: &[&str]) -> String {
-    let mut current = payload;
-    for segment in path {
-        current = current.and_then(|value| value.get(*segment));
+fn value_label(value: &Value) -> String {
+    match value {
+        Value::String(value) => compact_text(value, 48),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::Array(entries) => format!("{} item(s)", entries.len()),
+        Value::Object(_) => "object".to_string(),
+        Value::Null => "pending".to_string(),
     }
-    current
-        .and_then(Value::as_array)
-        .map(|entries| entries.len().to_string())
-        .unwrap_or_else(|| "0".to_string())
+}
+
+fn draft_package_summary(metadata: &HashMap<String, String>) -> String {
+    if metadata
+        .get("codex_conversation_export")
+        .is_some_and(|value| value == "true")
+    {
+        let tier = metadata
+            .get("codex_redaction_tier")
+            .map(String::as_str)
+            .unwrap_or("unspecified");
+        let sessions = metadata
+            .get("codex_session_count")
+            .map(String::as_str)
+            .unwrap_or("?");
+        let selection = metadata
+            .get("codex_selection_mode")
+            .map(String::as_str)
+            .unwrap_or("unknown");
+        return compact_text(
+            format!("codex export // {tier} // {sessions} sessions // {selection}").as_str(),
+            48,
+        );
+    }
+    metadata
+        .get("export_kind")
+        .map(|value| compact_text(value, 48))
+        .unwrap_or_else(|| "local package pending".to_string())
+}
+
+fn draft_package_note(metadata: &HashMap<String, String>) -> Option<String> {
+    let index = metadata
+        .get("codex_export_index_path")
+        .or_else(|| metadata.get("packaging_summary_path"))?;
+    Some(format!("bundle index: {}", compact_text(index, 48)))
+}
+
+fn asset_inventory_summary(asset: &openagents_kernel_core::data::DataAsset) -> String {
+    compact_text(
+        format!(
+            "{} // {} // {}",
+            short_id(asset.asset_id.as_str()),
+            asset.status.label(),
+            asset.asset_kind
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn grant_inventory_summary(grant: &openagents_kernel_core::data::AccessGrant) -> String {
+    compact_text(
+        format!(
+            "{} // {} // {} // {}",
+            short_id(grant.grant_id.as_str()),
+            grant.status.label(),
+            grant
+                .consumer_id
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "open".to_string()),
+            grant
+                .offer_price
+                .as_ref()
+                .map(format_money)
+                .unwrap_or_else(|| "price pending".to_string())
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn request_inventory_summary(request: &crate::app_state::DataSellerIncomingRequest) -> String {
+    compact_text(
+        format!(
+            "{} // buyer {} // {}",
+            short_id(request.request_id.as_str()),
+            short_id(request.requester.as_str()),
+            request.evaluation_disposition.label()
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn request_route_summary(request: &crate::app_state::DataSellerIncomingRequest) -> String {
+    compact_text(
+        format!(
+            "{} // kind {}",
+            relay_label(request.source_relay_url.as_deref()),
+            request.request_kind
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn request_payment_summary(request: &crate::app_state::DataSellerIncomingRequest) -> String {
+    let price = request
+        .required_price_sats
+        .map(|value| format!("ask {value} sats"))
+        .unwrap_or_else(|| format!("bid {} sats", request.price_sats));
+    compact_text(
+        format!(
+            "{} // {} // {}",
+            request.payment_state.label(),
+            price,
+            option_short_id(request.payment_pointer.as_deref())
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn request_delivery_summary(request: &crate::app_state::DataSellerIncomingRequest) -> String {
+    compact_text(
+        format!(
+            "{} // bundle {} // result {}",
+            request.delivery_state.label(),
+            option_short_id(request.delivery_bundle_id.as_deref()),
+            option_short_id(request.delivery_result_event_id.as_deref())
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn request_revocation_summary(request: &crate::app_state::DataSellerIncomingRequest) -> String {
+    compact_text(
+        format!(
+            "{} // {}",
+            request.revocation_state.label(),
+            option_short_id(request.revocation_receipt_id.as_deref())
+        )
+        .as_str(),
+        48,
+    )
+}
+
+fn option_short_id(value: Option<&str>) -> String {
+    value.map(short_id).unwrap_or_else(|| "none".to_string())
+}
+
+fn short_id(value: &str) -> String {
+    if value.len() <= 18 {
+        return value.to_string();
+    }
+    format!("{}..{}", &value[..8], &value[value.len() - 6..])
+}
+
+fn relay_label(value: Option<&str>) -> String {
+    value
+        .map(|relay| {
+            compact_text(
+                relay
+                    .trim()
+                    .trim_start_matches("wss://")
+                    .trim_start_matches("ws://"),
+                22,
+            )
+        })
+        .unwrap_or_else(|| "direct/local".to_string())
+}
+
+fn compact_text(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let compact = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{compact}...")
+    } else {
+        compact
+    }
 }
 
 fn speaker_color(speaker: DataSellerShellSpeaker) -> wgpui::Hsla {
@@ -876,4 +1019,26 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
         .composer
         .event(event, input_bounds, &mut state.event_context)
         .is_handled()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draft_package_summary_prefers_codex_export_metadata() {
+        let metadata = HashMap::from([
+            ("codex_conversation_export".to_string(), "true".to_string()),
+            ("codex_redaction_tier".to_string(), "public".to_string()),
+            ("codex_session_count".to_string(), "3".to_string()),
+            (
+                "codex_selection_mode".to_string(),
+                "latest_from_codex_home".to_string(),
+            ),
+        ]);
+        let summary = draft_package_summary(&metadata);
+        assert!(summary.contains("codex export"));
+        assert!(summary.contains("public"));
+        assert!(summary.contains("3"));
+    }
 }

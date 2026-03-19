@@ -16,7 +16,7 @@ use crate::pane_system::{
     BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataBuyerPaneAction,
     DataMarketPaneAction, DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction,
     MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
-    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction,
+    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -5714,6 +5714,25 @@ pub(super) fn run_chat_cycle_sandbox_mode_action(
     true
 }
 
+pub(super) fn run_chat_toggle_header_controls_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.header_controls_expanded = !state.autopilot_chat.header_controls_expanded;
+    true
+}
+
+pub(super) fn run_chat_toggle_help_hint_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.show_autopilot_help_hint = !state.autopilot_chat.show_autopilot_help_hint;
+    true
+}
+
+pub(super) fn run_chat_toggle_thread_tools_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.thread_tools_expanded = !state.autopilot_chat.thread_tools_expanded;
+    true
+}
+
 pub(super) fn run_chat_toggle_archived_filter_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {
@@ -8861,6 +8880,66 @@ pub(crate) fn run_local_runtime_workbench_action(
     }
 }
 
+pub(super) fn run_voice_playground_action(
+    state: &mut crate::app_state::RenderState,
+    action: VoicePlaygroundPaneAction,
+) -> bool {
+    let command = match action {
+        VoicePlaygroundPaneAction::Refresh => {
+            crate::voice_playground::VoicePlaygroundCommand::Refresh
+        }
+        VoicePlaygroundPaneAction::StartRecording => {
+            crate::voice_playground::VoicePlaygroundCommand::StartRecording
+        }
+        VoicePlaygroundPaneAction::StopRecordingAndTranscribe => {
+            crate::voice_playground::VoicePlaygroundCommand::StopRecordingAndTranscribe {
+                request_id: format!("voice-playground-{}", state.reserve_runtime_command_seq()),
+            }
+        }
+        VoicePlaygroundPaneAction::CancelRecording => {
+            crate::voice_playground::VoicePlaygroundCommand::CancelRecording
+        }
+        VoicePlaygroundPaneAction::Speak => {
+            let text = state
+                .voice_playground_inputs
+                .tts_text
+                .get_value()
+                .trim()
+                .to_string();
+            crate::voice_playground::VoicePlaygroundCommand::SynthesizeAndPlay {
+                request_id: format!(
+                    "voice-playground-tts-{}",
+                    state.reserve_runtime_command_seq()
+                ),
+                text,
+            }
+        }
+        VoicePlaygroundPaneAction::Replay => {
+            crate::voice_playground::VoicePlaygroundCommand::ReplayLastSynthesis
+        }
+        VoicePlaygroundPaneAction::StopPlayback => {
+            crate::voice_playground::VoicePlaygroundCommand::StopPlayback
+        }
+    };
+    match state.voice_playground_worker.enqueue(command) {
+        Ok(()) => {
+            state.voice_playground.last_error = None;
+            if matches!(action, VoicePlaygroundPaneAction::Refresh) {
+                state.voice_playground.last_action =
+                    Some("Queued voice playground backend refresh".to_string());
+            }
+            true
+        }
+        Err(error) => {
+            state.voice_playground.load_state = crate::app_state::PaneLoadState::Error;
+            state.voice_playground.last_error = Some(error);
+            state.voice_playground.last_action =
+                Some("Voice playground command failed".to_string());
+            true
+        }
+    }
+}
+
 pub(super) fn run_local_inference_action(
     state: &mut crate::app_state::RenderState,
     action: LocalInferencePaneAction,
@@ -11157,6 +11236,29 @@ pub(super) fn run_pending_buyer_payment_watchdog_tick(
         "buyer queued wallet refresh request={} pointer={} interval_seconds={}",
         request_id,
         payment_pointer,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    ));
+    true
+}
+
+pub(super) fn run_pending_data_seller_payment_watchdog_tick(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some(request_id) = state.data_seller.payment_evidence_refresh_due(now) else {
+        return false;
+    };
+
+    queue_spark_command(state, SparkWalletCommand::Refresh);
+    tracing::info!(
+        target: "autopilot_desktop::data_seller",
+        "Seller queued wallet refresh while awaiting payment confirmation request_id={} interval_seconds={}",
+        request_id,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    );
+    state.provider_runtime.last_result = Some(format!(
+        "seller queued wallet refresh request={} interval_seconds={}",
+        request_id,
         crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
     ));
     true

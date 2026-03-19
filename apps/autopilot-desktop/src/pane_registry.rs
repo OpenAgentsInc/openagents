@@ -91,7 +91,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 62] = [
+const PANE_SPECS: [PaneSpec; 63] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -283,6 +283,21 @@ const PANE_SPECS: [PaneSpec; 62] = [
             id: "pane.provider_status",
             label: "Provider Status",
             description: "Open runtime health and heartbeat visibility pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::VoicePlayground,
+        title: "Voice Playground",
+        default_width: 1040.0,
+        default_height: 620.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.voice_playground",
+            label: "Voice Playground",
+            description: "Open the Google Cloud speech workbench for voice transcription verification",
             keybinding: None,
         }),
         hotbar: None,

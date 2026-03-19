@@ -9,6 +9,7 @@ mod local_inference;
 mod provider_ingress;
 mod sa;
 mod skl;
+mod voice_playground;
 pub(super) mod wallet;
 pub(super) use cad::CadChatPromptApplyOutcome;
 
@@ -83,6 +84,20 @@ pub(super) fn apply_active_job_publish_outcome(
     jobs::apply_active_job_publish_outcome(state, outcome)
 }
 
+pub(super) fn apply_provider_ingressed_request_from_desktop_control(
+    state: &mut RenderState,
+    request: crate::app_state::JobInboxNetworkRequest,
+) {
+    provider_ingress::apply_ingressed_request(state, request);
+}
+
+pub(super) fn apply_provider_buyer_response_from_desktop_control(
+    state: &mut RenderState,
+    event: crate::provider_nip90_lane::ProviderNip90BuyerResponseEvent,
+) {
+    provider_ingress::apply_buyer_response_event(state, event);
+}
+
 pub(super) fn active_job_matches_publish_outcome(
     active_job: &crate::app_state::ActiveJobState,
     outcome: &crate::provider_nip90_lane::ProviderNip90PublishOutcome,
@@ -152,6 +167,10 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     for update in state.apple_fm_execution_worker.drain_updates() {
         changed |= apple_fm_workbench::apply_bridge_update(state, &update);
         changed |= jobs::apply_active_job_apple_fm_update(state, update);
+    }
+
+    for update in state.voice_playground_worker.drain_updates() {
+        changed |= voice_playground::apply_voice_update(state, &update);
     }
 
     for update in state.local_inference_runtime.drain_updates() {

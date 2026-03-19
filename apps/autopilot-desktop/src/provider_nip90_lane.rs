@@ -9,7 +9,8 @@ use nostr::nip90::{
 };
 use nostr::{Event, EventTemplate};
 use nostr_client::{
-    ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayMessage, RelayPool,
+    ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
+    RelayPool,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -22,8 +23,12 @@ const RELAY_RECV_TIMEOUT: Duration = Duration::from_millis(1);
 const MAX_MESSAGES_PER_RELAY_POLL: usize = 48;
 const MAX_UPDATES_PER_DRAIN: usize = 32;
 const MAX_PREVIEW_SEEN_REQUEST_IDS: usize = 4096;
-const SUBSCRIPTION_ID: &str = "autopilot-provider-nip90-ingress";
+const SUBSCRIPTION_ID_PREFIX: &str = "autopilot-provider-nip90-ingress";
 const DEFAULT_TTL_SECONDS: u64 = 60;
+const LIVE_REQUEST_FILTER_LOOKBACK_SECONDS: u64 = 30;
+const LIVE_FILTER_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+const CATCHUP_RECV_TIMEOUT: Duration = Duration::from_millis(150);
+const CATCHUP_QUERY_TIMEOUT: Duration = Duration::from_millis(1500);
 const NIP89_HANDLER_KIND: u16 = 31_990;
 const HANDLER_PUBLISH_RETRY: Duration = Duration::from_secs(10);
 const HANDLER_METADATA_NAME: &str = "Autopilot";
@@ -329,6 +334,9 @@ struct ProviderNip90LaneState {
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
     relay_last_error: HashMap<String, String>,
+    next_live_filter_refresh_at: Option<Instant>,
+    ingress_subscription_generation: u64,
+    ingress_subscription_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -346,6 +354,17 @@ enum DesiredLaneState {
 }
 
 impl ProviderNip90LaneState {
+    fn next_ingress_subscription_id(&mut self) -> String {
+        self.ingress_subscription_generation =
+            self.ingress_subscription_generation.saturating_add(1);
+        let next = format!(
+            "{SUBSCRIPTION_ID_PREFIX}-{}",
+            self.ingress_subscription_generation
+        );
+        self.ingress_subscription_id = next.clone();
+        next
+    }
+
     fn desired_state(&self) -> DesiredLaneState {
         if self.snapshot.configured_relays.is_empty() {
             DesiredLaneState::Offline
@@ -368,6 +387,9 @@ impl ProviderNip90LaneState {
         build_ingress_filters(
             self.provider_request_ingress_enabled(),
             self.tracked_buyer_request_ids.as_slice(),
+            self.auth_identity.as_ref(),
+            self.compute_capability.is_ready(),
+            self.data_vending_profile.as_ref(),
         )
     }
 
@@ -509,6 +531,9 @@ fn run_lane_loop(
         relay_last_seen: HashMap::new(),
         relay_latency_ms: HashMap::new(),
         relay_last_error: HashMap::new(),
+        next_live_filter_refresh_at: None,
+        ingress_subscription_generation: 1,
+        ingress_subscription_id: format!("{SUBSCRIPTION_ID_PREFIX}-1"),
     };
     refresh_relay_health_snapshot(&runtime, &mut state);
 
@@ -557,8 +582,15 @@ fn run_lane_loop(
             continue;
         };
 
+        let mut catchup_outcome = CatchupOutcome::default();
+        if should_refresh_live_filters(&state) {
+            resubscribe_ingress_filters(&runtime, &mut state, pool.clone());
+            catchup_outcome = runtime.block_on(catchup_ingress_with_fresh_queries(&state));
+            state.next_live_filter_refresh_at = Some(Instant::now() + LIVE_FILTER_REFRESH_INTERVAL);
+        }
+
         let relay_health_before_poll = state.snapshot.relay_health.clone();
-        let outcome = runtime.block_on(poll_ingress(
+        let mut outcome = runtime.block_on(poll_ingress(
             pool,
             state.tracked_buyer_request_ids.as_slice(),
             state
@@ -566,6 +598,8 @@ fn run_lane_loop(
                 .as_ref()
                 .map(|identity| identity.public_key_hex.as_str()),
         ));
+        outcome.requests.extend(catchup_outcome.requests);
+        outcome.buyer_events.extend(catchup_outcome.buyer_events);
         apply_poll_outcome_telemetry(&mut state, &outcome);
         refresh_relay_health_snapshot(&runtime, &mut state);
 
@@ -702,6 +736,7 @@ fn handle_command(
                         Some("Rebinding provider relay identity".to_string());
                 }
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureComputeCapability { capability } => {
@@ -737,6 +772,7 @@ fn handle_command(
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureDataVendingProfile { profile } => {
@@ -760,6 +796,7 @@ fn handle_command(
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::ConfigureRelays { relays } => {
@@ -788,6 +825,7 @@ fn handle_command(
             if state.pool.is_some() {
                 disconnect_pool(runtime, state);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::SetOnline { online } => {
@@ -795,6 +833,7 @@ fn handle_command(
             state.clear_preview_request_cache();
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
+            state.next_live_filter_refresh_at = if online { Some(Instant::now()) } else { None };
             if online {
                 state.snapshot.mode = ProviderNip90LaneMode::Connecting;
                 state.snapshot.last_action = Some("Connecting provider relay ingress".to_string());
@@ -824,6 +863,7 @@ fn handle_command(
             if let Some(pool) = state.pool.as_ref().cloned() {
                 resubscribe_ingress_filters(runtime, state, pool);
             }
+            state.next_live_filter_refresh_at = Some(Instant::now());
             refresh_relay_health_snapshot(runtime, state);
         }
         ProviderNip90LaneCommand::TrackProviderPublishRequestIds { request_ids } => {
@@ -1192,10 +1232,15 @@ fn ensure_connected_pool(
                     match pool.relay(relay).await {
                         Some(connection) => {
                             let subscription_result = if filters.is_empty() {
-                                connection.unsubscribe(SUBSCRIPTION_ID).await
+                                connection
+                                    .unsubscribe(state.ingress_subscription_id.as_str())
+                                    .await
                             } else {
                                 connection
-                                    .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
+                                    .subscribe_filters(
+                                        state.ingress_subscription_id.as_str(),
+                                        filters.clone(),
+                                    )
                                     .await
                             };
                             if let Err(error) = subscription_result {
@@ -1320,10 +1365,15 @@ fn reconnect_disconnected_relays(
                         .relay_last_seen
                         .insert(relay_key.clone(), Instant::now());
                     let subscription_result = if filters.is_empty() {
-                        connection.unsubscribe(SUBSCRIPTION_ID).await
+                        connection
+                            .unsubscribe(state.ingress_subscription_id.as_str())
+                            .await
                     } else {
                         connection
-                            .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
+                            .subscribe_filters(
+                                state.ingress_subscription_id.as_str(),
+                                filters.clone(),
+                            )
                             .await
                     };
                     if let Err(error) = subscription_result {
@@ -1348,6 +1398,24 @@ fn reconnect_disconnected_relays(
     });
 }
 
+async fn replace_ingress_subscription(
+    connection: &nostr_client::RelayConnection,
+    previous_subscription_id: &str,
+    next_subscription_id: &str,
+    filters: Vec<serde_json::Value>,
+) -> Result<(), nostr_client::ClientError> {
+    // Refreshing a live subscription means replacing the prior relay-side view,
+    // not layering another REQ with the same id on top of it.
+    let _ = connection.unsubscribe(previous_subscription_id).await;
+    if filters.is_empty() {
+        Ok(())
+    } else {
+        connection
+            .subscribe_filters(next_subscription_id, filters)
+            .await
+    }
+}
+
 fn resubscribe_ingress_filters(
     runtime: &tokio::runtime::Runtime,
     state: &mut ProviderNip90LaneState,
@@ -1355,6 +1423,12 @@ fn resubscribe_ingress_filters(
 ) {
     runtime.block_on(async {
         let filters = state.ingress_filters();
+        let previous_subscription_id = state.ingress_subscription_id.clone();
+        let next_subscription_id = if filters.is_empty() {
+            previous_subscription_id.clone()
+        } else {
+            state.next_ingress_subscription_id()
+        };
         for relay in &state.snapshot.configured_relays {
             let relay_key = relay_map_key(relay);
             let Some(connection) = pool.relay(relay).await else {
@@ -1363,13 +1437,13 @@ fn resubscribe_ingress_filters(
             if connection.state().await != ConnectionState::Connected {
                 continue;
             }
-            let subscription_result = if filters.is_empty() {
-                connection.unsubscribe(SUBSCRIPTION_ID).await
-            } else {
-                connection
-                    .subscribe_filters(SUBSCRIPTION_ID, filters.clone())
-                    .await
-            };
+            let subscription_result = replace_ingress_subscription(
+                &connection,
+                previous_subscription_id.as_str(),
+                next_subscription_id.as_str(),
+                filters.clone(),
+            )
+            .await;
             if let Err(error) = subscription_result {
                 state.relay_last_error.insert(
                     relay_key.clone(),
@@ -1380,6 +1454,15 @@ fn resubscribe_ingress_filters(
             }
         }
     });
+}
+
+fn should_refresh_live_filters(state: &ProviderNip90LaneState) -> bool {
+    state.wants_online
+        && state.snapshot.connected_relays > 0
+        && (state.provider_request_ingress_enabled() || !state.tracked_buyer_request_ids.is_empty())
+        && state
+            .next_live_filter_refresh_at
+            .is_none_or(|refresh_at| Instant::now() >= refresh_at)
 }
 
 fn maybe_publish_handler_info(
@@ -1438,13 +1521,72 @@ fn maybe_publish_handler_info(
 fn build_ingress_filters(
     observe_provider_requests: bool,
     tracked_buyer_request_ids: &[String],
+    auth_identity: Option<&ProviderNip90AuthIdentity>,
+    compute_ready: bool,
+    data_vending_profile: Option<&ProviderNip90DataVendingProfile>,
 ) -> Vec<serde_json::Value> {
     let mut filters = Vec::new();
     if observe_provider_requests {
-        let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
-            .map(serde_json::Value::from)
-            .collect::<Vec<_>>();
-        filters.push(json!({"kinds": kinds, "limit": 256}));
+        let request_since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| {
+                duration
+                    .as_secs()
+                    .saturating_sub(LIVE_REQUEST_FILTER_LOOKBACK_SECONDS)
+            })
+            .unwrap_or(0);
+
+        if let Some(profile) = data_vending_profile
+            && profile
+                .targeting_posture
+                .trim()
+                .eq_ignore_ascii_case("targeted_only")
+        {
+            let mut target_pubkeys = auth_identity
+                .map(|identity| {
+                    vec![
+                        identity.public_key_hex.trim().to_ascii_lowercase(),
+                        identity.npub.trim().to_ascii_lowercase(),
+                    ]
+                })
+                .unwrap_or_default();
+            target_pubkeys.retain(|value| !value.is_empty());
+            target_pubkeys.sort();
+            target_pubkeys.dedup();
+            if !target_pubkeys.is_empty() {
+                filters.push(json!({
+                    "kinds": [profile.request_kind],
+                    "#p": target_pubkeys,
+                    "since": request_since,
+                    "limit": 128
+                }));
+            }
+            // Some public relays store targeted requests correctly but do not
+            // reliably fan them out on `#p`-only live subscriptions for custom
+            // DVM kinds. Subscribe to the dedicated request kind as a fallback
+            // and keep strict local target checks in the intake path.
+            filters.push(json!({
+                "kinds": [profile.request_kind],
+                "since": request_since,
+                "limit": 128
+            }));
+        }
+
+        if compute_ready || data_vending_profile.is_none() {
+            let kinds = (JOB_REQUEST_KIND_MIN..=JOB_REQUEST_KIND_MAX)
+                .filter(|kind| {
+                    data_vending_profile.is_none_or(|profile| *kind != profile.request_kind)
+                })
+                .map(serde_json::Value::from)
+                .collect::<Vec<_>>();
+            if !kinds.is_empty() {
+                filters.push(json!({
+                    "kinds": kinds,
+                    "since": request_since,
+                    "limit": 256
+                }));
+            }
+        }
     }
     if !tracked_buyer_request_ids.is_empty() {
         let response_kinds = (JOB_RESULT_KIND_MIN..=JOB_RESULT_KIND_MAX)
@@ -1608,6 +1750,12 @@ struct PollOutcome {
     relay_latency_ms: Vec<(String, u32)>,
 }
 
+#[derive(Default)]
+struct CatchupOutcome {
+    requests: Vec<JobInboxNetworkRequest>,
+    buyer_events: Vec<ProviderNip90BuyerResponseEvent>,
+}
+
 async fn poll_ingress(
     pool: Arc<RelayPool>,
     tracked_buyer_request_ids: &[String],
@@ -1684,7 +1832,97 @@ async fn poll_ingress(
     }
 }
 
-fn event_to_inbox_request(
+async fn catchup_ingress_with_fresh_queries(state: &ProviderNip90LaneState) -> CatchupOutcome {
+    let filters = state.ingress_filters();
+    if filters.is_empty() || state.snapshot.configured_relays.is_empty() {
+        return CatchupOutcome::default();
+    }
+
+    let tracked_buyer_request_ids = state
+        .tracked_buyer_request_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let local_pubkey_hex = state
+        .auth_identity
+        .as_ref()
+        .map(|identity| identity.public_key_hex.clone());
+    let mut outcome = CatchupOutcome::default();
+    let mut seen_request_ids = HashSet::<String>::new();
+    let mut seen_buyer_event_ids = HashSet::<String>::new();
+
+    for relay in &state.snapshot.configured_relays {
+        let Ok(connection) = RelayConnection::new(relay.as_str()) else {
+            continue;
+        };
+        if connection.connect().await.is_err() {
+            continue;
+        }
+        let relay_url = relay_map_key(relay);
+
+        for (filter_index, filter) in filters.iter().enumerate() {
+            let subscription_id = format!(
+                "{}-catchup-{}-{filter_index}",
+                state.ingress_subscription_id,
+                relay_url
+                    .chars()
+                    .filter(|ch| ch.is_ascii_alphanumeric())
+                    .take(12)
+                    .collect::<String>()
+            );
+            if connection
+                .subscribe_filters(subscription_id.as_str(), vec![filter.clone()])
+                .await
+                .is_err()
+            {
+                continue;
+            }
+
+            let deadline = Instant::now() + CATCHUP_QUERY_TIMEOUT;
+            loop {
+                match tokio::time::timeout(CATCHUP_RECV_TIMEOUT, connection.recv()).await {
+                    Ok(Ok(Some(RelayMessage::Event(_, event)))) => {
+                        if let Some(request) =
+                            event_to_inbox_request(&event, Some(relay_url.as_str()))
+                        {
+                            if seen_request_ids.insert(request.request_id.clone()) {
+                                outcome.requests.push(request);
+                            }
+                        } else if let Some(buyer_event) = event_to_buyer_response_event(
+                            &event,
+                            &tracked_buyer_request_ids,
+                            local_pubkey_hex.as_deref(),
+                            Some(relay_url.as_str()),
+                        ) && seen_buyer_event_ids.insert(buyer_event.event_id.clone())
+                        {
+                            outcome.buyer_events.push(buyer_event);
+                        }
+                    }
+                    Ok(Ok(Some(RelayMessage::Eose(done_subscription_id))))
+                        if done_subscription_id == subscription_id =>
+                    {
+                        break;
+                    }
+                    Ok(Ok(Some(_))) => {}
+                    Ok(Ok(None)) | Ok(Err(_)) | Err(_) => {
+                        if Instant::now() >= deadline {
+                            break;
+                        }
+                    }
+                }
+                if Instant::now() >= deadline {
+                    break;
+                }
+            }
+            let _ = connection.unsubscribe(subscription_id.as_str()).await;
+        }
+        let _ = connection.disconnect().await;
+    }
+
+    outcome
+}
+
+pub(crate) fn event_to_inbox_request(
     event: &Event,
     relay_url: Option<&str>,
 ) -> Option<JobInboxNetworkRequest> {
@@ -2080,7 +2318,7 @@ fn format_input_line(input: &nostr::nip90::JobInput) -> String {
     line
 }
 
-fn event_to_buyer_response_event(
+pub(crate) fn event_to_buyer_response_event(
     event: &Event,
     tracked_buyer_request_ids: &HashSet<String>,
     local_pubkey_hex: Option<&str>,
@@ -2595,7 +2833,8 @@ mod tests {
         ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90ComputeCapability,
         ProviderNip90DataVendingProfile, ProviderNip90LaneCommand, ProviderNip90LaneUpdate,
         ProviderNip90LaneWorker, ProviderNip90PublishRole, ProviderNip90RelayStatus,
-        event_to_buyer_response_event, event_to_inbox_request, execution_input_from_request,
+        ensure_connected_pool, event_to_buyer_response_event, event_to_inbox_request,
+        execution_input_from_request, poll_ingress, resubscribe_ingress_filters,
     };
     use crate::app_state::{
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
@@ -2673,6 +2912,9 @@ mod tests {
             relay_last_seen: std::collections::HashMap::new(),
             relay_latency_ms: std::collections::HashMap::new(),
             relay_last_error: std::collections::HashMap::new(),
+            next_live_filter_refresh_at: None,
+            ingress_subscription_generation: 1,
+            ingress_subscription_id: format!("{}-1", super::SUBSCRIPTION_ID_PREFIX),
         }
     }
 
@@ -2691,6 +2933,52 @@ mod tests {
             ],
             preview_postures: vec!["metadata_only".to_string(), "inline_preview".to_string()],
         }
+    }
+
+    #[test]
+    fn build_ingress_filters_target_targeted_data_market_requests_to_local_identity() {
+        let identity = fixture_auth_identity();
+        let profile = fixture_data_vending_profile();
+        let filters =
+            super::build_ingress_filters(true, &[], Some(&identity), false, Some(&profile));
+        assert_eq!(
+            filters.len(),
+            2,
+            "expected targeted and dedicated-kind fallback filters"
+        );
+        let filter = filters.first().expect("targeted filter");
+        let p_values = filter["#p"].as_array().expect("p filter array");
+        assert!(
+            p_values
+                .iter()
+                .any(|value| value.as_str() == Some(identity.public_key_hex.as_str()))
+        );
+        assert!(
+            p_values
+                .iter()
+                .any(|value| value.as_str() == Some(identity.npub.as_str()))
+        );
+        assert_eq!(
+            filter["kinds"].as_array().expect("kinds array"),
+            &vec![Value::from(profile.request_kind)]
+        );
+        assert!(
+            filter.get("since").is_some(),
+            "targeted public-relay filter should be live-only"
+        );
+        let fallback = filters.get(1).expect("fallback filter");
+        assert!(
+            fallback.get("#p").is_none(),
+            "fallback filter should widen relay fanout without target indexing"
+        );
+        assert_eq!(
+            fallback["kinds"].as_array().expect("fallback kinds array"),
+            &vec![Value::from(profile.request_kind)]
+        );
+        assert!(
+            fallback.get("since").is_some(),
+            "fallback public-relay filter should stay live-only"
+        );
     }
 
     #[test]
@@ -3409,7 +3697,7 @@ mod tests {
             .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
             .expect("queue online command");
 
-        let deadline = Instant::now() + Duration::from_secs(4);
+        let deadline = Instant::now() + Duration::from_secs(8);
         let mut ingressed = false;
         while Instant::now() < deadline {
             for update in worker.drain_updates() {
@@ -3432,6 +3720,60 @@ mod tests {
         );
 
         let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
+    #[test]
+    fn resubscribe_replaces_live_subscription_when_data_vending_profile_becomes_ready() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task) =
+            runtime.block_on(spawn_mock_relay_requires_close_before_resubscribe());
+        let mut state = fixture_lane_state();
+        state.snapshot.configured_relays = vec![relay_url];
+
+        assert!(
+            ensure_connected_pool(&runtime, &mut state).is_ok(),
+            "expected initial preview pool connection"
+        );
+        assert_eq!(state.snapshot.connected_relays, 1);
+
+        state.auth_identity = Some(fixture_auth_identity());
+        state.data_vending_profile = Some(fixture_data_vending_profile());
+        state.wants_online = true;
+
+        let pool = state.pool.as_ref().cloned().expect("pool should exist");
+        resubscribe_ingress_filters(&runtime, &mut state, pool.clone());
+
+        let local_pubkey = state
+            .auth_identity
+            .as_ref()
+            .map(|identity| identity.public_key_hex.clone())
+            .expect("identity should be present");
+        let deadline = Instant::now() + Duration::from_secs(4);
+        let mut ingressed = false;
+        while Instant::now() < deadline {
+            let outcome =
+                runtime.block_on(poll_ingress(pool.clone(), &[], Some(local_pubkey.as_str())));
+            if outcome
+                .requests
+                .iter()
+                .any(|row| row.request_id == "request-after-close")
+            {
+                ingressed = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        assert!(
+            ingressed,
+            "expected data-vending request ingress after replacing the live subscription"
+        );
+
         relay_task.abort();
     }
 
@@ -4366,49 +4708,56 @@ mod tests {
         let addr = listener.local_addr().expect("resolve listener addr");
 
         let handle = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.expect("accept websocket client");
-            let mut ws = accept_async(stream)
-                .await
-                .expect("upgrade websocket connection");
-
             loop {
-                let Some(message) = ws.next().await else {
+                let Ok((stream, _)) = listener.accept().await else {
                     break;
                 };
-                let Ok(message) = message else {
-                    break;
-                };
-                let Message::Text(text) = message else {
-                    continue;
-                };
-                let value: Value = serde_json::from_str(text.as_ref()).expect("parse relay frame");
-                let Some(frame) = value.as_array() else {
-                    continue;
-                };
-                let Some(kind) = frame.first().and_then(Value::as_str) else {
-                    continue;
-                };
-                if kind != "REQ" {
-                    continue;
-                }
+                tokio::spawn(async move {
+                    let mut ws = accept_async(stream)
+                        .await
+                        .expect("upgrade websocket connection");
 
-                let subscription_id = frame[1].as_str().expect("REQ subscription id");
-                let request = Event {
-                    id: "request-live-1".to_string(),
-                    pubkey: "npub1remote-buyer".to_string(),
-                    created_at: 1_760_000_110,
-                    kind: 5050,
-                    tags: vec![
-                        vec!["bid".to_string(), "50000".to_string()],
-                        vec!["param".to_string(), "ttl".to_string(), "45".to_string()],
-                    ],
-                    content: "Generate a short summary".to_string(),
-                    sig: "33".repeat(64),
-                };
-                let payload = serde_json::json!(["EVENT", subscription_id, request]);
-                ws.send(Message::Text(payload.to_string().into()))
-                    .await
-                    .expect("send request event");
+                    loop {
+                        let Some(message) = ws.next().await else {
+                            break;
+                        };
+                        let Ok(message) = message else {
+                            break;
+                        };
+                        let Message::Text(text) = message else {
+                            continue;
+                        };
+                        let value: Value =
+                            serde_json::from_str(text.as_ref()).expect("parse relay frame");
+                        let Some(frame) = value.as_array() else {
+                            continue;
+                        };
+                        let Some(kind) = frame.first().and_then(Value::as_str) else {
+                            continue;
+                        };
+                        if kind != "REQ" {
+                            continue;
+                        }
+
+                        let subscription_id = frame[1].as_str().expect("REQ subscription id");
+                        let request = Event {
+                            id: "request-live-1".to_string(),
+                            pubkey: "npub1remote-buyer".to_string(),
+                            created_at: 1_760_000_110,
+                            kind: 5050,
+                            tags: vec![
+                                vec!["bid".to_string(), "50000".to_string()],
+                                vec!["param".to_string(), "ttl".to_string(), "45".to_string()],
+                            ],
+                            content: "Generate a short summary".to_string(),
+                            sig: "33".repeat(64),
+                        };
+                        let payload = serde_json::json!(["EVENT", subscription_id, request]);
+                        ws.send(Message::Text(payload.to_string().into()))
+                            .await
+                            .expect("send request event");
+                    }
+                });
             }
         });
 
@@ -4480,11 +4829,96 @@ mod tests {
         let (published_tx, published_rx) = std::sync::mpsc::channel::<Event>();
 
         let handle = tokio::spawn(async move {
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    break;
+                };
+                let published_tx = published_tx.clone();
+                tokio::spawn(async move {
+                    let mut ws = accept_async(stream)
+                        .await
+                        .expect("upgrade websocket connection");
+
+                    loop {
+                        let Some(message) = ws.next().await else {
+                            break;
+                        };
+                        let Ok(message) = message else {
+                            break;
+                        };
+                        let Message::Text(text) = message else {
+                            continue;
+                        };
+                        let value: Value =
+                            serde_json::from_str(text.as_ref()).expect("parse relay frame");
+                        let Some(frame) = value.as_array() else {
+                            continue;
+                        };
+                        let Some(kind) = frame.first().and_then(Value::as_str) else {
+                            continue;
+                        };
+                        match kind {
+                            "REQ" => {
+                                let subscription_id =
+                                    frame[1].as_str().expect("REQ subscription id");
+                                let request = Event {
+                                    id: "request-live-1".to_string(),
+                                    pubkey: "npub1remote-buyer".to_string(),
+                                    created_at: 1_760_000_110,
+                                    kind: 5050,
+                                    tags: vec![
+                                        vec!["bid".to_string(), "50000".to_string()],
+                                        vec![
+                                            "param".to_string(),
+                                            "ttl".to_string(),
+                                            "45".to_string(),
+                                        ],
+                                    ],
+                                    content: "Generate a short summary".to_string(),
+                                    sig: "33".repeat(64),
+                                };
+                                let event_payload =
+                                    serde_json::json!(["EVENT", subscription_id, request]);
+                                ws.send(Message::Text(event_payload.to_string().into()))
+                                    .await
+                                    .expect("send request event");
+                                let eose_payload = serde_json::json!(["EOSE", subscription_id]);
+                                ws.send(Message::Text(eose_payload.to_string().into()))
+                                    .await
+                                    .expect("send eose");
+                            }
+                            "EVENT" => {
+                                let event: Event = serde_json::from_value(frame[1].clone())
+                                    .expect("parse published event");
+                                let _ = published_tx.send(event.clone());
+                                let ok = serde_json::json!(["OK", event.id, true, "accepted"]);
+                                ws.send(Message::Text(ok.to_string().into()))
+                                    .await
+                                    .expect("send ok");
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
+        });
+
+        (format!("ws://{}", addr), handle, published_rx)
+    }
+
+    async fn spawn_mock_relay_requires_close_before_resubscribe() -> (String, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock relay listener");
+        let addr = listener.local_addr().expect("resolve listener addr");
+
+        let handle = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept websocket client");
             let mut ws = accept_async(stream)
                 .await
                 .expect("upgrade websocket connection");
 
+            let mut saw_close = false;
             loop {
                 let Some(message) = ws.next().await else {
                     break;
@@ -4505,41 +4939,57 @@ mod tests {
                 match kind {
                     "REQ" => {
                         let subscription_id = frame[1].as_str().expect("REQ subscription id");
-                        let request = Event {
-                            id: "request-live-1".to_string(),
-                            pubkey: "npub1remote-buyer".to_string(),
-                            created_at: 1_760_000_110,
-                            kind: 5050,
-                            tags: vec![
-                                vec!["bid".to_string(), "50000".to_string()],
-                                vec!["param".to_string(), "ttl".to_string(), "45".to_string()],
-                            ],
-                            content: "Generate a short summary".to_string(),
-                            sig: "33".repeat(64),
-                        };
-                        let event_payload = serde_json::json!(["EVENT", subscription_id, request]);
-                        ws.send(Message::Text(event_payload.to_string().into()))
-                            .await
-                            .expect("send request event");
+                        if saw_close {
+                            let request = Event {
+                                id: "request-after-close".to_string(),
+                                pubkey: "npub1remote-buyer".to_string(),
+                                created_at: 1_760_000_210,
+                                kind: crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+                                tags: vec![
+                                    vec!["bid".to_string(), "1000".to_string()],
+                                    vec!["p".to_string(), fixture_auth_identity().public_key_hex],
+                                    vec![
+                                        "param".to_string(),
+                                        "oa_asset_ref".to_string(),
+                                        "asset:test".to_string(),
+                                    ],
+                                    vec![
+                                        "param".to_string(),
+                                        "oa_scope".to_string(),
+                                        "read".to_string(),
+                                    ],
+                                    vec![
+                                        "param".to_string(),
+                                        "oa_delivery_mode".to_string(),
+                                        "bundle_ref".to_string(),
+                                    ],
+                                    vec![
+                                        "param".to_string(),
+                                        "oa_preview_posture".to_string(),
+                                        "none".to_string(),
+                                    ],
+                                ],
+                                content: "deliver asset:test".to_string(),
+                                sig: "44".repeat(64),
+                            };
+                            let payload = serde_json::json!(["EVENT", subscription_id, request]);
+                            ws.send(Message::Text(payload.to_string().into()))
+                                .await
+                                .expect("send request event after close");
+                        }
                         let eose_payload = serde_json::json!(["EOSE", subscription_id]);
                         ws.send(Message::Text(eose_payload.to_string().into()))
                             .await
                             .expect("send eose");
                     }
-                    "EVENT" => {
-                        let event: Event = serde_json::from_value(frame[1].clone())
-                            .expect("parse published event");
-                        let _ = published_tx.send(event.clone());
-                        let ok = serde_json::json!(["OK", event.id, true, "accepted"]);
-                        ws.send(Message::Text(ok.to_string().into()))
-                            .await
-                            .expect("send ok");
+                    "CLOSE" => {
+                        saw_close = true;
                     }
                     _ => {}
                 }
             }
         });
 
-        (format!("ws://{}", addr), handle, published_rx)
+        (format!("ws://{}", addr), handle)
     }
 }
