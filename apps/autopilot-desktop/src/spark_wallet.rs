@@ -18,6 +18,8 @@ use crate::bitcoin_display::format_sats_amount;
 pub const ENV_SPARK_NETWORK: &str = "OPENAGENTS_SPARK_NETWORK";
 pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
 const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+const SPARK_TRANSIENT_RETRY_ATTEMPTS: u8 = 3;
+const SPARK_TRANSIENT_RETRY_DELAY: Duration = Duration::from_millis(350);
 const STARTUP_CONVERGENCE_REFRESH_INTERVAL_SECONDS: u64 = 2;
 const STARTUP_CONVERGENCE_REFRESH_ATTEMPTS: u8 = 3;
 const REFRESH_THROTTLE_INTERVAL: Duration = Duration::from_secs(3);
@@ -591,11 +593,11 @@ impl SparkPaneState {
             return None;
         };
 
-        let invoice = match run_with_timeout(
+        let (invoice, attempts) = match run_with_transient_retry(
             runtime,
             "Create Lightning bolt11 invoice",
             SPARK_ACTION_TIMEOUT,
-            wallet.create_bolt11_invoice(amount_sats, description, expiry_seconds),
+            || wallet.create_bolt11_invoice(amount_sats, description.clone(), expiry_seconds),
         ) {
             Ok(value) => value,
             Err(error) => {
@@ -607,10 +609,18 @@ impl SparkPaneState {
         self.last_invoice = Some(invoice.clone());
         self.last_invoice_created_at_epoch_seconds = Some(current_epoch_seconds());
         self.last_invoice_expiry_seconds = expiry_seconds.map(u64::from);
-        self.last_action = Some(format!(
-            "Created Lightning invoice for {}",
-            format_sats_amount(amount_sats)
-        ));
+        self.last_action = Some(if attempts > 1 {
+            format!(
+                "Created Lightning invoice for {} after {} attempts",
+                format_sats_amount(amount_sats),
+                attempts
+            )
+        } else {
+            format!(
+                "Created Lightning invoice for {}",
+                format_sats_amount(amount_sats)
+            )
+        });
         self.refresh_balance_and_payments(runtime);
         Some(invoice)
     }
@@ -895,6 +905,25 @@ fn timeout_message(action: &str, timeout: Duration) -> String {
     format!("{action} timed out after {timeout:?}")
 }
 
+fn is_transient_wallet_network_error(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    [
+        "unexpected eof",
+        "sendrequest",
+        "error sending request",
+        "tls_retry_write_records",
+        "connection reset",
+        "connection closed",
+        "timed out",
+        "temporary failure",
+        "temporarily unavailable",
+        "transport error",
+        "network error",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
+}
+
 fn run_with_timeout<R, E, F>(
     runtime: &Runtime,
     action: &str,
@@ -909,6 +938,38 @@ where
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => Err(error.to_string()),
         Err(_elapsed) => Err(timeout_message(action, timeout)),
+    }
+}
+
+fn run_with_transient_retry<R, E, F, Factory>(
+    runtime: &Runtime,
+    action: &str,
+    timeout: Duration,
+    mut future_factory: Factory,
+) -> Result<(R, u8), String>
+where
+    E: std::fmt::Display,
+    F: Future<Output = Result<R, E>>,
+    Factory: FnMut() -> F,
+{
+    let mut attempt = 1;
+    loop {
+        match run_with_timeout(runtime, action, timeout, future_factory()) {
+            Ok(value) => return Ok((value, attempt)),
+            Err(error)
+                if attempt < SPARK_TRANSIENT_RETRY_ATTEMPTS
+                    && is_transient_wallet_network_error(error.as_str()) =>
+            {
+                std::thread::sleep(SPARK_TRANSIENT_RETRY_DELAY);
+                attempt += 1;
+            }
+            Err(error) => {
+                if attempt > 1 {
+                    return Err(format!("{error} after {attempt} Spark network attempts"));
+                }
+                return Err(error);
+            }
+        }
     }
 }
 
@@ -1046,7 +1107,8 @@ mod tests {
         NetworkStatus, NetworkStatusReport, SPARK_ACTION_TIMEOUT, SparkInvoiceState,
         SparkPaneState, SparkWalletCommand, SparkWalletWorker, coalesce_refresh_like_command_burst,
         configured_api_key, configured_network, is_settled_wallet_payment_status,
-        is_terminal_wallet_payment_status, run_with_timeout, timeout_message,
+        is_terminal_wallet_payment_status, run_with_timeout, run_with_transient_retry,
+        timeout_message,
     };
 
     use nostr::ENV_IDENTITY_MNEMONIC_PATH;
@@ -1163,6 +1225,77 @@ mod tests {
 
         let error = result.expect_err("should timeout");
         assert!(error.contains("slow action timed out"));
+    }
+
+    #[test]
+    fn run_with_transient_retry_retries_networkish_errors_before_succeeding() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let (value, used_attempts) = run_with_transient_retry(
+            &runtime,
+            "Create Lightning bolt11 invoice",
+            Duration::from_secs(1),
+            {
+                let attempts = Arc::clone(&attempts);
+                move || {
+                    let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if attempt < 2 {
+                            Err::<u8, String>(
+                                "network error: error sending request: unexpected EOF".to_string(),
+                            )
+                        } else {
+                            Ok::<u8, String>(7)
+                        }
+                    }
+                }
+            },
+        )
+        .expect("transient retry should eventually succeed");
+
+        assert_eq!(value, 7);
+        assert_eq!(used_attempts, 3);
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn run_with_transient_retry_does_not_retry_non_transient_errors() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let error = run_with_transient_retry(
+            &runtime,
+            "Create Lightning bolt11 invoice",
+            Duration::from_secs(1),
+            {
+                let attempts = Arc::clone(&attempts);
+                move || {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    async { Err::<u8, String>("missing Breez API key".to_string()) }
+                }
+            },
+        )
+        .expect_err("non-transient errors should fail immediately");
+
+        assert!(error.contains("missing Breez API key"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
 
     #[test]

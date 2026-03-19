@@ -11222,6 +11222,29 @@ pub(super) fn run_pending_buyer_payment_watchdog_tick(
     true
 }
 
+pub(super) fn run_pending_data_seller_payment_watchdog_tick(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some(request_id) = state.data_seller.payment_evidence_refresh_due(now) else {
+        return false;
+    };
+
+    queue_spark_command(state, SparkWalletCommand::Refresh);
+    tracing::info!(
+        target: "autopilot_desktop::data_seller",
+        "Seller queued wallet refresh while awaiting payment confirmation request_id={} interval_seconds={}",
+        request_id,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    );
+    state.provider_runtime.last_result = Some(format!(
+        "seller queued wallet refresh request={} interval_seconds={}",
+        request_id,
+        crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL.as_secs()
+    ));
+    true
+}
+
 pub(crate) fn submit_signed_network_request_with_event(
     state: &mut crate::app_state::RenderState,
     request_type: String,
