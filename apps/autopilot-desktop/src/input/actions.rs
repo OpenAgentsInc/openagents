@@ -5714,6 +5714,25 @@ pub(super) fn run_chat_cycle_sandbox_mode_action(
     true
 }
 
+pub(super) fn run_chat_toggle_header_controls_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.header_controls_expanded = !state.autopilot_chat.header_controls_expanded;
+    true
+}
+
+pub(super) fn run_chat_toggle_help_hint_action(state: &mut crate::app_state::RenderState) -> bool {
+    state.autopilot_chat.show_autopilot_help_hint = !state.autopilot_chat.show_autopilot_help_hint;
+    true
+}
+
+pub(super) fn run_chat_toggle_thread_tools_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.thread_tools_expanded = !state.autopilot_chat.thread_tools_expanded;
+    true
+}
+
 pub(super) fn run_chat_toggle_archived_filter_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {

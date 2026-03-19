@@ -664,6 +664,7 @@ impl Default for ChatPaneInputs {
                 .border_color_focused(theme::border::FOCUS),
             thread_search: TextInput::new()
                 .placeholder("Filter thread history...")
+                .font_size(wgpui::theme::font_size::SM - 2.0)
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -7118,6 +7119,9 @@ pub struct AutopilotChatState {
     pub thread_filter_source_kind: Option<codex_client::ThreadSourceKind>,
     pub thread_filter_model_provider: Option<String>,
     pub thread_filter_search_term: String,
+    pub header_controls_expanded: bool,
+    pub thread_tools_expanded: bool,
+    pub show_autopilot_help_hint: bool,
     pub thread_rename_counter: u64,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
@@ -7248,6 +7252,9 @@ impl Default for AutopilotChatState {
             thread_filter_source_kind: None,
             thread_filter_model_provider: None,
             thread_filter_search_term: String::new(),
+            header_controls_expanded: false,
+            thread_tools_expanded: false,
+            show_autopilot_help_hint: false,
             thread_rename_counter: 1,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
@@ -8560,13 +8567,7 @@ impl AutopilotChatState {
     /// Auto-selects the first managed chat workspace when no workspace is selected yet.
     /// No-op if the user has already selected a workspace or if there is no content.
     pub fn maybe_auto_select_default_nip28_channel(&mut self) -> bool {
-        if self.selected_workspace != ChatWorkspaceSelection::Autopilot {
-            return false;
-        }
-        if !self.has_managed_chat_browseable_content() {
-            return false;
-        }
-        self.select_chat_workspace_by_index(0)
+        false
     }
 
     pub fn has_direct_message_browseable_content(&self) -> bool {
@@ -8579,6 +8580,9 @@ impl AutopilotChatState {
 
     pub fn chat_browse_mode(&self) -> ChatBrowseMode {
         match &self.selected_workspace {
+            ChatWorkspaceSelection::Autopilot => {
+                return ChatBrowseMode::Autopilot;
+            }
             ChatWorkspaceSelection::ManagedGroup(group_id)
                 if self
                     .managed_chat_projection
@@ -8594,7 +8598,6 @@ impl AutopilotChatState {
             {
                 return ChatBrowseMode::DirectMessages;
             }
-            ChatWorkspaceSelection::Autopilot => {}
             _ => {}
         }
 
@@ -8608,18 +8611,16 @@ impl AutopilotChatState {
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
-        let mut entries = self
-            .managed_chat_projection
-            .snapshot
-            .groups
-            .iter()
-            .map(|group| ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()))
-            .collect::<Vec<_>>();
+        let mut entries = vec![ChatWorkspaceSelection::Autopilot];
+        entries.extend(
+            self.managed_chat_projection
+                .snapshot
+                .groups
+                .iter()
+                .map(|group| ChatWorkspaceSelection::ManagedGroup(group.group_id.clone())),
+        );
         if self.has_direct_message_browseable_content() {
             entries.push(ChatWorkspaceSelection::DirectMessages);
-        }
-        if entries.is_empty() {
-            entries.push(ChatWorkspaceSelection::Autopilot);
         }
         entries
     }
@@ -18654,6 +18655,18 @@ mod tests {
         ]);
 
         assert!(chat.has_managed_chat_browseable_content());
+        let workspace_entries = chat.chat_workspace_entries();
+        let managed_index = workspace_entries
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    super::ChatWorkspaceSelection::ManagedGroup(group_id)
+                    if group_id == "oa-main"
+                )
+            })
+            .expect("managed workspace entry");
+        assert!(chat.select_chat_workspace_by_index(managed_index));
         assert_eq!(
             chat.active_managed_chat_group()
                 .map(|group| group.group_id.as_str()),
@@ -18734,12 +18747,11 @@ mod tests {
             chat.selected_workspace,
             super::ChatWorkspaceSelection::Autopilot
         );
-        assert!(chat.maybe_auto_select_default_nip28_channel());
+        assert!(!chat.maybe_auto_select_default_nip28_channel());
         assert_eq!(
             chat.selected_workspace,
-            super::ChatWorkspaceSelection::ManagedGroup("oa-main".to_string())
+            super::ChatWorkspaceSelection::Autopilot
         );
-        assert!(!chat.maybe_auto_select_default_nip28_channel());
     }
 
     #[test]
@@ -18879,8 +18891,12 @@ mod tests {
             .expect("queue direct outbound");
 
         assert!(chat.has_direct_message_browseable_content());
-        assert_eq!(chat.chat_workspace_entries().len(), 1);
-        assert!(chat.select_chat_workspace_by_index(0));
+        let workspace_entries = chat.chat_workspace_entries();
+        let dm_index = workspace_entries
+            .iter()
+            .position(|entry| matches!(entry, super::ChatWorkspaceSelection::DirectMessages))
+            .expect("direct message workspace entry");
+        assert!(chat.select_chat_workspace_by_index(dm_index));
         assert_eq!(
             chat.chat_browse_mode(),
             super::ChatBrowseMode::DirectMessages
