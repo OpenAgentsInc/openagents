@@ -853,9 +853,7 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
 
 fn inactive_pane_render_policy(kind: PaneKind) -> InactivePaneRenderPolicy {
     match kind {
-        PaneKind::AutopilotChat
-        | PaneKind::GoOnline
-        | PaneKind::ProviderControl
+        PaneKind::ProviderControl
         | PaneKind::CodexDiagnostics
         | PaneKind::FrameDebugger
         | PaneKind::LogStream
@@ -8400,7 +8398,7 @@ mod tests {
         );
         assert_eq!(
             inactive_pane_render_policy(PaneKind::AutopilotChat),
-            InactivePaneRenderPolicy::Summary
+            InactivePaneRenderPolicy::Full
         );
         assert_eq!(
             inactive_pane_render_policy(PaneKind::LogStream),

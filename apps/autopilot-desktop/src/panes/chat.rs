@@ -11,13 +11,14 @@ use crate::app_state::{
     ManagedChatGroupProjection, ManagedChatMessageProjection, PaneKind, RenderState,
 };
 use crate::labor_orchestrator::CodexLaborBinding;
+use crate::pane_renderer::split_text_for_display;
 use crate::pane_system::{
     CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_compact_button_bounds,
     chat_composer_height_for_value, chat_composer_input_bounds_with_height,
     chat_cycle_approval_mode_button_bounds, chat_cycle_collaboration_mode_button_bounds,
     chat_cycle_model_button_bounds, chat_cycle_personality_button_bounds,
     chat_cycle_reasoning_effort_button_bounds, chat_cycle_sandbox_mode_button_bounds,
-    chat_cycle_service_tier_button_bounds, chat_implement_plan_button_bounds,
+    chat_cycle_service_tier_button_bounds, chat_help_toggle_button_bounds,
     chat_interrupt_button_bounds, chat_new_thread_button_bounds,
     chat_refresh_threads_button_bounds, chat_review_button_bounds, chat_send_button_bounds,
     chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
@@ -25,10 +26,10 @@ use crate::pane_system::{
     chat_thread_action_reload_button_bounds, chat_thread_action_rename_button_bounds,
     chat_thread_action_rollback_button_bounds, chat_thread_action_unarchive_button_bounds,
     chat_thread_action_unsubscribe_button_bounds, chat_thread_filter_archived_button_bounds,
-    chat_thread_filter_provider_button_bounds, chat_thread_filter_sort_button_bounds,
-    chat_thread_filter_source_button_bounds, chat_thread_rail_bounds, chat_thread_row_bounds,
-    chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
+    chat_thread_filter_provider_button_bounds, chat_thread_filter_source_button_bounds,
+    chat_thread_rail_bounds, chat_thread_row_bounds, chat_thread_search_input_bounds,
+    chat_transcript_body_bounds_with_height, chat_transcript_bounds, chat_visible_thread_row_count,
+    chat_workspace_rail_bounds, pane_content_bounds,
 };
 use wgpui::components::sections::TerminalStream;
 
@@ -49,6 +50,135 @@ const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
 const CHAT_ATTACHMENT_SUMMARY_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ATTACHMENT_DETAIL_LINE_HEIGHT: f32 = 10.0;
 const CHAT_SEND_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M342.6 73.4C330.1 60.9 309.8 60.9 297.3 73.4L137.3 233.4C124.8 245.9 124.8 266.2 137.3 278.7C149.8 291.2 170.1 291.2 182.6 278.7L288 173.3L288 544C288 561.7 302.3 576 320 576C337.7 576 352 561.7 352 544L352 173.3L457.4 278.7C469.9 291.2 490.2 291.2 502.7 278.7C515.2 266.2 515.2 245.9 502.7 233.4L342.7 73.4z"/></svg>"##;
+const CHAT_MISSION_HEADER_HEIGHT: f32 = 26.0;
+
+fn chat_mission_background_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x070C14)
+}
+
+fn chat_mission_panel_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x0D121A)
+}
+
+fn chat_mission_panel_header_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x121924)
+}
+
+fn chat_mission_panel_border_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x263245)
+}
+
+fn chat_mission_text_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0xD8DFF0)
+}
+
+fn chat_mission_muted_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x8A909E)
+}
+
+fn chat_mission_green_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x52E06D)
+}
+
+fn chat_mission_cyan_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0x2FB7F2)
+}
+
+fn chat_mission_orange_color() -> wgpui::Hsla {
+    wgpui::Hsla::from_hex(0xFFA122)
+}
+
+fn paint_chat_mission_panel(
+    bounds: Bounds,
+    title: &str,
+    accent: wgpui::Hsla,
+    paint: &mut PaintContext,
+) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(chat_mission_panel_color())
+            .with_border(chat_mission_panel_border_color(), 1.0)
+            .with_corner_radius(3.0),
+    );
+    let accent_rail_width = 6.0;
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + 1.0,
+            bounds.origin.y + 1.0,
+            accent_rail_width,
+            (bounds.size.height - 2.0).max(0.0),
+        ))
+        .with_background(accent.with_alpha(0.95))
+        .with_corner_radius(2.0),
+    );
+    let header_bounds = Bounds::new(
+        bounds.origin.x + accent_rail_width + 1.0,
+        bounds.origin.y + 1.0,
+        (bounds.size.width - accent_rail_width - 2.0).max(0.0),
+        CHAT_MISSION_HEADER_HEIGHT,
+    );
+    paint.scene.draw_quad(
+        Quad::new(header_bounds)
+            .with_background(chat_mission_panel_header_color().with_alpha(0.95)),
+    );
+    // Mission Control-style accent framing: strong top accent plus subtle
+    // right/bottom fades to make the shell feel energized without being noisy.
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + accent_rail_width + 1.0,
+            bounds.origin.y + 1.0,
+            (bounds.size.width - accent_rail_width - 2.0).max(0.0),
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.35)),
+    );
+    let right_x = bounds.max_x() - 1.0;
+    let right_h = (bounds.size.height - 2.0).max(0.0);
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            right_x,
+            bounds.origin.y + 1.0,
+            1.0,
+            right_h * 0.48,
+        ))
+        .with_background(accent.with_alpha(0.12)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            right_x,
+            bounds.origin.y + 1.0 + right_h * 0.48,
+            1.0,
+            right_h * 0.52,
+        ))
+        .with_background(accent.with_alpha(0.26)),
+    );
+    let bottom_y = bounds.max_y() - 1.0;
+    let bottom_w = (bounds.size.width - accent_rail_width - 2.0).max(0.0);
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + accent_rail_width + 1.0,
+            bottom_y,
+            bottom_w * 0.58,
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.10)),
+    );
+    paint.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x + accent_rail_width + 1.0 + bottom_w * 0.58,
+            bottom_y,
+            bottom_w * 0.42,
+            1.0,
+        ))
+        .with_background(accent.with_alpha(0.22)),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        title,
+        Point::new(header_bounds.origin.x + 14.0, header_bounds.origin.y + 8.0),
+        10.0,
+        accent,
+    ));
+}
 
 #[derive(Clone, Copy, Debug)]
 struct WrappedTranscriptLine {
@@ -151,15 +281,15 @@ fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContex
     );
     let (background, border, icon_tint) = if enabled {
         (
-            theme::accent::PRIMARY,
-            theme::accent::PRIMARY,
-            theme::bg::APP,
+            chat_mission_green_color().with_alpha(0.22),
+            chat_mission_green_color().with_alpha(0.68),
+            chat_mission_green_color(),
         )
     } else {
         (
-            theme::bg::ELEVATED,
-            theme::border::DEFAULT,
-            theme::text::DISABLED,
+            chat_mission_panel_color().with_alpha(0.9),
+            chat_mission_panel_border_color().with_alpha(0.7),
+            chat_mission_muted_color(),
         )
     };
     paint.scene.draw_quad(
@@ -183,6 +313,16 @@ fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContex
         )
         .with_tint(icon_tint),
     );
+}
+
+fn truncate_for_width(text: &str, width: f32) -> String {
+    let max_chars = ((width / 6.2).floor() as usize).max(6);
+    let chunks = split_text_for_display(text, max_chars);
+    let mut first = chunks.first().cloned().unwrap_or_default();
+    if chunks.len() > 1 && !first.ends_with('…') {
+        first.push('…');
+    }
+    first
 }
 
 fn transcript_scroll_clip_bounds_with_height(
@@ -2200,9 +2340,9 @@ fn autopilot_status_lines(
 
 fn thread_filter_archived_label(autopilot_chat: &AutopilotChatState) -> &'static str {
     match autopilot_chat.thread_filter_archived {
-        Some(false) => "Arch live",
-        Some(true) => "Arch only",
-        None => "Arch any",
+        Some(false) => "Show active",
+        Some(true) => "Show archived",
+        None => "Show all",
     }
 }
 
@@ -2211,30 +2351,6 @@ fn thread_filter_sort_label(autopilot_chat: &AutopilotChatState) -> &'static str
         codex_client::ThreadSortKey::UpdatedAt => "Sort recent",
         codex_client::ThreadSortKey::CreatedAt => "Sort created",
     }
-}
-
-fn thread_filter_source_label(autopilot_chat: &AutopilotChatState) -> String {
-    let label = match autopilot_chat.thread_filter_source_kind {
-        None => "all".to_string(),
-        Some(codex_client::ThreadSourceKind::AppServer) => "app".to_string(),
-        Some(codex_client::ThreadSourceKind::Cli) => "cli".to_string(),
-        Some(codex_client::ThreadSourceKind::Exec) => "exec".to_string(),
-        Some(other) => format!("{other:?}").to_ascii_lowercase(),
-    };
-    format!("Source {label}")
-}
-
-fn thread_filter_provider_label(autopilot_chat: &AutopilotChatState) -> String {
-    format!(
-        "Provider {}",
-        compact_display_token(
-            autopilot_chat
-                .thread_filter_model_provider
-                .as_deref()
-                .unwrap_or("any"),
-            10,
-        )
-    )
 }
 
 fn autopilot_has_copyable_output(autopilot_chat: &AutopilotChatState) -> bool {
@@ -2254,39 +2370,40 @@ fn paint_thread_rail_button(
 ) {
     let background = if enabled {
         if active {
-            accent.with_alpha(0.18)
+            accent.with_alpha(0.2)
         } else {
-            theme::bg::APP.with_alpha(0.22)
+            chat_mission_panel_header_color().with_alpha(0.55)
         }
     } else {
-        theme::bg::APP.with_alpha(0.12)
+        chat_mission_panel_color().with_alpha(0.85)
     };
     let border = if enabled {
         if active {
-            accent.with_alpha(0.5)
+            accent.with_alpha(0.56)
         } else {
-            theme::border::DEFAULT.with_alpha(0.34)
+            chat_mission_panel_border_color().with_alpha(0.62)
         }
     } else {
-        theme::border::DEFAULT.with_alpha(0.18)
+        chat_mission_panel_border_color().with_alpha(0.35)
     };
     let text = if enabled {
         if active {
-            theme::text::PRIMARY
+            chat_mission_text_color()
         } else {
-            theme::text::SECONDARY
+            chat_mission_muted_color()
         }
     } else {
-        theme::text::MUTED.with_alpha(0.7)
+        chat_mission_muted_color().with_alpha(0.7)
     };
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(background)
             .with_border(border, 1.0)
-            .with_corner_radius(6.0),
+            .with_corner_radius(3.0),
     );
+    let clipped_label = truncate_for_width(label, bounds.size.width - 12.0);
     paint.scene.draw_text(paint.text.layout_mono(
-        label,
+        &clipped_label,
         Point::new(bounds.origin.x + 6.0, bounds.origin.y + 7.0),
         9.0,
         text,
@@ -2296,15 +2413,16 @@ fn paint_thread_rail_button(
 fn paint_header_chip(bounds: Bounds, label: &str, accent: wgpui::Hsla, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(theme::bg::APP.with_alpha(0.3))
-            .with_border(accent.with_alpha(0.42), 1.0)
-            .with_corner_radius(6.0),
+            .with_background(chat_mission_panel_header_color().with_alpha(0.58))
+            .with_border(accent.with_alpha(0.6), 1.0)
+            .with_corner_radius(3.0),
     );
+    let clipped_label = truncate_for_width(label, bounds.size.width - 14.0);
     paint.scene.draw_text(paint.text.layout_mono(
-        label,
+        &clipped_label,
         Point::new(bounds.origin.x + 8.0, bounds.origin.y + 7.0),
         9.0,
-        theme::text::PRIMARY,
+        chat_mission_text_color(),
     ));
 }
 
@@ -2562,7 +2680,7 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
 fn paint_chat_shell(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
-    codex_account_summary: &str,
+    _codex_account_summary: &str,
     spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     paint: &mut PaintContext,
 ) {
@@ -2576,38 +2694,36 @@ fn paint_chat_shell(
         106.0,
     );
 
-    paint.scene.draw_quad(
-        Quad::new(workspace_bounds)
-            .with_background(theme::bg::SURFACE)
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(10.0),
-    );
+    paint
+        .scene
+        .draw_quad(Quad::new(content_bounds).with_background(chat_mission_background_color()));
+    paint_chat_mission_panel(workspace_bounds, "SPACES", chat_mission_cyan_color(), paint);
     paint.scene.draw_text(paint.text.layout_mono(
-        "WORKSPACES",
+        "SELECT LANE",
         Point::new(
-            workspace_bounds.origin.x + 8.0,
-            workspace_bounds.origin.y + 10.0,
+            workspace_bounds.origin.x + 12.0,
+            workspace_bounds.origin.y + 46.0,
         ),
         9.0,
-        theme::text::MUTED,
+        chat_mission_muted_color(),
     ));
     for (index, workspace) in shell_workspaces(autopilot_chat).iter().enumerate() {
         let avatar_bounds = Bounds::new(
             workspace_bounds.origin.x
                 + (workspace_bounds.size.width - CHAT_WORKSPACE_AVATAR_SIZE) * 0.5,
-            workspace_bounds.origin.y + 28.0 + index as f32 * 52.0,
+            workspace_bounds.origin.y + 64.0 + index as f32 * 52.0,
             CHAT_WORKSPACE_AVATAR_SIZE,
             CHAT_WORKSPACE_AVATAR_SIZE,
         );
         let background = if workspace.active {
             workspace.accent
         } else {
-            theme::bg::ELEVATED
+            chat_mission_panel_header_color().with_alpha(0.75)
         };
         let text_color = if workspace.active {
-            theme::bg::APP
+            chat_mission_background_color()
         } else {
-            theme::text::SECONDARY
+            chat_mission_text_color()
         };
         paint.scene.draw_quad(
             Quad::new(avatar_bounds)
@@ -2616,7 +2732,7 @@ fn paint_chat_shell(
                     if workspace.active {
                         workspace.accent
                     } else {
-                        theme::border::DEFAULT
+                        chat_mission_panel_border_color()
                     },
                     1.0,
                 )
@@ -2644,62 +2760,58 @@ fn paint_chat_shell(
         paint.scene.draw_text(paint.text.layout(
             &workspace.label,
             Point::new(
-                workspace_bounds.origin.x + 10.0,
+                workspace_bounds.origin.x + 12.0,
                 avatar_bounds.max_y() + 4.0,
             ),
             9.0,
             if workspace.active {
-                theme::text::PRIMARY
+                chat_mission_text_color()
             } else {
-                theme::text::MUTED
+                chat_mission_muted_color()
             },
         ));
     }
 
-    paint.scene.draw_quad(
-        Quad::new(channel_bounds)
-            .with_background(theme::bg::ELEVATED.with_alpha(0.92))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(10.0),
-    );
     let (shell_mode_label, rail_title) = match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Managed => ("OPENAGENTS / GROUP CHAT", "Channels"),
         ChatBrowseMode::DirectMessages => ("OPENAGENTS / DIRECT MESSAGES", "Rooms"),
         ChatBrowseMode::Autopilot => ("OPENAGENTS / AUTOPILOT", "Threads"),
     };
+    paint_chat_mission_panel(
+        channel_bounds,
+        rail_title,
+        chat_mission_green_color(),
+        paint,
+    );
     paint.scene.draw_text(paint.text.layout_mono(
         shell_mode_label,
         Point::new(
-            channel_bounds.origin.x + 12.0,
-            channel_bounds.origin.y + 12.0,
+            channel_bounds.origin.x + 16.0,
+            channel_bounds.origin.y + 34.0,
         ),
         9.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        rail_title,
-        Point::new(
-            channel_bounds.origin.x + 12.0,
-            channel_bounds.origin.y + 28.0,
-        ),
-        15.0,
-        theme::text::PRIMARY,
+        chat_mission_muted_color(),
     ));
     if matches!(autopilot_chat.chat_browse_mode(), ChatBrowseMode::Autopilot) {
-        paint_thread_rail_button(
-            chat_refresh_threads_button_bounds(content_bounds),
-            "Refresh",
-            theme::accent::PRIMARY,
-            false,
-            true,
-            paint,
+        let refresh_bounds = chat_refresh_threads_button_bounds(content_bounds);
+        paint.scene.draw_quad(
+            Quad::new(refresh_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.55))
+                .with_border(chat_mission_panel_border_color().with_alpha(0.6), 1.0)
+                .with_corner_radius(3.0),
         );
+        paint.scene.draw_text(paint.text.layout_mono(
+            "↻",
+            Point::new(refresh_bounds.origin.x + 6.0, refresh_bounds.origin.y + 3.0),
+            11.0,
+            chat_mission_cyan_color(),
+        ));
         let new_thread_bounds = chat_new_thread_button_bounds(content_bounds);
         paint.scene.draw_quad(
             Quad::new(new_thread_bounds)
-                .with_background(theme::bg::APP.with_alpha(0.26))
-                .with_border(theme::border::DEFAULT.with_alpha(0.35), 1.0)
-                .with_corner_radius(6.0),
+                .with_background(chat_mission_panel_header_color().with_alpha(0.55))
+                .with_border(chat_mission_panel_border_color().with_alpha(0.6), 1.0)
+                .with_corner_radius(3.0),
         );
         let plus_origin = Point::new(
             new_thread_bounds.origin.x
@@ -2709,16 +2821,16 @@ fn paint_chat_shell(
         paint.scene.draw_text(
             paint
                 .text
-                .layout("+", plus_origin, 14.0, theme::text::PRIMARY),
+                .layout("+", plus_origin, 14.0, chat_mission_text_color()),
         );
         paint.scene.draw_text(paint.text.layout_mono(
             "HISTORY",
             Point::new(
-                chat_thread_search_input_bounds(content_bounds).origin.x,
+                chat_thread_search_input_bounds(content_bounds).origin.x + 2.0,
                 chat_thread_search_input_bounds(content_bounds).origin.y - 10.0,
             ),
             9.0,
-            theme::text::MUTED,
+            chat_mission_muted_color(),
         ));
         paint_thread_rail_button(
             chat_thread_filter_archived_button_bounds(content_bounds),
@@ -2729,152 +2841,157 @@ fn paint_chat_shell(
             paint,
         );
         paint_thread_rail_button(
-            chat_thread_filter_sort_button_bounds(content_bounds),
-            thread_filter_sort_label(autopilot_chat),
-            theme::status::INFO,
-            autopilot_chat.thread_filter_sort_key == codex_client::ThreadSortKey::CreatedAt,
-            true,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_filter_source_button_bounds(content_bounds),
-            thread_filter_source_label(autopilot_chat).as_str(),
-            theme::status::WARNING,
-            autopilot_chat.thread_filter_source_kind.is_some(),
-            true,
-            paint,
-        );
-        paint_thread_rail_button(
             chat_thread_filter_provider_button_bounds(content_bounds),
-            thread_filter_provider_label(autopilot_chat).as_str(),
+            if autopilot_chat.thread_tools_expanded {
+                "Tools -"
+            } else {
+                "Tools +"
+            },
             theme::status::SUCCESS,
-            autopilot_chat.thread_filter_model_provider.is_some(),
+            autopilot_chat.thread_tools_expanded,
             true,
             paint,
         );
-        let active_thread_status = autopilot_chat.active_thread_status().unwrap_or_default();
-        let active_archived = active_thread_status.eq_ignore_ascii_case("archived");
-        let has_active_thread = autopilot_chat.active_thread_id.is_some();
-        paint_thread_rail_button(
-            chat_thread_action_fork_button_bounds(content_bounds),
-            "Fork",
-            theme::accent::PRIMARY,
-            false,
-            has_active_thread,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_archive_button_bounds(content_bounds),
-            "Archive",
-            theme::status::WARNING,
-            false,
-            has_active_thread && !active_archived,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_unarchive_button_bounds(content_bounds),
-            "Restore",
-            theme::status::SUCCESS,
-            active_archived,
-            has_active_thread,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_rename_button_bounds(content_bounds),
-            "Rename",
-            theme::accent::PRIMARY,
-            false,
-            has_active_thread,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_reload_button_bounds(content_bounds),
-            "Reload",
-            theme::status::INFO,
-            false,
-            has_active_thread,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_open_editor_button_bounds(content_bounds),
-            "Open ws",
-            theme::accent::PRIMARY,
-            false,
-            autopilot_chat.active_thread_workspace_root().is_some()
-                || autopilot_chat.active_thread_cwd().is_some(),
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_copy_button_bounds(content_bounds),
-            "Copy",
-            theme::status::SUCCESS,
-            false,
-            autopilot_has_copyable_output(autopilot_chat),
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_rollback_button_bounds(content_bounds),
-            "Rollback",
-            theme::status::ERROR,
-            false,
-            has_active_thread,
-            paint,
-        );
-        paint_thread_rail_button(
-            chat_thread_action_unsubscribe_button_bounds(content_bounds),
-            "Unload",
-            theme::text::MUTED,
-            autopilot_chat.active_thread_loaded().unwrap_or(false),
-            has_active_thread,
-            paint,
-        );
+        if autopilot_chat.thread_tools_expanded {
+            paint_thread_rail_button(
+                chat_thread_filter_source_button_bounds(content_bounds),
+                thread_filter_sort_label(autopilot_chat),
+                theme::status::INFO,
+                autopilot_chat.thread_filter_sort_key == codex_client::ThreadSortKey::CreatedAt,
+                true,
+                paint,
+            );
+            let active_thread_status = autopilot_chat.active_thread_status().unwrap_or_default();
+            let active_archived = active_thread_status.eq_ignore_ascii_case("archived");
+            let has_active_thread = autopilot_chat.active_thread_id.is_some();
+            paint_thread_rail_button(
+                chat_thread_action_fork_button_bounds(content_bounds),
+                "Fork",
+                theme::accent::PRIMARY,
+                false,
+                has_active_thread,
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_archive_button_bounds(content_bounds),
+                "Archive",
+                theme::status::WARNING,
+                false,
+                has_active_thread && !active_archived,
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_unarchive_button_bounds(content_bounds),
+                "Restore",
+                theme::status::SUCCESS,
+                active_archived,
+                has_active_thread,
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_rename_button_bounds(content_bounds),
+                "Rename",
+                theme::accent::PRIMARY,
+                false,
+                has_active_thread,
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_reload_button_bounds(content_bounds),
+                "Reload",
+                theme::status::INFO,
+                false,
+                has_active_thread,
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_open_editor_button_bounds(content_bounds),
+                "Open ws",
+                theme::accent::PRIMARY,
+                false,
+                autopilot_chat.active_thread_workspace_root().is_some()
+                    || autopilot_chat.active_thread_cwd().is_some(),
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_copy_button_bounds(content_bounds),
+                "Copy",
+                theme::status::SUCCESS,
+                false,
+                autopilot_has_copyable_output(autopilot_chat),
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_rollback_button_bounds(content_bounds),
+                "Rollback",
+                theme::status::ERROR,
+                false,
+                has_active_thread,
+                paint,
+            );
+            paint_thread_rail_button(
+                chat_thread_action_unsubscribe_button_bounds(content_bounds),
+                "Unload",
+                theme::text::MUTED,
+                autopilot_chat.active_thread_loaded().unwrap_or(false),
+                has_active_thread,
+                paint,
+            );
+        }
     }
-    for (index, entry) in shell_channel_entries(autopilot_chat)
-        .into_iter()
-        .enumerate()
-    {
+    let channel_entries = shell_channel_entries(autopilot_chat);
+    let visible_rows = chat_visible_thread_row_count(content_bounds, channel_entries.len());
+    let first_row_y = chat_thread_row_bounds(content_bounds, 0).origin.y;
+    let rows_clip = Bounds::new(
+        channel_bounds.origin.x + 6.0,
+        first_row_y,
+        (channel_bounds.size.width - 12.0).max(0.0),
+        (channel_bounds.max_y() - first_row_y - 6.0).max(0.0),
+    );
+    paint.scene.push_clip(rows_clip);
+    for (index, entry) in channel_entries.into_iter().take(visible_rows).enumerate() {
         let row_bounds = chat_thread_row_bounds(content_bounds, index);
         let background = if entry.is_category {
-            theme::bg::APP.with_alpha(0.08)
+            chat_mission_panel_header_color().with_alpha(0.5)
         } else if entry.active {
-            theme::accent::PRIMARY.with_alpha(0.16)
+            chat_mission_green_color().with_alpha(0.18)
         } else {
-            theme::bg::APP.with_alpha(0.26)
+            chat_mission_panel_color().with_alpha(0.9)
         };
         let border = if entry.is_category {
-            theme::border::DEFAULT.with_alpha(0.18)
+            chat_mission_panel_border_color().with_alpha(0.45)
         } else if entry.active {
-            theme::accent::PRIMARY.with_alpha(0.45)
+            chat_mission_green_color().with_alpha(0.6)
         } else {
-            theme::border::DEFAULT.with_alpha(0.35)
+            chat_mission_panel_border_color().with_alpha(0.6)
         };
         paint.scene.draw_quad(
             Quad::new(row_bounds)
                 .with_background(background)
                 .with_border(border, 1.0)
-                .with_corner_radius(8.0),
+                .with_corner_radius(3.0),
         );
         let title_color = if entry.is_category {
-            theme::text::MUTED
+            chat_mission_muted_color()
         } else if entry.active {
-            theme::text::PRIMARY
+            chat_mission_text_color()
         } else {
-            theme::text::SECONDARY
+            chat_mission_muted_color()
         };
         paint.scene.draw_text(paint.text.layout(
             &entry.title,
-            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 6.0),
+            Point::new(row_bounds.origin.x + 12.0, row_bounds.origin.y + 6.0),
             11.0,
             title_color,
         ));
         paint.scene.draw_text(paint.text.layout_mono(
-            &entry.subtitle,
-            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 18.0),
+            &truncate_for_width(&entry.subtitle, row_bounds.size.width - 16.0),
+            Point::new(row_bounds.origin.x + 12.0, row_bounds.origin.y + 18.0),
             9.0,
             if entry.is_category {
-                theme::text::MUTED.with_alpha(0.85)
+                chat_mission_muted_color().with_alpha(0.85)
             } else {
-                theme::text::MUTED
+                chat_mission_muted_color()
             },
         ));
         if entry.badge_count > 0 {
@@ -2891,56 +3008,45 @@ fn paint_chat_shell(
             );
         }
     }
+    paint.scene.pop_clip();
 
-    paint.scene.draw_quad(
-        Quad::new(transcript_bounds)
-            .with_background(theme::bg::APP.with_alpha(0.82))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(10.0),
+    paint_chat_mission_panel(
+        transcript_bounds,
+        "CHAT",
+        chat_mission_orange_color(),
+        paint,
     );
     paint.scene.draw_quad(
         Quad::new(header_bounds)
-            .with_background(theme::bg::SURFACE.with_alpha(0.82))
-            .with_border(theme::border::DEFAULT.with_alpha(0.45), 1.0)
-            .with_corner_radius(8.0),
+            .with_background(chat_mission_panel_color().with_alpha(0.92))
+            .with_border(chat_mission_panel_border_color().with_alpha(0.7), 1.0)
+            .with_corner_radius(3.0),
     );
     paint.scene.draw_text(paint.text.layout(
         &active_thread_title(autopilot_chat),
-        Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 10.0),
+        Point::new(header_bounds.origin.x + 16.0, header_bounds.origin.y + 10.0),
         16.0,
-        theme::text::PRIMARY,
+        chat_mission_text_color(),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
-        &active_thread_subtitle(autopilot_chat, spacetime_presence),
-        Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 28.0),
+        &truncate_for_width(
+            &active_thread_subtitle(autopilot_chat, spacetime_presence),
+            (header_bounds.size.width * 0.5).max(120.0),
+        ),
+        Point::new(header_bounds.origin.x + 16.0, header_bounds.origin.y + 28.0),
         10.0,
-        theme::text::MUTED,
+        chat_mission_muted_color(),
     ));
     if let Some(preview) = active_thread_preview_line(autopilot_chat) {
         paint.scene.draw_text(paint.text.layout(
             &preview,
-            Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 44.0),
+            Point::new(header_bounds.origin.x + 16.0, header_bounds.origin.y + 44.0),
             10.0,
-            theme::text::SECONDARY,
+            chat_mission_muted_color(),
         ));
     }
     match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Autopilot => {
-            let status_lines = autopilot_status_lines(autopilot_chat, codex_account_summary);
-            let status_x = header_bounds.origin.x + (header_bounds.size.width * 0.52);
-            paint.scene.draw_text(paint.text.layout_mono(
-                status_lines[0].as_str(),
-                Point::new(status_x, header_bounds.origin.y + 10.0),
-                9.0,
-                theme::accent::PRIMARY,
-            ));
-            paint.scene.draw_text(paint.text.layout_mono(
-                status_lines[1].as_str(),
-                Point::new(status_x, header_bounds.origin.y + 26.0),
-                9.0,
-                theme::text::MUTED,
-            ));
-
             paint_header_chip(
                 chat_cycle_model_button_bounds(content_bounds),
                 format!(
@@ -2962,95 +3068,121 @@ fn paint_chat_shell(
                 paint,
             );
             paint_header_chip(
-                chat_cycle_service_tier_button_bounds(content_bounds),
-                format!("Tier {}", autopilot_chat.service_tier.label()).as_str(),
-                theme::status::SUCCESS,
-                paint,
-            );
-            paint_header_chip(
-                chat_cycle_personality_button_bounds(content_bounds),
-                format!("Tone {}", autopilot_chat.personality.label()).as_str(),
-                theme::status::WARNING,
-                paint,
-            );
-            paint_header_chip(
-                chat_cycle_collaboration_mode_button_bounds(content_bounds),
-                format!("Mode {}", autopilot_chat.collaboration_mode.label()).as_str(),
-                theme::accent::PRIMARY,
-                paint,
-            );
-            paint_header_chip(
-                chat_cycle_approval_mode_button_bounds(content_bounds),
-                format!(
-                    "Approve {}",
-                    approval_mode_label(autopilot_chat.approval_mode)
-                )
-                .as_str(),
-                theme::status::ERROR,
-                paint,
-            );
-            paint_header_chip(
-                chat_cycle_sandbox_mode_button_bounds(content_bounds),
-                format!(
-                    "Sandbox {}",
-                    sandbox_mode_label(autopilot_chat.sandbox_mode)
-                )
-                .as_str(),
-                theme::text::MUTED,
-                paint,
-            );
-            paint_header_chip(
                 chat_interrupt_button_bounds(content_bounds),
                 if autopilot_chat.active_turn_id.is_some() {
                     "Interrupt turn"
                 } else {
                     "Interrupt"
                 },
-                theme::status::WARNING,
-                paint,
-            );
-            if autopilot_chat.active_plan_artifact().is_some() {
-                paint_header_chip(
-                    chat_implement_plan_button_bounds(content_bounds),
-                    if autopilot_chat.active_turn_id.is_some() {
-                        "Steer plan"
-                    } else {
-                        "Implement plan"
-                    },
-                    theme::status::SUCCESS,
-                    paint,
-                );
-            }
-            paint_header_chip(
-                chat_review_button_bounds(content_bounds),
-                "Review changes",
-                theme::status::WARNING,
+                chat_mission_cyan_color(),
                 paint,
             );
             paint_header_chip(
                 chat_compact_button_bounds(content_bounds),
-                "Compact thread",
-                theme::accent::PRIMARY,
+                if autopilot_chat.header_controls_expanded {
+                    "Less"
+                } else {
+                    "More"
+                },
+                chat_mission_orange_color(),
                 paint,
             );
+            if autopilot_chat.header_controls_expanded {
+                paint_header_chip(
+                    chat_cycle_service_tier_button_bounds(content_bounds),
+                    format!("Tier {}", autopilot_chat.service_tier.label()).as_str(),
+                    chat_mission_green_color(),
+                    paint,
+                );
+                paint_header_chip(
+                    chat_cycle_personality_button_bounds(content_bounds),
+                    format!("Tone {}", autopilot_chat.personality.label()).as_str(),
+                    theme::status::WARNING,
+                    paint,
+                );
+                paint_header_chip(
+                    chat_cycle_collaboration_mode_button_bounds(content_bounds),
+                    format!("Mode {}", autopilot_chat.collaboration_mode.label()).as_str(),
+                    theme::accent::PRIMARY,
+                    paint,
+                );
+                paint_header_chip(
+                    chat_cycle_approval_mode_button_bounds(content_bounds),
+                    format!(
+                        "Approve {}",
+                        approval_mode_label(autopilot_chat.approval_mode)
+                    )
+                    .as_str(),
+                    theme::status::ERROR,
+                    paint,
+                );
+                paint_header_chip(
+                    chat_cycle_sandbox_mode_button_bounds(content_bounds),
+                    format!(
+                        "Sandbox {}",
+                        sandbox_mode_label(autopilot_chat.sandbox_mode)
+                    )
+                    .as_str(),
+                    theme::text::MUTED,
+                    paint,
+                );
+                paint_header_chip(
+                    chat_review_button_bounds(content_bounds),
+                    if autopilot_chat.active_plan_artifact().is_some() {
+                        if autopilot_chat.active_turn_id.is_some() {
+                            "Steer plan"
+                        } else {
+                            "Implement plan"
+                        }
+                    } else {
+                        "Review changes"
+                    },
+                    if autopilot_chat.active_plan_artifact().is_some() {
+                        chat_mission_green_color()
+                    } else {
+                        theme::status::WARNING
+                    },
+                    paint,
+                );
+            }
         }
         ChatBrowseMode::Managed => {
             let status_text = managed_status_text(autopilot_chat);
-            paint.scene.draw_text(paint.text.layout_mono(
-                &status_text,
-                Point::new(header_bounds.max_x() - 190.0, header_bounds.origin.y + 18.0),
-                10.0,
-                theme::accent::PRIMARY,
-            ));
+            let status_width = (header_bounds.size.width * 0.45).max(150.0);
+            let status_x = header_bounds.max_x() - status_width - 10.0;
+            let mut status_y = header_bounds.origin.y + 12.0;
+            let max_chars = ((status_width / 6.2).floor() as usize).max(12);
+            for chunk in split_text_for_display(&status_text, max_chars)
+                .into_iter()
+                .take(3)
+            {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &chunk,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
         }
         ChatBrowseMode::DirectMessages => {
             let status_text = direct_status_text(autopilot_chat);
-            paint.scene.draw_text(paint.text.layout_mono(
-                &status_text,
-                Point::new(header_bounds.max_x() - 190.0, header_bounds.origin.y + 18.0),
-                10.0,
-                theme::accent::PRIMARY,
-            ));
+            let status_width = (header_bounds.size.width * 0.45).max(150.0);
+            let status_x = header_bounds.max_x() - status_width - 10.0;
+            let mut status_y = header_bounds.origin.y + 12.0;
+            let max_chars = ((status_width / 6.2).floor() as usize).max(12);
+            for chunk in split_text_for_display(&status_text, max_chars)
+                .into_iter()
+                .take(3)
+            {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &chunk,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
         }
     }
 }
@@ -3676,27 +3808,63 @@ pub fn paint(
             ));
             footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
         }
-        paint.scene.draw_text(paint.text.layout_mono(
-            &hint,
-            Point::new(transcript_body_bounds.origin.x, footer_y),
-            9.0,
-            theme::text::MUTED,
-        ));
-        footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+        let hint_chunk_len = ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);
+        let hint_lines = split_text_for_display(&hint, hint_chunk_len);
+        for line in hint_lines.iter().rev().take(2) {
+            paint.scene.draw_text(paint.text.layout_mono(
+                line,
+                Point::new(transcript_body_bounds.origin.x, footer_y),
+                9.0,
+                theme::text::MUTED,
+            ));
+            footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+        }
     }
     if browse_mode == ChatBrowseMode::Autopilot {
-        let hint = if autopilot_chat.active_turn_id.is_some() {
-            "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
-        } else {
-            "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
-        };
+        let help_bounds = chat_help_toggle_button_bounds(content_bounds);
+        paint.scene.draw_quad(
+            Quad::new(help_bounds)
+                .with_background(chat_mission_panel_header_color().with_alpha(0.45))
+                .with_border(
+                    if autopilot_chat.show_autopilot_help_hint {
+                        chat_mission_cyan_color().with_alpha(0.9)
+                    } else {
+                        chat_mission_panel_border_color().with_alpha(0.7)
+                    },
+                    1.0,
+                )
+                .with_corner_radius(8.0),
+        );
         paint.scene.draw_text(paint.text.layout_mono(
-            hint,
-            Point::new(transcript_body_bounds.origin.x, footer_y),
-            9.0,
-            theme::text::MUTED,
+            "?",
+            Point::new(help_bounds.origin.x + 5.0, help_bounds.origin.y + 3.0),
+            10.0,
+            if autopilot_chat.show_autopilot_help_hint {
+                chat_mission_cyan_color()
+            } else {
+                chat_mission_muted_color()
+            },
         ));
-        footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+
+        if autopilot_chat.show_autopilot_help_hint {
+            let hint = if autopilot_chat.active_turn_id.is_some() {
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL`. Sending normal text while a turn runs steers the live task."
+            } else {
+                "Use `/git ...`, `/pr prep`, `/term ...`, `/skills ...`, `/mcp ...`, `/apps ...`, `/requests`, `/approvals ...`, `/remote ...`, `/ps`, `/clean`, `/mention PATH`, or `/image PATH|URL` for local coding workflow control."
+            };
+            let hint_chunk_len =
+                ((transcript_body_bounds.size.width / 6.2).floor() as usize).max(24);
+            let hint_lines = split_text_for_display(hint, hint_chunk_len);
+            for line in hint_lines.iter().rev().take(3) {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    line,
+                    Point::new(transcript_body_bounds.origin.x, footer_y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+            }
+        }
     }
     if let Some(error) = autopilot_chat.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
@@ -3720,6 +3888,12 @@ pub fn paint(
         .composer
         .set_max_width(composer_bounds.size.width);
     chat_inputs.composer.paint(composer_bounds, paint);
+    paint.scene.draw_quad(
+        Quad::new(composer_bounds)
+            .with_background(chat_mission_panel_header_color().with_alpha(0.18))
+            .with_border(chat_mission_cyan_color().with_alpha(0.85), 1.0)
+            .with_corner_radius(3.0),
+    );
     let can_send = match browse_mode {
         ChatBrowseMode::Managed => {
             autopilot_chat.managed_chat_can_send(chat_inputs.composer.get_value())
