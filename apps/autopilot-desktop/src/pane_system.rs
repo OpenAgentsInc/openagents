@@ -14,7 +14,8 @@ use crate::panes::{
     apple_adapter_training as apple_adapter_training_pane,
     apple_fm_workbench as apple_fm_workbench_pane, calculator as calculator_pane,
     chat as chat_pane, data_seller as data_seller_pane, local_inference as local_inference_pane,
-    relay_connections as relay_connections_pane, rive as rive_pane, wallet as wallet_pane,
+    relay_connections as relay_connections_pane, rive as rive_pane,
+    voice_playground as voice_playground_pane, wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, pane_fullscreen_active, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -36,7 +37,7 @@ const PANE_HOTBAR_CLEARANCE: f32 = 16.0;
 const PANE_BOTTOM_RESERVED: f32 =
     HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN + PANE_HOTBAR_CLEARANCE;
 const CHAT_PAD: f32 = 12.0;
-const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 68.0;
+const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 82.0;
 const CHAT_WORKSPACE_SLOT_HEIGHT: f32 = 52.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 208.0;
 const CHAT_COLUMN_GAP: f32 = 10.0;
@@ -53,9 +54,9 @@ const CHAT_HEADER_BUTTON_GAP: f32 = 8.0;
 const CHAT_NEW_THREAD_BUTTON_SIZE: f32 = 26.0;
 const CHAT_THREAD_SEARCH_INPUT_HEIGHT: f32 = 24.0;
 const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
-const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 72.0;
+const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 80.0;
 const CHAT_THREAD_ACTION_BUTTON_HEIGHT: f32 = 22.0;
-const CHAT_THREAD_ACTION_BUTTON_WIDTH: f32 = 72.0;
+const CHAT_THREAD_ACTION_BUTTON_WIDTH: f32 = 80.0;
 const CHAT_THREAD_ACTION_BUTTON_GAP: f32 = 4.0;
 const CHAT_SHELL_ROW_HEIGHT: f32 = 30.0;
 const CHAT_SHELL_ROW_GAP: f32 = 6.0;
@@ -478,6 +479,17 @@ pub enum SyncHealthPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderStatusPaneAction {
     ToggleInventory(crate::app_state::ProviderInventoryProductToggleTarget),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VoicePlaygroundPaneAction {
+    Refresh,
+    StartRecording,
+    StopRecordingAndTranscribe,
+    CancelRecording,
+    Speak,
+    Replay,
+    StopPlayback,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1017,6 +1029,8 @@ pub enum PaneHitAction {
     ChatCycleCollaborationMode,
     ChatCycleApprovalMode,
     ChatCycleSandboxMode,
+    ChatToggleHeaderControls,
+    ChatToggleHelpHint,
     ChatInterruptTurn,
     ChatImplementPlan,
     ChatReviewThread,
@@ -1024,6 +1038,7 @@ pub enum PaneHitAction {
     ChatCycleSortFilter,
     ChatCycleSourceFilter,
     ChatCycleProviderFilter,
+    ChatToggleThreadTools,
     ChatForkThread,
     ChatArchiveThread,
     ChatUnarchiveThread,
@@ -1065,6 +1080,7 @@ pub enum PaneHitAction {
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
     ProviderStatus(ProviderStatusPaneAction),
+    VoicePlayground(VoicePlaygroundPaneAction),
     LocalInference(LocalInferencePaneAction),
     AttnResLab(AttnResLabPaneAction),
     TassadarLab(TassadarLabPaneAction),
@@ -1119,7 +1135,7 @@ impl PaneDescriptor {
 
 pub const fn default_pane_presentation(kind: PaneKind) -> PanePresentation {
     match kind {
-        PaneKind::GoOnline => PanePresentation::Fullscreen,
+        PaneKind::GoOnline => PanePresentation::Windowed,
         _ => PanePresentation::Windowed,
     }
 }
@@ -1184,6 +1200,7 @@ fn pane_minimum_size(kind: PaneKind) -> Size {
         | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
         PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
         PaneKind::ProviderControl => pane_size_for_content(720.0, 480.0),
+        PaneKind::VoicePlayground => pane_size_for_content(1040.0, 620.0),
         PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
         PaneKind::PsionicViz => pane_size_for_content(960.0, 600.0),
         PaneKind::AttnResLab | PaneKind::TassadarLab => pane_size_for_content(1080.0, 680.0),
@@ -1570,6 +1587,10 @@ fn cad_action_uses_dense_row_hot_zone(action: CadDemoPaneAction) -> bool {
 }
 
 pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon {
+    if let Some(cursor) = crate::onboarding::cursor_icon(state, point) {
+        return cursor;
+    }
+
     if let Some(mode) = state.pane_drag_mode {
         return match mode {
             PaneDragMode::Moving { .. } => CursorIcon::Move,
@@ -1663,6 +1684,11 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             }
             PaneKind::RelayConnections => {
                 if relay_connections_url_input_bounds(content_bounds).contains(point) {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::VoicePlayground => {
+                if voice_playground_tts_input_bounds(content_bounds).contains(point) {
                     return CursorIcon::Text;
                 }
             }
@@ -1853,7 +1879,7 @@ pub fn chat_workspace_row_bounds(content_bounds: Bounds, index: usize) -> Bounds
     let workspace = chat_workspace_rail_bounds(content_bounds);
     Bounds::new(
         workspace.origin.x + 4.0,
-        workspace.origin.y + 28.0 + index as f32 * CHAT_WORKSPACE_SLOT_HEIGHT,
+        workspace.origin.y + 52.0 + index as f32 * CHAT_WORKSPACE_SLOT_HEIGHT,
         (workspace.size.width - 8.0).max(32.0),
         CHAT_WORKSPACE_SLOT_HEIGHT,
     )
@@ -1898,12 +1924,12 @@ fn chat_right_column_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_refresh_threads_button_bounds(content_bounds: Bounds) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
-    let width = CHAT_THREAD_FILTER_BUTTON_WIDTH;
+    let width = 22.0;
     Bounds::new(
         rail.origin.x + rail.size.width - 10.0 - CHAT_NEW_THREAD_BUTTON_SIZE - 6.0 - width,
         rail.origin.y + 28.0,
         width,
-        CHAT_THREAD_FILTER_BUTTON_HEIGHT,
+        width,
     )
 }
 
@@ -1949,6 +1975,39 @@ pub fn chat_cycle_reasoning_effort_button_bounds(content_bounds: Bounds) -> Boun
 }
 
 pub fn chat_cycle_service_tier_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 0)
+}
+
+fn chat_secondary_header_button_bounds(content_bounds: Bounds, index: usize) -> Bounds {
+    let model = chat_cycle_model_button_bounds(content_bounds);
+    let gap = CHAT_HEADER_BUTTON_GAP;
+    let available_width = (chat_transcript_bounds(content_bounds).size.width - 20.0).max(0.0);
+    let width = ((available_width - gap * 5.0) / 6.0).clamp(72.0, CHAT_HEADER_BUTTON_WIDTH);
+    Bounds::new(
+        model.origin.x + index as f32 * (width + gap),
+        model.max_y() + 6.0,
+        width,
+        CHAT_HEADER_BUTTON_HEIGHT,
+    )
+}
+
+pub fn chat_cycle_personality_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 1)
+}
+
+pub fn chat_cycle_collaboration_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 2)
+}
+
+pub fn chat_cycle_approval_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 3)
+}
+
+pub fn chat_cycle_sandbox_mode_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 4)
+}
+
+pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
     let effort = chat_cycle_reasoning_effort_button_bounds(content_bounds);
     Bounds::new(
         effort.max_x() + CHAT_HEADER_BUTTON_GAP,
@@ -1958,81 +2017,19 @@ pub fn chat_cycle_service_tier_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn chat_cycle_personality_button_bounds(content_bounds: Bounds) -> Bounds {
-    let tier = chat_cycle_service_tier_button_bounds(content_bounds);
-    Bounds::new(
-        tier.max_x() + CHAT_HEADER_BUTTON_GAP,
-        tier.origin.y,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
-pub fn chat_cycle_collaboration_mode_button_bounds(content_bounds: Bounds) -> Bounds {
-    let model = chat_cycle_model_button_bounds(content_bounds);
-    Bounds::new(
-        model.origin.x,
-        model.max_y() + 6.0,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
-pub fn chat_cycle_approval_mode_button_bounds(content_bounds: Bounds) -> Bounds {
-    let collab = chat_cycle_collaboration_mode_button_bounds(content_bounds);
-    Bounds::new(
-        collab.max_x() + CHAT_HEADER_BUTTON_GAP,
-        collab.origin.y,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
-pub fn chat_cycle_sandbox_mode_button_bounds(content_bounds: Bounds) -> Bounds {
-    let approvals = chat_cycle_approval_mode_button_bounds(content_bounds);
-    Bounds::new(
-        approvals.max_x() + CHAT_HEADER_BUTTON_GAP,
-        approvals.origin.y,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
-pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
-    let cycle = chat_cycle_sandbox_mode_button_bounds(content_bounds);
-    Bounds::new(
-        cycle.max_x() + CHAT_HEADER_BUTTON_GAP,
-        cycle.origin.y,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
 pub fn chat_implement_plan_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 5)
+}
+
+pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_secondary_header_button_bounds(content_bounds, 5)
+}
+
+pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
     let interrupt = chat_interrupt_button_bounds(content_bounds);
     Bounds::new(
         interrupt.max_x() + CHAT_HEADER_BUTTON_GAP,
         interrupt.origin.y,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
-pub fn chat_review_button_bounds(content_bounds: Bounds) -> Bounds {
-    let implement_plan = chat_implement_plan_button_bounds(content_bounds);
-    Bounds::new(
-        implement_plan.max_x() + CHAT_HEADER_BUTTON_GAP,
-        implement_plan.origin.y,
-        CHAT_HEADER_BUTTON_WIDTH,
-        CHAT_HEADER_BUTTON_HEIGHT,
-    )
-}
-
-pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
-    let review = chat_review_button_bounds(content_bounds);
-    Bounds::new(
-        review.max_x() + CHAT_HEADER_BUTTON_GAP,
-        review.origin.y,
         CHAT_HEADER_BUTTON_WIDTH,
         CHAT_HEADER_BUTTON_HEIGHT,
     )
@@ -2098,10 +2095,10 @@ pub fn chat_thread_filter_source_button_bounds(content_bounds: Bounds) -> Bounds
 }
 
 pub fn chat_thread_filter_provider_button_bounds(content_bounds: Bounds) -> Bounds {
-    let source = chat_thread_filter_source_button_bounds(content_bounds);
+    let archived = chat_thread_filter_archived_button_bounds(content_bounds);
     Bounds::new(
-        source.max_x() + CHAT_THREAD_ACTION_BUTTON_GAP,
-        source.origin.y,
+        archived.max_x() + CHAT_THREAD_ACTION_BUTTON_GAP,
+        archived.origin.y,
         CHAT_THREAD_FILTER_BUTTON_WIDTH,
         CHAT_THREAD_FILTER_BUTTON_HEIGHT,
     )
@@ -2150,6 +2147,16 @@ pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
         right_column.max_y() - CHAT_SEND_WIDTH,
         CHAT_SEND_WIDTH,
         CHAT_SEND_WIDTH,
+    )
+}
+
+pub fn chat_help_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    let transcript = chat_transcript_bounds(content_bounds);
+    Bounds::new(
+        transcript.max_x() - 26.0,
+        transcript.max_y() - 24.0,
+        16.0,
+        16.0,
     )
 }
 
@@ -3369,6 +3376,136 @@ pub fn sync_health_rebootstrap_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn voice_playground_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        128.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+fn voice_playground_section_bounds(content_bounds: Bounds) -> (Bounds, Bounds) {
+    let top = voice_playground_refresh_button_bounds(content_bounds).max_y() + 82.0;
+    let left = content_bounds.origin.x + CHAT_PAD;
+    let available_width = (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0);
+    let available_height = (content_bounds.max_y() - top - CHAT_PAD).max(180.0);
+
+    if available_width >= 760.0 || (available_width >= 500.0 && available_height < 340.0) {
+        let column_gap = JOB_INBOX_BUTTON_GAP;
+        let column_width = ((available_width - column_gap) / 2.0).max(240.0);
+        let stt = Bounds::new(left, top, column_width, available_height);
+        let tts = Bounds::new(
+            stt.max_x() + column_gap,
+            top,
+            (content_bounds.max_x() - CHAT_PAD - (stt.max_x() + column_gap)).max(240.0),
+            available_height,
+        );
+        (stt, tts)
+    } else {
+        let row_gap = JOB_INBOX_BUTTON_GAP;
+        let row_height = (available_height - row_gap) * 0.5;
+        let stt = Bounds::new(left, top, available_width, row_height);
+        let tts = Bounds::new(
+            left,
+            stt.max_y() + row_gap,
+            available_width,
+            (content_bounds.max_y() - CHAT_PAD - (stt.max_y() + row_gap)).max(160.0),
+        );
+        (stt, tts)
+    }
+}
+
+pub fn voice_playground_stt_panel_bounds(content_bounds: Bounds) -> Bounds {
+    voice_playground_section_bounds(content_bounds).0
+}
+
+pub fn voice_playground_tts_panel_bounds(content_bounds: Bounds) -> Bounds {
+    voice_playground_section_bounds(content_bounds).1
+}
+
+fn voice_playground_stt_controls_row_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = voice_playground_stt_panel_bounds(content_bounds);
+    Bounds::new(
+        panel.origin.x + CHAT_PAD,
+        panel.origin.y + 54.0,
+        (panel.size.width - CHAT_PAD * 2.0).max(120.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn voice_playground_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    let controls = voice_playground_stt_controls_row_bounds(content_bounds);
+    let width = (controls.size.width - JOB_INBOX_BUTTON_GAP * 2.0) / 3.0;
+    Bounds::new(
+        controls.origin.x,
+        controls.origin.y,
+        width,
+        controls.size.height,
+    )
+}
+
+pub fn voice_playground_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    let start = voice_playground_start_button_bounds(content_bounds);
+    Bounds::new(
+        start.max_x() + JOB_INBOX_BUTTON_GAP,
+        start.origin.y,
+        start.size.width,
+        start.size.height,
+    )
+}
+
+pub fn voice_playground_cancel_button_bounds(content_bounds: Bounds) -> Bounds {
+    let stop = voice_playground_stop_button_bounds(content_bounds);
+    Bounds::new(
+        stop.max_x() + JOB_INBOX_BUTTON_GAP,
+        stop.origin.y,
+        stop.size.width,
+        stop.size.height,
+    )
+}
+
+pub fn voice_playground_tts_input_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = voice_playground_tts_panel_bounds(content_bounds);
+    Bounds::new(
+        panel.origin.x + CHAT_PAD,
+        panel.origin.y + 54.0,
+        (panel.size.width - CHAT_PAD * 2.0).max(120.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn voice_playground_speak_button_bounds(content_bounds: Bounds) -> Bounds {
+    let input = voice_playground_tts_input_bounds(content_bounds);
+    let width = (input.size.width - JOB_INBOX_BUTTON_GAP * 2.0) / 3.0;
+    Bounds::new(
+        input.origin.x,
+        input.max_y() + JOB_INBOX_BUTTON_GAP,
+        width,
+        input.size.height,
+    )
+}
+
+pub fn voice_playground_replay_button_bounds(content_bounds: Bounds) -> Bounds {
+    let speak = voice_playground_speak_button_bounds(content_bounds);
+    Bounds::new(
+        speak.max_x() + JOB_INBOX_BUTTON_GAP,
+        speak.origin.y,
+        speak.size.width,
+        speak.size.height,
+    )
+}
+
+pub fn voice_playground_stop_playback_button_bounds(content_bounds: Bounds) -> Bounds {
+    let replay = voice_playground_replay_button_bounds(content_bounds);
+    Bounds::new(
+        replay.max_x() + JOB_INBOX_BUTTON_GAP,
+        replay.origin.y,
+        replay.size.width,
+        replay.size.height,
     )
 }
 
@@ -6228,73 +6365,77 @@ fn pane_hit_action_for_pane(
                 if chat_cycle_reasoning_effort_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatCycleReasoningEffort);
                 }
-                if chat_cycle_service_tier_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleServiceTier);
+                if chat_help_toggle_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatToggleHelpHint);
                 }
-                if chat_cycle_personality_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCyclePersonality);
-                }
-                if chat_cycle_collaboration_mode_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleCollaborationMode);
-                }
-                if chat_cycle_approval_mode_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleApprovalMode);
-                }
-                if chat_cycle_sandbox_mode_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleSandboxMode);
+                if chat_compact_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatToggleHeaderControls);
                 }
                 if chat_interrupt_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatInterruptTurn);
                 }
-                if state.autopilot_chat.active_plan_artifact().is_some()
-                    && chat_implement_plan_button_bounds(content_bounds).contains(point)
-                {
-                    return Some(PaneHitAction::ChatImplementPlan);
-                }
-                if chat_review_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatReviewThread);
-                }
-                if chat_compact_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCompactThread);
+                if state.autopilot_chat.header_controls_expanded {
+                    if chat_cycle_service_tier_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCycleServiceTier);
+                    }
+                    if chat_cycle_personality_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCyclePersonality);
+                    }
+                    if chat_cycle_collaboration_mode_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCycleCollaborationMode);
+                    }
+                    if chat_cycle_approval_mode_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCycleApprovalMode);
+                    }
+                    if chat_cycle_sandbox_mode_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCycleSandboxMode);
+                    }
+                    if chat_review_button_bounds(content_bounds).contains(point) {
+                        if state.autopilot_chat.active_plan_artifact().is_some() {
+                            return Some(PaneHitAction::ChatImplementPlan);
+                        }
+                        return Some(PaneHitAction::ChatReviewThread);
+                    }
                 }
                 if chat_thread_filter_archived_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatToggleArchivedFilter);
                 }
-                if chat_thread_filter_sort_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleSortFilter);
-                }
-                if chat_thread_filter_source_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleSourceFilter);
-                }
                 if chat_thread_filter_provider_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCycleProviderFilter);
+                    return Some(PaneHitAction::ChatToggleThreadTools);
                 }
-                if chat_thread_action_fork_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatForkThread);
-                }
-                if chat_thread_action_archive_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatArchiveThread);
-                }
-                if chat_thread_action_unarchive_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatUnarchiveThread);
-                }
-                if chat_thread_action_rename_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatRenameThread);
-                }
-                if chat_thread_action_reload_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatReloadThread);
-                }
-                if chat_thread_action_open_editor_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatOpenWorkspaceInEditor);
-                }
-                if chat_thread_action_copy_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatCopyLastOutput);
-                }
-                if chat_thread_action_rollback_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatRollbackThread);
-                }
-                if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point) {
-                    return Some(PaneHitAction::ChatUnsubscribeThread);
+                if state.autopilot_chat.thread_tools_expanded {
+                    if chat_thread_filter_source_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCycleSortFilter);
+                    }
+                    if chat_thread_action_fork_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatForkThread);
+                    }
+                    if chat_thread_action_archive_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatArchiveThread);
+                    }
+                    if chat_thread_action_unarchive_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatUnarchiveThread);
+                    }
+                    if chat_thread_action_rename_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatRenameThread);
+                    }
+                    if chat_thread_action_reload_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatReloadThread);
+                    }
+                    if chat_thread_action_open_editor_button_bounds(content_bounds).contains(point)
+                    {
+                        return Some(PaneHitAction::ChatOpenWorkspaceInEditor);
+                    }
+                    if chat_thread_action_copy_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatCopyLastOutput);
+                    }
+                    if chat_thread_action_rollback_button_bounds(content_bounds).contains(point) {
+                        return Some(PaneHitAction::ChatRollbackThread);
+                    }
+                    if chat_thread_action_unsubscribe_button_bounds(content_bounds).contains(point)
+                    {
+                        return Some(PaneHitAction::ChatUnsubscribeThread);
+                    }
                 }
             }
             if state.autopilot_chat.chat_has_browseable_content() {
@@ -6832,6 +6973,44 @@ fn pane_hit_action_for_pane(
                         ProviderStatusPaneAction::ToggleInventory(*target),
                     ));
                 }
+            }
+            None
+        }
+        PaneKind::VoicePlayground => {
+            if voice_playground_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::Refresh,
+                ));
+            }
+            if voice_playground_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::StartRecording,
+                ));
+            }
+            if voice_playground_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::StopRecordingAndTranscribe,
+                ));
+            }
+            if voice_playground_cancel_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::CancelRecording,
+                ));
+            }
+            if voice_playground_speak_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::Speak,
+                ));
+            }
+            if voice_playground_replay_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::Replay,
+                ));
+            }
+            if voice_playground_stop_playback_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::VoicePlayground(
+                    VoicePlaygroundPaneAction::StopPlayback,
+                ));
             }
             None
         }
@@ -8286,6 +8465,10 @@ pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &I
     relay_connections_pane::dispatch_input_event(state, event)
 }
 
+pub fn dispatch_voice_playground_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    voice_playground_pane::dispatch_input_event(state, event)
+}
+
 pub fn dispatch_local_inference_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     local_inference_pane::dispatch_input_event(state, event)
 }
@@ -8678,7 +8861,12 @@ mod tests {
         starter_jobs_complete_button_bounds, starter_jobs_kill_switch_button_bounds,
         starter_jobs_row_bounds, sync_health_rebootstrap_button_bounds,
         trajectory_filter_button_bounds, trajectory_open_session_button_bounds,
-        trajectory_verify_button_bounds,
+        trajectory_verify_button_bounds, voice_playground_cancel_button_bounds,
+        voice_playground_refresh_button_bounds, voice_playground_replay_button_bounds,
+        voice_playground_speak_button_bounds, voice_playground_start_button_bounds,
+        voice_playground_stop_button_bounds, voice_playground_stop_playback_button_bounds,
+        voice_playground_stt_panel_bounds, voice_playground_tts_input_bounds,
+        voice_playground_tts_panel_bounds,
     };
     use crate::{app_state::PanePresentation, pane_registry::pane_specs};
     use wgpui::{Bounds, Point, Size};
@@ -9563,6 +9751,49 @@ mod tests {
         assert!(alert_band.contains(dismiss_button.origin));
         assert!(dismiss_button.max_x() <= alert_band.max_x());
         assert!(dismiss_button.max_y() <= alert_band.max_y());
+    }
+
+    #[test]
+    fn voice_playground_sections_and_controls_fit_in_wide_and_compact_panes() {
+        for content in [
+            Bounds::new(0.0, 0.0, 980.0, 540.0),
+            Bounds::new(0.0, 0.0, 680.0, 540.0),
+            Bounds::new(0.0, 0.0, 540.0, 320.0),
+        ] {
+            let refresh = voice_playground_refresh_button_bounds(content);
+            let stt_panel = voice_playground_stt_panel_bounds(content);
+            let tts_panel = voice_playground_tts_panel_bounds(content);
+            let start = voice_playground_start_button_bounds(content);
+            let stop = voice_playground_stop_button_bounds(content);
+            let cancel = voice_playground_cancel_button_bounds(content);
+            let tts_input = voice_playground_tts_input_bounds(content);
+            let speak = voice_playground_speak_button_bounds(content);
+            let replay = voice_playground_replay_button_bounds(content);
+            let stop_playback = voice_playground_stop_playback_button_bounds(content);
+
+            assert!(content.contains(refresh.origin));
+            assert!(content.contains(stt_panel.origin));
+            assert!(content.contains(tts_panel.origin));
+            assert!(stt_panel.max_x() <= content.max_x() + 0.001);
+            assert!(tts_panel.max_x() <= content.max_x() + 0.001);
+            assert!(stt_panel.max_y() <= content.max_y() + 0.001);
+            assert!(tts_panel.max_y() <= content.max_y() + 0.001);
+            assert!(start.origin.x >= stt_panel.origin.x);
+            assert!(start.max_x() <= stt_panel.max_x() + 0.001);
+            assert!(stop.max_x() <= stt_panel.max_x() + 0.001);
+            assert!(cancel.max_x() <= stt_panel.max_x() + 0.001);
+            assert!(tts_input.origin.x >= tts_panel.origin.x);
+            assert!(tts_input.max_x() <= tts_panel.max_x() + 0.001);
+            assert!(tts_input.origin.y >= tts_panel.origin.y);
+            assert!(speak.origin.y >= tts_input.max_y() - 0.001);
+            assert!(stop_playback.max_x() <= tts_panel.max_x() + 0.001);
+            assert!(speak.max_x() <= replay.min_x() + 0.001);
+            assert!(replay.max_x() <= stop_playback.min_x() + 0.001);
+            assert!(
+                stt_panel.max_x() <= tts_panel.min_x() + 0.001
+                    || stt_panel.max_y() <= tts_panel.min_y() + 0.001
+            );
+        }
     }
 
     #[test]

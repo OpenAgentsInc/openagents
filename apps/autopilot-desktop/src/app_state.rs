@@ -99,6 +99,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderControl,
     ProviderStatus,
+    VoicePlayground,
     LocalInference,
     PsionicViz,
     AttnResLab,
@@ -486,6 +487,20 @@ impl Default for NetworkRequestsPaneInputs {
     }
 }
 
+pub struct VoicePlaygroundPaneInputs {
+    pub tts_text: TextInput,
+}
+
+impl Default for VoicePlaygroundPaneInputs {
+    fn default() -> Self {
+        Self {
+            tts_text: TextInput::new()
+                .value("OpenAgents voice playground ready.")
+                .placeholder("Text to synthesize and play"),
+        }
+    }
+}
+
 pub struct LocalInferencePaneInputs {
     pub prompt: TextInput,
     pub requested_model: TextInput,
@@ -649,6 +664,7 @@ impl Default for ChatPaneInputs {
                 .border_color_focused(theme::border::FOCUS),
             thread_search: TextInput::new()
                 .placeholder("Filter thread history...")
+                .font_size(wgpui::theme::font_size::SM - 2.0)
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -2612,6 +2628,7 @@ pub struct DataSellerPaneState {
     pub codex_session_cwd: Option<String>,
     pub required_skill_attachments: Vec<DataSellerSkillAttachment>,
     pub incoming_requests: Vec<DataSellerIncomingRequest>,
+    pub next_payment_evidence_refresh_at: Option<Instant>,
 }
 
 impl Default for DataSellerPaneState {
@@ -2665,6 +2682,7 @@ impl Default for DataSellerPaneState {
             codex_session_cwd: None,
             required_skill_attachments: Vec::new(),
             incoming_requests: Vec::new(),
+            next_payment_evidence_refresh_at: None,
         }
     }
 }
@@ -3248,6 +3266,30 @@ impl DataSellerPaneState {
             .map(|request| request.request_id.as_str())
     }
 
+    pub fn payment_evidence_refresh_due(&mut self, now: Instant) -> Option<String> {
+        let request_id = self
+            .incoming_requests
+            .iter()
+            .find(|request| {
+                request.payment_state == DataSellerPaymentState::AwaitingPayment
+                    && request.payment_pointer.is_none()
+            })
+            .map(|request| request.request_id.clone());
+        let Some(request_id) = request_id else {
+            self.next_payment_evidence_refresh_at = None;
+            return None;
+        };
+        if matches!(
+            self.next_payment_evidence_refresh_at,
+            Some(next_refresh_at) if now < next_refresh_at
+        ) {
+            return None;
+        }
+        self.next_payment_evidence_refresh_at =
+            Some(now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL);
+        Some(request_id)
+    }
+
     pub fn note_payment_invoice_created(
         &mut self,
         request_id: &str,
@@ -3287,6 +3329,7 @@ impl DataSellerPaneState {
             request.payment_state = DataSellerPaymentState::Failed;
             request.payment_error = Some(error.clone());
         }
+        self.next_payment_evidence_refresh_at = None;
         self.last_error = Some(error.clone());
         self.status_line = format!("Payment quote failed for request {request_id}.");
         self.last_action = Some(format!(
@@ -3313,6 +3356,7 @@ impl DataSellerPaneState {
             request.payment_state = DataSellerPaymentState::AwaitingPayment;
             request.payment_feedback_event_id = feedback_event_id.map(str::to_string);
             request.payment_error = None;
+            self.next_payment_evidence_refresh_at = None;
             self.last_error = None;
             self.last_action = Some(format!(
                 "Published payment-required feedback for data request {}",
@@ -3330,6 +3374,7 @@ impl DataSellerPaneState {
                     .unwrap_or("payment-required feedback publish failed")
                     .to_string(),
             );
+            self.next_payment_evidence_refresh_at = None;
             self.last_error = request.payment_error.clone();
             self.last_action = Some(format!(
                 "Payment-required publish failed for data request {}",
@@ -3362,6 +3407,7 @@ impl DataSellerPaneState {
         request.payment_observed_at_epoch_seconds = Some(observed_at_epoch_seconds);
         request.payment_amount_sats = Some(amount_sats);
         request.payment_error = None;
+        self.next_payment_evidence_refresh_at = None;
         self.last_error = None;
         self.last_action = Some(format!(
             "Observed settled Lightning payment for data request {}",
@@ -3888,21 +3934,13 @@ impl DataSellerPaneState {
             .expires_at_epoch_seconds
             .filter(|expires_at| now_epoch_seconds >= *expires_at)
             .map(|expires_at| now_epoch_seconds.saturating_sub(expires_at));
-        if let Some(expired_for_seconds) = expired_for_seconds {
-            incoming.evaluation_disposition = DataSellerRequestEvaluationDisposition::Expired;
-            incoming.evaluation_summary = format!(
-                "Request expired {}s ago before seller evaluation.",
-                expired_for_seconds
-            );
-            return incoming;
-        }
 
         let Some(asset) = self.last_published_asset.as_ref() else {
             incoming.evaluation_disposition =
                 DataSellerRequestEvaluationDisposition::NoPublishedAsset;
             incoming.evaluation_summary =
                 "No published asset is available yet, so the request cannot be quoted.".to_string();
-            return incoming;
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         };
 
         let Some(asset_ref) = incoming.asset_ref.as_deref() else {
@@ -3911,7 +3949,7 @@ impl DataSellerPaneState {
             incoming.evaluation_summary =
                 "Request is missing oa_asset_ref, so seller evaluation cannot match inventory."
                     .to_string();
-            return incoming;
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         };
 
         if asset_ref.eq_ignore_ascii_case(asset.asset_id.as_str()) {
@@ -3926,7 +3964,7 @@ impl DataSellerPaneState {
                 "Request targets {asset_ref}, but the published seller asset is {} ({})",
                 asset.asset_id, asset.asset_kind
             );
-            return incoming;
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         }
 
         let supported_delivery_modes = self.supported_delivery_modes_for_evaluation();
@@ -3941,7 +3979,7 @@ impl DataSellerPaneState {
                     "Request asks for delivery mode {delivery_mode}, but seller inventory supports {}",
                     supported_delivery_modes.join(", ")
                 );
-                return incoming;
+                return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
             }
         }
 
@@ -3963,7 +4001,7 @@ impl DataSellerPaneState {
                 missing_scopes.join(", "),
                 allowed_scopes.join(", ")
             );
-            return incoming;
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         }
 
         let Some(grant) = self.last_published_grant.as_ref() else {
@@ -3975,7 +4013,7 @@ impl DataSellerPaneState {
                     .as_deref()
                     .unwrap_or("inventory")
             );
-            return incoming;
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         };
         incoming.matched_grant_id = Some(grant.grant_id.clone());
 
@@ -4003,7 +4041,7 @@ impl DataSellerPaneState {
                             grant.grant_id, consumer_id, request.requester
                         )
                     });
-                return incoming;
+                return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
             }
         }
 
@@ -4018,7 +4056,7 @@ impl DataSellerPaneState {
                 grant.grant_id,
                 grant.status.label()
             );
-            return incoming;
+            return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
         }
 
         incoming.required_price_sats = published_data_request_price_sats(Some(grant), Some(asset));
@@ -4030,7 +4068,7 @@ impl DataSellerPaneState {
                     "Request bid {} sats is below the current seller offer of {} sats.",
                     request.price_sats, required_price_sats
                 );
-                return incoming;
+                return finalize_data_seller_request_expiry(incoming, expired_for_seconds);
             }
         }
 
@@ -4057,9 +4095,49 @@ impl DataSellerPaneState {
                 grant.grant_id
             );
         }
-        incoming
+        finalize_data_seller_request_expiry(incoming, expired_for_seconds)
     }
+}
 
+fn finalize_data_seller_request_expiry(
+    mut incoming: DataSellerIncomingRequest,
+    expired_for_seconds: Option<u64>,
+) -> DataSellerIncomingRequest {
+    let Some(expired_for_seconds) = expired_for_seconds else {
+        return incoming;
+    };
+
+    incoming.evaluation_disposition = DataSellerRequestEvaluationDisposition::Expired;
+    incoming.evaluation_summary = match (
+        incoming.matched_asset_id.as_deref(),
+        incoming.matched_grant_id.as_deref(),
+    ) {
+        (Some(asset_id), Some(grant_id)) => format!(
+            "Request expired {}s ago after matching asset {} and grant {}.",
+            expired_for_seconds, asset_id, grant_id
+        ),
+        (Some(asset_id), None) => format!(
+            "Request expired {}s ago after matching asset {}, but before grant or payment completion.",
+            expired_for_seconds, asset_id
+        ),
+        _ if incoming.evaluation_disposition
+            != DataSellerRequestEvaluationDisposition::InvalidRequest =>
+        {
+            format!(
+                "Request expired {}s ago during seller review ({}).",
+                expired_for_seconds,
+                incoming.evaluation_disposition.label()
+            )
+        }
+        _ => format!(
+            "Request expired {}s ago before seller evaluation.",
+            expired_for_seconds
+        ),
+    };
+    incoming
+}
+
+impl DataSellerPaneState {
     fn supported_delivery_modes_for_evaluation(&self) -> Vec<String> {
         let mut delivery_modes = self
             .last_published_grant
@@ -7041,6 +7119,9 @@ pub struct AutopilotChatState {
     pub thread_filter_source_kind: Option<codex_client::ThreadSourceKind>,
     pub thread_filter_model_provider: Option<String>,
     pub thread_filter_search_term: String,
+    pub header_controls_expanded: bool,
+    pub thread_tools_expanded: bool,
+    pub show_autopilot_help_hint: bool,
     pub thread_rename_counter: u64,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
@@ -7171,6 +7252,9 @@ impl Default for AutopilotChatState {
             thread_filter_source_kind: None,
             thread_filter_model_provider: None,
             thread_filter_search_term: String::new(),
+            header_controls_expanded: false,
+            thread_tools_expanded: false,
+            show_autopilot_help_hint: false,
             thread_rename_counter: 1,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
@@ -8483,13 +8567,7 @@ impl AutopilotChatState {
     /// Auto-selects the first managed chat workspace when no workspace is selected yet.
     /// No-op if the user has already selected a workspace or if there is no content.
     pub fn maybe_auto_select_default_nip28_channel(&mut self) -> bool {
-        if self.selected_workspace != ChatWorkspaceSelection::Autopilot {
-            return false;
-        }
-        if !self.has_managed_chat_browseable_content() {
-            return false;
-        }
-        self.select_chat_workspace_by_index(0)
+        false
     }
 
     pub fn has_direct_message_browseable_content(&self) -> bool {
@@ -8502,6 +8580,9 @@ impl AutopilotChatState {
 
     pub fn chat_browse_mode(&self) -> ChatBrowseMode {
         match &self.selected_workspace {
+            ChatWorkspaceSelection::Autopilot => {
+                return ChatBrowseMode::Autopilot;
+            }
             ChatWorkspaceSelection::ManagedGroup(group_id)
                 if self
                     .managed_chat_projection
@@ -8517,7 +8598,6 @@ impl AutopilotChatState {
             {
                 return ChatBrowseMode::DirectMessages;
             }
-            ChatWorkspaceSelection::Autopilot => {}
             _ => {}
         }
 
@@ -8531,18 +8611,16 @@ impl AutopilotChatState {
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
-        let mut entries = self
-            .managed_chat_projection
-            .snapshot
-            .groups
-            .iter()
-            .map(|group| ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()))
-            .collect::<Vec<_>>();
+        let mut entries = vec![ChatWorkspaceSelection::Autopilot];
+        entries.extend(
+            self.managed_chat_projection
+                .snapshot
+                .groups
+                .iter()
+                .map(|group| ChatWorkspaceSelection::ManagedGroup(group.group_id.clone())),
+        );
         if self.has_direct_message_browseable_content() {
             entries.push(ChatWorkspaceSelection::DirectMessages);
-        }
-        if entries.is_empty() {
-            entries.push(ChatWorkspaceSelection::Autopilot);
         }
         entries
     }
@@ -13809,6 +13887,7 @@ impl_pane_status_access!(
     SkillRegistryPaneState,
     SkillTrustRevocationPaneState,
     CadDemoPaneState,
+    VoicePlaygroundPaneState,
     AttnResLabPaneState,
     TassadarLabPaneState,
     CreditDeskPaneState,
@@ -13895,6 +13974,7 @@ pub struct RenderState {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub renderer: Renderer,
+    pub backdrop_blur: crate::render::BackdropBlurRenderer,
     pub text_system: TextSystem,
     pub scale_factor: f32,
     pub desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
@@ -13917,6 +13997,7 @@ pub struct RenderState {
     pub create_invoice_inputs: CreateInvoicePaneInputs,
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
+    pub voice_playground_inputs: VoicePlaygroundPaneInputs,
     pub local_inference_inputs: LocalInferencePaneInputs,
     pub apple_fm_workbench_inputs: AppleFmWorkbenchPaneInputs,
     pub apple_adapter_training_inputs: AppleAdapterTrainingPaneInputs,
@@ -13964,6 +14045,7 @@ pub struct RenderState {
     pub nip28_chat_lane_worker: crate::nip28_chat_lane::Nip28ChatLaneWorker,
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
+    pub voice_playground_worker: crate::voice_playground::VoicePlaygroundWorker,
     pub gpt_oss_execution: LocalInferenceExecutionSnapshot,
     pub local_inference_runtime: Box<dyn LocalInferenceRuntime>,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
@@ -13971,6 +14053,7 @@ pub struct RenderState {
     pub provider_runtime: ProviderRuntimeState,
     pub provider_heartbeat_cadence: ProviderHeartbeatCadenceState,
     pub background_cadence: BackgroundCadenceState,
+    pub voice_playground: VoicePlaygroundPaneState,
     pub local_inference: LocalInferencePaneState,
     pub attnres_lab: AttnResLabPaneState,
     pub tassadar_lab: TassadarLabPaneState,
@@ -15010,6 +15093,114 @@ mod tests {
     }
 
     #[test]
+    fn data_seller_expired_request_preserves_matched_context_and_payment_failure() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                description: None,
+                content_digest: Some("sha256:data-bundle".to_string()),
+                provenance_ref: Some("oa://bundle/support-1".to_string()),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1payment-expired".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &[
+                        "encrypted_pointer".to_string(),
+                        "delivery_bundle_ref".to_string(),
+                    ],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
+                }),
+            },
+            None,
+        );
+        let request =
+            fixture_data_access_request("payment-expired", "data_asset.provider.alpha.bundle", 250);
+
+        pane.note_incoming_request(&request, false, 1_760_000_100);
+        pane.request_payment_required_quote("payment-expired")
+            .expect("request should queue a payment quote");
+        pane.note_payment_invoice_failed(
+            "payment-expired",
+            "network error: error sending request: unexpected EOF",
+        );
+
+        pane.note_incoming_request(&request, false, 1_760_000_601);
+
+        let incoming = pane
+            .request_by_id("payment-expired")
+            .expect("request should remain available");
+        assert_eq!(
+            incoming.evaluation_disposition,
+            super::DataSellerRequestEvaluationDisposition::Expired
+        );
+        assert_eq!(
+            incoming.matched_asset_id.as_deref(),
+            Some("data_asset.provider.alpha.bundle")
+        );
+        assert_eq!(
+            incoming.matched_grant_id.as_deref(),
+            Some("access_grant.provider.alpha.bundle")
+        );
+        assert_eq!(
+            incoming.payment_state,
+            super::DataSellerPaymentState::Failed
+        );
+        assert!(
+            incoming
+                .payment_error
+                .as_deref()
+                .is_some_and(|value| value.contains("unexpected EOF"))
+        );
+        assert!(
+            incoming
+                .evaluation_summary
+                .contains("after matching asset data_asset.provider.alpha.bundle and grant access_grant.provider.alpha.bundle")
+        );
+    }
+
+    #[test]
     fn data_seller_intake_marks_free_request_ready_for_delivery() {
         let mut pane = DataSellerPaneState::default();
         pane.note_asset_published(
@@ -15432,6 +15623,120 @@ mod tests {
         assert!(
             pane.status_line
                 .contains("Payment settled for request payment-flow")
+        );
+    }
+
+    #[test]
+    fn data_seller_payment_watchdog_retries_until_payment_observed() {
+        let mut pane = DataSellerPaneState::default();
+        pane.note_asset_published(
+            DataAsset {
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Support bundle".to_string(),
+                default_policy: Some(super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                )),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms: 1_762_700_000_000,
+                status: openagents_kernel_core::data::DataAssetStatus::Active,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+                ..Default::default()
+            },
+            None,
+        );
+        pane.note_grant_published(
+            AccessGrant {
+                grant_id: "access_grant.provider.alpha.bundle".to_string(),
+                asset_id: "data_asset.provider.alpha.bundle".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                consumer_id: Some("npub1payment-watchdog".to_string()),
+                permission_policy: super::data_seller_permission_policy_template(
+                    "targeted_request",
+                    &["encrypted_pointer".to_string()],
+                    super::DataSellerVisibilityPosture::TargetedOnly,
+                    super::DataSellerSensitivityPosture::Private,
+                ),
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(3_600_000),
+                created_at_ms: 1_762_700_000_000,
+                expires_at_ms: 1_762_786_400_000,
+                accepted_at_ms: None,
+                status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                metadata: json!({
+                    "delivery_modes": ["encrypted_pointer"],
+                }),
+            },
+            None,
+        );
+        pane.note_incoming_request(
+            &fixture_data_access_request(
+                "payment-watchdog",
+                "data_asset.provider.alpha.bundle",
+                250,
+            ),
+            false,
+            1_760_000_100,
+        );
+        pane.request_payment_required_quote("payment-watchdog")
+            .expect("request should quote payment");
+        pane.note_payment_invoice_created(
+            "payment-watchdog",
+            "lnbc2500n1paywatchdog",
+            Some(1_760_000_120),
+        )
+        .expect("invoice should be recorded");
+        assert!(pane.note_payment_feedback_publish_outcome(
+            "payment-watchdog",
+            true,
+            Some("feedback-watchdog-1"),
+            None,
+        ));
+
+        let now = std::time::Instant::now();
+        assert_eq!(
+            pane.payment_evidence_refresh_due(now).as_deref(),
+            Some("payment-watchdog")
+        );
+        assert_eq!(
+            pane.payment_evidence_refresh_due(
+                now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                    - std::time::Duration::from_secs(1)
+            ),
+            None
+        );
+        assert_eq!(
+            pane.payment_evidence_refresh_due(
+                now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+            )
+            .as_deref(),
+            Some("payment-watchdog")
+        );
+
+        assert!(pane.note_payment_observed(
+            "payment-watchdog",
+            "payment-pointer-watchdog-1",
+            250,
+            1_760_000_180,
+        ));
+        assert_eq!(
+            pane.payment_evidence_refresh_due(
+                now + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+                    + crate::state::operations::BUYER_AUTO_PAYMENT_REFRESH_INTERVAL
+            ),
+            None
         );
     }
 
@@ -18350,6 +18655,18 @@ mod tests {
         ]);
 
         assert!(chat.has_managed_chat_browseable_content());
+        let workspace_entries = chat.chat_workspace_entries();
+        let managed_index = workspace_entries
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    super::ChatWorkspaceSelection::ManagedGroup(group_id)
+                    if group_id == "oa-main"
+                )
+            })
+            .expect("managed workspace entry");
+        assert!(chat.select_chat_workspace_by_index(managed_index));
         assert_eq!(
             chat.active_managed_chat_group()
                 .map(|group| group.group_id.as_str()),
@@ -18430,12 +18747,11 @@ mod tests {
             chat.selected_workspace,
             super::ChatWorkspaceSelection::Autopilot
         );
-        assert!(chat.maybe_auto_select_default_nip28_channel());
+        assert!(!chat.maybe_auto_select_default_nip28_channel());
         assert_eq!(
             chat.selected_workspace,
-            super::ChatWorkspaceSelection::ManagedGroup("oa-main".to_string())
+            super::ChatWorkspaceSelection::Autopilot
         );
-        assert!(!chat.maybe_auto_select_default_nip28_channel());
     }
 
     #[test]
@@ -18575,8 +18891,12 @@ mod tests {
             .expect("queue direct outbound");
 
         assert!(chat.has_direct_message_browseable_content());
-        assert_eq!(chat.chat_workspace_entries().len(), 1);
-        assert!(chat.select_chat_workspace_by_index(0));
+        let workspace_entries = chat.chat_workspace_entries();
+        let dm_index = workspace_entries
+            .iter()
+            .position(|entry| matches!(entry, super::ChatWorkspaceSelection::DirectMessages))
+            .expect("direct message workspace entry");
+        assert!(chat.select_chat_workspace_by_index(dm_index));
         assert_eq!(
             chat.chat_browse_mode(),
             super::ChatBrowseMode::DirectMessages
@@ -20128,6 +20448,31 @@ mod tests {
             .expect("buy mode request should queue")
     }
 
+    fn queue_data_market_request_for_tests(
+        requests: &mut NetworkRequestsState,
+        request_id: &str,
+        provider_pubkey: &str,
+        budget_sats: u64,
+        authority_command_seq: u64,
+    ) -> String {
+        requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some(request_id.to_string()),
+                request_type: crate::app_state::DATA_MARKET_BUYER_REQUEST_TYPE.to_string(),
+                payload: format!(
+                    "{{\"asset_id\":\"data_asset.fixture\",\"target_provider_pubkey\":\"{provider_pubkey}\"}}"
+                ),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec![provider_pubkey.to_string()],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats,
+                timeout_seconds: 120,
+                authority_command_seq,
+            })
+            .expect("data market request should queue")
+    }
+
     #[test]
     fn buy_mode_payments_pane_sync_rows_include_pubkey_and_payment_pointer() {
         let mut requests = NetworkRequestsState::default();
@@ -20695,6 +21040,94 @@ mod tests {
     }
 
     #[test]
+    fn network_requests_data_market_accepts_result_after_buyer_payment() {
+        let mut requests = NetworkRequestsState::default();
+        let provider_pubkey = "44".repeat(32);
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-data-market-paid-result-001".to_string()),
+                request_type: crate::app_state::DATA_MARKET_BUYER_REQUEST_TYPE.to_string(),
+                payload: "{\"asset_id\":\"data_asset.alpha\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec![provider_pubkey.clone()],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 5,
+                timeout_seconds: 120,
+                authority_command_seq: 41,
+            })
+            .expect("request should queue");
+
+        assert_eq!(
+            requests.apply_nip90_buyer_feedback_event(
+                request_id.as_str(),
+                provider_pubkey.as_str(),
+                "feedback-data-market-paid-result-001",
+                Some("payment-required"),
+                Some("lightning settlement required"),
+                Some(5_000),
+                Some("lnbc50n1datamarketpaidresult"),
+            ),
+            None
+        );
+        let prepared = requests
+            .prepare_auto_payment_attempt_for_provider(
+                request_id.as_str(),
+                provider_pubkey.as_str(),
+                1_762_700_301,
+            )
+            .expect("data market invoice should become payable before result");
+        assert_eq!(prepared.1, Some(5));
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-data-market-paid-result-001",
+            1_762_700_302,
+        );
+
+        let after_payment = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after payment");
+        assert_eq!(after_payment.status, NetworkRequestStatus::Paid);
+        assert_eq!(
+            after_payment.last_payment_pointer.as_deref(),
+            Some("wallet-data-market-paid-result-001")
+        );
+        assert!(after_payment.last_result_event_id.is_none());
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                provider_pubkey.as_str(),
+                "result-data-market-paid-result-001",
+                Some("success"),
+            ),
+            None
+        );
+
+        let after_result = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after seller result");
+        assert_eq!(after_result.status, NetworkRequestStatus::Paid);
+        assert_eq!(
+            after_result.last_result_event_id.as_deref(),
+            Some("result-data-market-paid-result-001")
+        );
+        assert_eq!(
+            after_result.winning_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+        assert_eq!(
+            after_result.winning_result_event_id.as_deref(),
+            Some("result-data-market-paid-result-001")
+        );
+    }
+
+    #[test]
     fn network_requests_payment_notice_keeps_request_nonterminal() {
         let mut requests = NetworkRequestsState::default();
         let request_id = queue_buy_mode_request_for_tests(&mut requests, "req-pay-notice-001", 24);
@@ -20826,6 +21259,53 @@ mod tests {
             Some(provider_pubkey.as_str())
         );
         assert_eq!(row.pending_bolt11.as_deref(), Some("lnbc20n1budgetok"));
+        assert_eq!(row.status, NetworkRequestStatus::PaymentRequired);
+        assert!(row.payment_notice.is_none());
+    }
+
+    #[test]
+    fn network_requests_data_market_accepts_payment_required_invoice_before_result() {
+        let mut requests = NetworkRequestsState::default();
+        let provider_pubkey = "5a".repeat(32);
+        let request_id = queue_data_market_request_for_tests(
+            &mut requests,
+            "req-data-pay-ok-001",
+            provider_pubkey.as_str(),
+            5,
+            26,
+        );
+
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-data-pay-ok-001",
+            Some("payment-required"),
+            Some("lightning settlement required"),
+            Some(5_000),
+            Some("lnbc50n1datamarketok"),
+        );
+
+        let prepared = requests
+            .prepare_auto_payment_attempt_for_provider(
+                request_id.as_str(),
+                provider_pubkey.as_str(),
+                1_762_700_045,
+            )
+            .expect("data-market invoice should prepare before delivery result exists");
+        assert_eq!(prepared.0, "lnbc50n1datamarketok");
+        assert_eq!(prepared.1, Some(5));
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after data-market payment preparation");
+        assert_eq!(
+            row.winning_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+        assert_eq!(row.winning_result_event_id, None);
+        assert_eq!(row.pending_bolt11.as_deref(), Some("lnbc50n1datamarketok"));
         assert_eq!(row.status, NetworkRequestStatus::PaymentRequired);
         assert!(row.payment_notice.is_none());
     }

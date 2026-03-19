@@ -70,8 +70,9 @@ use crate::pane_system::{
     dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_provider_control_scroll_event,
     dispatch_relay_connections_input_event, dispatch_rive_preview_input_event,
-    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
-    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_settings_input_event, dispatch_spark_input_event,
+    dispatch_voice_playground_input_event, pane_content_bounds, pane_indices_by_z_desc,
+    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -115,6 +116,8 @@ pub use tool_bridge::{
     DataMarketBuyerRequestArgs as DesktopControlDataMarketBuyerRequestArgs,
     DataMarketDraftAssetArgs as DesktopControlDataMarketDraftAssetArgs,
     DataMarketDraftGrantArgs as DesktopControlDataMarketDraftGrantArgs,
+    DataMarketImportBuyerResponseArgs as DesktopControlDataMarketImportBuyerResponseArgs,
+    DataMarketImportSellerRequestArgs as DesktopControlDataMarketImportSellerRequestArgs,
     DataMarketIssueDeliveryArgs as DesktopControlDataMarketIssueDeliveryArgs,
     DataMarketPrepareDeliveryArgs as DesktopControlDataMarketPrepareDeliveryArgs,
     DataMarketPublishArgs as DesktopControlDataMarketPublishArgs,
@@ -129,6 +132,8 @@ pub(crate) use tool_bridge::{
     execute_data_market_buyer_status_tool as desktop_control_data_market_buyer_status,
     execute_data_market_draft_asset_tool as desktop_control_data_market_draft_asset,
     execute_data_market_draft_grant_tool as desktop_control_data_market_draft_grant,
+    execute_data_market_import_buyer_response_tool as desktop_control_data_market_import_buyer_response,
+    execute_data_market_import_seller_request_tool as desktop_control_data_market_import_seller_request,
     execute_data_market_issue_delivery_tool as desktop_control_data_market_issue_delivery,
     execute_data_market_prepare_delivery_tool as desktop_control_data_market_prepare_delivery,
     execute_data_market_preview_asset_tool as desktop_control_data_market_preview_asset,
@@ -564,14 +569,19 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     return;
                 }
             }
+            state
+                .window
+                .set_cursor(PaneInput::cursor_icon(state, app.cursor_position));
             let flashing_now = state.hotbar.is_flashing();
             let provider_animating = provider_transition_animating(state.provider_runtime.mode);
             let rive_needs_redraw = open_rive_surface_needs_redraw(state);
+            let onboarding_needs_redraw = crate::onboarding::animation_needs_redraw(state);
             if flashing_now
                 || state.hotbar_flash_was_active
                 || provider_animating
                 || state.autopilot_chat.has_pending_messages()
                 || rive_needs_redraw
+                || onboarding_needs_redraw
             {
                 state.window.request_redraw();
             }
@@ -664,12 +674,13 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         .panes
         .iter()
         .any(|pane| pane.kind == PaneKind::FrameDebugger);
+    let onboarding_needs_redraw = crate::onboarding::animation_needs_redraw(state);
     let rive_needs_redraw = provider_control_hud.needs_redraw
         || preview_rive.needs_redraw
         || presentation_rive.needs_redraw;
     let poll_interval = background_poll_interval(
         state.autopilot_chat.has_pending_messages(),
-        rive_needs_redraw,
+        rive_needs_redraw || onboarding_needs_redraw,
         debug_probe_active,
         state.attnres_lab.playback_state.is_running(),
     );
@@ -682,6 +693,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         preview_rive,
         presentation_rive,
         debug_probe_active,
+        onboarding_needs_redraw,
     );
     state
         .frame_debugger
@@ -776,6 +788,7 @@ fn build_frame_redraw_pressure_snapshot(
     rive_preview: RiveCadenceSnapshot,
     presentation: RiveCadenceSnapshot,
     debug_probe_active: bool,
+    onboarding_needs_redraw: bool,
 ) -> FrameRedrawPressureSnapshot {
     let hotbar_flashing = state.hotbar.is_flashing();
     let provider_animating = provider_transition_animating(state.provider_runtime.mode);
@@ -790,7 +803,10 @@ fn build_frame_redraw_pressure_snapshot(
         chat_pending,
         debug_probe_active,
         text_input_focused,
-        provider_control_hud.needs_redraw || rive_preview.needs_redraw || presentation.needs_redraw,
+        provider_control_hud.needs_redraw
+            || rive_preview.needs_redraw
+            || presentation.needs_redraw
+            || onboarding_needs_redraw,
     );
     FrameRedrawPressureSnapshot {
         should_redraw,
@@ -1149,6 +1165,14 @@ fn pump_background_every_loop(
         "every_loop",
         "buyer_payments::watchdog_tick",
         |state| run_pending_buyer_payment_watchdog_tick(state, now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "data_seller::payment_watchdog_tick",
+        |state| run_pending_data_seller_payment_watchdog_tick(state, now),
     ) {
         changed = true;
     }
@@ -3166,6 +3190,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_create_invoice_input_event(state, event);
     handled |= dispatch_relay_connections_input_event(state, event);
     handled |= dispatch_network_requests_input_event(state, event);
+    handled |= dispatch_voice_playground_input_event(state, event);
     handled |= dispatch_local_inference_input_event(state, event);
     handled |= dispatch_rive_preview_input_event(state, event);
     handled |= dispatch_apple_fm_workbench_input_event(state, event);
@@ -3390,6 +3415,8 @@ pub(super) fn run_pane_hit_action(
         }
         PaneHitAction::ChatCycleApprovalMode => run_chat_cycle_approval_mode_action(state),
         PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
+        PaneHitAction::ChatToggleHeaderControls => run_chat_toggle_header_controls_action(state),
+        PaneHitAction::ChatToggleHelpHint => run_chat_toggle_help_hint_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
         PaneHitAction::ChatImplementPlan => run_chat_implement_plan_action(state),
         PaneHitAction::ChatReviewThread => run_chat_review_action(state),
@@ -3397,6 +3424,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatCycleSortFilter => run_chat_cycle_sort_filter_action(state),
         PaneHitAction::ChatCycleSourceFilter => run_chat_cycle_source_filter_action(state),
         PaneHitAction::ChatCycleProviderFilter => run_chat_cycle_provider_filter_action(state),
+        PaneHitAction::ChatToggleThreadTools => run_chat_toggle_thread_tools_action(state),
         PaneHitAction::ChatForkThread => run_chat_fork_thread_action(state),
         PaneHitAction::ChatArchiveThread => run_chat_archive_thread_action(state),
         PaneHitAction::ChatUnarchiveThread => run_chat_unarchive_thread_action(state),
@@ -3461,6 +3489,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
+        PaneHitAction::VoicePlayground(action) => run_voice_playground_action(state, action),
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
         PaneHitAction::AttnResLab(action) => run_attnres_lab_action(state, action),
         PaneHitAction::TassadarLab(action) => run_tassadar_lab_action(state, action),

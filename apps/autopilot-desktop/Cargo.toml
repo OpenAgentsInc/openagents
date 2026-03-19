@@ -84,6 +84,8 @@ chrono = { version = "0.4", default-features = true, features = ["clock"] }
 bech32 = { workspace = true }
 hex = { workspace = true }
 base64 = "0.22"
+cpal = "0.15"
+rodio = "0.20"
 bitcoin = { workspace = true }
 lightning-invoice = "0.33.2"
 clap = { version = "4.5", features = ["derive"] }
@@ -92,6 +94,7 @@ futures-util = "0.3"
 qrcode = { version = "0.12", default-features = false }
 tokio-tungstenite = "0.24"
 rustls = { version = "0.23", features = ["ring"] }
+tiny-skia = "0.11"
 
 [dev-dependencies]
 tempfile = "3"

@@ -55,6 +55,10 @@ fn current_epoch_seconds() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
+fn is_kernel_idempotency_conflict(error: &str) -> bool {
+    error.contains("kernel_idempotency_conflict")
+}
+
 fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
     let key_bytes = hex::decode(private_key_hex.trim())
         .map_err(|error| format!("invalid identity private_key_hex: {error}"))?;
@@ -1606,10 +1610,55 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
         }
     };
 
+    let expected_asset_id = request.asset.asset_id.clone();
     let response = match crate::kernel_control::run_kernel_call(client.register_data_asset(request))
     {
         Ok(response) => response,
         Err(error) => {
+            if is_kernel_idempotency_conflict(error.as_str()) {
+                let readback_asset = match crate::kernel_control::run_kernel_call(
+                    client.get_data_asset(expected_asset_id.as_str()),
+                ) {
+                    Ok(asset) => asset,
+                    Err(readback_error) => {
+                        state.data_seller.last_error = Some(format!(
+                            "{error}; existing asset read-back failed: {readback_error}"
+                        ));
+                        state.data_seller.status_line =
+                            "Kernel authority reported an asset replay conflict and read-back failed."
+                                .to_string();
+                        return true;
+                    }
+                };
+                state
+                    .data_seller
+                    .note_asset_published(readback_asset.clone(), None);
+                state
+                    .data_market
+                    .note_published_asset(readback_asset, current_epoch_ms());
+                state.data_buyer.sync_selection(&state.data_market);
+                if let Some(asset) = state.data_seller.last_published_asset.clone() {
+                    record_data_market_lifecycle_entry(
+                        state,
+                        asset.created_at_ms,
+                        "asset_published",
+                        asset.status.label(),
+                        asset.asset_id.clone(),
+                        Some(asset.provider_id.clone()),
+                        asset
+                            .default_policy
+                            .as_ref()
+                            .map(|policy| policy.policy_id.clone()),
+                        None,
+                        format!(
+                            "Re-synced existing asset {} from kernel after idempotent replay.",
+                            asset.title
+                        ),
+                    );
+                }
+                sync_data_seller_nip90_profile(state);
+                return true;
+            }
             state.data_seller.last_error = Some(error);
             state.data_seller.status_line =
                 "Kernel authority rejected the asset publication.".to_string();
@@ -1725,10 +1774,52 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
         }
     };
 
+    let expected_grant_id = request.grant.grant_id.clone();
     let response = match crate::kernel_control::run_kernel_call(client.create_access_grant(request))
     {
         Ok(response) => response,
         Err(error) => {
+            if is_kernel_idempotency_conflict(error.as_str()) {
+                let readback_grant = match crate::kernel_control::run_kernel_call(
+                    client.get_access_grant(expected_grant_id.as_str()),
+                ) {
+                    Ok(grant) => grant,
+                    Err(readback_error) => {
+                        state.data_seller.last_error = Some(format!(
+                            "{error}; existing grant read-back failed: {readback_error}"
+                        ));
+                        state.data_seller.status_line =
+                            "Kernel authority reported a grant replay conflict and read-back failed."
+                                .to_string();
+                        return true;
+                    }
+                };
+                state
+                    .data_seller
+                    .note_grant_published(readback_grant.clone(), None);
+                state
+                    .data_market
+                    .note_published_grant(readback_grant, current_epoch_ms());
+                state.data_buyer.sync_selection(&state.data_market);
+                if let Some(grant) = state.data_seller.last_published_grant.clone() {
+                    record_data_market_lifecycle_entry(
+                        state,
+                        grant.created_at_ms,
+                        "grant_published",
+                        grant.status.label(),
+                        grant.grant_id.clone(),
+                        grant.consumer_id.clone(),
+                        Some(grant.permission_policy.policy_id.clone()),
+                        None,
+                        format!(
+                            "Re-synced existing grant {} from kernel after idempotent replay.",
+                            grant.grant_id
+                        ),
+                    );
+                }
+                sync_data_seller_nip90_profile(state);
+                return true;
+            }
             state.data_seller.last_error = Some(error);
             state.data_seller.status_line =
                 "Kernel authority rejected the grant publication.".to_string();
@@ -1800,4 +1891,19 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     }
     sync_data_seller_nip90_profile(state);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_kernel_idempotency_conflict;
+
+    #[test]
+    fn detects_kernel_idempotency_conflicts() {
+        assert!(is_kernel_idempotency_conflict(
+            "kernel authority call failed: status=409 error=kernel_error reason=kernel_idempotency_conflict"
+        ));
+        assert!(!is_kernel_idempotency_conflict(
+            "kernel authority call failed: status=500 error=kernel_error reason=storage_unavailable"
+        ));
+    }
 }

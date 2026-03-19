@@ -35,7 +35,9 @@ Autopilot runs on your computer, where it can do useful work for you and others,
 
 Under the hood, Autopilot runs on the economic infrastructure for machine work, where agents can buy compute, buy data, sell labor, hedge risk, and settle payments automatically.
 
-The MVP is intentionally narrow. One user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
+The MVP is intentionally narrow. The primary shipped revenue loop is still compute: one user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
+
+In parallel, the repo now also ships a starter Data Market slice: a dedicated `Data Seller` conversational pane, a read-only `Data Market` pane, a narrow `Data Buyer` request pane, full `autopilotctl data-market ...` control, a no-window `autopilot_headless_data_market` runtime, and a verified targeted NIP-90 request/result path over real public relays.
 
 The market is still called the OpenAgents Compute Market. At launch, the first live compute product families are `inference` and `embeddings`. That is an umbrella compute market with standardized launch products inside it, not a claim that raw accelerator spot or futures trading is already live.
 
@@ -103,6 +105,39 @@ The architecture stays the same: intent-driven work, deterministic receipts, and
 For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/autopilot-earn/README.md](docs/autopilot-earn/README.md).
 For canonical implementation status, see: [docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md).
 The broader Autopilot Earn doc set is consolidated under `docs/autopilot-earn/`.
+
+## Data Market
+
+The current Data Market is a real secondary MVP slice, not just a spec.
+
+What exists now:
+
+- `Data Seller`: a dedicated conversational seller lane for drafting, exact preview, confirm, publish, grant issuance, payment-required feedback, delivery, and revocation
+- `Data Market`: a read-only market snapshot and operator-facing lifecycle pane that now surfaces packaging posture, redacted Codex-export markers, and recent fulfillment activity
+- `Data Buyer`: a narrow buyer surface that selects a visible asset/default offer, shows the bundle/posture being purchased, and publishes a targeted request
+- `autopilotctl data-market ...`: full shell-first control over the same app-owned seller/buyer state machine
+- `autopilot_headless_data_market`: a no-window runtime for scripts, operators, and agents
+- repo-owned skills for both conversational and CLI-first seller flows
+
+How it works today:
+
+- kernel authority owns `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt`
+- desktop, CLI, and skills all drive the same app-owned data-market logic through typed desktop-control actions
+- the panes are intentionally read-heavy: `autopilotctl` and headless/skill flows steer mutations, while the UI exposes the exact preview, package, posture, request, payment, delivery, and revocation truth
+- transport is a targeted NIP-90 data-vending profile:
+  - request kind `5960`
+  - result kind `6960`
+  - handler/capability kind `31990`
+- the strict public-relay verification path now works live against:
+  - `wss://relay.damus.io`
+  - `wss://relay.primal.net`
+
+Where to start:
+
+- implementation/status: [docs/kernel/markets/data-market.md](docs/kernel/markets/data-market.md)
+- CLI and headless runbook: [docs/headless-data-market.md](docs/headless-data-market.md)
+- implementation spec and backlog: [docs/plans/data-market-mvp-implementation-spec.md](docs/plans/data-market-mvp-implementation-spec.md)
+- repo-owned skills: [skills/README.md](skills/README.md)
 
 ## Kernel
 

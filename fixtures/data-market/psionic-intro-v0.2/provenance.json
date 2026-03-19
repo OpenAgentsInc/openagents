@@ -1,0 +1,18 @@
+{
+  "dataset_id": "psionic-intro-v0.2",
+  "generated_on": "2026-03-18",
+  "generated_in_repo": "/home/christopherdavid/code/openagents",
+  "source_repo": "/home/christopherdavid/code/psionic",
+  "source_documents": [
+    "README.md",
+    "docs/PSI_FOR_HUMANS.md",
+    "docs/ARCHITECTURE.md",
+    "docs/TRAIN_SYSTEM.md",
+    "docs/INFERENCE_ENGINE.md",
+    "docs/BACKENDS.md"
+  ],
+  "notes": [
+    "This dataset is a derived introductory bundle, not a mirror of the full Psionic repository.",
+    "The Psionic source documents remain the canonical authority."
+  ]
+}
