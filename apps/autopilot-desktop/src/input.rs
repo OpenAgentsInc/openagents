@@ -569,14 +569,19 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     return;
                 }
             }
+            state
+                .window
+                .set_cursor(PaneInput::cursor_icon(state, app.cursor_position));
             let flashing_now = state.hotbar.is_flashing();
             let provider_animating = provider_transition_animating(state.provider_runtime.mode);
             let rive_needs_redraw = open_rive_surface_needs_redraw(state);
+            let onboarding_needs_redraw = crate::onboarding::animation_needs_redraw(state);
             if flashing_now
                 || state.hotbar_flash_was_active
                 || provider_animating
                 || state.autopilot_chat.has_pending_messages()
                 || rive_needs_redraw
+                || onboarding_needs_redraw
             {
                 state.window.request_redraw();
             }
@@ -669,12 +674,13 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         .panes
         .iter()
         .any(|pane| pane.kind == PaneKind::FrameDebugger);
+    let onboarding_needs_redraw = crate::onboarding::animation_needs_redraw(state);
     let rive_needs_redraw = provider_control_hud.needs_redraw
         || preview_rive.needs_redraw
         || presentation_rive.needs_redraw;
     let poll_interval = background_poll_interval(
         state.autopilot_chat.has_pending_messages(),
-        rive_needs_redraw,
+        rive_needs_redraw || onboarding_needs_redraw,
         debug_probe_active,
         state.attnres_lab.playback_state.is_running(),
     );
@@ -687,6 +693,7 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
         preview_rive,
         presentation_rive,
         debug_probe_active,
+        onboarding_needs_redraw,
     );
     state
         .frame_debugger
@@ -781,6 +788,7 @@ fn build_frame_redraw_pressure_snapshot(
     rive_preview: RiveCadenceSnapshot,
     presentation: RiveCadenceSnapshot,
     debug_probe_active: bool,
+    onboarding_needs_redraw: bool,
 ) -> FrameRedrawPressureSnapshot {
     let hotbar_flashing = state.hotbar.is_flashing();
     let provider_animating = provider_transition_animating(state.provider_runtime.mode);
@@ -795,7 +803,10 @@ fn build_frame_redraw_pressure_snapshot(
         chat_pending,
         debug_probe_active,
         text_input_focused,
-        provider_control_hud.needs_redraw || rive_preview.needs_redraw || presentation.needs_redraw,
+        provider_control_hud.needs_redraw
+            || rive_preview.needs_redraw
+            || presentation.needs_redraw
+            || onboarding_needs_redraw,
     );
     FrameRedrawPressureSnapshot {
         should_redraw,

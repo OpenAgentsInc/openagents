@@ -1584,6 +1584,10 @@ fn cad_action_uses_dense_row_hot_zone(action: CadDemoPaneAction) -> bool {
 }
 
 pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon {
+    if let Some(cursor) = crate::onboarding::cursor_icon(state, point) {
+        return cursor;
+    }
+
     if let Some(mode) = state.pane_drag_mode {
         return match mode {
             PaneDragMode::Moving { .. } => CursorIcon::Move,
