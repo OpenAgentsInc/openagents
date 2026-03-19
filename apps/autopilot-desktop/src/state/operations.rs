@@ -1530,7 +1530,7 @@ impl NetworkRequestsState {
             return None;
         };
         let observed_at_epoch_ms = now_epoch_millis();
-        if request.status.is_terminal() {
+        if request.status.is_terminal() && request.status != NetworkRequestStatus::Paid {
             return None;
         }
         if !request_targets_provider(request, provider_pubkey) {
@@ -1764,9 +1764,17 @@ impl NetworkRequestsState {
             return None;
         };
         let observed_at_epoch_ms = now_epoch_millis();
-        if request.status.is_terminal() {
+        if request.status.is_terminal() && request.status != NetworkRequestStatus::Paid {
             return None;
         }
+        let result_is_error = matches!(
+            status
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("error")
+        );
         if !request_targets_provider(request, provider_pubkey) {
             tracing::info!(
                 target: "autopilot_desktop::buyer",
@@ -1842,15 +1850,15 @@ impl NetworkRequestsState {
         );
 
         request.last_provider_pubkey = Some(provider_pubkey.to_string());
-        if !matches!(
-            status
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("error")
-        ) {
+        if !result_is_error {
             request.result_provider_pubkey = Some(provider_pubkey.to_string());
+            if request
+                .winning_provider_pubkey
+                .as_deref()
+                .is_some_and(|winner| normalize_pubkey(winner) == normalize_pubkey(provider_pubkey))
+            {
+                request.winning_result_event_id = Some(event_id.to_string());
+            }
         }
         request.last_result_event_id = Some(event_id.to_string());
         select_payable_winner(request, Some(provider_pubkey), Some(observed_at_epoch_ms));
@@ -1965,12 +1973,22 @@ impl NetworkRequestsState {
                     observation.last_feedback_amount_msats,
                 )
             } else {
-                let winner = request.winning_provider_pubkey.as_deref()?;
+                let data_market_invoice_ready = request
+                    .request_type
+                    .eq_ignore_ascii_case(crate::app_state::DATA_MARKET_BUYER_REQUEST_TYPE)
+                    && provider_has_invoice_ready_payment_feedback(observation);
+                if data_market_invoice_ready && request.winning_provider_pubkey.is_none() {
+                    request.winning_provider_pubkey = Some(observation.provider_pubkey.clone());
+                }
+                let winner = request
+                    .winning_provider_pubkey
+                    .as_deref()
+                    .or_else(|| data_market_invoice_ready.then_some(provider_pubkey))?;
                 if normalize_pubkey(winner) != normalize_pubkey(provider_pubkey) {
                     return None;
                 }
 
-                if !provider_has_payable_result(observation) {
+                if !provider_has_payable_result(observation) && !data_market_invoice_ready {
                     return None;
                 }
 
@@ -2572,6 +2590,14 @@ fn provider_has_non_error_result(observation: &NetworkRequestProviderObservation
     shared_provider_has_non_error_result(&as_shared_provider_observation(observation))
 }
 
+fn provider_has_valid_invoice(observation: &NetworkRequestProviderObservation) -> bool {
+    observation
+        .last_feedback_bolt11
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|bolt11| !bolt11.is_empty())
+}
+
 fn provider_has_payable_result(observation: &NetworkRequestProviderObservation) -> bool {
     shared_provider_has_payable_result(&as_shared_provider_observation(observation))
 }
@@ -2600,6 +2626,12 @@ fn provider_has_payment_feedback(observation: &NetworkRequestProviderObservation
             .as_deref(),
         Some("payment-required")
     )
+}
+
+fn provider_has_invoice_ready_payment_feedback(
+    observation: &NetworkRequestProviderObservation,
+) -> bool {
+    provider_has_payment_feedback(observation) && provider_has_valid_invoice(observation)
 }
 
 fn provider_has_success_feedback(observation: &NetworkRequestProviderObservation) -> bool {

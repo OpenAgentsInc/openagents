@@ -1171,6 +1171,14 @@ fn pump_background_every_loop(
     if record_runtime_changed_op(
         state,
         "every_loop",
+        "data_seller::payment_watchdog_tick",
+        |state| run_pending_data_seller_payment_watchdog_tick(state, now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
         "starter_jobs::auto_demand_generator",
         |state| run_auto_starter_demand_generator(state, now),
     ) {

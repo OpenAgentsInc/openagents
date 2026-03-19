@@ -17,6 +17,7 @@ SELLER_SETTINGS_PATH="$SELLER_HOME/.openagents/autopilot-settings-v1.conf"
 BUYER_SETTINGS_PATH="$BUYER_HOME/.openagents/autopilot-settings-v1.conf"
 WAIT_TIMEOUT_MS="${OPENAGENTS_HEADLESS_DATA_MARKET_WAIT_TIMEOUT_MS:-120000}"
 REQUEST_TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_REQUEST_TIMEOUT_SECONDS:-120}"
+PRICE_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_PRICE_SATS:-5}"
 RELAY_URLS_CSV="${OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS:-}"
 LIVE_INGEST_WAIT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_LIVE_INGEST_WAIT_SECONDS:-30}"
 REQUIRE_LIVE_INGEST="${OPENAGENTS_HEADLESS_DATA_MARKET_REQUIRE_LIVE_INGEST:-false}"
@@ -159,7 +160,38 @@ wait_for_status() {
   return 1
 }
 
-wait_for_seller_request_ready() {
+wait_for_seller_request_evaluation() {
+  local manifest="$1"
+  local request_id="$2"
+  local output_path="$3"
+  local timeout_seconds="$4"
+  local expected_disposition="$5"
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market seller-status >"$output_path"
+    if python3 - "$output_path" "$request_id" "$expected_disposition" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+request_id = sys.argv[2]
+expected = sys.argv[3]
+latest = payload.get("payload", {}).get("seller", {}).get("latest_incoming_request")
+if not latest:
+    raise SystemExit(1)
+if latest.get("request_id") != request_id:
+    raise SystemExit(1)
+if latest.get("evaluation_disposition") != expected:
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+    then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_for_seller_payment_settled() {
   local manifest="$1"
   local request_id="$2"
   local output_path="$3"
@@ -176,7 +208,10 @@ if not latest:
     raise SystemExit(1)
 if latest.get("request_id") != request_id:
     raise SystemExit(1)
-if latest.get("evaluation_disposition") != "ready_for_delivery":
+payment = latest.get("payment") or {}
+if payment.get("state") != "paid":
+    raise SystemExit(1)
+if not payment.get("payment_pointer"):
     raise SystemExit(1)
 raise SystemExit(0)
 PY
@@ -412,8 +447,8 @@ echo "packaging dataset for sale"
   --default-policy targeted_request \
   --grant-policy-template targeted_request \
   --consumer-id "$BUYER_NPUB" \
-  --price-sats 0 \
-  --grant-price-sats 0 \
+  --price-sats "$PRICE_SATS" \
+  --grant-price-sats "$PRICE_SATS" \
   --grant-expires-hours 24 \
   --grant-warranty-window-hours 4 \
   >"$RUN_DIR/package-summary.stdout.json"
@@ -446,10 +481,14 @@ echo "bringing buyer runtime online for result tracking"
 
 echo "waiting for seller to receive the request"
 SELLER_REQUEST_WAIT_SECONDS="$REQUEST_TIMEOUT_SECONDS"
+EXPECTED_SELLER_DISPOSITION="ready_for_delivery"
+if [[ "$PRICE_SATS" -gt 0 ]]; then
+  EXPECTED_SELLER_DISPOSITION="ready_for_payment_quote"
+fi
 if [[ -n "$RELAY_URLS_CSV" ]]; then
   SELLER_REQUEST_WAIT_SECONDS="$LIVE_INGEST_WAIT_SECONDS"
 fi
-if ! wait_for_seller_request_ready "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" "$SELLER_REQUEST_WAIT_SECONDS"; then
+if ! wait_for_seller_request_evaluation "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" "$SELLER_REQUEST_WAIT_SECONDS" "$EXPECTED_SELLER_DISPOSITION"; then
   if [[ "$REQUIRE_LIVE_INGEST" == "true" ]]; then
     echo "seller never observed a live request from configured relays" >&2
     cat "$RUN_DIR/seller-request-ready.json" >&2 || true
@@ -457,16 +496,31 @@ if ! wait_for_seller_request_ready "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/se
   elif [[ -n "$RELAY_URLS_CSV" ]]; then
     echo "seller did not ingest live from public relays; importing request by event id"
     import_seller_request_from_relays "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-import-request.json" "${CONFIGURED_RELAY_URLS[@]}"
-    wait_for_seller_request_ready "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" 30 || {
-      echo "seller never observed a ready-for-delivery request" >&2
+    wait_for_seller_request_evaluation "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-request-ready.json" 30 "$EXPECTED_SELLER_DISPOSITION" || {
+      echo "seller never observed the expected request disposition $EXPECTED_SELLER_DISPOSITION" >&2
       cat "$RUN_DIR/seller-request-ready.json" >&2 || true
       exit 1
     }
   else
-    echo "seller never observed a ready-for-delivery request" >&2
+    echo "seller never observed the expected request disposition $EXPECTED_SELLER_DISPOSITION" >&2
     cat "$RUN_DIR/seller-request-ready.json" >&2 || true
     exit 1
   fi
+fi
+
+if [[ "$PRICE_SATS" -gt 0 ]]; then
+  echo "requesting priced payment quote"
+  "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" --json data-market request-payment \
+    --request-id "$REQUEST_ID" >"$RUN_DIR/request-payment.json"
+
+  echo "waiting for seller to observe settled payment"
+  wait_for_seller_payment_settled "$SELLER_MANIFEST" "$REQUEST_ID" "$RUN_DIR/seller-payment-settled.json" "$REQUEST_TIMEOUT_SECONDS" || {
+    echo "seller never observed the paid settlement" >&2
+    cat "$RUN_DIR/seller-payment-settled.json" >&2 || true
+    exit 1
+  }
+
+  "$AUTOPILOTCTL_BIN" --manifest "$BUYER_MANIFEST" --json data-market buyer-status >"$RUN_DIR/buyer-after-payment.json"
 fi
 
 echo "staging local delivery bundle"
@@ -507,7 +561,7 @@ payload = {
 output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 
-echo "issuing free delivery"
+echo "issuing delivery"
 "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" --json data-market prepare-delivery --request-id "$REQUEST_ID" --file "$RUN_DIR/delivery-args.json" >"$RUN_DIR/prepare-delivery.json"
 "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" --json data-market issue-delivery --request-id "$REQUEST_ID" >"$RUN_DIR/issue-delivery.json"
 
@@ -552,7 +606,7 @@ echo "consuming delivered data locally"
   --overwrite >"$RUN_DIR/consume-delivery.json"
 
 echo "verifying consumed payload matches source"
-python3 - "$RUN_DIR/source-dataset" "$RUN_DIR/consumed-dataset/payload" "$RUN_DIR/consume-delivery.json" "$RUN_DIR/publish-asset.json" "$RUN_DIR/publish-grant.json" "$RUN_DIR/buyer-result.json" "$RUN_DIR/issue-delivery.json" "$RUN_DIR/seller-request-ready.json" "$RUN_DIR/summary.json" "$NORMALIZED_RELAY_URLS_CSV" "$RUN_DIR/seller-import-request.json" "$RUN_DIR/buyer-import-response.json" "$REQUIRE_LIVE_INGEST" <<'PY'
+python3 - "$RUN_DIR/source-dataset" "$RUN_DIR/consumed-dataset/payload" "$RUN_DIR/consume-delivery.json" "$RUN_DIR/publish-asset.json" "$RUN_DIR/publish-grant.json" "$RUN_DIR/buyer-result.json" "$RUN_DIR/issue-delivery.json" "$RUN_DIR/seller-request-ready.json" "$RUN_DIR/summary.json" "$NORMALIZED_RELAY_URLS_CSV" "$RUN_DIR/seller-import-request.json" "$RUN_DIR/buyer-import-response.json" "$REQUIRE_LIVE_INGEST" "$RUN_DIR/seller-payment-settled.json" "$RUN_DIR/buyer-after-payment.json" "$PRICE_SATS" <<'PY'
 import filecmp
 import json
 import pathlib
@@ -570,6 +624,9 @@ summary_path = pathlib.Path(sys.argv[9])
 configured_relay_urls = [relay for relay in sys.argv[10].split(",") if relay]
 seller_import_path = pathlib.Path(sys.argv[11])
 buyer_import_path = pathlib.Path(sys.argv[12])
+seller_payment_path = pathlib.Path(sys.argv[14])
+buyer_payment_path = pathlib.Path(sys.argv[15])
+price_sats = int(sys.argv[16])
 
 if not consumed_root.exists():
     raise SystemExit("consumed payload directory is missing")
@@ -598,11 +655,33 @@ latest_request = buyer_result_payload["payload"]["buyer"]["latest_request"]
 seller_latest = seller_request_payload["payload"]["seller"]["latest_incoming_request"]
 seller_import = json.loads(seller_import_path.read_text()) if seller_import_path.exists() else None
 buyer_import = json.loads(buyer_import_path.read_text()) if buyer_import_path.exists() else None
+seller_payment = json.loads(seller_payment_path.read_text()) if seller_payment_path.exists() else None
+buyer_payment = json.loads(buyer_payment_path.read_text()) if buyer_payment_path.exists() else None
+seller_payment_latest = (
+    seller_payment.get("payload", {}).get("seller", {}).get("latest_incoming_request")
+    if seller_payment else None
+)
+buyer_payment_latest = (
+    buyer_payment.get("payload", {}).get("buyer", {}).get("latest_request")
+    if buyer_payment else None
+)
 
 summary = {
+    "price_sats": price_sats,
     "asset_id": publish_asset_payload["payload"]["seller"]["draft"]["last_published_asset_id"],
     "grant_id": publish_grant_payload["payload"]["seller"]["draft"]["last_published_grant_id"],
     "request_id": latest_request["request_id"],
+    "payment_feedback_event_id": (
+        buyer_payment_latest.get("last_feedback_event_id")
+        if buyer_payment_latest else latest_request.get("last_feedback_event_id")
+    ),
+    "buyer_payment_pointer": (
+        buyer_payment_latest.get("last_payment_pointer")
+        if buyer_payment_latest else latest_request.get("last_payment_pointer")
+    ),
+    "seller_payment_pointer": (
+        ((seller_payment_latest or {}).get("payment") or {}).get("payment_pointer")
+    ),
     "result_event_id": latest_request["last_result_event_id"],
     "delivery_bundle_id": issue_delivery_payload["payload"]["seller"]["latest_incoming_request"]["delivery"]["bundle_id"],
     "consumed_payload_path": consume_payload["consumed"]["payload_output_path"],
