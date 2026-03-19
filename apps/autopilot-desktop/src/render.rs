@@ -4,6 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 use nostr::load_or_create_identity;
+use wgpu::util::DeviceExt;
 use wgpui::components::Text;
 use wgpui::components::hud::{Command, CommandPalette};
 use wgpui::renderer::Renderer;
@@ -50,6 +51,350 @@ const SIDEBAR_HANDLE_ICON_TOP_PAD: f32 = 12.0;
 const SIDEBAR_HANDLE_ICON_LEFT_INSET: f32 = 2.0;
 const SIDEBAR_COLLAPSED_RAIL_WIDTH: f32 = 28.0;
 const LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_SIMULATION_LANES";
+const BACKDROP_BLUR_SHADER: &str = r#"
+struct BlurUniforms {
+    texel_size: vec2<f32>,
+    direction: vec2<f32>,
+};
+
+@group(0) @binding(0)
+var input_texture: texture_2d<f32>;
+@group(0) @binding(1)
+var input_sampler: sampler;
+@group(0) @binding(2)
+var<uniform> blur_uniforms: BlurUniforms;
+
+struct VertexOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
+    var positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0,  1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 1.0, -1.0),
+        vec2<f32>(-1.0,  1.0),
+        vec2<f32>( 1.0, -1.0),
+        vec2<f32>( 1.0,  1.0),
+    );
+    var uvs = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+    );
+
+    var out: VertexOut;
+    out.position = vec4<f32>(positions[vertex_index], 0.0, 1.0);
+    out.uv = uvs[vertex_index];
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    let delta = blur_uniforms.texel_size * blur_uniforms.direction * 3.5;
+    var color = textureSample(input_texture, input_sampler, in.uv) * 0.14;
+    color += textureSample(input_texture, input_sampler, in.uv + delta * 1.0) * 0.14;
+    color += textureSample(input_texture, input_sampler, in.uv - delta * 1.0) * 0.14;
+    color += textureSample(input_texture, input_sampler, in.uv + delta * 2.0) * 0.12;
+    color += textureSample(input_texture, input_sampler, in.uv - delta * 2.0) * 0.12;
+    color += textureSample(input_texture, input_sampler, in.uv + delta * 3.0) * 0.095;
+    color += textureSample(input_texture, input_sampler, in.uv - delta * 3.0) * 0.095;
+    color += textureSample(input_texture, input_sampler, in.uv + delta * 4.0) * 0.075;
+    color += textureSample(input_texture, input_sampler, in.uv - delta * 4.0) * 0.075;
+    return color;
+}
+"#;
+
+pub struct BackdropBlurRenderer {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    uniform_buffer: wgpu::Buffer,
+    scene_texture: Option<wgpu::Texture>,
+    scene_view: Option<wgpu::TextureView>,
+    blur_texture: Option<wgpu::Texture>,
+    blur_view: Option<wgpu::TextureView>,
+    target_size: (u32, u32),
+    target_format: wgpu::TextureFormat,
+}
+
+impl BackdropBlurRenderer {
+    pub fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Backdrop Blur Shader"),
+            source: wgpu::ShaderSource::Wgsl(BACKDROP_BLUR_SHADER.into()),
+        });
+        let bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Backdrop Blur Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Backdrop Blur Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Backdrop Blur Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Backdrop Blur Uniform Buffer"),
+            contents: &blur_uniform_bytes([1.0, 1.0], [1.0, 0.0]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Backdrop Blur Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        Self {
+            pipeline,
+            bind_group_layout,
+            sampler,
+            uniform_buffer,
+            scene_texture: None,
+            scene_view: None,
+            blur_texture: None,
+            blur_view: None,
+            target_size: (0, 0),
+            target_format,
+        }
+    }
+
+    pub fn ensure_size(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        target_format: wgpu::TextureFormat,
+    ) {
+        let width = width.max(1);
+        let height = height.max(1);
+        if self.target_size == (width, height)
+            && self.target_format == target_format
+            && self.scene_view.is_some()
+            && self.blur_view.is_some()
+        {
+            return;
+        }
+        self.target_size = (width, height);
+        self.target_format = target_format;
+        let (scene_texture, scene_view) =
+            create_blur_target_texture(device, "Backdrop Blur Scene Texture", width, height, target_format);
+        let (blur_texture, blur_view) =
+            create_blur_target_texture(device, "Backdrop Blur Intermediate Texture", width, height, target_format);
+        self.scene_texture = Some(scene_texture);
+        self.scene_view = Some(scene_view);
+        self.blur_texture = Some(blur_texture);
+        self.blur_view = Some(blur_view);
+    }
+
+    pub fn scene_view(&self) -> Option<&wgpu::TextureView> {
+        self.scene_view.as_ref()
+    }
+
+    pub fn render_blurred(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        output_view: &wgpu::TextureView,
+    ) {
+        let Some(scene_view) = self.scene_view.as_ref() else {
+            return;
+        };
+        let Some(blur_view) = self.blur_view.as_ref() else {
+            return;
+        };
+        let texel_size = [
+            1.0 / self.target_size.0.max(1) as f32,
+            1.0 / self.target_size.1.max(1) as f32,
+        ];
+
+        self.run_blur_pass(
+            device,
+            queue,
+            encoder,
+            scene_view,
+            blur_view,
+            texel_size,
+            [1.0, 0.0],
+            wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        );
+        self.run_blur_pass(
+            device,
+            queue,
+            encoder,
+            blur_view,
+            scene_view,
+            texel_size,
+            [0.0, 1.0],
+            wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        );
+        self.run_blur_pass(
+            device,
+            queue,
+            encoder,
+            scene_view,
+            blur_view,
+            texel_size,
+            [1.0, 0.0],
+            wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        );
+        self.run_blur_pass(
+            device,
+            queue,
+            encoder,
+            blur_view,
+            output_view,
+            texel_size,
+            [0.0, 1.0],
+            wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+        );
+    }
+
+    fn run_blur_pass(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        source_view: &wgpu::TextureView,
+        target_view: &wgpu::TextureView,
+        texel_size: [f32; 2],
+        direction: [f32; 2],
+        load_op: wgpu::LoadOp<wgpu::Color>,
+    ) {
+        queue.write_buffer(&self.uniform_buffer, 0, &blur_uniform_bytes(texel_size, direction));
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Backdrop Blur Bind Group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(source_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Backdrop Blur Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: load_op,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.draw(0..6, 0..1);
+    }
+}
+
+fn create_blur_target_texture(
+    device: &wgpu::Device,
+    label: &str,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
+}
+
+fn blur_uniform_bytes(texel_size: [f32; 2], direction: [f32; 2]) -> [u8; 16] {
+    let values = [texel_size[0], texel_size[1], direction[0], direction[1]];
+    let mut bytes = [0_u8; 16];
+    for (index, value) in values.into_iter().enumerate() {
+        bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_ne_bytes());
+    }
+    bytes
+}
 
 const SETTINGS_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M249.9 176.3C243.4 179.5 237.1 183.1 231.1 187.2C222.9 192.7 212.6 194.1 203.1 191L131.4 167.2L93.5 232.8L150 283.1C157.4 289.7 161.3 299.3 160.7 309.2C160.2 316.4 160.2 323.8 160.7 331C161.4 340.9 157.4 350.5 150 357.1L93.5 407.3L131.4 473L203.1 449.2C212.5 446.1 222.8 447.5 231.1 453C237.1 457 243.4 460.7 249.9 463.9C258.8 468.3 265.1 476.5 267.1 486.2L282.3 560.2L358.1 560.2L373.3 486.2C375.3 476.5 381.7 468.3 390.5 463.9C397 460.7 403.3 457.1 409.3 453C417.5 447.5 427.8 446.1 437.3 449.2L509 473L546.9 407.3L490.4 357.1C483 350.5 479.1 340.9 479.7 331C479.9 327.4 480.1 323.8 480.1 320.1C480.1 316.4 480 312.8 479.7 309.2C479 299.3 483 289.7 490.4 283.1L546.9 232.9L509 167.2L437.3 191C427.9 194.1 417.6 192.7 409.3 187.2C403.3 183.2 397 179.5 390.5 176.3C381.6 171.9 375.3 163.7 373.3 154L358.1 80L282.3 80L267.1 154C265.1 163.7 258.7 171.9 249.9 176.3zM358.2 48C373.4 48 386.5 58.7 389.5 73.5L404.7 147.5C412.5 151.3 420.1 155.7 427.3 160.6L499 136.8C513.4 132 529.2 138 536.8 151.2L574.7 216.9C582.3 230.1 579.6 246.7 568.2 256.8L511.9 307C512.5 315.6 512.5 324.5 511.9 333L568.4 383.2C579.8 393.3 582.4 410 574.9 423.1L537 488.8C529.4 502 513.6 508 499.2 503.2L427.5 479.4C420.3 484.2 412.8 488.6 404.9 492.5L389.7 566.5C386.6 581.4 373.5 592 358.4 592L282.6 592C267.4 592 254.3 581.3 251.3 566.5L236.1 492.5C228.3 488.7 220.7 484.3 213.5 479.4L141.5 503.2C127.1 508 111.3 502 103.7 488.8L65.8 423.2C58.2 410.1 60.9 393.4 72.3 383.3L128.7 333C128.1 324.4 128.1 315.5 128.7 307L72.2 256.8C60.8 246.7 58.2 230 65.7 216.9L103.7 151.2C111.3 138 127.1 132 141.5 136.8L213.2 160.6C220.4 155.8 227.9 151.4 235.8 147.5L251 73.5C254.1 58.7 267.2 48 282.4 48L358.2 48zM264.3 320C264.3 350.8 289.2 375.7 320 375.7C350.8 375.7 375.7 350.8 375.7 320C375.7 289.2 350.8 264.3 320 264.3C289.2 264.3 264.3 289.2 264.3 320zM319.7 408C271.1 407.8 231.8 368.3 232 319.7C232.2 271.1 271.7 231.8 320.3 232C368.9 232.2 408.2 271.7 408 320.3C407.8 368.9 368.3 408.2 319.7 408z"/></svg>"##;
 const SIDEBAR_HANDLE_SVG_RAW: &str = r##"<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 640 640">
@@ -171,6 +516,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
         surface.configure(&device, &config);
 
         let renderer = Renderer::new(&device, surface_format);
+        let backdrop_blur = BackdropBlurRenderer::new(&device, surface_format);
         let scale_factor = window.scale_factor() as f32;
         let text_system = TextSystem::new(scale_factor);
 
@@ -262,6 +608,7 @@ pub fn init_state(event_loop: &ActiveEventLoop, window_visible: bool) -> Result<
             queue,
             config,
             renderer,
+            backdrop_blur,
             text_system,
             scale_factor,
             desktop_shell_mode: crate::desktop_shell::DesktopShellMode::from_env(),
@@ -771,6 +1118,12 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     let frame_start = Instant::now();
     crate::onboarding::sync_progress(state);
     let onboarding_view = crate::onboarding::build_view(state);
+    let onboarding_backdrop_blur_active = matches!(
+        onboarding_view.phase,
+        crate::onboarding::OnboardingPhase::SetupModal
+            | crate::onboarding::OnboardingPhase::TourHotkeys
+            | crate::onboarding::OnboardingPhase::TourSellCompute
+    );
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let height = logical.height;
@@ -1329,13 +1682,57 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
             label.paint(text_bounds, &mut paint);
         }
 
+    }
+
+    let overlay_scene = if state.onboarding.is_active() {
+        let mut overlay_scene = Scene::new();
+        let overlay_buy_mode_enabled = state.mission_control_buy_mode_enabled();
+        let overlay_backend_kernel_authority = state.kernel_projection_worker.uses_remote_authority();
+        let overlay_cursor_position = state.cursor_position;
+        let overlay_desktop_shell_mode = state.desktop_shell_mode;
+        let mut overlay_paint =
+            PaintContext::new(&mut overlay_scene, &mut state.text_system, state.scale_factor);
+        if matches!(
+            onboarding_view.phase,
+            crate::onboarding::OnboardingPhase::TourSellCompute
+        ) {
+            crate::pane_renderer::paint_mission_control_sell_compute_focus(
+                Bounds::new(0.0, 0.0, width, height),
+                overlay_cursor_position,
+                overlay_desktop_shell_mode,
+                overlay_buy_mode_enabled,
+                &state.autopilot_chat,
+                state.nostr_identity.as_ref(),
+                &mut state.mission_control,
+                &state.provider_control,
+                &state.provider_runtime,
+                &state.gpt_oss_execution,
+                &mut state.log_stream,
+                &state.buy_mode_payments,
+                &state.earn_job_lifecycle_projection,
+                &state.sa_lane,
+                &state.skl_lane,
+                &state.ac_lane,
+                overlay_backend_kernel_authority,
+                provider_blockers.as_slice(),
+                &state.earnings_scoreboard,
+                &state.spark_wallet,
+                &state.network_requests,
+                &state.job_inbox,
+                &state.active_job,
+                &mut overlay_paint,
+            );
+        }
         crate::onboarding::paint_overlay(
             &mut state.onboarding,
             &onboarding_view,
             Bounds::new(0.0, 0.0, width, height),
-            &mut paint,
+            &mut overlay_paint,
         );
-    }
+        Some(overlay_scene)
+    } else {
+        None
+    };
 
     state
         .renderer
@@ -1373,14 +1770,61 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
 
     let scene_build_ms = frame_start.elapsed().as_secs_f32() * 1_000.0 - surface_acquire_ms;
 
+    let submit_present_start = Instant::now();
     state.renderer.prepare(
         &state.device,
         &state.queue,
         &scene,
         state.scale_factor.max(0.1),
     );
-    let submit_present_start = Instant::now();
-    state.renderer.render(&mut encoder, &view);
+    if onboarding_backdrop_blur_active {
+        state.backdrop_blur.ensure_size(
+            &state.device,
+            state.config.width,
+            state.config.height,
+            state.config.format,
+        );
+        if let Some(scene_view) = state.backdrop_blur.scene_view() {
+            state.renderer.render(&mut encoder, scene_view);
+            state.backdrop_blur.render_blurred(
+                &state.device,
+                &state.queue,
+                &mut encoder,
+                &view,
+            );
+            if let Some(overlay_scene) = overlay_scene.as_ref() {
+                state.renderer.prepare(
+                    &state.device,
+                    &state.queue,
+                    overlay_scene,
+                    state.scale_factor.max(0.1),
+                );
+                state.renderer.render_overlay(&mut encoder, &view);
+            }
+        } else {
+            state.renderer.render(&mut encoder, &view);
+            if let Some(overlay_scene) = overlay_scene.as_ref() {
+                state.renderer.prepare(
+                    &state.device,
+                    &state.queue,
+                    overlay_scene,
+                    state.scale_factor.max(0.1),
+                );
+                state.renderer.render_overlay(&mut encoder, &view);
+            }
+        }
+    } else {
+        state.renderer.render(&mut encoder, &view);
+        if let Some(overlay_scene) = overlay_scene.as_ref() {
+            state.renderer.prepare(
+                &state.device,
+                &state.queue,
+                overlay_scene,
+                state.scale_factor.max(0.1),
+            );
+            state.renderer.render_overlay(&mut encoder, &view);
+        }
+    }
     state.queue.submit(std::iter::once(encoder.finish()));
     output.present();
     let submit_present_ms = submit_present_start.elapsed().as_secs_f32() * 1_000.0;

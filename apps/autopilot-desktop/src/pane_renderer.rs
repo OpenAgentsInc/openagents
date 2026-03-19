@@ -2255,11 +2255,16 @@ fn paint_go_online_pane(
     let sell_max_scroll =
         mission_control_max_scroll_for_viewport(sell_viewport, sell_content_height);
     let sell_scroll = mission_control.clamp_sell_scroll_offset(sell_max_scroll);
+    let toggle_accent = if toggle_label == "GO ONLINE" {
+        mission_control_green_color()
+    } else {
+        mission_control_orange_color()
+    };
     paint_mission_control_go_online_button(
         toggle_bounds,
         toggle_label,
         go_online_enabled,
-        status_color,
+        toggle_accent,
         paint,
     );
 
@@ -2888,6 +2893,66 @@ fn paint_go_online_pane(
     );
     log_stream.terminal.set_title("");
     log_stream.terminal.paint(log_body_bounds, paint);
+}
+
+pub(crate) fn paint_mission_control_sell_compute_focus(
+    content_bounds: Bounds,
+    cursor_position: Point,
+    desktop_shell_mode: crate::desktop_shell::DesktopShellMode,
+    buy_mode_enabled: bool,
+    autopilot_chat: &AutopilotChatState,
+    nostr_identity: Option<&nostr::NostrIdentity>,
+    mission_control: &mut MissionControlPaneState,
+    provider_control: &ProviderControlPaneState,
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+    log_stream: &mut LogStreamPaneState,
+    buy_mode: &BuyModePaymentsPaneState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
+    skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
+    ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
+    backend_kernel_authority: bool,
+    provider_blockers: &[ProviderBlocker],
+    earnings_scoreboard: &EarningsScoreboardState,
+    spark_wallet: &SparkPaneState,
+    network_requests: &NetworkRequestsState,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
+    paint: &mut PaintContext,
+) {
+    let focus_bounds = crate::pane_system::mission_control_layout_for_mode(content_bounds, buy_mode_enabled)
+        .sell_panel
+        .expand(10.0);
+    paint.scene.push_clip(focus_bounds);
+    paint_go_online_pane(
+        content_bounds,
+        true,
+        cursor_position,
+        desktop_shell_mode,
+        buy_mode_enabled,
+        autopilot_chat,
+        nostr_identity,
+        mission_control,
+        provider_control,
+        provider_runtime,
+        local_inference_runtime,
+        log_stream,
+        buy_mode,
+        earn_job_lifecycle_projection,
+        sa_lane,
+        skl_lane,
+        ac_lane,
+        backend_kernel_authority,
+        provider_blockers,
+        earnings_scoreboard,
+        spark_wallet,
+        network_requests,
+        job_inbox,
+        active_job,
+        paint,
+    );
+    paint.scene.pop_clip();
 }
 
 pub(crate) fn paint_mission_control_section_panel(
@@ -7523,29 +7588,21 @@ pub(crate) fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut Pai
     paint_button(bounds, label, ButtonStyle::Disabled, paint);
 }
 
-fn paint_mission_control_go_online_button(
+pub(crate) fn paint_mission_control_go_online_button(
     bounds: Bounds,
     label: &str,
     enabled: bool,
-    _accent: Hsla,
+    accent: Hsla,
     paint: &mut PaintContext,
 ) {
-    let is_go_online = label == "GO ONLINE";
-    let border = if enabled {
-        if is_go_online {
-            mission_control_green_color()
-        } else {
-            mission_control_orange_color()
-        }
-    } else {
-        mission_control_panel_border_color()
-    };
+    let use_green_style = matches!(label, "GO ONLINE" | "START EARNING BITCOIN");
+    let border = if enabled { accent } else { mission_control_panel_border_color() };
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f32())
         .unwrap_or(0.0);
     let pulse = ((now_secs * 2.4).sin() * 0.5) + 0.5;
-    let glow_alpha = if enabled && is_go_online {
+    let glow_alpha = if enabled && use_green_style {
         0.14 + pulse * 0.08
     } else if enabled {
         0.10
@@ -7566,7 +7623,7 @@ fn paint_mission_control_go_online_button(
         );
     }
 
-    if is_go_online && enabled {
+    if use_green_style && enabled {
         paint.scene.draw_quad(
             Quad::new(bounds)
                 .with_background(Hsla::from_hex(0x142019))
@@ -7593,7 +7650,7 @@ fn paint_mission_control_go_online_button(
             .with_background(Hsla::from_hex(0x111A15).with_alpha(0.92))
             .with_corner_radius(3.0),
         );
-    } else if !is_go_online && enabled {
+    } else if enabled {
         paint.scene.draw_quad(
             Quad::new(bounds)
                 .with_background(Hsla::from_hex(0x251A17))
@@ -7635,7 +7692,7 @@ fn paint_mission_control_go_online_button(
     paint_button_label_mono(
         bounds,
         label,
-        if is_go_online { 24.0 } else { 18.0 },
+        if use_green_style { 24.0 } else { 18.0 },
         if enabled {
             Hsla::from_hex(0xFFFFFF)
         } else {

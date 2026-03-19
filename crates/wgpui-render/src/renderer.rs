@@ -917,11 +917,38 @@ impl Renderer {
         self.render_with_clear(encoder, view, wgpu::Color::BLACK);
     }
 
+    pub fn render_overlay(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+        self.render_with_ops(
+            encoder,
+            view,
+            wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
+            },
+        );
+    }
+
     pub fn render_with_clear(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         clear_color: wgpu::Color,
+    ) {
+        self.render_with_ops(
+            encoder,
+            view,
+            wgpu::Operations {
+                load: wgpu::LoadOp::Clear(clear_color),
+                store: wgpu::StoreOp::Store,
+            },
+        );
+    }
+
+    fn render_with_ops(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        ops: wgpu::Operations<wgpu::Color>,
     ) {
         let render_start = Instant::now();
         let mut draw_calls: u32 = 0;
@@ -934,10 +961,7 @@ impl Renderer {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view,
                 resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(clear_color),
-                    store: wgpu::StoreOp::Store,
-                },
+                ops,
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
