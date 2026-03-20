@@ -3417,6 +3417,8 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatCycleSandboxMode => run_chat_cycle_sandbox_mode_action(state),
         PaneHitAction::ChatToggleHeaderControls => run_chat_toggle_header_controls_action(state),
         PaneHitAction::ChatToggleHelpHint => run_chat_toggle_help_hint_action(state),
+        PaneHitAction::ChatToggleWorkspaceRail => run_chat_toggle_workspace_rail_action(state),
+        PaneHitAction::ChatToggleThreadRail => run_chat_toggle_thread_rail_action(state),
         PaneHitAction::ChatInterruptTurn => run_chat_interrupt_turn_action(state),
         PaneHitAction::ChatImplementPlan => run_chat_implement_plan_action(state),
         PaneHitAction::ChatReviewThread => run_chat_review_action(state),
