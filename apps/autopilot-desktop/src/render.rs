@@ -1068,6 +1068,55 @@ fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
 }
 
 fn layout_split_shell_startup_panes(state: &mut RenderState) {
+    let chat_idx = state
+        .panes
+        .iter()
+        .position(|pane| pane.kind == PaneKind::AutopilotChat);
+    let mission_idx = state
+        .panes
+        .iter()
+        .position(|pane| pane.kind == PaneKind::GoOnline);
+    if let (Some(chat_idx), Some(mission_idx)) = (chat_idx, mission_idx) {
+        let logical = logical_size(&state.config, state.scale_factor);
+        let usable_width = (logical.width - sidebar_reserved_width(state)).max(0.0);
+        let usable_height = logical.height.max(0.0);
+        let margin = 12.0;
+        let gap = 10.0;
+        let top = 12.0;
+        let bottom_margin = 12.0;
+        let available_height = (usable_height - top - bottom_margin).max(300.0);
+        let available_width = (usable_width - margin * 2.0 - gap).max(900.0);
+
+        let chat_min_width = 620.0;
+        let mission_min_width = 520.0;
+        let mission_pref_width = state.panes[mission_idx].bounds.size.width;
+        let mission_width = mission_pref_width
+            .clamp(mission_min_width, 760.0)
+            .min((available_width - chat_min_width).max(mission_min_width));
+        let chat_width = (available_width - mission_width).max(chat_min_width);
+
+        let chat_height = state.panes[chat_idx]
+            .bounds
+            .size
+            .height
+            .min(available_height);
+        let mission_height = state.panes[mission_idx]
+            .bounds
+            .size
+            .height
+            .min(available_height);
+
+        state.panes[chat_idx].bounds = Bounds::new(margin, top, chat_width, chat_height);
+        state.panes[mission_idx].bounds = Bounds::new(
+            margin + chat_width + gap,
+            top,
+            mission_width,
+            mission_height,
+        );
+        clamp_all_panes_to_window(state);
+        return;
+    }
+
     let Some(provider_idx) = state
         .panes
         .iter()
@@ -1101,7 +1150,12 @@ fn layout_split_shell_startup_panes(state: &mut RenderState) {
 
 fn open_startup_panes(state: &mut RenderState) {
     let startup_panes = startup_pane_kinds();
-    for pane_kind in [PaneKind::EarningsScoreboard, PaneKind::ProviderControl] {
+    for pane_kind in [
+        PaneKind::AutopilotChat,
+        PaneKind::GoOnline,
+        PaneKind::EarningsScoreboard,
+        PaneKind::ProviderControl,
+    ] {
         if startup_panes.contains(&pane_kind) {
             open_startup_pane(state, pane_kind);
         }
@@ -1109,7 +1163,10 @@ fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_panes {
         if matches!(
             pane_kind,
-            PaneKind::EarningsScoreboard | PaneKind::ProviderControl
+            PaneKind::AutopilotChat
+                | PaneKind::GoOnline
+                | PaneKind::EarningsScoreboard
+                | PaneKind::ProviderControl
         ) {
             continue;
         }
@@ -1117,7 +1174,14 @@ fn open_startup_panes(state: &mut RenderState) {
     }
 
     layout_split_shell_startup_panes(state);
-    if let Some(provider_id) = state
+    if let Some(mission_id) = state
+        .panes
+        .iter()
+        .find(|pane| pane.kind == PaneKind::GoOnline)
+        .map(|pane| pane.id)
+    {
+        PaneController::bring_to_front(state, mission_id);
+    } else if let Some(provider_id) = state
         .panes
         .iter()
         .find(|pane| pane.kind == PaneKind::ProviderControl)
@@ -2162,8 +2226,7 @@ mod tests {
     #[test]
     fn startup_pane_set_restores_mission_control() {
         let startup = startup_pane_kinds();
-        assert_eq!(startup, vec![PaneKind::GoOnline]);
-        assert!(!startup.contains(&PaneKind::AutopilotChat));
+        assert_eq!(startup, vec![PaneKind::AutopilotChat, PaneKind::GoOnline]);
         assert!(!startup.contains(&PaneKind::ProjectOps));
         assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
