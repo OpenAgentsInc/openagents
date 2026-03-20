@@ -129,38 +129,37 @@ impl BackdropBlurRenderer {
             label: Some("Backdrop Blur Shader"),
             source: wgpu::ShaderSource::Wgsl(BACKDROP_BLUR_SHADER.into()),
         });
-        let bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Backdrop Blur Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Backdrop Blur Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
+                    count: None,
+                },
+            ],
+        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Backdrop Blur Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
@@ -238,10 +237,20 @@ impl BackdropBlurRenderer {
         }
         self.target_size = (width, height);
         self.target_format = target_format;
-        let (scene_texture, scene_view) =
-            create_blur_target_texture(device, "Backdrop Blur Scene Texture", width, height, target_format);
-        let (blur_texture, blur_view) =
-            create_blur_target_texture(device, "Backdrop Blur Intermediate Texture", width, height, target_format);
+        let (scene_texture, scene_view) = create_blur_target_texture(
+            device,
+            "Backdrop Blur Scene Texture",
+            width,
+            height,
+            target_format,
+        );
+        let (blur_texture, blur_view) = create_blur_target_texture(
+            device,
+            "Backdrop Blur Intermediate Texture",
+            width,
+            height,
+            target_format,
+        );
         self.scene_texture = Some(scene_texture);
         self.scene_view = Some(scene_view);
         self.blur_texture = Some(blur_texture);
@@ -323,7 +332,11 @@ impl BackdropBlurRenderer {
         direction: [f32; 2],
         load_op: wgpu::LoadOp<wgpu::Color>,
     ) {
-        queue.write_buffer(&self.uniform_buffer, 0, &blur_uniform_bytes(texel_size, direction));
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            &blur_uniform_bytes(texel_size, direction),
+        );
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Backdrop Blur Bind Group"),
             layout: &self.bind_group_layout,
@@ -1055,6 +1068,55 @@ fn open_startup_pane(state: &mut RenderState, pane_kind: PaneKind) {
 }
 
 fn layout_split_shell_startup_panes(state: &mut RenderState) {
+    let chat_idx = state
+        .panes
+        .iter()
+        .position(|pane| pane.kind == PaneKind::AutopilotChat);
+    let mission_idx = state
+        .panes
+        .iter()
+        .position(|pane| pane.kind == PaneKind::GoOnline);
+    if let (Some(chat_idx), Some(mission_idx)) = (chat_idx, mission_idx) {
+        let logical = logical_size(&state.config, state.scale_factor);
+        let usable_width = (logical.width - sidebar_reserved_width(state)).max(0.0);
+        let usable_height = logical.height.max(0.0);
+        let margin = 12.0;
+        let gap = 10.0;
+        let top = 12.0;
+        let bottom_margin = 12.0;
+        let available_height = (usable_height - top - bottom_margin).max(300.0);
+        let available_width = (usable_width - margin * 2.0 - gap).max(900.0);
+
+        let chat_min_width = 620.0;
+        let mission_min_width = 520.0;
+        let mission_pref_width = state.panes[mission_idx].bounds.size.width;
+        let mission_width = mission_pref_width
+            .clamp(mission_min_width, 760.0)
+            .min((available_width - chat_min_width).max(mission_min_width));
+        let chat_width = (available_width - mission_width).max(chat_min_width);
+
+        let chat_height = state.panes[chat_idx]
+            .bounds
+            .size
+            .height
+            .min(available_height);
+        let mission_height = state.panes[mission_idx]
+            .bounds
+            .size
+            .height
+            .min(available_height);
+
+        state.panes[chat_idx].bounds = Bounds::new(margin, top, chat_width, chat_height);
+        state.panes[mission_idx].bounds = Bounds::new(
+            margin + chat_width + gap,
+            top,
+            mission_width,
+            mission_height,
+        );
+        clamp_all_panes_to_window(state);
+        return;
+    }
+
     let Some(provider_idx) = state
         .panes
         .iter()
@@ -1088,7 +1150,12 @@ fn layout_split_shell_startup_panes(state: &mut RenderState) {
 
 fn open_startup_panes(state: &mut RenderState) {
     let startup_panes = startup_pane_kinds();
-    for pane_kind in [PaneKind::EarningsScoreboard, PaneKind::ProviderControl] {
+    for pane_kind in [
+        PaneKind::AutopilotChat,
+        PaneKind::GoOnline,
+        PaneKind::EarningsScoreboard,
+        PaneKind::ProviderControl,
+    ] {
         if startup_panes.contains(&pane_kind) {
             open_startup_pane(state, pane_kind);
         }
@@ -1096,7 +1163,10 @@ fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_panes {
         if matches!(
             pane_kind,
-            PaneKind::EarningsScoreboard | PaneKind::ProviderControl
+            PaneKind::AutopilotChat
+                | PaneKind::GoOnline
+                | PaneKind::EarningsScoreboard
+                | PaneKind::ProviderControl
         ) {
             continue;
         }
@@ -1104,7 +1174,14 @@ fn open_startup_panes(state: &mut RenderState) {
     }
 
     layout_split_shell_startup_panes(state);
-    if let Some(provider_id) = state
+    if let Some(mission_id) = state
+        .panes
+        .iter()
+        .find(|pane| pane.kind == PaneKind::GoOnline)
+        .map(|pane| pane.id)
+    {
+        PaneController::bring_to_front(state, mission_id);
+    } else if let Some(provider_id) = state
         .panes
         .iter()
         .find(|pane| pane.kind == PaneKind::ProviderControl)
@@ -1681,17 +1758,20 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
                 .color(tooltip_text_color);
             label.paint(text_bounds, &mut paint);
         }
-
     }
 
     let overlay_scene = if state.onboarding.is_active() {
         let mut overlay_scene = Scene::new();
         let overlay_buy_mode_enabled = state.mission_control_buy_mode_enabled();
-        let overlay_backend_kernel_authority = state.kernel_projection_worker.uses_remote_authority();
+        let overlay_backend_kernel_authority =
+            state.kernel_projection_worker.uses_remote_authority();
         let overlay_cursor_position = state.cursor_position;
         let overlay_desktop_shell_mode = state.desktop_shell_mode;
-        let mut overlay_paint =
-            PaintContext::new(&mut overlay_scene, &mut state.text_system, state.scale_factor);
+        let mut overlay_paint = PaintContext::new(
+            &mut overlay_scene,
+            &mut state.text_system,
+            state.scale_factor,
+        );
         if matches!(
             onboarding_view.phase,
             crate::onboarding::OnboardingPhase::TourSellCompute
@@ -1786,12 +1866,9 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
         );
         if let Some(scene_view) = state.backdrop_blur.scene_view() {
             state.renderer.render(&mut encoder, scene_view);
-            state.backdrop_blur.render_blurred(
-                &state.device,
-                &state.queue,
-                &mut encoder,
-                &view,
-            );
+            state
+                .backdrop_blur
+                .render_blurred(&state.device, &state.queue, &mut encoder, &view);
             if let Some(overlay_scene) = overlay_scene.as_ref() {
                 state.renderer.prepare(
                     &state.device,
@@ -2149,8 +2226,7 @@ mod tests {
     #[test]
     fn startup_pane_set_restores_mission_control() {
         let startup = startup_pane_kinds();
-        assert_eq!(startup, vec![PaneKind::GoOnline]);
-        assert!(!startup.contains(&PaneKind::AutopilotChat));
+        assert_eq!(startup, vec![PaneKind::AutopilotChat, PaneKind::GoOnline]);
         assert!(!startup.contains(&PaneKind::ProjectOps));
         assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
