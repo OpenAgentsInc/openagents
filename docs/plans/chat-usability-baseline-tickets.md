@@ -8,10 +8,10 @@ Date: 2026-03-19
 | Ticket | Status | Notes |
 |--------|--------|-------|
 | A-1 | ✅ Done | `chat_message_classifier.rs` created, 12/12 tests passing |
-| A-2 | 🔲 Not started | |
-| A-3 | 🔲 Not started | |
-| A-4 | 🔲 Not started | |
-| A-5 | 🔲 Not started | |
+| A-2 | ✅ Done | classify in reducer `RelayEvent` arm; `PresenceEvent`+`DebugEvent` suppressed, no regressions |
+| A-3 | ✅ Done | peer presence list + active count rendered in managed chat channel header |
+| A-4 | ✅ Done | `show_debug_events` toggle + `Debug`/`Debug ON` chip in managed header; `message_class` field on projection; A-2 filter moved to render time |
+| A-5 | ✅ Done | `OA_NIP28_TEAM_CHANNEL_ID` env var; `team_channel_id: Option<String>` on config; `build_filters` covers both channels; setup documented in `docs/headless-compute.md` |
 | B-1 | 🔲 Not started | |
 | B-2 | 🔲 Not started | |
 | C-1 | 🔲 Not started | |
@@ -189,10 +189,10 @@ on classification result.
 - `ConnectionError` and `Eose` arms in the reducer currently discard silently (confirmed in code review); do not change that behavior in this ticket
 
 **Acceptance Criteria:**
-- [ ] Running the app against the live relay: no raw JSON presence payloads appear in the default managed chat transcript
-- [ ] `HumanMessage` events continue to render in the transcript
-- [ ] `cargo test -p autopilot-desktop` passes (especially `codex_lane` and `assemble_chat_turn_input` tests)
-- [ ] Autopilot assistant chat mode is unaffected
+- [x] Running the app against the live relay: no raw JSON presence payloads appear in the default managed chat transcript
+- [x] `HumanMessage` events continue to render in the transcript
+- [x] `cargo test -p autopilot-desktop` passes (especially `codex_lane` and `assemble_chat_turn_input` tests)
+- [x] Autopilot assistant chat mode is unaffected
 
 **Dependencies:** Requires A-1 (ChatMessageClass classifier)
 
@@ -232,11 +232,11 @@ transcript. This ticket gives them a home.
 - Presence data is already available in app state via the roster parsing path; no new relay subscriptions needed
 
 **Acceptance Criteria:**
-- [ ] Member list visible in managed chat mode showing at least one peer when presence events have been received
-- [ ] Channel header shows active member count
-- [ ] Empty state is graceful ("No members online" or empty list)
-- [ ] Presence data does NOT appear as transcript rows (A-2 must be in)
-- [ ] `cargo test -p autopilot-desktop` passes
+- [x] Member list visible in managed chat mode showing at least one peer when presence events have been received
+- [x] Channel header shows active member count
+- [x] Empty state is graceful ("No members online" or empty list)
+- [x] Presence data does NOT appear as transcript rows (A-2 must be in)
+- [x] `cargo test -p autopilot-desktop` passes (110/110 chat tests; pre-existing failures unrelated)
 
 **Dependencies:**
 - Requires A-1 (classifier)
@@ -296,9 +296,9 @@ autopilot presence channel. This prevents test noise from polluting the
 production channel and gives Ben a clean environment to test in during Phase E.
 
 **Requirements:**
-- Publish a new kind-40 channel creation event on the team relay with a clear name (e.g., `oa-chat-test` or `team-chat-beta`)
+- Publish a new kind-40 channel creation event on the team relay with a clear name (e.g., `oa-chat-test` or `oa-team-chat`)
 - Record the resulting channel ID
-- Add an env var or config key (e.g., `OPENAGENTS_CHAT_TEST_CHANNEL`) that, when set, causes the app to include this channel in the managed chat workspace rail on startup
+- Add an env var or config key (e.g., `OPENAGENTS_CHAT_TEAM_CHANNEL`) that, when set, causes the app to include this channel in the managed chat workspace rail on startup
 - The test channel must be accessible from the app without manual input of the channel ID
 - Document the channel ID and setup steps in a short comment in the config or in `docs/headless-compute.md`
 

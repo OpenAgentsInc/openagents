@@ -25,6 +25,7 @@ mod autopilot_compute_presence;
 mod autopilot_peer_roster;
 mod bitcoin_display;
 mod cad_rebuild_worker;
+pub(crate) mod chat_message_classifier;
 mod chat_spacetime;
 mod chat_terminal;
 mod codex_lane;
