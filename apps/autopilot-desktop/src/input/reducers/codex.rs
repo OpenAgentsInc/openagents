@@ -274,6 +274,13 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
     refresh_codex_readiness_summary(state);
+    if state.codex_lane.lifecycle == CodexLaneLifecycle::Ready
+        && state.autopilot_chat.chat_browse_mode() == crate::app_state::ChatBrowseMode::Autopilot
+        && state.autopilot_chat.threads.is_empty()
+        && state.autopilot_chat.active_thread_id.is_none()
+    {
+        queue_thread_history_refresh(state);
+    }
     if previous_lifecycle != CodexLaneLifecycle::Ready
         && state.codex_lane.lifecycle == CodexLaneLifecycle::Ready
     {
@@ -1232,22 +1239,81 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             }
             CodexLaneNotification::ThreadListLoaded { entries } => {
                 tracing::info!("codex thread/list loaded {} entries", entries.len());
-                state.autopilot_chat.set_thread_entries(
-                    entries
-                        .into_iter()
-                        .map(|entry| crate::app_state::AutopilotThreadListEntry {
-                            thread_id: entry.thread_id,
-                            thread_name: entry.thread_name,
-                            preview: entry.preview,
-                            status: entry.status,
-                            loaded: entry.loaded,
-                            cwd: entry.cwd,
-                            path: entry.path,
-                            created_at: entry.created_at,
-                            updated_at: entry.updated_at,
-                        })
-                        .collect(),
-                );
+                let had_active_thread = state.autopilot_chat.active_thread_id.is_some();
+                let loaded_entries = entries
+                    .into_iter()
+                    .map(|entry| crate::app_state::AutopilotThreadListEntry {
+                        thread_id: entry.thread_id,
+                        thread_name: entry.thread_name,
+                        preview: entry.preview,
+                        status: entry.status,
+                        loaded: entry.loaded,
+                        cwd: entry.cwd,
+                        path: entry.path,
+                        created_at: entry.created_at,
+                        updated_at: entry.updated_at,
+                    })
+                    .collect::<Vec<_>>();
+                state.autopilot_chat.set_thread_entries(loaded_entries);
+                if !had_active_thread {
+                    if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+                        state
+                            .autopilot_chat
+                            .restore_session_preferences_from_thread(&thread_id);
+                        super::super::actions::restore_chat_composer_draft(state);
+                        let metadata = state
+                            .autopilot_chat
+                            .thread_metadata
+                            .get(&thread_id)
+                            .cloned();
+                        let resume_path = if state.codex_lane_config.experimental_api {
+                            metadata.as_ref().and_then(|value| value.path.clone())
+                        } else {
+                            None
+                        };
+                        if let Err(error) = state.queue_codex_command(
+                            CodexLaneCommand::ThreadResume(codex_client::ThreadResumeParams {
+                                thread_id: thread_id.clone(),
+                                model: state.autopilot_chat.selected_model_override(),
+                                model_provider: None,
+                                service_tier: super::super::actions::chat_session_service_tier(
+                                    state,
+                                ),
+                                cwd: metadata
+                                    .as_ref()
+                                    .and_then(|value| value.cwd.clone())
+                                    .or_else(|| {
+                                        super::super::actions::current_chat_session_cwd(state)
+                                    }),
+                                approval_policy:
+                                    super::super::actions::chat_session_approval_policy(state),
+                                sandbox: super::super::actions::chat_session_thread_sandbox_mode(
+                                    state,
+                                ),
+                                personality: super::super::actions::chat_session_personality(state),
+                                path: resume_path.map(std::path::PathBuf::from),
+                            }),
+                        ) {
+                            state.autopilot_chat.last_error = Some(error);
+                        }
+                        if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadRead(
+                            codex_client::ThreadReadParams {
+                                thread_id,
+                                include_turns: true,
+                            },
+                        )) {
+                            state.autopilot_chat.last_error = Some(error);
+                        }
+                    } else if state.autopilot_chat.chat_browse_mode()
+                        == crate::app_state::ChatBrowseMode::Autopilot
+                        && !state.autopilot_chat.startup_new_thread_bootstrap_pending
+                        && !state.autopilot_chat.startup_new_thread_bootstrap_sent
+                        && queue_new_thread(state, "Failed to start default Autopilot Chat thread")
+                    {
+                        state.autopilot_chat.startup_new_thread_bootstrap_pending = true;
+                        state.autopilot_chat.startup_new_thread_bootstrap_sent = true;
+                    }
+                }
             }
             CodexLaneNotification::ThreadLoadedListLoaded { thread_ids } => {
                 state.autopilot_chat.set_thread_loaded_ids(&thread_ids);
