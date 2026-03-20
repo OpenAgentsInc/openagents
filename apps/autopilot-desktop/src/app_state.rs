@@ -8619,10 +8619,13 @@ impl AutopilotChatState {
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
-        // MVP chat shell is currently single-space (private agent lane) in the UI.
-        // Managed groups / DMs continue syncing in projection state but are hidden
-        // from workspace switching until the multi-space UX is re-enabled.
-        vec![ChatWorkspaceSelection::Autopilot]
+        let mut entries = vec![ChatWorkspaceSelection::Autopilot];
+        for group in &self.managed_chat_projection.snapshot.groups {
+            if group.group_id == "oa-default" {
+                entries.push(ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()));
+            }
+        }
+        entries
     }
 
     pub fn select_chat_workspace_by_index(&mut self, index: usize) -> bool {
