@@ -2919,9 +2919,10 @@ pub(crate) fn paint_mission_control_sell_compute_focus(
     active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
-    let focus_bounds = crate::pane_system::mission_control_layout_for_mode(content_bounds, buy_mode_enabled)
-        .sell_panel
-        .expand(10.0);
+    let focus_bounds =
+        crate::pane_system::mission_control_layout_for_mode(content_bounds, buy_mode_enabled)
+            .sell_panel
+            .expand(10.0);
     paint.scene.push_clip(focus_bounds);
     paint_go_online_pane(
         content_bounds,
@@ -7594,7 +7595,11 @@ pub(crate) fn paint_mission_control_go_online_button(
     paint: &mut PaintContext,
 ) {
     let use_green_style = matches!(label, "GO ONLINE" | "START EARNING BITCOIN");
-    let border = if enabled { accent } else { mission_control_panel_border_color() };
+    let border = if enabled {
+        accent
+    } else {
+        mission_control_panel_border_color()
+    };
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f32())

@@ -7123,6 +7123,9 @@ pub struct AutopilotChatState {
     pub thread_tools_expanded: bool,
     pub show_autopilot_help_hint: bool,
     pub show_debug_events: bool,
+    pub workspace_rail_collapsed: bool,
+    pub thread_rail_collapsed: bool,
+    pub thread_rail_scroll_row_offset: usize,
     pub thread_rename_counter: u64,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
@@ -7248,7 +7251,7 @@ impl Default for AutopilotChatState {
             auth_refresh_access_token: std::env::var("OPENAI_ACCESS_TOKEN").unwrap_or_default(),
             auth_refresh_account_id: std::env::var("OPENAI_CHATGPT_ACCOUNT_ID").unwrap_or_default(),
             auth_refresh_plan_type: std::env::var("OPENAI_CHATGPT_PLAN_TYPE").unwrap_or_default(),
-            thread_filter_archived: Some(false),
+            thread_filter_archived: None,
             thread_filter_sort_key: codex_client::ThreadSortKey::UpdatedAt,
             thread_filter_source_kind: None,
             thread_filter_model_provider: None,
@@ -7257,6 +7260,9 @@ impl Default for AutopilotChatState {
             thread_tools_expanded: false,
             show_autopilot_help_hint: false,
             show_debug_events: false,
+            workspace_rail_collapsed: false,
+            thread_rail_collapsed: false,
+            thread_rail_scroll_row_offset: 0,
             thread_rename_counter: 1,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
@@ -8613,18 +8619,10 @@ impl AutopilotChatState {
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
-        let mut entries = vec![ChatWorkspaceSelection::Autopilot];
-        entries.extend(
-            self.managed_chat_projection
-                .snapshot
-                .groups
-                .iter()
-                .map(|group| ChatWorkspaceSelection::ManagedGroup(group.group_id.clone())),
-        );
-        if self.has_direct_message_browseable_content() {
-            entries.push(ChatWorkspaceSelection::DirectMessages);
-        }
-        entries
+        // MVP chat shell is currently single-space (private agent lane) in the UI.
+        // Managed groups / DMs continue syncing in projection state but are hidden
+        // from workspace switching until the multi-space UX is re-enabled.
+        vec![ChatWorkspaceSelection::Autopilot]
     }
 
     pub fn select_chat_workspace_by_index(&mut self, index: usize) -> bool {
@@ -8637,6 +8635,7 @@ impl AutopilotChatState {
                 match self.managed_chat_projection.set_selected_group(&group_id) {
                     Ok(()) => {
                         self.selected_workspace = ChatWorkspaceSelection::ManagedGroup(group_id);
+                        self.thread_rail_scroll_row_offset = 0;
                         self.reset_transcript_scroll();
                         self.last_error = None;
                         true
@@ -8671,6 +8670,7 @@ impl AutopilotChatState {
                     match self.direct_message_projection.set_selected_room(&room_id) {
                         Ok(()) => {
                             self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
+                            self.thread_rail_scroll_row_offset = 0;
                             self.reset_transcript_scroll();
                             self.last_error = None;
                             true
@@ -8682,6 +8682,7 @@ impl AutopilotChatState {
                     }
                 } else {
                     self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
+                    self.thread_rail_scroll_row_offset = 0;
                     self.reset_transcript_scroll();
                     self.last_error = None;
                     true
@@ -8689,11 +8690,41 @@ impl AutopilotChatState {
             }
             ChatWorkspaceSelection::Autopilot => {
                 self.selected_workspace = ChatWorkspaceSelection::Autopilot;
+                self.thread_rail_scroll_row_offset = 0;
                 self.reset_transcript_scroll();
                 self.last_error = None;
                 true
             }
         }
+    }
+
+    pub fn thread_rail_scroll_start_index(&self, total_rows: usize, visible_rows: usize) -> usize {
+        let max_start = total_rows.saturating_sub(visible_rows);
+        self.thread_rail_scroll_row_offset.min(max_start)
+    }
+
+    pub fn scroll_thread_rail_by(
+        &mut self,
+        delta: f32,
+        total_rows: usize,
+        visible_rows: usize,
+    ) -> bool {
+        let max_start = total_rows.saturating_sub(visible_rows);
+        if max_start == 0 {
+            self.thread_rail_scroll_row_offset = 0;
+            return false;
+        }
+        let mut steps = (delta / 24.0).round() as isize;
+        if steps == 0 {
+            steps = if delta.is_sign_positive() { 1 } else { -1 };
+        }
+        let current = self.thread_rail_scroll_start_index(total_rows, visible_rows) as isize;
+        let next = (current + steps).clamp(0, max_start as isize) as usize;
+        if next == self.thread_rail_scroll_row_offset {
+            return false;
+        }
+        self.thread_rail_scroll_row_offset = next;
+        true
     }
 
     pub fn active_managed_chat_group(&self) -> Option<&ManagedChatGroupProjection> {
@@ -9430,6 +9461,7 @@ impl AutopilotChatState {
         } else {
             self.active_thread_id = self.threads.first().cloned();
         }
+        self.thread_rail_scroll_row_offset = 0;
         self.rebuild_project_registry();
     }
 
@@ -9523,6 +9555,7 @@ impl AutopilotChatState {
         let thread_id = self.threads.get(index).cloned()?;
         self.cache_active_thread_transcript();
         self.active_thread_id = Some(thread_id.clone());
+        self.thread_rail_scroll_row_offset = index.saturating_add(1);
         self.reset_transcript_scroll();
         self.last_error = None;
         self.restore_cached_thread_transcript(&thread_id);
@@ -9543,6 +9576,7 @@ impl AutopilotChatState {
         if self.active_thread_id.is_none() {
             self.active_thread_id = Some(thread_id);
         }
+        self.thread_rail_scroll_row_offset = 0;
     }
 
     pub fn remember_thread_inactive(&mut self, thread_id: impl Into<String>) {
