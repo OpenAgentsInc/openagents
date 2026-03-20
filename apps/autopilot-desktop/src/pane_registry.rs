@@ -104,14 +104,14 @@ const PANE_SPECS: [PaneSpec; 63] = [
     },
     PaneSpec {
         kind: PaneKind::AutopilotChat,
-        title: "Autopilot Chat",
-        default_width: 940.0,
+        title: "CHAT",
+        default_width: 760.0,
         default_height: 540.0,
         singleton: true,
-        startup: false,
+        startup: true,
         command: Some(PaneCommandSpec {
             id: "pane.codex",
-            label: "Autopilot Chat",
+            label: "CHAT",
             description: "Open a simple local Autopilot conversation pane",
             keybinding: None,
         }),

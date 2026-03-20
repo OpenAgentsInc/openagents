@@ -3,20 +3,22 @@ use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tiny_skia::{FilterQuality, IntSize, Pixmap, PixmapPaint, Transform};
-use wgpui::{
-    Bounds, Hsla, ImageData, ImageQuad, ImageSource, PaintContext, Point, Quad, SvgQuad, theme,
-};
 use wgpui::tools::load_image_from_path;
+use wgpui::{
+    theme, Bounds, Hsla, ImageData, ImageQuad, ImageSource, PaintContext, Point, Quad, SvgQuad,
+};
 use winit::keyboard::{Key as WinitLogicalKey, NamedKey as WinitNamedKey};
 use winit::window::CursorIcon;
 
-use crate::app_state::RenderState;
+use openagents_spark::NetworkStatus;
+
+use crate::app_state::{PaneLoadState, RelayConnectionStatus, RenderState, SyncRecoveryPhase};
 use crate::pane_registry::{
-    HOTBAR_COMMAND_PALETTE_SHORTCUT, HOTBAR_COMMAND_PALETTE_TOOLTIP, HOTBAR_SLOT_EARNINGS_JOBS,
-    HOTBAR_SLOT_LOG_STREAM, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_PROVIDER_CONTROL,
-    HOTBAR_SLOT_SPARK_WALLET, pane_spec_for_hotbar_slot,
+    pane_spec_for_hotbar_slot, HOTBAR_COMMAND_PALETTE_SHORTCUT, HOTBAR_COMMAND_PALETTE_TOOLTIP,
+    HOTBAR_SLOT_EARNINGS_JOBS, HOTBAR_SLOT_LOG_STREAM, HOTBAR_SLOT_NOSTR_IDENTITY,
+    HOTBAR_SLOT_PROVIDER_CONTROL, HOTBAR_SLOT_SPARK_WALLET,
 };
 use crate::pane_renderer::{
     mission_control_cyan_color, mission_control_green_color, mission_control_panel_border_color,
@@ -33,15 +35,13 @@ const MODAL_HEADER_HEIGHT: f32 = 28.0;
 const MODAL_OUTER_PAD: f32 = 18.0;
 const MODAL_COLUMN_GAP: f32 = 18.0;
 const MODAL_STEP_ROW_HEIGHT: f32 = 56.0;
-const SETUP_STEP_DURATION_MS: u64 = 2_000;
 const SETUP_LOADING_DOT_INTERVAL_MS: u64 = 400;
 const ONBOARDING_LOTTIE_SUPERSAMPLE_SCALE: f32 = 2.0;
 const HOTKEYS_TARGET_WIDTH: f32 = 296.0;
 const HOTKEYS_TARGET_HEIGHT: f32 = 84.0;
 const HOTKEYS_TARGET_INSET: f32 = 26.0;
 const TOUR_FOCUS_INSET: f32 = 10.0;
-const ONBOARDING_LOTTIE_JSON: &str =
-    include_str!("../resources/lottie/onboarding-hud-effect.json");
+const ONBOARDING_LOTTIE_JSON: &str = include_str!("../resources/lottie/onboarding-hud-effect.json");
 const ONBOARDING_LOTTIE_CACHE_KEY: &str = "autopilot-onboarding-hud-effect";
 const FORCE_ONBOARDING_ENV: &str = "AUTOPILOT_FORCE_ONBOARDING";
 const ONBOARDING_LOTTIE_VISIBLE_START_FRAME: usize = 96;
@@ -157,7 +157,8 @@ impl OnboardingLottiePlayer {
         let total_frames = self.composition.total_frames.max(1);
         let fps = self.composition.fps.max(1.0);
         let elapsed = now.saturating_duration_since(self.started_at).as_secs_f64();
-        let visible_start = ONBOARDING_LOTTIE_VISIBLE_START_FRAME.min(total_frames.saturating_sub(1));
+        let visible_start =
+            ONBOARDING_LOTTIE_VISIBLE_START_FRAME.min(total_frames.saturating_sub(1));
         let visible_len = total_frames.saturating_sub(visible_start).max(1);
         visible_start + (((elapsed * fps).floor() as usize) % visible_len)
     }
@@ -172,10 +173,13 @@ impl OnboardingLottiePlayer {
             .max(1.0) as usize;
         let frame = self.frame_for_now(Instant::now());
         let cache_key = (width, height);
-        if self.last_frame != Some(frame) || self.cached_size != Some(cache_key) || self.cached_image.is_none() {
-            self.cached_image = self
-                .composition
-                .render_frame(frame as f32, width as u32, height as u32);
+        if self.last_frame != Some(frame)
+            || self.cached_size != Some(cache_key)
+            || self.cached_image.is_none()
+        {
+            self.cached_image =
+                self.composition
+                    .render_frame(frame as f32, width as u32, height as u32);
             self.last_frame = Some(frame);
             self.cached_size = Some(cache_key);
         }
@@ -362,8 +366,10 @@ impl OnboardingLottieComposition {
                 root_scale_y * sin * scale_x,
                 root_scale_x * -sin * scale_y,
                 root_scale_y * cos * scale_y,
-                root_scale_x * (position[0] - cos * scale_x * anchor[0] + sin * scale_y * anchor[1]),
-                root_scale_y * (position[1] - sin * scale_x * anchor[0] - cos * scale_y * anchor[1]),
+                root_scale_x
+                    * (position[0] - cos * scale_x * anchor[0] + sin * scale_y * anchor[1]),
+                root_scale_y
+                    * (position[1] - sin * scale_x * anchor[0] - cos * scale_y * anchor[1]),
             );
             let mut paint = PixmapPaint::default();
             paint.opacity = opacity;
@@ -377,11 +383,7 @@ impl OnboardingLottieComposition {
 
 impl AnimatedScalar {
     fn parse(value: &Value) -> Result<Self, String> {
-        let animated = value
-            .get("a")
-            .and_then(Value::as_u64)
-            .unwrap_or_default()
-            == 1;
+        let animated = value.get("a").and_then(Value::as_u64).unwrap_or_default() == 1;
         let Some(keyframes) = value.get("k") else {
             return Err("Missing animated scalar payload".to_string());
         };
@@ -418,11 +420,7 @@ impl AnimatedScalar {
 
 impl AnimatedVec2 {
     fn parse(value: &Value) -> Result<Self, String> {
-        let animated = value
-            .get("a")
-            .and_then(Value::as_u64)
-            .unwrap_or_default()
-            == 1;
+        let animated = value.get("a").and_then(Value::as_u64).unwrap_or_default() == 1;
         let Some(keyframes) = value.get("k") else {
             return Err("Missing animated vec2 payload".to_string());
         };
@@ -544,15 +542,9 @@ impl OnboardingState {
     }
 
     fn animation_needs_redraw(&self) -> bool {
-        if self.phase != OnboardingPhase::SetupModal {
-            return false;
-        }
-        let lottie_active = self.animation_last_error.is_none() && self.animation_player.is_some();
-        let loading_active = self
-            .shown_at_epoch_ms
-            .map(|shown_at| current_timestamp_ms().saturating_sub(shown_at) < total_setup_loading_duration_ms())
-            .unwrap_or(true);
-        lottie_active || loading_active
+        self.phase == OnboardingPhase::SetupModal
+            && self.animation_last_error.is_none()
+            && self.animation_player.is_some()
     }
 
     fn persist(&mut self) {
@@ -761,6 +753,24 @@ struct SetupProgressView {
     loading_dot_count: usize,
 }
 
+#[derive(Clone, Debug, Default)]
+struct SetupRuntimeSnapshot {
+    wallet_connected: bool,
+    wallet_balance_known: bool,
+    wallet_error: Option<String>,
+    identity_ready: bool,
+    identity_error: Option<String>,
+    configured_relay_count: usize,
+    connected_relay_count: usize,
+    connecting_relay_count: usize,
+    errored_relay_count: usize,
+    control_runtime_ready: bool,
+    control_runtime_error: Option<String>,
+    sync_required: bool,
+    sync_ready: bool,
+    sync_error: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct OnboardingView {
     pub phase: OnboardingPhase,
@@ -827,7 +837,7 @@ pub fn build_view(state: &RenderState) -> OnboardingView {
 }
 
 pub fn animation_needs_redraw(state: &RenderState) -> bool {
-    state.onboarding.animation_needs_redraw()
+    state.onboarding.animation_needs_redraw() || derive_setup_progress(state).active_step.is_some()
 }
 
 pub fn blocks_root_input(state: &RenderState) -> bool {
@@ -1125,54 +1135,6 @@ fn paint_setup_step_row(
         14.0,
         text_color,
     ));
-}
-
-fn total_setup_loading_duration_ms() -> u64 {
-    SETUP_STEP_DURATION_MS * SetupStepId::ALL.len() as u64
-}
-
-fn onboarding_elapsed_ms(state: &RenderState) -> u64 {
-    state.onboarding.shown_at_epoch_ms.map_or(0, |shown_at| {
-        current_timestamp_ms().saturating_sub(shown_at)
-    })
-}
-
-fn setup_progress_from_elapsed(elapsed_ms: u64) -> SetupProgressView {
-    let total_duration = total_setup_loading_duration_ms();
-    let clamped_elapsed = elapsed_ms.min(total_duration);
-    let completed_steps = (clamped_elapsed / SETUP_STEP_DURATION_MS)
-        .min(SetupStepId::ALL.len() as u64) as usize;
-    let statuses = std::array::from_fn(|index| {
-        if index < completed_steps {
-            SetupRowStatus::Complete
-        } else if index == completed_steps && completed_steps < SetupStepId::ALL.len() {
-            SetupRowStatus::Active
-        } else {
-            SetupRowStatus::Pending
-        }
-    });
-    let active_step = if completed_steps < SetupStepId::ALL.len() {
-        Some(SetupStepId::ALL[completed_steps])
-    } else {
-        None
-    };
-    let loading_dot_count =
-        ((clamped_elapsed / SETUP_LOADING_DOT_INTERVAL_MS) % 3 + 1) as usize;
-    let detail_lines = if completed_steps >= SetupStepId::ALL.len() {
-        vec![
-            "User setup complete.".to_string(),
-            "Click Start Earning Bitcoin to continue into Mission Control.".to_string(),
-        ]
-    } else {
-        Vec::new()
-    };
-    SetupProgressView {
-        statuses,
-        active_step,
-        cta_enabled: completed_steps >= SetupStepId::ALL.len(),
-        detail_lines,
-        loading_dot_count,
-    }
 }
 
 fn paint_status_block(bounds: Bounds, lines: &[String], paint: &mut PaintContext) {
@@ -1618,7 +1580,11 @@ fn packaged_lottie_resource_dir() -> &'static Path {
 
 fn asset_file_path(asset: &OnboardingLottieAsset) -> Option<PathBuf> {
     let mut path = packaged_lottie_resource_dir().to_path_buf();
-    let relative_dir = asset.u.as_deref().unwrap_or_default().trim_start_matches('/');
+    let relative_dir = asset
+        .u
+        .as_deref()
+        .unwrap_or_default()
+        .trim_start_matches('/');
     if !relative_dir.is_empty() {
         path = path.join(relative_dir);
     }
@@ -1711,7 +1677,10 @@ fn interpolate_vec2_keyframes(keyframes: &[Vec2Keyframe], frame: f32) -> [f32; 2
 }
 
 fn aspect_fit_bounds(bounds: Bounds, source_width: f32, source_height: f32) -> Bounds {
-    if source_width <= 0.0 || source_height <= 0.0 || bounds.size.width <= 0.0 || bounds.size.height <= 0.0
+    if source_width <= 0.0
+        || source_height <= 0.0
+        || bounds.size.width <= 0.0
+        || bounds.size.height <= 0.0
     {
         return bounds;
     }
@@ -1729,7 +1698,206 @@ fn aspect_fit_bounds(bounds: Bounds, source_width: f32, source_height: f32) -> B
 }
 
 fn derive_setup_progress(state: &RenderState) -> SetupProgressView {
-    setup_progress_from_elapsed(onboarding_elapsed_ms(state))
+    setup_progress_from_runtime(&setup_runtime_snapshot(state))
+}
+
+fn setup_runtime_snapshot(state: &RenderState) -> SetupRuntimeSnapshot {
+    let wallet_connected = matches!(
+        state
+            .spark_wallet
+            .network_status
+            .as_ref()
+            .map(|status| status.status),
+        Some(NetworkStatus::Connected)
+    );
+    let configured_relay_count = state.configured_provider_relay_urls().len();
+    let connected_relay_count = state
+        .relay_connections
+        .relays
+        .iter()
+        .filter(|relay| relay.status == RelayConnectionStatus::Connected)
+        .count();
+    let connecting_relay_count = state
+        .relay_connections
+        .relays
+        .iter()
+        .filter(|relay| relay.status == RelayConnectionStatus::Connecting)
+        .count();
+    let errored_relay_count = state
+        .relay_connections
+        .relays
+        .iter()
+        .filter(|relay| relay.status == RelayConnectionStatus::Error)
+        .count();
+    let control_runtime_ready = state.desktop_control.enabled
+        && state
+            .desktop_control
+            .listen_addr
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        && state
+            .desktop_control
+            .base_url
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        && state.desktop_control.last_error.is_none();
+    let sync_required = crate::sync_bootstrap::spacetime_sync_enabled_from_env();
+    let sync_ready = !sync_required
+        || (state.sync_bootstrap_error.is_none()
+            && state.sync_health.load_state == PaneLoadState::Ready
+            && state.sync_health.recovery_phase == SyncRecoveryPhase::Ready);
+
+    SetupRuntimeSnapshot {
+        wallet_connected,
+        wallet_balance_known: state.spark_wallet.balance.is_some(),
+        wallet_error: state.spark_wallet.last_error.clone(),
+        identity_ready: state.nostr_identity.is_some(),
+        identity_error: state.nostr_identity_error.clone(),
+        configured_relay_count,
+        connected_relay_count,
+        connecting_relay_count,
+        errored_relay_count,
+        control_runtime_ready,
+        control_runtime_error: state.desktop_control.last_error.clone(),
+        sync_required,
+        sync_ready,
+        sync_error: if sync_required {
+            state
+                .sync_bootstrap_error
+                .clone()
+                .or_else(|| state.sync_health.last_error.clone())
+        } else {
+            None
+        },
+    }
+}
+
+fn setup_progress_from_runtime(snapshot: &SetupRuntimeSnapshot) -> SetupProgressView {
+    let completed = [
+        setup_wallet_complete(snapshot),
+        setup_network_configuration_complete(snapshot),
+        setup_connection_complete(snapshot),
+    ];
+    let active_step = SetupStepId::ALL
+        .into_iter()
+        .zip(completed)
+        .find_map(|(step, is_complete)| (!is_complete).then_some(step));
+    let cta_enabled = active_step.is_none();
+
+    SetupProgressView {
+        statuses: setup_row_statuses(completed),
+        active_step,
+        cta_enabled,
+        detail_lines: setup_detail_lines(snapshot, active_step),
+        loading_dot_count: ((current_timestamp_ms() / SETUP_LOADING_DOT_INTERVAL_MS) % 3 + 1)
+            as usize,
+    }
+}
+
+fn setup_wallet_complete(snapshot: &SetupRuntimeSnapshot) -> bool {
+    snapshot.wallet_error.is_none() && snapshot.wallet_connected && snapshot.wallet_balance_known
+}
+
+fn setup_network_configuration_complete(snapshot: &SetupRuntimeSnapshot) -> bool {
+    snapshot.identity_ready && snapshot.configured_relay_count > 0
+}
+
+fn setup_connection_complete(snapshot: &SetupRuntimeSnapshot) -> bool {
+    snapshot.control_runtime_ready
+        && snapshot.connected_relay_count > 0
+        && (!snapshot.sync_required || snapshot.sync_ready)
+}
+
+fn setup_detail_lines(
+    snapshot: &SetupRuntimeSnapshot,
+    active_step: Option<SetupStepId>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    match active_step {
+        Some(SetupStepId::LightningWallet) => {
+            if let Some(error) = snapshot.wallet_error.as_deref() {
+                push_setup_detail(&mut lines, format!("Spark wallet error: {error}"));
+            } else {
+                if !snapshot.wallet_connected {
+                    push_setup_detail(
+                        &mut lines,
+                        "Waiting for Spark wallet transport to connect.".to_string(),
+                    );
+                }
+                if !snapshot.wallet_balance_known {
+                    push_setup_detail(
+                        &mut lines,
+                        "Hydrating wallet balance and payment history.".to_string(),
+                    );
+                }
+            }
+        }
+        Some(SetupStepId::NetworkConfiguration) => {
+            if let Some(error) = snapshot.identity_error.as_deref() {
+                push_setup_detail(&mut lines, format!("Nostr identity error: {error}"));
+            } else if !snapshot.identity_ready {
+                push_setup_detail(
+                    &mut lines,
+                    "Waiting for local Nostr identity to load.".to_string(),
+                );
+            }
+            if snapshot.configured_relay_count == 0 {
+                push_setup_detail(
+                    &mut lines,
+                    "No relay transport is configured yet.".to_string(),
+                );
+            }
+        }
+        Some(SetupStepId::EstablishingConnection) => {
+            if let Some(error) = snapshot.control_runtime_error.as_deref() {
+                push_setup_detail(&mut lines, format!("Desktop control error: {error}"));
+            } else if !snapshot.control_runtime_ready {
+                push_setup_detail(
+                    &mut lines,
+                    "Starting local desktop control runtime.".to_string(),
+                );
+            }
+            if snapshot.connected_relay_count == 0 {
+                let relay_line = if snapshot.connecting_relay_count > 0 {
+                    "Connecting to configured relay transport."
+                } else if snapshot.errored_relay_count > 0 {
+                    "Relay transport reported startup errors."
+                } else {
+                    "Waiting for the first relay connection."
+                };
+                push_setup_detail(&mut lines, relay_line.to_string());
+            }
+            if snapshot.sync_required {
+                if let Some(error) = snapshot.sync_error.as_deref() {
+                    push_setup_detail(&mut lines, format!("Sync session error: {error}"));
+                } else if !snapshot.sync_ready {
+                    push_setup_detail(
+                        &mut lines,
+                        "Waiting for authenticated sync session.".to_string(),
+                    );
+                }
+            }
+        }
+        None => {
+            push_setup_detail(
+                &mut lines,
+                "Wallet, identity, and network transport are ready.".to_string(),
+            );
+            push_setup_detail(
+                &mut lines,
+                "Click Start Earning Bitcoin to continue into Mission Control.".to_string(),
+            );
+        }
+    }
+    lines
+}
+
+fn push_setup_detail(lines: &mut Vec<String>, line: String) {
+    let normalized = line.trim();
+    if normalized.is_empty() || lines.iter().any(|existing| existing == normalized) {
+        return;
+    }
+    lines.push(normalized.to_string());
 }
 
 fn setup_row_statuses(completed: [bool; 3]) -> [SetupRowStatus; 3] {
@@ -1780,9 +1948,9 @@ fn default_file_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnboardingLottiePlayer, OnboardingPhase, OnboardingState, SETUP_STEP_DURATION_MS,
-        SetupRowStatus, hotkeys_target_bounds, setup_progress_from_elapsed, setup_row_statuses,
-        tour_sell_compute_layout,
+        hotkeys_target_bounds, setup_progress_from_runtime, setup_row_statuses,
+        tour_sell_compute_layout, OnboardingLottiePlayer, OnboardingPhase, OnboardingState,
+        SetupRowStatus, SetupRuntimeSnapshot,
     };
     use wgpui::{Bounds, ImageSource};
 
@@ -1876,8 +2044,18 @@ mod tests {
     }
 
     #[test]
-    fn timed_setup_progress_has_no_active_step_after_completion() {
-        let progress = setup_progress_from_elapsed(SETUP_STEP_DURATION_MS * 3);
+    fn setup_progress_unlocks_cta_only_after_real_init_readiness() {
+        let progress = setup_progress_from_runtime(&SetupRuntimeSnapshot {
+            wallet_connected: true,
+            wallet_balance_known: true,
+            identity_ready: true,
+            configured_relay_count: 2,
+            connected_relay_count: 1,
+            control_runtime_ready: true,
+            sync_required: false,
+            sync_ready: true,
+            ..SetupRuntimeSnapshot::default()
+        });
         assert_eq!(progress.active_step, None);
         assert!(progress.cta_enabled);
         assert_eq!(
@@ -1888,6 +2066,31 @@ mod tests {
                 SetupRowStatus::Complete
             ]
         );
+    }
+
+    #[test]
+    fn setup_progress_reports_sync_errors_when_sync_is_required() {
+        let progress = setup_progress_from_runtime(&SetupRuntimeSnapshot {
+            wallet_connected: true,
+            wallet_balance_known: true,
+            identity_ready: true,
+            configured_relay_count: 2,
+            connected_relay_count: 1,
+            control_runtime_ready: true,
+            sync_required: true,
+            sync_error: Some("missing control base url".to_string()),
+            ..SetupRuntimeSnapshot::default()
+        });
+
+        assert_eq!(
+            progress.active_step,
+            Some(super::SetupStepId::EstablishingConnection)
+        );
+        assert!(!progress.cta_enabled);
+        assert!(progress
+            .detail_lines
+            .iter()
+            .any(|line| line.contains("Sync session error")));
     }
 
     #[test]

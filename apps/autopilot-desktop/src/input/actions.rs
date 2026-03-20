@@ -13,10 +13,10 @@ use crate::local_runtime_capabilities::{
 use crate::pane_renderer::mission_control_current_alert_signature;
 use crate::pane_system::{
     AppleAdapterTrainingPaneAction, AppleFmWorkbenchPaneAction, AttnResLabPaneAction,
-    BuyModePaymentsPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, DataBuyerPaneAction,
-    DataMarketPaneAction, DataSellerPaneAction, LocalInferencePaneAction, LogStreamPaneAction,
-    MissionControlPaneAction, Nip90SentPaymentsPaneAction, ProviderControlPaneAction,
-    RivePreviewPaneAction, SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
+    BuyModePaymentsPaneAction, DataBuyerPaneAction, DataMarketPaneAction, DataSellerPaneAction,
+    LocalInferencePaneAction, LogStreamPaneAction, MissionControlPaneAction,
+    Nip90SentPaymentsPaneAction, ProviderControlPaneAction, RivePreviewPaneAction,
+    SparkReplayPaneAction, TassadarLabPaneAction, VoicePlaygroundPaneAction,
 };
 use crate::spark_wallet::{
     decode_lightning_invoice_payment_hash, is_settled_wallet_payment_status,
@@ -2831,11 +2831,10 @@ fn parse_shell_like_words(input: &str) -> Result<Vec<String>, String> {
         }
     }
 
+    // Degrade gracefully for unmatched quoting/escaping so plain chat text
+    // is never blocked by command-tokenizer edge cases.
     if escaped {
-        return Err("Command parser found a trailing escape character.".to_string());
-    }
-    if quote.is_some() {
-        return Err("Command parser found an unterminated quoted string.".to_string());
+        current.push('\\');
     }
     if !current.is_empty() {
         words.push(current);
@@ -2846,6 +2845,12 @@ fn parse_shell_like_words(input: &str) -> Result<Vec<String>, String> {
 fn parse_chat_git_intent(prompt: &str) -> Result<Option<ChatGitComposerIntent>, String> {
     let trimmed = prompt.trim();
     if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let Some(first_word) = trimmed.split_whitespace().next() else {
+        return Ok(None);
+    };
+    if first_word != "/git" && first_word != "/pr" {
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
@@ -3611,13 +3616,13 @@ fn parse_chat_skills_intent(prompt: &str) -> Result<Option<ChatSkillsComposerInt
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let words = parse_shell_like_words(trimmed)?;
-    let Some(command) = words.first().map(String::as_str) else {
+    let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if command != "/skills" && command != "/skill" {
+    if first_word != "/skills" && first_word != "/skill" {
         return Ok(None);
     }
+    let words = parse_shell_like_words(trimmed)?;
     let subcommand = words.get(1).map(String::as_str);
     match subcommand {
         None => Ok(Some(ChatSkillsComposerIntent::Summary)),
@@ -3703,13 +3708,13 @@ fn parse_chat_mcp_intent(prompt: &str) -> Result<Option<ChatMcpComposerIntent>, 
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let words = parse_shell_like_words(trimmed)?;
-    let Some(command) = words.first().map(String::as_str) else {
+    let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if command != "/mcp" {
+    if first_word != "/mcp" {
         return Ok(None);
     }
+    let words = parse_shell_like_words(trimmed)?;
     match words.get(1).map(String::as_str) {
         None | Some("status") | Some("list") if words.len() <= 2 => {
             Ok(Some(ChatMcpComposerIntent::Summary))
@@ -3740,13 +3745,13 @@ fn parse_chat_apps_intent(prompt: &str) -> Result<Option<ChatAppsComposerIntent>
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let words = parse_shell_like_words(trimmed)?;
-    let Some(command) = words.first().map(String::as_str) else {
+    let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if command != "/apps" && command != "/app" {
+    if first_word != "/apps" && first_word != "/app" {
         return Ok(None);
     }
+    let words = parse_shell_like_words(trimmed)?;
     match words.get(1).map(String::as_str) {
         None | Some("list") if words.len() <= 2 => Ok(Some(ChatAppsComposerIntent::Summary)),
         Some("refresh") if words.len() == 2 => Ok(Some(ChatAppsComposerIntent::Refresh)),
@@ -3772,6 +3777,15 @@ fn parse_chat_apps_intent(prompt: &str) -> Result<Option<ChatAppsComposerIntent>
 fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerIntent>, String> {
     let trimmed = prompt.trim();
     if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let Some(first_word) = trimmed.split_whitespace().next() else {
+        return Ok(None);
+    };
+    if !matches!(
+        first_word,
+        "/requests" | "/approvals" | "/approval" | "/tool" | "/auth"
+    ) {
         return Ok(None);
     }
     let words = parse_shell_like_words(trimmed)?;
@@ -3844,13 +3858,13 @@ fn parse_chat_remote_intent(prompt: &str) -> Result<Option<ChatRemoteComposerInt
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let words = parse_shell_like_words(trimmed)?;
-    let Some(command) = words.first().map(String::as_str) else {
+    let Some(first_word) = trimmed.split_whitespace().next() else {
         return Ok(None);
     };
-    if command != "/remote" {
+    if first_word != "/remote" {
         return Ok(None);
     }
+    let words = parse_shell_like_words(trimmed)?;
     match words.get(1).map(String::as_str) {
         None | Some("status") | Some("show") if words.len() <= 2 => {
             Ok(Some(ChatRemoteComposerIntent::Summary))
@@ -5756,6 +5770,20 @@ pub(super) fn run_chat_toggle_help_hint_action(state: &mut crate::app_state::Ren
     true
 }
 
+pub(super) fn run_chat_toggle_workspace_rail_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.workspace_rail_collapsed = !state.autopilot_chat.workspace_rail_collapsed;
+    true
+}
+
+pub(super) fn run_chat_toggle_thread_rail_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.thread_rail_collapsed = !state.autopilot_chat.thread_rail_collapsed;
+    true
+}
+
 pub(super) fn run_chat_toggle_thread_tools_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {
@@ -6124,10 +6152,6 @@ pub(super) fn run_chat_select_thread_action(
             }
 
             let preview_index = index - 1;
-            if preview_index >= CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT {
-                return false;
-            }
-
             let Some(target) = state.autopilot_chat.select_thread_by_index(preview_index) else {
                 return false;
             };
@@ -14487,8 +14511,8 @@ mod tests {
         parse_chat_request_intent, parse_chat_skills_intent, parse_chat_spacetime_intent,
         parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_managed_chat_composer_intent,
-        parse_managed_chat_mention_prefix, resolve_apple_fm_workbench_session_id,
-        resolve_wallet_blink_env_from_secure_values,
+        parse_managed_chat_mention_prefix, parse_shell_like_words,
+        resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
@@ -15567,6 +15591,33 @@ mod tests {
         assert_eq!(
             parse_chat_remote_intent("/remote rotate-token").unwrap(),
             Some(ChatRemoteComposerIntent::RotateToken)
+        );
+    }
+
+    #[test]
+    fn chat_command_parsers_ignore_non_command_quotes() {
+        let prompt = "it's \"working\" now";
+        assert_eq!(parse_chat_git_intent(prompt).unwrap(), None);
+        assert_eq!(parse_chat_skills_intent(prompt).unwrap(), None);
+        assert_eq!(parse_chat_mcp_intent(prompt).unwrap(), None);
+        assert_eq!(parse_chat_apps_intent(prompt).unwrap(), None);
+        assert!(matches!(parse_chat_request_intent(prompt).unwrap(), None));
+        assert_eq!(parse_chat_remote_intent(prompt).unwrap(), None);
+    }
+
+    #[test]
+    fn shell_word_parser_does_not_error_on_unmatched_quotes_or_escape() {
+        assert_eq!(
+            parse_shell_like_words("it's").unwrap(),
+            vec!["its".to_string()]
+        );
+        assert_eq!(
+            parse_shell_like_words("\"unterminated").unwrap(),
+            vec!["unterminated".to_string()]
+        );
+        assert_eq!(
+            parse_shell_like_words("slash\\").unwrap(),
+            vec!["slash\\".to_string()]
         );
     }
 
