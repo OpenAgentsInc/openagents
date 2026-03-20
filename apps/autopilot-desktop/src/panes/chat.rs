@@ -26,13 +26,11 @@ use crate::pane_system::{
     chat_thread_action_rollback_button_bounds, chat_thread_action_unarchive_button_bounds,
     chat_thread_action_unsubscribe_button_bounds, chat_thread_filter_archived_button_bounds,
     chat_thread_filter_provider_button_bounds, chat_thread_filter_source_button_bounds,
-    chat_thread_rail_bounds, chat_thread_row_bounds, chat_thread_search_input_bounds,
-    chat_transcript_body_bounds_with_height, chat_transcript_bounds, chat_visible_thread_row_count,
-    chat_managed_debug_toggle_bounds, chat_workspace_rail_bounds, pane_content_bounds,
     chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
     chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_visible_thread_row_count, chat_workspace_rail_bounds,
-    chat_workspace_rail_toggle_button_bounds, pane_content_bounds, set_chat_shell_layout_state,
+    chat_transcript_bounds, chat_visible_thread_row_count, chat_managed_debug_toggle_bounds,
+    chat_workspace_rail_bounds, chat_workspace_rail_toggle_button_bounds, pane_content_bounds,
+    set_chat_shell_layout_state,
 };
 use wgpui::components::sections::TerminalStream;
 
@@ -2488,15 +2486,44 @@ fn paint_header_chip(bounds: Bounds, label: &str, accent: wgpui::Hsla, paint: &m
     ));
 }
 
-fn shell_workspaces(_autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
-    vec![ChatShellWorkspace {
+fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
+    let private_active = !matches!(
+        autopilot_chat.selected_workspace,
+        crate::app_state::ChatWorkspaceSelection::ManagedGroup(_)
+    );
+    let mut workspaces = vec![ChatShellWorkspace {
         label: "Private".to_string(),
         initials: "AG".to_string(),
         accent: theme::accent::PRIMARY,
-        active: true,
+        active: private_active,
         badge_count: 0,
         badge_urgent: false,
-    }]
+    }];
+    for group in &autopilot_chat.managed_chat_projection.snapshot.groups {
+        let gid = &group.group_id;
+        if gid != "oa-default" {
+            continue;
+        }
+        let label = "Team".to_string();
+        let initials: String = gid.chars().take(2).collect::<String>().to_uppercase();
+        let active = matches!(
+            &autopilot_chat.selected_workspace,
+            crate::app_state::ChatWorkspaceSelection::ManagedGroup(id) if id == gid
+        );
+        let (badge_count, badge_urgent) =
+            notification_badge(group.unread_count, group.mention_count)
+                .map(|(c, u)| (c, u))
+                .unwrap_or((0, false));
+        workspaces.push(ChatShellWorkspace {
+            label,
+            initials,
+            accent: theme::accent::GREEN,
+            active,
+            badge_count,
+            badge_urgent,
+        });
+    }
+    workspaces
 }
 
 fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellChannelEntry> {
