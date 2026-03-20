@@ -2095,10 +2095,10 @@ pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
 pub fn chat_thread_row_bounds(
     content_bounds: Bounds,
     index: usize,
-    thread_tools_expanded: bool,
+    _thread_tools_expanded: bool,
 ) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
-    let y = chat_thread_rail_controls_bottom(content_bounds, thread_tools_expanded)
+    let y = chat_thread_rail_controls_bottom(content_bounds)
         + index as f32 * (CHAT_SHELL_ROW_HEIGHT + CHAT_SHELL_ROW_GAP);
     Bounds::new(
         rail.origin.x + 8.0,
