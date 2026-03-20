@@ -71,10 +71,10 @@ impl Nip28ChatLaneWorker {
     }
 }
 
-fn build_filters(channel_id: &str) -> Vec<serde_json::Value> {
+fn build_filters(channel_ids: &[&str]) -> Vec<serde_json::Value> {
     vec![
-        json!({"kinds": [40], "ids": [channel_id]}),
-        json!({"kinds": [41, 42], "#e": [channel_id], "limit": 512}),
+        json!({"kinds": [40], "ids": channel_ids}),
+        json!({"kinds": [41, 42], "#e": channel_ids, "limit": 512}),
     ]
 }
 
@@ -181,7 +181,11 @@ fn ensure_connected(
     }
 
     let new_pool = Arc::new(RelayPool::new(PoolConfig::default()));
-    let filters = build_filters(&config.channel_id);
+    let mut channel_ids = vec![config.channel_id.as_str()];
+    if let Some(team_id) = config.team_channel_id.as_deref() {
+        channel_ids.push(team_id);
+    }
+    let filters = build_filters(&channel_ids);
 
     let connected = runtime.block_on(async {
         if let Err(error) = new_pool.add_relay(config.relay_url.as_str()).await {

@@ -8599,6 +8599,7 @@ mod tests {
             delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
             delivery_error: None,
             attempt_count: 0,
+            message_class: crate::chat_message_classifier::ChatMessageClass::HumanMessage,
         };
         let presence_message = crate::app_state::ManagedChatMessageProjection {
             event_id: "presence-target-001".to_string(),
@@ -8614,6 +8615,7 @@ mod tests {
             delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
             delivery_error: None,
             attempt_count: 0,
+            message_class: crate::chat_message_classifier::ChatMessageClass::PresenceEvent,
         };
         chat.managed_chat_projection.snapshot.groups.push(
             crate::app_state::ManagedChatGroupProjection {

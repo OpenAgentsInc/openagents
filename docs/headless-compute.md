@@ -626,3 +626,40 @@ cargo run -p autopilot-desktop --bin autopilot-headless-compute -- buyer \
   --relay wss://your-relay.example \
   --target-provider-pubkey <provider-npub-or-hex>
 ```
+
+## NIP-28 managed chat channels
+
+The desktop app subscribes to one or two NIP-28 channels on startup.
+
+### Default channel
+
+The primary channel is set by:
+
+- `OA_DEFAULT_NIP28_RELAY_URL` — relay WebSocket URL (default: `wss://relay.damus.io`)
+- `OA_DEFAULT_NIP28_CHANNEL_ID` — 64-char hex kind-40 event ID (default: `ebf2e35092632ecb81b0f7da7d3b25b4c1b0e8e7eb98d7d766ef584e9edd68c8`)
+
+### Team test channel (A-5)
+
+A second channel for team testing can be added without touching the default:
+
+- `OA_NIP28_TEAM_CHANNEL_ID` — 64-char hex kind-40 event ID of the team test channel
+
+When set, the lane worker subscribes to both channels simultaneously on the same
+relay. Both channels appear in the managed chat workspace rail.
+
+**Creating a team channel (one-time, manual):**
+
+```bash
+# Using nak (https://github.com/fiatjaf/nak)
+nak event --sec <team-nsec> --kind 40 \
+  --content '{"name":"oa-team-chat","about":"OpenAgents team test channel","picture":""}' \
+  wss://relay.damus.io
+# Record the output event ID (64 hex chars) — that is OA_NIP28_TEAM_CHANNEL_ID
+```
+
+**Running the app with the team channel:**
+
+```bash
+export OA_NIP28_TEAM_CHANNEL_ID=<64-hex-id>
+cargo autopilot
+```

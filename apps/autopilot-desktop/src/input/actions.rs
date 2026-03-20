@@ -1886,12 +1886,10 @@ fn build_managed_chat_reaction_event(
     target_message: &crate::app_state::ManagedChatMessageProjection,
     reaction: &str,
 ) -> Result<nostr::Event, String> {
-    let relay_url = channel.relay_url.as_deref().ok_or_else(|| {
-        format!(
-            "Managed chat channel {} does not advertise a relay target yet.",
-            channel.channel_id
-        )
-    })?;
+    let relay_url = channel
+        .relay_url
+        .as_deref()
+        .unwrap_or(crate::app_state::DEFAULT_NIP28_RELAY_URL);
     let now_ms = current_epoch_millis();
     let created_at = (now_ms / 1_000).max(1);
     let secret_key_bytes = hex::decode(&identity.private_key_hex)
@@ -1936,12 +1934,7 @@ fn build_managed_chat_outbound_message(
 ) -> Result<crate::app_state::ManagedChatOutboundMessage, String> {
     let relay_url = relay_url_override
         .or(channel.relay_url.as_deref())
-        .ok_or_else(|| {
-            format!(
-                "Managed chat channel {} does not advertise a relay target yet.",
-                channel.channel_id
-            )
-        })?;
+        .unwrap_or(crate::app_state::DEFAULT_NIP28_RELAY_URL);
     let now_ms = current_epoch_millis();
     let created_at = (now_ms / 1_000).max(1);
     let mut message_event = nostr::ManagedChannelMessageEvent::new(
@@ -2017,6 +2010,43 @@ pub(crate) fn queue_managed_chat_channel_message(
         content,
         reply_event_id,
     )
+}
+
+pub(crate) fn create_nip28_channel(
+    chat: &mut crate::app_state::AutopilotChatState,
+    identity: &nostr::NostrIdentity,
+    name: &str,
+    about: &str,
+) -> Result<String, String> {
+    let created_at = (current_epoch_millis() / 1_000).max(1);
+    let metadata = nostr::nip28::ChannelMetadata::new(name, about, "");
+    let channel_create = nostr::nip28::ChannelCreateEvent::new(metadata, created_at);
+    let content = channel_create
+        .content()
+        .map_err(|e| format!("Failed to build channel metadata: {e}"))?;
+    let tags = channel_create.to_tags();
+
+    let secret_key_bytes = hex::decode(&identity.private_key_hex)
+        .map_err(|e| format!("Invalid Nostr private key hex: {e}"))?;
+    let secret_key: [u8; 32] = secret_key_bytes
+        .try_into()
+        .map_err(|_| "Invalid Nostr private key length".to_string())?;
+    let event = nostr::finalize_event(
+        &nostr::EventTemplate {
+            created_at,
+            kind: 40,
+            tags,
+            content,
+        },
+        &secret_key,
+    )
+    .map_err(|e| format!("Failed to sign channel create event: {e}"))?;
+
+    let channel_id = event.id.clone();
+    chat.managed_chat_projection
+        .pending_admin_publishes
+        .push(event);
+    Ok(channel_id)
 }
 
 pub(crate) fn queue_managed_chat_message_to_channel(
@@ -5730,6 +5760,13 @@ pub(super) fn run_chat_toggle_thread_tools_action(
     state: &mut crate::app_state::RenderState,
 ) -> bool {
     state.autopilot_chat.thread_tools_expanded = !state.autopilot_chat.thread_tools_expanded;
+    true
+}
+
+pub(super) fn run_chat_toggle_debug_events_action(
+    state: &mut crate::app_state::RenderState,
+) -> bool {
+    state.autopilot_chat.show_debug_events = !state.autopilot_chat.show_debug_events;
     true
 }
 
@@ -15216,6 +15253,7 @@ mod tests {
             delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
             delivery_error: None,
             attempt_count: 0,
+            message_class: crate::chat_message_classifier::ChatMessageClass::HumanMessage,
         };
 
         let outbound = build_managed_chat_outbound_message(

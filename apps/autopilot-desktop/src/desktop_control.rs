@@ -1398,6 +1398,10 @@ pub enum DesktopControlActionRequest {
     RetryNip28Message {
         event_id: String,
     },
+    CreateNip28Channel {
+        name: String,
+        about: String,
+    },
     Withdraw {
         bolt11: String,
     },
@@ -1510,6 +1514,7 @@ impl DesktopControlActionRequest {
             Self::SelectNip28Channel { .. } => "nip28-select-channel",
             Self::SendNip28Message { .. } => "nip28-send",
             Self::RetryNip28Message { .. } => "nip28-retry",
+            Self::CreateNip28Channel { .. } => "nip28-create-channel",
             Self::Withdraw { .. } => "withdraw",
             Self::GetMissionControlLogTail { .. } => "log-tail",
         }
@@ -2503,6 +2508,11 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         DesktopControlActionRequest::RetryNip28Message { event_id } => json!({
             "command_label": action.label(),
             "event_id": event_id,
+        }),
+        DesktopControlActionRequest::CreateNip28Channel { name, about } => json!({
+            "command_label": action.label(),
+            "name": name,
+            "about_length": about.len(),
         }),
         DesktopControlActionRequest::Withdraw { bolt11 } => json!({
             "command_label": action.label(),
@@ -3736,6 +3746,9 @@ fn apply_action_request(
         DesktopControlActionRequest::RetryNip28Message { event_id } => {
             retry_nip28_message_action(state, event_id.as_str()).into()
         }
+        DesktopControlActionRequest::CreateNip28Channel { name, about } => {
+            create_nip28_channel_action(state, name.as_str(), about.as_str()).into()
+        }
         DesktopControlActionRequest::GetMissionControlLogTail { limit } => {
             log_tail_response(state, *limit).into()
         }
@@ -4007,6 +4020,25 @@ fn retry_nip28_message_action(
         Ok(()) => DesktopControlActionResponse::ok_with_payload(
             format!("Retried NIP-28 message {event_id}"),
             json!({ "event_id": event_id }),
+        ),
+        Err(error) => DesktopControlActionResponse::error(error),
+    }
+}
+
+fn create_nip28_channel_action(
+    state: &mut RenderState,
+    name: &str,
+    about: &str,
+) -> DesktopControlActionResponse {
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        return DesktopControlActionResponse::error(
+            "No Nostr identity is loaded for NIP-28 publishing.",
+        );
+    };
+    match crate::input::create_nip28_channel(&mut state.autopilot_chat, identity, name, about) {
+        Ok(channel_id) => DesktopControlActionResponse::ok_with_payload(
+            format!("Queued NIP-28 channel create {channel_id}"),
+            json!({ "channel_id": channel_id }),
         ),
         Err(error) => DesktopControlActionResponse::error(error),
     }
@@ -11412,6 +11444,7 @@ mod tests {
         let mut lane_worker = Nip28ChatLaneWorker::spawn_with_config(DefaultNip28ChannelConfig {
             relay_url: relay.url.clone(),
             channel_id: main_channel_id.clone(),
+            team_channel_id: None,
         });
 
         let token = "token-nip28-programmatic".to_string();

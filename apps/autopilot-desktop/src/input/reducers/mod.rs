@@ -211,6 +211,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         changed = true;
         match update {
             Nip28ChatLaneUpdate::RelayEvent(event) => {
+                // All events stored; rendering filters based on show_debug_events (A-4)
                 nip28_relay_events.push(event);
             }
             Nip28ChatLaneUpdate::PublishAck { event_id } => {
@@ -250,6 +251,18 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             .map(|message| message.event.clone())
             .collect();
         for event in pending_events {
+            state.nip28_chat_lane_worker.publish(event);
+        }
+    }
+
+    {
+        let admin_events: Vec<_> = state
+            .autopilot_chat
+            .managed_chat_projection
+            .pending_admin_publishes
+            .drain(..)
+            .collect();
+        for event in admin_events {
             state.nip28_chat_lane_worker.publish(event);
         }
     }

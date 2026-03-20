@@ -7122,6 +7122,7 @@ pub struct AutopilotChatState {
     pub header_controls_expanded: bool,
     pub thread_tools_expanded: bool,
     pub show_autopilot_help_hint: bool,
+    pub show_debug_events: bool,
     pub thread_rename_counter: u64,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
@@ -7255,6 +7256,7 @@ impl Default for AutopilotChatState {
             header_controls_expanded: false,
             thread_tools_expanded: false,
             show_autopilot_help_hint: false,
+            show_debug_events: false,
             thread_rename_counter: 1,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
@@ -11898,14 +11900,19 @@ const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 2] =
 
 pub(crate) const ENV_DEFAULT_NIP28_RELAY_URL: &str = "OA_DEFAULT_NIP28_RELAY_URL";
 pub(crate) const ENV_DEFAULT_NIP28_CHANNEL_ID: &str = "OA_DEFAULT_NIP28_CHANNEL_ID";
-const DEFAULT_NIP28_RELAY_URL: &str = "wss://relay.damus.io";
+pub(crate) const ENV_NIP28_TEAM_CHANNEL_ID: &str = "OA_NIP28_TEAM_CHANNEL_ID";
+pub(crate) const DEFAULT_NIP28_RELAY_URL: &str = "wss://relay.damus.io";
 const DEFAULT_NIP28_CHANNEL_ID: &str =
     "ebf2e35092632ecb81b0f7da7d3b25b4c1b0e8e7eb98d7d766ef584e9edd68c8";
+const DEFAULT_NIP28_TEAM_CHANNEL_ID: &str =
+    "f56964c08acfc53705701fa87ec423f4573d25d3e25b7b6923a7ffff9663a9db";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultNip28ChannelConfig {
     pub relay_url: String,
     pub channel_id: String,
+    /// Optional second channel (OA_NIP28_TEAM_CHANNEL_ID) for team testing.
+    pub team_channel_id: Option<String>,
 }
 
 impl DefaultNip28ChannelConfig {
@@ -11915,6 +11922,15 @@ impl DefaultNip28ChannelConfig {
                 .unwrap_or_else(|_| DEFAULT_NIP28_RELAY_URL.to_string()),
             channel_id: std::env::var(ENV_DEFAULT_NIP28_CHANNEL_ID)
                 .unwrap_or_else(|_| DEFAULT_NIP28_CHANNEL_ID.to_string()),
+            team_channel_id: Some(
+                std::env::var(ENV_NIP28_TEAM_CHANNEL_ID)
+                    .ok()
+                    .filter(|id| {
+                        id.len() == 64
+                            && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    })
+                    .unwrap_or_else(|| DEFAULT_NIP28_TEAM_CHANNEL_ID.to_string()),
+            ),
         }
     }
 

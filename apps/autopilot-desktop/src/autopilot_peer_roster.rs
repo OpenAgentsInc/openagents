@@ -685,6 +685,7 @@ mod tests {
         DefaultNip28ChannelConfig {
             relay_url: "wss://relay.openagents.test".to_string(),
             channel_id: channel_id.to_string(),
+            team_channel_id: None,
         }
     }
 
@@ -769,6 +770,7 @@ mod tests {
             delivery_state: ManagedChatDeliveryState::Confirmed,
             delivery_error: None,
             attempt_count: 0,
+            message_class: crate::chat_message_classifier::ChatMessageClass::HumanMessage,
         }
     }
 
