@@ -99,7 +99,7 @@ Important boundary:
 An A2A `Task` maps naturally to an SA trajectory run.
 
 - `Task.id` SHOULD correlate to the SA session identifier.
-- A server MAY reuse `Task.id` as the `d` tag of the corresponding `kind:39230` session, or keep a separate session identifier and publish the mapping in task metadata.
+- For the OpenAgents v1 bridge profile, `Task.id` is the `d` tag of the corresponding `kind:39230` session.
 - Task status transitions SHOULD correspond to SA lifecycle transitions and related `kind:39231` trajectory events.
 - `Task.metadata` and task update metadata SHOULD carry the sovereign refs needed for correlation.
 
@@ -183,7 +183,7 @@ The following examples are illustrative and intentionally follow the current A2A
         "description": "Projects sovereign profile and trajectory correlation hints into A2A.",
         "required": false,
         "params": {
-          "agentProfileRef": "<current-39200-profile-ref>",
+          "agentProfileRef": "39200:<agent_hex_pubkey>:",
           "trajectoryAuditAvailable": true
         }
       },
@@ -285,7 +285,7 @@ The following examples are illustrative and intentionally follow the current A2A
         "description": "Projects sovereign profile, trajectory audit hints, delegation support, and security posture summary.",
         "required": false,
         "params": {
-          "agentProfileRef": "<current-39200-profile-ref>",
+          "agentProfileRef": "39200:<agent_hex_pubkey>:",
           "trajectoryAuditAvailable": true,
           "delegationSupported": true,
           "securityPostureSummary": {
@@ -403,7 +403,7 @@ Under this flow:
 2. The server authenticates the caller using the declared A2A auth surface.
 3. If the request depends on extension behavior, the client and server use standard A2A extension negotiation for the relevant URIs.
 4. The server creates or resumes an SA trajectory session (`kind:39230`).
-5. The server correlates the A2A `Task.id` with the SA session identifier.
+5. The server uses the SA session `d` tag as the A2A `Task.id` and emits `saSessionRef = 39230:<agent_hex_pubkey>:<task_id>` in task metadata.
 6. The server selects one or more SKL-backed skills that satisfy the request.
 7. The server emits `kind:39231` trajectory events for consequential actions, approvals, and outputs.
 8. The server returns A2A task state and artifacts, optionally including metadata refs back to the session, skill refs used, and relevant trajectory events.
@@ -490,7 +490,7 @@ Suggested fields:
 
 Suggested fields:
 
-- `agentProfileRef`
+- `agentProfileRef` (recommended v1 value shape: `39200:<agent_hex_pubkey>:`)
 - `trajectoryAuditAvailable`
 - `delegationSupported`
 - `securityPostureSummary`
@@ -518,7 +518,13 @@ Suggested server-emitted metadata keys:
 - `acReceiptRefs`
 - `trajectoryEventRefs`
 
-These keys are profile-level conventions, not A2A core fields.
+Suggested client-provided metadata keys:
+
+- `osceEnvelopeRef`
+- `preferredNostrRelays`
+- `requestedProfileUris`
+
+These keys are profile-level conventions, not A2A core fields. The names above should be treated as frozen for OpenAgents v1 bridge compatibility.
 
 ### 6.5 Recommended OSCE handover modes
 
@@ -531,6 +537,7 @@ Recommended values for `osceHandoverMode`:
 Recommended starting point:
 
 - prefer **by-reference** first, where the A2A request carries an AC envelope ref and the server resolves canonical state from Nostr.
+- the OpenAgents v1 bridge should advertise and implement `by-reference` only until inline payload handling is explicitly added.
 
 ---
 

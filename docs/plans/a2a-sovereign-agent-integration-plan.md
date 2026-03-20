@@ -127,7 +127,7 @@ Recommended mapping:
 Recommended mapping:
 
 - A2A `Task.id` SHOULD correlate to the SA session identifier.
-- A deployment MAY reuse `Task.id` as the `d` tag of the `kind:39230` session, or publish the mapping in task metadata.
+- For the first OpenAgents bridge implementation, `Task.id` is the `d` tag of the `kind:39230` session.
 - Task status transitions SHOULD map to SA lifecycle state and be mirrored by `kind:39231` events where material.
 
 ### 4.3 A2A `Message` / `Part` / `Artifact` -> SA trajectory material
@@ -246,8 +246,8 @@ The following are recommended implementation contracts, not normative protocol c
 | Concept | Recommended form | Notes |
 | --- | --- | --- |
 | SKL manifest ref | `33400:<skill_hex_pubkey>:<d-tag>` | Canonical SKL manifest reference |
-| SA profile ref | implementation-defined stable ref to current `kind:39200` profile event | Avoid inventing a new A2A core field for identity |
-| SA session ref | `39230:<agent_hex_pubkey>:<session-d-tag>` | Correlates with `Task.id` directly or indirectly |
+| SA profile ref | `39200:<agent_hex_pubkey>:` | Stable replaceable-address form for the current `kind:39200` profile |
+| SA session ref | `39230:<agent_hex_pubkey>:<session-d-tag>` | For v1, `<session-d-tag>` is the A2A `Task.id` |
 | AC envelope ref | `39242:<issuer_hex_pubkey>:<d-tag>` or event id | `39240` is credit intent, not the envelope |
 | Trajectory event ref | event id of `kind:39231` | Use for audit-friendly action refs |
 | AC receipt ref | event id of `kind:39244` | Durable settlement reference |
@@ -281,7 +281,7 @@ Suggested fields:
 
 Suggested fields:
 
-- `agentProfileRef: string`
+- `agentProfileRef: string` (`39200:<agent_hex_pubkey>:` in v1)
 - `trajectoryAuditAvailable: boolean`
 - `delegationSupported: boolean`
 - `securityPostureSummary: object`
@@ -295,7 +295,7 @@ Suggested fields:
 - `acceptedUnderwriters: string[]`
 - `acceptedSpendRails: string[]`
 - `cancelWindowSupported: boolean`
-- `osceHandoverMode: "by-reference" | "inline-data-part" | "either"`
+- `osceHandoverMode: "by-reference" | "inline-data-part" | "either"` (v1 should advertise `by-reference` only)
 
 ### 6.4 Recommended A2A metadata keys
 
@@ -316,6 +316,8 @@ Suggested client-provided keys:
 - `requestedProfileUris`
 
 These are profile conventions, not A2A core fields.
+
+For the first bridge implementation, the client-provided and server-emitted key names above should be treated as frozen compatibility keys.
 
 ### 6.5 Recommended OSCE handover modes
 
@@ -543,17 +545,19 @@ These workstreams should be easy to convert into tickets.
 
 The team should make explicit decisions on the following:
 
+The following decisions are already locked for the first bridge slice and are not open questions: `agentProfileRef = 39200:<agent_hex_pubkey>:`, `Task.id == session d-tag`, and initial funding handoff is by-reference `osceEnvelopeRef`.
+
 1. **Credential bridge design**
    - How does the chosen A2A auth surface bind to a verified Nostr identity when SKL auth challenge is used?
 
 2. **Identity anchor shape**
    - Which extension params are required for sovereign identity binding in the first interoperable version?
 
-3. **Profile ref format**
-   - What exact stable reference form should we use for the current `kind:39200` profile event?
+3. **Profile ref refresh policy**
+   - How should clients refresh or invalidate cached profile material while the stable `39200:<agent_hex_pubkey>:` projection remains constant?
 
-4. **Task/session correlation policy**
-   - Should `Task.id` equal the SA session `d` tag directly, or should one wrap the other?
+4. **Legacy correlation fallback**
+   - Do we need any additional metadata beyond `Task.id == session d-tag` for older clients, migrations, or operational debugging?
 
 5. **Artifact storage model**
    - Which artifacts are persisted off Nostr, and how are hashes / URLs linked back into trajectory events?
@@ -633,8 +637,8 @@ The team should make explicit decisions on the following:
 1. **Confirm scope with product and engineering**
    - Decide which phases are immediate work vs design-ready backlog.
 
-2. **Lock the minimal extension params**
-   - Freeze the first set of OpenAgents extension URIs and `params` keys.
+2. **Lock the minimal extension params and metadata keys**
+   - Freeze the first set of OpenAgents extension URIs, `params` keys, and task metadata keys.
 
 3. **Implement Phase 1 first**
    - Start with extension-based identity hints, profile refs, and manifest refs.
@@ -642,11 +646,11 @@ The team should make explicit decisions on the following:
 4. **Choose the auth bridge strategy**
    - Make an explicit decision on how A2A auth binds to verified Nostr identity.
 
-5. **Prototype task/session correlation**
-   - Build a thin slice where one A2A task creates one SA session and one trajectory chain.
+5. **Prototype direct task/session correlation**
+   - Build a thin slice where one A2A task creates one SA session, uses the session `d` tag as `Task.id`, and emits one trajectory chain.
 
-6. **Decide the first funding mode**
-   - Prefer by-reference OSCE handling before inline payload complexity.
+6. **Keep the first funding mode by-reference**
+   - Prefer `osceEnvelopeRef` handoff before inline payload complexity.
 
 7. **Defer delegation unless needed immediately**
    - Keep sub-agent orchestration as a later phase unless a concrete product use case demands it now.
