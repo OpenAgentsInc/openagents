@@ -1260,6 +1260,9 @@ pub enum DesktopControlActionRequest {
         pane: String,
     },
     GetDataMarketSellerStatus,
+    SendDataMarketSellerPrompt {
+        prompt: String,
+    },
     GetDataMarketBuyerStatus,
     RefreshDataMarketBuyerMarket,
     DraftDataMarketAsset {
@@ -1438,6 +1441,7 @@ impl DesktopControlActionRequest {
             Self::ClosePane { .. } => "pane-close",
             Self::GetPaneSnapshot { .. } => "pane-snapshot",
             Self::GetDataMarketSellerStatus => "data-market-seller-status",
+            Self::SendDataMarketSellerPrompt { .. } => "data-market-seller-prompt",
             Self::GetDataMarketBuyerStatus => "data-market-buyer-status",
             Self::RefreshDataMarketBuyerMarket => "data-market-buyer-refresh",
             Self::DraftDataMarketAsset { .. } => "data-market-asset-draft",
@@ -2330,6 +2334,10 @@ fn command_payload(action: &DesktopControlActionRequest) -> Value {
         | DesktopControlActionRequest::GetDataMarketSnapshot => {
             json!({ "command_label": action.label() })
         }
+        DesktopControlActionRequest::SendDataMarketSellerPrompt { prompt } => json!({
+            "command_label": action.label(),
+            "prompt": prompt,
+        }),
         DesktopControlActionRequest::DraftDataMarketAsset { args } => json!({
             "command_label": action.label(),
             "args": args,
@@ -3483,6 +3491,9 @@ fn apply_action_request(
             crate::input::desktop_control_data_market_seller_status(state),
         )
         .into(),
+        DesktopControlActionRequest::SendDataMarketSellerPrompt { prompt } => {
+            data_market_tool_action_response(data_market_seller_prompt_action(state, prompt)).into()
+        }
         DesktopControlActionRequest::GetDataMarketBuyerStatus => data_market_tool_action_response(
             crate::input::desktop_control_data_market_buyer_status(state),
         )
@@ -4424,6 +4435,41 @@ fn data_market_publish_asset_action(
         state.data_seller.confirm_asset_preview();
     }
     crate::input::desktop_control_data_market_publish_asset(state, args)
+}
+
+fn data_market_seller_prompt_action(
+    state: &mut RenderState,
+    prompt: &str,
+) -> DesktopControlToolBridgeResultEnvelope {
+    let trimmed = prompt.trim();
+    let snapshot = crate::input::desktop_control_data_market_seller_status(state);
+    if trimmed.is_empty() {
+        return DesktopControlToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-SELLER-PROMPT-EMPTY",
+            "Seller prompt cannot be empty.",
+            snapshot.details,
+        );
+    }
+
+    crate::data_seller_control::submit_data_seller_prompt_text(state, trimmed.to_string());
+    let snapshot = crate::input::desktop_control_data_market_seller_status(state);
+    if let Some(error) = state.data_seller.last_error.clone() {
+        return DesktopControlToolBridgeResultEnvelope::error(
+            "OA-DATA-MARKET-SELLER-PROMPT-FAILED",
+            error,
+            snapshot.details,
+        );
+    }
+
+    DesktopControlToolBridgeResultEnvelope::ok(
+        "OA-DATA-MARKET-SELLER-PROMPT-SENT",
+        state
+            .data_seller
+            .last_action
+            .clone()
+            .unwrap_or_else(|| "Queued Data Seller prompt.".to_string()),
+        snapshot.details,
+    )
 }
 
 fn data_market_publish_grant_action(
@@ -11095,6 +11141,13 @@ mod tests {
             "data-market-seller-status"
         );
         assert_eq!(
+            DesktopControlActionRequest::SendDataMarketSellerPrompt {
+                prompt: "Turn ./fixtures/data-market/example into a saleable listing.".to_string(),
+            }
+            .label(),
+            "data-market-seller-prompt"
+        );
+        assert_eq!(
             DesktopControlActionRequest::GetDataMarketBuyerStatus.label(),
             "data-market-buyer-status"
         );
@@ -11223,6 +11276,23 @@ mod tests {
                 .and_then(|metadata| metadata.get("fixture"))
                 .and_then(Value::as_str),
             Some("ready_asset_draft")
+        );
+    }
+
+    #[test]
+    fn desktop_control_data_market_seller_prompt_payload_preserves_prompt() {
+        let event =
+            command_received_event(&DesktopControlActionRequest::SendDataMarketSellerPrompt {
+                prompt: "Turn ./fixtures/data-market/example into a saleable listing.".to_string(),
+            });
+        let payload = event.payload.expect("seller prompt payload");
+        assert_eq!(
+            payload.get("command_label").and_then(Value::as_str),
+            Some("data-market-seller-prompt")
+        );
+        assert_eq!(
+            payload.get("prompt").and_then(Value::as_str),
+            Some("Turn ./fixtures/data-market/example into a saleable listing.")
         );
     }
 
