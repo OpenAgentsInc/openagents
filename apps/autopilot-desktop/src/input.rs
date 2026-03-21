@@ -1137,6 +1137,22 @@ fn pump_background_every_loop(
     ) {
         changed = true;
     }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "autopilot_chat::hover_preview_visibility",
+        |state| state.autopilot_chat.refresh_thread_hover_preview_visibility(now),
+    ) {
+        changed = true;
+    }
+    if record_runtime_changed_op(
+        state,
+        "every_loop",
+        "autopilot_chat::pending_thread_history_refresh",
+        |state| run_chat_pending_thread_history_refresh_tick(state, now),
+    ) {
+        changed = true;
+    }
     if record_runtime_changed_op(state, "every_loop", "cast_control::process_tick", |state| {
         run_cast_control_process_tick(state)
     }) {
@@ -2455,6 +2471,7 @@ fn dispatch_mouse_move(state: &mut crate::app_state::RenderState, point: Point) 
     if state.cad_camera_drag_state.is_none() {
         handled |= update_cad_hover_target(state, point);
     }
+    handled |= chat_pane::update_thread_hover_preview_target(state, point);
     handled |= update_chat_transcript_selection_drag(state, point);
     let event = InputEvent::MouseMove {
         x: point.x,

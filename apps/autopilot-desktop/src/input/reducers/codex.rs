@@ -274,16 +274,22 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: CodexLaneSn
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
     refresh_codex_readiness_summary(state);
+    let lane_just_became_ready = previous_lifecycle != CodexLaneLifecycle::Ready
+        && state.codex_lane.lifecycle == CodexLaneLifecycle::Ready;
     if state.codex_lane.lifecycle == CodexLaneLifecycle::Ready
         && state.autopilot_chat.chat_browse_mode() == crate::app_state::ChatBrowseMode::Autopilot
-        && state.autopilot_chat.threads.is_empty()
-        && state.autopilot_chat.active_thread_id.is_none()
+        && (state.autopilot_chat.pending_thread_history_refresh_on_ready
+            || lane_just_became_ready
+            || (state.autopilot_chat.threads.is_empty()
+                && state.autopilot_chat.active_thread_id.is_none()))
     {
-        queue_thread_history_refresh(state);
+        if queue_thread_history_refresh(state) {
+            state.autopilot_chat.pending_thread_history_refresh_on_ready = false;
+        } else {
+            state.autopilot_chat.pending_thread_history_refresh_on_ready = true;
+        }
     }
-    if previous_lifecycle != CodexLaneLifecycle::Ready
-        && state.codex_lane.lifecycle == CodexLaneLifecycle::Ready
-    {
+    if lane_just_became_ready {
         queue_codex_readiness_refresh(state, true, "lane ready");
     }
 }
@@ -726,7 +732,7 @@ fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
     true
 }
 
-fn queue_thread_history_refresh(state: &mut RenderState) {
+fn queue_thread_history_refresh(state: &mut RenderState) -> bool {
     let cwd = super::super::actions::current_chat_session_cwd(state).or_else(|| {
         std::env::current_dir()
             .ok()
@@ -735,7 +741,7 @@ fn queue_thread_history_refresh(state: &mut RenderState) {
     let params = state.autopilot_chat.build_thread_list_params(cwd);
     if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadList(params)) {
         state.autopilot_chat.last_error = Some(error);
-        return;
+        return false;
     }
     if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadLoadedList(
         codex_client::ThreadLoadedListParams {
@@ -744,7 +750,9 @@ fn queue_thread_history_refresh(state: &mut RenderState) {
         },
     )) {
         state.autopilot_chat.last_error = Some(error);
+        return false;
     }
+    true
 }
 
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {

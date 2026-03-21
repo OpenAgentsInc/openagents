@@ -5629,6 +5629,62 @@ pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::Rend
     true
 }
 
+pub(super) fn run_chat_pending_thread_history_refresh_tick(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if !state.autopilot_chat.pending_thread_history_refresh_on_ready {
+        return false;
+    }
+    if state.autopilot_chat.chat_browse_mode() != crate::app_state::ChatBrowseMode::Autopilot {
+        return false;
+    }
+    if !state
+        .panes
+        .iter()
+        .any(|pane| pane.kind == crate::app_state::PaneKind::AutopilotChat)
+    {
+        return false;
+    }
+    if !state
+        .autopilot_chat
+        .thread_history_refresh_retry_due(now, std::time::Duration::from_secs(2))
+    {
+        return false;
+    }
+    state
+        .autopilot_chat
+        .note_thread_history_refresh_retry_attempt(now);
+
+    sync_chat_thread_search_term(state);
+    let cwd = current_chat_workspace_root(state).or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|value| value.into_os_string().into_string().ok())
+    });
+    let params = state.autopilot_chat.build_thread_list_params(cwd);
+    let list_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(
+        params,
+    ));
+    if let Err(error) = list_result {
+        state.autopilot_chat.last_error = Some(error);
+        return false;
+    }
+    let loaded_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
+        ThreadLoadedListParams {
+            cursor: None,
+            limit: Some(200),
+        },
+    ));
+    if let Err(error) = loaded_result {
+        state.autopilot_chat.last_error = Some(error);
+        return false;
+    }
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.pending_thread_history_refresh_on_ready = false;
+    true
+}
+
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
     sync_chat_composer_draft(state);

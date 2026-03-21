@@ -199,6 +199,8 @@ struct ChatShellWorkspace {
 struct ChatShellChannelEntry {
     title: String,
     subtitle: String,
+    thread_id: Option<String>,
+    hover_preview: Option<String>,
     active: bool,
     is_category: bool,
     collapsed: bool,
@@ -2426,19 +2428,24 @@ fn paint_thread_rail_button(
     ));
 }
 
-fn paint_header_chip(bounds: Bounds, label: &str, accent: wgpui::Hsla, paint: &mut PaintContext) {
+fn paint_header_chip(
+    bounds: Bounds,
+    label: &str,
+    _accent: wgpui::Hsla,
+    paint: &mut PaintContext,
+) {
     paint.scene.draw_quad(
         Quad::new(bounds)
-            .with_background(chat_mission_panel_header_color().with_alpha(0.58))
-            .with_border(accent.with_alpha(0.6), 1.0)
+            .with_background(chat_mission_panel_header_color().with_alpha(0.5))
+            .with_border(chat_mission_panel_border_color().with_alpha(0.62), 1.0)
             .with_corner_radius(3.0),
     );
-    let clipped_label = truncate_for_width(label, bounds.size.width - 14.0);
+    let clipped_label = truncate_for_width(label, bounds.size.width - 12.0);
     paint.scene.draw_text(paint.text.layout_mono(
         &clipped_label,
-        Point::new(bounds.origin.x + 8.0, bounds.origin.y + 7.0),
+        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 7.0),
         9.0,
-        chat_mission_text_color(),
+        chat_mission_muted_color(),
     ));
 }
 
@@ -2477,6 +2484,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                         } else {
                             format!("{channel_count} channel(s)")
                         },
+                        thread_id: None,
+                        hover_preview: None,
                         active: false,
                         is_category: true,
                         collapsed,
@@ -2500,6 +2509,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                         Some(ChatShellChannelEntry {
                             title: format!("# {}", managed_channel_label(channel)),
                             subtitle: managed_channel_subtitle(channel),
+                            thread_id: None,
+                            hover_preview: None,
                             active: active_channel_id == Some(channel.channel_id.as_str()),
                             is_category: false,
                             collapsed: false,
@@ -2527,6 +2538,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                             autopilot_chat.direct_message_projection.local_pubkey(),
                         ),
                         subtitle: direct_room_subtitle(room),
+                        thread_id: None,
+                        hover_preview: None,
                         active: active_room_id == Some(room.room_id.as_str()),
                         is_category: false,
                         collapsed: false,
@@ -2542,6 +2555,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
     let mut entries = vec![ChatShellChannelEntry {
         title: "# mission-control".to_string(),
         subtitle: "provider coordination".to_string(),
+        thread_id: None,
+        hover_preview: None,
         active: autopilot_chat.active_thread_id.is_none(),
         is_category: false,
         collapsed: false,
@@ -2574,6 +2589,12 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
         ChatShellChannelEntry {
             title: format!("# {title}"),
             subtitle,
+            thread_id: Some(thread_id.clone()),
+            hover_preview: metadata
+                .and_then(|value| value.preview.as_deref())
+                .map(str::trim)
+                .map(str::to_string)
+                .filter(|preview| !preview.is_empty()),
             active: autopilot_chat.active_thread_id.as_deref() == Some(thread_id.as_str()),
             is_category: false,
             collapsed: false,
@@ -2592,6 +2613,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                 + autopilot_chat.pending_tool_user_input.len()
                 + autopilot_chat.pending_auth_refresh.len()
         ),
+        thread_id: None,
+        hover_preview: None,
         active: false,
         is_category: false,
         collapsed: false,
@@ -2695,12 +2718,12 @@ fn paint_chat_shell(
                     paint,
                 );
             }
+            let workspace_label_width = paint.text.measure(&workspace.label, 9.0);
+            let workspace_label_x =
+                avatar_bounds.origin.x + (avatar_bounds.size.width - workspace_label_width) * 0.5;
             paint.scene.draw_text(paint.text.layout(
                 &workspace.label,
-                Point::new(
-                    workspace_bounds.origin.x + 12.0,
-                    avatar_bounds.max_y() + 4.0,
-                ),
+                Point::new(workspace_label_x, avatar_bounds.max_y() + 4.0),
                 9.0,
                 if workspace.active {
                     chat_mission_text_color()
@@ -2921,6 +2944,9 @@ fn paint_chat_shell(
             autopilot_chat.thread_tools_expanded,
             channel_bounds,
         );
+        let hovered_thread_id = autopilot_chat.thread_hover_preview_thread_id.as_deref();
+        let hover_preview_visible = autopilot_chat.thread_hover_preview_visible;
+        let suppress_active_highlight = hovered_thread_id.is_some();
         paint.scene.push_clip(rows_clip);
         for (index, entry) in channel_entries
             .into_iter()
@@ -2930,16 +2956,21 @@ fn paint_chat_shell(
         {
             let row_bounds =
                 chat_thread_row_bounds(content_bounds, index, autopilot_chat.thread_tools_expanded);
+            let is_hovered = entry.thread_id.as_deref() == hovered_thread_id;
             let background = if entry.is_category {
                 chat_mission_panel_header_color().with_alpha(0.5)
-            } else if entry.active {
+            } else if is_hovered {
+                chat_mission_cyan_color().with_alpha(0.12)
+            } else if entry.active && !suppress_active_highlight {
                 chat_mission_green_color().with_alpha(0.18)
             } else {
                 chat_mission_panel_color().with_alpha(0.9)
             };
             let border = if entry.is_category {
                 chat_mission_panel_border_color().with_alpha(0.45)
-            } else if entry.active {
+            } else if is_hovered {
+                chat_mission_cyan_color().with_alpha(0.55)
+            } else if entry.active && !suppress_active_highlight {
                 chat_mission_green_color().with_alpha(0.6)
             } else {
                 chat_mission_panel_border_color().with_alpha(0.6)
@@ -2952,7 +2983,7 @@ fn paint_chat_shell(
             );
             let title_color = if entry.is_category {
                 chat_mission_muted_color()
-            } else if entry.active {
+            } else if entry.active && !suppress_active_highlight {
                 chat_mission_text_color()
             } else {
                 chat_mission_muted_color()
@@ -2986,6 +3017,7 @@ fn paint_chat_shell(
                     paint,
                 );
             }
+            let _ = hover_preview_visible;
         }
         paint.scene.pop_clip();
         if max_start > 0 && rows_clip.size.height > 0.0 {
@@ -3209,6 +3241,96 @@ fn paint_chat_shell(
             }
         }
     }
+
+}
+
+pub fn paint_thread_hover_preview_overlay(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+    paint: &mut PaintContext,
+) {
+    if !autopilot_chat.thread_hover_preview_visible
+        || autopilot_chat.chat_browse_mode() != ChatBrowseMode::Autopilot
+        || autopilot_chat.thread_rail_collapsed
+    {
+        return;
+    }
+    let Some(hovered_thread_id) = autopilot_chat.thread_hover_preview_thread_id.as_deref() else {
+        return;
+    };
+
+    let channel_entries = shell_channel_entries(autopilot_chat);
+    let total_rows = channel_entries.len();
+    let visible_rows = chat_visible_thread_row_count(
+        content_bounds,
+        total_rows,
+        autopilot_chat.thread_tools_expanded,
+    );
+    let start_index = autopilot_chat.thread_rail_scroll_start_index(total_rows, visible_rows);
+    let Some((anchor, preview)) = channel_entries
+        .iter()
+        .skip(start_index)
+        .take(visible_rows)
+        .enumerate()
+        .find_map(|(visible_index, entry)| {
+            (entry.thread_id.as_deref() == Some(hovered_thread_id)).then(|| {
+                (
+                    chat_thread_row_bounds(
+                        content_bounds,
+                        visible_index,
+                        autopilot_chat.thread_tools_expanded,
+                    ),
+                    entry
+                        .hover_preview
+                        .clone()
+                        .unwrap_or_else(|| "No preview yet for this thread.".to_string()),
+                )
+            })
+        })
+    else {
+        return;
+    };
+
+    let tooltip_width = 268.0;
+    let tooltip_height = 80.0;
+    let mut tooltip_x = anchor.max_x() + 8.0;
+    let max_tooltip_x =
+        (content_bounds.max_x() - tooltip_width - 8.0).max(content_bounds.origin.x + 8.0);
+    if tooltip_x > max_tooltip_x {
+        tooltip_x = (anchor.origin.x - tooltip_width - 8.0).max(content_bounds.origin.x + 8.0);
+    }
+    let tooltip_y = (anchor.origin.y - 8.0).max(content_bounds.origin.y + 8.0);
+    let tooltip_bounds = Bounds::new(tooltip_x, tooltip_y, tooltip_width, tooltip_height);
+    paint.scene.draw_quad(
+        Quad::new(tooltip_bounds)
+            .with_background(wgpui::Hsla::from_hex(0x0A0F16).with_alpha(0.95))
+            .with_border(chat_mission_panel_border_color().with_alpha(0.98), 1.0)
+            .with_corner_radius(3.0),
+    );
+    paint.scene.push_clip(tooltip_bounds);
+    let compact_preview = preview.replace('\n', " ");
+    let line_width = tooltip_bounds.size.width - 16.0;
+    let max_chars_per_line = ((line_width / 6.2).floor() as usize).max(12);
+    let mut preview_lines = split_text_for_display(&compact_preview, max_chars_per_line);
+    let has_overflow = preview_lines.len() > 5;
+    preview_lines.truncate(5);
+    for (line_index, raw_line) in preview_lines.into_iter().enumerate() {
+        let mut line = truncate_for_width(&raw_line, line_width);
+        if line_index == 4 && has_overflow && !line.ends_with('…') {
+            line.push('…');
+            line = truncate_for_width(&line, line_width);
+        }
+        paint.scene.draw_text(paint.text.layout(
+            &line,
+            Point::new(
+                tooltip_bounds.origin.x + 8.0,
+                tooltip_bounds.origin.y + 9.0 + line_index as f32 * 12.0,
+            ),
+            10.0,
+            chat_mission_text_color(),
+        ));
+    }
+    paint.scene.pop_clip();
 }
 
 pub fn transcript_message_byte_offset_at_point(
@@ -3979,6 +4101,61 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
     handled
 }
 
+pub fn update_thread_hover_preview_target(state: &mut RenderState, cursor_position: Point) -> bool {
+    set_chat_shell_layout_state(
+        state.autopilot_chat.workspace_rail_collapsed,
+        state.autopilot_chat.thread_rail_collapsed,
+    );
+    let top_chat = state
+        .panes
+        .iter()
+        .filter(|pane| pane.kind == PaneKind::AutopilotChat)
+        .max_by_key(|pane| pane.z_index)
+        .map(|pane| pane.bounds);
+    let now = std::time::Instant::now();
+    let Some(bounds) = top_chat else {
+        return state.autopilot_chat.set_thread_hover_preview_target(None, now);
+    };
+    if state.autopilot_chat.chat_browse_mode() != ChatBrowseMode::Autopilot
+        || state.autopilot_chat.thread_rail_collapsed
+    {
+        return state.autopilot_chat.set_thread_hover_preview_target(None, now);
+    }
+    let content_bounds = pane_content_bounds(bounds);
+    let channel_entries = shell_channel_entries(&state.autopilot_chat);
+    let visible_rows = chat_visible_thread_row_count(
+        content_bounds,
+        channel_entries.len(),
+        state.autopilot_chat.thread_tools_expanded,
+    );
+    let start_index = state
+        .autopilot_chat
+        .thread_rail_scroll_start_index(channel_entries.len(), visible_rows);
+    let rows_clip = thread_rows_clip_bounds(
+        content_bounds,
+        state.autopilot_chat.thread_tools_expanded,
+        chat_thread_rail_bounds(content_bounds),
+    );
+    if !rows_clip.contains(cursor_position) {
+        return state.autopilot_chat.set_thread_hover_preview_target(None, now);
+    }
+    for (index, entry) in channel_entries
+        .iter()
+        .skip(start_index)
+        .take(visible_rows)
+        .enumerate()
+    {
+        let row_bounds =
+            chat_thread_row_bounds(content_bounds, index, state.autopilot_chat.thread_tools_expanded);
+        if row_bounds.contains(cursor_position) {
+            return state
+                .autopilot_chat
+                .set_thread_hover_preview_target(entry.thread_id.clone(), now);
+        }
+    }
+    false
+}
+
 pub fn dispatch_transcript_scroll_event(
     state: &mut RenderState,
     cursor_position: Point,
@@ -4019,6 +4196,10 @@ pub fn dispatch_transcript_scroll_event(
                 visible_rows,
             )
         {
+            let _ = state.autopilot_chat.set_thread_hover_preview_target(
+                None,
+                std::time::Instant::now(),
+            );
             return true;
         }
     }
