@@ -12,7 +12,7 @@ use nostr_client::{
     ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage,
     RelayPool,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -1952,7 +1952,13 @@ pub(crate) fn event_to_inbox_request(
             let data_vending_request = DataVendingRequest::from_job_request(request.clone()).ok();
             let bid_msats = request.bid.unwrap_or(0);
             let price_sats = msats_to_sats_ceil(bid_msats);
-            let ttl_seconds = extract_ttl_seconds(request).unwrap_or(DEFAULT_TTL_SECONDS);
+            let ttl_seconds = extract_ttl_seconds(request)
+                .or_else(|| {
+                    data_vending_request
+                        .as_ref()
+                        .and_then(|_| extract_data_vending_timeout_seconds(request))
+                })
+                .unwrap_or(DEFAULT_TTL_SECONDS);
             let skill_scope_id = extract_param(request, "skill_scope_id")
                 .or_else(|| extract_param(request, "skill_scope"));
             let target_provider_pubkeys =
@@ -2773,6 +2779,33 @@ fn extract_ttl_seconds(request: &JobRequest) -> Option<u64> {
         .and_then(|raw| raw.parse::<u64>().ok())
 }
 
+fn timeout_seconds_from_json_value(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(raw) => raw.trim().parse::<u64>().ok(),
+        _ => None,
+    }
+}
+
+fn extract_data_vending_timeout_seconds(request: &JobRequest) -> Option<u64> {
+    std::iter::once(request.content.as_str())
+        .chain(
+            request
+                .inputs
+                .iter()
+                .filter(|input| input.input_type == InputType::Text)
+                .map(|input| input.data.as_str()),
+        )
+        .find_map(|raw| {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let parsed = serde_json::from_str::<Value>(trimmed).ok()?;
+            timeout_seconds_from_json_value(parsed.get("timeout_seconds")?)
+        })
+}
+
 fn msats_to_sats_ceil(msats: u64) -> u64 {
     if msats == 0 {
         return 0;
@@ -3088,6 +3121,50 @@ mod tests {
                 .as_deref()
                 .is_some_and(|shape| shape.contains("profile=openagents.data-vending.v1"))
         );
+    }
+
+    #[test]
+    fn maps_data_vending_request_timeout_from_payload_when_tag_missing() {
+        let payload = serde_json::json!({
+            "request_type": crate::app_state::DATA_MARKET_BUYER_REQUEST_TYPE,
+            "asset_id": "asset://repo-alpha",
+            "target_provider_pubkey": "npub1localprovider",
+            "permission_scopes": ["read.context"],
+            "delivery_mode": "delivery_bundle_ref",
+            "preview_posture": "metadata_only",
+            "bid_sats": 42,
+            "timeout_seconds": 120,
+        })
+        .to_string();
+        let template = create_data_vending_request_event(
+            &DataVendingRequest::new(
+                crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+                "asset://repo-alpha",
+                "read.context",
+            )
+            .expect("data request")
+            .with_delivery_mode(DataVendingDeliveryMode::DeliveryBundleRef)
+            .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
+            .with_bid(42_000)
+            .add_service_provider("npub1localprovider")
+            .add_relay("wss://relay.ingress.test")
+            .with_content(payload),
+        )
+        .expect("template");
+        let event = Event {
+            id: "req-data-timeout-001".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_240,
+            kind: crate::app_state::OPENAGENTS_DATA_VENDING_LOCAL_REQUEST_KIND,
+            tags: template.tags,
+            content: template.content,
+            sig: "44".repeat(64),
+        };
+
+        let row = event_to_inbox_request(&event, Some("wss://relay.ingress.test/"))
+            .expect("data-vending request should map");
+        assert_eq!(row.ttl_seconds, 120);
+        assert_eq!(row.expires_at_epoch_seconds, Some(1_760_000_360));
     }
 
     #[test]

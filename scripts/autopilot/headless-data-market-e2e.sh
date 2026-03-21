@@ -18,6 +18,10 @@ BUYER_SETTINGS_PATH="$BUYER_HOME/.openagents/autopilot-settings-v1.conf"
 WAIT_TIMEOUT_MS="${OPENAGENTS_HEADLESS_DATA_MARKET_WAIT_TIMEOUT_MS:-120000}"
 REQUEST_TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_REQUEST_TIMEOUT_SECONDS:-120}"
 PRICE_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_PRICE_SATS:-5}"
+BUYER_PREFUND_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_SATS:-0}"
+BUYER_PREFUND_TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_TIMEOUT_SECONDS:-90}"
+PREFUND_PAYER_IDENTITY_PATH="${OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_IDENTITY_PATH:-$HOME/.openagents/pylon/identity.mnemonic}"
+PREFUND_PAYER_STORAGE_DIR="${OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_STORAGE_DIR:-$HOME/.openagents/pylon/spark/mainnet}"
 RELAY_URLS_CSV="${OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS:-}"
 LIVE_INGEST_WAIT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_LIVE_INGEST_WAIT_SECONDS:-30}"
 REQUIRE_LIVE_INGEST="${OPENAGENTS_HEADLESS_DATA_MARKET_REQUIRE_LIVE_INGEST:-false}"
@@ -158,6 +162,84 @@ wait_for_status() {
     sleep 1
   done
   return 1
+}
+
+wait_for_wallet_balance() {
+  local identity_path="$1"
+  local storage_dir="$2"
+  local minimum_sats="$3"
+  local output_path="$4"
+  local timeout_seconds="$5"
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    "$SPARK_WALLET_CLI_BIN" \
+      --identity-path "$identity_path" \
+      --storage-dir "$storage_dir" \
+      status >"$output_path"
+    if python3 - "$output_path" "$minimum_sats" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+minimum_sats = int(sys.argv[2])
+balance = payload.get("balance", {}).get("totalSats", 0)
+raise SystemExit(0 if balance >= minimum_sats else 1)
+PY
+    then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+prefund_buyer_wallet() {
+  local amount_sats="$1"
+  if [[ "$amount_sats" -le 0 ]]; then
+    return 0
+  fi
+  if [[ ! -f "$PREFUND_PAYER_IDENTITY_PATH" ]]; then
+    echo "buyer prefund payer identity not found at $PREFUND_PAYER_IDENTITY_PATH" >&2
+    exit 1
+  fi
+  if [[ ! -d "$PREFUND_PAYER_STORAGE_DIR" ]]; then
+    echo "buyer prefund payer storage dir not found at $PREFUND_PAYER_STORAGE_DIR" >&2
+    exit 1
+  fi
+
+  local buyer_storage_dir="$BUYER_HOME/.openagents/pylon/spark/mainnet"
+  local invoice_output="$RUN_DIR/buyer-prefund-invoice.json"
+  local pay_output="$RUN_DIR/buyer-prefund-pay.json"
+  local buyer_status_output="$RUN_DIR/buyer-wallet-status-prefunded.json"
+
+  echo "prefunding buyer wallet with ${amount_sats} sats"
+  "$SPARK_WALLET_CLI_BIN" \
+    --identity-path "$BUYER_IDENTITY_PATH" \
+    --storage-dir "$buyer_storage_dir" \
+    bolt11-invoice "$amount_sats" \
+    --description "headless data-market buyer prefund" \
+    --expiry-seconds 600 >"$invoice_output"
+  local invoice
+  invoice="$(json_field "$invoice_output" invoice)"
+  if [[ -z "$invoice" ]]; then
+    echo "failed to create buyer prefund invoice" >&2
+    cat "$invoice_output" >&2 || true
+    exit 1
+  fi
+
+  "$SPARK_WALLET_CLI_BIN" \
+    --identity-path "$PREFUND_PAYER_IDENTITY_PATH" \
+    --storage-dir "$PREFUND_PAYER_STORAGE_DIR" \
+    pay-invoice "$invoice" >"$pay_output"
+
+  wait_for_wallet_balance \
+    "$BUYER_IDENTITY_PATH" \
+    "$buyer_storage_dir" \
+    "$amount_sats" \
+    "$buyer_status_output" \
+    "$BUYER_PREFUND_TIMEOUT_SECONDS" || {
+      echo "buyer wallet never reached prefunded balance ${amount_sats} sats" >&2
+      cat "$buyer_status_output" >&2 || true
+      exit 1
+    }
 }
 
 wait_for_seller_request_evaluation() {
@@ -302,12 +384,14 @@ cargo build \
   -p autopilot-desktop \
   --bin autopilot-headless-compute \
   --bin autopilot_headless_data_market \
-  --bin autopilotctl
+  --bin autopilotctl \
+  --bin spark-wallet-cli
 
 AUTOPILOTCTL_BIN="$ROOT_DIR/target/debug/autopilotctl"
 HEADLESS_COMPUTE_BIN="$ROOT_DIR/target/debug/autopilot-headless-compute"
 HEADLESS_DATA_MARKET_BIN="$ROOT_DIR/target/debug/autopilot_headless_data_market"
 NEXUS_CONTROL_BIN="$ROOT_DIR/target/debug/nexus-control"
+SPARK_WALLET_CLI_BIN="$ROOT_DIR/target/debug/spark-wallet-cli"
 
 cleanup() {
   set +e
@@ -423,6 +507,8 @@ wait_for_status "$BUYER_MANIFEST" "$RUN_DIR/buyer-status.json" 60 || {
   cat "$RUN_DIR/buyer.stderr.log" >&2 || true
   exit 1
 }
+
+prefund_buyer_wallet "$BUYER_PREFUND_SATS"
 
 echo "creating dummy dataset"
 mkdir -p "$RUN_DIR/source-dataset"
