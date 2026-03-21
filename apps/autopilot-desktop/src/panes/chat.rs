@@ -1255,6 +1255,31 @@ fn managed_group_label(group: &ManagedChatGroupProjection) -> String {
         .unwrap_or_else(|| compact_shell_label(&group.group_id))
 }
 
+fn managed_workspace_label(
+    autopilot_chat: &AutopilotChatState,
+    group: &ManagedChatGroupProjection,
+) -> String {
+    if group.group_id == "oa-default" {
+        "Team".to_string()
+    } else if group
+        .metadata
+        .name
+        .as_deref()
+        .is_some_and(|name| !name.trim().is_empty())
+    {
+        managed_group_label(group)
+    } else {
+        autopilot_chat
+            .managed_chat_projection
+            .snapshot
+            .channels
+            .iter()
+            .find(|channel| channel.group_id == group.group_id)
+            .map(managed_channel_label)
+            .unwrap_or_else(|| managed_group_label(group))
+    }
+}
+
 fn managed_channel_label(channel: &ManagedChatChannelProjection) -> String {
     if !channel.metadata.name.trim().is_empty() {
         compact_shell_label(&channel.metadata.name)
@@ -2494,9 +2519,9 @@ fn paint_header_chip(
 }
 
 fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
-    let private_active = !matches!(
+    let private_active = matches!(
         autopilot_chat.selected_workspace,
-        crate::app_state::ChatWorkspaceSelection::ManagedGroup(_)
+        crate::app_state::ChatWorkspaceSelection::Autopilot
     );
     let mut workspaces = vec![ChatShellWorkspace {
         label: "Private".to_string(),
@@ -2507,15 +2532,20 @@ fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspa
         badge_urgent: false,
     }];
     for group in &autopilot_chat.managed_chat_projection.snapshot.groups {
-        let gid = &group.group_id;
-        if gid != "oa-default" {
+        if !autopilot_chat
+            .managed_chat_projection
+            .snapshot
+            .channels
+            .iter()
+            .any(|channel| channel.group_id == group.group_id)
+        {
             continue;
         }
-        let label = "Team".to_string();
-        let initials: String = gid.chars().take(2).collect::<String>().to_uppercase();
+        let label = managed_workspace_label(autopilot_chat, group);
+        let initials = shell_initials(&label);
         let active = matches!(
             &autopilot_chat.selected_workspace,
-            crate::app_state::ChatWorkspaceSelection::ManagedGroup(id) if id == gid
+            crate::app_state::ChatWorkspaceSelection::ManagedGroup(id) if id == &group.group_id
         );
         let (badge_count, badge_urgent) =
             notification_badge(group.unread_count, group.mention_count)
@@ -2526,6 +2556,35 @@ fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspa
             initials,
             accent: theme::accent::GREEN,
             active,
+            badge_count,
+            badge_urgent,
+        });
+    }
+    if autopilot_chat.has_direct_message_browseable_content() {
+        let unread_count = autopilot_chat
+            .direct_message_projection
+            .snapshot
+            .rooms
+            .iter()
+            .map(|room| room.unread_count)
+            .sum();
+        let mention_count = autopilot_chat
+            .direct_message_projection
+            .snapshot
+            .rooms
+            .iter()
+            .map(|room| room.mention_count)
+            .sum();
+        let (badge_count, badge_urgent) =
+            notification_badge(unread_count, mention_count).unwrap_or((0, false));
+        workspaces.push(ChatShellWorkspace {
+            label: "DMs".to_string(),
+            initials: "DM".to_string(),
+            accent: chat_mission_cyan_color(),
+            active: matches!(
+                autopilot_chat.selected_workspace,
+                crate::app_state::ChatWorkspaceSelection::DirectMessages
+            ),
             badge_count,
             badge_urgent,
         });
@@ -3342,7 +3401,6 @@ fn paint_chat_shell(
             }
         }
     }
-
 }
 
 pub fn paint_thread_hover_preview_overlay(
