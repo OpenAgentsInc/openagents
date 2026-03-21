@@ -15,8 +15,15 @@ pub(super) fn chat_thread_action_grid_bounds(content_bounds: Bounds, index: usiz
     )
 }
 
-pub(super) fn chat_thread_rail_controls_bottom(content_bounds: Bounds) -> f32 {
-    chat_thread_action_unsubscribe_button_bounds(content_bounds).max_y() + 10.0
+pub(super) fn chat_thread_rail_controls_bottom(
+    content_bounds: Bounds,
+    thread_tools_expanded: bool,
+) -> f32 {
+    if thread_tools_expanded {
+        chat_thread_action_unsubscribe_button_bounds(content_bounds).max_y() + 10.0
+    } else {
+        chat_thread_filter_provider_button_bounds(content_bounds).max_y() + 10.0
+    }
 }
 
 pub(super) fn codex_action_button_bounds(

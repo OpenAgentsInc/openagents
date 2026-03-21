@@ -664,7 +664,7 @@ impl Default for ChatPaneInputs {
                 .border_color_focused(theme::border::FOCUS),
             thread_search: TextInput::new()
                 .placeholder("Filter thread history...")
-                .font_size(wgpui::theme::font_size::SM - 2.0)
+                .font_size(wgpui::theme::font_size::SM - 3.0)
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -7085,6 +7085,8 @@ pub struct AutopilotChatState {
     pub direct_message_projection: DirectMessageProjectionState,
     pub startup_new_thread_bootstrap_pending: bool,
     pub startup_new_thread_bootstrap_sent: bool,
+    pub pending_thread_history_refresh_on_ready: bool,
+    thread_history_refresh_retry_last_attempt_at: Option<Instant>,
     pub messages: Vec<AutopilotMessage>,
     pub next_message_id: u64,
     pub active_turn_id: Option<String>,
@@ -7125,6 +7127,9 @@ pub struct AutopilotChatState {
     pub workspace_rail_collapsed: bool,
     pub thread_rail_collapsed: bool,
     pub thread_rail_scroll_row_offset: usize,
+    pub thread_hover_preview_thread_id: Option<String>,
+    thread_hover_preview_started_at: Option<Instant>,
+    pub thread_hover_preview_visible: bool,
     pub thread_rename_counter: u64,
     pub transcript_scroll_offset: f32,
     pub transcript_follow_tail: bool,
@@ -7221,6 +7226,8 @@ impl Default for AutopilotChatState {
             direct_message_projection: DirectMessageProjectionState::default(),
             startup_new_thread_bootstrap_pending: false,
             startup_new_thread_bootstrap_sent: false,
+            pending_thread_history_refresh_on_ready: true,
+            thread_history_refresh_retry_last_attempt_at: None,
             messages: Vec::new(),
             next_message_id: 1,
             active_turn_id: None,
@@ -7261,6 +7268,9 @@ impl Default for AutopilotChatState {
             workspace_rail_collapsed: false,
             thread_rail_collapsed: false,
             thread_rail_scroll_row_offset: 0,
+            thread_hover_preview_thread_id: None,
+            thread_hover_preview_started_at: None,
+            thread_hover_preview_visible: false,
             thread_rename_counter: 1,
             transcript_scroll_offset: 0.0,
             transcript_follow_tail: true,
@@ -8621,6 +8631,20 @@ impl AutopilotChatState {
         // Managed groups / DMs continue syncing in projection state but are hidden
         // from workspace switching until the multi-space UX is re-enabled.
         vec![ChatWorkspaceSelection::Autopilot]
+    }
+
+    pub fn thread_history_refresh_retry_due(
+        &self,
+        now: Instant,
+        interval: std::time::Duration,
+    ) -> bool {
+        self.thread_history_refresh_retry_last_attempt_at
+            .map(|last| now.duration_since(last) >= interval)
+            .unwrap_or(true)
+    }
+
+    pub fn note_thread_history_refresh_retry_attempt(&mut self, now: Instant) {
+        self.thread_history_refresh_retry_last_attempt_at = Some(now);
     }
 
     pub fn select_chat_workspace_by_index(&mut self, index: usize) -> bool {
@@ -10560,6 +10584,32 @@ impl AutopilotChatState {
         if self.copy_notice_until.is_some_and(|until| until <= now) {
             self.copy_notice = None;
             self.copy_notice_until = None;
+            return true;
+        }
+        false
+    }
+
+    pub fn set_thread_hover_preview_target(
+        &mut self,
+        thread_id: Option<String>,
+        now: Instant,
+    ) -> bool {
+        if self.thread_hover_preview_thread_id == thread_id {
+            return false;
+        }
+        self.thread_hover_preview_thread_id = thread_id;
+        self.thread_hover_preview_started_at = self.thread_hover_preview_thread_id.as_ref().map(|_| now);
+        self.thread_hover_preview_visible = false;
+        true
+    }
+
+    pub fn refresh_thread_hover_preview_visibility(&mut self, now: Instant) -> bool {
+        let should_show = self
+            .thread_hover_preview_started_at
+            .is_some_and(|started| now.saturating_duration_since(started) >= Duration::from_secs(1))
+            && self.thread_hover_preview_thread_id.is_some();
+        if self.thread_hover_preview_visible != should_show {
+            self.thread_hover_preview_visible = should_show;
             return true;
         }
         false
