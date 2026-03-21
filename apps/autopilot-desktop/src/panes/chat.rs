@@ -28,8 +28,9 @@ use crate::pane_system::{
     chat_thread_filter_provider_button_bounds, chat_thread_filter_source_button_bounds,
     chat_thread_rail_bounds, chat_thread_rail_toggle_button_bounds, chat_thread_row_bounds,
     chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_visible_thread_row_count, chat_workspace_rail_bounds,
-    chat_workspace_rail_toggle_button_bounds, pane_content_bounds, set_chat_shell_layout_state,
+    chat_transcript_bounds, chat_visible_thread_row_count, chat_managed_debug_toggle_bounds,
+    chat_workspace_rail_bounds, chat_workspace_rail_toggle_button_bounds, pane_content_bounds,
+    set_chat_shell_layout_state,
 };
 use wgpui::components::sections::TerminalStream;
 
@@ -954,6 +955,15 @@ fn transcript_content_height(
                 height += 8.0;
             }
             for message in autopilot_chat.active_managed_chat_messages() {
+                use crate::chat_message_classifier::ChatMessageClass;
+                if !autopilot_chat.show_debug_events
+                    && matches!(
+                        message.message_class,
+                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
+                    )
+                {
+                    continue;
+                }
                 height += CHAT_TRANSCRIPT_LINE_HEIGHT;
                 if managed_message_reply_label(message).is_some() {
                     height += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
@@ -1311,6 +1321,40 @@ fn managed_status_text(autopilot_chat: &AutopilotChatState) -> String {
         parts.push(format!("{failed} failed"));
     }
     parts.join("  •  ")
+}
+
+fn current_epoch_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+fn managed_peer_presence_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> {
+    let rows = autopilot_chat.autopilot_peer_roster(current_epoch_seconds());
+    if rows.is_empty() {
+        return vec!["[peers] no members online".to_string()];
+    }
+    let active_count = rows.iter().filter(|r| r.presence_fresh).count();
+    let mut lines = vec![format!("[peers] {} active", active_count)];
+    for row in rows.iter().take(5) {
+        let short_key = if row.pubkey.len() >= 8 {
+            format!("{}…", &row.pubkey[..8])
+        } else {
+            row.pubkey.clone()
+        };
+        let indicator = if row.presence_fresh && row.online_for_compute {
+            "● [compute]"
+        } else if row.presence_fresh {
+            "●"
+        } else {
+            "○"
+        };
+        lines.push(format!("  {} {}", indicator, short_key));
+    }
+    if rows.len() > 5 {
+        lines.push(format!("  … {} more", rows.len() - 5));
+    }
+    lines
 }
 
 fn managed_message_role_label(index: usize, message: &ManagedChatMessageProjection) -> String {
@@ -2449,15 +2493,44 @@ fn paint_header_chip(
     ));
 }
 
-fn shell_workspaces(_autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
-    vec![ChatShellWorkspace {
+fn shell_workspaces(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellWorkspace> {
+    let private_active = !matches!(
+        autopilot_chat.selected_workspace,
+        crate::app_state::ChatWorkspaceSelection::ManagedGroup(_)
+    );
+    let mut workspaces = vec![ChatShellWorkspace {
         label: "Private".to_string(),
         initials: "AG".to_string(),
         accent: theme::accent::PRIMARY,
-        active: true,
+        active: private_active,
         badge_count: 0,
         badge_urgent: false,
-    }]
+    }];
+    for group in &autopilot_chat.managed_chat_projection.snapshot.groups {
+        let gid = &group.group_id;
+        if gid != "oa-default" {
+            continue;
+        }
+        let label = "Team".to_string();
+        let initials: String = gid.chars().take(2).collect::<String>().to_uppercase();
+        let active = matches!(
+            &autopilot_chat.selected_workspace,
+            crate::app_state::ChatWorkspaceSelection::ManagedGroup(id) if id == gid
+        );
+        let (badge_count, badge_urgent) =
+            notification_badge(group.unread_count, group.mention_count)
+                .map(|(c, u)| (c, u))
+                .unwrap_or((0, false));
+        workspaces.push(ChatShellWorkspace {
+            label,
+            initials,
+            accent: theme::accent::GREEN,
+            active,
+            badge_count,
+            badge_urgent,
+        });
+    }
+    workspaces
 }
 
 fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellChannelEntry> {
@@ -3220,6 +3293,34 @@ fn paint_chat_shell(
                 ));
                 status_y += 12.0;
             }
+            for line in managed_peer_presence_lines(autopilot_chat) {
+                if status_y + 11.0 > header_bounds.max_y() {
+                    break;
+                }
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &line,
+                    Point::new(status_x, status_y),
+                    9.0,
+                    chat_mission_cyan_color(),
+                ));
+                status_y += 12.0;
+            }
+            let debug_label = if autopilot_chat.show_debug_events {
+                "Debug ON"
+            } else {
+                "Debug"
+            };
+            let debug_accent = if autopilot_chat.show_debug_events {
+                chat_mission_orange_color()
+            } else {
+                chat_mission_muted_color()
+            };
+            paint_header_chip(
+                chat_managed_debug_toggle_bounds(content_bounds),
+                debug_label,
+                debug_accent,
+                paint,
+            );
         }
         ChatBrowseMode::DirectMessages => {
             let status_text = direct_status_text(autopilot_chat);
@@ -3550,6 +3651,15 @@ pub fn paint(
             }
 
             for (index, message) in managed_messages.into_iter().enumerate() {
+                use crate::chat_message_classifier::ChatMessageClass;
+                if !autopilot_chat.show_debug_events
+                    && matches!(
+                        message.message_class,
+                        ChatMessageClass::PresenceEvent | ChatMessageClass::DebugEvent
+                    )
+                {
+                    continue;
+                }
                 paint.scene.draw_text(paint.text.layout_mono(
                     &managed_message_role_label(index, message),
                     Point::new(transcript_scroll_clip.origin.x, y),

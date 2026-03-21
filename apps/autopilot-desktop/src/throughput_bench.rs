@@ -217,6 +217,7 @@ fn run_standard_phase(
     let chat_config = DefaultNip28ChannelConfig {
         relay_url: relay.url.clone(),
         channel_id: channel_id.clone(),
+        team_channel_id: None,
     };
     relay.store_events(vec![
         build_group_metadata_event(),

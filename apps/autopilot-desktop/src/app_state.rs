@@ -7124,6 +7124,7 @@ pub struct AutopilotChatState {
     pub header_controls_expanded: bool,
     pub thread_tools_expanded: bool,
     pub show_autopilot_help_hint: bool,
+    pub show_debug_events: bool,
     pub workspace_rail_collapsed: bool,
     pub thread_rail_collapsed: bool,
     pub thread_rail_scroll_row_offset: usize,
@@ -7265,6 +7266,7 @@ impl Default for AutopilotChatState {
             header_controls_expanded: false,
             thread_tools_expanded: false,
             show_autopilot_help_hint: false,
+            show_debug_events: false,
             workspace_rail_collapsed: false,
             thread_rail_collapsed: false,
             thread_rail_scroll_row_offset: 0,
@@ -8627,10 +8629,13 @@ impl AutopilotChatState {
     }
 
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
-        // MVP chat shell is currently single-space (private agent lane) in the UI.
-        // Managed groups / DMs continue syncing in projection state but are hidden
-        // from workspace switching until the multi-space UX is re-enabled.
-        vec![ChatWorkspaceSelection::Autopilot]
+        let mut entries = vec![ChatWorkspaceSelection::Autopilot];
+        for group in &self.managed_chat_projection.snapshot.groups {
+            if group.group_id == "oa-default" {
+                entries.push(ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()));
+            }
+        }
+        entries
     }
 
     pub fn thread_history_refresh_retry_due(
@@ -11982,14 +11987,19 @@ const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 2] =
 
 pub(crate) const ENV_DEFAULT_NIP28_RELAY_URL: &str = "OA_DEFAULT_NIP28_RELAY_URL";
 pub(crate) const ENV_DEFAULT_NIP28_CHANNEL_ID: &str = "OA_DEFAULT_NIP28_CHANNEL_ID";
-const DEFAULT_NIP28_RELAY_URL: &str = "wss://relay.damus.io";
+pub(crate) const ENV_NIP28_TEAM_CHANNEL_ID: &str = "OA_NIP28_TEAM_CHANNEL_ID";
+pub(crate) const DEFAULT_NIP28_RELAY_URL: &str = "wss://relay.damus.io";
 const DEFAULT_NIP28_CHANNEL_ID: &str =
     "ebf2e35092632ecb81b0f7da7d3b25b4c1b0e8e7eb98d7d766ef584e9edd68c8";
+const DEFAULT_NIP28_TEAM_CHANNEL_ID: &str =
+    "f56964c08acfc53705701fa87ec423f4573d25d3e25b7b6923a7ffff9663a9db";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultNip28ChannelConfig {
     pub relay_url: String,
     pub channel_id: String,
+    /// Optional second channel (OA_NIP28_TEAM_CHANNEL_ID) for team testing.
+    pub team_channel_id: Option<String>,
 }
 
 impl DefaultNip28ChannelConfig {
@@ -11999,6 +12009,15 @@ impl DefaultNip28ChannelConfig {
                 .unwrap_or_else(|_| DEFAULT_NIP28_RELAY_URL.to_string()),
             channel_id: std::env::var(ENV_DEFAULT_NIP28_CHANNEL_ID)
                 .unwrap_or_else(|_| DEFAULT_NIP28_CHANNEL_ID.to_string()),
+            team_channel_id: Some(
+                std::env::var(ENV_NIP28_TEAM_CHANNEL_ID)
+                    .ok()
+                    .filter(|id| {
+                        id.len() == 64
+                            && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    })
+                    .unwrap_or_else(|| DEFAULT_NIP28_TEAM_CHANNEL_ID.to_string()),
+            ),
         }
     }
 

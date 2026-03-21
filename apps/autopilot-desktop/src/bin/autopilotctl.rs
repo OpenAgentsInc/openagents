@@ -574,6 +574,12 @@ enum ChatCommand {
         #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_MS)]
         timeout_ms: u64,
     },
+    CreateChannel {
+        #[arg(long)]
+        name: String,
+        #[arg(long, default_value = "OpenAgents team test channel")]
+        about: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1164,6 +1170,12 @@ impl ChatCommand {
             Self::Retry { event_id, .. } => Some(DesktopControlActionRequest::RetryNip28Message {
                 event_id: event_id.clone(),
             }),
+            Self::CreateChannel { name, about } => {
+                Some(DesktopControlActionRequest::CreateNip28Channel {
+                    name: name.clone(),
+                    about: about.clone(),
+                })
+            }
         }
     }
 }
@@ -2026,6 +2038,14 @@ fn main() -> Result<()> {
                     None
                 };
                 print_action(json_output, &response, waited.as_ref())?;
+            }
+            ChatCommand::CreateChannel { .. } => {
+                let action = command
+                    .action_request()
+                    .ok_or_else(|| anyhow!("chat create-channel did not produce a control action"))?;
+                let response = client.action(&action)?;
+                ensure_action_success(&response)?;
+                print_action(json_output, &response, None)?;
             }
         },
         Command::DataMarket { command } => match &command {
@@ -7350,6 +7370,17 @@ mod tests {
             .action_request(),
             Some(DesktopControlActionRequest::RetryNip28Message {
                 event_id: "event-2".to_string(),
+            })
+        );
+        assert_eq!(
+            ChatCommand::CreateChannel {
+                name: "oa-team-chat".to_string(),
+                about: "OpenAgents team test channel".to_string(),
+            }
+            .action_request(),
+            Some(DesktopControlActionRequest::CreateNip28Channel {
+                name: "oa-team-chat".to_string(),
+                about: "OpenAgents team test channel".to_string(),
             })
         );
         assert_eq!(ChatCommand::Status.action_request(), None);
