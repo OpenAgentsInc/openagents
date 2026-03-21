@@ -8631,9 +8631,18 @@ impl AutopilotChatState {
     pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
         let mut entries = vec![ChatWorkspaceSelection::Autopilot];
         for group in &self.managed_chat_projection.snapshot.groups {
-            if group.group_id == "oa-default" {
+            if self
+                .managed_chat_projection
+                .snapshot
+                .channels
+                .iter()
+                .any(|channel| channel.group_id == group.group_id)
+            {
                 entries.push(ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()));
             }
+        }
+        if self.has_direct_message_browseable_content() {
+            entries.push(ChatWorkspaceSelection::DirectMessages);
         }
         entries
     }
@@ -11991,8 +12000,10 @@ pub(crate) const ENV_NIP28_TEAM_CHANNEL_ID: &str = "OA_NIP28_TEAM_CHANNEL_ID";
 pub(crate) const DEFAULT_NIP28_RELAY_URL: &str = "wss://relay.damus.io";
 const DEFAULT_NIP28_CHANNEL_ID: &str =
     "ebf2e35092632ecb81b0f7da7d3b25b4c1b0e8e7eb98d7d766ef584e9edd68c8";
-const DEFAULT_NIP28_TEAM_CHANNEL_ID: &str =
-    "f56964c08acfc53705701fa87ec423f4573d25d3e25b7b6923a7ffff9663a9db";
+
+fn is_valid_nip28_channel_id(id: &str) -> bool {
+    id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultNip28ChannelConfig {
@@ -12009,21 +12020,14 @@ impl DefaultNip28ChannelConfig {
                 .unwrap_or_else(|_| DEFAULT_NIP28_RELAY_URL.to_string()),
             channel_id: std::env::var(ENV_DEFAULT_NIP28_CHANNEL_ID)
                 .unwrap_or_else(|_| DEFAULT_NIP28_CHANNEL_ID.to_string()),
-            team_channel_id: Some(
-                std::env::var(ENV_NIP28_TEAM_CHANNEL_ID)
-                    .ok()
-                    .filter(|id| {
-                        id.len() == 64
-                            && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-                    })
-                    .unwrap_or_else(|| DEFAULT_NIP28_TEAM_CHANNEL_ID.to_string()),
-            ),
+            team_channel_id: std::env::var(ENV_NIP28_TEAM_CHANNEL_ID)
+                .ok()
+                .filter(|id| is_valid_nip28_channel_id(id)),
         }
     }
 
     pub fn is_valid(&self) -> bool {
-        let id = &self.channel_id;
-        id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        is_valid_nip28_channel_id(&self.channel_id)
     }
 }
 
