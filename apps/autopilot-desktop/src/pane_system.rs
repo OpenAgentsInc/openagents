@@ -47,10 +47,10 @@ const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 30.0;
 const DATA_SELLER_COMPOSER_HEIGHT: f32 = 30.0;
 const DATA_SELLER_SEND_WIDTH: f32 = 72.0;
-const CHAT_HEADER_BUTTON_HEIGHT: f32 = 24.0;
-const CHAT_HEADER_BUTTON_WIDTH: f32 = 104.0;
-const CHAT_HEADER_BUTTON_MIN_WIDTH: f32 = 76.0;
-const CHAT_HEADER_BUTTON_GAP: f32 = 8.0;
+const CHAT_HEADER_BUTTON_HEIGHT: f32 = 22.0;
+const CHAT_HEADER_BUTTON_WIDTH: f32 = 96.0;
+const CHAT_HEADER_BUTTON_MIN_WIDTH: f32 = 70.0;
+const CHAT_HEADER_BUTTON_GAP: f32 = 6.0;
 /// Compact + button next to "Threads" to start a new thread
 const CHAT_NEW_THREAD_BUTTON_SIZE: f32 = 26.0;
 const CHAT_THREAD_SEARCH_INPUT_HEIGHT: f32 = 24.0;
@@ -203,9 +203,6 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
 }
 
 fn queue_chat_thread_history_refresh_for_pane_open(state: &mut RenderState) {
-    if state.codex_lane.lifecycle != crate::codex_lane::CodexLaneLifecycle::Ready {
-        return;
-    }
     if state.autopilot_chat.chat_browse_mode() != crate::app_state::ChatBrowseMode::Autopilot {
         return;
     }
@@ -213,13 +210,27 @@ fn queue_chat_thread_history_refresh_for_pane_open(state: &mut RenderState) {
         .ok()
         .and_then(|value| value.into_os_string().into_string().ok());
     let params = state.autopilot_chat.build_thread_list_params(cwd);
-    let _ = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(params));
-    let _ = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
+    let list_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadList(
+        params,
+    ));
+    let loaded_result = state.queue_codex_command(crate::codex_lane::CodexLaneCommand::ThreadLoadedList(
         codex_client::ThreadLoadedListParams {
             cursor: None,
             limit: Some(200),
         },
     ));
+    if let Err(error) = list_result {
+        state.autopilot_chat.last_error = Some(error);
+        state.autopilot_chat.pending_thread_history_refresh_on_ready = true;
+        return;
+    }
+    if let Err(error) = loaded_result {
+        state.autopilot_chat.last_error = Some(error);
+        state.autopilot_chat.pending_thread_history_refresh_on_ready = true;
+        return;
+    }
+    state.autopilot_chat.last_error = None;
+    state.autopilot_chat.pending_thread_history_refresh_on_ready = false;
 }
 
 fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
@@ -2095,10 +2106,10 @@ pub fn chat_compact_button_bounds(content_bounds: Bounds) -> Bounds {
 pub fn chat_thread_row_bounds(
     content_bounds: Bounds,
     index: usize,
-    _thread_tools_expanded: bool,
+    thread_tools_expanded: bool,
 ) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
-    let y = chat_thread_rail_controls_bottom(content_bounds)
+    let y = chat_thread_rail_controls_bottom(content_bounds, thread_tools_expanded)
         + index as f32 * (CHAT_SHELL_ROW_HEIGHT + CHAT_SHELL_ROW_GAP);
     Bounds::new(
         rail.origin.x + 8.0,

@@ -748,6 +748,20 @@ impl PaneRenderer {
             });
         }
 
+        if let Some(chat_pane) = panes
+            .iter()
+            .filter(|pane| pane.kind == PaneKind::AutopilotChat)
+            .max_by_key(|pane| pane.z_index)
+        {
+            paint.scene.set_layer(next_layer);
+            next_layer = next_layer.saturating_add(1);
+            chat_pane::paint_thread_hover_preview_overlay(
+                pane_content_bounds_for_pane(chat_pane),
+                autopilot_chat,
+                paint,
+            );
+        }
+
         if dim_inactive_panes {
             let Some(active_bounds) = panes
                 .iter()
