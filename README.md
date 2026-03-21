@@ -37,7 +37,7 @@ Under the hood, Autopilot runs on the economic infrastructure for machine work, 
 
 The MVP is intentionally narrow. The primary shipped revenue loop is still compute: one user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
 
-In parallel, the repo now also ships a starter Data Market slice: a dedicated `Data Seller` conversational pane, a read-only `Data Market` pane, a narrow `Data Buyer` request pane, full `autopilotctl data-market ...` control, a no-window `autopilot_headless_data_market` runtime, and a verified targeted NIP-90 request/result path over real public relays.
+In parallel, the repo now also ships a starter Data Market slice: a dedicated `Data Seller` conversational pane, a read-only `Data Market` pane, a narrow `Data Buyer` request pane, full `autopilotctl data-market ...` control, a no-window `autopilot_headless_data_market` runtime, a terminal-driven `seller-prompt` entrypoint into the same seller lane, and a verified targeted NIP-90 request/result path over real public relays.
 
 The market is still called the OpenAgents Compute Market. At launch, the first live compute product families are `inference` and `embeddings`. That is an umbrella compute market with standardized launch products inside it, not a claim that raw accelerator spot or futures trading is already live.
 
@@ -116,6 +116,7 @@ What exists now:
 - `Data Market`: a read-only market snapshot and operator-facing lifecycle pane that now surfaces packaging posture, redacted Codex-export markers, and recent fulfillment activity
 - `Data Buyer`: a narrow buyer surface that selects a visible asset/default offer, shows the bundle/posture being purchased, and publishes a targeted request
 - `autopilotctl data-market ...`: full shell-first control over the same app-owned seller/buyer state machine
+- `autopilotctl data-market seller-prompt "<prompt>"`: terminal automation of the same dedicated `Data Seller` lane for audits and agent-driven seller flows
 - `autopilot_headless_data_market`: a no-window runtime for scripts, operators, and agents
 - repo-owned skills for both conversational and CLI-first seller flows
 
@@ -136,6 +137,7 @@ Where to start:
 
 - implementation/status: [docs/kernel/markets/data-market.md](docs/kernel/markets/data-market.md)
 - CLI and headless runbook: [docs/headless-data-market.md](docs/headless-data-market.md)
+- latest seller-prompt paid-flow proof: [docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md](docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md)
 - implementation spec and backlog: [docs/plans/data-market-mvp-implementation-spec.md](docs/plans/data-market-mvp-implementation-spec.md)
 - repo-owned skills: [skills/README.md](skills/README.md)
 

@@ -103,6 +103,9 @@ For concrete, already-proven flows, use these audits as operator truth:
   - real paid buyer-access proof and the current Nostr vs control-plane split
 - `docs/audits/2026-03-18-psionic-intro-data-market-sale-audit.md`
   - concrete example of packaging and listing a sample dataset for sale
+- `docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md`
+  - proven one-sentence `Data Seller` prompt -> publish -> paid buy ->
+    delivery -> consume flow using local `nexus-control`
 
 ## Data Market Entry Points (agent)
 
@@ -120,6 +123,8 @@ around the app. Use the repo’s existing entrypoints:
   - skill: `skills/autopilot-data-seller-cli/SKILL.md`
   - runtime: `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
   - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+  - conversational terminal automation of the same seller lane:
+    `autopilotctl data-market seller-prompt "<prompt>"`
 
 Current packaging helpers and seller wrappers:
 
