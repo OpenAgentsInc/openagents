@@ -92,6 +92,7 @@ pub struct ManagedChatMessageProjection {
     pub delivery_state: ManagedChatDeliveryState,
     pub delivery_error: Option<String>,
     pub attempt_count: u32,
+    pub message_class: crate::chat_message_classifier::ChatMessageClass,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,9 +155,13 @@ pub struct ManagedChatProjectionState {
     pub projection_revision: u64,
     pub relay_events: Vec<Event>,
     pub outbound_messages: Vec<ManagedChatOutboundMessage>,
+    /// One-off admin events (kind-40 etc.) awaiting publish via the lane worker.
+    pub pending_admin_publishes: Vec<Event>,
     pub local_state: ManagedChatLocalState,
     pub snapshot: ManagedChatProjectionSnapshot,
     local_pubkey: Option<String>,
+    /// Team channel ID from config — injected as a synthetic placeholder in the projection.
+    team_channel_id: Option<String>,
     projection_file_path: PathBuf,
 }
 
@@ -171,11 +176,15 @@ impl ManagedChatProjectionState {
         match load_managed_chat_projection_document(projection_file_path.as_path()) {
             Ok((relay_events, mut outbound_messages, local_state)) => {
                 reconcile_outbound_messages_against_relays(&mut outbound_messages, &relay_events);
+                let team_channel_id =
+                    crate::app_state::DefaultNip28ChannelConfig::from_env_or_default()
+                        .team_channel_id;
                 let snapshot = rebuild_managed_chat_projection(
                     &relay_events,
                     &outbound_messages,
                     &local_state,
                     None,
+                    team_channel_id.as_deref(),
                 );
                 Self {
                     load_state: PaneLoadState::Ready,
@@ -189,9 +198,11 @@ impl ManagedChatProjectionState {
                     projection_revision: 1,
                     relay_events,
                     outbound_messages,
+                    pending_admin_publishes: Vec::new(),
                     local_state,
                     snapshot,
                     local_pubkey: None,
+                    team_channel_id,
                     projection_file_path,
                 }
             }
@@ -203,16 +214,30 @@ impl ManagedChatProjectionState {
                 projection_revision: 1,
                 relay_events: Vec::new(),
                 outbound_messages: Vec::new(),
+                pending_admin_publishes: Vec::new(),
                 local_state: ManagedChatLocalState::default(),
                 snapshot: ManagedChatProjectionSnapshot::default(),
                 local_pubkey: None,
+                team_channel_id: None,
                 projection_file_path,
             },
         }
     }
 
     pub(crate) fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
-        Self::from_projection_file_path(projection_file_path)
+        // Tests do not inject the synthetic team channel (team_channel_id: None).
+        let mut state = Self::from_projection_file_path(projection_file_path);
+        if state.team_channel_id.is_some() {
+            state.team_channel_id = None;
+            state.snapshot = rebuild_managed_chat_projection(
+                &state.relay_events,
+                &state.outbound_messages,
+                &state.local_state,
+                state.local_pubkey.as_deref(),
+                None,
+            );
+        }
+        state
     }
 
     pub fn set_local_pubkey(&mut self, local_pubkey: Option<&str>) {
@@ -406,9 +431,10 @@ impl ManagedChatProjectionState {
             return Err(format!("Unknown managed chat channel: {channel_id}"));
         };
         if channel.group_id != group_id {
-            return Err(format!(
-                "Managed chat channel {channel_id} does not belong to group {group_id}"
-            ));
+            // Stale selection — clear it silently rather than surfacing an error.
+            self.local_state.selected_group_id = None;
+            self.local_state.selected_channel_id = None;
+            return Ok(());
         }
         self.local_state.selected_group_id = Some(group_id.to_string());
         self.local_state.selected_channel_id = Some(channel_id.to_string());
@@ -544,6 +570,7 @@ impl ManagedChatProjectionState {
             &self.outbound_messages,
             &self.local_state,
             self.local_pubkey.as_deref(),
+            self.team_channel_id.as_deref(),
         );
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
@@ -567,6 +594,7 @@ impl ManagedChatProjectionState {
             &self.outbound_messages,
             &self.local_state,
             self.local_pubkey.as_deref(),
+            self.team_channel_id.as_deref(),
         );
         self.projection_revision = self.projection_revision.saturating_add(1);
         let action = format!(
@@ -783,6 +811,7 @@ fn rebuild_managed_chat_projection(
     outbound_messages: &[ManagedChatOutboundMessage],
     local_state: &ManagedChatLocalState,
     local_pubkey: Option<&str>,
+    team_channel_id: Option<&str>,
 ) -> ManagedChatProjectionSnapshot {
     let deleted_event_ids = collect_deleted_event_ids(relay_events);
     let mut groups = BTreeMap::<String, MutableGroupProjection>::new();
@@ -848,6 +877,20 @@ fn rebuild_managed_chat_projection(
                     channel.room_mode = parsed.hints.room_mode;
                     channel.metadata = parsed.metadata;
                     channel.hints = parsed.hints;
+                } else if let Ok(metadata) = ChannelMetadata::from_json(&event.content) {
+                    // Standard NIP-28 kind-40: no OA group tag — use event.id as group_id,
+                    // except for the team channel which always belongs to oa-default.
+                    let effective_group_id = if Some(event.id.as_str()) == team_channel_id {
+                        "oa-default".to_string()
+                    } else {
+                        event.id.clone()
+                    };
+                    groups.entry(effective_group_id.clone()).or_default().deleted = false;
+                    let channel = channels.entry(event.id.clone()).or_default();
+                    channel.group_id = effective_group_id;
+                    channel.metadata = metadata;
+                } else {
+                    tracing::warn!(event_id = %event.id, "nip28: kind-40 parse failed, content not valid ChannelMetadata JSON");
                 }
             }
             41 => {
@@ -859,6 +902,19 @@ fn rebuild_managed_chat_projection(
                     channel.metadata = parsed.metadata;
                     channel.hints = parsed.hints;
                     channel.relay_url = Some(parsed.relay_url);
+                } else if let Ok(metadata) = ChannelMetadata::from_json(&event.content) {
+                    // Standard NIP-28 kind-41: apply metadata update via root "e" tag
+                    if let Some(channel_create_id) = event
+                        .tags
+                        .iter()
+                        .find(|t| t.first().map(|s| s == "e").unwrap_or(false))
+                        .and_then(|t| t.get(1))
+                    {
+                        let channel = channels.entry(channel_create_id.clone()).or_default();
+                        channel.metadata = metadata;
+                    }
+                } else {
+                    tracing::warn!(event_id = %event.id, "nip28: kind-41 parse failed, content not valid ChannelMetadata JSON");
                 }
             }
             42 => {
@@ -896,8 +952,61 @@ fn rebuild_managed_chat_projection(
                             delivery_state: ManagedChatDeliveryState::Confirmed,
                             delivery_error: None,
                             attempt_count: 0,
+                            message_class: crate::chat_message_classifier::classify(event),
                         },
                     );
+                } else {
+                    // Fallback: plain NIP-28 kind-42 from external clients (e.g. Amethyst)
+                    // that omit the ['h', group_id] tag. Extract the root 'e' tag manually
+                    // and assign to oa-default so messages are never silently dropped.
+                    let root_tag = event.tags.iter().find(|tag| {
+                        tag.len() >= 2
+                            && tag[0] == "e"
+                            && tag.get(3).map(|s| s == "root").unwrap_or(false)
+                    });
+                    if let Some(root_tag) = root_tag {
+                        let channel_id = root_tag[1].clone();
+                        let relay = root_tag
+                            .get(2)
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.clone())
+                            .unwrap_or_else(|| {
+                                crate::app_state::DEFAULT_NIP28_RELAY_URL.to_string()
+                            });
+                        let group_id = if Some(channel_id.as_str()) == team_channel_id {
+                            "oa-default".to_string()
+                        } else {
+                            channels
+                                .get(&channel_id)
+                                .map(|ch| ch.group_id.clone())
+                                .unwrap_or_else(|| "oa-default".to_string())
+                        };
+                        groups.entry(group_id.clone()).or_default().deleted = false;
+                        let channel = channels.entry(channel_id.clone()).or_default();
+                        channel.group_id = group_id.clone();
+                        if channel.relay_url.is_none() {
+                            channel.relay_url = Some(relay);
+                        }
+                        messages.insert(
+                            event.id.clone(),
+                            ManagedChatMessageProjection {
+                                event_id: event.id.clone(),
+                                group_id,
+                                channel_id,
+                                author_pubkey: event.pubkey.clone(),
+                                content: event.content.clone(),
+                                created_at: event.created_at,
+                                reply_to_event_id: None,
+                                mention_pubkeys: Vec::new(),
+                                reaction_summaries: Vec::new(),
+                                reply_child_ids: Vec::new(),
+                                delivery_state: ManagedChatDeliveryState::Confirmed,
+                                delivery_error: None,
+                                attempt_count: 0,
+                                message_class: crate::chat_message_classifier::classify(event),
+                            },
+                        );
+                    }
                 }
             }
             kind if (9000..=9020).contains(&kind) => {
@@ -996,6 +1105,7 @@ fn rebuild_managed_chat_projection(
                 delivery_state: outbound_message.delivery_state,
                 delivery_error: outbound_message.last_error.clone(),
                 attempt_count: outbound_message.attempt_count.max(1),
+                message_class: crate::chat_message_classifier::ChatMessageClass::HumanMessage,
             },
         );
     }
@@ -1105,6 +1215,29 @@ fn rebuild_managed_chat_projection(
             }
         })
         .collect::<Vec<_>>();
+
+    // Inject a synthetic team channel if a team_channel_id is provided
+    // and the channel hasn't already been loaded from the relay into oa-default.
+    if let Some(team_id) = team_channel_id {
+        let already_in_oa_default = channel_rows
+            .iter()
+            .any(|c| c.channel_id == team_id && c.group_id == "oa-default");
+        if !already_in_oa_default {
+            channel_rows.push(ManagedChatChannelProjection {
+                channel_id: team_id.to_string(),
+                group_id: "oa-default".to_string(),
+                room_mode: ManagedRoomMode::default(),
+                metadata: ChannelMetadata::new("Team", "", ""),
+                hints: ManagedChannelHints::new(),
+                relay_url: None,
+                message_ids: Vec::new(),
+                root_message_ids: Vec::new(),
+                unread_count: 0,
+                mention_count: 0,
+                latest_message_id: None,
+            });
+        }
+    }
 
     let mut group_channel_ids = BTreeMap::<String, Vec<String>>::new();
     for channel in &channel_rows {
@@ -2285,6 +2418,7 @@ mod tests {
                 delivery_state: ManagedChatDeliveryState::Confirmed,
                 delivery_error: None,
                 attempt_count: 0,
+                message_class: crate::chat_message_classifier::ChatMessageClass::HumanMessage,
             },
         );
         messages.insert(
@@ -2303,6 +2437,7 @@ mod tests {
                 delivery_state: ManagedChatDeliveryState::Confirmed,
                 delivery_error: None,
                 attempt_count: 0,
+                message_class: crate::chat_message_classifier::ChatMessageClass::HumanMessage,
             },
         );
         let cursor = ManagedChatReadCursor {
