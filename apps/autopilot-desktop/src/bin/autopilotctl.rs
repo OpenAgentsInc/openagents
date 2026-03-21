@@ -585,6 +585,9 @@ enum ChatCommand {
 #[derive(Subcommand, Debug)]
 enum DataMarketCommand {
     SellerStatus,
+    SellerPrompt {
+        prompt: String,
+    },
     BuyerStatus,
     BuyerRefresh,
     Snapshot,
@@ -1193,6 +1196,11 @@ impl DataMarketCommand {
     fn action_request(&self) -> Result<DesktopControlActionRequest> {
         match self {
             Self::SellerStatus => Ok(DesktopControlActionRequest::GetDataMarketSellerStatus),
+            Self::SellerPrompt { prompt } => {
+                Ok(DesktopControlActionRequest::SendDataMarketSellerPrompt {
+                    prompt: prompt.clone(),
+                })
+            }
             Self::BuyerStatus => Ok(DesktopControlActionRequest::GetDataMarketBuyerStatus),
             Self::BuyerRefresh => Ok(DesktopControlActionRequest::RefreshDataMarketBuyerMarket),
             Self::Snapshot => Ok(DesktopControlActionRequest::GetDataMarketSnapshot),
@@ -2040,9 +2048,9 @@ fn main() -> Result<()> {
                 print_action(json_output, &response, waited.as_ref())?;
             }
             ChatCommand::CreateChannel { .. } => {
-                let action = command
-                    .action_request()
-                    .ok_or_else(|| anyhow!("chat create-channel did not produce a control action"))?;
+                let action = command.action_request().ok_or_else(|| {
+                    anyhow!("chat create-channel did not produce a control action")
+                })?;
                 let response = client.action(&action)?;
                 ensure_action_success(&response)?;
                 print_action(json_output, &response, None)?;
@@ -7428,6 +7436,16 @@ mod tests {
                 .action_request()
                 .expect("seller status action"),
             DesktopControlActionRequest::GetDataMarketSellerStatus
+        );
+        assert_eq!(
+            DataMarketCommand::SellerPrompt {
+                prompt: "Turn ./fixtures/data-market/example into a saleable listing.".to_string(),
+            }
+            .action_request()
+            .expect("seller prompt action"),
+            DesktopControlActionRequest::SendDataMarketSellerPrompt {
+                prompt: "Turn ./fixtures/data-market/example into a saleable listing.".to_string(),
+            }
         );
         assert_eq!(
             DataMarketCommand::BuyerStatus

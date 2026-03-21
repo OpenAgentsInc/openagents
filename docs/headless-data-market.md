@@ -82,6 +82,21 @@ cargo run -p autopilot-desktop --bin autopilotctl -- \
   --json data-market seller-status
 ```
 
+You can also send a plain-language seller instruction into the dedicated
+`Data Seller` lane without opening the window:
+
+```bash
+cargo run -p autopilot-desktop --bin autopilotctl -- \
+  --manifest /tmp/openagents-data-market-desktop-control.json \
+  --json data-market seller-prompt \
+  "In the Data Seller pane, turn ./my-data into a saleable listing for 250 sats targeted to npub1buyerexample, then preview before publish."
+```
+
+That path still uses the same seller thread, skills, and typed Data Market
+tools as the visible `Data Seller` pane. It is intended for automation,
+testing, and terminal-driven audits of the documented conversational seller
+flow.
+
 If `--manifest-path` is omitted, the runtime uses the default desktop-control
 manifest location under `~/.openagents/logs/autopilot/desktop-control.json`.
 Using an explicit manifest path is safer when a normal desktop session might

@@ -695,7 +695,7 @@ pub(crate) fn ensure_data_seller_codex_session(state: &mut RenderState) -> bool 
     true
 }
 
-pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
+pub(crate) fn submit_data_seller_prompt_text(state: &mut RenderState, prompt: String) -> bool {
     if state.data_seller.codex_thread_id.is_none() {
         ensure_data_seller_codex_session(state);
     }
@@ -707,13 +707,7 @@ pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
         return true;
     };
 
-    let prompt = state
-        .data_seller_inputs
-        .composer
-        .get_value()
-        .trim()
-        .to_string();
-    if prompt.is_empty() {
+    if prompt.trim().is_empty() {
         return false;
     }
 
@@ -770,6 +764,19 @@ pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
         }
     }
     true
+}
+
+pub(crate) fn submit_data_seller_prompt(state: &mut RenderState) -> bool {
+    let prompt = state
+        .data_seller_inputs
+        .composer
+        .get_value()
+        .trim()
+        .to_string();
+    if prompt.is_empty() {
+        return false;
+    }
+    submit_data_seller_prompt_text(state, prompt)
 }
 
 pub(crate) fn request_data_seller_preview(state: &mut RenderState) -> bool {
