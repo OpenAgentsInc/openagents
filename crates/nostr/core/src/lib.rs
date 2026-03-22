@@ -45,6 +45,7 @@ pub mod nip90;
 pub mod nip98;
 pub mod nip99;
 pub mod nip_ac;
+pub mod nip_ds;
 pub mod nip_sa;
 pub mod nip_skl;
 mod tag_parsing;
@@ -55,6 +56,7 @@ pub use identity::{
 };
 pub use managed_chat::*;
 pub use nip_ac::*;
+pub use nip_ds::*;
 pub use nip_sa::*;
 pub use nip_skl::*;
 pub use nip01::{Event, EventTemplate, KindClassification, UnsignedEvent};

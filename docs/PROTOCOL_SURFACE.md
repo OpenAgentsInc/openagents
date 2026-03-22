@@ -1,4 +1,4 @@
-# Protocol Surface (SA/SKL/AC)
+# Protocol Surface (SA/SKL/AC/DS)
 
 This document freezes the in-repo protocol surface used by runtime code.
 
@@ -7,6 +7,7 @@ Authoritative specs:
 - `crates/nostr/nips/SA.md`
 - `crates/nostr/nips/SKL.md`
 - `crates/nostr/nips/AC.md`
+- `crates/nostr/nips/DS.md`
 
 ## NIP-SA
 
@@ -74,6 +75,39 @@ Recommended skill linkage tags on skill-scoped AC events:
 - `["a", "33400:<skill_pubkey>:<d-tag>"]`
 - `["e", "<skill_manifest_event_id>"]`
 
+## NIP-DS
+
+Kinds:
+
+- `30404` Dataset Listing (addressable)
+- `30405` Draft / Inactive Dataset Listing (addressable)
+- `30406` Dataset Offer (addressable)
+
+Optional DS-DVM profile kinds:
+
+- `5960` Dataset Access Request
+- `6960` Dataset Access Result
+- `7000` Feedback (reused from NIP-90)
+
+Canonical IDs:
+
+- Dataset listing address: `30404:<seller_pubkey>:<d-tag>`
+- Dataset offer address: `30406:<seller_pubkey>:<d-tag>`
+- Dataset scope id: `30404:<seller_pubkey>:<d-tag>:<sha256_digest>`
+
+Core linkage expectations:
+
+- listing digest anchor in `["x", "<sha256_hex>"]`
+- offer linkage to listing in `["a", "30404:<seller_pubkey>:<d-tag>"]`
+- optional `e` / `a` markers for preview, manifest, discussion, offer, or market wrappers
+
+Positioning:
+
+- DS is the canonical public dataset identity and offer layer
+- NIP-90 is the optional DS-DVM fulfillment profile, not the market itself
+- NIP-99 and NIP-15 are wrapper/catalog surfaces on top of DS identity
+- NIP-28 is the public discussion / negotiation surface for DS-linked channels
+
 ## Prerequisite NIPs
 
 Runtime baseline:
@@ -81,11 +115,16 @@ Runtime baseline:
 - NIP-01
 - NIP-06
 - NIP-09
+- NIP-15
+- NIP-17
+- NIP-28
 - NIP-32
 - NIP-40
 - NIP-44
 - NIP-59
+- NIP-89
 - NIP-90
+- NIP-94
 - NIP-99
 
 Optional profile/path dependencies:
