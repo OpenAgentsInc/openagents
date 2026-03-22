@@ -1112,6 +1112,10 @@ pub struct DataMarketPaneState {
     pub revocations: Vec<RevocationReceipt>,
     pub relay_listings: Vec<RelayDatasetListingProjection>,
     pub relay_offers: Vec<RelayDatasetOfferProjection>,
+    pub relay_requests: Vec<RelayDatasetAccessRequestProjection>,
+    pub relay_access_contracts: Vec<RelayDatasetAccessContractProjection>,
+    pub relay_results: Vec<RelayDatasetAccessResultProjection>,
+    pub relay_settlement_matches: Vec<RelayDatasetSettlementMatchProjection>,
     pub lifecycle_entries: Vec<DataMarketLifecycleEntry>,
 }
 
@@ -1224,6 +1228,135 @@ pub struct RelayDatasetOfferProjection {
     pub discussion_channel_name: Option<String>,
     #[serde(default)]
     pub discussion_channel_relay_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RelayDatasetAccessRequestProjection {
+    pub event_id: String,
+    pub request_kind: u16,
+    pub requester_pubkey: String,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+    pub listing_coordinate: String,
+    #[serde(default)]
+    pub offer_coordinate: Option<String>,
+    pub asset_ref: String,
+    #[serde(default)]
+    pub asset_id: Option<String>,
+    #[serde(default)]
+    pub grant_id: Option<String>,
+    #[serde(default)]
+    pub targeted_provider_pubkeys: Vec<String>,
+    #[serde(default)]
+    pub permission_scopes: Vec<String>,
+    pub delivery_mode: String,
+    pub preview_posture: String,
+    #[serde(default)]
+    pub bid_msats: Option<u64>,
+    #[serde(default)]
+    pub encrypted: bool,
+    pub created_at_seconds: u64,
+    #[serde(default)]
+    pub expires_at_seconds: Option<u64>,
+    #[serde(default)]
+    pub linked_asset_id: Option<String>,
+    #[serde(default)]
+    pub linked_grant_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RelayDatasetAccessContractProjection {
+    pub coordinate: String,
+    pub seller_pubkey: String,
+    pub buyer_pubkey: String,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+    pub listing_coordinate: String,
+    #[serde(default)]
+    pub offer_coordinate: Option<String>,
+    pub request_event_id: String,
+    #[serde(default)]
+    pub result_event_id: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub payment_method: Option<String>,
+    #[serde(default)]
+    pub amount_msats: Option<u64>,
+    #[serde(default)]
+    pub bolt11: Option<String>,
+    #[serde(default)]
+    pub payment_hash: Option<String>,
+    #[serde(default)]
+    pub payment_evidence_event_ids: Vec<String>,
+    #[serde(default)]
+    pub delivery_mode: Option<String>,
+    #[serde(default)]
+    pub delivery_ref: Option<String>,
+    #[serde(default)]
+    pub delivery_mime_type: Option<String>,
+    #[serde(default)]
+    pub delivery_digest: Option<String>,
+    pub created_at_seconds: u64,
+    #[serde(default)]
+    pub expires_at_seconds: Option<u64>,
+    #[serde(default)]
+    pub reason_code: Option<String>,
+    #[serde(default)]
+    pub linked_asset_id: Option<String>,
+    #[serde(default)]
+    pub linked_grant_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RelayDatasetAccessResultProjection {
+    pub event_id: String,
+    pub seller_pubkey: String,
+    pub buyer_pubkey: String,
+    #[serde(default)]
+    pub relay_url: Option<String>,
+    pub request_event_id: String,
+    pub listing_coordinate: String,
+    #[serde(default)]
+    pub offer_coordinate: Option<String>,
+    pub asset_ref: String,
+    #[serde(default)]
+    pub asset_id: Option<String>,
+    #[serde(default)]
+    pub grant_id: Option<String>,
+    pub delivery_bundle_id: String,
+    pub delivery_mode: String,
+    pub preview_posture: String,
+    #[serde(default)]
+    pub delivery_ref: Option<String>,
+    #[serde(default)]
+    pub delivery_digest: Option<String>,
+    #[serde(default)]
+    pub amount_msats: Option<u64>,
+    #[serde(default)]
+    pub bolt11: Option<String>,
+    #[serde(default)]
+    pub payment_hash: Option<String>,
+    pub created_at_seconds: u64,
+    #[serde(default)]
+    pub linked_asset_id: Option<String>,
+    #[serde(default)]
+    pub linked_grant_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RelayDatasetSettlementMatchProjection {
+    pub payment_pointer: String,
+    pub payment_hash: String,
+    pub direction: String,
+    pub status: String,
+    pub amount_sats: u64,
+    pub observed_at_seconds: u64,
+    #[serde(default)]
+    pub contract_coordinate: Option<String>,
+    #[serde(default)]
+    pub request_event_id: Option<String>,
+    #[serde(default)]
+    pub result_event_id: Option<String>,
 }
 
 pub const DATA_MARKET_BUYER_REQUEST_TYPE: &str = "openagents.data_market.access_request.v1";
@@ -4916,7 +5049,9 @@ impl Default for DataMarketPaneState {
         Self {
             load_state: PaneLoadState::Ready,
             last_error: None,
-            last_action: Some("Data Market pane ready; refresh to load Nexus state".to_string()),
+            last_action: Some(
+                "Data Market pane ready; refresh to load relay and Nexus state".to_string(),
+            ),
             last_refreshed_at_ms: None,
             assets: Vec::new(),
             grants: Vec::new(),
@@ -4924,6 +5059,10 @@ impl Default for DataMarketPaneState {
             revocations: Vec::new(),
             relay_listings: Vec::new(),
             relay_offers: Vec::new(),
+            relay_requests: Vec::new(),
+            relay_access_contracts: Vec::new(),
+            relay_results: Vec::new(),
+            relay_settlement_matches: Vec::new(),
             lifecycle_entries: Vec::new(),
         }
     }
@@ -4934,7 +5073,7 @@ impl DataMarketPaneState {
         self.last_error = None;
         if !self.has_snapshot() {
             self.last_action =
-                Some("Opened Data Market pane; refresh to load Nexus state".to_string());
+                Some("Opened Data Market pane; refresh to load relay and Nexus state".to_string());
         }
     }
 
@@ -4973,6 +5112,10 @@ impl DataMarketPaneState {
     fn sort_relay_catalog(
         relay_listings: &mut [RelayDatasetListingProjection],
         relay_offers: &mut [RelayDatasetOfferProjection],
+        relay_requests: &mut [RelayDatasetAccessRequestProjection],
+        relay_access_contracts: &mut [RelayDatasetAccessContractProjection],
+        relay_results: &mut [RelayDatasetAccessResultProjection],
+        relay_settlement_matches: &mut [RelayDatasetSettlementMatchProjection],
     ) {
         relay_listings.sort_by(|left, right| {
             right
@@ -4985,6 +5128,30 @@ impl DataMarketPaneState {
                 .created_at_seconds
                 .cmp(&left.created_at_seconds)
                 .then_with(|| left.coordinate.cmp(&right.coordinate))
+        });
+        relay_requests.sort_by(|left, right| {
+            right
+                .created_at_seconds
+                .cmp(&left.created_at_seconds)
+                .then_with(|| left.event_id.cmp(&right.event_id))
+        });
+        relay_access_contracts.sort_by(|left, right| {
+            right
+                .created_at_seconds
+                .cmp(&left.created_at_seconds)
+                .then_with(|| left.coordinate.cmp(&right.coordinate))
+        });
+        relay_results.sort_by(|left, right| {
+            right
+                .created_at_seconds
+                .cmp(&left.created_at_seconds)
+                .then_with(|| left.event_id.cmp(&right.event_id))
+        });
+        relay_settlement_matches.sort_by(|left, right| {
+            right
+                .observed_at_seconds
+                .cmp(&left.observed_at_seconds)
+                .then_with(|| left.payment_pointer.cmp(&right.payment_pointer))
         });
     }
 
@@ -5031,16 +5198,35 @@ impl DataMarketPaneState {
         &mut self,
         mut relay_listings: Vec<RelayDatasetListingProjection>,
         mut relay_offers: Vec<RelayDatasetOfferProjection>,
+        mut relay_requests: Vec<RelayDatasetAccessRequestProjection>,
+        mut relay_access_contracts: Vec<RelayDatasetAccessContractProjection>,
+        mut relay_results: Vec<RelayDatasetAccessResultProjection>,
+        mut relay_settlement_matches: Vec<RelayDatasetSettlementMatchProjection>,
         refreshed_at_ms: i64,
     ) {
-        Self::sort_relay_catalog(relay_listings.as_mut_slice(), relay_offers.as_mut_slice());
+        Self::sort_relay_catalog(
+            relay_listings.as_mut_slice(),
+            relay_offers.as_mut_slice(),
+            relay_requests.as_mut_slice(),
+            relay_access_contracts.as_mut_slice(),
+            relay_results.as_mut_slice(),
+            relay_settlement_matches.as_mut_slice(),
+        );
         let summary = format!(
-            "Refreshed DS relay catalog: {} listings, {} offers",
+            "Refreshed DS relay catalog: {} listings, {} offers, {} requests, {} contracts, {} results, {} wallet matches",
             relay_listings.len(),
-            relay_offers.len()
+            relay_offers.len(),
+            relay_requests.len(),
+            relay_access_contracts.len(),
+            relay_results.len(),
+            relay_settlement_matches.len()
         );
         self.relay_listings = relay_listings;
         self.relay_offers = relay_offers;
+        self.relay_requests = relay_requests;
+        self.relay_access_contracts = relay_access_contracts;
+        self.relay_results = relay_results;
+        self.relay_settlement_matches = relay_settlement_matches;
         self.last_refreshed_at_ms = Some(refreshed_at_ms);
         self.load_state = PaneLoadState::Ready;
         self.last_error = None;
@@ -5185,7 +5371,25 @@ impl DataMarketPaneState {
             || !self.revocations.is_empty()
             || !self.relay_listings.is_empty()
             || !self.relay_offers.is_empty()
+            || !self.relay_requests.is_empty()
+            || !self.relay_access_contracts.is_empty()
+            || !self.relay_results.is_empty()
+            || !self.relay_settlement_matches.is_empty()
             || !self.lifecycle_entries.is_empty()
+    }
+
+    pub fn relay_authored_listings_for_publisher(
+        &self,
+        publisher_pubkey: &str,
+    ) -> Vec<&RelayDatasetListingProjection> {
+        self.relay_listings
+            .iter()
+            .filter(|listing| {
+                listing
+                    .publisher_pubkey
+                    .eq_ignore_ascii_case(publisher_pubkey)
+            })
+            .collect()
     }
 
     pub fn relay_listing_by_coordinate(
@@ -5216,6 +5420,119 @@ impl DataMarketPaneState {
                 offer
                     .listing_coordinate
                     .eq_ignore_ascii_case(listing_coordinate)
+            })
+            .collect()
+    }
+
+    pub fn relay_authored_offers_for_publisher(
+        &self,
+        publisher_pubkey: &str,
+    ) -> Vec<&RelayDatasetOfferProjection> {
+        self.relay_offers
+            .iter()
+            .filter(|offer| {
+                offer
+                    .publisher_pubkey
+                    .eq_ignore_ascii_case(publisher_pubkey)
+            })
+            .collect()
+    }
+
+    pub fn relay_request_by_id(
+        &self,
+        request_event_id: &str,
+    ) -> Option<&RelayDatasetAccessRequestProjection> {
+        self.relay_requests
+            .iter()
+            .find(|request| request.event_id.eq_ignore_ascii_case(request_event_id))
+    }
+
+    pub fn relay_requests_for_provider(
+        &self,
+        provider_pubkey: &str,
+    ) -> Vec<&RelayDatasetAccessRequestProjection> {
+        self.relay_requests
+            .iter()
+            .filter(|request| {
+                request
+                    .targeted_provider_pubkeys
+                    .iter()
+                    .any(|candidate| candidate.eq_ignore_ascii_case(provider_pubkey))
+            })
+            .collect()
+    }
+
+    pub fn relay_access_contract_by_coordinate(
+        &self,
+        coordinate: &str,
+    ) -> Option<&RelayDatasetAccessContractProjection> {
+        self.relay_access_contracts
+            .iter()
+            .find(|contract| contract.coordinate.eq_ignore_ascii_case(coordinate))
+    }
+
+    pub fn relay_access_contract_for_request(
+        &self,
+        request_event_id: &str,
+    ) -> Option<&RelayDatasetAccessContractProjection> {
+        self.relay_access_contracts.iter().find(|contract| {
+            contract
+                .request_event_id
+                .eq_ignore_ascii_case(request_event_id)
+        })
+    }
+
+    pub fn relay_access_history_for_pubkey(
+        &self,
+        pubkey: &str,
+    ) -> Vec<&RelayDatasetAccessContractProjection> {
+        self.relay_access_contracts
+            .iter()
+            .filter(|contract| {
+                contract.seller_pubkey.eq_ignore_ascii_case(pubkey)
+                    || contract.buyer_pubkey.eq_ignore_ascii_case(pubkey)
+            })
+            .collect()
+    }
+
+    pub fn relay_results_for_request(
+        &self,
+        request_event_id: &str,
+    ) -> Vec<&RelayDatasetAccessResultProjection> {
+        self.relay_results
+            .iter()
+            .filter(|result| {
+                result
+                    .request_event_id
+                    .eq_ignore_ascii_case(request_event_id)
+            })
+            .collect()
+    }
+
+    pub fn relay_delivery_lookup_for_request(
+        &self,
+        request_event_id: &str,
+    ) -> Option<&RelayDatasetAccessResultProjection> {
+        self.relay_results_for_request(request_event_id)
+            .into_iter()
+            .find(|result| {
+                result.delivery_ref.is_some()
+                    || result.delivery_digest.is_some()
+                    || !result.delivery_bundle_id.trim().is_empty()
+            })
+    }
+
+    pub fn relay_settlement_matches_for_request(
+        &self,
+        request_event_id: &str,
+    ) -> Vec<&RelayDatasetSettlementMatchProjection> {
+        self.relay_settlement_matches
+            .iter()
+            .filter(|entry| {
+                entry
+                    .request_event_id
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case(request_event_id))
             })
             .collect()
     }
@@ -15869,6 +16186,10 @@ mod tests {
                 discussion_channel_name: None,
                 discussion_channel_relay_url: None,
             }],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
             1_762_700_020_000,
         );
 

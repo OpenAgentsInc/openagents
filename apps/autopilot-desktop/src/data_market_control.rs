@@ -1,21 +1,32 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use nostr::Event;
 use nostr::nip_ds::{
-    AddressableEventCoordinate, DatasetListing, DatasetOffer, DraftDatasetListing,
-    KIND_DATASET_LISTING, KIND_DATASET_OFFER,
+    AddressableEventCoordinate, DatasetAccessContract, DatasetListing, DatasetOffer,
+    DraftDatasetListing, KIND_DATASET_ACCESS_CONTRACT, KIND_DATASET_LISTING, KIND_DATASET_OFFER,
 };
 use nostr::nip15::{KIND_PRODUCT, KIND_STALL, MarketplaceProduct, MarketplaceStall};
 use nostr::nip28::{KIND_CHANNEL_METADATA, parse_dataset_discussion_channel_link};
+use nostr::nip90::{DataVendingRequest, DataVendingResult};
 use nostr::nip99::{ClassifiedListing, KIND_CLASSIFIED_LISTING};
 use nostr_client::{RelayConnection, RelayMessage};
 use openagents_kernel_core::authority::KernelAuthority;
+use serde::{Deserialize, Serialize};
 
-use crate::app_state::{RelayDatasetListingProjection, RelayDatasetOfferProjection, RenderState};
+use crate::app_state::{
+    RelayDatasetAccessContractProjection, RelayDatasetAccessRequestProjection,
+    RelayDatasetAccessResultProjection, RelayDatasetListingProjection, RelayDatasetOfferProjection,
+    RelayDatasetSettlementMatchProjection, RenderState,
+};
+use crate::spark_wallet::decode_lightning_invoice_payment_hash;
 
 const DS_CATALOG_LIMIT: usize = 128;
 const DS_CATALOG_TIMEOUT_MS: u64 = 1_500;
+const DATA_MARKET_RELAY_REPLICA_SCHEMA_VERSION: u16 = 1;
+const DATA_MARKET_RELAY_REPLICA_FILENAME: &str = "data-market-relay-replica.json";
 
 fn current_epoch_ms() -> i64 {
     std::time::SystemTime::now()
@@ -25,10 +36,133 @@ fn current_epoch_ms() -> i64 {
         })
 }
 
-#[derive(Default)]
+fn openagents_dir() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+}
+
+fn data_market_relay_replica_path() -> PathBuf {
+    openagents_dir().join(DATA_MARKET_RELAY_REPLICA_FILENAME)
+}
+
+fn persist_relay_catalog(snapshot: &RelayCatalogSnapshot) -> Result<(), String> {
+    persist_relay_catalog_to_path(snapshot, &data_market_relay_replica_path())
+}
+
+fn persist_relay_catalog_to_path(
+    snapshot: &RelayCatalogSnapshot,
+    path: &Path,
+) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "Cannot persist relay replica without parent directory: {}",
+            path.display()
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "Cannot create relay replica directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let persisted = PersistedRelayCatalogSnapshot {
+        schema_version: DATA_MARKET_RELAY_REPLICA_SCHEMA_VERSION,
+        updated_at_epoch_ms: current_epoch_ms().max(0) as u64,
+        listings: snapshot.listings.clone(),
+        offers: snapshot.offers.clone(),
+        requests: snapshot.requests.clone(),
+        access_contracts: snapshot.access_contracts.clone(),
+        results: snapshot.results.clone(),
+        settlement_matches: snapshot.settlement_matches.clone(),
+    };
+    let bytes = serde_json::to_vec_pretty(&persisted)
+        .map_err(|error| format!("Cannot encode relay replica: {error}"))?;
+    fs::write(path, bytes)
+        .map_err(|error| format!("Cannot write relay replica {}: {error}", path.display()))
+}
+
+fn load_persisted_relay_catalog() -> Result<RelayCatalogSnapshot, String> {
+    load_persisted_relay_catalog_from_path(&data_market_relay_replica_path())
+}
+
+fn load_persisted_relay_catalog_from_path(path: &Path) -> Result<RelayCatalogSnapshot, String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|error| format!("Cannot read relay replica {}: {error}", path.display()))?;
+    let persisted: PersistedRelayCatalogSnapshot = serde_json::from_str(raw.as_str())
+        .map_err(|error| format!("Cannot decode relay replica {}: {error}", path.display()))?;
+    if persisted.schema_version != DATA_MARKET_RELAY_REPLICA_SCHEMA_VERSION {
+        return Err(format!(
+            "Relay replica schema mismatch at {}: expected {}, got {}",
+            path.display(),
+            DATA_MARKET_RELAY_REPLICA_SCHEMA_VERSION,
+            persisted.schema_version
+        ));
+    }
+    Ok(RelayCatalogSnapshot {
+        listings: persisted.listings,
+        offers: persisted.offers,
+        requests: persisted.requests,
+        access_contracts: persisted.access_contracts,
+        results: persisted.results,
+        settlement_matches: persisted.settlement_matches,
+    })
+}
+
+pub(crate) fn hydrate_data_market_relay_replica(state: &mut RenderState) -> bool {
+    if !state.data_market.relay_listings.is_empty()
+        || !state.data_market.relay_offers.is_empty()
+        || !state.data_market.relay_requests.is_empty()
+        || !state.data_market.relay_access_contracts.is_empty()
+        || !state.data_market.relay_results.is_empty()
+        || !state.data_market.relay_settlement_matches.is_empty()
+    {
+        return false;
+    }
+
+    let Ok(snapshot) = load_persisted_relay_catalog() else {
+        return false;
+    };
+    state.data_market.apply_relay_catalog(
+        snapshot.listings,
+        snapshot.offers,
+        snapshot.requests,
+        snapshot.access_contracts,
+        snapshot.results,
+        snapshot.settlement_matches,
+        current_epoch_ms(),
+    );
+    state.data_buyer.sync_selection(&state.data_market);
+    true
+}
+
+#[derive(Clone, Debug, Default)]
 struct RelayCatalogSnapshot {
     listings: Vec<RelayDatasetListingProjection>,
     offers: Vec<RelayDatasetOfferProjection>,
+    requests: Vec<RelayDatasetAccessRequestProjection>,
+    access_contracts: Vec<RelayDatasetAccessContractProjection>,
+    results: Vec<RelayDatasetAccessResultProjection>,
+    settlement_matches: Vec<RelayDatasetSettlementMatchProjection>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PersistedRelayCatalogSnapshot {
+    schema_version: u16,
+    updated_at_epoch_ms: u64,
+    #[serde(default)]
+    listings: Vec<RelayDatasetListingProjection>,
+    #[serde(default)]
+    offers: Vec<RelayDatasetOfferProjection>,
+    #[serde(default)]
+    requests: Vec<RelayDatasetAccessRequestProjection>,
+    #[serde(default)]
+    access_contracts: Vec<RelayDatasetAccessContractProjection>,
+    #[serde(default)]
+    results: Vec<RelayDatasetAccessResultProjection>,
+    #[serde(default)]
+    settlement_matches: Vec<RelayDatasetSettlementMatchProjection>,
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +221,7 @@ pub(crate) fn refresh_data_market_snapshot(state: &mut RenderState) -> bool {
     state.data_market.begin_refresh();
 
     let mut authority_error = None::<String>;
+    let mut relay_error = None::<String>;
     let mut assets = Vec::new();
     let mut grants = Vec::new();
     let mut deliveries = Vec::new();
@@ -113,13 +248,25 @@ pub(crate) fn refresh_data_market_snapshot(state: &mut RenderState) -> bool {
         state.configured_provider_relay_urls().as_slice(),
         assets.as_slice(),
         grants.as_slice(),
+        state.spark_wallet.recent_payments.as_slice(),
     ) {
-        Ok(snapshot) => snapshot,
-        Err(error) => {
-            if authority_error.is_none() {
-                authority_error = Some(error);
+        Ok(snapshot) => {
+            if let Err(error) = persist_relay_catalog(&snapshot) {
+                relay_error = Some(error);
             }
-            RelayCatalogSnapshot::default()
+            snapshot
+        }
+        Err(error) => {
+            relay_error = Some(error.clone());
+            match load_persisted_relay_catalog() {
+                Ok(snapshot) => snapshot,
+                Err(load_error) => {
+                    if authority_error.is_none() {
+                        authority_error = Some(format!("{error} | {load_error}"));
+                    }
+                    RelayCatalogSnapshot::default()
+                }
+            }
         }
     };
 
@@ -129,9 +276,15 @@ pub(crate) fn refresh_data_market_snapshot(state: &mut RenderState) -> bool {
     state.data_market.apply_relay_catalog(
         relay_catalog.listings,
         relay_catalog.offers,
+        relay_catalog.requests,
+        relay_catalog.access_contracts,
+        relay_catalog.results,
+        relay_catalog.settlement_matches,
         refreshed_at_ms,
     );
     if let Some(error) = authority_error {
+        state.data_market.last_error = Some(error);
+    } else if let Some(error) = relay_error {
         state.data_market.last_error = Some(error);
     }
     state.data_buyer.sync_selection(&state.data_market);
@@ -142,6 +295,7 @@ fn fetch_relay_catalog(
     relay_urls: &[String],
     assets: &[openagents_kernel_core::data::DataAsset],
     grants: &[openagents_kernel_core::data::AccessGrant],
+    payments: &[openagents_spark::PaymentSummary],
 ) -> Result<RelayCatalogSnapshot, String> {
     let relay_urls = relay_urls
         .iter()
@@ -172,7 +326,7 @@ fn fetch_relay_catalog(
                 errors.join(" | ")
             ));
         }
-        Ok(project_relay_catalog(events, assets, grants))
+        Ok(project_relay_catalog(events, assets, grants, payments))
     })
 }
 
@@ -197,7 +351,7 @@ async fn query_ds_events_from_relay(relay_url: &str) -> Result<Vec<(String, Even
             subscription_id.as_str(),
             vec![
                 serde_json::json!({
-                    "kinds": [30017, 30018, 30402, 30404, 30405, 30406],
+                    "kinds": [30017, 30018, 30402, 30404, 30405, 30406, 30407, 5960, 6960],
                     "limit": DS_CATALOG_LIMIT,
                 }),
                 serde_json::json!({
@@ -227,6 +381,9 @@ async fn query_ds_events_from_relay(relay_url: &str) -> Result<Vec<(String, Even
                         | KIND_CLASSIFIED_LISTING
                         | KIND_DATASET_LISTING
                         | KIND_DATASET_OFFER
+                        | KIND_DATASET_ACCESS_CONTRACT
+                        | nostr::KIND_DATASET_ACCESS_REQUEST
+                        | nostr::KIND_DATASET_ACCESS_RESULT
                         | 30405
                 ) {
                     events.push((relay_url.to_string(), event));
@@ -253,9 +410,14 @@ fn project_relay_catalog(
     events: Vec<(String, Event)>,
     assets: &[openagents_kernel_core::data::DataAsset],
     grants: &[openagents_kernel_core::data::AccessGrant],
+    payments: &[openagents_spark::PaymentSummary],
 ) -> RelayCatalogSnapshot {
     let mut listings = BTreeMap::<String, RelayDatasetListingProjection>::new();
     let mut offers = BTreeMap::<String, RelayDatasetOfferProjection>::new();
+    let mut requests = BTreeMap::<String, RelayDatasetAccessRequestProjection>::new();
+    let mut access_contracts = BTreeMap::<String, RelayDatasetAccessContractProjection>::new();
+    let mut results = BTreeMap::<String, RelayDatasetAccessResultProjection>::new();
+    let mut settlement_matches = BTreeMap::<String, RelayDatasetSettlementMatchProjection>::new();
     let mut listing_wrappers = BTreeMap::<String, ClassifiedListingWrapperProjection>::new();
     let mut offer_wrappers = BTreeMap::<String, ClassifiedOfferWrapperProjection>::new();
     let mut stalls = BTreeMap::<String, StorefrontStallProjection>::new();
@@ -439,6 +601,200 @@ fn project_relay_catalog(
                     {
                         offers.insert(coordinate, projection);
                     }
+                }
+            }
+            nostr::KIND_DATASET_ACCESS_REQUEST => {
+                if let Ok(request) = DataVendingRequest::from_event(&event) {
+                    let listing_coordinate = request
+                        .listing_ref
+                        .as_ref()
+                        .map(|reference| reference.coordinate.to_string())
+                        .or_else(|| listing_coordinate_for_asset_ref(request.asset_ref.as_str()))
+                        .unwrap_or_else(|| request.asset_ref.clone());
+                    let offer_coordinate = request
+                        .offer_ref
+                        .as_ref()
+                        .map(|reference| reference.coordinate.to_string());
+                    let linked_grant_id = request.grant_id.clone().or_else(|| {
+                        offer_coordinate.as_deref().and_then(|coordinate| {
+                            linked_grant_id_for_offer_coordinate(grants, coordinate)
+                        })
+                    });
+                    let linked_asset_id = request
+                        .asset_id
+                        .clone()
+                        .or_else(|| {
+                            linked_asset_id_for_listing_coordinate(
+                                assets,
+                                listing_coordinate.as_str(),
+                            )
+                        })
+                        .or_else(|| {
+                            linked_grant_id.as_deref().and_then(|grant_id| {
+                                grants
+                                    .iter()
+                                    .find(|grant| grant.grant_id == grant_id)
+                                    .map(|grant| grant.asset_id.clone())
+                            })
+                        });
+                    requests.insert(
+                        event.id.clone(),
+                        RelayDatasetAccessRequestProjection {
+                            event_id: event.id.clone(),
+                            request_kind: request.request_kind,
+                            requester_pubkey: event.pubkey.clone(),
+                            relay_url: Some(relay_url),
+                            listing_coordinate,
+                            offer_coordinate,
+                            asset_ref: request.asset_ref,
+                            asset_id: request.asset_id,
+                            grant_id: linked_grant_id.clone(),
+                            targeted_provider_pubkeys: request.service_providers,
+                            permission_scopes: request.permission_scopes,
+                            delivery_mode: request.delivery_mode.as_str().to_string(),
+                            preview_posture: request.preview_posture.as_str().to_string(),
+                            bid_msats: request.bid,
+                            encrypted: request.encrypted,
+                            created_at_seconds: event.created_at,
+                            expires_at_seconds: data_request_timeout_seconds(
+                                request.content.as_str(),
+                                event.created_at,
+                            ),
+                            linked_asset_id,
+                            linked_grant_id,
+                        },
+                    );
+                }
+            }
+            KIND_DATASET_ACCESS_CONTRACT => {
+                if let Ok(contract) = DatasetAccessContract::from_event(&event)
+                    && let Ok(coordinate) = contract.coordinate(event.pubkey.clone())
+                {
+                    let coordinate = coordinate.to_string();
+                    let listing_coordinate = contract.listing_ref.coordinate.to_string();
+                    let offer_coordinate = contract
+                        .offer_ref
+                        .as_ref()
+                        .map(|reference| reference.coordinate.to_string());
+                    let linked_grant_id = offer_coordinate
+                        .as_deref()
+                        .and_then(|value| linked_grant_id_for_offer_coordinate(grants, value));
+                    let linked_asset_id =
+                        linked_asset_id_for_listing_coordinate(assets, listing_coordinate.as_str())
+                            .or_else(|| {
+                                linked_grant_id.as_deref().and_then(|grant_id| {
+                                    grants
+                                        .iter()
+                                        .find(|grant| grant.grant_id == grant_id)
+                                        .map(|grant| grant.asset_id.clone())
+                                })
+                            });
+                    let projection = RelayDatasetAccessContractProjection {
+                        coordinate: coordinate.clone(),
+                        seller_pubkey: event.pubkey.clone(),
+                        buyer_pubkey: contract.buyer.pubkey.clone(),
+                        relay_url: Some(relay_url),
+                        listing_coordinate,
+                        offer_coordinate,
+                        request_event_id: contract.request_ref.event_id.clone(),
+                        result_event_id: contract
+                            .result_ref
+                            .as_ref()
+                            .map(|reference| reference.event_id.clone()),
+                        status: contract.status.as_str().to_string(),
+                        payment_method: contract.payment_method.as_ref().map(payment_method_rail),
+                        amount_msats: contract.amount_msats,
+                        bolt11: contract.bolt11.clone(),
+                        payment_hash: contract
+                            .bolt11
+                            .as_deref()
+                            .and_then(decode_lightning_invoice_payment_hash),
+                        payment_evidence_event_ids: contract
+                            .payment_evidence_refs
+                            .iter()
+                            .map(|reference| reference.event_id.clone())
+                            .collect(),
+                        delivery_mode: contract.delivery_mode.clone(),
+                        delivery_ref: contract.delivery_ref.clone(),
+                        delivery_mime_type: contract.delivery_mime_type.clone(),
+                        delivery_digest: contract.delivery_digest.clone(),
+                        created_at_seconds: event.created_at,
+                        expires_at_seconds: contract.expires_at,
+                        reason_code: contract.reason_code.clone(),
+                        linked_asset_id,
+                        linked_grant_id,
+                    };
+                    if access_contracts
+                        .get(coordinate.as_str())
+                        .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
+                    {
+                        access_contracts.insert(coordinate, projection);
+                    }
+                }
+            }
+            nostr::KIND_DATASET_ACCESS_RESULT => {
+                if let Ok(result) = DataVendingResult::from_event(&event) {
+                    let listing_coordinate = result
+                        .listing_ref
+                        .as_ref()
+                        .map(|reference| reference.coordinate.to_string())
+                        .or_else(|| listing_coordinate_for_asset_ref(result.asset_ref.as_str()))
+                        .unwrap_or_else(|| result.asset_ref.clone());
+                    let offer_coordinate = result
+                        .offer_ref
+                        .as_ref()
+                        .map(|reference| reference.coordinate.to_string());
+                    let linked_grant_id = result.grant_id.clone().or_else(|| {
+                        offer_coordinate.as_deref().and_then(|coordinate| {
+                            linked_grant_id_for_offer_coordinate(grants, coordinate)
+                        })
+                    });
+                    let linked_asset_id = result
+                        .asset_id
+                        .clone()
+                        .or_else(|| {
+                            linked_asset_id_for_listing_coordinate(
+                                assets,
+                                listing_coordinate.as_str(),
+                            )
+                        })
+                        .or_else(|| {
+                            linked_grant_id.as_deref().and_then(|grant_id| {
+                                grants
+                                    .iter()
+                                    .find(|grant| grant.grant_id == grant_id)
+                                    .map(|grant| grant.asset_id.clone())
+                            })
+                        });
+                    results.insert(
+                        event.id.clone(),
+                        RelayDatasetAccessResultProjection {
+                            event_id: event.id.clone(),
+                            seller_pubkey: event.pubkey.clone(),
+                            buyer_pubkey: result.customer_pubkey,
+                            relay_url: Some(relay_url),
+                            request_event_id: result.request_id,
+                            listing_coordinate,
+                            offer_coordinate,
+                            asset_ref: result.asset_ref,
+                            asset_id: result.asset_id,
+                            grant_id: linked_grant_id.clone(),
+                            delivery_bundle_id: result.delivery_bundle_id,
+                            delivery_mode: result.delivery_mode.as_str().to_string(),
+                            preview_posture: result.preview_posture.as_str().to_string(),
+                            delivery_ref: result.delivery_ref,
+                            delivery_digest: result.delivery_digest,
+                            amount_msats: result.amount,
+                            bolt11: result.bolt11.clone(),
+                            payment_hash: result
+                                .bolt11
+                                .as_deref()
+                                .and_then(decode_lightning_invoice_payment_hash),
+                            created_at_seconds: event.created_at,
+                            linked_asset_id,
+                            linked_grant_id,
+                        },
+                    );
                 }
             }
             KIND_STALL => {
@@ -894,10 +1250,117 @@ fn project_relay_catalog(
         }
     }
 
+    for contract in access_contracts.values() {
+        let Some(payment_hash) = contract.payment_hash.as_deref() else {
+            continue;
+        };
+        for payment in payments.iter().filter(|payment| {
+            payment
+                .payment_hash
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(payment_hash))
+        }) {
+            let key = format!("{}:{}", payment.id, contract.request_event_id);
+            settlement_matches
+                .entry(key)
+                .and_modify(|entry| {
+                    entry.contract_coordinate = Some(contract.coordinate.clone());
+                    entry.result_event_id = entry
+                        .result_event_id
+                        .clone()
+                        .or_else(|| contract.result_event_id.clone());
+                })
+                .or_insert_with(|| RelayDatasetSettlementMatchProjection {
+                    payment_pointer: payment.id.clone(),
+                    payment_hash: payment_hash.to_string(),
+                    direction: payment.direction.clone(),
+                    status: payment.status.clone(),
+                    amount_sats: payment.amount_sats,
+                    observed_at_seconds: payment.timestamp,
+                    contract_coordinate: Some(contract.coordinate.clone()),
+                    request_event_id: Some(contract.request_event_id.clone()),
+                    result_event_id: contract.result_event_id.clone(),
+                });
+        }
+    }
+
+    for result in results.values() {
+        let Some(payment_hash) = result.payment_hash.as_deref() else {
+            continue;
+        };
+        for payment in payments.iter().filter(|payment| {
+            payment
+                .payment_hash
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(payment_hash))
+        }) {
+            let key = format!("{}:{}", payment.id, result.request_event_id);
+            settlement_matches
+                .entry(key)
+                .and_modify(|entry| {
+                    entry.result_event_id = Some(result.event_id.clone());
+                    if entry.contract_coordinate.is_none() {
+                        entry.contract_coordinate = access_contracts
+                            .values()
+                            .find(|contract| {
+                                contract
+                                    .request_event_id
+                                    .eq_ignore_ascii_case(result.request_event_id.as_str())
+                            })
+                            .map(|contract| contract.coordinate.clone());
+                    }
+                })
+                .or_insert_with(|| RelayDatasetSettlementMatchProjection {
+                    payment_pointer: payment.id.clone(),
+                    payment_hash: payment_hash.to_string(),
+                    direction: payment.direction.clone(),
+                    status: payment.status.clone(),
+                    amount_sats: payment.amount_sats,
+                    observed_at_seconds: payment.timestamp,
+                    contract_coordinate: access_contracts
+                        .values()
+                        .find(|contract| {
+                            contract
+                                .request_event_id
+                                .eq_ignore_ascii_case(result.request_event_id.as_str())
+                        })
+                        .map(|contract| contract.coordinate.clone()),
+                    request_event_id: Some(result.request_event_id.clone()),
+                    result_event_id: Some(result.event_id.clone()),
+                });
+        }
+    }
+
     RelayCatalogSnapshot {
         listings: listings.into_values().collect(),
         offers: offers.into_values().collect(),
+        requests: requests.into_values().collect(),
+        access_contracts: access_contracts.into_values().collect(),
+        results: results.into_values().collect(),
+        settlement_matches: settlement_matches.into_values().collect(),
     }
+}
+
+fn listing_coordinate_for_asset_ref(asset_ref: &str) -> Option<String> {
+    let coordinate = AddressableEventCoordinate::parse(asset_ref).ok()?;
+    (coordinate.kind == KIND_DATASET_LISTING).then(|| coordinate.to_string())
+}
+
+fn data_request_timeout_seconds(content: &str, created_at_seconds: u64) -> Option<u64> {
+    let value = serde_json::from_str::<serde_json::Value>(content)
+        .ok()?
+        .get("timeout_seconds")?
+        .clone();
+    let timeout_seconds = match value {
+        serde_json::Value::Number(number) => number.as_u64(),
+        serde_json::Value::String(string) => string.parse::<u64>().ok(),
+        _ => None,
+    }?;
+    Some(created_at_seconds.saturating_add(timeout_seconds))
+}
+
+fn payment_method_rail(method: &nostr::nip_ds::PaymentMethod) -> String {
+    method.rail.clone()
 }
 
 fn marketplace_price_string(value: f64) -> String {
@@ -961,18 +1424,32 @@ fn linked_asset_id_for_offer_coordinate(
 
 #[cfg(test)]
 mod tests {
-    use super::project_relay_catalog;
+    use std::fs;
+
+    use super::{
+        PersistedRelayCatalogSnapshot, RelayCatalogSnapshot,
+        load_persisted_relay_catalog_from_path, persist_relay_catalog_to_path,
+        project_relay_catalog,
+    };
     use nostr::nip_ds::{
-        AddressableEventCoordinate, AddressableEventReference, DatasetListing, DatasetOffer,
-        PaymentMethod,
+        AddressableEventCoordinate, AddressableEventReference, DatasetAccessContract,
+        DatasetAccessContractStatus, DatasetListing, DatasetOffer, EventReference, PaymentMethod,
+        PublicKeyReference,
     };
     use nostr::nip15::{MarketplaceProduct, MarketplaceStall};
+    use nostr::nip90::{
+        DataVendingDeliveryMode, DataVendingPreviewPosture, DataVendingRequest, DataVendingResult,
+        create_data_vending_request_event, create_data_vending_result_event,
+    };
     use nostr::nip99::{ClassifiedListing, ListingStatus, Price};
     use openagents_kernel_core::data::{
         AccessGrant, AccessGrantNostrPublications, AccessGrantStatus, DataAsset,
         DataAssetNostrPublications, NostrPublicationRef, PermissionPolicy,
     };
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
+    use openagents_spark::PaymentSummary;
+
+    const VALID_TEST_INVOICE: &str = "lnbc10u1p3unwfusp5t9r3yymhpfqculx78u027lxspgxcr2n2987mx2j55nnfs95nxnzqpp5jmrh92pfld78spqs78v9euf2385t83uvpwk9ldrlvf6ch7tpascqhp5zvkrmemgth3tufcvflmzjzfvjt023nazlhljz2n9hattj4f8jq8qxqyjw5qcqpjrzjqtc4fc44feggv7065fqe5m4ytjarg3repr5j9el35xhmtfexc42yczarjuqqfzqqqqqqqqlgqqqqqqgq9q9qxpqysgq079nkq507a5tw7xgttmj4u990j7wfggtrasah5gd4ywfr2pjcn29383tphp4t48gquelz9z78p4cq7ml3nrrphw5w6eckhjwmhezhnqpy6gyf0";
 
     fn sign_template(
         identity: &nostr::NostrIdentity,
@@ -1091,6 +1568,7 @@ mod tests {
             ],
             &[asset],
             &[grant],
+            &[],
         );
 
         assert_eq!(snapshot.listings.len(), 1);
@@ -1195,6 +1673,7 @@ mod tests {
             vec![("wss://relay.example".to_string(), wrapper_event)],
             &[asset],
             &[grant],
+            &[],
         );
 
         assert_eq!(snapshot.listings.len(), 1);
@@ -1321,6 +1800,7 @@ mod tests {
             ],
             &[asset],
             &[grant],
+            &[],
         );
 
         assert_eq!(snapshot.listings.len(), 1);
@@ -1494,6 +1974,7 @@ mod tests {
             ],
             &[asset],
             &[grant],
+            &[],
         );
 
         assert_eq!(
@@ -1512,5 +1993,412 @@ mod tests {
             snapshot.offers[0].discussion_channel_name.as_deref(),
             Some("Corpus Q&A")
         );
+    }
+
+    #[test]
+    fn relay_catalog_projection_surfaces_ds_access_lifecycle_and_wallet_match() {
+        let seller = nostr::regenerate_identity().expect("seller identity");
+        let buyer = nostr::regenerate_identity().expect("buyer identity");
+
+        let listing = DatasetListing::new(
+            "data_asset.provider.alpha.bundle",
+            "Example dataset listing.",
+            "Seller bundle",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .with_published_at(1_762_700_000)
+        .with_dataset_kind("conversation_bundle")
+        .with_access("paid")
+        .add_delivery_mode("encrypted_pointer");
+        let listing_coordinate = listing
+            .coordinate(seller.public_key_hex.clone())
+            .expect("listing coordinate");
+        let listing_coordinate_string = listing_coordinate.to_string();
+        let listing_event = sign_template(
+            &seller,
+            &listing
+                .to_event_template(1_762_700_000)
+                .expect("listing template"),
+        );
+
+        let offer = DatasetOffer::new(
+            "grant.data.offer.001",
+            "Targeted access",
+            AddressableEventReference::new(listing_coordinate.clone()),
+        )
+        .with_policy("targeted_request")
+        .with_price(Price::one_time("42", "SAT"))
+        .add_payment_method(PaymentMethod::new("ln"))
+        .add_delivery_mode("encrypted_pointer");
+        let offer_coordinate = offer
+            .coordinate(seller.public_key_hex.clone())
+            .expect("offer coordinate");
+        let offer_coordinate_string = offer_coordinate.to_string();
+        let offer_event = sign_template(
+            &seller,
+            &offer
+                .to_event_template(1_762_700_010)
+                .expect("offer template"),
+        );
+
+        let request = DataVendingRequest::new(
+            nostr::KIND_DATASET_ACCESS_REQUEST,
+            "data_asset.provider.alpha.bundle",
+            "download",
+        )
+        .expect("request")
+        .with_listing_ref(AddressableEventReference::new(listing_coordinate.clone()))
+        .with_offer_ref(AddressableEventReference::new(offer_coordinate.clone()))
+        .with_asset_id("data_asset.provider.alpha.bundle")
+        .with_grant_id("grant.data.offer.001")
+        .with_delivery_mode(DataVendingDeliveryMode::EncryptedPointer)
+        .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
+        .with_bid(42_000)
+        .add_service_provider(seller.public_key_hex.clone())
+        .add_relay("wss://relay.example")
+        .with_content(r#"{"timeout_seconds":120}"#);
+        let request_event = sign_template(
+            &buyer,
+            &create_data_vending_request_event(&request).expect("request template"),
+        );
+
+        let contract = DatasetAccessContract::new(
+            "contract.alpha.bundle",
+            "Payment required",
+            AddressableEventReference::new(listing_coordinate.clone()),
+            EventReference::new(request_event.id.clone()).expect("request ref"),
+            PublicKeyReference::new(buyer.public_key_hex.clone()).expect("buyer ref"),
+        )
+        .with_offer_ref(AddressableEventReference::new(offer_coordinate.clone()))
+        .with_status(DatasetAccessContractStatus::Paid)
+        .with_payment_method(PaymentMethod::new("ln"))
+        .with_amount_msats(42_000, Some(VALID_TEST_INVOICE.to_string()))
+        .with_delivery_mode("encrypted_pointer")
+        .with_delivery_ref("https://delivery.example/contracts/alpha")
+        .with_delivery_mime_type("application/json")
+        .with_delivery_digest("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        .with_expires_at(1_762_700_240);
+        let contract_event = sign_template(
+            &seller,
+            &contract
+                .to_event_template(1_762_700_040)
+                .expect("contract template"),
+        );
+        let contract_coordinate = contract
+            .coordinate(seller.public_key_hex.clone())
+            .expect("contract coordinate")
+            .to_string();
+
+        let result = DataVendingResult::new(
+            nostr::KIND_DATASET_ACCESS_REQUEST,
+            request_event.id.clone(),
+            buyer.public_key_hex.clone(),
+            "data_asset.provider.alpha.bundle",
+            "delivery.alpha.bundle",
+            r#"{"status":"delivered"}"#,
+        )
+        .expect("result")
+        .with_listing_ref(AddressableEventReference::new(listing_coordinate.clone()))
+        .with_offer_ref(AddressableEventReference::new(offer_coordinate.clone()))
+        .with_asset_id("data_asset.provider.alpha.bundle")
+        .with_grant_id("grant.data.offer.001")
+        .with_delivery_mode(DataVendingDeliveryMode::EncryptedPointer)
+        .with_preview_posture(DataVendingPreviewPosture::MetadataOnly)
+        .with_amount(42_000, Some(VALID_TEST_INVOICE.to_string()));
+        let result_event = sign_template(
+            &seller,
+            &create_data_vending_result_event(&result).expect("result template"),
+        );
+
+        let payment_hash =
+            crate::spark_wallet::decode_lightning_invoice_payment_hash(VALID_TEST_INVOICE)
+                .expect("payment hash");
+        let payment = PaymentSummary {
+            id: "payment-001".to_string(),
+            direction: "outbound".to_string(),
+            status: "completed".to_string(),
+            amount_sats: 42,
+            timestamp: 1_762_700_050,
+            invoice: Some(VALID_TEST_INVOICE.to_string()),
+            payment_hash: Some(payment_hash.clone()),
+            ..Default::default()
+        };
+
+        let asset = DataAsset {
+            asset_id: "data_asset.provider.alpha.bundle".to_string(),
+            provider_id: seller.public_key_hex.clone(),
+            asset_kind: "conversation_bundle".to_string(),
+            title: "Seller bundle".to_string(),
+            description: None,
+            content_digest: None,
+            provenance_ref: None,
+            default_policy: Some(PermissionPolicy::default()),
+            price_hint: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(42),
+            }),
+            created_at_ms: 1_762_700_000_000,
+            status: Default::default(),
+            nostr_publications: DataAssetNostrPublications {
+                ds_listing: Some(NostrPublicationRef {
+                    coordinate: Some(listing_coordinate_string.clone()),
+                    event_id: Some(listing_event.id.clone()),
+                    relay_url: Some("wss://relay.example".to_string()),
+                }),
+                ds_draft_listing: None,
+            },
+            metadata: serde_json::json!({}),
+        };
+        let grant = AccessGrant {
+            grant_id: "grant.data.offer.001".to_string(),
+            asset_id: asset.asset_id.clone(),
+            provider_id: seller.public_key_hex.clone(),
+            consumer_id: Some(buyer.public_key_hex.clone()),
+            permission_policy: PermissionPolicy::default(),
+            offer_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(42),
+            }),
+            warranty_window_ms: None,
+            created_at_ms: 1_762_700_010_000,
+            expires_at_ms: 1_762_786_410_000,
+            accepted_at_ms: None,
+            status: AccessGrantStatus::Offered,
+            nostr_publications: AccessGrantNostrPublications {
+                ds_offer: Some(NostrPublicationRef {
+                    coordinate: Some(offer_coordinate_string.clone()),
+                    event_id: Some(offer_event.id.clone()),
+                    relay_url: Some("wss://relay.example".to_string()),
+                }),
+                ds_access_request: Some(NostrPublicationRef {
+                    coordinate: None,
+                    event_id: Some(request_event.id.clone()),
+                    relay_url: Some("wss://relay.example".to_string()),
+                }),
+                ds_access_result: Some(NostrPublicationRef {
+                    coordinate: None,
+                    event_id: Some(result_event.id.clone()),
+                    relay_url: Some("wss://relay.example".to_string()),
+                }),
+            },
+            metadata: serde_json::json!({}),
+        };
+
+        let snapshot = project_relay_catalog(
+            vec![
+                ("wss://relay.example".to_string(), listing_event),
+                ("wss://relay.example".to_string(), offer_event),
+                ("wss://relay.example".to_string(), request_event.clone()),
+                ("wss://relay.example".to_string(), contract_event),
+                ("wss://relay.example".to_string(), result_event.clone()),
+            ],
+            &[asset],
+            &[grant],
+            &[payment],
+        );
+
+        assert_eq!(snapshot.requests.len(), 1);
+        assert_eq!(
+            snapshot.requests[0].listing_coordinate,
+            listing_coordinate_string
+        );
+        assert_eq!(
+            snapshot.requests[0].offer_coordinate.as_deref(),
+            Some(offer_coordinate_string.as_str())
+        );
+        assert_eq!(
+            snapshot.requests[0].expires_at_seconds,
+            Some(request_event.created_at.saturating_add(120))
+        );
+        assert_eq!(
+            snapshot.requests[0].linked_grant_id.as_deref(),
+            Some("grant.data.offer.001")
+        );
+
+        assert_eq!(snapshot.access_contracts.len(), 1);
+        assert_eq!(snapshot.access_contracts[0].coordinate, contract_coordinate);
+        assert_eq!(
+            snapshot.access_contracts[0].payment_hash.as_deref(),
+            Some(payment_hash.as_str())
+        );
+        assert_eq!(
+            snapshot.access_contracts[0].linked_asset_id.as_deref(),
+            Some("data_asset.provider.alpha.bundle")
+        );
+
+        assert_eq!(snapshot.results.len(), 1);
+        assert_eq!(snapshot.results[0].request_event_id, request_event.id);
+        assert_eq!(
+            snapshot.results[0].payment_hash.as_deref(),
+            Some(payment_hash.as_str())
+        );
+
+        assert_eq!(snapshot.settlement_matches.len(), 1);
+        assert_eq!(snapshot.settlement_matches[0].payment_hash, payment_hash);
+        assert_eq!(
+            snapshot.settlement_matches[0].result_event_id.as_deref(),
+            Some(result_event.id.as_str())
+        );
+    }
+
+    #[test]
+    fn relay_catalog_snapshot_persists_and_loads_extended_replica() {
+        let snapshot = RelayCatalogSnapshot {
+            listings: vec![super::RelayDatasetListingProjection {
+                coordinate: "30404:pubkey:asset.alpha".to_string(),
+                publisher_pubkey: "pubkey".to_string(),
+                relay_url: Some("wss://relay.example".to_string()),
+                title: "Dataset alpha".to_string(),
+                summary: Some("alpha summary".to_string()),
+                dataset_kind: Some("bundle".to_string()),
+                access: Some("paid".to_string()),
+                delivery_modes: vec!["encrypted_pointer".to_string()],
+                created_at_seconds: 10,
+                draft: false,
+                linked_asset_id: Some("asset.alpha".to_string()),
+                classified_coordinate: None,
+                classified_event_id: None,
+                classified_price_amount: None,
+                classified_price_currency: None,
+                storefront_stall_coordinate: None,
+                storefront_stall_name: None,
+                storefront_product_coordinate: None,
+                storefront_product_event_id: None,
+                storefront_product_title: None,
+                storefront_product_price_amount: None,
+                storefront_product_price_currency: None,
+                discussion_channel_id: None,
+                discussion_channel_name: None,
+                discussion_channel_relay_url: None,
+            }],
+            offers: vec![super::RelayDatasetOfferProjection {
+                coordinate: "30406:pubkey:grant.alpha".to_string(),
+                listing_coordinate: "30404:pubkey:asset.alpha".to_string(),
+                publisher_pubkey: "pubkey".to_string(),
+                relay_url: Some("wss://relay.example".to_string()),
+                status: "active".to_string(),
+                policy: Some("targeted_request".to_string()),
+                delivery_modes: vec!["encrypted_pointer".to_string()],
+                targeted_buyer_pubkeys: vec!["buyer".to_string()],
+                price_amount: Some("5".to_string()),
+                price_currency: Some("SAT".to_string()),
+                created_at_seconds: 20,
+                linked_asset_id: Some("asset.alpha".to_string()),
+                linked_grant_id: Some("grant.alpha".to_string()),
+                classified_coordinate: None,
+                classified_event_id: None,
+                storefront_stall_coordinate: None,
+                storefront_stall_name: None,
+                storefront_product_coordinate: None,
+                storefront_product_event_id: None,
+                storefront_product_title: None,
+                storefront_product_price_amount: None,
+                storefront_product_price_currency: None,
+                discussion_channel_id: None,
+                discussion_channel_name: None,
+                discussion_channel_relay_url: None,
+            }],
+            requests: vec![super::RelayDatasetAccessRequestProjection {
+                event_id: "request-001".to_string(),
+                request_kind: nostr::KIND_DATASET_ACCESS_REQUEST,
+                requester_pubkey: "buyer".to_string(),
+                relay_url: Some("wss://relay.example".to_string()),
+                listing_coordinate: "30404:pubkey:asset.alpha".to_string(),
+                offer_coordinate: Some("30406:pubkey:grant.alpha".to_string()),
+                asset_ref: "asset.alpha".to_string(),
+                asset_id: Some("asset.alpha".to_string()),
+                grant_id: Some("grant.alpha".to_string()),
+                targeted_provider_pubkeys: vec!["pubkey".to_string()],
+                permission_scopes: vec!["download".to_string()],
+                delivery_mode: "encrypted_pointer".to_string(),
+                preview_posture: "metadata_only".to_string(),
+                bid_msats: Some(5_000),
+                encrypted: false,
+                created_at_seconds: 30,
+                expires_at_seconds: Some(150),
+                linked_asset_id: Some("asset.alpha".to_string()),
+                linked_grant_id: Some("grant.alpha".to_string()),
+            }],
+            access_contracts: vec![super::RelayDatasetAccessContractProjection {
+                coordinate: "30407:pubkey:contract.alpha".to_string(),
+                seller_pubkey: "pubkey".to_string(),
+                buyer_pubkey: "buyer".to_string(),
+                relay_url: Some("wss://relay.example".to_string()),
+                listing_coordinate: "30404:pubkey:asset.alpha".to_string(),
+                offer_coordinate: Some("30406:pubkey:grant.alpha".to_string()),
+                request_event_id: "request-001".to_string(),
+                result_event_id: Some("result-001".to_string()),
+                status: "paid".to_string(),
+                payment_method: Some("ln".to_string()),
+                amount_msats: Some(5_000),
+                bolt11: Some("lnbc1example".to_string()),
+                payment_hash: Some("abc123".to_string()),
+                payment_evidence_event_ids: vec!["payment-evidence-001".to_string()],
+                delivery_mode: Some("encrypted_pointer".to_string()),
+                delivery_ref: Some("https://delivery.example/contracts/alpha".to_string()),
+                delivery_mime_type: Some("application/json".to_string()),
+                delivery_digest: Some(
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+                ),
+                created_at_seconds: 40,
+                expires_at_seconds: Some(160),
+                reason_code: None,
+                linked_asset_id: Some("asset.alpha".to_string()),
+                linked_grant_id: Some("grant.alpha".to_string()),
+            }],
+            results: vec![super::RelayDatasetAccessResultProjection {
+                event_id: "result-001".to_string(),
+                seller_pubkey: "pubkey".to_string(),
+                buyer_pubkey: "buyer".to_string(),
+                relay_url: Some("wss://relay.example".to_string()),
+                request_event_id: "request-001".to_string(),
+                listing_coordinate: "30404:pubkey:asset.alpha".to_string(),
+                offer_coordinate: Some("30406:pubkey:grant.alpha".to_string()),
+                asset_ref: "asset.alpha".to_string(),
+                asset_id: Some("asset.alpha".to_string()),
+                grant_id: Some("grant.alpha".to_string()),
+                delivery_bundle_id: "bundle-001".to_string(),
+                delivery_mode: "encrypted_pointer".to_string(),
+                preview_posture: "metadata_only".to_string(),
+                delivery_ref: Some("https://delivery.example/results/alpha".to_string()),
+                delivery_digest: Some(
+                    "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210".to_string(),
+                ),
+                amount_msats: Some(5_000),
+                bolt11: Some("lnbc1example".to_string()),
+                payment_hash: Some("abc123".to_string()),
+                created_at_seconds: 50,
+                linked_asset_id: Some("asset.alpha".to_string()),
+                linked_grant_id: Some("grant.alpha".to_string()),
+            }],
+            settlement_matches: vec![super::RelayDatasetSettlementMatchProjection {
+                payment_pointer: "payment-001".to_string(),
+                payment_hash: "abc123".to_string(),
+                direction: "outbound".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 5,
+                observed_at_seconds: 55,
+                contract_coordinate: Some("30407:pubkey:contract.alpha".to_string()),
+                request_event_id: Some("request-001".to_string()),
+                result_event_id: Some("result-001".to_string()),
+            }],
+        };
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("replica.json");
+        persist_relay_catalog_to_path(&snapshot, &path).expect("persist relay catalog");
+
+        let stored: PersistedRelayCatalogSnapshot =
+            serde_json::from_str(fs::read_to_string(&path).expect("read replica").as_str())
+                .expect("decode persisted schema");
+        assert_eq!(stored.schema_version, 1);
+
+        let loaded = load_persisted_relay_catalog_from_path(&path).expect("load relay catalog");
+        assert_eq!(loaded.listings, snapshot.listings);
+        assert_eq!(loaded.offers, snapshot.offers);
+        assert_eq!(loaded.requests, snapshot.requests);
+        assert_eq!(loaded.access_contracts, snapshot.access_contracts);
+        assert_eq!(loaded.results, snapshot.results);
+        assert_eq!(loaded.settlement_matches, snapshot.settlement_matches);
     }
 }
