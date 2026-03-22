@@ -6,6 +6,7 @@ use nostr::nip_ds::{
     AddressableEventCoordinate, AddressableEventReference, DatasetListing, DatasetOffer,
     DatasetOfferStatus, PaymentMethod,
 };
+use nostr::nip15::{MarketplaceProduct, MarketplaceStall};
 use nostr::nip90::{
     DataVendingDeliveryMode, DataVendingFeedback, DataVendingPreviewPosture, DataVendingResult,
     JobStatus, create_data_vending_feedback_event, create_data_vending_result_event,
@@ -439,6 +440,25 @@ fn ds_price_from_money(money: Option<&Money>) -> Option<Price> {
     Some(Price::one_time(amount, currency))
 }
 
+fn storefront_currency_and_price(money: Option<&Money>) -> Option<(String, f64)> {
+    let money = money?;
+    match money.asset {
+        Asset::Btc => match money.amount {
+            MoneyAmount::AmountSats(amount) => Some(("SAT".to_string(), amount as f64)),
+            MoneyAmount::AmountMsats(amount) => Some(("MSAT".to_string(), amount as f64)),
+        },
+        Asset::UsdCents => match money.amount {
+            MoneyAmount::AmountSats(amount) => Some(("USD_CENTS".to_string(), amount as f64)),
+            MoneyAmount::AmountMsats(amount) => Some(("USD_CENTS".to_string(), amount as f64)),
+        },
+        Asset::AssetUnspecified => None,
+    }
+}
+
+fn storefront_stall_identifier(currency: &str) -> String {
+    format!("datasets.{}", currency.trim().to_ascii_lowercase())
+}
+
 fn asset_public_catalog_visibility(asset: &DataAsset) -> bool {
     metadata_string(&asset.metadata, "visibility_posture").as_deref() == Some("public_catalog")
 }
@@ -457,6 +477,28 @@ fn record_nip99_classified_metadata(
             "coordinate": publication_ref.coordinate,
             "event_id": publication_ref.event_id,
             "relay_url": publication_ref.relay_url,
+        }),
+    );
+}
+
+fn record_nip15_storefront_metadata(
+    metadata: &mut serde_json::Value,
+    stall_ref: &NostrPublicationRef,
+    product_ref: &NostrPublicationRef,
+) {
+    ensure_metadata_object(metadata).insert(
+        "nip15_storefront".to_string(),
+        json!({
+            "stall": {
+                "coordinate": stall_ref.coordinate,
+                "event_id": stall_ref.event_id,
+                "relay_url": stall_ref.relay_url,
+            },
+            "product": {
+                "coordinate": product_ref.coordinate,
+                "event_id": product_ref.event_id,
+                "relay_url": product_ref.relay_url,
+            },
         }),
     );
 }
@@ -625,6 +667,129 @@ fn publish_dataset_classified_listing(
     let event = sign_event_template(identity, &template)?;
     let accepted_relays =
         publish_event_to_relays(relay_urls, &event, "NIP-99 dataset classified listing")?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
+}
+
+fn build_dataset_storefront_stall(
+    seller_pubkey: &str,
+    currency: &str,
+) -> Result<(MarketplaceStall, NostrPublicationRef), String> {
+    let stall = MarketplaceStall::new(
+        storefront_stall_identifier(currency),
+        format!("OpenAgents datasets ({currency})"),
+        currency.to_string(),
+    )
+    .with_description(format!(
+        "OpenAgents storefront wrappers for NIP-DS datasets priced in {currency}."
+    ));
+    let coordinate = stall
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive NIP-15 stall coordinate: {error}"))?;
+    Ok((
+        stall,
+        NostrPublicationRef {
+            coordinate: Some(coordinate),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
+fn build_dataset_storefront_product(
+    asset: &DataAsset,
+    seller_pubkey: &str,
+) -> Result<(MarketplaceProduct, NostrPublicationRef), String> {
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_listing(
+                seller_pubkey.to_string(),
+                asset.asset_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| "Cannot derive DS listing coordinate for NIP-15 storefront.".to_string())?;
+    let (currency, price) = storefront_currency_and_price(asset.price_hint.as_ref())
+        .ok_or_else(|| "NIP-15 storefront publication requires a fixed asset price.".to_string())?;
+    let mut product = MarketplaceProduct::new(
+        format!("storefront.{}", asset.asset_id),
+        storefront_stall_identifier(currency.as_str()),
+        asset.title.clone(),
+        currency,
+        price,
+    )
+    .map_err(|error| format!("Cannot build NIP-15 product: {error}"))?
+    .with_description(
+        asset
+            .description
+            .clone()
+            .unwrap_or_else(|| format!("Storefront wrapper for dataset {}.", asset.title)),
+    )
+    .with_quantity(None)
+    .add_spec("dataset_kind", asset.asset_kind.clone());
+    if let Some(access) = asset
+        .price_hint
+        .as_ref()
+        .map(|_| "paid".to_string())
+        .or_else(|| Some("targeted".to_string()))
+    {
+        product = product.add_spec("access", access);
+    }
+    product = product.add_spec("delivery", ds_delivery_modes(&asset.metadata).join(","));
+    product.add_tag("dataset");
+    product.add_tag("nip-ds");
+    product.add_tag(asset.asset_kind.clone());
+    product.add_address_ref(listing_coordinate);
+    let coordinate = product
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive NIP-15 product coordinate: {error}"))?;
+    Ok((
+        product,
+        NostrPublicationRef {
+            coordinate: Some(coordinate),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
+fn publish_dataset_storefront_stall(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    currency: &str,
+    created_at_ms: i64,
+) -> Result<NostrPublicationRef, String> {
+    let (stall, mut publication_ref) =
+        build_dataset_storefront_stall(identity.public_key_hex.as_str(), currency)?;
+    let template = stall
+        .to_event_template(ds_created_at_seconds(created_at_ms))
+        .map_err(|error| format!("Cannot build NIP-15 stall event: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays = publish_event_to_relays(relay_urls, &event, "NIP-15 dataset stall")?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
+}
+
+fn publish_dataset_storefront_product(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    asset: &DataAsset,
+) -> Result<NostrPublicationRef, String> {
+    let (product, mut publication_ref) =
+        build_dataset_storefront_product(asset, identity.public_key_hex.as_str())?;
+    let template = product
+        .to_event_template(ds_created_at_seconds(asset.created_at_ms))
+        .map_err(|error| format!("Cannot build NIP-15 storefront product: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays =
+        publish_event_to_relays(relay_urls, &event, "NIP-15 dataset storefront product")?;
     publication_ref.event_id = Some(event.id);
     publication_ref.relay_url = accepted_relays.first().cloned();
     Ok(publication_ref)
@@ -825,6 +990,105 @@ fn publish_dataset_offer_classified_listing(
         relay_urls,
         &event,
         "NIP-99 dataset offer classified listing",
+    )?;
+    publication_ref.event_id = Some(event.id);
+    publication_ref.relay_url = accepted_relays.first().cloned();
+    Ok(publication_ref)
+}
+
+fn build_dataset_offer_storefront_product(
+    grant: &AccessGrant,
+    asset: &DataAsset,
+    seller_pubkey: &str,
+) -> Result<(MarketplaceProduct, NostrPublicationRef), String> {
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_listing(
+                seller_pubkey.to_string(),
+                asset.asset_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| {
+            "Cannot derive DS listing coordinate for NIP-15 offer storefront.".to_string()
+        })?;
+    let offer_coordinate = grant
+        .nostr_publications
+        .ds_offer
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_offer(
+                seller_pubkey.to_string(),
+                grant.grant_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })
+        .ok_or_else(|| {
+            "Cannot derive DS offer coordinate for NIP-15 offer storefront.".to_string()
+        })?;
+    let (currency, price) =
+        storefront_currency_and_price(grant.offer_price.as_ref().or(asset.price_hint.as_ref()))
+            .ok_or_else(|| {
+                "NIP-15 offer storefront publication requires a fixed price.".to_string()
+            })?;
+    let mut product = MarketplaceProduct::new(
+        format!("storefront-offer.{}", grant.grant_id),
+        storefront_stall_identifier(currency.as_str()),
+        format!("{} access", asset.title),
+        currency,
+        price,
+    )
+    .map_err(|error| format!("Cannot build NIP-15 offer product: {error}"))?
+    .with_description(format!(
+        "Storefront access offer for dataset {} under policy {}.",
+        asset.title, grant.permission_policy.policy_id
+    ))
+    .with_quantity(None)
+    .add_spec("dataset_kind", asset.asset_kind.clone())
+    .add_spec("policy", grant.permission_policy.policy_id.clone())
+    .add_spec("delivery", ds_delivery_modes(&grant.metadata).join(","));
+    product.add_tag("dataset");
+    product.add_tag("nip-ds");
+    product.add_tag("access-offer");
+    product.add_tag(asset.asset_kind.clone());
+    product.add_address_ref(listing_coordinate);
+    product.add_address_ref(offer_coordinate);
+    let coordinate = product
+        .coordinate(seller_pubkey.to_string())
+        .map_err(|error| format!("Cannot derive NIP-15 offer product coordinate: {error}"))?;
+    Ok((
+        product,
+        NostrPublicationRef {
+            coordinate: Some(coordinate),
+            event_id: None,
+            relay_url: None,
+        },
+    ))
+}
+
+fn publish_dataset_offer_storefront_product(
+    identity: &NostrIdentity,
+    relay_urls: &[String],
+    grant: &AccessGrant,
+    asset: &DataAsset,
+) -> Result<NostrPublicationRef, String> {
+    let (product, mut publication_ref) =
+        build_dataset_offer_storefront_product(grant, asset, identity.public_key_hex.as_str())?;
+    let template = product
+        .to_event_template(ds_created_at_seconds(grant.created_at_ms))
+        .map_err(|error| format!("Cannot build NIP-15 offer product: {error}"))?;
+    let event = sign_event_template(identity, &template)?;
+    let accepted_relays = publish_event_to_relays(
+        relay_urls,
+        &event,
+        "NIP-15 dataset offer storefront product",
     )?;
     publication_ref.event_id = Some(event.id);
     publication_ref.relay_url = accepted_relays.first().cloned();
@@ -2403,6 +2667,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
     };
     let relay_urls = state.configured_provider_relay_urls();
     let mut request = request;
+    let mut optional_publication_warning = None::<String>;
     let listing_ref = match publish_dataset_listing(identity, relay_urls.as_slice(), &request.asset)
     {
         Ok(reference) => reference,
@@ -2429,6 +2694,38 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
             }
         };
         record_nip99_classified_metadata(&mut request.asset.metadata, &classified_ref);
+        if let Some((currency, _)) =
+            storefront_currency_and_price(request.asset.price_hint.as_ref())
+        {
+            match publish_dataset_storefront_stall(
+                identity,
+                relay_urls.as_slice(),
+                currency.as_str(),
+                request.asset.created_at_ms,
+            ) {
+                Ok(stall_ref) => match publish_dataset_storefront_product(
+                    identity,
+                    relay_urls.as_slice(),
+                    &request.asset,
+                ) {
+                    Ok(product_ref) => record_nip15_storefront_metadata(
+                        &mut request.asset.metadata,
+                        &stall_ref,
+                        &product_ref,
+                    ),
+                    Err(error) => {
+                        optional_publication_warning = Some(format!(
+                            "Asset published without NIP-15 storefront product wrapper: {error}"
+                        ));
+                    }
+                },
+                Err(error) => {
+                    optional_publication_warning = Some(format!(
+                        "Asset published without NIP-15 storefront stall wrapper: {error}"
+                    ));
+                }
+            }
+        }
     }
 
     let client = match crate::kernel_control::remote_authority_client_for_state(state) {
@@ -2559,6 +2856,9 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
             format!("Published asset {} from seller lane.", asset.title),
         );
     }
+    if let Some(warning) = optional_publication_warning {
+        state.data_seller.last_error = Some(warning);
+    }
     sync_data_seller_nip90_profile(state);
     true
 }
@@ -2603,6 +2903,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     };
     let relay_urls = state.configured_provider_relay_urls();
     let mut request = request;
+    let mut optional_publication_warning = None::<String>;
 
     let client = match crate::kernel_control::remote_authority_client_for_state(state) {
         Ok(client) => client,
@@ -2658,6 +2959,43 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
             }
         };
         record_nip99_classified_metadata(&mut request.grant.metadata, &classified_ref);
+        if let Some((currency, _)) = storefront_currency_and_price(
+            request
+                .grant
+                .offer_price
+                .as_ref()
+                .or(asset_for_offer.price_hint.as_ref()),
+        ) {
+            match publish_dataset_storefront_stall(
+                identity,
+                relay_urls.as_slice(),
+                currency.as_str(),
+                request.grant.created_at_ms,
+            ) {
+                Ok(stall_ref) => match publish_dataset_offer_storefront_product(
+                    identity,
+                    relay_urls.as_slice(),
+                    &request.grant,
+                    &asset_for_offer,
+                ) {
+                    Ok(product_ref) => record_nip15_storefront_metadata(
+                        &mut request.grant.metadata,
+                        &stall_ref,
+                        &product_ref,
+                    ),
+                    Err(error) => {
+                        optional_publication_warning = Some(format!(
+                            "Grant published without NIP-15 storefront product wrapper: {error}"
+                        ));
+                    }
+                },
+                Err(error) => {
+                    optional_publication_warning = Some(format!(
+                        "Grant published without NIP-15 storefront stall wrapper: {error}"
+                    ));
+                }
+            }
+        }
     }
 
     let expected_grant_id = request.grant.grant_id.clone();
@@ -2774,6 +3112,9 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                 grant.asset_id, grant.expires_at_ms
             ),
         );
+    }
+    if let Some(warning) = optional_publication_warning {
+        state.data_seller.last_error = Some(warning);
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -3101,6 +3442,98 @@ mod tests {
             publication_ref.coordinate.as_deref(),
             Some(
                 "30402:1111111111111111111111111111111111111111111111111111111111111111:catalog-offer.grant.example.corpus.001"
+            )
+        );
+    }
+
+    #[test]
+    fn builds_nip15_storefront_stall_for_asset_currency() {
+        let (stall, publication_ref) =
+            build_dataset_storefront_stall(SELLER_PUBKEY, "SAT").expect("storefront stall");
+
+        assert_eq!(stall.identifier, "datasets.sat");
+        assert_eq!(stall.name, "OpenAgents datasets (SAT)");
+        assert_eq!(stall.currency, "SAT");
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30017:1111111111111111111111111111111111111111111111111111111111111111:datasets.sat"
+            )
+        );
+    }
+
+    #[test]
+    fn builds_nip15_storefront_product_from_public_asset() {
+        let mut asset = fixture_asset();
+        asset.metadata["visibility_posture"] = json!("public_catalog");
+        let (product, publication_ref) =
+            build_dataset_storefront_product(&asset, SELLER_PUBKEY).expect("storefront product");
+
+        assert_eq!(
+            product.identifier,
+            "storefront.data_asset.example.corpus.001"
+        );
+        assert_eq!(product.stall_id, "datasets.sat");
+        assert_eq!(product.name, "Example corpus");
+        assert_eq!(product.currency, "SAT");
+        assert_eq!(product.price, 5.0);
+        assert!(product.tags.iter().any(|tag| tag == "dataset"));
+        assert!(product.tags.iter().any(|tag| tag == "nip-ds"));
+        assert_eq!(
+            product.address_refs,
+            vec![format!(
+                "30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"
+            )]
+        );
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30018:1111111111111111111111111111111111111111111111111111111111111111:storefront.data_asset.example.corpus.001"
+            )
+        );
+    }
+
+    #[test]
+    fn builds_nip15_storefront_offer_product_from_open_grant() {
+        let mut asset = fixture_asset();
+        asset.nostr_publications.ds_listing = Some(NostrPublicationRef {
+            coordinate: Some(format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)),
+            event_id: None,
+            relay_url: None,
+        });
+        let mut grant = fixture_grant(asset.asset_id.as_str());
+        grant.consumer_id = None;
+        grant.metadata["visibility_posture"] = json!("public_catalog");
+        grant.nostr_publications.ds_offer = Some(NostrPublicationRef {
+            coordinate: Some(format!("30406:{SELLER_PUBKEY}:{}", grant.grant_id)),
+            event_id: None,
+            relay_url: None,
+        });
+
+        let (product, publication_ref) =
+            build_dataset_offer_storefront_product(&grant, &asset, SELLER_PUBKEY)
+                .expect("storefront offer product");
+
+        assert_eq!(
+            product.identifier,
+            "storefront-offer.grant.example.corpus.001"
+        );
+        assert_eq!(product.stall_id, "datasets.sat");
+        assert_eq!(product.name, "Example corpus access");
+        assert_eq!(product.currency, "SAT");
+        assert_eq!(product.price, 5.0);
+        assert!(product.tags.iter().any(|tag| tag == "access-offer"));
+        assert_eq!(
+            product.address_refs,
+            vec![
+                format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"),
+                format!("30406:{SELLER_PUBKEY}:grant.example.corpus.001"),
+            ]
+        );
+        assert_eq!(
+            publication_ref.coordinate.as_deref(),
+            Some(
+                "30018:1111111111111111111111111111111111111111111111111111111111111111:storefront-offer.grant.example.corpus.001"
             )
         );
     }

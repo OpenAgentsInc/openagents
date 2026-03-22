@@ -242,6 +242,15 @@ fn paint_asset_card(
                     .map(|(amount, currency)| format!("{amount} {currency}"))
             })
         })
+        .or_else(|| {
+            listing.and_then(|listing| {
+                listing
+                    .storefront_product_price_amount
+                    .as_deref()
+                    .zip(listing.storefront_product_price_currency.as_deref())
+                    .map(|(amount, currency)| format!("{amount} {currency}"))
+            })
+        })
         .or_else(|| asset.and_then(|asset| asset.price_hint.as_ref().map(format_money)))
         .unwrap_or_else(|| "none".to_string());
     for (label, value) in [
@@ -296,6 +305,21 @@ fn paint_asset_card(
             .as_str(),
             paint,
         );
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "storefront",
+            compact_text(
+                listing
+                    .storefront_product_coordinate
+                    .as_deref()
+                    .or(listing.storefront_stall_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
     }
     if let Some(grant) = grant {
         row_y = paint_row(bounds, row_y, "offer_grant", grant.grant_id.as_str(), paint);
@@ -333,6 +357,21 @@ fn paint_asset_card(
                     .discussion_channel_id
                     .as_deref()
                     .or(offer.discussion_channel_name.as_deref())
+                    .unwrap_or("none"),
+                44,
+            )
+            .as_str(),
+            paint,
+        );
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "offer_storefront",
+            compact_text(
+                offer
+                    .storefront_product_coordinate
+                    .as_deref()
+                    .or(offer.storefront_stall_name.as_deref())
                     .unwrap_or("none"),
                 44,
             )

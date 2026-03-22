@@ -1156,6 +1156,20 @@ pub struct RelayDatasetListingProjection {
     #[serde(default)]
     pub classified_price_currency: Option<String>,
     #[serde(default)]
+    pub storefront_stall_coordinate: Option<String>,
+    #[serde(default)]
+    pub storefront_stall_name: Option<String>,
+    #[serde(default)]
+    pub storefront_product_coordinate: Option<String>,
+    #[serde(default)]
+    pub storefront_product_event_id: Option<String>,
+    #[serde(default)]
+    pub storefront_product_title: Option<String>,
+    #[serde(default)]
+    pub storefront_product_price_amount: Option<String>,
+    #[serde(default)]
+    pub storefront_product_price_currency: Option<String>,
+    #[serde(default)]
     pub discussion_channel_id: Option<String>,
     #[serde(default)]
     pub discussion_channel_name: Option<String>,
@@ -1190,6 +1204,20 @@ pub struct RelayDatasetOfferProjection {
     pub classified_coordinate: Option<String>,
     #[serde(default)]
     pub classified_event_id: Option<String>,
+    #[serde(default)]
+    pub storefront_stall_coordinate: Option<String>,
+    #[serde(default)]
+    pub storefront_stall_name: Option<String>,
+    #[serde(default)]
+    pub storefront_product_coordinate: Option<String>,
+    #[serde(default)]
+    pub storefront_product_event_id: Option<String>,
+    #[serde(default)]
+    pub storefront_product_title: Option<String>,
+    #[serde(default)]
+    pub storefront_product_price_amount: Option<String>,
+    #[serde(default)]
+    pub storefront_product_price_currency: Option<String>,
     #[serde(default)]
     pub discussion_channel_id: Option<String>,
     #[serde(default)]
@@ -15778,6 +15806,13 @@ mod tests {
                 classified_event_id: None,
                 classified_price_amount: None,
                 classified_price_currency: None,
+                storefront_stall_coordinate: None,
+                storefront_stall_name: None,
+                storefront_product_coordinate: None,
+                storefront_product_event_id: None,
+                storefront_product_title: None,
+                storefront_product_price_amount: None,
+                storefront_product_price_currency: None,
                 discussion_channel_id: None,
                 discussion_channel_name: None,
                 discussion_channel_relay_url: None,
@@ -15804,6 +15839,13 @@ mod tests {
                 linked_grant_id: Some("grant.data.offer.001".to_string()),
                 classified_coordinate: None,
                 classified_event_id: None,
+                storefront_stall_coordinate: None,
+                storefront_stall_name: None,
+                storefront_product_coordinate: None,
+                storefront_product_event_id: None,
+                storefront_product_title: None,
+                storefront_product_price_amount: None,
+                storefront_product_price_currency: None,
                 discussion_channel_id: None,
                 discussion_channel_name: None,
                 discussion_channel_relay_url: None,

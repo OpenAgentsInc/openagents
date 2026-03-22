@@ -16,6 +16,7 @@ pub mod nip01;
 mod nip06;
 pub mod nip09;
 pub mod nip11;
+pub mod nip15;
 #[cfg(feature = "full")]
 pub mod nip17;
 pub mod nip26;
@@ -69,5 +70,6 @@ pub use nip06::{
     Keypair, derive_agent_keypair, derive_keypair, derive_keypair_with_account,
     derive_skill_keypair,
 };
+pub use nip15::*;
 pub use nip28::*;
 pub use nip29::*;
