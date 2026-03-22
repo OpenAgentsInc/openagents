@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+export CARGO_INCREMENTAL=0
+
 run_with_timeout() {
   local timeout_seconds="$1"
   shift
@@ -31,10 +33,10 @@ PY
 
 (
   cd "$ROOT"
-  cargo test -p autopilot-desktop data_seller_full_lifecycle_progresses_from_grant_to_revocation -- --nocapture
+  cargo test -p autopilot-desktop --lib relay_catalog_projection_preserves_existing_link_hints_without_kernel_records -- --nocapture
 )
 
 (
   cd "$ROOT"
-  cargo test -p nexus-control data_market_flow_receipts_asset_grant_delivery_and_revocation -- --nocapture
+  cargo test -p autopilot-desktop --lib relay_delivery_synthesis_uses_ds_result_when_kernel_delivery_state_is_empty -- --nocapture
 )

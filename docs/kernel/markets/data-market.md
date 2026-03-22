@@ -23,8 +23,8 @@ smuggled through opaque prompt state.
 | Dimension | Status | Notes |
 | --- | --- | --- |
 | Product surface | seller authoring + read surface + narrow buyer request surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; the panes now also surface package metadata, exact preview state, request relay/kind, and fulfillment posture so shell-first/headless publication remains visually legible; there is now also a narrow `Data Buyer` pane that selects a visible asset, shows bundle/posture context, and publishes a targeted DS-DVM fulfillment request, but broader buyer transaction UX is still incomplete |
-| Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
-| Wire/proto | `implemented` starter slice | there is now a checked-in `openagents.data.v1` package plus proto-backed authority routes and a combined `/v1/kernel/data/snapshot` read model |
+| Kernel authority | `legacy compatibility slice` | authority and authenticated read-model flows still exist in `openagents-kernel-core` and `apps/nexus-control`, but the DS-first launch path no longer depends on them |
+| Wire/proto | `legacy compatibility slice` | the checked-in `openagents.data.v1` package and authority routes remain in-repo, but relay-native DS publication/fulfillment is now the canonical operator path |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
 | Planned | yes | broader discovery, pricing, payouts, provider economics, and product-facing UX remain planned |
 
@@ -40,28 +40,27 @@ smuggled through opaque prompt state.
 - expose typed `openagents.data_market.*` dynamic tools for seller status, draft, exact preview, blocked publish, and snapshot flows
 - send seller prompts from the dedicated pane into the dedicated Codex seller thread and render the resulting transcript back into the pane
 - require an explicit preview-confirm step before publication can be armed
-- publish a `DataAsset` from the seller pane through Nexus and immediately read the canonical asset back into seller state
-- reflect newly published assets into the read-only `Data Market` pane from the same kernel read-back path
+- publish a `DataAsset`-compatible seller row from the pane while also publishing the canonical DS listing to the relay
+- reflect newly published assets into the read-only `Data Market` pane from the same local seller state and relay catalog path
 - surface redacted Codex-export/package metadata in the seller draft card and in the read-only market rows when those fields are present in published asset metadata
 - carry reusable grant-policy templates plus a first seller-side grant draft posture in the conversational seller flow
-- preview and publish `AccessGrant` objects from the same seller flow and reflect the resulting grant read-back into the read-only `Data Market` pane
+- preview and publish `AccessGrant`-compatible seller rows from the same flow while also publishing the canonical DS offer to the relay
 - show a seller-side inventory/status card with published asset/default-offer summaries, exact preview state, latest request relay/kind context, and draft-vs-published warnings
 - derive and publish an explicit OpenAgents-local NIP-90 data-vending profile from the seller pane into the shared relay/runtime lane
 - parse incoming OpenAgents data-vending requests on the desktop relay lane as `openagents.data.access` demand instead of treating them as malformed compute jobs
 - advertise the current data-vending request kind and coarse asset-family/delivery metadata on the provider NIP-89 handler when a seller profile is present
 - surface incoming targeted data-access requests in the seller pane and seller status tools with explicit evaluation outcomes such as `no_published_asset`, `grant_required`, `scope_mismatch`, and `ready_for_payment_quote`
 - generate seller-side Lightning invoices for matched targeted DS-DVM data requests, publish NIP-90 `payment-required` feedback, and track the request through `invoice_requested`, `publishing_feedback`, `awaiting_payment`, and `paid`
-- prepare seller-side delivery drafts for paid targeted DS-DVM requests, accept the matched grant if needed, issue authoritative `DeliveryBundle` objects, and publish linked DS-DVM result events from the same seller flow
-- let the seller revoke or expire access from the same flow, read the resulting `RevocationReceipt` back from kernel authority, and immediately reflect the terminal grant/delivery state into both panes
+- prepare seller-side delivery drafts for paid targeted DS-DVM requests, issue delivery metadata, and publish linked DS access-contract/result events from the same seller flow
+- let the seller revoke or expire access from the same flow and immediately reflect the terminal grant/delivery state into both panes
 - record recent asset/grant/payment/delivery/revocation lifecycle entries in the read-only `Data Market` pane so operator-facing activity includes policy, counterparty, and receipt context
 - open a dedicated `Data Buyer` desktop pane that derives a request draft from the visible market snapshot, selects an active asset/default offer, and publishes a targeted DS-DVM data-access request without widening into public discovery
 - show buyer-side bundle and market-posture context for the currently selected asset before request publication
-- expose a checked-in `openagents.data.v1` proto package and use it for data-market authority mutation/read envelopes
-- expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
 - package local files or directories into deterministic `listing-template.json`, `grant-template.json`, `packaging-manifest.json`, and `packaging-summary.json` artifacts through `scripts/autopilot/data_market_package.py`
 - package recent or explicit Codex rollout conversations into a redacted seller-ready bundle through `scripts/autopilot/package_codex_conversations.py`
 - publish canonical DS dataset listings (`30404`) and DS dataset offers
   (`30406`) for seller assets and grants
+- publish DS access contracts (`30407`) as the relay-native fulfillment and settlement surface
 - surface relay-backed DS catalog rows in the read-only `Data Market` pane and
   narrow `Data Buyer` pane
 - attach optional NIP-99 classified wrappers, optional NIP-15 storefront
@@ -78,14 +77,14 @@ smuggled through opaque prompt state.
 - normalize targeted buyer/seller identity matching across `npub` and raw hex Nostr pubkeys for the current DS-DVM targeted request/result flow
 - import a targeted request or buyer response back from configured relays through `autopilotctl data-market seller-import-request` and `autopilotctl data-market buyer-import-response`
 
-The starter authority slice is real in:
+The legacy authority slice is still present in:
 
 - `crates/openagents-kernel-core/src/data.rs`
 - `crates/openagents-kernel-core/src/authority.rs`
 - `apps/nexus-control/src/lib.rs`
 - `apps/nexus-control/src/kernel.rs`
 
-Authenticated HTTP mutation routes are live under:
+Those compatibility HTTP mutation routes are still live under:
 
 - `POST /v1/kernel/data/assets`
 - `POST /v1/kernel/data/grants`
@@ -93,7 +92,7 @@ Authenticated HTTP mutation routes are live under:
 - `POST /v1/kernel/data/grants/{grant_id}/deliveries`
 - `POST /v1/kernel/data/grants/{grant_id}/revoke`
 
-Authenticated HTTP read routes are live under:
+Those compatibility HTTP read routes are still live under:
 
 - `GET /v1/kernel/data/assets`
 - `GET /v1/kernel/data/assets/{asset_id}`
@@ -129,8 +128,8 @@ Its job is narrow:
 - optionally write `grant-template.json`
 - write `packaging-manifest.json` and `packaging-summary.json`
 
-The helper is intentionally local and preparatory. It does not publish to
-kernel authority by itself.
+The helper is intentionally local and preparatory. It does not publish by
+itself.
 
 The generated outputs map directly into the current seller flow:
 
@@ -161,7 +160,8 @@ The current DS-first verification posture is:
 - seller result kind `6960` is now the DS-DVM fulfillment result, not the
   market listing itself
 - the portable repo-owned verifier proves the local DS-first path with a local
-  relay, authority DS refs, DS selection state, seller request matching, and
+  relay, DS selection state, seller request matching, relay-only consume
+  resolution, and
   local relay event-kind evidence
 - the repo also retains a public-relay harness, but live relay health is
   external and not a deterministic launch gate
@@ -176,12 +176,13 @@ The current DS-first verification posture is:
 
 The freshest launch-path audit is:
 
-- `docs/audits/2026-03-21-ds-first-headless-data-market-paid-e2e-audit.md`
+- `docs/audits/2026-03-22-relay-only-headless-data-market-paid-e2e-audit.md`
 
 The current buyer-side consume step is local by design:
 
-- `autopilotctl data-market consume-delivery` resolves the matching
-  `DeliveryBundle`
+- `autopilotctl data-market consume-delivery` resolves the matching delivery
+  from DS relay result/access-contract state, falling back to local
+  `DeliveryBundle` rows when present
 - current headless verification brings the buyer online in a relay-only posture
   so targeted DS-DVM result events are actually observed before local consume
 - it currently supports local `file://` and plain local-path `delivery_ref`
@@ -199,10 +200,12 @@ The current buyer-side consume step is local by design:
 
 ## Current repo truth lives in
 
+- `crates/nostr/core/src/nip_ds.rs`
 - `crates/openagents-kernel-core/src/data.rs`
-- `crates/openagents-kernel-core/src/authority.rs`
-- `apps/nexus-control/src/lib.rs`
-- `apps/nexus-control/src/kernel.rs`
+- `apps/autopilot-desktop/src/data_market_control.rs`
+- `apps/autopilot-desktop/src/data_seller_control.rs`
+- `apps/autopilot-desktop/src/data_buyer_control.rs`
+- `apps/autopilot-desktop/src/input/tool_bridge.rs`
 - [../economy-kernel.md](../economy-kernel.md)
 - [../economy-kernel-proto.md](../economy-kernel-proto.md)
 
