@@ -1389,7 +1389,7 @@ impl PaneController {
         } else if kind == PaneKind::DataBuyer {
             crate::data_buyer_control::open_data_buyer_pane(state);
         } else if kind == PaneKind::DataMarket {
-            crate::data_market_control::refresh_data_market_snapshot(state);
+            state.data_market.mark_opened();
         }
         id
     }
