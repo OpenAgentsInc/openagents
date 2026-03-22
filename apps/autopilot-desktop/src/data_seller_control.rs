@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
 use nostr::nip_ds::{
@@ -13,7 +15,7 @@ use nostr::nip90::{
 };
 use nostr::nip99::{ClassifiedListing, ListingStatus, Price};
 use nostr::{Event, EventTemplate, NostrIdentity};
-use nostr_client::{PoolConfig, RelayPool};
+use nostr_client::{PoolConfig, RelayMessage, RelayPool};
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, CreateAccessGrantRequest, IssueDeliveryBundleRequest,
     KernelAuthority, RegisterDataAssetRequest, RevokeAccessGrantRequest,
@@ -31,7 +33,8 @@ use serde_json::json;
 
 use crate::app_state::{
     AutopilotRole, DataMarketLifecycleEntry, DataSellerCodexSessionPhase,
-    DataSellerIncomingRequest, DataSellerRevocationAction, DataSellerSkillAttachment, RenderState,
+    DataSellerIncomingRequest, DataSellerRevocationAction, DataSellerSkillAttachment,
+    RelayDatasetListingProjection, RelayDatasetOfferProjection, RenderState,
 };
 use crate::codex_lane::CodexLaneCommand;
 use crate::provider_nip90_lane::{
@@ -240,10 +243,83 @@ fn normalize_relay_urls(relay_urls: &[String]) -> Vec<String> {
     let mut seen = std::collections::BTreeSet::new();
     relay_urls
         .iter()
-        .map(|relay| relay.trim().to_string())
+        .map(|relay| relay.trim().trim_end_matches('/').to_string())
         .filter(|relay| !relay.is_empty())
         .filter(|relay| seen.insert(relay.clone()))
         .collect()
+}
+
+async fn verify_published_event_on_relays(
+    pool: &RelayPool,
+    relay_urls: &[String],
+    event_id: &str,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    let relay_urls = normalize_relay_urls(relay_urls);
+    if relay_urls.is_empty() {
+        return Err(format!(
+            "Cannot verify {label}: no accepted relay URLs were supplied."
+        ));
+    }
+
+    let subscription_id = format!(
+        "verify-publish-{}-{}",
+        label.replace(' ', "-").to_ascii_lowercase(),
+        event_id.chars().take(12).collect::<String>()
+    );
+    pool.subscribe_filters(
+        subscription_id.as_str(),
+        vec![json!({
+            "ids": [event_id],
+            "limit": relay_urls.len().max(1),
+        })],
+    )
+    .await
+    .map_err(|error| format!("Cannot verify {label}: {error}"))?;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let poll_step = Duration::from_millis(150);
+    let mut verified = std::collections::BTreeSet::new();
+
+    while std::time::Instant::now() < deadline && verified.len() < relay_urls.len() {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let relays = pool.relays().await;
+        for relay in relays {
+            let relay_url = relay.url().trim_end_matches('/').to_string();
+            if !relay_urls.iter().any(|candidate| candidate == &relay_url) {
+                continue;
+            }
+
+            let wait = poll_step.min(remaining);
+            let recv = tokio::time::timeout(wait, relay.recv()).await;
+            let message = match recv {
+                Ok(Ok(Some(message))) => message,
+                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => continue,
+            };
+
+            if let RelayMessage::Event(_, event) = message
+                && event.id == event_id
+            {
+                verified.insert(relay_url);
+            }
+        }
+
+        if verified.len() < relay_urls.len() {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+    }
+
+    let _ = pool.unsubscribe(subscription_id.as_str()).await;
+    let verified = verified.into_iter().collect::<Vec<_>>();
+    if verified.is_empty() {
+        return Err(format!(
+            "Cannot verify {label}: accepted relays did not return event {event_id}."
+        ));
+    }
+    Ok(verified)
 }
 
 fn publish_event_to_relays(
@@ -285,7 +361,6 @@ fn publish_event_to_relays(
             .publish(event)
             .await
             .map_err(|error| format!("Cannot publish {label}: {error}"))?;
-        let _ = pool.disconnect_all().await;
         let accepted_relays = confirmations
             .into_iter()
             .filter(|confirmation| confirmation.accepted)
@@ -298,9 +373,18 @@ fn publish_event_to_relays(
             } else {
                 detail
             };
+            let _ = pool.disconnect_all().await;
             return Err(format!("Cannot publish {label}: {fallback}"));
         }
-        Ok(normalize_relay_urls(&accepted_relays))
+        let verified_relays =
+            match verify_published_event_on_relays(&pool, accepted_relays.as_slice(), &event.id, label)
+                .await
+            {
+                Ok(verified_relays) => verified_relays,
+                Err(_) => normalize_relay_urls(&accepted_relays),
+            };
+        let _ = pool.disconnect_all().await;
+        Ok(verified_relays)
     })
 }
 
@@ -373,6 +457,18 @@ fn metadata_u64(metadata: &serde_json::Value, key: &str) -> Option<u64> {
             .as_u64()
             .or_else(|| value.as_str()?.parse::<u64>().ok())
     })
+}
+
+fn nested_metadata_string(metadata: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut current = metadata;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn ensure_metadata_object(
@@ -453,6 +549,465 @@ fn storefront_currency_and_price(money: Option<&Money>) -> Option<(String, f64)>
         },
         Asset::AssetUnspecified => None,
     }
+}
+
+fn relay_projection_created_at_ms(created_at_seconds: u64) -> i64 {
+    i64::try_from(created_at_seconds)
+        .unwrap_or(i64::MAX / 1000)
+        .saturating_mul(1000)
+}
+
+fn relay_projection_asset_id(listing: &RelayDatasetListingProjection) -> String {
+    listing
+        .linked_asset_id
+        .clone()
+        .or_else(|| {
+            AddressableEventCoordinate::parse(listing.coordinate.as_str())
+                .ok()
+                .map(|coordinate| coordinate.identifier)
+        })
+        .unwrap_or_else(|| listing.coordinate.clone())
+}
+
+fn relay_projection_grant_id(offer: &RelayDatasetOfferProjection) -> String {
+    offer
+        .linked_grant_id
+        .clone()
+        .or_else(|| {
+            AddressableEventCoordinate::parse(offer.coordinate.as_str())
+                .ok()
+                .map(|coordinate| coordinate.identifier)
+        })
+        .unwrap_or_else(|| offer.coordinate.clone())
+}
+
+fn money_from_projection_price(amount: Option<&str>, currency: Option<&str>) -> Option<Money> {
+    let amount = amount?.trim().parse::<u64>().ok()?;
+    let currency = currency?.trim().to_ascii_uppercase();
+    match currency.as_str() {
+        "SAT" => Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(amount),
+        }),
+        "MSAT" => Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountMsats(amount),
+        }),
+        "USD_CENTS" => Some(Money {
+            asset: Asset::UsdCents,
+            amount: MoneyAmount::AmountSats(amount),
+        }),
+        _ => None,
+    }
+}
+
+fn relay_visibility_posture(
+    classified_coordinate: Option<&str>,
+    storefront_coordinate: Option<&str>,
+) -> &'static str {
+    if classified_coordinate.is_some() || storefront_coordinate.is_some() {
+        "public_catalog"
+    } else {
+        "targeted_only"
+    }
+}
+
+fn relay_storefront_stall_name(currency: Option<&str>) -> Option<String> {
+    currency
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("OpenAgents datasets ({value})"))
+}
+
+fn local_dataset_listing_projection(asset: &DataAsset) -> Option<RelayDatasetListingProjection> {
+    let publication_ref = asset.nostr_publications.ds_listing.as_ref()?;
+    let coordinate = publication_ref.coordinate.clone()?;
+    let price = ds_price_from_money(asset.price_hint.as_ref());
+    let storefront_currency =
+        storefront_currency_and_price(asset.price_hint.as_ref()).map(|(currency, _)| currency);
+    Some(RelayDatasetListingProjection {
+        coordinate,
+        publisher_pubkey: asset.provider_id.clone(),
+        relay_url: publication_ref.relay_url.clone(),
+        title: asset.title.clone(),
+        summary: asset.description.clone(),
+        dataset_kind: Some(asset.asset_kind.clone()),
+        access: Some(if asset.price_hint.is_some() {
+            "paid".to_string()
+        } else {
+            "targeted".to_string()
+        }),
+        delivery_modes: ds_delivery_modes(&asset.metadata),
+        created_at_seconds: ds_created_at_seconds(asset.created_at_ms),
+        draft: false,
+        linked_asset_id: Some(asset.asset_id.clone()),
+        classified_coordinate: nested_metadata_string(
+            &asset.metadata,
+            &["nip99_classified", "coordinate"],
+        ),
+        classified_event_id: nested_metadata_string(
+            &asset.metadata,
+            &["nip99_classified", "event_id"],
+        ),
+        classified_price_amount: price.as_ref().map(|value| value.amount.clone()),
+        classified_price_currency: price.as_ref().map(|value| value.currency.clone()),
+        storefront_stall_coordinate: nested_metadata_string(
+            &asset.metadata,
+            &["nip15_storefront", "stall", "coordinate"],
+        ),
+        storefront_stall_name: relay_storefront_stall_name(storefront_currency.as_deref()),
+        storefront_product_coordinate: nested_metadata_string(
+            &asset.metadata,
+            &["nip15_storefront", "product", "coordinate"],
+        ),
+        storefront_product_event_id: nested_metadata_string(
+            &asset.metadata,
+            &["nip15_storefront", "product", "event_id"],
+        ),
+        storefront_product_title: Some(asset.title.clone()),
+        storefront_product_price_amount: price.as_ref().map(|value| value.amount.clone()),
+        storefront_product_price_currency: price.as_ref().map(|value| value.currency.clone()),
+        discussion_channel_id: None,
+        discussion_channel_name: None,
+        discussion_channel_relay_url: None,
+    })
+}
+
+fn local_dataset_offer_projection(
+    grant: &AccessGrant,
+    asset: &DataAsset,
+) -> Option<RelayDatasetOfferProjection> {
+    let publication_ref = grant.nostr_publications.ds_offer.as_ref()?;
+    let coordinate = publication_ref.coordinate.clone()?;
+    let listing_coordinate = asset
+        .nostr_publications
+        .ds_listing
+        .as_ref()
+        .and_then(|reference| reference.coordinate.clone())
+        .or_else(|| {
+            AddressableEventCoordinate::dataset_listing(
+                grant.provider_id.clone(),
+                asset.asset_id.clone(),
+            )
+            .ok()
+            .map(|coordinate| coordinate.to_string())
+        })?;
+    let price = ds_price_from_money(grant.offer_price.as_ref().or(asset.price_hint.as_ref()));
+    let storefront_currency =
+        storefront_currency_and_price(grant.offer_price.as_ref().or(asset.price_hint.as_ref()))
+            .map(|(currency, _)| currency);
+    Some(RelayDatasetOfferProjection {
+        coordinate,
+        listing_coordinate,
+        publisher_pubkey: grant.provider_id.clone(),
+        relay_url: publication_ref.relay_url.clone(),
+        status: grant_offer_status(grant).as_str().to_string(),
+        policy: Some(if grant.consumer_id.is_some() {
+            "targeted_request".to_string()
+        } else {
+            "licensed_bundle".to_string()
+        }),
+        delivery_modes: ds_delivery_modes(&grant.metadata),
+        targeted_buyer_pubkeys: maybe_targeted_buyer(grant.consumer_id.as_deref())
+            .into_iter()
+            .collect(),
+        price_amount: price.as_ref().map(|value| value.amount.clone()),
+        price_currency: price.as_ref().map(|value| value.currency.clone()),
+        created_at_seconds: ds_created_at_seconds(grant.created_at_ms),
+        linked_asset_id: Some(grant.asset_id.clone()),
+        linked_grant_id: Some(grant.grant_id.clone()),
+        classified_coordinate: nested_metadata_string(
+            &grant.metadata,
+            &["nip99_classified", "coordinate"],
+        ),
+        classified_event_id: nested_metadata_string(
+            &grant.metadata,
+            &["nip99_classified", "event_id"],
+        ),
+        storefront_stall_coordinate: nested_metadata_string(
+            &grant.metadata,
+            &["nip15_storefront", "stall", "coordinate"],
+        ),
+        storefront_stall_name: relay_storefront_stall_name(storefront_currency.as_deref()),
+        storefront_product_coordinate: nested_metadata_string(
+            &grant.metadata,
+            &["nip15_storefront", "product", "coordinate"],
+        ),
+        storefront_product_event_id: nested_metadata_string(
+            &grant.metadata,
+            &["nip15_storefront", "product", "event_id"],
+        ),
+        storefront_product_title: Some(format!("{} access", asset.title)),
+        storefront_product_price_amount: price.as_ref().map(|value| value.amount.clone()),
+        storefront_product_price_currency: price.as_ref().map(|value| value.currency.clone()),
+        discussion_channel_id: None,
+        discussion_channel_name: None,
+        discussion_channel_relay_url: None,
+    })
+}
+
+fn upsert_relay_listing_projection(
+    relay_listings: &mut Vec<RelayDatasetListingProjection>,
+    projection: RelayDatasetListingProjection,
+) {
+    if let Some(existing) = relay_listings.iter_mut().find(|existing| {
+        existing
+            .coordinate
+            .eq_ignore_ascii_case(projection.coordinate.as_str())
+    }) {
+        *existing = projection;
+    } else {
+        relay_listings.push(projection);
+    }
+}
+
+fn upsert_relay_offer_projection(
+    relay_offers: &mut Vec<RelayDatasetOfferProjection>,
+    projection: RelayDatasetOfferProjection,
+) {
+    if let Some(existing) = relay_offers.iter_mut().find(|existing| {
+        existing
+            .coordinate
+            .eq_ignore_ascii_case(projection.coordinate.as_str())
+    }) {
+        *existing = projection;
+    } else {
+        relay_offers.push(projection);
+    }
+}
+
+fn record_local_published_asset_projection(
+    state: &mut RenderState,
+    asset: &DataAsset,
+) -> Result<(), String> {
+    let Some(projection) = local_dataset_listing_projection(asset) else {
+        return Ok(());
+    };
+    let mut relay_listings = state.data_market.relay_listings.clone();
+    upsert_relay_listing_projection(&mut relay_listings, projection);
+    state.data_market.apply_relay_catalog(
+        relay_listings,
+        state.data_market.relay_offers.clone(),
+        state.data_market.relay_requests.clone(),
+        state.data_market.relay_access_contracts.clone(),
+        state.data_market.relay_results.clone(),
+        state.data_market.relay_settlement_matches.clone(),
+        current_epoch_ms(),
+    );
+    crate::data_market_control::persist_data_market_relay_replica_from_state(state)?;
+    state.data_buyer.sync_selection(&state.data_market);
+    Ok(())
+}
+
+fn record_local_published_grant_projection(
+    state: &mut RenderState,
+    asset: &DataAsset,
+    grant: &AccessGrant,
+) -> Result<(), String> {
+    let mut relay_listings = state.data_market.relay_listings.clone();
+    if let Some(listing) = local_dataset_listing_projection(asset) {
+        upsert_relay_listing_projection(&mut relay_listings, listing);
+    }
+    let mut relay_offers = state.data_market.relay_offers.clone();
+    if let Some(offer) = local_dataset_offer_projection(grant, asset) {
+        upsert_relay_offer_projection(&mut relay_offers, offer);
+    }
+    state.data_market.apply_relay_catalog(
+        relay_listings,
+        relay_offers,
+        state.data_market.relay_requests.clone(),
+        state.data_market.relay_access_contracts.clone(),
+        state.data_market.relay_results.clone(),
+        state.data_market.relay_settlement_matches.clone(),
+        current_epoch_ms(),
+    );
+    crate::data_market_control::persist_data_market_relay_replica_from_state(state)?;
+    state.data_buyer.sync_selection(&state.data_market);
+    Ok(())
+}
+
+fn relay_projected_asset_from_listing(listing: &RelayDatasetListingProjection) -> DataAsset {
+    let mut metadata = json!({
+        "delivery_modes": listing.delivery_modes,
+        "visibility_posture": relay_visibility_posture(
+            listing.classified_coordinate.as_deref(),
+            listing.storefront_product_coordinate.as_deref(),
+        ),
+    });
+    if let Some(classified_coordinate) = listing.classified_coordinate.as_deref() {
+        record_nip99_classified_metadata(
+            &mut metadata,
+            &NostrPublicationRef {
+                coordinate: Some(classified_coordinate.to_string()),
+                event_id: listing.classified_event_id.clone(),
+                relay_url: listing.relay_url.clone(),
+            },
+        );
+    }
+    if let (Some(stall_coordinate), Some(product_coordinate)) = (
+        listing.storefront_stall_coordinate.as_deref(),
+        listing.storefront_product_coordinate.as_deref(),
+    ) {
+        record_nip15_storefront_metadata(
+            &mut metadata,
+            &NostrPublicationRef {
+                coordinate: Some(stall_coordinate.to_string()),
+                event_id: None,
+                relay_url: listing.relay_url.clone(),
+            },
+            &NostrPublicationRef {
+                coordinate: Some(product_coordinate.to_string()),
+                event_id: listing.storefront_product_event_id.clone(),
+                relay_url: listing.relay_url.clone(),
+            },
+        );
+    }
+    DataAsset {
+        asset_id: relay_projection_asset_id(listing),
+        provider_id: listing.publisher_pubkey.clone(),
+        asset_kind: listing
+            .dataset_kind
+            .clone()
+            .unwrap_or_else(|| "dataset".to_string()),
+        title: listing.title.clone(),
+        description: listing.summary.clone(),
+        content_digest: None,
+        provenance_ref: None,
+        default_policy: None,
+        price_hint: None,
+        created_at_ms: relay_projection_created_at_ms(listing.created_at_seconds),
+        status: openagents_kernel_core::data::DataAssetStatus::Active,
+        nostr_publications: openagents_kernel_core::data::DataAssetNostrPublications {
+            ds_listing: Some(NostrPublicationRef {
+                coordinate: Some(listing.coordinate.clone()),
+                event_id: None,
+                relay_url: listing.relay_url.clone(),
+            }),
+            ds_draft_listing: None,
+        },
+        metadata,
+    }
+}
+
+fn relay_projected_grant_from_offer(offer: &RelayDatasetOfferProjection) -> AccessGrant {
+    let mut metadata = json!({
+        "delivery_modes": offer.delivery_modes,
+        "visibility_posture": relay_visibility_posture(
+            offer.classified_coordinate.as_deref(),
+            offer.storefront_product_coordinate.as_deref(),
+        ),
+    });
+    if let Some(classified_coordinate) = offer.classified_coordinate.as_deref() {
+        record_nip99_classified_metadata(
+            &mut metadata,
+            &NostrPublicationRef {
+                coordinate: Some(classified_coordinate.to_string()),
+                event_id: offer.classified_event_id.clone(),
+                relay_url: offer.relay_url.clone(),
+            },
+        );
+    }
+    if let (Some(stall_coordinate), Some(product_coordinate)) = (
+        offer.storefront_stall_coordinate.as_deref(),
+        offer.storefront_product_coordinate.as_deref(),
+    ) {
+        record_nip15_storefront_metadata(
+            &mut metadata,
+            &NostrPublicationRef {
+                coordinate: Some(stall_coordinate.to_string()),
+                event_id: None,
+                relay_url: offer.relay_url.clone(),
+            },
+            &NostrPublicationRef {
+                coordinate: Some(product_coordinate.to_string()),
+                event_id: offer.storefront_product_event_id.clone(),
+                relay_url: offer.relay_url.clone(),
+            },
+        );
+    }
+    let created_at_ms = relay_projection_created_at_ms(offer.created_at_seconds);
+    AccessGrant {
+        grant_id: relay_projection_grant_id(offer),
+        asset_id: offer
+            .linked_asset_id
+            .clone()
+            .unwrap_or_else(|| offer.listing_coordinate.clone()),
+        provider_id: offer.publisher_pubkey.clone(),
+        consumer_id: (offer.targeted_buyer_pubkeys.len() == 1)
+            .then(|| offer.targeted_buyer_pubkeys[0].clone()),
+        permission_policy: openagents_kernel_core::data::PermissionPolicy {
+            policy_id: offer
+                .policy
+                .clone()
+                .unwrap_or_else(|| "targeted_request".to_string()),
+            allowed_scopes: offer.delivery_modes.clone(),
+            ..Default::default()
+        },
+        offer_price: money_from_projection_price(
+            offer.price_amount.as_deref(),
+            offer.price_currency.as_deref(),
+        ),
+        warranty_window_ms: None,
+        created_at_ms,
+        expires_at_ms: created_at_ms.saturating_add(30 * 24 * 60 * 60 * 1000),
+        accepted_at_ms: None,
+        status: match offer.status.to_ascii_lowercase().as_str() {
+            "revoked" => AccessGrantStatus::Revoked,
+            "expired" => AccessGrantStatus::Expired,
+            _ => AccessGrantStatus::Offered,
+        },
+        nostr_publications: openagents_kernel_core::data::AccessGrantNostrPublications {
+            ds_offer: Some(NostrPublicationRef {
+                coordinate: Some(offer.coordinate.clone()),
+                event_id: None,
+                relay_url: offer.relay_url.clone(),
+            }),
+            ds_access_request: None,
+            ds_access_result: None,
+        },
+        metadata,
+    }
+}
+
+pub(crate) fn hydrate_data_seller_inventory_from_relay_replica(state: &mut RenderState) -> bool {
+    if state.data_seller.last_published_asset.is_some()
+        || state.data_seller.last_published_grant.is_some()
+        || !state.data_seller.published_assets.is_empty()
+        || !state.data_seller.published_grants.is_empty()
+    {
+        return false;
+    }
+    crate::data_market_control::hydrate_data_market_relay_replica(state);
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        return false;
+    };
+    let listings = state
+        .data_market
+        .relay_authored_listings_for_publisher(identity.public_key_hex.as_str());
+    let offers = state
+        .data_market
+        .relay_authored_offers_for_publisher(identity.public_key_hex.as_str());
+    if listings.is_empty() && offers.is_empty() {
+        return false;
+    }
+
+    let mut asset_ids_by_listing_coordinate = BTreeMap::<String, String>::new();
+    for listing in listings {
+        let asset = relay_projected_asset_from_listing(listing);
+        asset_ids_by_listing_coordinate.insert(listing.coordinate.clone(), asset.asset_id.clone());
+        state.data_seller.sync_relay_projected_asset(asset);
+    }
+    for offer in offers {
+        let mut grant = relay_projected_grant_from_offer(offer);
+        if grant.asset_id == offer.listing_coordinate
+            && let Some(asset_id) =
+                asset_ids_by_listing_coordinate.get(offer.listing_coordinate.as_str())
+        {
+            grant.asset_id = asset_id.clone();
+        }
+        state.data_seller.sync_relay_projected_grant(grant);
+    }
+    true
 }
 
 fn storefront_stall_identifier(currency: &str) -> String {
@@ -1823,6 +2378,7 @@ pub(crate) fn confirm_data_seller_preview(state: &mut RenderState) -> bool {
 }
 
 pub(crate) fn request_data_seller_grant_preview(state: &mut RenderState) -> bool {
+    hydrate_data_seller_inventory_from_relay_replica(state);
     let provider_id = crate::kernel_control::provider_id_for_state(state);
     state
         .data_seller
@@ -2728,15 +3284,53 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
         }
     }
 
-    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
-        Ok(client) => client,
-        Err(error) => {
-            state.data_seller.last_error = Some(error);
-            state.data_seller.status_line =
-                "Publish blocked because kernel authority is unavailable.".to_string();
-            return true;
+    if let Err(error) = record_local_published_asset_projection(state, &request.asset) {
+        optional_publication_warning = Some(match optional_publication_warning.take() {
+            Some(existing) => format!("{existing} | local relay replica update failed: {error}"),
+            None => format!(
+                "Published asset to DS relays but failed to update the local relay replica: {error}"
+            ),
+        });
+    }
+
+    let published_asset = request.asset.clone();
+    let authority_client = crate::kernel_control::remote_authority_client_for_state(state).ok();
+    if authority_client.is_none() {
+        state
+            .data_seller
+            .note_asset_published(published_asset.clone(), None);
+        record_data_market_lifecycle_entry(
+            state,
+            published_asset.created_at_ms,
+            "asset_published",
+            published_asset.status.label(),
+            published_asset.asset_id.clone(),
+            Some(published_asset.provider_id.clone()),
+            published_asset
+                .default_policy
+                .as_ref()
+                .map(|policy| policy.policy_id.clone()),
+            None,
+            format!(
+                "Published asset {} to DS relays without kernel authority.",
+                published_asset.title
+            ),
+        );
+        if let Some(warning) = optional_publication_warning {
+            state.data_seller.status_line = format!(
+                "Published asset {} to DS relays. {}",
+                published_asset.asset_id, warning
+            );
+        } else {
+            state.data_seller.status_line = format!(
+                "Published asset {} to DS relays without kernel authority.",
+                published_asset.asset_id
+            );
         }
-    };
+        sync_data_seller_nip90_profile(state);
+        return true;
+    }
+    let client = authority_client.expect("authority client already checked");
 
     let expected_asset_id = request.asset.asset_id.clone();
     let response = match crate::kernel_control::run_kernel_call(client.register_data_asset(request))
@@ -2749,12 +3343,13 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
                 ) {
                     Ok(asset) => asset,
                     Err(readback_error) => {
-                        state.data_seller.last_error = Some(format!(
-                            "{error}; existing asset read-back failed: {readback_error}"
-                        ));
-                        state.data_seller.status_line =
-                            "Kernel authority reported an asset replay conflict and read-back failed."
-                                .to_string();
+                        state
+                            .data_seller
+                            .note_asset_published(published_asset.clone(), None);
+                        state.data_seller.status_line = format!(
+                            "Published asset {} to DS relays; kernel authority replay read-back failed: {readback_error}",
+                            published_asset.asset_id
+                        );
                         return true;
                     }
                 };
@@ -2787,9 +3382,13 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
                 sync_data_seller_nip90_profile(state);
                 return true;
             }
-            state.data_seller.last_error = Some(error);
-            state.data_seller.status_line =
-                "Kernel authority rejected the asset publication.".to_string();
+            state
+                .data_seller
+                .note_asset_published(published_asset.clone(), None);
+            state.data_seller.status_line = format!(
+                "Published asset {} to DS relays; kernel authority sync failed: {error}",
+                published_asset.asset_id
+            );
             return true;
         }
     };
@@ -2824,11 +3423,10 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
                     format!("Published asset {} from seller lane.", fallback_asset.title),
                 );
                 sync_data_seller_nip90_profile(state);
-                state.data_seller.last_error = Some(format!(
-                    "Asset was published but the immediate kernel read-back failed: {error}"
-                ));
-                state.data_seller.status_line =
-                    "Asset published, but immediate kernel read-back failed.".to_string();
+                state.data_seller.status_line = format!(
+                    "Published asset {} to DS relays; kernel read-back failed: {error}",
+                    fallback_asset.asset_id
+                );
                 return true;
             }
         };
@@ -2857,7 +3455,7 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
         );
     }
     if let Some(warning) = optional_publication_warning {
-        state.data_seller.last_error = Some(warning);
+        state.data_seller.status_line = format!("{} {}", state.data_seller.status_line, warning);
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -2894,6 +3492,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
             return true;
         }
     };
+    hydrate_data_seller_inventory_from_relay_replica(state);
     let Some(identity) = state.nostr_identity.as_ref() else {
         state.data_seller.last_error =
             Some("Grant publish requires a Nostr identity for DS publication.".to_string());
@@ -2904,29 +3503,30 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
     let relay_urls = state.configured_provider_relay_urls();
     let mut request = request;
     let mut optional_publication_warning = None::<String>;
-
-    let client = match crate::kernel_control::remote_authority_client_for_state(state) {
-        Ok(client) => client,
-        Err(error) => {
-            state.data_seller.last_error = Some(error);
-            state.data_seller.status_line =
-                "Grant publish blocked because kernel authority is unavailable.".to_string();
-            return true;
-        }
-    };
-    let asset_for_offer = match crate::kernel_control::run_kernel_call(
-        client.get_data_asset(request.grant.asset_id.as_str()),
-    ) {
-        Ok(asset) => asset,
-        Err(error) => {
-            state.data_seller.last_error = Some(format!(
-                "Grant publish requires the seller asset to be readable from authority: {error}"
-            ));
-            state.data_seller.status_line =
-                "Grant publish blocked because the published asset could not be read back."
-                    .to_string();
-            return true;
-        }
+    let authority_client = crate::kernel_control::remote_authority_client_for_state(state).ok();
+    let asset_for_offer = state
+        .data_seller
+        .published_assets_for_display()
+        .into_iter()
+        .find(|asset| asset.asset_id == request.grant.asset_id)
+        .cloned()
+        .or_else(|| {
+            authority_client.as_ref().and_then(|client| {
+                crate::kernel_control::run_kernel_call(
+                    client.get_data_asset(request.grant.asset_id.as_str()),
+                )
+                .ok()
+            })
+        });
+    let Some(asset_for_offer) = asset_for_offer else {
+        state.data_seller.last_error = Some(
+            "Grant publish requires the seller asset to be present in local relay inventory or readable from authority."
+                .to_string(),
+        );
+        state.data_seller.status_line =
+            "Grant publish blocked because the published asset inventory is unavailable."
+                .to_string();
+        return true;
     };
     let offer_ref = match publish_dataset_offer(
         identity,
@@ -2998,6 +3598,52 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
         }
     }
 
+    if let Err(error) =
+        record_local_published_grant_projection(state, &asset_for_offer, &request.grant)
+    {
+        optional_publication_warning = Some(match optional_publication_warning.take() {
+            Some(existing) => format!("{existing} | local relay replica update failed: {error}"),
+            None => format!(
+                "Published grant to DS relays but failed to update the local relay replica: {error}"
+            ),
+        });
+    }
+
+    let published_grant = request.grant.clone();
+    if authority_client.is_none() {
+        state
+            .data_seller
+            .note_grant_published(published_grant.clone(), None);
+        record_data_market_lifecycle_entry(
+            state,
+            published_grant.created_at_ms,
+            "grant_published",
+            published_grant.status.label(),
+            published_grant.grant_id.clone(),
+            published_grant.consumer_id.clone(),
+            Some(published_grant.permission_policy.policy_id.clone()),
+            None,
+            format!(
+                "Published grant {} to DS relays without kernel authority.",
+                published_grant.grant_id
+            ),
+        );
+        if let Some(warning) = optional_publication_warning {
+            state.data_seller.status_line = format!(
+                "Published grant {} to DS relays. {}",
+                published_grant.grant_id, warning
+            );
+        } else {
+            state.data_seller.status_line = format!(
+                "Published grant {} to DS relays without kernel authority.",
+                published_grant.grant_id
+            );
+        }
+        sync_data_seller_nip90_profile(state);
+        return true;
+    }
+    let client = authority_client.expect("authority client already checked");
+
     let expected_grant_id = request.grant.grant_id.clone();
     let response = match crate::kernel_control::run_kernel_call(client.create_access_grant(request))
     {
@@ -3009,12 +3655,13 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                 ) {
                     Ok(grant) => grant,
                     Err(readback_error) => {
-                        state.data_seller.last_error = Some(format!(
-                            "{error}; existing grant read-back failed: {readback_error}"
-                        ));
-                        state.data_seller.status_line =
-                            "Kernel authority reported a grant replay conflict and read-back failed."
-                                .to_string();
+                        state
+                            .data_seller
+                            .note_grant_published(published_grant.clone(), None);
+                        state.data_seller.status_line = format!(
+                            "Published grant {} to DS relays; kernel authority replay read-back failed: {readback_error}",
+                            published_grant.grant_id
+                        );
                         return true;
                     }
                 };
@@ -3044,9 +3691,13 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                 sync_data_seller_nip90_profile(state);
                 return true;
             }
-            state.data_seller.last_error = Some(error);
-            state.data_seller.status_line =
-                "Kernel authority rejected the grant publication.".to_string();
+            state
+                .data_seller
+                .note_grant_published(published_grant.clone(), None);
+            state.data_seller.status_line = format!(
+                "Published grant {} to DS relays; kernel authority sync failed: {error}",
+                published_grant.grant_id
+            );
             return true;
         }
     };
@@ -3081,11 +3732,10 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
                     ),
                 );
                 sync_data_seller_nip90_profile(state);
-                state.data_seller.last_error = Some(format!(
-                    "Grant was published but the immediate kernel read-back failed: {error}"
-                ));
-                state.data_seller.status_line =
-                    "Grant published, but immediate kernel read-back failed.".to_string();
+                state.data_seller.status_line = format!(
+                    "Published grant {} to DS relays; kernel read-back failed: {error}",
+                    fallback_grant.grant_id
+                );
                 return true;
             }
         };
@@ -3114,7 +3764,7 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
         );
     }
     if let Some(warning) = optional_publication_warning {
-        state.data_seller.last_error = Some(warning);
+        state.data_seller.status_line = format!("{} {}", state.data_seller.status_line, warning);
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -3366,6 +4016,112 @@ mod tests {
         );
         assert!(publication_ref.event_id.is_none());
         assert!(publication_ref.relay_url.is_none());
+    }
+
+    #[test]
+    fn local_relay_listing_projection_keeps_local_wrapper_refs() {
+        let mut asset = fixture_asset();
+        asset.nostr_publications.ds_listing = Some(NostrPublicationRef {
+            coordinate: Some(format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)),
+            event_id: Some(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            ),
+            relay_url: Some("wss://relay.example".to_string()),
+        });
+        record_nip99_classified_metadata(
+            &mut asset.metadata,
+            &NostrPublicationRef {
+                coordinate: Some(format!("30402:{SELLER_PUBKEY}:catalog.{}", asset.asset_id)),
+                event_id: Some(
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+                ),
+                relay_url: Some("wss://relay.example".to_string()),
+            },
+        );
+        record_nip15_storefront_metadata(
+            &mut asset.metadata,
+            &NostrPublicationRef {
+                coordinate: Some(format!("30017:{SELLER_PUBKEY}:datasets.sat")),
+                event_id: Some(
+                    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+                ),
+                relay_url: Some("wss://relay.example".to_string()),
+            },
+            &NostrPublicationRef {
+                coordinate: Some(format!(
+                    "30018:{SELLER_PUBKEY}:storefront.{}",
+                    asset.asset_id
+                )),
+                event_id: Some(
+                    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+                ),
+                relay_url: Some("wss://relay.example".to_string()),
+            },
+        );
+
+        let projection =
+            local_dataset_listing_projection(&asset).expect("local relay listing projection");
+
+        assert_eq!(
+            projection.coordinate,
+            format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)
+        );
+        assert_eq!(
+            projection.linked_asset_id.as_deref(),
+            Some(asset.asset_id.as_str())
+        );
+        assert_eq!(
+            projection.classified_coordinate.as_deref(),
+            Some(format!("30402:{SELLER_PUBKEY}:catalog.{}", asset.asset_id).as_str())
+        );
+        assert_eq!(
+            projection.storefront_product_coordinate.as_deref(),
+            Some(format!("30018:{SELLER_PUBKEY}:storefront.{}", asset.asset_id).as_str())
+        );
+        assert_eq!(
+            projection.storefront_product_title.as_deref(),
+            Some("Example corpus")
+        );
+    }
+
+    #[test]
+    fn relay_projected_offer_round_trips_into_local_grant_inventory() {
+        let mut asset = fixture_asset();
+        asset.nostr_publications.ds_listing = Some(NostrPublicationRef {
+            coordinate: Some(format!("30404:{SELLER_PUBKEY}:{}", asset.asset_id)),
+            event_id: None,
+            relay_url: Some("wss://relay.example".to_string()),
+        });
+        let mut grant = fixture_grant(asset.asset_id.as_str());
+        grant.nostr_publications.ds_offer = Some(NostrPublicationRef {
+            coordinate: Some(format!("30406:{SELLER_PUBKEY}:{}", grant.grant_id)),
+            event_id: None,
+            relay_url: Some("wss://relay.example".to_string()),
+        });
+
+        let projection =
+            local_dataset_offer_projection(&grant, &asset).expect("local relay offer projection");
+        let projected_grant = relay_projected_grant_from_offer(&projection);
+
+        assert_eq!(projected_grant.grant_id, grant.grant_id);
+        assert_eq!(projected_grant.asset_id, asset.asset_id);
+        assert_eq!(projected_grant.provider_id, SELLER_PUBKEY);
+        assert_eq!(projected_grant.consumer_id.as_deref(), Some(BUYER_PUBKEY));
+        assert_eq!(
+            projected_grant
+                .offer_price
+                .as_ref()
+                .map(|money| money.amount.clone()),
+            Some(MoneyAmount::AmountSats(5))
+        );
+        assert_eq!(
+            projected_grant
+                .nostr_publications
+                .ds_offer
+                .as_ref()
+                .and_then(|reference| reference.coordinate.as_deref()),
+            Some(format!("30406:{SELLER_PUBKEY}:{}", grant.grant_id).as_str())
+        );
     }
 
     #[test]

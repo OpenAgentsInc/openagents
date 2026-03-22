@@ -3485,7 +3485,7 @@ impl DataSellerPaneState {
             self.last_confirmed_grant_payload = None;
             self.active_draft.last_previewed_grant_payload = None;
             self.last_error = Some(
-                "Publish an asset first. Grant creation requires a canonical DataAsset identity."
+                "Publish an asset first. Grant creation requires a published DataAsset identity."
                     .to_string(),
             );
             self.status_line =
@@ -3560,7 +3560,8 @@ impl DataSellerPaneState {
         }
         self.last_error = None;
         self.status_line =
-            "Publish armed. Submitting the exact asset payload to kernel authority.".to_string();
+            "Publish armed. Publishing the exact asset payload to configured DS relays."
+                .to_string();
     }
 
     pub fn publish_is_armed(&self) -> bool {
@@ -3582,14 +3583,25 @@ impl DataSellerPaneState {
         self.confirm_enabled = false;
         self.asset_preview_confirmed = false;
         self.last_error = None;
-        self.last_action = Some(format!(
-            "Published DataAsset {} and read it back from kernel authority",
-            asset.asset_id
-        ));
+        self.last_action = Some(format!("Published DataAsset {}", asset.asset_id));
         self.status_line = format!(
-            "Published asset {} and confirmed kernel read-back.",
+            "Published asset {} and updated seller inventory.",
             asset.asset_id
         );
+    }
+
+    pub fn sync_relay_projected_asset(&mut self, asset: DataAsset) {
+        let should_promote = self.last_published_asset.as_ref().is_none_or(|existing| {
+            existing
+                .asset_id
+                .eq_ignore_ascii_case(asset.asset_id.as_str())
+                || asset.created_at_ms >= existing.created_at_ms
+        });
+        if should_promote {
+            self.active_draft.last_published_asset_id = Some(asset.asset_id.clone());
+            self.last_published_asset = Some(asset.clone());
+        }
+        self.upsert_published_asset_inventory(asset);
     }
 
     pub fn request_publish_grant(&mut self) {
@@ -3626,7 +3638,7 @@ impl DataSellerPaneState {
         }
         self.last_error = None;
         self.status_line =
-            "Grant publish armed. Submitting the exact grant payload to kernel authority."
+            "Grant publish armed. Publishing the exact grant payload to configured DS relays."
                 .to_string();
     }
 
@@ -3637,14 +3649,25 @@ impl DataSellerPaneState {
         self.upsert_published_grant_inventory(grant.clone());
         self.grant_preview_confirmed = false;
         self.last_error = None;
-        self.last_action = Some(format!(
-            "Published AccessGrant {} and read it back from kernel authority",
-            grant.grant_id
-        ));
+        self.last_action = Some(format!("Published AccessGrant {}", grant.grant_id));
         self.status_line = format!(
-            "Published grant {} and confirmed kernel read-back.",
+            "Published grant {} and updated seller inventory.",
             grant.grant_id
         );
+    }
+
+    pub fn sync_relay_projected_grant(&mut self, grant: AccessGrant) {
+        let should_promote = self.last_published_grant.as_ref().is_none_or(|existing| {
+            existing
+                .grant_id
+                .eq_ignore_ascii_case(grant.grant_id.as_str())
+                || grant.created_at_ms >= existing.created_at_ms
+        });
+        if should_promote {
+            self.active_draft.last_published_grant_id = Some(grant.grant_id.clone());
+            self.last_published_grant = Some(grant.clone());
+        }
+        self.upsert_published_grant_inventory(grant);
     }
 
     pub fn note_grant_state_reconciled(&mut self, grant: AccessGrant) {
@@ -5382,12 +5405,14 @@ impl DataMarketPaneState {
         &self,
         publisher_pubkey: &str,
     ) -> Vec<&RelayDatasetListingProjection> {
+        let normalized_publisher =
+            crate::nip90_compute_semantics::normalize_pubkey(publisher_pubkey);
         self.relay_listings
             .iter()
             .filter(|listing| {
-                listing
-                    .publisher_pubkey
-                    .eq_ignore_ascii_case(publisher_pubkey)
+                crate::nip90_compute_semantics::normalize_pubkey(
+                    listing.publisher_pubkey.as_str(),
+                ) == normalized_publisher
             })
             .collect()
     }
@@ -5428,12 +5453,13 @@ impl DataMarketPaneState {
         &self,
         publisher_pubkey: &str,
     ) -> Vec<&RelayDatasetOfferProjection> {
+        let normalized_publisher =
+            crate::nip90_compute_semantics::normalize_pubkey(publisher_pubkey);
         self.relay_offers
             .iter()
             .filter(|offer| {
-                offer
-                    .publisher_pubkey
-                    .eq_ignore_ascii_case(publisher_pubkey)
+                crate::nip90_compute_semantics::normalize_pubkey(offer.publisher_pubkey.as_str())
+                    == normalized_publisher
             })
             .collect()
     }
@@ -15920,6 +15946,110 @@ mod tests {
             "revocation.provider.alpha.bundle"
         );
         assert_eq!(pane.last_refreshed_at_ms, Some(1_762_700_210_000));
+    }
+
+    #[test]
+    fn data_market_authored_listing_lookup_matches_npub_and_hex_forms() {
+        let mut pane = super::DataMarketPaneState::default();
+        pane.relay_listings.push(super::RelayDatasetListingProjection {
+            coordinate:
+                "30404:3608823195ec012de56d63f827a185359d1f6e4c704f19920de4e36862cc0454:dataset.alpha"
+                    .to_string(),
+            publisher_pubkey:
+                "npub1xcygyvv4asqjmetdv0uz0gv9xkw37mjvwp83nysdun3ksckvq32qeers06"
+                    .to_string(),
+            relay_url: Some("wss://relay.example".to_string()),
+            title: "Dataset alpha".to_string(),
+            summary: None,
+            dataset_kind: Some("conversation_bundle".to_string()),
+            access: Some("paid".to_string()),
+            delivery_modes: vec!["encrypted_pointer".to_string()],
+            created_at_seconds: 1_762_700_000,
+            draft: false,
+            linked_asset_id: Some("data_asset.alpha".to_string()),
+            classified_coordinate: None,
+            classified_event_id: None,
+            classified_price_amount: None,
+            classified_price_currency: None,
+            storefront_stall_coordinate: None,
+            storefront_stall_name: None,
+            storefront_product_coordinate: None,
+            storefront_product_event_id: None,
+            storefront_product_title: None,
+            storefront_product_price_amount: None,
+            storefront_product_price_currency: None,
+            discussion_channel_id: None,
+            discussion_channel_name: None,
+            discussion_channel_relay_url: None,
+        });
+
+        assert_eq!(
+            pane.relay_authored_listings_for_publisher(
+                "3608823195EC012DE56D63F827A185359D1F6E4C704F19920DE4E36862CC0454"
+            )
+            .len(),
+            1
+        );
+        assert_eq!(
+            pane.relay_authored_listings_for_publisher(
+                "npub1xcygyvv4asqjmetdv0uz0gv9xkw37mjvwp83nysdun3ksckvq32qeers06"
+            )
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn data_market_authored_offer_lookup_matches_npub_and_hex_forms() {
+        let mut pane = super::DataMarketPaneState::default();
+        pane.relay_offers.push(super::RelayDatasetOfferProjection {
+            coordinate:
+                "30406:3608823195ec012de56d63f827a185359d1f6e4c704f19920de4e36862cc0454:offer.alpha"
+                    .to_string(),
+            listing_coordinate:
+                "30404:3608823195ec012de56d63f827a185359d1f6e4c704f19920de4e36862cc0454:dataset.alpha"
+                    .to_string(),
+            publisher_pubkey:
+                "npub1xcygyvv4asqjmetdv0uz0gv9xkw37mjvwp83nysdun3ksckvq32qeers06"
+                    .to_string(),
+            relay_url: Some("wss://relay.example".to_string()),
+            status: "active".to_string(),
+            policy: Some("targeted_request".to_string()),
+            delivery_modes: vec!["encrypted_pointer".to_string()],
+            targeted_buyer_pubkeys: Vec::new(),
+            price_amount: Some("25".to_string()),
+            price_currency: Some("SAT".to_string()),
+            created_at_seconds: 1_762_700_100,
+            linked_asset_id: Some("data_asset.alpha".to_string()),
+            linked_grant_id: Some("access_grant.alpha".to_string()),
+            classified_coordinate: None,
+            classified_event_id: None,
+            storefront_stall_coordinate: None,
+            storefront_stall_name: None,
+            storefront_product_coordinate: None,
+            storefront_product_event_id: None,
+            storefront_product_title: None,
+            storefront_product_price_amount: None,
+            storefront_product_price_currency: None,
+            discussion_channel_id: None,
+            discussion_channel_name: None,
+            discussion_channel_relay_url: None,
+        });
+
+        assert_eq!(
+            pane.relay_authored_offers_for_publisher(
+                "3608823195EC012DE56D63F827A185359D1F6E4C704F19920DE4E36862CC0454"
+            )
+            .len(),
+            1
+        );
+        assert_eq!(
+            pane.relay_authored_offers_for_publisher(
+                "npub1xcygyvv4asqjmetdv0uz0gv9xkw37mjvwp83nysdun3ksckvq32qeers06"
+            )
+            .len(),
+            1
+        );
     }
 
     #[test]
