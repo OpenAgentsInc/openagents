@@ -129,7 +129,10 @@ pub(crate) fn open_data_buyer_pane(state: &mut RenderState) -> bool {
     let buyer_id = crate::kernel_control::provider_id_for_state(state);
     state.data_buyer.configure_local_buyer_id(buyer_id);
     state.data_buyer.mark_opened();
-    refresh_data_buyer_market(state)
+    if state.data_market.has_snapshot() {
+        state.data_buyer.sync_selection(&state.data_market);
+    }
+    true
 }
 
 pub(crate) fn refresh_data_buyer_market(state: &mut RenderState) -> bool {
@@ -303,7 +306,10 @@ mod tests {
             request.asset_ref,
             "30404:1111111111111111111111111111111111111111111111111111111111111111:data_asset.npub1seller.document.context.sha256_abc"
         );
-        assert_eq!(request.asset_id.as_deref(), Some("data_asset.npub1seller.document.context.sha256_abc"));
+        assert_eq!(
+            request.asset_id.as_deref(),
+            Some("data_asset.npub1seller.document.context.sha256_abc")
+        );
         assert_eq!(request.grant_id.as_deref(), Some("grant.data.offer.001"));
         assert_eq!(
             request

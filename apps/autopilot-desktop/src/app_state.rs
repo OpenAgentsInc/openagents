@@ -4930,6 +4930,14 @@ impl Default for DataMarketPaneState {
 }
 
 impl DataMarketPaneState {
+    pub fn mark_opened(&mut self) {
+        self.last_error = None;
+        if !self.has_snapshot() {
+            self.last_action =
+                Some("Opened Data Market pane; refresh to load Nexus state".to_string());
+        }
+    }
+
     fn sort_state(
         assets: &mut [DataAsset],
         grants: &mut [AccessGrant],
