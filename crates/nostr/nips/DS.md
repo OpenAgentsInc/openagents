@@ -9,7 +9,46 @@ Datasets
 This NIP defines a protocol for publishing, selling, negotiating, and
 delivering datasets on Nostr.
 
-Datasets are not always sold in the same way:
+Nostr already has several pieces that can participate in data exchange:
+
+- NIP-94 for file metadata
+- NIP-15 and NIP-99 for marketplace and listing surfaces
+- NIP-28 for public discussion
+- NIP-17, NIP-44, and NIP-59 for private negotiation and private delivery
+- NIP-90 for request/result and quote/delivery flows
+
+What it does not yet have is a canonical dataset primitive.
+
+This NIP introduces that primitive.
+
+The goal is to make datasets, artifacts, and reusable context bundles
+first-class objects on Nostr so that humans and agents can move data back and
+forth with:
+
+- stable identity
+- verifiable digests
+- explicit access posture
+- discoverable offers
+- interoperable negotiation
+- safer delivery defaults
+
+In practical terms, this NIP is not only about "files for sale." It is about
+making useful context legible and tradable. That includes public datasets, but
+also private research bundles, stored conversations, local project context,
+evaluation corpora, and other knowledge packages that may need to flow between
+people, teams, services, and agents.
+
+The point is to establish best practices for how data should move on Nostr:
+
+- how it is identified
+- how it is described
+- how it is previewed
+- how it is offered
+- how it is requested
+- how it is delivered
+- how it is discussed publicly or negotiated privately
+
+One protocol should support more than one market shape:
 
 - sometimes a seller wants a persistent public catalog item or "market stall"
 - sometimes a seller wants targeted access under explicit policy
