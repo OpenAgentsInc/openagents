@@ -1862,6 +1862,7 @@ impl DataSellerDraft {
                 expires_at_ms,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "grant_policy_template": policy_template,
                     "delivery_modes": delivery_modes,
@@ -1973,6 +1974,7 @@ impl DataSellerDraft {
                 price_hint,
                 created_at_ms,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": delivery_modes,
                     "visibility_posture": self.visibility_posture.label(),
@@ -14719,6 +14721,7 @@ mod tests {
                 price_hint: None,
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             Some("receipt.data_asset.alpha".to_string()),
@@ -14752,6 +14755,7 @@ mod tests {
                 price_hint: None,
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             1_762_700_100_000,
@@ -14778,6 +14782,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             1_762_700_100_000,
@@ -14877,6 +14882,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"]
                 }),
@@ -14906,6 +14912,7 @@ mod tests {
                 expires_at_ms: 1_762_786_410_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"]
                 }),
@@ -14955,6 +14962,7 @@ mod tests {
                 price_hint: None,
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             1_762_700_000_000,
@@ -14972,6 +14980,7 @@ mod tests {
                 expires_at_ms: 1_762_786_410_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Delivered,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             1_762_700_010_000,
@@ -15031,6 +15040,7 @@ mod tests {
                 price_hint: None,
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             None,
@@ -15075,6 +15085,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({}),
             },
             Some("receipt.access_grant.alpha".to_string()),
@@ -15140,6 +15151,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15170,6 +15182,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15226,6 +15239,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15256,6 +15270,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15334,6 +15349,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15364,6 +15380,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15427,6 +15444,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15457,6 +15475,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15518,6 +15537,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15572,6 +15592,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15603,6 +15624,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -15656,6 +15678,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15684,6 +15707,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15754,6 +15778,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15782,6 +15807,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15868,6 +15894,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15896,6 +15923,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15948,6 +15976,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -15976,6 +16005,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -16098,6 +16128,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -16126,6 +16157,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: Some(1_762_700_100_000),
                 status: openagents_kernel_core::data::AccessGrantStatus::Delivered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer"],
                 }),
@@ -16194,6 +16226,7 @@ mod tests {
                 manifest_refs: vec!["oa://deliveries/revocation-flow/manifest".to_string()],
                 expires_at_ms: Some(1_762_786_600_000),
                 status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "request_id": "revocation-flow",
                 }),
@@ -16247,6 +16280,7 @@ mod tests {
                 }),
                 created_at_ms: 1_762_700_000_000,
                 status: openagents_kernel_core::data::DataAssetStatus::Active,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -16278,6 +16312,7 @@ mod tests {
                 expires_at_ms: 1_762_786_400_000,
                 accepted_at_ms: None,
                 status: openagents_kernel_core::data::AccessGrantStatus::Offered,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "delivery_modes": ["encrypted_pointer", "delivery_bundle_ref"],
                 }),
@@ -16400,6 +16435,7 @@ mod tests {
                 manifest_refs: vec!["oa://deliveries/lifecycle-flow/manifest".to_string()],
                 expires_at_ms: Some(1_762_786_600_000),
                 status: openagents_kernel_core::data::DeliveryBundleStatus::Revoked,
+                nostr_publications: Default::default(),
                 metadata: json!({
                     "request_id": "lifecycle-flow",
                 }),

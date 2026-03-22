@@ -603,6 +603,7 @@ mod tests {
             asset_kind: "conversation_bundle".to_string(),
             title: "Redacted Codex Conversations".to_string(),
             status: openagents_kernel_core::data::DataAssetStatus::Active,
+            nostr_publications: Default::default(),
             metadata: json!({
                 "visibility_posture": "targeted_only",
                 "sensitivity_posture": "private",
