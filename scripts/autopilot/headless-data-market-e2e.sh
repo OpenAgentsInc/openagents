@@ -18,8 +18,9 @@ BUYER_SETTINGS_PATH="$BUYER_HOME/.openagents/autopilot-settings-v1.conf"
 WAIT_TIMEOUT_MS="${OPENAGENTS_HEADLESS_DATA_MARKET_WAIT_TIMEOUT_MS:-120000}"
 REQUEST_TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_REQUEST_TIMEOUT_SECONDS:-120}"
 PRICE_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_PRICE_SATS:-5}"
-BUYER_PREFUND_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_SATS:-0}"
+BUYER_PREFUND_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_SATS-}"
 BUYER_PREFUND_TIMEOUT_SECONDS="${OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_TIMEOUT_SECONDS:-90}"
+BUYER_PREFUND_CHUNK_SATS="${OPENAGENTS_HEADLESS_DATA_MARKET_BUYER_PREFUND_CHUNK_SATS:-20}"
 PREFUND_PAYER_IDENTITY_PATH="${OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_IDENTITY_PATH:-$HOME/.openagents/pylon/identity.mnemonic}"
 PREFUND_PAYER_STORAGE_DIR="${OPENAGENTS_HEADLESS_DATA_MARKET_PREFUND_PAYER_STORAGE_DIR:-$HOME/.openagents/pylon/spark/mainnet}"
 RELAY_URLS_CSV="${OPENAGENTS_HEADLESS_DATA_MARKET_RELAY_URLS:-}"
@@ -87,6 +88,36 @@ print(",".join(parts))
 PY
 }
 
+default_buyer_prefund_sats() {
+  local price_sats="$1"
+  if [[ "$price_sats" -le 0 ]]; then
+    echo 0
+    return 0
+  fi
+python3 - "$price_sats" <<'PY'
+import sys
+
+price_sats = int(sys.argv[1])
+print(max(40, price_sats + 20, price_sats * 8))
+PY
+}
+
+minimum_effective_prefund_balance() {
+  local price_sats="$1"
+  local prefund_sats="$2"
+  if [[ "$price_sats" -le 0 || "$prefund_sats" -le 0 ]]; then
+    echo 0
+    return 0
+  fi
+  python3 - "$price_sats" "$prefund_sats" <<'PY'
+import sys
+
+price_sats = int(sys.argv[1])
+prefund_sats = int(sys.argv[2])
+print(min(prefund_sats, max(15, price_sats + 10, price_sats * 3)))
+PY
+}
+
 write_settings() {
   local path="$1"
   local relay_url="$2"
@@ -137,6 +168,35 @@ with open(output_path, "w", encoding="utf-8") as handle:
 PY
 }
 
+authority_get_json() {
+  local base_url="$1"
+  local access_token="$2"
+  local route="$3"
+  local output_path="$4"
+  python3 - <<'PY' "$base_url" "$access_token" "$route" "$output_path"
+import json
+import sys
+import urllib.request
+
+base_url = sys.argv[1].rstrip("/")
+access_token = sys.argv[2]
+route = sys.argv[3]
+output_path = sys.argv[4]
+request = urllib.request.Request(
+    base_url + route,
+    headers={
+        "authorization": f"Bearer {access_token}",
+        "accept": "application/json",
+    },
+    method="GET",
+)
+with urllib.request.urlopen(request, timeout=10) as response:
+    payload = json.loads(response.read().decode("utf-8"))
+with open(output_path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle)
+PY
+}
+
 wait_for_file() {
   local path="$1"
   local timeout_seconds="$2"
@@ -160,6 +220,51 @@ wait_for_status() {
       return 0
     fi
     sleep 1
+  done
+  return 1
+}
+
+action_retryable_failure() {
+  local stdout_path="$1"
+  local stderr_path="$2"
+  local patterns=(
+    "Desktop control action timed out"
+    "Desktop dropped the control action response"
+  )
+  local pattern
+  for pattern in "${patterns[@]}"; do
+    if [[ -f "$stdout_path" ]] && grep -q "$pattern" "$stdout_path"; then
+      return 0
+    fi
+    if [[ -f "$stderr_path" ]] && grep -q "$pattern" "$stderr_path"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+run_autopilotctl_json_with_retry() {
+  local output_path="$1"
+  shift
+  local max_attempts="${OPENAGENTS_HEADLESS_DATA_MARKET_ACTION_ATTEMPTS:-4}"
+  local retry_sleep_seconds="${OPENAGENTS_HEADLESS_DATA_MARKET_ACTION_RETRY_SECONDS:-2}"
+  local attempt=1
+  while (( attempt <= max_attempts )); do
+    local stdout_path="${output_path}.attempt-${attempt}.stdout"
+    local stderr_path="${output_path}.attempt-${attempt}.stderr"
+    if "$@" >"$stdout_path" 2>"$stderr_path"; then
+      mv "$stdout_path" "$output_path"
+      rm -f "$stderr_path"
+      return 0
+    fi
+    if action_retryable_failure "$stdout_path" "$stderr_path" && (( attempt < max_attempts )); then
+      sleep "$retry_sleep_seconds"
+      attempt=$((attempt + 1))
+      continue
+    fi
+    cat "$stderr_path" >&2 || true
+    cat "$stdout_path" >&2 || true
+    return 1
   done
   return 1
 }
@@ -206,37 +311,65 @@ prefund_buyer_wallet() {
   fi
 
   local buyer_storage_dir="$BUYER_HOME/.openagents/pylon/spark/mainnet"
-  local invoice_output="$RUN_DIR/buyer-prefund-invoice.json"
-  local pay_output="$RUN_DIR/buyer-prefund-pay.json"
   local buyer_status_output="$RUN_DIR/buyer-wallet-status-prefunded.json"
+  local sent_sats=0
+  local chunk_index=1
 
   echo "prefunding buyer wallet with ${amount_sats} sats"
-  "$SPARK_WALLET_CLI_BIN" \
-    --identity-path "$BUYER_IDENTITY_PATH" \
-    --storage-dir "$buyer_storage_dir" \
-    bolt11-invoice "$amount_sats" \
-    --description "headless data-market buyer prefund" \
-    --expiry-seconds 600 >"$invoice_output"
-  local invoice
-  invoice="$(json_field "$invoice_output" invoice)"
-  if [[ -z "$invoice" ]]; then
-    echo "failed to create buyer prefund invoice" >&2
-    cat "$invoice_output" >&2 || true
-    exit 1
-  fi
+  while (( sent_sats < amount_sats )); do
+    local remaining_sats=$((amount_sats - sent_sats))
+    local chunk_sats="$BUYER_PREFUND_CHUNK_SATS"
+    if (( chunk_sats <= 0 || chunk_sats > remaining_sats )); then
+      chunk_sats="$remaining_sats"
+    fi
+    local invoice_output="$RUN_DIR/buyer-prefund-invoice-${chunk_index}.json"
+    local pay_output="$RUN_DIR/buyer-prefund-pay-${chunk_index}.json"
 
-  "$SPARK_WALLET_CLI_BIN" \
-    --identity-path "$PREFUND_PAYER_IDENTITY_PATH" \
-    --storage-dir "$PREFUND_PAYER_STORAGE_DIR" \
-    pay-invoice "$invoice" >"$pay_output"
+    "$SPARK_WALLET_CLI_BIN" \
+      --identity-path "$BUYER_IDENTITY_PATH" \
+      --storage-dir "$buyer_storage_dir" \
+      bolt11-invoice "$chunk_sats" \
+      --description "headless data-market buyer prefund ${chunk_index}" \
+      --expiry-seconds 600 >"$invoice_output"
+    local invoice
+    invoice="$(json_field "$invoice_output" invoice)"
+    if [[ -z "$invoice" ]]; then
+      echo "failed to create buyer prefund invoice chunk ${chunk_index}" >&2
+      cat "$invoice_output" >&2 || true
+      exit 1
+    fi
 
+    "$SPARK_WALLET_CLI_BIN" \
+      --identity-path "$PREFUND_PAYER_IDENTITY_PATH" \
+      --storage-dir "$PREFUND_PAYER_STORAGE_DIR" \
+      pay-invoice "$invoice" >"$pay_output"
+
+    sent_sats=$((sent_sats + chunk_sats))
+    local effective_chunk_floor
+    effective_chunk_floor="$(minimum_effective_prefund_balance "$PRICE_SATS" "$sent_sats")"
+    wait_for_wallet_balance \
+      "$BUYER_IDENTITY_PATH" \
+      "$buyer_storage_dir" \
+      "$effective_chunk_floor" \
+      "$buyer_status_output" \
+      "$BUYER_PREFUND_TIMEOUT_SECONDS" || {
+        echo "buyer wallet never reached effective prefund floor ${effective_chunk_floor} after chunk ${chunk_index}" >&2
+        cat "$buyer_status_output" >&2 || true
+        exit 1
+      }
+
+    chunk_index=$((chunk_index + 1))
+  done
+
+  local effective_balance_floor
+  effective_balance_floor="$(minimum_effective_prefund_balance "$PRICE_SATS" "$amount_sats")"
   wait_for_wallet_balance \
     "$BUYER_IDENTITY_PATH" \
     "$buyer_storage_dir" \
-    "$amount_sats" \
+    "$effective_balance_floor" \
     "$buyer_status_output" \
     "$BUYER_PREFUND_TIMEOUT_SECONDS" || {
-      echo "buyer wallet never reached prefunded balance ${amount_sats} sats" >&2
+      echo "buyer wallet never reached effective prefund floor ${effective_balance_floor} sats" >&2
       cat "$buyer_status_output" >&2 || true
       exit 1
     }
@@ -321,6 +454,23 @@ import_seller_request_from_relays() {
     "${args[@]}" >"$output_path"
 }
 
+wait_for_seller_request_import() {
+  local manifest="$1"
+  local request_id="$2"
+  local output_path="$3"
+  local timeout_seconds="$4"
+  shift 4
+  local relay_urls=("$@")
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    if import_seller_request_from_relays "$manifest" "$request_id" "$output_path" "${relay_urls[@]}"; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 wait_for_buyer_result() {
   local manifest="$1"
   local request_id="$2"
@@ -350,6 +500,42 @@ PY
   return 1
 }
 
+wait_for_buyer_request_publication() {
+  local manifest="$1"
+  local previous_request_id="$2"
+  local asset_id="$3"
+  local output_path="$4"
+  local timeout_seconds="$5"
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market buyer-status >"$output_path"
+    if python3 - "$output_path" "$previous_request_id" "$asset_id" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+previous_request_id = sys.argv[2]
+asset_id = sys.argv[3]
+buyer = payload.get("payload", {}).get("buyer", {})
+published_request_id = buyer.get("last_published_request_id")
+latest = buyer.get("latest_request") or {}
+selected_asset = buyer.get("selected_asset") or {}
+if not published_request_id:
+    raise SystemExit(1)
+if previous_request_id and published_request_id == previous_request_id:
+    raise SystemExit(1)
+if latest.get("request_id") and latest.get("request_id") != published_request_id:
+    raise SystemExit(1)
+if asset_id and selected_asset.get("asset_id") and selected_asset.get("asset_id") != asset_id:
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+    then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 import_buyer_response_from_relays() {
   local manifest="$1"
   local event_id="$2"
@@ -364,6 +550,64 @@ import_buyer_response_from_relays() {
   "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market buyer-import-response \
     --event-id "$event_id" \
     "${args[@]}" >"$output_path"
+}
+
+wait_for_buyer_response_import() {
+  local manifest="$1"
+  local event_id="$2"
+  local output_path="$3"
+  local timeout_seconds="$4"
+  shift 4
+  local relay_urls=("$@")
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    if import_buyer_response_from_relays "$manifest" "$event_id" "$output_path" "${relay_urls[@]}"; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+publish_buyer_request_with_recovery() {
+  local manifest="$1"
+  local asset_id="$2"
+  local output_path="$3"
+  local max_attempts="${OPENAGENTS_HEADLESS_DATA_MARKET_ACTION_ATTEMPTS:-4}"
+  local retry_sleep_seconds="${OPENAGENTS_HEADLESS_DATA_MARKET_ACTION_RETRY_SECONDS:-2}"
+  local previous_status_path="${output_path}.pre-status.json"
+  local previous_request_id=""
+  "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market buyer-status >"$previous_status_path" 2>/dev/null || true
+  if [[ -s "$previous_status_path" ]]; then
+    previous_request_id="$(json_field "$previous_status_path" payload.buyer.last_published_request_id)"
+  fi
+
+  local attempt=1
+  while (( attempt <= max_attempts )); do
+    local stdout_path="${output_path}.attempt-${attempt}.stdout"
+    local stderr_path="${output_path}.attempt-${attempt}.stderr"
+    if "$AUTOPILOTCTL_BIN" --manifest "$manifest" --json data-market buyer-publish-request \
+      --asset-id "$asset_id" --refresh-market >"$stdout_path" 2>"$stderr_path"; then
+      mv "$stdout_path" "$output_path"
+      rm -f "$stderr_path"
+      return 0
+    fi
+    if action_retryable_failure "$stdout_path" "$stderr_path"; then
+      if wait_for_buyer_request_publication "$manifest" "$previous_request_id" "$asset_id" "$output_path" 45; then
+        rm -f "$stdout_path" "$stderr_path"
+        return 0
+      fi
+      if (( attempt < max_attempts )); then
+        sleep "$retry_sleep_seconds"
+        attempt=$((attempt + 1))
+        continue
+      fi
+    fi
+    cat "$stderr_path" >&2 || true
+    cat "$stdout_path" >&2 || true
+    return 1
+  done
+  return 1
 }
 
 DEFAULT_SPARK_API_KEY="$(
@@ -462,6 +706,10 @@ if [[ -z "$NEXUS_BASE_URL" ]]; then
   exit 1
 fi
 
+if [[ -z "$BUYER_PREFUND_SATS" ]]; then
+  BUYER_PREFUND_SATS="$(default_buyer_prefund_sats "$PRICE_SATS")"
+fi
+
 echo "creating seller and buyer desktop sessions"
 mint_desktop_session "$NEXUS_BASE_URL" "headless-data-market-seller" "Headless Data Market Seller" "$RUN_DIR/seller-session.json"
 mint_desktop_session "$NEXUS_BASE_URL" "headless-data-market-buyer" "Headless Data Market Buyer" "$RUN_DIR/buyer-session.json"
@@ -481,6 +729,7 @@ echo "launching seller runtime"
 HOME="$SELLER_HOME" \
 OPENAGENTS_AUTOPILOT_LOG_DIR="$SELLER_LOG_DIR" \
 OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
+OPENAGENTS_DISABLE_CODEX=true \
 OA_CONTROL_BASE_URL="$NEXUS_BASE_URL" \
 OA_CONTROL_BEARER_TOKEN="$SELLER_ACCESS_TOKEN" \
 "$HEADLESS_DATA_MARKET_BIN" --manifest-path "$SELLER_MANIFEST" >"$RUN_DIR/seller.stdout.log" 2>"$RUN_DIR/seller.stderr.log" &
@@ -490,6 +739,7 @@ echo "launching buyer runtime"
 HOME="$BUYER_HOME" \
 OPENAGENTS_AUTOPILOT_LOG_DIR="$BUYER_LOG_DIR" \
 OPENAGENTS_SPARK_API_KEY="$OPENAGENTS_SPARK_API_KEY" \
+OPENAGENTS_DISABLE_CODEX=true \
 OA_CONTROL_BASE_URL="$NEXUS_BASE_URL" \
 OA_CONTROL_BEARER_TOKEN="$BUYER_ACCESS_TOKEN" \
 "$HEADLESS_DATA_MARKET_BIN" --manifest-path "$BUYER_MANIFEST" >"$RUN_DIR/buyer.stdout.log" 2>"$RUN_DIR/buyer.stderr.log" &
@@ -550,6 +800,21 @@ ASSET_ID="$(json_field "$RUN_DIR/publish-asset.json" payload.seller.draft.last_p
 "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" --json data-market publish-grant --confirm >"$RUN_DIR/publish-grant.json"
 GRANT_ID="$(json_field "$RUN_DIR/publish-grant.json" payload.seller.draft.last_published_grant_id)"
 
+authority_get_json "$NEXUS_BASE_URL" "$SELLER_ACCESS_TOKEN" \
+  "/v1/kernel/data/assets/$(python3 - <<'PY' "$ASSET_ID"
+import sys, urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+)" \
+  "$RUN_DIR/authority-asset.json"
+authority_get_json "$NEXUS_BASE_URL" "$SELLER_ACCESS_TOKEN" \
+  "/v1/kernel/data/grants/$(python3 - <<'PY' "$GRANT_ID"
+import sys, urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+)" \
+  "$RUN_DIR/authority-grant.json"
+
 echo "bringing seller runtime online for targeted request intake"
 "$AUTOPILOTCTL_BIN" --manifest "$SELLER_MANIFEST" provider online --wait --timeout-ms "$WAIT_TIMEOUT_MS" >"$RUN_DIR/seller-provider-online.json"
 if [[ -n "$RELAY_URLS_CSV" && "$PUBLIC_SUBSCRIPTION_SETTLE_SECONDS" -gt 0 ]]; then
@@ -558,8 +823,9 @@ if [[ -n "$RELAY_URLS_CSV" && "$PUBLIC_SUBSCRIPTION_SETTLE_SECONDS" -gt 0 ]]; th
 fi
 
 echo "publishing targeted buyer request"
-"$AUTOPILOTCTL_BIN" --manifest "$BUYER_MANIFEST" --json data-market buyer-refresh >"$RUN_DIR/buyer-refresh.json"
-"$AUTOPILOTCTL_BIN" --manifest "$BUYER_MANIFEST" --json data-market buyer-publish-request --asset-id "$ASSET_ID" --refresh-market >"$RUN_DIR/buyer-request.json"
+run_autopilotctl_json_with_retry "$RUN_DIR/buyer-refresh.json" \
+  "$AUTOPILOTCTL_BIN" --manifest "$BUYER_MANIFEST" --json data-market buyer-refresh
+publish_buyer_request_with_recovery "$BUYER_MANIFEST" "$ASSET_ID" "$RUN_DIR/buyer-request.json"
 REQUEST_ID="$(json_field "$RUN_DIR/buyer-request.json" payload.buyer.last_published_request_id)"
 
 echo "bringing buyer runtime online for result tracking"
@@ -692,7 +958,27 @@ echo "consuming delivered data locally"
   --overwrite >"$RUN_DIR/consume-delivery.json"
 
 echo "verifying consumed payload matches source"
-python3 - "$RUN_DIR/source-dataset" "$RUN_DIR/consumed-dataset/payload" "$RUN_DIR/consume-delivery.json" "$RUN_DIR/publish-asset.json" "$RUN_DIR/publish-grant.json" "$RUN_DIR/buyer-result.json" "$RUN_DIR/issue-delivery.json" "$RUN_DIR/seller-request-ready.json" "$RUN_DIR/summary.json" "$NORMALIZED_RELAY_URLS_CSV" "$RUN_DIR/seller-import-request.json" "$RUN_DIR/buyer-import-response.json" "$REQUIRE_LIVE_INGEST" "$RUN_DIR/seller-payment-settled.json" "$RUN_DIR/buyer-after-payment.json" "$PRICE_SATS" <<'PY'
+python3 - \
+  "$RUN_DIR/source-dataset" \
+  "$RUN_DIR/consumed-dataset/payload" \
+  "$RUN_DIR/consume-delivery.json" \
+  "$RUN_DIR/publish-asset.json" \
+  "$RUN_DIR/publish-grant.json" \
+  "$RUN_DIR/buyer-refresh.json" \
+  "$RUN_DIR/buyer-result.json" \
+  "$RUN_DIR/issue-delivery.json" \
+  "$RUN_DIR/seller-request-ready.json" \
+  "$RUN_DIR/authority-asset.json" \
+  "$RUN_DIR/authority-grant.json" \
+  "$RUN_DIR/relay.log" \
+  "$RUN_DIR/summary.json" \
+  "$NORMALIZED_RELAY_URLS_CSV" \
+  "$RUN_DIR/seller-import-request.json" \
+  "$RUN_DIR/buyer-import-response.json" \
+  "$REQUIRE_LIVE_INGEST" \
+  "$RUN_DIR/seller-payment-settled.json" \
+  "$RUN_DIR/buyer-after-payment.json" \
+  "$PRICE_SATS" <<'PY'
 import filecmp
 import json
 import pathlib
@@ -703,16 +989,20 @@ consumed_root = pathlib.Path(sys.argv[2])
 consume_json = pathlib.Path(sys.argv[3])
 publish_asset_json = pathlib.Path(sys.argv[4])
 publish_grant_json = pathlib.Path(sys.argv[5])
-buyer_result_json = pathlib.Path(sys.argv[6])
-issue_delivery_json = pathlib.Path(sys.argv[7])
-seller_request_json = pathlib.Path(sys.argv[8])
-summary_path = pathlib.Path(sys.argv[9])
-configured_relay_urls = [relay for relay in sys.argv[10].split(",") if relay]
-seller_import_path = pathlib.Path(sys.argv[11])
-buyer_import_path = pathlib.Path(sys.argv[12])
-seller_payment_path = pathlib.Path(sys.argv[14])
-buyer_payment_path = pathlib.Path(sys.argv[15])
-price_sats = int(sys.argv[16])
+buyer_refresh_json = pathlib.Path(sys.argv[6])
+buyer_result_json = pathlib.Path(sys.argv[7])
+issue_delivery_json = pathlib.Path(sys.argv[8])
+seller_request_json = pathlib.Path(sys.argv[9])
+authority_asset_json = pathlib.Path(sys.argv[10])
+authority_grant_json = pathlib.Path(sys.argv[11])
+relay_log_path = pathlib.Path(sys.argv[12])
+summary_path = pathlib.Path(sys.argv[13])
+configured_relay_urls = [relay for relay in sys.argv[14].split(",") if relay]
+seller_import_path = pathlib.Path(sys.argv[15])
+buyer_import_path = pathlib.Path(sys.argv[16])
+seller_payment_path = pathlib.Path(sys.argv[18])
+buyer_payment_path = pathlib.Path(sys.argv[19])
+price_sats = int(sys.argv[20])
 
 if not consumed_root.exists():
     raise SystemExit("consumed payload directory is missing")
@@ -734,11 +1024,15 @@ compare_dirs(source_root, consumed_root)
 consume_payload = json.loads(consume_json.read_text())
 publish_asset_payload = json.loads(publish_asset_json.read_text())
 publish_grant_payload = json.loads(publish_grant_json.read_text())
+buyer_refresh_payload = json.loads(buyer_refresh_json.read_text())
 buyer_result_payload = json.loads(buyer_result_json.read_text())
 issue_delivery_payload = json.loads(issue_delivery_json.read_text())
 seller_request_payload = json.loads(seller_request_json.read_text())
+authority_asset_payload = json.loads(authority_asset_json.read_text())
+authority_grant_payload = json.loads(authority_grant_json.read_text())
 latest_request = buyer_result_payload["payload"]["buyer"]["latest_request"]
 seller_latest = seller_request_payload["payload"]["seller"]["latest_incoming_request"]
+buyer_refresh_state = buyer_refresh_payload["payload"]["buyer"]
 seller_import = json.loads(seller_import_path.read_text()) if seller_import_path.exists() else None
 buyer_import = json.loads(buyer_import_path.read_text()) if buyer_import_path.exists() else None
 seller_payment = json.loads(seller_payment_path.read_text()) if seller_payment_path.exists() else None
@@ -751,11 +1045,121 @@ buyer_payment_latest = (
     buyer_payment.get("payload", {}).get("buyer", {}).get("latest_request")
     if buyer_payment else None
 )
+asset_id = publish_asset_payload["payload"]["seller"]["draft"]["last_published_asset_id"]
+grant_id = publish_grant_payload["payload"]["seller"]["draft"]["last_published_grant_id"]
+asset_nostr = authority_asset_payload["asset"]["nostr_publications"]
+grant_nostr = authority_grant_payload["grant"]["nostr_publications"]
+listing_coordinate = asset_nostr["ds_listing"]["coordinate"]
+offer_coordinate = grant_nostr["ds_offer"]["coordinate"]
+assert listing_coordinate.startswith("30404:")
+assert asset_nostr["ds_listing"]["event_id"]
+assert offer_coordinate.startswith("30406:")
+assert grant_nostr["ds_offer"]["event_id"]
+
+relay_listings = buyer_refresh_state.get("relay_listings") or []
+relay_offers = buyer_refresh_state.get("relay_offers") or []
+listing_row = next(
+    (
+        row for row in relay_listings
+        if row.get("coordinate") == listing_coordinate
+        or row.get("linked_asset_id") == asset_id
+    ),
+    None,
+)
+offer_row = next(
+    (
+        row for row in relay_offers
+        if row.get("coordinate") == offer_coordinate
+        or row.get("linked_grant_id") == grant_id
+    ),
+    None,
+)
+if listing_row is None:
+    listing_row = buyer_refresh_state.get("selected_listing")
+if offer_row is None:
+    offer_row = buyer_refresh_state.get("selected_catalog_offer")
+if listing_row is None and buyer_refresh_state.get("selected_listing_coordinate"):
+    listing_row = {
+        "coordinate": buyer_refresh_state["selected_listing_coordinate"],
+        "linked_asset_id": buyer_refresh_state.get("selected_asset_id"),
+    }
+if offer_row is None and buyer_refresh_state.get("selected_offer_coordinate"):
+    selected_offer_grant = buyer_refresh_state.get("selected_offer_grant") or {}
+    offer_row = {
+        "coordinate": buyer_refresh_state["selected_offer_coordinate"],
+        "linked_grant_id": selected_offer_grant.get("grant_id"),
+    }
+assert listing_row is not None, "buyer refresh did not link the authority asset to a DS relay listing"
+assert offer_row is not None, "buyer refresh did not link the authority grant to a DS relay offer"
+assert listing_row["coordinate"] == listing_coordinate
+assert offer_row["coordinate"] == offer_coordinate
+assert listing_row["linked_asset_id"] == asset_id
+assert offer_row["linked_grant_id"] == grant_id
+assert seller_latest["matched_listing_coordinate"] == listing_coordinate
+assert seller_latest["matched_offer_coordinate"] == offer_coordinate
+
+result_event_id = latest_request["last_result_event_id"]
+request_row = next(
+    (
+        row
+        for row in seller_request_payload["payload"]["seller"].get("incoming_requests", [])
+        if row.get("request_id") == latest_request["request_id"]
+    ),
+    None,
+)
+assert request_row is not None, "seller status did not retain the DS-DVM request row"
+assert request_row["request_kind"] == 5960
+relay_request_event_seen = False
+relay_result_event_seen = False
+if relay_log_path.exists():
+    relay_log_text = relay_log_path.read_text()
+    relay_request_event_seen = f"event_id={latest_request['request_id']} kind=5960" in relay_log_text
+    relay_result_event_seen = f"event_id={result_event_id} kind=6960" in relay_log_text
+    assert f"event_id={asset_nostr['ds_listing']['event_id']} kind=30404" in relay_log_text
+    assert f"event_id={grant_nostr['ds_offer']['event_id']} kind=30406" in relay_log_text
+    assert relay_request_event_seen
+    assert relay_result_event_seen
+else:
+    assert request_row.get("source_relay_url") or seller_import, "seller request source relay evidence missing"
+    result_relay_urls = (
+        latest_request.get("last_result_relay_urls")
+        or next(
+            (
+                observation.get("last_result_relay_urls")
+                for observation in latest_request.get("provider_observations", [])
+                if observation.get("last_result_event_id") == result_event_id
+            ),
+            [],
+        )
+        or []
+    )
+    assert result_relay_urls or buyer_import, "buyer result relay evidence missing"
+request_asset_ref = seller_latest.get("asset_ref") or request_row.get("asset_ref")
+assert request_asset_ref == listing_coordinate
+
+result_relay_urls = (
+    latest_request.get("last_result_relay_urls")
+    or next(
+        (
+            observation.get("last_result_relay_urls")
+            for observation in latest_request.get("provider_observations", [])
+            if observation.get("last_result_event_id") == result_event_id
+        ),
+        [],
+    )
+    or []
+)
 
 summary = {
     "price_sats": price_sats,
-    "asset_id": publish_asset_payload["payload"]["seller"]["draft"]["last_published_asset_id"],
-    "grant_id": publish_grant_payload["payload"]["seller"]["draft"]["last_published_grant_id"],
+    "asset_id": asset_id,
+    "grant_id": grant_id,
+    "ds_listing_coordinate": listing_coordinate,
+    "ds_listing_event_id": asset_nostr["ds_listing"]["event_id"],
+    "ds_offer_coordinate": offer_coordinate,
+    "ds_offer_event_id": grant_nostr["ds_offer"]["event_id"],
+    "relay_listing_count": len(relay_listings),
+    "relay_offer_count": len(relay_offers),
     "request_id": latest_request["request_id"],
     "payment_feedback_event_id": (
         buyer_payment_latest.get("last_feedback_event_id")
@@ -773,37 +1177,22 @@ summary = {
     "consumed_payload_path": consume_payload["consumed"]["payload_output_path"],
     "copied_manifest_paths": consume_payload["consumed"]["copied_manifest_paths"],
     "configured_relay_urls": configured_relay_urls,
-    "request_kind": seller_import["relay_fetch"]["kind"] if seller_import else 5960,
+    "request_kind": 5960,
     "request_source_relay_url": (
         seller_import["relay_fetch"]["relay_url"]
         if seller_import else (
             seller_latest.get("source_relay_url")
-            or next(
-                (
-                    row.get("source_relay_url")
-                    for row in seller_request_payload["payload"]["seller"].get("incoming_requests", [])
-                    if row.get("request_id") == latest_request["request_id"]
-                ),
-                None,
-            )
+            or request_row.get("source_relay_url")
         )
     ),
     "seller_request_ingest_mode": "relay_import" if seller_import else "live_relay",
-    "result_kind": buyer_import["relay_fetch"]["kind"] if buyer_import else 6960,
+    "result_kind": 6960,
     "buyer_result_ingest_mode": "relay_import" if buyer_import else "live_relay",
-    "result_relay_urls": (
-        latest_request.get("last_result_relay_urls")
-        or next(
-            (
-                observation.get("last_result_relay_urls")
-                for observation in latest_request.get("provider_observations", [])
-                if observation.get("last_result_event_id") == latest_request["last_result_event_id"]
-            ),
-            [],
-        )
-        or []
-    ),
-    "required_live_ingest": sys.argv[13].lower() == "true",
+    "relay_event_log_available": relay_log_path.exists(),
+    "relay_request_event_seen": relay_request_event_seen,
+    "relay_result_event_seen": relay_result_event_seen,
+    "result_relay_urls": result_relay_urls,
+    "required_live_ingest": sys.argv[17].lower() == "true",
 }
 summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(summary, indent=2, sort_keys=True))

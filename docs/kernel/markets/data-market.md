@@ -60,12 +60,19 @@ smuggled through opaque prompt state.
 - expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
 - package local files or directories into deterministic `listing-template.json`, `grant-template.json`, `packaging-manifest.json`, and `packaging-summary.json` artifacts through `scripts/autopilot/data_market_package.py`
 - package recent or explicit Codex rollout conversations into a redacted seller-ready bundle through `scripts/autopilot/package_codex_conversations.py`
+- publish canonical DS dataset listings (`30404`) and DS dataset offers
+  (`30406`) for seller assets and grants
+- surface relay-backed DS catalog rows in the read-only `Data Market` pane and
+  narrow `Data Buyer` pane
+- attach optional NIP-99 classified wrappers, optional NIP-15 storefront
+  wrappers, and optional NIP-28 dataset discussion channels back onto the
+  canonical DS relay rows when present
 - drive the same seller path through `autopilotctl data-market ...` without opening the visible UI window
 - start a no-window Data Market runtime through `autopilot_headless_data_market`
 - use the repo-owned `skills/autopilot-data-seller-cli` skill for shell-first packaging and publication discipline
 - resolve a delivered local `DeliveryBundle` back into copied buyer-side files through `autopilotctl data-market consume-delivery`
 - run `scripts/autopilot/headless-data-market-e2e.sh` to mechanically verify the local headless publish -> request -> delivery -> consume path
-- run `scripts/autopilot/headless-data-market-public-e2e.sh` to mechanically verify the same flow against real public relays (`wss://relay.damus.io`, `wss://relay.primal.net`)
+- run `scripts/autopilot/headless-data-market-public-e2e.sh` as an operator probe against live public relays
 - run `scripts/autopilot/verify-data-market-cli-headless.sh` to mechanically verify the publish/consume path plus the critical lifecycle checks
 - allow both seller request intake and buyer result tracking to run in a relay-only online posture without requiring a compute-ready local inference runtime
 - normalize targeted buyer/seller identity matching across `npub` and raw hex Nostr pubkeys for the current NIP-90 targeted request/result flow
@@ -145,27 +152,32 @@ This path is intentionally not a second seller implementation.
 It targets the same app-owned seller state and kernel mutation logic through the
 typed desktop-control contract.
 
-The public-relay verified posture is now:
+The current DS-first verification posture is:
 
-- buyer request kind `5960` publishes to configured public relays and is
-  accepted by both Damus and Primal in the verified run
-- seller result kind `6960` publishes back to those relays and is also accepted
-  by both Damus and Primal in the verified run
-- seller request intake worked live on those relays in the verified strict run
-- buyer result tracking also worked live on those relays in the verified strict
-  run
-- the seller observed the verified request from `wss://relay.primal.net`
-- the buyer tracked the verified result on both configured relays
+- seller DS listing kind `30404` publishes before buyer request publication
+- seller DS offer kind `30406` is then visible in buyer selection state
+- buyer request kind `5960` is now the DS-DVM fulfillment request, not the
+  market listing itself
+- seller result kind `6960` is now the DS-DVM fulfillment result, not the
+  market listing itself
+- the portable repo-owned verifier proves the local DS-first path with a local
+  relay, authority DS refs, DS selection state, seller request matching, and
+  local relay event-kind evidence
+- the repo also retains a public-relay harness, but live relay health is
+  external and not a deterministic launch gate
 - the explicit relay import commands still exist as operator recovery tools if
-  a relay regression needs to be worked around, but they were not needed in the
-  current strict public verification
+  a relay regression needs to be worked around
+
+The freshest launch-path audit is:
+
+- `docs/audits/2026-03-21-ds-first-headless-data-market-paid-e2e-audit.md`
 
 The current buyer-side consume step is local by design:
 
 - `autopilotctl data-market consume-delivery` resolves the matching
   `DeliveryBundle`
 - current headless verification brings the buyer online in a relay-only posture
-  so targeted NIP-90 result events are actually observed before local consume
+  so targeted DS-DVM result events are actually observed before local consume
 - it currently supports local `file://` and plain local-path `delivery_ref`
   values
 - it copies the delivered payload and local manifest refs into a chosen output
