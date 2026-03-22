@@ -486,7 +486,7 @@ fn relay_listing_row_summary(listing: &RelayDatasetListingProjection) -> (String
     );
     let secondary = compact_text(
         format!(
-            "{} // access {} // asset {} // catalog {}{} // chat {}",
+            "{} // access {} // asset {} // catalog {}{} // storefront {} // chat {}",
             short_id(listing.coordinate.as_str()),
             listing.access.as_deref().unwrap_or("unspecified"),
             listing
@@ -505,6 +505,11 @@ fn relay_listing_row_summary(listing: &RelayDatasetListingProjection) -> (String
                 .zip(listing.classified_price_currency.as_deref())
                 .map(|(amount, currency)| format!(" // {amount} {currency}"))
                 .unwrap_or_default(),
+            listing
+                .storefront_product_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
             listing
                 .discussion_channel_id
                 .as_deref()
@@ -530,7 +535,7 @@ fn relay_offer_row_summary(offer: &RelayDatasetOfferProjection) -> (String, Stri
     );
     let secondary = compact_text(
         format!(
-            "price {} {} // grant {} // asset {} // catalog {} // chat {}",
+            "price {} {} // grant {} // asset {} // catalog {} // storefront {} // chat {}",
             offer.price_amount.as_deref().unwrap_or("-"),
             offer.price_currency.as_deref().unwrap_or("-"),
             offer
@@ -545,6 +550,11 @@ fn relay_offer_row_summary(offer: &RelayDatasetOfferProjection) -> (String, Stri
                 .unwrap_or_else(|| "unlinked".to_string()),
             offer
                 .classified_coordinate
+                .as_deref()
+                .map(short_id)
+                .unwrap_or_else(|| "none".to_string()),
+            offer
+                .storefront_product_coordinate
                 .as_deref()
                 .map(short_id)
                 .unwrap_or_else(|| "none".to_string()),

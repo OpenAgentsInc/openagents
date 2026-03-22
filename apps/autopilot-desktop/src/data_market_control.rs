@@ -6,6 +6,7 @@ use nostr::nip_ds::{
     AddressableEventCoordinate, DatasetListing, DatasetOffer, DraftDatasetListing,
     KIND_DATASET_LISTING, KIND_DATASET_OFFER,
 };
+use nostr::nip15::{KIND_PRODUCT, KIND_STALL, MarketplaceProduct, MarketplaceStall};
 use nostr::nip28::{KIND_CHANNEL_METADATA, parse_dataset_discussion_channel_link};
 use nostr::nip99::{ClassifiedListing, KIND_CLASSIFIED_LISTING};
 use nostr_client::{RelayConnection, RelayMessage};
@@ -50,6 +51,27 @@ struct ClassifiedOfferWrapperProjection {
     listing_coordinate: Option<String>,
     price_amount: Option<String>,
     price_currency: Option<String>,
+    created_at_seconds: u64,
+}
+
+#[derive(Clone, Debug)]
+struct StorefrontStallProjection {
+    coordinate: String,
+    relay_url: String,
+    name: String,
+    created_at_seconds: u64,
+}
+
+#[derive(Clone, Debug)]
+struct StorefrontProductWrapperProjection {
+    coordinate: String,
+    event_id: String,
+    relay_url: String,
+    stall_coordinate: String,
+    stall_name: Option<String>,
+    title: String,
+    price_amount: String,
+    price_currency: String,
     created_at_seconds: u64,
 }
 
@@ -175,7 +197,7 @@ async fn query_ds_events_from_relay(relay_url: &str) -> Result<Vec<(String, Even
             subscription_id.as_str(),
             vec![
                 serde_json::json!({
-                    "kinds": [30402, 30404, 30405, 30406],
+                    "kinds": [30017, 30018, 30402, 30404, 30405, 30406],
                     "limit": DS_CATALOG_LIMIT,
                 }),
                 serde_json::json!({
@@ -200,6 +222,8 @@ async fn query_ds_events_from_relay(relay_url: &str) -> Result<Vec<(String, Even
                 if matches!(
                     event.kind,
                     KIND_CHANNEL_METADATA
+                        | KIND_PRODUCT
+                        | KIND_STALL
                         | KIND_CLASSIFIED_LISTING
                         | KIND_DATASET_LISTING
                         | KIND_DATASET_OFFER
@@ -234,6 +258,11 @@ fn project_relay_catalog(
     let mut offers = BTreeMap::<String, RelayDatasetOfferProjection>::new();
     let mut listing_wrappers = BTreeMap::<String, ClassifiedListingWrapperProjection>::new();
     let mut offer_wrappers = BTreeMap::<String, ClassifiedOfferWrapperProjection>::new();
+    let mut stalls = BTreeMap::<String, StorefrontStallProjection>::new();
+    let mut listing_storefront_products =
+        BTreeMap::<String, StorefrontProductWrapperProjection>::new();
+    let mut offer_storefront_products =
+        BTreeMap::<String, StorefrontProductWrapperProjection>::new();
     let mut listing_discussions = BTreeMap::<String, DatasetDiscussionChannelProjection>::new();
     let mut offer_discussions = BTreeMap::<String, DatasetDiscussionChannelProjection>::new();
 
@@ -269,6 +298,13 @@ fn project_relay_catalog(
                         classified_event_id: None,
                         classified_price_amount: None,
                         classified_price_currency: None,
+                        storefront_stall_coordinate: None,
+                        storefront_stall_name: None,
+                        storefront_product_coordinate: None,
+                        storefront_product_event_id: None,
+                        storefront_product_title: None,
+                        storefront_product_price_amount: None,
+                        storefront_product_price_currency: None,
                         discussion_channel_id: None,
                         discussion_channel_name: None,
                         discussion_channel_relay_url: None,
@@ -311,6 +347,13 @@ fn project_relay_catalog(
                         classified_event_id: None,
                         classified_price_amount: None,
                         classified_price_currency: None,
+                        storefront_stall_coordinate: None,
+                        storefront_stall_name: None,
+                        storefront_product_coordinate: None,
+                        storefront_product_event_id: None,
+                        storefront_product_title: None,
+                        storefront_product_price_amount: None,
+                        storefront_product_price_currency: None,
                         discussion_channel_id: None,
                         discussion_channel_name: None,
                         discussion_channel_relay_url: None,
@@ -379,6 +422,13 @@ fn project_relay_catalog(
                         linked_grant_id,
                         classified_coordinate: None,
                         classified_event_id: None,
+                        storefront_stall_coordinate: None,
+                        storefront_stall_name: None,
+                        storefront_product_coordinate: None,
+                        storefront_product_event_id: None,
+                        storefront_product_title: None,
+                        storefront_product_price_amount: None,
+                        storefront_product_price_currency: None,
                         discussion_channel_id: None,
                         discussion_channel_name: None,
                         discussion_channel_relay_url: None,
@@ -388,6 +438,72 @@ fn project_relay_catalog(
                         .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
                     {
                         offers.insert(coordinate, projection);
+                    }
+                }
+            }
+            KIND_STALL => {
+                if let Ok(stall) = MarketplaceStall::from_event(&event)
+                    && let Ok(coordinate) = stall.coordinate(event.pubkey.clone())
+                {
+                    let stall_projection = StorefrontStallProjection {
+                        coordinate: coordinate.clone(),
+                        relay_url: relay_url.clone(),
+                        name: stall.name.clone(),
+                        created_at_seconds: event.created_at,
+                    };
+                    if stalls
+                        .get(coordinate.as_str())
+                        .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
+                    {
+                        stalls.insert(coordinate, stall_projection);
+                    }
+                }
+            }
+            KIND_PRODUCT => {
+                if let Ok(product) = MarketplaceProduct::from_event(&event)
+                    && let Ok(product_coordinate) = product.coordinate(event.pubkey.clone())
+                    && let Ok(stall_coordinate) = product.stall_coordinate(event.pubkey.clone())
+                {
+                    let wrapper = StorefrontProductWrapperProjection {
+                        coordinate: product_coordinate,
+                        event_id: event.id.clone(),
+                        relay_url: relay_url.clone(),
+                        stall_coordinate: stall_coordinate.clone(),
+                        stall_name: stalls
+                            .get(stall_coordinate.as_str())
+                            .map(|stall| stall.name.clone()),
+                        title: product.name.clone(),
+                        price_amount: marketplace_price_string(product.price),
+                        price_currency: product.currency.clone(),
+                        created_at_seconds: event.created_at,
+                    };
+                    for listing_coordinate in product
+                        .address_refs
+                        .iter()
+                        .filter_map(|value| AddressableEventCoordinate::parse(value).ok())
+                        .filter(|coordinate| coordinate.kind == KIND_DATASET_LISTING)
+                        .map(|coordinate| coordinate.to_string())
+                    {
+                        if listing_storefront_products
+                            .get(listing_coordinate.as_str())
+                            .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
+                        {
+                            listing_storefront_products.insert(listing_coordinate, wrapper.clone());
+                        }
+                    }
+                    for offer_coordinate in product
+                        .address_refs
+                        .iter()
+                        .filter_map(|value| AddressableEventCoordinate::parse(value).ok())
+                        .filter(|coordinate| coordinate.kind == KIND_DATASET_OFFER)
+                        .map(|coordinate| coordinate.to_string())
+                    {
+                        if offer_storefront_products
+                            .get(offer_coordinate.as_str())
+                            .is_none_or(|existing| existing.created_at_seconds <= event.created_at)
+                        {
+                            offer_storefront_products.insert(offer_coordinate, wrapper.clone());
+                        }
                     }
                 }
             }
@@ -527,6 +643,13 @@ fn project_relay_catalog(
                     classified_event_id: Some(wrapper.event_id),
                     classified_price_amount: wrapper.price_amount,
                     classified_price_currency: wrapper.price_currency,
+                    storefront_stall_coordinate: None,
+                    storefront_stall_name: None,
+                    storefront_product_coordinate: None,
+                    storefront_product_event_id: None,
+                    storefront_product_title: None,
+                    storefront_product_price_amount: None,
+                    storefront_product_price_currency: None,
                     discussion_channel_id: None,
                     discussion_channel_name: None,
                     discussion_channel_relay_url: None,
@@ -603,6 +726,152 @@ fn project_relay_catalog(
                     linked_grant_id,
                     classified_coordinate: Some(wrapper.coordinate),
                     classified_event_id: Some(wrapper.event_id),
+                    storefront_stall_coordinate: None,
+                    storefront_stall_name: None,
+                    storefront_product_coordinate: None,
+                    storefront_product_event_id: None,
+                    storefront_product_title: None,
+                    storefront_product_price_amount: None,
+                    storefront_product_price_currency: None,
+                    discussion_channel_id: None,
+                    discussion_channel_name: None,
+                    discussion_channel_relay_url: None,
+                });
+            }
+        }
+    }
+    for (listing_coordinate, wrapper) in listing_storefront_products {
+        let linked_asset_id =
+            linked_asset_id_for_listing_coordinate(assets, listing_coordinate.as_str());
+        let stall_name = stalls
+            .get(wrapper.stall_coordinate.as_str())
+            .map(|stall| stall.name.clone())
+            .or(wrapper.stall_name.clone());
+        match listings.entry(listing_coordinate.clone()) {
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let projection = entry.get_mut();
+                projection.storefront_stall_coordinate = Some(wrapper.stall_coordinate.clone());
+                projection.storefront_stall_name = stall_name.clone();
+                projection.storefront_product_coordinate = Some(wrapper.coordinate.clone());
+                projection.storefront_product_event_id = Some(wrapper.event_id.clone());
+                projection.storefront_product_title = Some(wrapper.title.clone());
+                projection.storefront_product_price_amount = Some(wrapper.price_amount.clone());
+                projection.storefront_product_price_currency = Some(wrapper.price_currency.clone());
+                if projection.linked_asset_id.is_none() {
+                    projection.linked_asset_id = linked_asset_id;
+                }
+            }
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                let publisher_pubkey =
+                    AddressableEventCoordinate::parse(listing_coordinate.as_str())
+                        .map(|coordinate| coordinate.pubkey)
+                        .unwrap_or_default();
+                entry.insert(RelayDatasetListingProjection {
+                    coordinate: listing_coordinate,
+                    publisher_pubkey,
+                    relay_url: Some(wrapper.relay_url),
+                    title: wrapper.title.clone(),
+                    summary: Some("Storefront product wrapper".to_string()),
+                    dataset_kind: None,
+                    access: Some("storefront".to_string()),
+                    delivery_modes: Vec::new(),
+                    created_at_seconds: wrapper.created_at_seconds,
+                    draft: false,
+                    linked_asset_id,
+                    classified_coordinate: None,
+                    classified_event_id: None,
+                    classified_price_amount: None,
+                    classified_price_currency: None,
+                    storefront_stall_coordinate: Some(wrapper.stall_coordinate),
+                    storefront_stall_name: stall_name,
+                    storefront_product_coordinate: Some(wrapper.coordinate),
+                    storefront_product_event_id: Some(wrapper.event_id),
+                    storefront_product_title: Some(wrapper.title),
+                    storefront_product_price_amount: Some(wrapper.price_amount),
+                    storefront_product_price_currency: Some(wrapper.price_currency),
+                    discussion_channel_id: None,
+                    discussion_channel_name: None,
+                    discussion_channel_relay_url: None,
+                });
+            }
+        }
+    }
+    for (offer_coordinate, wrapper) in offer_storefront_products {
+        let linked_grant_id =
+            linked_grant_id_for_offer_coordinate(grants, offer_coordinate.as_str());
+        let listing_coordinate = linked_grant_id
+            .as_deref()
+            .and_then(|grant_id| {
+                grants
+                    .iter()
+                    .find(|grant| grant.grant_id == grant_id)
+                    .and_then(|grant| {
+                        assets.iter().find_map(|asset| {
+                            (asset.asset_id == grant.asset_id)
+                                .then(|| {
+                                    asset
+                                        .nostr_publications
+                                        .ds_listing
+                                        .as_ref()
+                                        .and_then(|reference| reference.coordinate.clone())
+                                })
+                                .flatten()
+                        })
+                    })
+            })
+            .unwrap_or_else(|| "unknown".to_string());
+        let linked_asset_id =
+            linked_asset_id_for_offer_coordinate(grants, offer_coordinate.as_str()).or_else(|| {
+                linked_asset_id_for_listing_coordinate(assets, listing_coordinate.as_str())
+            });
+        let stall_name = stalls
+            .get(wrapper.stall_coordinate.as_str())
+            .map(|stall| stall.name.clone())
+            .or(wrapper.stall_name.clone());
+        match offers.entry(offer_coordinate.clone()) {
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let projection = entry.get_mut();
+                projection.storefront_stall_coordinate = Some(wrapper.stall_coordinate.clone());
+                projection.storefront_stall_name = stall_name.clone();
+                projection.storefront_product_coordinate = Some(wrapper.coordinate.clone());
+                projection.storefront_product_event_id = Some(wrapper.event_id.clone());
+                projection.storefront_product_title = Some(wrapper.title.clone());
+                projection.storefront_product_price_amount = Some(wrapper.price_amount.clone());
+                projection.storefront_product_price_currency = Some(wrapper.price_currency.clone());
+                if projection.linked_grant_id.is_none() {
+                    projection.linked_grant_id = linked_grant_id.clone();
+                }
+                if projection.linked_asset_id.is_none() {
+                    projection.linked_asset_id = linked_asset_id.clone();
+                }
+            }
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                let publisher_pubkey = AddressableEventCoordinate::parse(offer_coordinate.as_str())
+                    .map(|coordinate| coordinate.pubkey)
+                    .unwrap_or_default();
+                entry.insert(RelayDatasetOfferProjection {
+                    coordinate: offer_coordinate,
+                    listing_coordinate,
+                    publisher_pubkey,
+                    relay_url: Some(wrapper.relay_url),
+                    status: "active".to_string(),
+                    policy: Some("storefront".to_string()),
+                    delivery_modes: Vec::new(),
+                    targeted_buyer_pubkeys: Vec::new(),
+                    price_amount: Some(wrapper.price_amount.clone()),
+                    price_currency: Some(wrapper.price_currency.clone()),
+                    created_at_seconds: wrapper.created_at_seconds,
+                    linked_asset_id,
+                    linked_grant_id,
+                    classified_coordinate: None,
+                    classified_event_id: None,
+                    storefront_stall_coordinate: Some(wrapper.stall_coordinate),
+                    storefront_stall_name: stall_name,
+                    storefront_product_coordinate: Some(wrapper.coordinate),
+                    storefront_product_event_id: Some(wrapper.event_id),
+                    storefront_product_title: Some(wrapper.title),
+                    storefront_product_price_amount: Some(wrapper.price_amount),
+                    storefront_product_price_currency: Some(wrapper.price_currency),
                     discussion_channel_id: None,
                     discussion_channel_name: None,
                     discussion_channel_relay_url: None,
@@ -628,6 +897,21 @@ fn project_relay_catalog(
     RelayCatalogSnapshot {
         listings: listings.into_values().collect(),
         offers: offers.into_values().collect(),
+    }
+}
+
+fn marketplace_price_string(value: f64) -> String {
+    let mut rendered = format!("{value:.8}");
+    while rendered.contains('.') && rendered.ends_with('0') {
+        rendered.pop();
+    }
+    if rendered.ends_with('.') {
+        rendered.pop();
+    }
+    if rendered.is_empty() {
+        "0".to_string()
+    } else {
+        rendered
     }
 }
 
@@ -682,6 +966,7 @@ mod tests {
         AddressableEventCoordinate, AddressableEventReference, DatasetListing, DatasetOffer,
         PaymentMethod,
     };
+    use nostr::nip15::{MarketplaceProduct, MarketplaceStall};
     use nostr::nip99::{ClassifiedListing, ListingStatus, Price};
     use openagents_kernel_core::data::{
         AccessGrant, AccessGrantNostrPublications, AccessGrantStatus, DataAsset,
@@ -933,6 +1218,147 @@ mod tests {
             Some("grant.data.offer.001")
         );
         assert_eq!(snapshot.offers[0].listing_coordinate, listing_coordinate);
+    }
+
+    #[test]
+    fn relay_catalog_projection_surfaces_nip15_storefront_wrappers_on_ds_coordinates() {
+        let identity = nostr::regenerate_identity().expect("identity");
+        let listing_coordinate = format!(
+            "30404:{}:data_asset.provider.alpha.bundle",
+            identity.public_key_hex
+        );
+        let offer_coordinate = format!("30406:{}:grant.data.offer.001", identity.public_key_hex);
+        let asset = DataAsset {
+            asset_id: "data_asset.provider.alpha.bundle".to_string(),
+            provider_id: identity.public_key_hex.clone(),
+            asset_kind: "conversation_bundle".to_string(),
+            title: "Seller bundle".to_string(),
+            description: Some("Storefront wrapper only.".to_string()),
+            content_digest: None,
+            provenance_ref: None,
+            default_policy: Some(PermissionPolicy::default()),
+            price_hint: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(42),
+            }),
+            created_at_ms: 1_762_700_000_000,
+            status: Default::default(),
+            nostr_publications: DataAssetNostrPublications {
+                ds_listing: Some(NostrPublicationRef {
+                    coordinate: Some(listing_coordinate.clone()),
+                    event_id: None,
+                    relay_url: None,
+                }),
+                ds_draft_listing: None,
+            },
+            metadata: serde_json::json!({}),
+        };
+        let grant = AccessGrant {
+            grant_id: "grant.data.offer.001".to_string(),
+            asset_id: asset.asset_id.clone(),
+            provider_id: identity.public_key_hex.clone(),
+            consumer_id: None,
+            permission_policy: PermissionPolicy::default(),
+            offer_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(42),
+            }),
+            warranty_window_ms: None,
+            created_at_ms: 1_762_700_010_000,
+            expires_at_ms: 1_762_786_410_000,
+            accepted_at_ms: None,
+            status: AccessGrantStatus::Offered,
+            nostr_publications: AccessGrantNostrPublications {
+                ds_offer: Some(NostrPublicationRef {
+                    coordinate: Some(offer_coordinate.clone()),
+                    event_id: None,
+                    relay_url: None,
+                }),
+                ds_access_request: None,
+                ds_access_result: None,
+            },
+            metadata: serde_json::json!({}),
+        };
+
+        let stall = MarketplaceStall::new("datasets.sat", "OpenAgents datasets (SAT)", "SAT")
+            .with_description("Storefront for DS datasets.");
+        let stall_coordinate = stall
+            .coordinate(identity.public_key_hex.clone())
+            .expect("stall coordinate");
+        let stall_event = sign_template(
+            &identity,
+            &stall
+                .to_event_template(1_762_700_015)
+                .expect("stall template"),
+        );
+
+        let mut product = MarketplaceProduct::new(
+            "storefront.data_asset.provider.alpha.bundle",
+            "datasets.sat",
+            "Seller bundle",
+            "SAT",
+            42.0,
+        )
+        .expect("product");
+        product.add_tag("dataset");
+        product.add_tag("nip-ds");
+        product.add_address_ref(listing_coordinate.clone());
+        product.add_address_ref(offer_coordinate.clone());
+        let product_coordinate = product
+            .coordinate(identity.public_key_hex.clone())
+            .expect("product coordinate");
+        let product_event = sign_template(
+            &identity,
+            &product
+                .to_event_template(1_762_700_020)
+                .expect("product template"),
+        );
+
+        let snapshot = project_relay_catalog(
+            vec![
+                ("wss://relay.example".to_string(), stall_event),
+                ("wss://relay.example".to_string(), product_event),
+            ],
+            &[asset],
+            &[grant],
+        );
+
+        assert_eq!(snapshot.listings.len(), 1);
+        assert_eq!(snapshot.offers.len(), 1);
+        assert_eq!(
+            snapshot.listings[0].storefront_stall_coordinate.as_deref(),
+            Some(stall_coordinate.as_str())
+        );
+        assert_eq!(
+            snapshot.listings[0].storefront_stall_name.as_deref(),
+            Some("OpenAgents datasets (SAT)")
+        );
+        assert_eq!(
+            snapshot.listings[0]
+                .storefront_product_coordinate
+                .as_deref(),
+            Some(product_coordinate.as_str())
+        );
+        assert_eq!(
+            snapshot.listings[0]
+                .storefront_product_price_amount
+                .as_deref(),
+            Some("42")
+        );
+        assert_eq!(
+            snapshot.offers[0].storefront_product_coordinate.as_deref(),
+            Some(product_coordinate.as_str())
+        );
+        assert_eq!(
+            snapshot.offers[0].storefront_product_title.as_deref(),
+            Some("Seller bundle")
+        );
+        assert_eq!(
+            snapshot.offers[0]
+                .storefront_product_price_currency
+                .as_deref(),
+            Some("SAT")
+        );
     }
 
     #[test]
