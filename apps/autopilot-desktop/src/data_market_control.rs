@@ -299,10 +299,19 @@ pub(crate) fn refresh_data_market_snapshot(state: &mut RenderState) -> bool {
         relay_catalog.settlement_matches,
         refreshed_at_ms,
     );
-    if let Some(error) = authority_error {
+    let relay_snapshot_available = state.data_market.has_relay_snapshot();
+    if let Some(error) = relay_error {
         state.data_market.last_error = Some(error);
-    } else if let Some(error) = relay_error {
-        state.data_market.last_error = Some(error);
+    } else if !relay_snapshot_available {
+        if let Some(error) = authority_error {
+            state.data_market.last_error = Some(error);
+        }
+    } else if let Some(error) = authority_error {
+        if let Some(last_action) = state.data_market.last_action.clone() {
+            state.data_market.last_action = Some(format!(
+                "{last_action} // authority bridge unavailable: {error}"
+            ));
+        }
     }
     state.data_buyer.sync_selection(&state.data_market);
     true

@@ -4,8 +4,10 @@ use serde_json::Value;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 use crate::app_state::{
-    DataBuyerPaneState, DataMarketPaneState, RelayDatasetListingProjection,
-    RelayDatasetOfferProjection,
+    DataBuyerPaneState, DataMarketPaneState, RelayDatasetAccessContractProjection,
+    RelayDatasetAccessRequestProjection, RelayDatasetAccessResultProjection,
+    RelayDatasetListingProjection, RelayDatasetOfferProjection,
+    RelayDatasetSettlementMatchProjection,
 };
 use crate::pane_renderer::{paint_action_button, paint_label_line, paint_source_badge};
 use crate::pane_system::{
@@ -50,7 +52,7 @@ pub fn paint(
     );
 
     paint.scene.draw_text(paint.text.layout(
-        "Buyer-side DS discovery surface. This pane selects a relay-visible dataset listing or linked authority asset and publishes a targeted NIP-90 data-access request from that DS identity.",
+        "Buyer-side DS discovery surface. This pane selects a relay-visible dataset listing, publishes a targeted DS-DVM request, and tracks relay contracts, results, and wallet settlement.",
         Point::new(
             content_bounds.origin.x + PADDING,
             content_bounds.origin.y + 42.0,
@@ -150,6 +152,10 @@ pub fn paint(
                 .iter()
                 .find(|request| request.request_id == request_id)
         });
+    let relay_request = pane_state.latest_relay_request(market_state);
+    let relay_contract = pane_state.latest_relay_access_contract(market_state);
+    let relay_result = pane_state.latest_relay_result(market_state);
+    let relay_settlement = pane_state.latest_wallet_settlement(market_state);
 
     paint_asset_card(
         asset_bounds,
@@ -165,8 +171,10 @@ pub fn paint(
         truth_bounds,
         pane_state,
         latest_request,
-        selected_grant,
-        selected_revocation,
+        relay_request,
+        relay_contract,
+        relay_result,
+        relay_settlement,
         paint,
     );
 }
@@ -182,13 +190,13 @@ fn paint_asset_card(
 ) {
     paint_card(
         bounds,
-        "Selected Listing",
-        "Relay catalog plus linked authority truth",
+        "Selected Dataset",
+        "Relay listing with optional compatibility bridge metadata",
         paint,
     );
     if listing.is_none() && asset.is_none() {
         paint.scene.draw_text(paint.text.layout(
-            "No relay listing or active asset is selected yet. Refresh the market snapshot or publish a seller listing first.",
+            "No relay listing is selected yet. Refresh the relay catalog or publish a seller listing first.",
             Point::new(bounds.origin.x + 10.0, bounds.origin.y + CARD_HEADER_HEIGHT + 12.0),
             11.0,
             theme::text::MUTED,
@@ -257,7 +265,7 @@ fn paint_asset_card(
         ("title", title),
         ("listing", listing_ref),
         ("provider", provider),
-        ("linked_asset", linked_asset),
+        ("bridge_asset", linked_asset),
         ("pricing", compact_text(pricing.as_str(), 44)),
         (
             "market",
@@ -322,7 +330,7 @@ fn paint_asset_card(
         );
     }
     if let Some(grant) = grant {
-        row_y = paint_row(bounds, row_y, "offer_grant", grant.grant_id.as_str(), paint);
+        row_y = paint_row(bounds, row_y, "bridge_grant", grant.grant_id.as_str(), paint);
         row_y = paint_row(
             bounds,
             row_y,
@@ -391,7 +399,7 @@ fn paint_asset_card(
     let _ = paint_row(
         bounds,
         row_y,
-        "revocation",
+        "bridge_revoke",
         revocation_label.as_str(),
         paint,
     );
@@ -405,12 +413,12 @@ fn paint_draft_card(
     paint_card(
         bounds,
         "Request Draft",
-        "Derived from selected asset + offer terms",
+        "Derived from the selected relay listing and offer terms",
         paint,
     );
     let Some(draft) = draft else {
         paint.scene.draw_text(paint.text.layout(
-            "No request draft is available because there is no relay listing or active asset selection.",
+            "No request draft is available because there is no relay listing selection.",
             Point::new(
                 bounds.origin.x + 10.0,
                 bounds.origin.y + CARD_HEADER_HEIGHT + 12.0,
@@ -425,7 +433,7 @@ fn paint_draft_card(
     for (label, value) in [
         ("provider", draft.provider_id.as_str().to_string()),
         ("asset_ref", draft.asset_ref.as_str().to_string()),
-        ("asset_id", draft.asset_id.as_str().to_string()),
+        ("bridge_asset", draft.asset_id.as_str().to_string()),
         (
             "listing",
             draft
@@ -434,7 +442,7 @@ fn paint_draft_card(
                 .unwrap_or_else(|| "none".to_string()),
         ),
         (
-            "grant_id",
+            "bridge_grant",
             draft
                 .offer_grant_id
                 .clone()
@@ -464,14 +472,16 @@ fn paint_truth_card(
     bounds: Bounds,
     pane_state: &DataBuyerPaneState,
     latest_request: Option<&SubmittedNetworkRequest>,
-    grant: Option<&AccessGrant>,
-    revocation: Option<&RevocationReceipt>,
+    relay_request: Option<&RelayDatasetAccessRequestProjection>,
+    relay_contract: Option<&RelayDatasetAccessContractProjection>,
+    relay_result: Option<&RelayDatasetAccessResultProjection>,
+    relay_settlement: Option<&RelayDatasetSettlementMatchProjection>,
     paint: &mut PaintContext,
 ) {
     paint_card(
         bounds,
         "Buyer Truth",
-        "Published request plus current grant/revocation posture",
+        "Published request plus relay contract, result, and wallet posture",
         paint,
     );
     let mut row_y = bounds.origin.y + CARD_HEADER_HEIGHT + 12.0;
@@ -494,7 +504,7 @@ fn paint_truth_card(
     row_y = paint_row(
         bounds,
         row_y,
-        "request_status",
+        "local_status",
         latest_request
             .map(|request| request.status.label())
             .unwrap_or("unpublished"),
@@ -512,46 +522,67 @@ fn paint_truth_card(
     row_y = paint_row(
         bounds,
         row_y,
+        "relay_request",
+        relay_request
+            .map(|request| request.event_id.as_str())
+            .unwrap_or("none"),
+        paint,
+    );
+    row_y = paint_row(
+        bounds,
+        row_y,
+        "contract",
+        relay_contract
+            .map(|contract| contract.coordinate.as_str())
+            .unwrap_or("none"),
+        paint,
+    );
+    row_y = paint_row(
+        bounds,
+        row_y,
+        "contract_status",
+        relay_contract
+            .map(|contract| contract.status.as_str())
+            .unwrap_or("none"),
+        paint,
+    );
+    row_y = paint_row(
+        bounds,
+        row_y,
         "result_event",
-        latest_request
-            .and_then(|request| request.last_result_event_id.as_deref())
+        relay_result
+            .map(|result| result.event_id.as_str())
+            .or_else(|| latest_request.and_then(|request| request.last_result_event_id.as_deref()))
             .unwrap_or("none"),
         paint,
     );
     row_y = paint_row(
         bounds,
         row_y,
-        "payment_pointer",
-        latest_request
-            .and_then(|request| request.last_payment_pointer.as_deref())
+        "payment_hash",
+        relay_contract
+            .and_then(|contract| contract.payment_hash.as_deref())
+            .or_else(|| relay_result.and_then(|result| result.payment_hash.as_deref()))
             .unwrap_or("none"),
         paint,
     );
     row_y = paint_row(
         bounds,
         row_y,
-        "grant_duration",
-        grant
-            .map(grant_duration_label)
-            .unwrap_or_else(|| "unknown".to_string())
-            .as_str(),
+        "wallet_settle",
+        relay_settlement
+            .map(|settlement| settlement.status.as_str())
+            .unwrap_or("none"),
         paint,
     );
-    let revocation_label = revocation
-        .map(|revocation| {
-            format!(
-                "{} // reason={} // recorded={}",
-                revocation.status.label(),
-                revocation.reason_code,
-                format_epoch_ms(Some(revocation.created_at_ms))
-            )
-        })
-        .unwrap_or_else(|| "none".to_string());
     let _ = paint_row(
         bounds,
         row_y,
-        "revocation_posture",
-        revocation_label.as_str(),
+        "delivery_digest",
+        relay_result
+            .and_then(|result| result.delivery_digest.as_deref())
+            .or_else(|| relay_contract.and_then(|contract| contract.delivery_digest.as_deref()))
+            .unwrap_or("none"),
         paint,
     );
 }

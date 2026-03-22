@@ -1477,28 +1477,29 @@ fn nip90_sent_payments_inactive_preview_state(
 fn data_market_inactive_preview_state(
     data_market: &DataMarketPaneState,
 ) -> InactivePanePreviewState {
-    let summary = if data_market.has_snapshot() {
+    let summary = if data_market.has_relay_snapshot() {
         format!(
-            "{} assets // {} grants // {} deliveries",
-            data_market.assets.len(),
-            data_market.grants.len(),
-            data_market.deliveries.len()
+            "{} listings // {} offers // {} contracts",
+            data_market.relay_listings.len(),
+            data_market.relay_offers.len(),
+            data_market.relay_access_contracts.len()
         )
     } else {
-        "No Data Market snapshot loaded yet".to_string()
+        "No DS relay catalog loaded yet".to_string()
     };
     let refreshed = data_market
         .last_refreshed_at_ms
         .map(|value| value.to_string())
         .unwrap_or_else(|| "never".to_string());
     InactivePanePreviewState {
-        source_badge: "inactive kernel.data".to_string(),
+        source_badge: "inactive relay.ds_market".to_string(),
         load_state: data_market.load_state,
         summary,
         last_action: data_market.last_action.clone(),
         last_error: data_market.last_error.clone(),
         detail_lines: vec![
-            format!("revocations {}", data_market.revocations.len()),
+            format!("results {}", data_market.relay_results.len()),
+            format!("wallet {}", data_market.relay_settlement_matches.len()),
             format!("refresh_ms {}", refreshed),
             format!("state {}", data_market.load_state.label()),
         ],
@@ -1509,12 +1510,12 @@ fn data_buyer_inactive_preview_state(
     data_buyer: &DataBuyerPaneState,
     data_market: &DataMarketPaneState,
 ) -> InactivePanePreviewState {
-    let summary = if let Some(asset) = data_buyer.selected_asset(data_market) {
-        format!("targeted {} // {}", asset.provider_id, asset.title)
-    } else if data_market.has_snapshot() {
-        "Market snapshot loaded but no active asset is selected".to_string()
+    let summary = if let Some(listing) = data_buyer.selected_listing(data_market) {
+        format!("relay {} // {}", listing.publisher_pubkey, listing.title)
+    } else if data_market.has_relay_snapshot() {
+        "Relay catalog loaded but no dataset listing is selected".to_string()
     } else {
-        "No buyer-targetable data asset loaded yet".to_string()
+        "No buyer-targetable relay dataset listing loaded yet".to_string()
     };
     InactivePanePreviewState {
         source_badge: "inactive buyer.data_access".to_string(),
