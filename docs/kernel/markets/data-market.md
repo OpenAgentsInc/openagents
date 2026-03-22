@@ -22,7 +22,7 @@ smuggled through opaque prompt state.
 
 | Dimension | Status | Notes |
 | --- | --- | --- |
-| Product surface | seller authoring + read surface + narrow buyer request surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; the panes now also surface package metadata, exact preview state, request relay/kind, and fulfillment posture so shell-first/headless publication remains visually legible; there is now also a narrow `Data Buyer` pane that selects a visible asset, shows bundle/posture context, and publishes a targeted NIP-90 data-access request, but broader buyer transaction UX is still incomplete |
+| Product surface | seller authoring + read surface + narrow buyer request surface | there is now a dedicated read-only data-market pane in the desktop app plus a `Data Seller` conversational authoring lane with a structured local draft, seller-specific Codex session wiring, auto-provisioned first-party seller skills, typed `openagents.data_market.*` tools, seller-side targeted-request intake/evaluation, seller `payment-required` issuance, seller delivery-bundle/result publication, and explicit seller revoke/expire controls with `RevocationReceipt` read-back; the panes now also surface package metadata, exact preview state, request relay/kind, and fulfillment posture so shell-first/headless publication remains visually legible; there is now also a narrow `Data Buyer` pane that selects a visible asset, shows bundle/posture context, and publishes a targeted DS-DVM fulfillment request, but broader buyer transaction UX is still incomplete |
 | Kernel authority | `implemented` starter slice | authority and authenticated read-model flows exist in `openagents-kernel-core` and `apps/nexus-control` |
 | Wire/proto | `implemented` starter slice | there is now a checked-in `openagents.data.v1` package plus proto-backed authority routes and a combined `/v1/kernel/data/snapshot` read model |
 | Local prototype | `implemented` | richer provenance, packaging, and private-data economics live mostly in docs and adjacent desktop concepts |
@@ -50,11 +50,11 @@ smuggled through opaque prompt state.
 - parse incoming OpenAgents data-vending requests on the desktop relay lane as `openagents.data.access` demand instead of treating them as malformed compute jobs
 - advertise the current data-vending request kind and coarse asset-family/delivery metadata on the provider NIP-89 handler when a seller profile is present
 - surface incoming targeted data-access requests in the seller pane and seller status tools with explicit evaluation outcomes such as `no_published_asset`, `grant_required`, `scope_mismatch`, and `ready_for_payment_quote`
-- generate seller-side Lightning invoices for matched targeted data requests, publish NIP-90 `payment-required` feedback, and track the request through `invoice_requested`, `publishing_feedback`, `awaiting_payment`, and `paid`
-- prepare seller-side delivery drafts for paid targeted requests, accept the matched grant if needed, issue authoritative `DeliveryBundle` objects, and publish linked NIP-90 result events from the same seller flow
+- generate seller-side Lightning invoices for matched targeted DS-DVM data requests, publish NIP-90 `payment-required` feedback, and track the request through `invoice_requested`, `publishing_feedback`, `awaiting_payment`, and `paid`
+- prepare seller-side delivery drafts for paid targeted DS-DVM requests, accept the matched grant if needed, issue authoritative `DeliveryBundle` objects, and publish linked DS-DVM result events from the same seller flow
 - let the seller revoke or expire access from the same flow, read the resulting `RevocationReceipt` back from kernel authority, and immediately reflect the terminal grant/delivery state into both panes
 - record recent asset/grant/payment/delivery/revocation lifecycle entries in the read-only `Data Market` pane so operator-facing activity includes policy, counterparty, and receipt context
-- open a dedicated `Data Buyer` desktop pane that derives a request draft from the visible market snapshot, selects an active asset/default offer, and publishes a targeted NIP-90 data-access request without widening into public discovery
+- open a dedicated `Data Buyer` desktop pane that derives a request draft from the visible market snapshot, selects an active asset/default offer, and publishes a targeted DS-DVM data-access request without widening into public discovery
 - show buyer-side bundle and market-posture context for the currently selected asset before request publication
 - expose a checked-in `openagents.data.v1` proto package and use it for data-market authority mutation/read envelopes
 - expose a combined `GET /v1/kernel/data/snapshot` read model that lets the desktop refresh the market view in one call instead of stitching four bare lists together
@@ -75,7 +75,7 @@ smuggled through opaque prompt state.
 - run `scripts/autopilot/headless-data-market-public-e2e.sh` as an operator probe against live public relays
 - run `scripts/autopilot/verify-data-market-cli-headless.sh` to mechanically verify the publish/consume path plus the critical lifecycle checks
 - allow both seller request intake and buyer result tracking to run in a relay-only online posture without requiring a compute-ready local inference runtime
-- normalize targeted buyer/seller identity matching across `npub` and raw hex Nostr pubkeys for the current NIP-90 targeted request/result flow
+- normalize targeted buyer/seller identity matching across `npub` and raw hex Nostr pubkeys for the current DS-DVM targeted request/result flow
 - import a targeted request or buyer response back from configured relays through `autopilotctl data-market seller-import-request` and `autopilotctl data-market buyer-import-response`
 
 The starter authority slice is real in:
@@ -167,6 +167,12 @@ The current DS-first verification posture is:
   external and not a deterministic launch gate
 - the explicit relay import commands still exist as operator recovery tools if
   a relay regression needs to be worked around
+- normal operator headless runs keep Codex enabled so
+  `autopilotctl data-market seller-prompt ...` still drives the conversational
+  seller lane
+- repo-owned smoke and E2E harnesses set `OPENAGENTS_DISABLE_CODEX=true`
+  because they use the typed DS-first CLI path rather than the conversational
+  seller lane
 
 The freshest launch-path audit is:
 

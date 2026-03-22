@@ -1,11 +1,11 @@
 ---
 name: autopilot-data-market-control
-description: Typed OpenAgents Data Market tool contract for seller publication and market read-back.
+description: Typed OpenAgents DS-first Data Market tool contract for seller publication and market read-back.
 metadata:
   oa:
     project: openagents
     identifier: autopilot-data-market-control
-    version: "0.1.0"
+    version: "0.2.0"
     expires_at_unix: 1798761600
     capabilities:
       - codex:tool-call
@@ -39,10 +39,13 @@ Use the typed OpenAgents data-market tools in the normal order:
 3. Use preview responses to explain blockers before asking for more detail.
 4. Publish only after the pane records explicit confirmation state.
 5. After any mutation, fetch snapshot/read-back truth before summarizing outcome.
+6. Treat DS listing and DS offer publication refs as the public Nostr-facing
+   publication truth once authority read-back records them.
+7. Treat DS-DVM request/result traffic as fulfillment state, not as the
+   catalog/publication layer.
 
 ## Forbidden Shortcuts
 
 - Do not mark a listing or grant as published based on prose alone.
 - Do not bypass typed data-market tools with generic pane-input poking for core publication flows.
 - Do not present local preview payloads as canonical authority objects.
-

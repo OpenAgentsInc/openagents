@@ -5,6 +5,16 @@ same seller logic through `autopilotctl`.
 
 ## 1. Start or target a runtime
 
+For real publish, first start local `nexus-control`, mint a desktop session,
+and export:
+
+- `OA_CONTROL_BASE_URL`
+- `OA_CONTROL_BEARER_TOKEN`
+
+Without that local authority session you can still preview drafts, but you do
+not have the authority path required for real asset, grant, delivery, or
+revocation truth.
+
 If no normal desktop session is serving desktop-control, start the no-window
 host:
 
@@ -18,6 +28,11 @@ Use the same manifest path for all later commands:
 ```bash
 MANIFEST=/tmp/openagents-data-market-desktop-control.json
 ```
+
+Leave Codex enabled if you plan to use `autopilotctl data-market seller-prompt`
+against this runtime. The repo-owned smoke and E2E harnesses only set
+`OPENAGENTS_DISABLE_CODEX=true` because they use the typed DS-first CLI flow
+directly.
 
 ## 2. Package local material
 
@@ -104,3 +119,12 @@ After every mutation, read back with at least one of:
 - Read back after every mutation.
 - Do not claim a listing, grant, delivery, or revocation exists until the
   returned state shows the canonical id or receipt.
+
+## Verification posture
+
+- Portable local gate:
+  `scripts/autopilot/verify-data-market-cli-headless.sh`
+- Live public-relay probe:
+  `scripts/autopilot/headless-data-market-public-e2e.sh`
+- Treat the local verifier as the deterministic launch gate and the public
+  harness as an operator probe.
