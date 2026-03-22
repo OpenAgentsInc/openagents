@@ -51,6 +51,23 @@ fn persist_relay_catalog(snapshot: &RelayCatalogSnapshot) -> Result<(), String> 
     persist_relay_catalog_to_path(snapshot, &data_market_relay_replica_path())
 }
 
+fn relay_catalog_snapshot_from_state(state: &RenderState) -> RelayCatalogSnapshot {
+    RelayCatalogSnapshot {
+        listings: state.data_market.relay_listings.clone(),
+        offers: state.data_market.relay_offers.clone(),
+        requests: state.data_market.relay_requests.clone(),
+        access_contracts: state.data_market.relay_access_contracts.clone(),
+        results: state.data_market.relay_results.clone(),
+        settlement_matches: state.data_market.relay_settlement_matches.clone(),
+    }
+}
+
+pub(crate) fn persist_data_market_relay_replica_from_state(
+    state: &RenderState,
+) -> Result<(), String> {
+    persist_relay_catalog(&relay_catalog_snapshot_from_state(state))
+}
+
 fn persist_relay_catalog_to_path(
     snapshot: &RelayCatalogSnapshot,
     path: &Path,

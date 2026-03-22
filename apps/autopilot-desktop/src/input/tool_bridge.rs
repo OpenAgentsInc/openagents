@@ -1642,6 +1642,7 @@ fn resolve_data_market_delivery<'a>(
 pub(crate) fn execute_data_market_seller_status_tool(
     state: &mut RenderState,
 ) -> ToolBridgeResultEnvelope {
+    crate::data_seller_control::hydrate_data_seller_inventory_from_relay_replica(state);
     ToolBridgeResultEnvelope::ok(
         "OA-DATA-MARKET-SELLER-STATUS",
         "Loaded Data Seller status snapshot.",
@@ -1938,16 +1939,15 @@ pub(crate) fn execute_data_market_publish_asset_tool(
         );
     }
     crate::data_seller_control::publish_data_seller_asset(state);
-    if state.data_seller.last_error.is_none()
-        && state
-            .data_seller
-            .active_draft
-            .last_published_asset_id
-            .is_some()
+    if state
+        .data_seller
+        .active_draft
+        .last_published_asset_id
+        .is_some()
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-ASSET-PUBLISHED",
-            "Published the DataAsset and read it back from kernel authority.",
+            "Published the DataAsset to DS relays and updated seller inventory.",
             data_seller_tool_snapshot(state),
         )
     } else {
@@ -2056,16 +2056,15 @@ pub(crate) fn execute_data_market_publish_grant_tool(
     }
     state.data_seller.confirm_grant_preview();
     crate::data_seller_control::publish_data_seller_grant(state);
-    if state.data_seller.last_error.is_none()
-        && state
-            .data_seller
-            .active_draft
-            .last_published_grant_id
-            .is_some()
+    if state
+        .data_seller
+        .active_draft
+        .last_published_grant_id
+        .is_some()
     {
         ToolBridgeResultEnvelope::ok(
             "OA-DATA-MARKET-GRANT-PUBLISHED",
-            "Published the AccessGrant and read it back from kernel authority.",
+            "Published the AccessGrant to DS relays and updated seller inventory.",
             data_seller_tool_snapshot(state),
         )
     } else {
