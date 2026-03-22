@@ -3011,6 +3011,60 @@ fn print_data_market_snapshot_text(payload: &Value) {
         json_bool(seller.get("asset_preview_confirmed")),
         json_bool(seller.get("grant_preview_confirmed")),
     );
+    let last_asset = draft.get("last_published_asset").unwrap_or(&Value::Null);
+    if !last_asset.is_null() {
+        println!(
+            "asset nostr: listing={} listing_event={} listing_relay={}",
+            json_str(
+                last_asset
+                    .get("nostr_publications")
+                    .and_then(|value| value.get("ds_listing"))
+                    .and_then(|value| value.get("coordinate"))
+            )
+            .unwrap_or("-"),
+            json_str(
+                last_asset
+                    .get("nostr_publications")
+                    .and_then(|value| value.get("ds_listing"))
+                    .and_then(|value| value.get("event_id"))
+            )
+            .unwrap_or("-"),
+            json_str(
+                last_asset
+                    .get("nostr_publications")
+                    .and_then(|value| value.get("ds_listing"))
+                    .and_then(|value| value.get("relay_url"))
+            )
+            .unwrap_or("-"),
+        );
+    }
+    let last_grant = draft.get("last_published_grant").unwrap_or(&Value::Null);
+    if !last_grant.is_null() {
+        println!(
+            "grant nostr: offer={} offer_event={} offer_relay={}",
+            json_str(
+                last_grant
+                    .get("nostr_publications")
+                    .and_then(|value| value.get("ds_offer"))
+                    .and_then(|value| value.get("coordinate"))
+            )
+            .unwrap_or("-"),
+            json_str(
+                last_grant
+                    .get("nostr_publications")
+                    .and_then(|value| value.get("ds_offer"))
+                    .and_then(|value| value.get("event_id"))
+            )
+            .unwrap_or("-"),
+            json_str(
+                last_grant
+                    .get("nostr_publications")
+                    .and_then(|value| value.get("ds_offer"))
+                    .and_then(|value| value.get("relay_url"))
+            )
+            .unwrap_or("-"),
+        );
+    }
     let blockers = draft
         .get("readiness_blockers")
         .and_then(Value::as_array)
