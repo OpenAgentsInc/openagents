@@ -8655,6 +8655,8 @@ mod tests {
                 metadata: nostr::ChannelMetadata::new("main", "", ""),
                 hints: nostr::ManagedChannelHints::default(),
                 relay_url: Some(config.relay_url.clone()),
+                dataset_listing_coordinates: Vec::new(),
+                dataset_offer_coordinates: Vec::new(),
                 message_ids: vec![
                     chat_message.event_id.clone(),
                     presence_message.event_id.clone(),
