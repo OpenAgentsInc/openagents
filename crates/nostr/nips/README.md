@@ -2,6 +2,7 @@
 
 Draft Nostr Implementation Possibilities maintained in-repo:
 
+- **DS.md** — NIP-DS: Datasets
 - **SA.md** — NIP-SA: Sovereign Agents
 - **SKL.md** — NIP-SKL: Agent Skill Registry
 - **AC.md** — NIP-AC: Agent Credit
